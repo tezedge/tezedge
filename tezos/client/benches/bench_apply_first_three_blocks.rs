@@ -74,6 +74,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 1. apply: {:?}", clocks.elapsed()));
     assert_eq!(
@@ -96,6 +98,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 2. apply: {:?}", clocks.elapsed()));
     assert_eq!(
@@ -106,7 +110,7 @@ fn apply_first_three_blocks(
     // apply third block - level 3
     let clocks = Instant::now();
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )?,
@@ -118,6 +122,8 @@ fn apply_first_three_blocks(
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })?;
     perf_log.push(format!("- 3. apply: {:?}", clocks.elapsed()));
     assert_eq!(
@@ -244,22 +250,19 @@ mod common {
 
     pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
         let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-        let path = Path::new(out_dir.as_str())
-            .join(Path::new(dir_name))
-            .to_path_buf();
-        path
+        Path::new(out_dir.as_str()).join(Path::new(dir_name))
     }
 
     pub fn is_ocaml_log_enabled() -> bool {
         env::var("OCAML_LOG_ENABLED")
-            .unwrap_or("false".to_string())
+            .unwrap_or_else(|_| "false".to_string())
             .parse::<bool>()
             .unwrap()
     }
 
     pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
         env::var("OCAML_CALLS_GC")
-            .unwrap_or("2000".to_string())
+            .unwrap_or_else(|_| "2000".to_string())
             .parse::<i32>()
             .unwrap()
     }

@@ -127,7 +127,8 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296772,"delegate":"tz1VxS7ff4YnZRs8b4mMP4WaMVpoQjuo1rjf","slots":[27,16,14,13,0],"estimated_time":"2020-03-26T07:16:51Z"});
-        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
+        assert_json_eq!(expected_json, serde_json::to_value(json)?);
+        Ok(())
     }
 
     #[test]
@@ -141,7 +142,8 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296771,"delegate":"tz3WXYtyDUNL91qfiCJtVUX746QpNv5i5ve5","slots":[30,1],"estimated_time":"2020-03-26T07:16:51Z"});
-        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
+        assert_json_eq!(expected_json, serde_json::to_value(json)?);
+        Ok(())
     }
 
     #[test]
@@ -155,6 +157,7 @@ mod tests {
 
         let json = er.as_map();
         let expected_json = json!({"level":296781,"delegate":"tz2BFE2MEHhphgcR7demCGQP2k1zG1iMj1oj","priority":123,"estimated_time":"2020-03-26T07:23:01Z"});
-        Ok(assert_json_eq!(expected_json, serde_json::to_value(json)?))
+        assert_json_eq!(expected_json, serde_json::to_value(json)?);
+        Ok(())
     }
 }

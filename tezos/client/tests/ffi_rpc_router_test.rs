@@ -6,8 +6,8 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::ffi::{
-    ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult,
-    ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
+    ApplyBlockRequest, ComputePathRequest, ComputePathResponse, HelpersPreapplyBlockRequest,
+    InitProtocolContextResult, ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
 };
 use tezos_api::{
     environment::{TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV},
@@ -209,7 +209,7 @@ fn test_context_contract() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path:
                 "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"
@@ -403,6 +403,13 @@ fn test_preapply_block() -> Result<(), failure::Error> {
             accept: None,
         },
     };
+
+    let request = HelpersPreapplyBlockRequest {
+        protocol_rpc_request: request,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
+    };
+
     let response = client::helpers_preapply_block(request)?;
 
     // assert result json
@@ -427,6 +434,8 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(

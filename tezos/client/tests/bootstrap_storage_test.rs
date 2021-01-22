@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Tests for apply first blocks for protocol V0 based
+
 use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
@@ -87,6 +89,8 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(
@@ -94,6 +98,9 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
         apply_block_result.context_hash
     );
     assert_eq!(1, apply_block_result.max_operations_ttl);
+    assert!(apply_block_result.block_metadata_hash.is_none());
+    assert!(apply_block_result.ops_metadata_hash.is_none());
+    assert!(apply_block_result.ops_metadata_hashes.is_none());
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
@@ -109,6 +116,8 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(
@@ -131,6 +140,8 @@ fn test_bootstrap_empty_storage_with_first_three_blocks() {
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: apply_block_result.max_operations_ttl,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(
@@ -162,6 +173,8 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     let apply_block_result_1 = apply_block_result_1.unwrap();
     assert_eq!(
@@ -182,6 +195,8 @@ fn test_bootstrap_empty_storage_with_first_block_twice() {
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     let apply_block_result_2 = apply_block_result_2.unwrap();
     assert_eq!(
@@ -233,6 +248,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
 
@@ -267,6 +284,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: 1,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
 
@@ -308,6 +327,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: 1,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
 
@@ -349,6 +370,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: 2,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(
@@ -392,7 +415,7 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap(),
         )
@@ -404,6 +427,8 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
             test_data::block_header_level2_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_err());
     assert!(match apply_block_result.unwrap_err() {
@@ -438,6 +463,8 @@ fn test_bootstrap_empty_storage_with_third_block_with_first_predecessor_should_f
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_err());
     assert!(match apply_block_result.unwrap_err() {
@@ -468,6 +495,8 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
         pred_header: genesis_block_header,
         operations: vec![vec![]],
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_err());
     assert_eq!(
@@ -502,6 +531,8 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_ok());
 
@@ -519,6 +550,8 @@ fn test_bootstrap_empty_storage_with_first_block_with_invalid_operations_should_
             test_data::block_header_level3_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_err());
 }
@@ -567,6 +600,8 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     });
     assert!(apply_block_result.is_ok());
 

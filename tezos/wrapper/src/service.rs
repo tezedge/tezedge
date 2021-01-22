@@ -50,7 +50,7 @@ enum ProtocolMessage {
     ValidateOperationCall(ValidateOperationRequest),
     ProtocolRpcCall(ProtocolRpcRequest),
     HelpersPreapplyOperationsCall(ProtocolRpcRequest),
-    HelpersPreapplyBlockCall(ProtocolRpcRequest),
+    HelpersPreapplyBlockCall(HelpersPreapplyBlockRequest),
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
@@ -291,7 +291,7 @@ pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
     match error {
         ProtocolServiceError::IpcError { .. } | ProtocolServiceError::UnexpectedMessage { .. } => {
             // we need to refresh protocol runner endpoint, so propagate error
-            return Err(error);
+            Err(error)
         }
         _ => {
             // just log error
@@ -591,7 +591,7 @@ impl ProtocolController {
     /// Call helpers_preapply_block shell service
     pub fn helpers_preapply_block(
         &self,
-        request: ProtocolRpcRequest,
+        request: HelpersPreapplyBlockRequest,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }

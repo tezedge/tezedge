@@ -90,6 +90,7 @@ pub mod infra {
 
     use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
+    use networking::ShellCompatibilityVersion;
     use shell::chain_feeder::ChainFeeder;
     use shell::chain_manager::ChainManager;
     use shell::context_listener::ContextListener;
@@ -105,7 +106,6 @@ pub mod infra {
     use tezos_api::environment::TezosEnvironmentConfiguration;
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
     use tezos_identity::Identity;
-    use tezos_messages::p2p::encoding::version::NetworkVersion;
     use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
     use tezos_wrapper::service::ProtocolRunnerEndpoint;
     use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -137,7 +137,7 @@ pub mod infra {
             name: &str,
             tezos_env: &TezosEnvironmentConfiguration,
             patch_context: Option<PatchContext>,
-            p2p: Option<(P2p, NetworkVersion)>,
+            p2p: Option<(P2p, ShellCompatibilityVersion)>,
             identity: Identity,
             (log, log_level): (Logger, Level),
         ) -> Result<Self, failure::Error> {
@@ -289,14 +289,14 @@ pub mod infra {
             .expect("Failed to create chain feeder");
 
             // and than open p2p and others - if configured
-            let peer_manager = if let Some((p2p_config, network_version)) = p2p {
+            let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
                 let peer_manager = PeerManager::actor(
                     &actor_system,
                     network_channel.clone(),
                     shell_channel.clone(),
                     tokio_runtime.handle().clone(),
                     identity,
-                    Arc::new(network_version),
+                    Arc::new(shell_compatibility_version),
                     p2p_config,
                 )
                 .expect("Failed to create peer manager");

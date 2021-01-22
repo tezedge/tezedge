@@ -24,7 +24,7 @@ use networking::p2p::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerCreated,
 };
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
-use networking::PeerId;
+use networking::{PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -126,7 +126,7 @@ pub struct PeerManager {
     /// Tezos identity
     identity: Arc<Identity>,
     /// Network/protocol version
-    network_version: Arc<NetworkVersion>,
+    shell_compatibility_version: Arc<ShellCompatibilityVersion>,
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
@@ -150,7 +150,7 @@ impl PeerManager {
         shell_channel: ShellChannelRef,
         tokio_executor: Handle,
         identity: Arc<Identity>,
-        network_version: Arc<NetworkVersion>,
+        shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
@@ -160,7 +160,7 @@ impl PeerManager {
                 shell_channel,
                 tokio_executor,
                 identity,
-                network_version,
+                shell_compatibility_version,
                 p2p_config,
             )),
         )
@@ -229,7 +229,7 @@ impl PeerManager {
             self.network_channel.clone(),
             self.listener_port,
             self.identity.clone(),
-            self.network_version.clone(),
+            self.shell_compatibility_version.clone(),
             self.tokio_executor.clone(),
             socket_address,
         )
@@ -348,17 +348,24 @@ impl
         ShellChannelRef,
         Handle,
         Arc<Identity>,
-        Arc<NetworkVersion>,
+        Arc<ShellCompatibilityVersion>,
         P2p,
     )> for PeerManager
 {
     fn create_args(
-        (network_channel, shell_channel, tokio_executor, identity, network_version, p2p_config): (
+        (
+            network_channel,
+            shell_channel,
+            tokio_executor,
+            identity,
+            shell_compatibility_version,
+            p2p_config,
+        ): (
             NetworkChannelRef,
             ShellChannelRef,
             Handle,
             Arc<Identity>,
-            Arc<NetworkVersion>,
+            Arc<ShellCompatibilityVersion>,
             P2p,
         ),
     ) -> Self {
@@ -384,7 +391,7 @@ impl
             threshold: p2p_config.peer_threshold,
             listener_port: p2p_config.listener_port,
             identity,
-            network_version,
+            shell_compatibility_version,
             disable_mempool: p2p_config.disable_mempool,
             private_node: p2p_config.private_node,
             rx_run: Arc::new(AtomicBool::new(true)),

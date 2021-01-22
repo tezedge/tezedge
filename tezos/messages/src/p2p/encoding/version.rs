@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
@@ -11,10 +12,14 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
-#[derive(Serialize, Deserialize, Clone)]
+/// Holds informations about chain compatibility, features compatibility...
+#[derive(Serialize, Deserialize, Getters, Clone)]
 pub struct NetworkVersion {
+    #[get = "pub"]
     chain_name: String,
+    #[get = "pub"]
     distributed_db_version: u16,
+    #[get = "pub"]
     p2p_version: u16,
     #[serde(skip_serializing)]
     body: BinaryDataCache,
@@ -40,13 +45,8 @@ impl NetworkVersion {
         }
     }
 
-    /// Returns true if version is compatibile.
-    ///
-    /// The version is compatible in case the `chain_name` and `distributed_db_version` version are the same.
-    /// p2p_version is ignored.
-    pub fn supports(&self, other: &NetworkVersion) -> bool {
-        self.chain_name == other.chain_name
-            && self.distributed_db_version == other.distributed_db_version
+    pub fn supports_nack_with_list_and_motive(&self) -> bool {
+        self.p2p_version > 0
     }
 }
 

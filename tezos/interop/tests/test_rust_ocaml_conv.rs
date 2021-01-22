@@ -224,6 +224,8 @@ fn test_apply_block_request_conv() {
         .operations(ApplyBlockRequest::convert_operations(
             block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
         ))
+        .predecessor_block_metadata_hash(None)
+        .predecessor_ops_metadata_hash(None)
         .build()
         .unwrap();
 
