@@ -88,7 +88,7 @@ pub fn cleanup_volumes() -> Output {
 
 pub fn cleanup_docker_system() -> Output {
     Command::new("docker")
-        .args(&["sustem", "prune", "-a", "-f"])
+        .args(&["system", "prune", "-a", "-f"])
         .output()
         .expect("failed to execute docker-compose command")
 }
