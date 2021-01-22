@@ -77,9 +77,7 @@ services:
     environment:
       - SANDBOX=https://carthage.tezedge.com:3030
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.master.dev.tezedge","http":"http://master.dev.tezedge.com:18732","debugger":"http://master.dev.tezedge.com:17732","ws":"ws://master.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.master.dev.tezedge","http":"http://master.dev.tezedge.com:18733","debugger":"http://master.dev.tezedge.com:17733","ws":false}]
-    ports:
-      - "8080:80"
+      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","debugger":"http://${HOSTNAME}.dev.tezedge.com:17732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","debugger":"http://${HOSTNAME}.dev.tezedge.com:17733","ws":false}]
 
 volumes:
   rust-shared-data:
