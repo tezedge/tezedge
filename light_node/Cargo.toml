@@ -28,4 +28,6 @@ networking = { path = "../networking" }
 storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
+ipc = { path = "../ipc" }
+tezos_context = { path = "../tezos/context" }
 rpc = { path = "../rpc" }

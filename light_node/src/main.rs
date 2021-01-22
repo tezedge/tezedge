@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 // #![forbid(unsafe_code)]
 
-use std::sync::atomic::Ordering;
+use std::{path::PathBuf, sync::atomic::Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -600,20 +600,4 @@ fn main() {
         }
     }
 
-    fn foo(_sys: &impl ActorRefFactory,
-        persistent_storage: &PersistentStorage,
-        mut _event_server: IpcEvtServer,
-        log: Logger,
-        store_context_action: bool) {
-
-        let mut event_server = IpcEvtServer::try_new().unwrap();
-
-        let sys = SystemBuilder::new()
-        .name("test")
-        .log(log.clone())
-        .create()
-        .expect("Failed to create actor system");
-
-        let actor = ContextListener::actor(&sys, persistent_storage, event_server, log, store_context_action);
-    }
 }
