@@ -32,6 +32,7 @@ pub type OperationListListHash = Hash;
 pub type OperationMetadataHash = Hash;
 pub type OperationMetadataListListHash = Hash;
 pub type ContextHash = Hash;
+pub type TreeHash = Hash;
 pub type ProtocolHash = Hash;
 pub type ContractTz1Hash = Hash;
 pub type ContractTz2Hash = Hash;
