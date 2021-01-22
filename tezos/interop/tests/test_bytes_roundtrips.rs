@@ -313,7 +313,7 @@ fn test_context_callback() {
     let handle = thread::spawn(move || {
         let mut received = 0;
         for _ in 0..expected_count {
-            let action = context_receive().unwrap();
+            let action = context_receive().unwrap().action;
             received += 1;
 
             match action {
