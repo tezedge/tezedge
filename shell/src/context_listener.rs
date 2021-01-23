@@ -132,7 +132,7 @@ impl Actor for ContextListener {
     }
 }
 
-fn store_action(
+fn store_context_action(
     storage: &mut ContextActionStorage,
     should_store: bool,
     action: ContextAction,
@@ -234,7 +234,7 @@ fn listen_protocol_events(
                 }
 
                 if msg.record {
-                    store_action(context_action_storage, store_context_actions, msg.action)?;
+                    store_context_action(context_action_storage, store_context_actions, msg.action)?;
                 }
             }
             Err(err) => {
