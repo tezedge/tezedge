@@ -14,11 +14,11 @@ const CHANNEL_BUFFER_LEN: usize = 1_048_576;
 
 lazy_static! {
     /// This channel is shared by both OCaml and Rust
-    static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);
+    static ref CHANNEL: (Sender<ContextActionMessage>, Receiver<ContextActionMessage>) = bounded(CHANNEL_BUFFER_LEN);
 }
 
 /// Send message into the shared channel.
-pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
+pub fn context_send(action: ContextActionMessage) -> Result<(), SendError<ContextActionMessage>> {
     if CHANNEL_ENABLED.load(Ordering::Acquire) {
         CHANNEL.0.send(action)
     } else {
@@ -27,7 +27,7 @@ pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction
 }
 
 /// Receive message from the shared channel.
-pub fn context_receive() -> Result<ContextAction, RecvError> {
+pub fn context_receive() -> Result<ContextActionMessage, RecvError> {
     CHANNEL.1.recv()
 }
 
@@ -53,7 +53,6 @@ pub enum ContextAction {
         key: Vec<String>,
         value: Vec<u8>,
         value_as_json: Option<String>,
-
     },
     Delete {
         context_hash: Option<Hash>,
@@ -145,6 +144,13 @@ pub enum ContextAction {
     },
     /// This is a control event used to shutdown IPC channel
     Shutdown,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ContextActionMessage {
+    pub action: ContextAction,
+    pub record: bool,
+    pub perform: bool,
 }
 
 fn get_time(action: &ContextAction) -> f64 {
