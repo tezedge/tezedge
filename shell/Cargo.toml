@@ -20,7 +20,7 @@ riker = "0.4"
 slog = "2.7"
 serde = "1.0"
 serde_json = "1.0"
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1.1", features = ["time"] }
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
