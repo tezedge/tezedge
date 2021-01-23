@@ -115,18 +115,17 @@ where
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
 pub struct PersistentStorage {
-    /// key-value store
-    //TODO to be renamed to kv_db
-    kv: Arc<DB>,
-    /// context store
-    kv_context: Arc<DB>,
+    /// key-value store for operational database
+    db: Arc<DB>,
+    /// key-value store for context (used by merkle)
+    db_context: Arc<DB>,
     /// context actions store
-    kv_context_actions: Arc<DB>,
-    /// commit log store
+    db_context_actions: Arc<DB>,
+    /// commit log store for storing plain block header data
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
     seq: Arc<Sequences>,
-    /// merkle-tree based context storage
+    /// merkle-tree based context storage (uses db_context)
     merkle: Arc<RwLock<MerkleStorage>>,
 }
 
@@ -138,28 +137,28 @@ pub enum StorageType {
 
 impl PersistentStorage {
     pub fn new(
-        kv: Arc<DB>,
-        kv_context: Arc<DB>,
-        kv_context_actions: Arc<DB>,
+        db: Arc<DB>,
+        db_context: Arc<DB>,
+        db_context_actions: Arc<DB>,
         clog: Arc<CommitLogs>,
     ) -> Self {
-        let seq = Arc::new(Sequences::new(kv.clone(), 1000));
+        let seq = Arc::new(Sequences::new(db.clone(), 1000));
         Self {
             clog,
-            kv,
-            kv_context: kv_context.clone(),
-            kv_context_actions,
+            db,
+            db_context: db_context.clone(),
+            db_context_actions,
             seq,
-            merkle: Arc::new(RwLock::new(MerkleStorage::new(kv_context))),
+            merkle: Arc::new(RwLock::new(MerkleStorage::new(db_context))),
         }
     }
 
     #[inline]
     pub fn kv(&self, storage: StorageType) -> Arc<DB> {
         match storage {
-            StorageType::Context => self.kv_context.clone(),
-            StorageType::ContextAction => self.kv_context_actions.clone(),
-            StorageType::Database => self.kv.clone(),
+            StorageType::Context => self.db_context.clone(),
+            StorageType::ContextAction => self.db_context_actions.clone(),
+            StorageType::Database => self.db.clone(),
         }
     }
 
@@ -180,11 +179,14 @@ impl PersistentStorage {
 
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
-        let kv = self.kv.flush();
-        if clog.is_err() || kv.is_err() {
+        let db = self.db.flush();
+        let db_context = self.db_context.flush();
+        let db_context_actions = self.db_context_actions.flush();
+
+        if clog.is_err() || db.is_err() || db_context.is_err() || db_context_actions.is_err() {
             println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}",
-                clog, kv
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, kv_context: {:?}, kv_context_actions: {:?}",
+                clog, db, db_context, db_context_actions
             );
         }
     }

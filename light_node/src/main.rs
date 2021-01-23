@@ -6,11 +6,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use configuration::{ColumnFactory, RocksDBConfig};
 use riker::actors::*;
 use rocksdb::{Cache, DB};
-use slog::{crit, debug, error, info, o, warn, Drain, Logger};
+use slog::{debug, error, info, o, warn, Drain, Logger};
 
+use configuration::{ColumnFactory, RocksDBConfig};
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
@@ -44,16 +44,6 @@ use crate::configuration::LogFormat;
 mod configuration;
 mod identity;
 mod system;
-
-const DATABASE_VERSION: i64 = 17;
-
-macro_rules! shutdown_and_exit {
-    ($err:expr, $sys:ident) => {{
-        $err;
-        futures::executor::block_on($sys.shutdown()).unwrap();
-        return;
-    }};
-}
 
 macro_rules! create_terminal_logger {
     ($type:expr) => {{
@@ -112,7 +102,9 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
     Logger::root(drain, slog::o!())
 }
 
-fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runtime::Runtime {
+fn create_tokio_runtime(
+    env: &crate::configuration::Environment,
+) -> std::io::Result<tokio::runtime::Runtime> {
     // use threaded work staling scheduler
     let mut builder = tokio::runtime::Builder::new_multi_thread();
     builder.enable_all();
@@ -121,7 +113,7 @@ fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runti
         builder.worker_threads(env.tokio_threads);
     }
     // build runtime
-    builder.build().expect("Failed to create tokio runtime")
+    builder.build()
 }
 
 /// Create pool for ffi protocol runner connections (used just for readonly context)
@@ -222,7 +214,6 @@ fn block_on_actors(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: StorageInitInfo,
     identity: Arc<Identity>,
-    actor_system: ActorSystem,
     persistent_storage: PersistentStorage,
     tezedge_context: TezedgeContext,
     log: Logger,
@@ -235,6 +226,8 @@ fn block_on_actors(
         shell::SUPPORTED_DISTRIBUTED_DB_VERSION.to_vec(),
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
+
+    info!(log, "Initializing protocol runners... (3/4)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(create_tezos_readonly_api_pool(
@@ -260,7 +253,7 @@ fn block_on_actors(
     ));
 
     // tezos protocol runner endpoint for applying blocks to chain
-    let mut apply_blocks_protocol_runner_endpoint = match ProtocolRunnerEndpoint::<
+    let mut apply_blocks_protocol_runner_endpoint = ProtocolRunnerEndpoint::<
         ExecutableProtocolRunner,
     >::try_new(
         "apply_blocks_protocol_runner_endpoint",
@@ -278,13 +271,10 @@ fn block_on_actors(
             true,
         ),
         log.new(o!("endpoint" => "apply_blocks_protocol_runner_endpoint")),
-    ) {
-        Ok(endpoint) => endpoint,
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to configure protocol runner endpoint"; "name" => "apply_blocks_protocol_runner_endpoint", "reason" => format!("{:?}", e)),
-            actor_system
-        ),
-    };
+    )
+    .expect(
+        "Failed to configure protocol runner endpoint, name: apply_blocks_protocol_runner_endpoint",
+    );
     let (
         apply_blocks_protocol_runner_endpoint_run_feature,
         apply_block_protocol_events,
@@ -302,15 +292,20 @@ fn block_on_actors(
                 apply_block_protocol_commands,
             )
         }
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to spawn protocol runner process"; "name" => "apply_blocks_protocol_runner_endpoint", "reason" => e),
-            actor_system
-        ),
+        Err(e) => panic!("Failed to spawn protocol runner process, name: apply_blocks_protocol_runner_endpoint, reason: {}", e),
     };
+    info!(log, "Protocol runners initialized");
 
+    info!(log, "Initializing actors... (4/4)");
     let current_mempool_state_storage = init_mempool_state_storage();
+    let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
-    let tokio_runtime = create_tokio_runtime(&env);
+    // create riker's actor system
+    let actor_system = SystemBuilder::new()
+        .name("light-node")
+        .log(log.clone())
+        .create()
+        .expect("Failed to create actor system");
 
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
@@ -404,6 +399,7 @@ fn block_on_actors(
         is_sandbox,
     )
     .expect("Failed to create RPC server");
+    info!(log, "Actors initialized");
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -470,10 +466,9 @@ fn initialize_db<Factory: ColumnFactory>(
     config: &RocksDBConfig<Factory>,
     env: &TezosEnvironmentConfiguration,
 ) -> Result<Arc<DB>, DBError> {
-    let columns: Vec<_> = config.columns.create(cache);
     let db = open_kv(
         &config.db_path,
-        columns,
+        config.columns.create(cache),
         &DbConfiguration {
             max_threads: config.threads,
         },
@@ -510,6 +505,7 @@ fn main() {
     let log = create_logger(&env);
 
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
+    info!(log, "Loading identity... (1/4)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
             info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
@@ -535,84 +531,58 @@ fn main() {
     // Enable core dumps and increase open files limit
     system::init_limits(&log);
 
-    let actor_system = SystemBuilder::new()
-        .name("light-node")
-        .log(log.clone())
-        .create()
-        .expect("Failed to create actor system");
-
+    // create/initialize databases
+    info!(log, "Loading databases... (2/4)");
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let cache = [
-        Cache::new_lru_cache(env.storage.db.cache_size).unwrap(),
-        Cache::new_lru_cache(env.storage.db_context.cache_size).unwrap(),
-        Cache::new_lru_cache(env.storage.db_context_actions.cache_size).unwrap(),
+        Cache::new_lru_cache(env.storage.db.cache_size)
+            .expect("Failed to initialize RocksDB cache (db)"),
+        Cache::new_lru_cache(env.storage.db_context.cache_size)
+            .expect("Failed to initialize RocksDB cache (db_context)"),
+        Cache::new_lru_cache(env.storage.db_context_actions.cache_size)
+            .expect("Failed to initialize RocksDB cache (db_context_actions)"),
     ];
 
-    let storages: Result<Vec<Arc<DB>>, DBError> = vec![
-        initialize_db(&log, &cache[0], &env.storage.db, &tezos_env),
-        initialize_db(&log, &cache[1], &env.storage.db_context, &tezos_env),
-        initialize_db(&log, &cache[2], &env.storage.db_context_actions, &tezos_env),
-    ]
-    .into_iter()
-    .collect();
-
-    let storages = match storages {
-        Err(e) => shutdown_and_exit!(
-            crit!(
-                log,
-                "Failed to create initialize RocksDB databases '{:?}'",
-                e
-            ),
-            actor_system
-        ),
-        Ok(dbs) => dbs,
-    };
+    // initialize dbs
+    let kv = initialize_db(&log, &cache[0], &env.storage.db, &tezos_env)
+        .expect("Failed to create/initialize RocksDB database (db)");
+    let kv_context = initialize_db(&log, &cache[1], &env.storage.db_context, &tezos_env)
+        .expect("Failed to create/initialize RocksDB database (db_context)");
+    let kv_actions = initialize_db(&log, &cache[2], &env.storage.db_context_actions, &tezos_env)
+        .expect("Failed to create/initialize RocksDB database (db_context_actions)");
+    let commit_logs = Arc::new(
+        open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
+            .expect("Failed to open plain block_header storage"),
+    );
 
     {
-        let commit_logs = match open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()]) {
-            Ok(commit_logs) => Arc::new(commit_logs),
-            Err(e) => shutdown_and_exit!(
-                error!(log, "Failed to open commit logs"; "reason" => e),
-                actor_system
-            ),
-        };
-        if let [kv, kv_context, kv_actions] = &storages[..] {
-            debug!(log, "Loaded RocksDB databases");
+        let persistent_storage = PersistentStorage::new(kv, kv_context, kv_actions, commit_logs);
+        let tezedge_context = TezedgeContext::new(
+            BlockStorage::new(&persistent_storage),
+            persistent_storage.merkle(),
+        );
 
-            let persistent_storage = PersistentStorage::new(
-                kv.clone(),
-                kv_context.clone(),
-                kv_actions.clone(),
-                commit_logs,
-            );
-            let tezedge_context = TezedgeContext::new(
-                BlockStorage::new(&persistent_storage),
-                persistent_storage.merkle(),
-            );
-            match resolve_storage_init_chain_data(
-                &tezos_env,
-                &env.storage.db_path,
-                &env.storage.tezos_data_dir,
-                &env.storage.patch_context,
-                &log,
-            ) {
-                Ok(init_data) => block_on_actors(
+        match resolve_storage_init_chain_data(
+            &tezos_env,
+            &env.storage.db_path,
+            &env.storage.tezos_data_dir,
+            &env.storage.patch_context,
+            &log,
+        ) {
+            Ok(init_data) => {
+                info!(log, "Databases loaded successfully");
+                block_on_actors(
                     env,
                     tezos_env,
                     init_data,
                     Arc::new(tezos_identity),
-                    actor_system,
                     persistent_storage,
                     tezedge_context,
                     log,
-                ),
-                Err(e) => shutdown_and_exit!(
-                    error!(log, "Failed to resolve init storage chain data."; "reason" => e),
-                    actor_system
-                ),
+                )
             }
-        } else {
+            Err(e) => panic!("Failed to resolve init storage chain data, reason: {}", e),
         }
     }
 }

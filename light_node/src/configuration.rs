@@ -15,19 +15,11 @@ use clap::{App, Arg};
 use rocksdb::ColumnFamilyDescriptor;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage;
 use storage::persistent::KeyValueSchema;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
-
-const STORAGES_COUNT: usize = 3;
-const MINIMAL_THREAD_COUNT: usize = 1;
-const DB_STORAGE_VERSION: i64 = 16;
-const DB_CONTEXT_STORAGE_VERSION: i64 = 16;
-const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 16;
-const LRU_CACHE_SIZE_32MB: usize = 32 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -112,6 +104,19 @@ pub struct Storage {
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
     pub patch_context: Option<PatchContext>,
+}
+
+impl Storage {
+    const STORAGES_COUNT: usize = 3;
+    const MINIMAL_THREAD_COUNT: usize = 1;
+
+    const DB_STORAGE_VERSION: i64 = 17;
+    const DB_CONTEXT_STORAGE_VERSION: i64 = 17;
+    const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 17;
+
+    const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
+    const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
+    const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 }
 
 #[derive(Debug, Clone)]
@@ -249,6 +254,18 @@ pub fn tezos_app() -> App<'static, 'static> {
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("db-context-cfg-max-threads")
+            .long("db-context-cfg-max-threads")
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("db-context-actions-cfg-max-threads")
+            .long("db-context-actions-cfg-max-threads")
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
@@ -768,40 +785,70 @@ impl Environment {
                     .expect("Provided value cannot be converted to path");
                 let db_path = get_final_path(&data_dir, path);
 
-                let threads_count = args.value_of("db-cfg-max-threads").map(|value| {
+                let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
                         .parse::<usize>()
-                        .map(|val| std::cmp::min(MINIMAL_THREAD_COUNT, val / STORAGES_COUNT))
+                        .map(|val| {
+                            std::cmp::min(
+                                Storage::MINIMAL_THREAD_COUNT,
+                                val / Storage::STORAGES_COUNT,
+                            )
+                        })
                         .expect("Provided value cannot be converted to number")
                 });
+                let db_context_threads_count =
+                    args.value_of("db-context-cfg-max-threads").map(|value| {
+                        value
+                            .parse::<usize>()
+                            .map(|val| {
+                                std::cmp::min(
+                                    Storage::MINIMAL_THREAD_COUNT,
+                                    val / Storage::STORAGES_COUNT,
+                                )
+                            })
+                            .expect("Provided value cannot be converted to number")
+                    });
+                let db_context_actions_threads_count = args
+                    .value_of("db-context-actions-cfg-max-threads")
+                    .map(|value| {
+                        value
+                            .parse::<usize>()
+                            .map(|val| {
+                                std::cmp::min(
+                                    Storage::MINIMAL_THREAD_COUNT,
+                                    val / Storage::STORAGES_COUNT,
+                                )
+                            })
+                            .expect("Provided value cannot be converted to number")
+                    });
 
                 let db = RocksDBConfig {
-                    cache_size: LRU_CACHE_SIZE_32MB,
-                    expected_db_version: DB_STORAGE_VERSION,
-                    db_path: db_path.clone().join("db"),
+                    cache_size: Storage::LRU_CACHE_SIZE_96MB,
+                    expected_db_version: Storage::DB_STORAGE_VERSION,
+                    db_path: db_path.join("db"),
                     columns: DBTableInitializer {},
-                    threads: threads_count,
+                    threads: db_threads_count,
                 };
                 let db_context = RocksDBConfig {
-                    cache_size: LRU_CACHE_SIZE_32MB,
-                    expected_db_version: DB_CONTEXT_STORAGE_VERSION,
+                    cache_size: Storage::LRU_CACHE_SIZE_64MB,
+                    expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
                     db_path: db_path.join("context"),
                     columns: ContextTableInitializer {},
-                    threads: threads_count,
+                    threads: db_context_threads_count,
                 };
                 let db_context_actions = RocksDBConfig {
-                    cache_size: LRU_CACHE_SIZE_32MB,
-                    expected_db_version: DB_CONTEXT_ACTIONS_STORAGE_VERSION,
+                    cache_size: Storage::LRU_CACHE_SIZE_16MB,
+                    expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
                     db_path: db_path.join("context_actions"),
                     columns: ContextActionsTableInitializer {},
-                    threads: threads_count,
+                    threads: db_context_actions_threads_count,
                 };
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
                     db_context,
                     db_context_actions,
-                    db_path: db_path,
+                    db_path,
                     store_context_actions: args
                         .value_of("store-context-actions")
                         .unwrap_or("true")
