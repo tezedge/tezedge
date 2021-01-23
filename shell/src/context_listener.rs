@@ -234,7 +234,11 @@ fn listen_protocol_events(
                 }
 
                 if msg.record {
-                    store_context_action(context_action_storage, store_context_actions, msg.action)?;
+                    store_context_action(
+                        context_action_storage,
+                        store_context_actions,
+                        msg.action,
+                    )?;
                 }
             }
             Err(err) => {
