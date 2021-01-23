@@ -420,8 +420,6 @@ impl From<TezosErrorTrace> for TezosRuntimeConfigurationError {
 pub enum TezosStorageInitError {
     #[fail(display = "OCaml storage init failed, message: {}!", message)]
     InitializeError { message: String },
-    //    #[fail(display = "Panic while executing an OCaml block")]
-    //    OCamlBlockPanic
 }
 
 impl From<TezosErrorTrace> for TezosStorageInitError {
