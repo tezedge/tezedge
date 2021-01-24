@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use failure::Fail;
+use std::collections::hash_map::Iter;
 
 #[derive(Debug, Fail)]
 pub enum StorageBackendError {
@@ -29,9 +30,15 @@ impl slog::Value for StorageBackendError {
 pub struct Batch {
     inner: HashMap<Vec<u8>, Vec<u8>>
 }
-
+impl Default for Batch {
+    fn default() -> Self {
+        Batch {
+            inner: Default::default()
+        }
+    }
+}
 impl Batch {
-    pub fn update(&mut self, key: Vec<u8>, value: Vec<u8>) {
+    pub fn put(&mut self, key: Vec<u8>, value: Vec<u8>) {
         self.inner.insert(key, value);
     }
 
@@ -39,21 +46,17 @@ impl Batch {
         self.inner.remove(key);
     }
 
-    pub fn iterator(&self, f: fn((Vec<u8>, Vec<u8>))) {
-        for (k, v) in self.inner {
-            f((k, v))
-        }
+    pub fn iter(&self) -> Iter<Vec<u8>,Vec<u8>> {
+        self.inner.iter()
     }
 }
 
 
 pub trait StorageBackend {
-    type StorageStats;
 
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError>;
     fn merge(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError>;
     fn delete(&self, key: &Vec<u8>) -> Result<(), StorageBackendError>;
     fn batch_write(&self, batch: Batch) -> Result<(), StorageBackendError>;
-    fn get<K: AsRef<[u8]>>(&self, key: K) -> Result<Option<Vec<u8>>, StorageBackendError>;
-    fn stats(&self) -> Result<Self::StorageStats, StorageBackendError>;
+    fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, StorageBackendError>;
 }

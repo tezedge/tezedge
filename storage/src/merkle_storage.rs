@@ -63,7 +63,7 @@ use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
-use crate::storage_backend::StorageBackend;
+use crate::storage_backend::{StorageBackend, Batch, StorageBackendError};
 
 const HASH_LEN: usize = 32;
 
@@ -156,6 +156,10 @@ pub enum MerkleError {
     },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
+    #[fail(display = "Backend error: {:?}", error)]
+    StorageBackendError {
+        error: StorageBackendError,
+    },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -191,6 +195,13 @@ impl From<persistent::database::DBError> for MerkleError {
         MerkleError::DBError { error }
     }
 }
+
+impl From<StorageBackendError> for MerkleError {
+    fn from(error: StorageBackendError) -> Self {
+        MerkleError::StorageBackendError { error }
+    }
+}
+
 
 impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self {
@@ -243,7 +254,7 @@ pub struct MerklePerfStats {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
-    rocksdb_stats: RocksDBStats,
+    //rocksdb_stats: RocksDBStats,
     pub perf_stats: MerklePerfStats,
 }
 
@@ -1141,13 +1152,13 @@ impl MerkleStorage {
 
     /// Persists an entry and its descendants from staged area to database on disk.
     fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        let mut batch = Batch::default(); // batch containing DB key values to persist
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
+        self.db.batch_write(batch)?;
 
         Ok(())
     }
@@ -1156,11 +1167,14 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut Batch,
     ) -> Result<(), MerkleError> {
+
+        let key = self.hash_entry(entry)?;
+        let value =  bincode::serialize(entry)?;
+
         // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+       batch.put(key.to_vec(), value);
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1224,7 +1238,7 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = self.db.get(hash)?;
+        let entry_bytes = self.db.get(&hash.to_vec())?;
         match entry_bytes {
             None => Err(MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash),
@@ -1236,7 +1250,7 @@ impl MerkleStorage {
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
             None => {
-                let entry_bytes = self.db.get(hash)?;
+                let entry_bytes = self.db.get(&hash.to_vec())?;
                 match entry_bytes {
                     None => Err(MerkleError::EntryNotFound {
                         hash: HashType::ContextHash.hash_to_b58check(hash),
@@ -1311,7 +1325,7 @@ impl MerkleStorage {
 
     /// Get various merkle storage statistics
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let db_stats = self.db.get_mem_use_stats()?;
+        //let db_stats = self.db.get_mem_use_stats()?;
 
         // calculate average values for global stats
         let mut perf = self.perf_stats.clone();
@@ -1333,7 +1347,7 @@ impl MerkleStorage {
             }
         }
         Ok(MerkleStorageStats {
-            rocksdb_stats: db_stats,
+            //rocksdb_stats: db_stats,
             perf_stats: perf,
         })
     }
