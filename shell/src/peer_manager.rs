@@ -21,7 +21,7 @@ use tokio::runtime::Handle;
 use tokio::time::timeout;
 
 use networking::p2p::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerCreated,
+    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed,
 };
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
 use networking::{PeerId, ShellCompatibilityVersion};
@@ -195,6 +195,7 @@ impl PeerManager {
             let msg: Arc<PeerMessageResponse> = Arc::new(PeerMessage::Bootstrap.into());
             self.peers.values().for_each(|peer_state| {
                 peer_state
+                    .peer_id
                     .peer_ref
                     .tell(SendMessage::new(msg.clone()), None)
             });
@@ -223,8 +224,12 @@ impl PeerManager {
     }
 
     /// Create new peer actor
-    fn create_peer(&mut self, sys: &impl ActorRefFactory, socket_address: &SocketAddr) -> PeerRef {
-        let peer = Peer::actor(
+    fn create_peer(
+        &mut self,
+        sys: &impl ActorRefFactory,
+        socket_address: &SocketAddr,
+    ) -> Result<PeerRef, CreateError> {
+        Peer::actor(
             sys,
             self.network_channel.clone(),
             self.listener_port,
@@ -233,28 +238,6 @@ impl PeerManager {
             self.tokio_executor.clone(),
             socket_address,
         )
-        .unwrap();
-
-        self.peers.insert(
-            peer.uri().clone(),
-            PeerState {
-                peer_ref: peer.clone(),
-                address: *socket_address,
-            },
-        );
-
-        self.network_channel.tell(
-            Publish {
-                msg: PeerCreated {
-                    peer: peer.clone(),
-                    address: *socket_address,
-                }
-                .into(),
-                topic: NetworkChannelTopic::NetworkEvents.into(),
-            },
-            None,
-        );
-        peer
     }
 
     /// Check if given ip address is blacklisted to connect to
@@ -335,7 +318,7 @@ impl PeerManager {
             self.peers
                 .values()
                 .take(peers_count - self.threshold.high)
-                .for_each(|peer_state| ctx.system.stop(peer_state.peer_ref.clone()))
+                .for_each(|peer_state| ctx.system.stop(peer_state.peer_id.peer_ref.clone()))
         }
 
         self.check_peer_count_last = Some(Instant::now());
@@ -542,8 +525,8 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 let addresses = self
                     .peers
                     .values()
-                    .filter(|peer_state| peer_state.peer_ref != peer.peer_ref)
-                    .map(|peer_state| peer_state.address)
+                    .filter(|peer_state| peer_state.peer_id.peer_ref != peer.peer_ref)
+                    .map(|peer_state| peer_state.peer_id.peer_address)
                     .collect::<Vec<_>>();
                 let msg = Arc::new(AdvertiseMessage::new(&addresses).into());
                 peer.peer_ref.tell(SendMessage::new(msg), None);
@@ -569,6 +552,11 @@ impl Receive<NetworkChannelMsg> for PeerManager {
             }
             NetworkChannelMsg::BlacklistPeer(peer_id, reason) => {
                 self.blacklist_peer(peer_id, reason, &ctx.system);
+            }
+            NetworkChannelMsg::ProcessSuccessBootstrapAddress(peer_id) => {
+                let _ = self
+                    .peers
+                    .insert(peer_id.peer_ref.uri().clone(), PeerState { peer_id });
             }
             _ => (),
         }
@@ -597,29 +585,36 @@ impl Receive<ConnectToPeer> for PeerManager {
 
         if self.is_blacklisted(&msg.address.ip()) {
             debug!(ctx.system.log(), "Peer is blacklisted - will not connect"; "ip" => format!("{}", msg.address.ip()));
-        } else {
-            let peer = self.create_peer(ctx, &msg.address);
-            let system = ctx.system.clone();
-            let disable_mempool = self.disable_mempool;
-            let private_node = self.private_node;
+            return;
+        }
 
-            self.tokio_executor.spawn(async move {
-                debug!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
-                    Ok(Ok(stream)) => {
-                        info!(system.log(), "Connection successful"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                        peer.tell(Bootstrap::outgoing(stream, msg.address, disable_mempool, private_node), None);
+        match self.create_peer(ctx, &msg.address) {
+            Ok(peer) => {
+                let system = ctx.system.clone();
+                let disable_mempool = self.disable_mempool;
+                let private_node = self.private_node;
+
+                self.tokio_executor.spawn(async move {
+                    debug!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
+                    match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
+                        Ok(Ok(stream)) => {
+                            info!(system.log(), "Connection successful"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
+                            peer.tell(Bootstrap::outgoing(stream, msg.address, disable_mempool, private_node), None);
+                        }
+                        Ok(Err(e)) => {
+                            info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string(), "reason" => format!("{:?}", e));
+                            system.stop(peer);
+                        }
+                        Err(_) => {
+                            info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
+                            system.stop(peer);
+                        }
                     }
-                    Ok(Err(e)) => {
-                        info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string(), "reason" => format!("{:?}", e));
-                        system.stop(peer);
-                    }
-                    Err(_) => {
-                        info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                        system.stop(peer);
-                    }
-                }
-            });
+                });
+            }
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
+            }
         }
     }
 }
@@ -632,16 +627,21 @@ impl Receive<AcceptPeer> for PeerManager {
             warn!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
         } else if self.peers.len() < self.threshold.high {
             debug!(ctx.system.log(), "Connection from"; "ip" => msg.address);
-            let peer = self.create_peer(ctx, &msg.address);
-            peer.tell(
-                Bootstrap::incoming(
-                    msg.stream,
-                    msg.address,
-                    self.disable_mempool,
-                    self.private_node,
+            match self.create_peer(ctx, &msg.address) {
+                Ok(peer) => peer.tell(
+                    Bootstrap::incoming(
+                        msg.stream,
+                        msg.address,
+                        self.disable_mempool,
+                        self.private_node,
+                    ),
+                    None,
                 ),
-                None,
-            );
+                Err(e) => {
+                    warn!(ctx.system.log(), "Failed to process connection from peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e));
+                    drop(msg.stream); // not needed, just wanted to be explicit here
+                }
+            }
         } else {
             debug!(
                 ctx.system.log(),
@@ -738,7 +738,5 @@ fn resolve_dns_name_to_peer_address(
 /// Holds information about a specific peer.
 struct PeerState {
     /// Reference to peer actor
-    peer_ref: PeerRef,
-    /// Peer IP address
-    address: SocketAddr,
+    peer_id: Arc<PeerId>,
 }

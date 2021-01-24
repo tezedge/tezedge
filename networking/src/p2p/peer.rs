@@ -36,6 +36,7 @@ const IO_TIMEOUT: Duration = Duration::from_secs(6);
 /// There is a 90-second timeout for ping peers with GetCurrentHead
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(120);
 
+// TODO: refactor somehow - peer actor names should be under controll of caller
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Fail)]
@@ -304,7 +305,7 @@ impl Receive<Bootstrap> for Peer {
             match bootstrap(msg, info, &system.log()).await {
                 Ok(BootstrapOutput(rx, tx, peer_public_key_hash, peer_id_marker, peer_metadata, peer_compatible_network_version)) => {
                     // prepare PeerId
-                    let peer_id = PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address);
+                    let peer_id = Arc::new(PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address.clone()));
                     let log = {
                         let myself_name = myself.name().to_string();
                         let myself_uri = myself.uri().to_string();
@@ -315,11 +316,17 @@ impl Receive<Bootstrap> for Peer {
                     // setup encryption writer
                     setup_net(&net, tx).await;
 
-                    // notify that peer was bootstrapped successfully
+                    // Network event - notify that peer was bootstrapped successfully
                     network_channel.tell(Publish {
-                        msg: NetworkChannelMsg::PeerBootstrapped(Arc::new(peer_id), Arc::new(peer_metadata), Arc::new(peer_compatible_network_version)),
+                        msg: NetworkChannelMsg::PeerBootstrapped(peer_id.clone(), Arc::new(peer_metadata), Arc::new(peer_compatible_network_version)),
                         topic: NetworkChannelTopic::NetworkEvents.into(),
-                    }, Some(myself.clone().into()));
+                    }, None);
+
+                    // Network command - notify that peer was bootstrapped successfully
+                    network_channel.tell(Publish {
+                        msg: NetworkChannelMsg::ProcessSuccessBootstrapAddress(peer_id),
+                        topic: NetworkChannelTopic::NetworkCommands.into(),
+                    }, None);
 
                     // begin to process incoming messages in a loop
                     begin_process_incoming(rx, net, myself.clone(), network_channel, log).await;
@@ -344,7 +351,7 @@ impl Receive<Bootstrap> for Peer {
                             }
                         ),
                         topic: NetworkChannelTopic::NetworkCommands.into(),
-                    }, Some(myself.clone().into()));
+                    }, None);
 
                     system.stop(myself);
                 }
