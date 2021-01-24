@@ -145,7 +145,7 @@ pub mod infra {
 
             // environement
             let is_sandbox = false;
-            let p2p_threshold = PeerConnectionThreshold::new(1, 1, Some(0));
+            let p2p_threshold = PeerConnectionThreshold::try_new(1, 1, Some(0))?;
             let identity = Arc::new(identity);
 
             // storage

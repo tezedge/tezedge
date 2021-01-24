@@ -17,17 +17,6 @@ use crate::PeerId;
 use super::peer::PeerRef;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-pub const DEFAULT_TOPIC: &str = "network";
-
-/// Peer has been created. This event does indicate
-/// only creation of the peer and is not indicative if
-/// bootstrap is going to be successful or not.
-#[derive(Clone, Debug)]
-pub struct PeerCreated {
-    pub peer: PeerRef,
-    pub address: SocketAddr,
-}
-
 /// Peer has been bootstrapped.
 #[derive(Clone, Debug)]
 pub struct PeerBootstrapFailed {
@@ -47,21 +36,16 @@ pub struct PeerMessageReceived {
 #[derive(Clone, Debug)]
 pub enum NetworkChannelMsg {
     /// Events
-    PeerCreated(PeerCreated),
     PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>, Arc<NetworkVersion>),
     PeerBlacklisted(Arc<PeerId>),
     PeerMessageReceived(PeerMessageReceived),
-    /// Commands
+    /// Commands (dedicated to peer_manager)
+    /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
     BlacklistPeer(Arc<PeerId>, String),
     ProcessAdvertisedPeers(Arc<PeerId>, AdvertiseMessage),
     SendBootstrapPeers(Arc<PeerId>),
     ProcessFailedBootstrapAddress(PeerBootstrapFailed),
-}
-
-impl From<PeerCreated> for NetworkChannelMsg {
-    fn from(msg: PeerCreated) -> Self {
-        NetworkChannelMsg::PeerCreated(msg)
-    }
+    ProcessSuccessBootstrapAddress(Arc<PeerId>),
 }
 
 impl From<PeerMessageReceived> for NetworkChannelMsg {

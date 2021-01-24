@@ -626,7 +626,7 @@ dependencies = [
  "num-bigint",
  "num-traits 0.2.14",
  "rand 0.7.3",
- "serde 1.0.119",
+ "serde 1.0.121",
  "sodiumoxide",
 ]
 

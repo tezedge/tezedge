@@ -41,7 +41,7 @@ lazy_static! {
             disable_mempool: false,
             private_node: false,
             bootstrap_peers: vec![],
-            peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
+            peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
@@ -1196,9 +1196,9 @@ mod test_node_peer {
 
     use crypto::hash::OperationHash;
     use networking::p2p::peer;
-    use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
+    use networking::p2p::peer::{Bootstrap, BootstrapOutput};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
-    use networking::ShellCompatibilityVersion;
+    use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
 
@@ -1251,7 +1251,7 @@ mod test_node_peer {
                     match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
                         Ok(Ok(stream)) => {
                             // authenticate
-                            let local = Arc::new(Local::new(
+                            let local = Arc::new(LocalPeerInfo::new(
                                 1235,
                                 identity,
                                 Arc::new(shell_compatibility_version),
@@ -1618,7 +1618,6 @@ mod test_actor {
         ) {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
-                NetworkChannelMsg::PeerCreated(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
                         peer_id.peer_public_key_hash.clone(),
