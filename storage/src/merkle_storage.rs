@@ -63,6 +63,7 @@ use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::storage_backend::StorageBackend;
 
 const HASH_LEN: usize = 32;
 
@@ -126,7 +127,7 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 pub type RefCnt = usize;
 
@@ -1405,6 +1406,7 @@ mod tests {
     use std::{env, fs};
 
     use super::*;
+    use crate::backend::RocksDBBackend;
 
     /// Open DB at path, used in tests
     fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
@@ -1424,8 +1426,9 @@ mod tests {
         out_dir_path(db_name)
     }
 
-    fn get_db(db_name: &str, cache: &Cache) -> DB {
-        open_db(get_db_name(db_name), &cache)
+    fn get_db(db_name: &str, cache: &Cache) -> RocksDBBackend {
+        let rocks = open_db(get_db_name(db_name), &cache);
+        RocksDBBackend::new(Arc::new(rocks), "merkle_storage".to_string())
     }
 
     fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
