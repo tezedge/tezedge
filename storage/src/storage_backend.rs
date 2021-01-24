@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use failure::Fail;
 
 #[derive(Debug, Fail)]
 pub enum StorageBackendError {
