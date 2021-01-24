@@ -1442,7 +1442,7 @@ mod tests {
 
     fn get_db(db_name: &str, cache: &Cache) -> RocksDBBackend {
         let rocks = open_db(get_db_name(db_name), &cache);
-        RocksDBBackend::new(Arc::new(rocks), "merkle_storage".to_string())
+        RocksDBBackend::new(Arc::new(rocks), MerkleStorage::name())
     }
 
     fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
@@ -1505,7 +1505,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap().as_ref());
+        hasher.update(hex::decode(bytes).unwrap());
         let calcualted_hash = hex::encode(hasher.finalize_boxed().as_ref());
 
         println!("calculated hash of the value/blob: {}", calcualted_hash);
@@ -1588,7 +1588,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap().as_ref());
+        hasher.update(hex::decode(bytes).unwrap());
         let calculated_commit_hash = hasher.finalize_boxed();
 
         println!(
@@ -1662,7 +1662,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap().as_ref());
+        hasher.update(hex::decode(bytes).unwrap());
         let calculated_tree_hash = hasher.finalize_boxed();
 
         println!(
@@ -2041,7 +2041,7 @@ mod tests {
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(db));
+        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(Arc::new(db),MerkleStorage::name())));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
 
