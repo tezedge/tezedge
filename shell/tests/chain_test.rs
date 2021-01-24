@@ -1614,7 +1614,6 @@ mod test_actor {
         ) {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
-                NetworkChannelMsg::PeerCreated(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
                         peer_id.peer_public_key_hash.clone(),
