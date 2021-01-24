@@ -296,7 +296,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
     tree.iter().for_each(|(k, v)| {
-        hasher.update(encode_irmin_node_kind(&v.node_kind));
+        hasher.update(&encode_irmin_node_kind(&v.node_kind));
         hasher.update(&[k.len() as u8]);
         hasher.update(&k.clone().into_bytes());
         hasher.update(&(HASH_LEN as u64).to_be_bytes());
@@ -1488,7 +1488,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap());
+        hasher.update(hex::decode(bytes).unwrap().as_ref());
         let calcualted_hash = hex::encode(hasher.finalize_boxed().as_ref());
 
         println!("calculated hash of the value/blob: {}", calcualted_hash);
@@ -1571,7 +1571,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap());
+        hasher.update(hex::decode(bytes).unwrap().as_ref());
         let calculated_commit_hash = hasher.finalize_boxed();
 
         println!(
@@ -1645,7 +1645,7 @@ mod tests {
         );
 
         let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
-        hasher.update(hex::decode(bytes).unwrap());
+        hasher.update(hex::decode(bytes).unwrap().as_ref());
         let calculated_tree_hash = hasher.finalize_boxed();
 
         println!(
