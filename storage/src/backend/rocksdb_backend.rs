@@ -2,6 +2,7 @@ use rocksdb::{DB, WriteOptions, WriteBatch};
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use crate::storage_backend::{StorageBackend, StorageBackendError, Batch};
+use crate::persistent::KeyValueStoreWithSchema;
 
 pub struct RocksDBBackend {
     column_name: &'static str,

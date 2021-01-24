@@ -8,6 +8,8 @@ pub enum StorageBackendError {
     RocksDBError { error: rocksdb::Error },
     #[fail(display = "Column family {} is missing", name)]
     MissingColumnFamily { name: &'static str },
+    #[fail(display = "Backend Error")]
+    BackendError,
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
