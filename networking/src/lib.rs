@@ -5,8 +5,10 @@
 //! This crate handles low level p2p communication.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use crypto::hash::CryptoboxPublicKeyHash;
+use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::ack::NackMotive;
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 
@@ -34,6 +36,30 @@ impl PeerId {
             peer_id_marker,
             peer_address,
         }
+    }
+}
+
+/// Local peer info
+pub struct LocalPeerInfo {
+    /// port where remote node can establish new connection
+    listener_port: u16,
+    /// Our node identity
+    identity: Arc<Identity>,
+    /// version of shell/network protocol which we are compatible with
+    version: Arc<ShellCompatibilityVersion>,
+}
+
+impl LocalPeerInfo {
+    pub fn new(listener_port: u16, identity: Arc<Identity>, version: Arc<ShellCompatibilityVersion>) -> Self {
+        LocalPeerInfo {
+            listener_port,
+            identity,
+            version,
+        }
+    }
+
+    pub fn listener_port(&self) -> u16 {
+        self.listener_port
     }
 }
 

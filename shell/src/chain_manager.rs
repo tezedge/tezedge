@@ -2367,7 +2367,7 @@ pub mod tests {
     use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::NetworkChannel;
     use networking::p2p::peer::Peer;
-    use networking::ShellCompatibilityVersion;
+    use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use storage::tests_common::TmpStorage;
     use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
     use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -2418,12 +2418,14 @@ pub mod tests {
         let peer_ref = Peer::actor(
             sys,
             network_channel,
-            3011,
-            node_identity,
-            Arc::new(ShellCompatibilityVersion::new(
-                "testet".to_string(),
-                vec![0],
-                vec![0],
+            Arc::new(LocalPeerInfo::new(
+                3011,
+                node_identity,
+                Arc::new(ShellCompatibilityVersion::new(
+                    "testet".to_string(),
+                    vec![0],
+                    vec![0],
+                )),
             )),
             tokio_runtime.handle().clone(),
             &socket_address,
