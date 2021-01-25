@@ -45,12 +45,16 @@ where T: KVStore,
 }
 
 /// finds in which store key is stored and deletes it
-fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<ContextValue>
+fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
 where T: KVStore,
       S: DerefMut<Target = Vec<T>>,
 {
-    stores.iter_mut().rev()
-        .find_map(|store| store.delete(key).unwrap_or(None))
+    stores.iter_mut().enumerate()
+        .find_map(|(index, store)| {
+            store.delete(key)
+                .unwrap_or(None)
+                .map(|value| (index, value))
+        })
 }
 
 /// Commands used by KVStoreGCed to interact with thread.
@@ -278,7 +282,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
     let mut reused_keys = vec![HashSet::new(); len];
     let mut todo_keys: Vec<EntryHash> = vec![];
     let mut received_exit_msg = false;
-    let mut reused_count = 0;
+
     loop {
         let wait_for_events = reused_keys.len() == len && !received_exit_msg;
 
@@ -331,7 +335,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
         if todo_keys.len() > 0 {
             let processed_len = todo_keys.len().min(64);
-            reused_count += processed_len;
 
             let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
@@ -341,16 +344,12 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                     None => break, // unreachable!
                 };
 
-                let entry_bytes = match stores.first_mut().unwrap().delete(&key) {
-                    Ok(Some(value)) => value,
-                    Ok(None) => continue,
-                    Err(err) => {
-                        eprintln!("MerkleStorage GC: error while getting entry from store: {:?}", err);
-                        continue;
-                    }
+                let (store_index, entry_bytes) = match stores_delete(&mut stores, &key) {
+                    Some(result) => result,
+                    None => continue,
                 };
                 let stat: KVStoreStats = (&key, &entry_bytes).into();
-                *stats.first_mut().unwrap() -= &stat;
+                stats[store_index] -= &stat;
 
                 let entry: Entry = match bincode::deserialize(&entry_bytes) {
                     Ok(value) => value,
@@ -383,13 +382,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
             reused_keys.drain(..1);
             stores_stats.lock().unwrap().drain(..1);
-            // stores.write().unwrap().drain(..1);
-
-            let mut stores = stores.write().unwrap();
-            println!("GC deleted: {} entries", stores[0].len().unwrap());
-            println!("GC reused: {} entries", reused_count);
-            reused_count = 0;
-            stores.drain(..1);
+            stores.write().unwrap().drain(..1);
         }
     }
 
