@@ -3,20 +3,20 @@ use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard};
 use action_sync::*;
 use crate::{BlockStorage, BlockStorageReader, BlockHeaderWithHash, StorageError, BlockJsonData};
 use crate::persistent::PersistentStorage;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
 
 pub struct ActionFileStorage {
     block_storage: BlockStorage,
-    file: Path,
+    file: PathBuf,
     staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>,
 }
 
 ///staging: Arc<DashMap<String, Vec<ContextAction>>>
 
 impl ActionFileStorage {
-    pub fn new<P: AsRef<Path>>(path: P, persistence: &PersistentStorage) -> ActionFileStorage {
+    pub fn new(path: PathBuf, persistence: &PersistentStorage) -> ActionFileStorage {
         ActionFileStorage {
             file: path,
             staging: persistence.actions_staging(),
