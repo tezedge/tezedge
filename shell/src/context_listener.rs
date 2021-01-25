@@ -312,8 +312,8 @@ fn listen_protocol_events(
                 match actions_file_storage {
                     None => {}
                     Some(afs) => {
-                        info!(log,"Storing action");
-                        afs.store_action(msg.clone())
+                        //info!(log,"Storing action");
+                        afs.store_action( log,msg.clone())
                     }
                 };
 

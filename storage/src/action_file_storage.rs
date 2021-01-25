@@ -35,7 +35,7 @@ impl ActionFileStorage {
 }
 
 impl ActionFileStorage {
-    pub  fn store_action(&mut self, action: ContextAction) {
+    pub  fn store_action(&mut self, log : &Logger, action: ContextAction) {
         match action.clone() {
             ContextAction::Set {
                 block_hash: Some(block_hash),
@@ -125,7 +125,11 @@ impl ActionFileStorage {
                 // remove block action from staging and save it to action file
 
                 if let Some(actions) = w.remove(&block_hash) {
+                    let pred = hex::encode(&block.predecessor);
+                    let hash = block.block_hash.to_owned();
+                    info!(log,"Saving Block {}", hash; "predecessor" => pred );
                     action_file_writer.update(block, actions);
+                    info!(log,"Saved Block {}", hash);
                 }
             }
             _ => {}

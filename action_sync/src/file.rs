@@ -48,6 +48,7 @@ pub struct ActionsFileHeader {
 impl std::fmt::Display for ActionsFileHeader {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut formatter: String = String::new();
+        formatter.push_str(&format!("{:<24}{}", "Block Hash:", hex::encode(self.current_block_hash)));
         formatter.push_str(&format!("{:<24}{}\n", "Block Height:", self.block_height));
         formatter.push_str(&format!("{:<24}{}\n", "Block Count:", self.block_count));
         formatter.push_str(&format!("{:<24}{}", "Actions Count:", self.actions_count));
@@ -173,25 +174,20 @@ impl Iterator for ActionsFileReader {
 /// writes block and list actions to file in `path`
 pub struct ActionsFileWriter {
     header: ActionsFileHeader,
-    file: FlockLock<File>,
+    file: File,
 }
 
 
 impl ActionsFileWriter {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         let mut file = OpenOptions::new().write(true).create(true).read(true).open(path)?;
-        let file_lock = file.wait_exclusive_lock()
-            .or_else(|e|
-                { Err(anyhow!("couldn't obtain lock")) }
-            )?;
-
-        let mut reader = BufReader::new(file_lock.try_clone()?);
+        let mut reader = BufReader::new(file.try_clone()?);
         reader.seek(SeekFrom::Start(0));
         let mut h = [0_u8; HEADER_LEN];
         reader.read_exact(&mut h);
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileWriter {
-            file: file_lock,
+            file,
             header,
         })
     }

@@ -14,5 +14,6 @@ bytes = "1.0.1"
 anyhow = "1.0.38"
 snap = "1"
 cluFlock = "1.2.5"
+hex = "0.4"
 # local dependencies
 tezos_context = { path = "../tezos/context" }
