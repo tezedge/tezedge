@@ -18,22 +18,31 @@ const BLOCK_HASH_HEADER_LEN: usize = 32;
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
     pub block_level: u32,
-    pub block_hash: String,
+    pub block_hash_hex: String,
+    pub block_hash: [u8; BLOCK_HASH_HEADER_LEN],
     pub predecessor: [u8; BLOCK_HASH_HEADER_LEN],
 }
 
 impl Block {
-    pub fn new(block_level: u32, block_hash: String, predecessor: Vec<u8>) -> Self {
-        let mut predecessor_hash = [0_u8; BLOCK_HASH_HEADER_LEN];
-        let mut bytes = BytesMut::with_capacity(BLOCK_HASH_HEADER_LEN);
-        bytes.put_slice(&predecessor);
-        bytes.reader().read_exact(&mut predecessor_hash);
+    pub fn new(block_level: u32, raw_block_hash: Vec<u8>, raw_predecessor: Vec<u8>) -> Self {
+        let block_hash_hex = hex::encode(&raw_block_hash);
+        let mut predecessor = [0_u8; BLOCK_HASH_HEADER_LEN];
+        copy_hash_to_slice(raw_predecessor, &mut predecessor);
+        let mut block_hash = [0_u8; BLOCK_HASH_HEADER_LEN];
+        copy_hash_to_slice(raw_block_hash, &mut block_hash);
         Block {
             block_level,
+            block_hash_hex,
+            predecessor,
             block_hash,
-            predecessor: predecessor_hash,
         }
     }
+}
+
+fn copy_hash_to_slice(from: Vec<u8>, to: &mut [u8; BLOCK_HASH_HEADER_LEN]) {
+    let mut bytes = BytesMut::with_capacity(BLOCK_HASH_HEADER_LEN);
+    bytes.put_slice(&from);
+    bytes.reader().read_exact(to);
 }
 
 
@@ -207,7 +216,7 @@ impl ActionsFileWriter {
     pub fn update(&mut self, block: Block, actions: Vec<ContextAction>) -> Result<u32> {
         let block_level = block.block_level;
         let actions_count = actions.len() as u32;
-
+        let block_hash = block.block_hash;
         self._fetch_header();
 
         // Check if currently saved block precedes the incoming block
@@ -226,11 +235,11 @@ impl ActionsFileWriter {
             self.file.write(&header_bytes);
         }
         self._update(&out);
-        self._update_header(block_level, actions_count);
+        self._update_header(block_level, actions_count, block_hash);
         Ok((block_level + 1))
     }
 
-    fn _update_header(&mut self, block_level: u32, actions_count: u32, block_hash : [u8;32]) {
+    fn _update_header(&mut self, block_level: u32, actions_count: u32, block_hash: [u8; BLOCK_HASH_HEADER_LEN]) {
         self.header.block_height = block_level;
         self.header.actions_count += actions_count;
         self.header.block_count += 1;

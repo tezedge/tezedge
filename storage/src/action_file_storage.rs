@@ -36,7 +36,7 @@ impl ActionFileStorage {
 }
 
 impl ActionFileStorage {
-    pub  fn store_action(&mut self, log : &Logger, action: ContextAction) {
+    pub fn store_action(&mut self, log: &Logger, action: ContextAction) {
         match action.clone() {
             ContextAction::Set {
                 block_hash: Some(block_hash),
@@ -111,10 +111,7 @@ impl ActionFileStorage {
                                 return;
                             }
                             Some(b) => {
-                                Block::new(b.header.level() as u32,
-                                           hex::encode(b.hash),
-                                           b.header.predecessor().to_vec(),
-                                )
+                                Block::new(b.header.level() as u32, b.hash, b.header.predecessor().to_vec())
                             }
                         }
                     }
@@ -128,19 +125,18 @@ impl ActionFileStorage {
 
                 if let Some(actions) = w.remove(&block_hash) {
                     let pred = hex::encode(&block.predecessor);
-                    let hash = block.block_hash.to_owned();
+                    let hash = block.block_hash_hex.to_owned();
                     info!(log, "Actions File header {}", action_file_writer.header());
                     info!(log,"Saving Block {}", hash; "predecessor" => pred );
                     match action_file_writer.update(block, actions) {
                         Ok(_) => {
-                            info!(log,"Block saved to file {}", hash);
+                            info!(log, "Block saved to file {}", hash);
                         }
                         Err(e) => {
-                            debug!(log,"Error storing Block {}", hash);
-                            error!(log,"Error storing Block {}", e);
+                            debug!(log, "Error storing Block {}", hash);
+                            error!(log, "Error storing Block {}", e);
                         }
                     };
-
                 }
             }
             _ => {}
