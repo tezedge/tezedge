@@ -31,3 +31,4 @@ monitoring = { path = "../monitoring" }
 ipc = { path = "../ipc" }
 tezos_context = { path = "../tezos/context" }
 rpc = { path = "../rpc" }
+io = { path = "../../actions_tool/io" }

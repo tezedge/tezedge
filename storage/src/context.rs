@@ -129,34 +129,34 @@ impl ContextApi for TezedgeContext {
         let commit_hash = &commit_hash[..].to_vec();
 
         // associate block and context_hash
-        if let Err(e) = self
-            .block_storage
-            .assign_to_context(block_hash, &commit_hash)
-        {
-            match e {
-                StorageError::MissingKey => {
-                    // TODO: is this needed? check it when removing assign_to_context
-                    if parent_context_hash.is_some() {
-                        return Err(ContextError::ContextHashAssignError {
-                            block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-                            context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
-                            error: e,
-                        });
-                    } else {
-                        // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
-                        // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-                        // but we need to storage assignment elsewhere
-                    }
-                }
-                _ => {
-                    return Err(ContextError::ContextHashAssignError {
-                        block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-                        context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
-                        error: e,
-                    })
-                }
-            };
-        }
+        // if let Err(e) = self
+        //     .block_storage
+        //     .assign_to_context(block_hash, &commit_hash)
+        // {
+        //     match e {
+        //         StorageError::MissingKey => {
+        //             // TODO: is this needed? check it when removing assign_to_context
+        //             if parent_context_hash.is_some() {
+        //                 return Err(ContextError::ContextHashAssignError {
+        //                     block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+        //                     context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+        //                     error: e,
+        //                 });
+        //             } else {
+        //                 // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
+        //                 // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
+        //                 // but we need to storage assignment elsewhere
+        //             }
+        //         }
+        //         _ => {
+        //             return Err(ContextError::ContextHashAssignError {
+        //                 block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+        //                 context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+        //                 error: e,
+        //             })
+        //         }
+        //     };
+        // }
         self.store_hash(&merkle);
         Ok(commit_hash.to_vec())
     }

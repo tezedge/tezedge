@@ -1,14 +1,15 @@
-use std::{path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
 
 use failure::Error;
 use riker::actors::SystemBuilder;
 use rocksdb::Cache;
 use shell::context_listener::ContextListener;
-use slog::{Drain, Level, Logger};
+use slog::{Drain, Level, Logger, debug, error, info};
 use storage::{BlockStorage, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::{IpcEvtServer, NoopMessage};
 use ipc::IpcClient;
+
 
 fn create_logger() -> Logger{
     let drain = slog_async::Async::new(
@@ -57,16 +58,16 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB>{
         .unwrap()
 }
 
-fn read_context_actions_from_file(path: &PathBuf) -> Vec<ContextAction> {
-    vec![]
-}
-
 #[test]
 fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
     let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
     let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
+    let actions_storage_path = PathBuf::from("/mnt/hdd/actions.bin");
+
+    let _ = fs::remove_dir_all(&commit_log_db_path);
+    let _ = fs::remove_dir_all(&key_value_db_path);
 
     let logger = create_logger();
     let commit_log = create_commit_log(&commit_log_db_path);
@@ -81,19 +82,42 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
         .create()
         .unwrap();
 
+    
+    info!(logger, "initial commit hash");
     //spawns actions receiver thread
-    let _actor = ContextListener::actor(&sys, &storage, event_server, logger, false).unwrap();
-
+    let _actor = ContextListener::actor(&sys, &storage, event_server, logger.clone(), false).unwrap();
+    
     
 
-    let client:  IpcClient<NoopMessage, ContextAction> = IpcClient::new(&socket_path);
-    let (mut rx, mut tx) = client.connect().unwrap();
+    let client:  IpcClient<NoopMessage, io::channel::ContextAction> = IpcClient::new(&socket_path);
+    let (_, mut tx) = client.connect().unwrap();
 
-    for action in read_context_actions_from_file(&PathBuf::from("/tmp/actions.bin")).iter(){
-        tx.send(action).unwrap();
-        rx.receive().unwrap();
+    let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
+    info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
+    info!(logger, "{}", actions_reader.header());
+    for (block,actions) in actions_reader{
+        debug!(logger, "processing block hash:{:?} with {} actions", &block, actions.len());
+
+        for (_, action) in actions.iter().enumerate(){
+            if let Err(e) =tx.send(action){
+                error!(logger,"reason => {}", e);
+                tx.send(&io::channel::ContextAction::Shutdown).unwrap();
+                thread::sleep(Duration::from_secs(1));
+                return Ok(());
+            }
+        }
+
+        // loop{
+        //     if let Some(hash) = storage.merkle().read().unwrap().get_last_commit_hash(){
+        //         info!(logger,"found merkle root hash {:?}", &hash);
+        //         break;
+        //     };
+        //     thread::sleep(Duration::from_millis(100));
+        // }
+
     }
 
-    tx.send(&ContextAction::Shutdown{}).unwrap();
+
+    
     Ok(())
 }

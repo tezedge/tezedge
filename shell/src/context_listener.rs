@@ -208,6 +208,7 @@ fn listen_protocol_events(
                 apply_block_run.store(false, Ordering::Release);
             }
             Ok(msg) => {
+                
                 if event_count % 100 == 0 {
                     debug!(
                         log,
@@ -282,13 +283,19 @@ fn listen_protocol_events(
                         date,
                         ..
                     } => {
-                        let hash = context.commit(
+                        debug!(log,"commit message received {:?}", msg);
+                        let hash_result = context.commit(
                             block_hash,
                             parent_context_hash,
                             author.to_string(),
                             message.to_string(),
                             *date,
-                        )?;
+                        );
+                        if let Err(err) = &hash_result{
+                            crit!(log, "commit failure reason => {}", err);        
+                        }
+                        let hash = hash_result?;
+                        debug!(log,"commit success");
                         assert_eq!(
                             &hash,
                             new_context_hash,
@@ -297,6 +304,7 @@ fn listen_protocol_events(
                             HashType::ContextHash.hash_to_b58check(new_context_hash),
                             HashType::ContextHash.hash_to_b58check(&hash),
                         );
+                        debug!(log,"commit validation success");
                     }
 
                     ContextAction::Checkout { context_hash, .. } => {
