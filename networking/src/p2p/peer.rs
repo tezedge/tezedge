@@ -265,7 +265,7 @@ impl Receive<Bootstrap> for Peer {
             match bootstrap(msg, info, &system.log()).await {
                 Ok(BootstrapOutput(rx, tx, peer_public_key_hash, peer_id_marker, peer_metadata, peer_compatible_network_version)) => {
                     // prepare PeerId
-                    let peer_id = Arc::new(PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address.clone()));
+                    let peer_id = Arc::new(PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, peer_address));
                     let log = {
                         let myself_name = myself.name().to_string();
                         let myself_uri = myself.uri().to_string();

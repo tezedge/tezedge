@@ -41,7 +41,7 @@ lazy_static! {
             disable_mempool: false,
             private_node: false,
             bootstrap_peers: vec![],
-            peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
+            peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
