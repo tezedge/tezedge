@@ -5,6 +5,7 @@ use std::path::Path;
 use std::fs::{File, OpenOptions};
 use tezos_context::channel::ContextAction;
 use anyhow::Result;
+use anyhow::anyhow;
 use cluFlock::{ToFlock, FlockLock};
 
 use serde::{Serialize, Deserialize};
@@ -56,7 +57,7 @@ impl std::fmt::Display for ActionsFileHeader {
 
 
 impl From<[u8; HEADER_LEN]> for ActionsFileHeader {
-    fn from(v: [u8; 12]) -> Self {
+    fn from(v: [u8; HEADER_LEN]) -> Self {
         let mut bytes = BytesMut::with_capacity(v.len());
         bytes.put_slice(&v);
         let block_height = bytes.get_u32();
@@ -80,7 +81,7 @@ impl ActionsFileHeader {
         bytes.put_u32(self.block_height);
         bytes.put_u32(self.actions_count);
         bytes.put_u32(self.block_count);
-        bytes.put_slice(&*self.current_block_hash);
+        bytes.put_slice(&self.current_block_hash);
         bytes.to_vec()
     }
     fn new() -> Self {

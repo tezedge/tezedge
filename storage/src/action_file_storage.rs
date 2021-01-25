@@ -1,30 +1,32 @@
 use tezos_context::channel::ContextAction;
-use dashmap::DashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, PoisonError, RwLockWriteGuard};
 use action_sync::*;
 use crate::{BlockStorage, BlockStorageReader, BlockHeaderWithHash, StorageError, BlockJsonData};
 use crate::persistent::PersistentStorage;
+use std::path::Path;
+use std::collections::HashMap;
+use std::collections::hash_map::RandomState;
 
 pub struct ActionFileStorage {
-    block_storage : BlockStorage,
-    file: String,
-    staging: Arc<DashMap<Vec<u8>, Vec<ContextAction>>>,
+    block_storage: BlockStorage,
+    file: Path,
+    staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>,
 }
 
 ///staging: Arc<DashMap<String, Vec<ContextAction>>>
 
 impl ActionFileStorage {
-    pub fn new(file: String, persistence : &PersistentStorage ) -> ActionFileStorage {
+    pub fn new<P: AsRef<Path>>(path: P, persistence: &PersistentStorage) -> ActionFileStorage {
         ActionFileStorage {
-            file,
-            staging : persistence.actions_staging(),
-            block_storage : BlockStorage::new(persistence)
+            file: path,
+            staging: persistence.actions_staging(),
+            block_storage: BlockStorage::new(persistence),
         }
     }
 }
 
 impl ActionFileStorage {
-    fn set_in_staging(&mut self, action : ContextAction) {
+    fn set_in_staging(&mut self, action: ContextAction) {
         match &action {
             ContextAction::Set {
                 block_hash: Some(block_hash),
@@ -58,13 +60,14 @@ impl ActionFileStorage {
                 block_hash: Some(block_hash),
                 ..
             } => {
-
-                let mut block_actions = self.staging.entry(block_hash.clone()).or_insert(Vec::new());
+                let mut w = match self.staging.write() {
+                    Ok(w) => { w }
+                    Err(_) => { return; }
+                };
+                let mut block_actions = w.entry(block_hash.clone()).or_insert(Vec::new());
                 block_actions.push(action);
-
-
             }
-            ContextAction::Commit { block_hash,..} => {
+            ContextAction::Commit { block_hash, .. } => {
                 let block_hash = match block_hash {
                     None => {
                         return;
@@ -73,8 +76,11 @@ impl ActionFileStorage {
                         h
                     }
                 };
-
-                let mut block_actions = self.staging.entry(block_hash.clone()).or_insert(Vec::new());
+                let mut w = match self.staging.write() {
+                    Ok(w) => { w }
+                    Err(_) => { return; }
+                };
+                let mut block_actions = w.entry(block_hash.clone()).or_insert(Vec::new());
                 //Todo Check if empty
                 block_actions.push(action);
 
@@ -88,17 +94,16 @@ impl ActionFileStorage {
                 };
 
                 // Get block level from Block storage
-                let block = match self.block_storage.get_with_json_data(block_hash) {
+                let block = match self.block_storage.get(block_hash) {
                     Ok(b) => {
                         match b {
                             None => {
                                 return;
                             }
-                            Some((b,d)) => {
-
+                            Some(b) => {
                                 Block::new(b.header.level(),
                                            hex::encode(b.hash),
-                                           b.header.predecessor()
+                                           b.header.predecessor(),
                                 )
                             }
                         }
@@ -110,10 +115,9 @@ impl ActionFileStorage {
 
                 // remove block action from staging and save it to action file
 
-               if  let Some((_,actions)) = self.staging.remove(block_hash) {
-                   action_file_writer.update(block,actions)
-               }
-
+                if let Some(actions) = w.remove(block_hash) {
+                    action_file_writer.update(block, actions)
+                }
             }
             _ => {}
         };

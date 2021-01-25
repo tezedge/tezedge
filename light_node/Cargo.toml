@@ -18,8 +18,6 @@ slog-async = "2.5"
 slog-json = "2.3"
 slog-term = "2.6"
 tokio = { version = "0.2", features = ["rt-threaded", "signal"] }
-dashmap = "4.0.2"
-# Local dependencies
 logging = { path = "../logging" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }

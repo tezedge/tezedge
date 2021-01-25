@@ -3,7 +3,7 @@
 // #![forbid(unsafe_code)]
 
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
 
@@ -44,7 +44,8 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
-use dashmap::DashMap;
+use rpc::encoding::monitor::ContextHash;
+use std::collections::HashMap;
 
 mod configuration;
 mod identity;
@@ -538,7 +539,7 @@ fn main() {
         PredecessorStorage::descriptor(&cache),
     ];
 
-    let action_staging = Arc::new(DashMap<>)
+    let actions_staging = Arc::new(RwLock::new(HashMap::new()));
 
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
@@ -572,7 +573,7 @@ fn main() {
             ),
         };
 
-        let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
+        let persistent_storage = PersistentStorage::new(rocks_db, actions_staging, commit_logs);
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),
