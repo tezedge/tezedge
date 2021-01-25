@@ -23,10 +23,15 @@ tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 sled = "0.34.6"
+rlimit = "0.4.0"
 
 [[bench]]
 name = "predecessor_benchmarks"
 harness = false
+
+[[bin]]
+name = "merkle_storage_stats"
+path = "scripts/merkle_storage_stats.rs"
 
 [dev-dependencies]
 assert-json-diff = "1.1"
@@ -37,4 +42,3 @@ serde_json = "1.0"
 slog-async = "2.6"
 slog-term = "2.6"
 criterion = "0.3"
-rlimit = "0.4.0"
