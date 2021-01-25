@@ -180,8 +180,7 @@ fn initialize_environment() -> OcamlEnvironment {
             ready_tasks: task_rx,
             ocaml_runtime,
         };
-        let ocaml_runtime = executor.run();
-        ocaml_runtime.shutdown();
+        executor.run();
     });
 
     OcamlEnvironment { spawner }
