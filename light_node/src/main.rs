@@ -541,6 +541,8 @@ fn main() {
 
     let actions_staging = Arc::new(RwLock::new(HashMap::new()));
 
+    let action_file_path = env.storage.actions_file_path.clone();
+
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),
         Err(e) => shutdown_and_exit!(
@@ -573,7 +575,9 @@ fn main() {
             ),
         };
 
-        let persistent_storage = PersistentStorage::new(rocks_db, actions_staging, commit_logs);
+
+
+        let persistent_storage = PersistentStorage::new(rocks_db, action_file_path,actions_staging, commit_logs);
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),

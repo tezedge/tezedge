@@ -19,6 +19,7 @@ use storage::persistent::PersistentStorage;
 use storage::{BlockStorage, ContextActionStorage};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
+use storage::action_file_storage::ActionFileStorage;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -60,11 +61,13 @@ impl ContextListener {
                     persistent_storage.merkle(),
                 ));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
+                let mut actions_file_storage = ActionFileStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
+                        &mut actions_file_storage,
                         &mut context_action_storage,
                         &mut context,
                         &log,
@@ -188,6 +191,7 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
+    actions_file_storage : &mut Option<ActionFileStorage>,
     context_action_storage: &mut ContextActionStorage,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
@@ -297,7 +301,6 @@ fn listen_protocol_events(
                             HashType::ContextHash.hash_to_b58check(new_context_hash),
                             HashType::ContextHash.hash_to_b58check(&hash),
                         );
-                        // save actions to file
                     }
 
                     ContextAction::Checkout { context_hash, .. } => {
@@ -305,6 +308,12 @@ fn listen_protocol_events(
                         context.checkout(context_hash)?;
                     }
                     _ => (),
+                };
+                match actions_file_storage {
+                    None => {}
+                    Some(afs) => {
+                        afs.store_action(msg.clone())
+                    }
                 };
 
                 store_action(context_action_storage, store_context_actions, msg)?;

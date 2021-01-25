@@ -55,7 +55,7 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
-mod action_file_storage;
+pub mod action_file_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -494,7 +494,7 @@ pub mod tests_common {
 
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), actions_staging,Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(Arc::new(kv), None, actions_staging, Arc::new(clog)),
                 path,
                 remove_on_destroy,
             })

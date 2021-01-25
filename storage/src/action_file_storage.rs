@@ -16,18 +16,25 @@ pub struct ActionFileStorage {
 ///staging: Arc<DashMap<String, Vec<ContextAction>>>
 
 impl ActionFileStorage {
-    pub fn new(path: PathBuf, persistence: &PersistentStorage) -> ActionFileStorage {
-        ActionFileStorage {
-            file: path,
-            staging: persistence.actions_staging(),
-            block_storage: BlockStorage::new(persistence),
+    pub fn new(persistent_storage: &PersistentStorage) -> Option<ActionFileStorage> {
+        match persistent_storage.action_file_path() {
+            None => {
+                None
+            }
+            Some(path) => {
+                Some(ActionFileStorage {
+                    file: path,
+                    staging: persistent_storage.actions_staging(),
+                    block_storage: BlockStorage::new(persistent_storage),
+                })
+            }
         }
     }
 }
 
 impl ActionFileStorage {
-    fn set_in_staging(&mut self, action: ContextAction) {
-        match &action {
+    pub  fn store_action(&mut self, action: ContextAction) {
+        match action.clone() {
             ContextAction::Set {
                 block_hash: Some(block_hash),
                 ..
@@ -94,7 +101,7 @@ impl ActionFileStorage {
                 };
 
                 // Get block level from Block storage
-                let block = match self.block_storage.get(block_hash) {
+                let block = match self.block_storage.get(&block_hash) {
                     Ok(b) => {
                         match b {
                             None => {
@@ -115,7 +122,7 @@ impl ActionFileStorage {
 
                 // remove block action from staging and save it to action file
 
-                if let Some(actions) = w.remove(block_hash) {
+                if let Some(actions) = w.remove(&block_hash) {
                     action_file_writer.update(block, actions);
                 }
             }

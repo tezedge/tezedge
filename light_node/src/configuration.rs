@@ -178,6 +178,8 @@ pub fn tezos_app() -> App<'static, 'static> {
                             } else {
                                 Err(format!("Required action file parent dir '{}' exists", v))
                             }
+                        }else {
+                            Ok(())
                         }
                     }
                 }

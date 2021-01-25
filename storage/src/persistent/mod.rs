@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use derive_builder::Builder;
@@ -118,6 +118,7 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 #[derive(Clone)]
 pub struct PersistentStorage {
     /// actions file path
+    action_file_path: Option<PathBuf>,
     /// actions_staging
     actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>,
     /// key-value store
@@ -131,12 +132,13 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(kv: Arc<DB>, action_file_path: Option<PathBuf>, actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
             clog,
             actions_staging,
             kv: kv.clone(),
+            action_file_path,
             seq,
             merkle: Arc::new(RwLock::new(MerkleStorage::new(kv))),
         }
@@ -145,6 +147,11 @@ impl PersistentStorage {
     #[inline]
     pub fn kv(&self) -> Arc<DB> {
         self.kv.clone()
+    }
+
+    #[inline]
+    pub fn action_file_path(&self) -> Option<PathBuf> {
+        self.action_file_path.clone()
     }
 
     #[inline]
