@@ -638,20 +638,22 @@ impl Receive<ConnectToPeer> for PeerManager {
             match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                 Ok(Ok(stream)) => {
                     debug!(system.log(), "(Outgoing) Connection to peer successful"; "ip" => msg.address);
-                    match Self::create_peer(&system, network_channel.clone(), tokio_executor, &msg.address) {
-                        Ok(peer) => {
-                            debug!(system.log(), "Bootstrapping"; "incoming" => false, "ip" => &msg.address);
-                            match bootstrap(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
-                                Ok(bootstrap_output) => peer.tell(bootstrap_output, None),
-                                Err(err) => {
-                                    warn!(system.log(), "Connection to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
-                                    failed_bootstrap_peer(err, msg.address, network_channel);
-                                },
-                            }
-                        }
-                        Err(e) => {
-                            warn!(system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
-                        }
+                    debug!(system.log(), "Bootstrapping"; "incoming" => false, "ip" => &msg.address);
+                    match bootstrap(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
+                        Ok(bootstrap_output) => {
+                            match Self::create_peer(&system, network_channel.clone(), tokio_executor, &msg.address) {
+                                Ok(peer) => {
+                                    peer.tell(bootstrap_output, None)
+                                }
+                                Err(e) => {
+                                    warn!(system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
+                                }
+                            }                
+                        },
+                        Err(err) => {
+                            warn!(system.log(), "Connection to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
+                            failed_bootstrap_peer(err, msg.address, network_channel);
+                        },
                     }
                 }
                 Ok(Err(e)) => {
@@ -682,26 +684,20 @@ impl Receive<AcceptPeer> for PeerManager {
             let private_node = self.private_node;
 
             self.tokio_executor.spawn(async move {
-                match Self::create_peer(
-                    &system,
-                    network_channel.clone(),
-                    tokio_executor,
-                    &msg.address,
-                ) {
-                    Ok(peer) => {
-                        debug!(system.log(), "Bootstrapping"; "incoming" => true, "ip" => &msg.address);
-                        match bootstrap(Bootstrap::incoming(msg.stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
-                            Ok(bootstrap_output) => peer.tell(bootstrap_output, None),
-                            Err(err) => {
-                                warn!(system.log(), "Connection to peer failed"; "incoming" => true, "reason" => format!("{}", &err), "ip" => &msg.address);
-                                failed_bootstrap_peer(err, msg.address, network_channel);
-                            },
+                debug!(system.log(), "Bootstrapping"; "incoming" => true, "ip" => &msg.address);
+                match bootstrap(Bootstrap::incoming(msg.stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
+                    Ok(bootstrap_output) => {
+                        match Self::create_peer(&system, network_channel.clone(), tokio_executor, &msg.address) {
+                            Ok(peer) => peer.tell(bootstrap_output, None),
+                            Err(e) => {
+                                warn!(system.log(), "Failed to process connection from peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e));
+                            }
                         }
                     },
-                    Err(e) => {
-                        warn!(system.log(), "Failed to process connection from peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e));
-                        drop(msg.stream); // not needed, just wanted to be explicit here
-                    }
+                    Err(err) => {
+                        warn!(system.log(), "Connection to peer failed"; "incoming" => true, "reason" => format!("{}", &err), "ip" => &msg.address);
+                        failed_bootstrap_peer(err, msg.address, network_channel);
+                    },
                 }
             });
         } else {
