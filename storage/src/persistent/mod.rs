@@ -163,7 +163,7 @@ impl PersistentStorage {
     }
 
     #[inline]
-    pub fn actions_staging(&self) -> Arc<DashMap<Vec<u8>, Vec<ContextAction>>> {
+    pub fn actions_staging(&self) -> Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>> {
         self.actions_staging.clone()
     }
 
