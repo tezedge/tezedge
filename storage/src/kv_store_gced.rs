@@ -65,11 +65,17 @@ pub enum CmdMsg {
 pub struct KVStoreStats {
     pub key_bytes: usize,
     pub value_bytes: usize,
+    pub reused_keys_bytes: usize,
 }
 
 impl KVStoreStats {
+    /// increases `reused_keys_bytes` based on `key`
+    pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
+        self.reused_keys_bytes += list.capacity() * mem::size_of::<EntryHash>();
+    }
+
     pub fn total_as_bytes(&self) -> usize {
-        self.key_bytes + self.value_bytes
+        self.key_bytes + self.value_bytes + self.reused_keys_bytes
     }
 }
 
@@ -80,6 +86,7 @@ impl<'a> std::ops::Add<&'a Self> for KVStoreStats {
         Self {
             key_bytes: self.key_bytes + other.key_bytes,
             value_bytes: self.value_bytes + other.value_bytes,
+            reused_keys_bytes: self.reused_keys_bytes + other.reused_keys_bytes,
         }
     }
 }
@@ -111,6 +118,7 @@ impl<'a> std::ops::Sub<&'a Self> for KVStoreStats {
         Self {
             key_bytes: self.key_bytes - other.key_bytes,
             value_bytes: self.value_bytes - other.value_bytes,
+            reused_keys_bytes: self.reused_keys_bytes - other.reused_keys_bytes,
         }
     }
 }
@@ -148,6 +156,7 @@ impl From<(&EntryHash, &ContextValue)> for KVStoreStats {
         KVStoreStats {
             key_bytes: mem::size_of::<EntryHash>(),
             value_bytes: size_of_vec(&value),
+            reused_keys_bytes: 0,
         }
     }
 }
@@ -300,7 +309,10 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 // unless key was in MerkleStorage::db
                 if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
                     if index < reused_keys.len() {
-                        reused_keys[index].insert(key);
+                        let keys = &mut reused_keys[index];
+                        if keys.insert(key) {
+                            stores_stats.lock().unwrap()[index].update_reused_keys(keys);
+                        }
                     }
                 }
             }
@@ -473,15 +485,19 @@ mod tests {
         let stats: Vec<_> = store.get_stats().into_iter().rev().take(3).rev().collect();
         assert_eq!(stats[0].key_bytes, 64);
         assert_eq!(stats[0].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv2.1));
+        assert_eq!(stats[0].reused_keys_bytes, 96);
 
         assert_eq!(stats[1].key_bytes, 32);
         assert_eq!(stats[1].value_bytes, size_of_vec(&kv3.1));
+        assert_eq!(stats[1].reused_keys_bytes, 0);
 
         assert_eq!(stats[2].key_bytes, 32);
         assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
+        assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(store.total_mem_usage_as_bytes(), vec![
             4 * mem::size_of::<EntryHash>(),
+            96, // reused keys
             size_of_vec(&kv1.1),
             size_of_vec(&kv2.1),
             size_of_vec(&kv3.1),
@@ -494,12 +510,15 @@ mod tests {
         let stats = store.get_stats();
         assert_eq!(stats[0].key_bytes, 32);
         assert_eq!(stats[0].value_bytes, size_of_vec(&kv3.1));
+        assert_eq!(stats[0].reused_keys_bytes, 0);
 
         assert_eq!(stats[1].key_bytes, 64);
         assert_eq!(stats[1].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv4.1));
+        assert_eq!(stats[1].reused_keys_bytes, 0);
 
         assert_eq!(stats[2].key_bytes, 0);
         assert_eq!(stats[2].value_bytes, 0);
+        assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(store.total_mem_usage_as_bytes(), vec![
             3 * mem::size_of::<EntryHash>(),
