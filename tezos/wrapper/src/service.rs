@@ -100,10 +100,10 @@ enum NodeMessage {
 struct NoopMessage;
 
 pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
+    let ipc_client: IpcClient<NoopMessage, ContextActionMessage> = IpcClient::new(socket_path);
     let (_, mut tx) = ipc_client.connect()?;
     while let Ok(msg) = context_receive() {
-        tx.send(&msg.action)?;
+        tx.send(&msg)?;
         if let ContextAction::Shutdown = &msg.action {
             break;
         }

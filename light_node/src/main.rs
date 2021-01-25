@@ -315,7 +315,7 @@ fn block_on_actors(
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
+    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
         &persistent_storage,
