@@ -415,7 +415,7 @@ pub fn check_database_compatibility(
 
 pub mod tests_common {
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
     use std::{env, fs};
 
     use failure::Error;
@@ -428,6 +428,7 @@ pub mod tests_common {
     use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;
+    use std::collections::HashMap;
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -489,8 +490,11 @@ pub mod tests_common {
             )?;
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
+            let actions_staging = Arc::new(RwLock::new(HashMap::new()));
+
+
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(Arc::new(kv), actions_staging,Arc::new(clog)),
                 path,
                 remove_on_destroy,
             })

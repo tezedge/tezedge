@@ -101,9 +101,9 @@ impl ActionFileStorage {
                                 return;
                             }
                             Some(b) => {
-                                Block::new(b.header.level(),
+                                Block::new(b.header.level() as u32,
                                            hex::encode(b.hash),
-                                           b.header.predecessor(),
+                                           b.header.predecessor().to_vec(),
                                 )
                             }
                         }
@@ -116,7 +116,7 @@ impl ActionFileStorage {
                 // remove block action from staging and save it to action file
 
                 if let Some(actions) = w.remove(block_hash) {
-                    action_file_writer.update(block, actions)
+                    action_file_writer.update(block, actions);
                 }
             }
             _ => {}
