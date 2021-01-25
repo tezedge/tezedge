@@ -343,10 +343,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
                 let entry_bytes = match stores.first_mut().unwrap().delete(&key) {
                     Ok(Some(value)) => value,
-                    Ok(None) => {
-                        eprintln!("MerkleStorage GC: entry not found for key: {:?}", &key);
-                        continue;
-                    }
+                    Ok(None) => continue,
                     Err(err) => {
                         eprintln!("MerkleStorage GC: error while getting entry from store: {:?}", err);
                         continue;
