@@ -51,10 +51,7 @@ impl ActorFactoryArgs<(Handle, SocketAddr, Logger)> for WebsocketHandler {
             .and_then(ws_handler)
             .with(warp::cors().allow_any_origin());
 
-        println!("Starting ws task");
         tokio_executor.spawn(async move { warp::serve(ws_route).run(address).await });
-
-        println!("Tokio ws task spawned");
 
         Self {
             clients,
