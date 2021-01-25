@@ -69,8 +69,7 @@ pub struct KVStoreStats {
 
 impl KVStoreStats {
     pub fn total_as_bytes(&self) -> usize {
-        self.key_bytes * mem::size_of::<EntryHash>()
-            + self.value_bytes
+        self.key_bytes + self.value_bytes
     }
 }
 
@@ -147,7 +146,7 @@ impl<'a> std::iter::Sum<&'a KVStoreStats> for KVStoreStats {
 impl From<(&EntryHash, &ContextValue)> for KVStoreStats {
     fn from((_entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
         KVStoreStats {
-            key_bytes: 1,
+            key_bytes: mem::size_of::<EntryHash>(),
             value_bytes: size_of_vec(&value),
         }
     }
@@ -469,14 +468,16 @@ mod tests {
         store.put(kv4.0.clone(), kv4.1.clone()).unwrap();
         store.mark_reused(kv1.0.clone());
 
+        store.wait_for_gc_finish();
+
         let stats: Vec<_> = store.get_stats().into_iter().rev().take(3).rev().collect();
-        assert_eq!(stats[0].key_bytes, 2);
+        assert_eq!(stats[0].key_bytes, 64);
         assert_eq!(stats[0].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv2.1));
 
-        assert_eq!(stats[1].key_bytes, 1);
+        assert_eq!(stats[1].key_bytes, 32);
         assert_eq!(stats[1].value_bytes, size_of_vec(&kv3.1));
 
-        assert_eq!(stats[2].key_bytes, 1);
+        assert_eq!(stats[2].key_bytes, 32);
         assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
 
         assert_eq!(store.total_mem_usage_as_bytes(), vec![
@@ -491,10 +492,10 @@ mod tests {
         store.wait_for_gc_finish();
 
         let stats = store.get_stats();
-        assert_eq!(stats[0].key_bytes, 1);
+        assert_eq!(stats[0].key_bytes, 32);
         assert_eq!(stats[0].value_bytes, size_of_vec(&kv3.1));
 
-        assert_eq!(stats[1].key_bytes, 2);
+        assert_eq!(stats[1].key_bytes, 64);
         assert_eq!(stats[1].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv4.1));
 
         assert_eq!(stats[2].key_bytes, 0);
