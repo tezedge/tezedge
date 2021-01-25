@@ -125,7 +125,6 @@ impl ActionFileStorage {
                 // remove block action from staging and save it to action file
 
                 if let Some(actions) = w.remove(&block_hash) {
-                    info!("Saving Action Block {}", &block.block_hash);
                     action_file_writer.update(block, actions);
                 }
             }
