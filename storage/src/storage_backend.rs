@@ -12,6 +12,9 @@ pub enum StorageBackendError {
     BackendError,
     #[fail(display = "SledDB error: {}", error)]
     SledDBError { error: sled::Error },
+    #[fail(display = "Guard Poison {} ", error)]
+    GuardPoison { error: String },
+
 }
 
 impl From<rocksdb::Error> for StorageBackendError {

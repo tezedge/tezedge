@@ -17,7 +17,7 @@ impl InMemoryBackend {
 impl StorageBackend for InMemoryBackend {
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError> {
         let mut w = self.inner.write()
-            .map(|w| w).map_err(|e| StorageBackendError::BackendError
+            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
         )?;
 
         w.insert(key,value);
@@ -26,7 +26,7 @@ impl StorageBackend for InMemoryBackend {
 
     fn merge(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError> {
         let mut w = self.inner.write()
-            .map(|w| w).map_err(|e| StorageBackendError::BackendError
+            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
         )?;
 
         w.insert(key,value);
@@ -35,7 +35,7 @@ impl StorageBackend for InMemoryBackend {
 
     fn delete(&self, key: &Vec<u8>) -> Result<(), StorageBackendError> {
         let mut w = self.inner.write()
-            .map(|w| w).map_err(|e| StorageBackendError::BackendError
+            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
         )?;
 
         w.remove(key);
@@ -44,7 +44,7 @@ impl StorageBackend for InMemoryBackend {
 
     fn batch_write(&self, batch: Batch) -> Result<(), StorageBackendError> {
         let mut w = self.inner.write()
-            .map(|w| w).map_err(|e| StorageBackendError::BackendError
+            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
         )?;
 
         for (key,value) in batch.iter() {
@@ -56,7 +56,7 @@ impl StorageBackend for InMemoryBackend {
     fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, StorageBackendError> {
         let db = self.inner.clone();
         let mut r = db.read()
-            .map(|r| r).map_err(|e| StorageBackendError::BackendError
+            .map(|r| r).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
         )?;
 
          match r.get(key) {
