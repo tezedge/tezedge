@@ -715,7 +715,7 @@ impl Environment {
                             .collect()
                     })
                     .unwrap_or_default(),
-                peer_threshold: PeerConnectionThreshold::new(
+                peer_threshold: PeerConnectionThreshold::try_new(
                     args.value_of("peer-thresh-low")
                         .unwrap_or("")
                         .parse::<usize>()
@@ -728,7 +728,8 @@ impl Environment {
                         v.parse::<usize>()
                             .expect("Provided value cannot be converted to number")
                     }),
-                ),
+                )
+                .expect("Invalid threashold range"),
                 private_node: args
                     .value_of("private-node")
                     .unwrap_or("false")

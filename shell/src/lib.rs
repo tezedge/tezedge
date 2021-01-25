@@ -4,6 +4,8 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
+use failure::Fail;
+
 mod state;
 
 pub mod chain_feeder;
@@ -22,6 +24,10 @@ pub const SUPPORTED_P2P_VERSION: &[u16] = &[0, 1];
 /// Constant tells about distributed_db feature versions, which this shell is compatible with
 pub const SUPPORTED_DISTRIBUTED_DB_VERSION: &[u16] = &[0];
 
+#[derive(Debug, Clone, Fail)]
+#[fail(display = "InvalidRange - {}", _0)]
+pub struct InvalidRangeError(String);
+
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
 pub struct PeerConnectionThreshold {
@@ -38,13 +44,23 @@ impl PeerConnectionThreshold {
     /// * `higher` - Upper threshold bound
     ///
     /// `low` cannot be bigger than `high`, otherwise function will panic
-    pub fn new(low: usize, high: usize, peers_for_bootstrap_threshold: Option<usize>) -> Self {
-        assert!(low <= high, "low must be less than or equal to high");
-        PeerConnectionThreshold {
+    pub fn try_new(
+        low: usize,
+        high: usize,
+        peers_for_bootstrap_threshold: Option<usize>,
+    ) -> Result<Self, InvalidRangeError> {
+        if low > high {
+            return Err(InvalidRangeError(format!(
+                "low: {} must be less than or equal to high: {}",
+                low, high
+            )));
+        }
+
+        Ok(PeerConnectionThreshold {
             low,
             high,
             peers_for_bootstrap_threshold,
-        }
+        })
     }
 
     /// Threshold for minimal count of bootstrapped peers
@@ -210,18 +226,27 @@ pub mod tests {
     #[test]
     fn test_num_of_peers_for_bootstrap_threshold() {
         // fixed threshold
-        let peer_threshold = PeerConnectionThreshold::new(0, 10, Some(5));
+        let peer_threshold =
+            PeerConnectionThreshold::try_new(0, 10, Some(5)).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 5);
 
         // clasic scenario
-        let peer_threshold = PeerConnectionThreshold::new(5, 500, None);
+        let peer_threshold = PeerConnectionThreshold::try_new(5, 500, None).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 83);
 
         // calculated threshold too low (0), use minimal value of 1
-        let peer_threshold = PeerConnectionThreshold::new(1, 4, None);
+        let peer_threshold = PeerConnectionThreshold::try_new(1, 4, None).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 1);
+    }
+
+    #[test]
+    fn test_invalid_range_threshold() {
+        assert!(PeerConnectionThreshold::try_new(9, 10, Some(5)).is_ok());
+        assert!(PeerConnectionThreshold::try_new(10, 10, Some(5)).is_ok());
+        assert!(PeerConnectionThreshold::try_new(11, 10, Some(5)).is_err());
+        assert!(PeerConnectionThreshold::try_new(12, 10, Some(5)).is_err());
     }
 }

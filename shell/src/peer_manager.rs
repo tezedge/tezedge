@@ -184,14 +184,7 @@ impl PeerManager {
             self.discovery_last = Some(Instant::now());
 
             info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
-            dns_lookup_peers(&self.bootstrap_addresses, &log)
-                .iter()
-                .for_each(|address| {
-                    if !self.is_blacklisted(&address.ip()) {
-                        info!(log, "Found potential peer"; "address" => address);
-                        self.potential_peers.insert(*address);
-                    }
-                });
+            self.process_new_potential_peers(dns_lookup_peers(&self.bootstrap_addresses, &log));
         } else {
             let msg: Arc<PeerMessageResponse> = Arc::new(PeerMessage::Bootstrap.into());
             self.peers.values().for_each(|peer_state| {
@@ -204,10 +197,7 @@ impl PeerManager {
     }
 
     fn try_to_connect_to_potential_peers(&mut self, ctx: &Context<PeerManagerMsg>) {
-        let num_required_peers = cmp::max(
-            (self.threshold.high + 3 * self.threshold.low) / 4 - self.peers.len(),
-            self.threshold.low,
-        );
+        let num_of_required_peers = self.calculate_count_of_required_peers();
         let mut addresses_to_connect = self
             .potential_peers
             .iter()
@@ -216,12 +206,19 @@ impl PeerManager {
         // randomize peers as a security measurement
         addresses_to_connect.shuffle(&mut rand::thread_rng());
         addresses_to_connect
-            .drain(0..cmp::min(num_required_peers, addresses_to_connect.len()))
+            .drain(0..cmp::min(num_of_required_peers, addresses_to_connect.len()))
             .for_each(|address| {
                 self.potential_peers.remove(&address);
                 ctx.myself()
                     .tell(ConnectToPeer { address }, ctx.myself().into())
             });
+    }
+
+    fn calculate_count_of_required_peers(&mut self) -> usize {
+        cmp::max(
+            (self.threshold.high + 3 * self.threshold.low) / 4 - self.peers.len(),
+            self.threshold.low,
+        )
     }
 
     /// Create new peer actor
@@ -292,13 +289,38 @@ impl PeerManager {
         }
     }
 
-    fn process_potential_peers(&mut self, potential_peers: &[String]) {
+    fn process_new_potential_peers<I: IntoIterator<Item = SocketAddr>>(
+        &mut self,
+        potential_peers: I,
+    ) {
         let sock_addresses = potential_peers
-            .iter()
-            .filter_map(|str_ip_port| str_ip_port.parse().ok())
+            .into_iter()
             .filter(|address: &SocketAddr| !self.is_blacklisted(&address.ip()))
             .collect::<Vec<_>>();
-        self.potential_peers.extend(sock_addresses);
+
+        // we want to make sure, that we dont want to have unlimited potential peers (num_of_required_peers * 10)
+        let num_of_max_potential_peers = self.calculate_count_of_required_peers() * 10;
+
+        // collect all
+        let mut addresses_to_connect = self
+            .potential_peers
+            .iter()
+            .cloned()
+            .collect::<Vec<SocketAddr>>();
+        addresses_to_connect.extend(sock_addresses);
+        // randomize peers as a security measurement
+        addresses_to_connect.shuffle(&mut rand::thread_rng());
+
+        // try to limit
+        if addresses_to_connect.len() > num_of_max_potential_peers {
+            let count_to_remove = addresses_to_connect.len() - num_of_max_potential_peers;
+            for i in 0..count_to_remove {
+                addresses_to_connect.remove(i);
+            }
+        }
+
+        self.potential_peers.clear();
+        self.potential_peers.extend(addresses_to_connect);
     }
 
     fn check_peer_count(&mut self, ctx: &Context<PeerManagerMsg>) {
@@ -520,7 +542,13 @@ impl Receive<NetworkChannelMsg> for PeerManager {
             NetworkChannelMsg::ProcessAdvertisedPeers(peer, message) => {
                 // extract potential peers from the advertise message
                 info!(ctx.system.log(), "Received advertise message"; "peer_id" => peer.peer_id_marker.clone(), "peers" => format!("{:?}", message.id().join(", ")));
-                self.process_potential_peers(message.id());
+                self.process_new_potential_peers(
+                    message
+                        .id()
+                        .iter()
+                        .filter_map(|str_ip_port| str_ip_port.parse().ok())
+                        .collect::<Vec<SocketAddr>>(),
+                );
             }
             NetworkChannelMsg::SendBootstrapPeers(peer) => {
                 // to a bootstrap message we will respond with list of potential peers
@@ -541,7 +569,12 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 // received message that bootstrap process failed for the peer
                 match potential_peers_to_connect {
                     Some(peers) => {
-                        self.process_potential_peers(&peers);
+                        self.process_new_potential_peers(
+                            peers
+                                .iter()
+                                .filter_map(|str_ip_port| str_ip_port.parse().ok())
+                                .collect::<Vec<SocketAddr>>(),
+                        );
                         self.trigger_check_peer_count(ctx);
                     }
                     None => {
