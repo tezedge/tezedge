@@ -10,11 +10,19 @@ pub enum StorageBackendError {
     MissingColumnFamily { name: &'static str },
     #[fail(display = "Backend Error")]
     BackendError,
+    #[fail(display = "SledDB error: {}", error)]
+    SledDBError { error: sled::Error },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
     fn from(error: rocksdb::Error) -> Self {
         StorageBackendError::RocksDBError { error }
+    }
+}
+
+impl From<sled::Error> for StorageBackendError {
+    fn from(error: sled::Error) -> Self {
+        StorageBackendError::SledDBError { error }
     }
 }
 

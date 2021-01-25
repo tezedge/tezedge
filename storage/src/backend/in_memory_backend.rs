@@ -54,7 +54,8 @@ impl StorageBackend for InMemoryBackend {
     }
 
     fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, StorageBackendError> {
-        let mut r = self.inner.read()
+        let db = self.inner.clone();
+        let mut r = db.read()
             .map(|r| r).map_err(|e| StorageBackendError::BackendError
         )?;
 
