@@ -3178,6 +3178,7 @@ version = "0.10.0"
 dependencies = [
  "crossbeam",
  "lazy_static",
+ "ocaml-interop",
  "serde 1.0.119",
 ]
 
