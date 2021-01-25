@@ -1,17 +1,21 @@
 use std::thread;
 use std::mem;
 use std::collections::{HashSet};
-use std::time::{Instant, Duration};
-use std::sync::{mpsc, Arc, RwLock};
+use std::time::{Duration};
+use std::sync::{mpsc, Arc, RwLock, Mutex};
 use std::ops::{Deref, DerefMut};
 
-use blake2::digest::VariableOutput;
-use blake2::VarBlake2b;
-
 use crypto::hash::HashType;
+use serde::Serialize;
 
 use crate::kv_store::KVStoreError;
 use crate::merkle_storage::{KVStore, Entry, EntryHash, ContextValue};
+
+// TODO: add assertions for EntryHash to make sure it is stack allocated.
+
+fn size_of_vec<T>(v: &Vec<T>) -> usize {
+    mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
+}
 
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where T: KVStore,
@@ -56,11 +60,107 @@ pub enum CmdMsg {
     MarkReused(EntryHash),
 }
 
+// TODO: measure reused keys size
+#[derive(Debug, Default, Clone, Copy, Serialize)]
+pub struct KVStoreStats {
+    pub key_bytes: usize,
+    pub value_bytes: usize,
+}
+
+impl KVStoreStats {
+    pub fn total_as_bytes(&self) -> usize {
+        self.key_bytes * mem::size_of::<EntryHash>()
+            + self.value_bytes
+    }
+}
+
+impl<'a> std::ops::Add<&'a Self> for KVStoreStats {
+    type Output = Self;
+
+    fn add(self, other: &'a Self) -> Self::Output {
+        Self {
+            key_bytes: self.key_bytes + other.key_bytes,
+            value_bytes: self.value_bytes + other.value_bytes,
+        }
+    }
+}
+
+impl std::ops::Add for KVStoreStats {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self::Output {
+        self + &other
+    }
+}
+
+impl<'a> std::ops::AddAssign<&'a Self> for KVStoreStats {
+    fn add_assign(&mut self, other: &'a Self) {
+        *self = *self + other;
+    }
+}
+
+impl std::ops::AddAssign for KVStoreStats {
+    fn add_assign(&mut self, other: Self) {
+        *self = *self + other;
+    }
+}
+
+impl<'a> std::ops::Sub<&'a Self> for KVStoreStats {
+    type Output = Self;
+
+    fn sub(self, other: &'a Self) -> Self::Output {
+        Self {
+            key_bytes: self.key_bytes - other.key_bytes,
+            value_bytes: self.value_bytes - other.value_bytes,
+        }
+    }
+}
+
+impl std::ops::Sub for KVStoreStats {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self::Output {
+        self - &other
+    }
+}
+
+impl<'a> std::ops::SubAssign<&'a Self> for KVStoreStats {
+    fn sub_assign(&mut self, other: &'a Self) {
+        *self = *self - other;
+    }
+}
+
+impl std::ops::SubAssign for KVStoreStats {
+    fn sub_assign(&mut self, other: Self) {
+        *self = *self - other;
+    }
+}
+
+impl<'a> std::iter::Sum<&'a KVStoreStats> for KVStoreStats {
+    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
+        iter.fold(KVStoreStats::default(), |acc, cur| {
+            acc + cur
+        })
+    }
+}
+
+impl From<(&EntryHash, &ContextValue)> for KVStoreStats {
+    fn from((_entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
+        KVStoreStats {
+            key_bytes: 1,
+            value_bytes: size_of_vec(&value),
+        }
+    }
+}
+
+
 /// Garbage Collected Key Value Store
 pub struct KVStoreGCed<T: KVStore> {
     cycle_count: usize,
     stores: Arc<RwLock<Vec<T>>>,
+    stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
     current: T,
+    current_stats: KVStoreStats,
     thread: thread::JoinHandle<()>,
     msg: mpsc::Sender<CmdMsg>,
 }
@@ -73,13 +173,18 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         let stores = Arc::new(RwLock::new(
             (0..(cycle_count - 1)).map(|_| Default::default()).collect()
         ));
+        let stores_stats = Arc::new(Mutex::new(
+            vec![Default::default(); cycle_count - 1]
+        ));
 
         Self {
             cycle_count,
             stores: stores.clone(),
-            thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx)),
+            stores_stats: stores_stats.clone(),
+            thread: thread::spawn(move || kvstore_gc_thread_fn(stores, stores_stats, rx)),
             msg: tx,
             current: Default::default(),
+            current_stats: Default::default(),
         }
     }
 
@@ -108,8 +213,15 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         &mut self,
         key: EntryHash,
         value: ContextValue,
-    ) -> Result<(), KVStoreError> {
-        self.current.put(key, value)
+    ) -> Result<bool, KVStoreError> {
+        let measurement = KVStoreStats::from((&key, &value));
+        let was_added = self.current.put(key, value)?;
+
+        if was_added {
+            self.current_stats += measurement;
+        }
+
+        Ok(was_added)
     }
 
     pub fn mark_reused(&mut self, key: EntryHash) {
@@ -117,8 +229,12 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     }
 
     pub fn start_new_cycle(&mut self) {
-        let mut stores = self.stores.write().unwrap();
-        stores.push(mem::take(&mut self.current));
+        self.stores_stats.lock().unwrap().push(
+            mem::take(&mut self.current_stats)
+        );
+        self.stores.write().unwrap().push(
+            mem::take(&mut self.current)
+        );
         let _ = self.msg.send(CmdMsg::StartNewCycle);
     }
 
@@ -127,10 +243,26 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
             thread::sleep(Duration::from_millis(2));
         }
     }
+
+    pub fn get_stats(&self) -> Vec<KVStoreStats> {
+        self.stores_stats.lock().unwrap().iter()
+            .chain(vec![&self.current_stats])
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_total_stats(&self) -> KVStoreStats {
+        self.get_stats().iter().sum()
+    }
+
+    pub fn total_mem_usage_as_bytes(&self) -> usize {
+        self.get_total_stats().total_as_bytes()
+    }
 }
 
 fn kvstore_gc_thread_fn<T: KVStore>(
     stores: Arc<RwLock<Vec<T>>>,
+    stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
 ) {
     let len = stores.read().unwrap().len();
@@ -189,8 +321,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             let processed_len = todo_keys.len().min(64);
             reused_count += processed_len;
 
+            let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
-            for _ in (0..processed_len) {
+            for _ in 0..processed_len {
                 let key = match todo_keys.pop() {
                     Some(key) => key,
                     None => break, // unreachable!
@@ -207,6 +340,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                         continue;
                     }
                 };
+                let stat: KVStoreStats = (&key, &entry_bytes).into();
+                *stats.first_mut().unwrap() -= &stat;
+
                 let entry: Entry = match bincode::deserialize(&entry_bytes) {
                     Ok(value) => value,
                     Err(err) => {
@@ -217,6 +353,8 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
                 if let Err(err) = stores.last_mut().unwrap().put(key.clone(), entry_bytes) {
                     eprintln!("MerkleStorage GC: error while adding entry to store: {:?}", err);
+                } else {
+                    *stats.last_mut().unwrap() += &stat;
                 }
 
                 match entry {
@@ -235,12 +373,14 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
         if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
             reused_keys.drain(..1);
+            stores_stats.lock().unwrap().drain(..1);
+            // stores.write().unwrap().drain(..1);
+
             let mut stores = stores.write().unwrap();
             println!("GC deleted: {} entries", stores[0].len().unwrap());
             println!("GC reused: {} entries", reused_count);
             reused_count = 0;
             stores.drain(..1);
-            // stores.write().unwrap().drain(..1);
         }
     }
 
@@ -253,7 +393,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 mod tests {
     use super::*;
     use std::mem;
-    use std::sync::mpsc;
     use crate::in_memory;
 
     fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<in_memory::KVStore<EntryHash, ContextValue>> {
@@ -273,6 +412,10 @@ mod tests {
 
     fn blob(value: Vec<u8>) -> Entry {
         Entry::Blob(value)
+    }
+
+    fn blob_serialized(value: Vec<u8>) -> Vec<u8> {
+        bincode::serialize(&blob(value)).unwrap()
     }
 
     fn get<T: 'static + KVStore + Default>(store: &KVStoreGCed<T>, key: &[u8]) -> Option<Entry> {
@@ -307,5 +450,61 @@ mod tests {
         assert_eq!(get(store, &[2]), None);
         assert_eq!(get(store, &[3]), Some(blob(vec![3])));
         assert_eq!(get(store, &[4]), Some(blob(vec![4])));
+    }
+
+    #[test]
+    fn test_stats() {
+        let store = &mut empty_kvstore_gced(3);
+
+        let kv1 = (entry_hash(&[1]), blob_serialized(vec![1]));
+        let kv2 = (entry_hash(&[2]), blob_serialized(vec![1, 2]));
+        let kv3 = (entry_hash(&[3]), blob_serialized(vec![1, 2, 3]));
+        let kv4 = (entry_hash(&[4]), blob_serialized(vec![1, 2, 3, 4]));
+
+        store.put(kv1.0.clone(), kv1.1.clone()).unwrap();
+        store.put(kv2.0.clone(), kv2.1.clone()).unwrap();
+        store.start_new_cycle();
+        store.put(kv3.0.clone(), kv3.1.clone()).unwrap();
+        store.start_new_cycle();
+        store.put(kv4.0.clone(), kv4.1.clone()).unwrap();
+        store.mark_reused(kv1.0.clone());
+
+        let stats: Vec<_> = store.get_stats().into_iter().rev().take(3).rev().collect();
+        assert_eq!(stats[0].key_bytes, 2);
+        assert_eq!(stats[0].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv2.1));
+
+        assert_eq!(stats[1].key_bytes, 1);
+        assert_eq!(stats[1].value_bytes, size_of_vec(&kv3.1));
+
+        assert_eq!(stats[2].key_bytes, 1);
+        assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
+
+        assert_eq!(store.total_mem_usage_as_bytes(), vec![
+            4 * mem::size_of::<EntryHash>(),
+            size_of_vec(&kv1.1),
+            size_of_vec(&kv2.1),
+            size_of_vec(&kv3.1),
+            size_of_vec(&kv4.1),
+        ].iter().sum::<usize>());
+
+        store.start_new_cycle();
+        store.wait_for_gc_finish();
+
+        let stats = store.get_stats();
+        assert_eq!(stats[0].key_bytes, 1);
+        assert_eq!(stats[0].value_bytes, size_of_vec(&kv3.1));
+
+        assert_eq!(stats[1].key_bytes, 2);
+        assert_eq!(stats[1].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv4.1));
+
+        assert_eq!(stats[2].key_bytes, 0);
+        assert_eq!(stats[2].value_bytes, 0);
+
+        assert_eq!(store.total_mem_usage_as_bytes(), vec![
+            3 * mem::size_of::<EntryHash>(),
+            size_of_vec(&kv1.1),
+            size_of_vec(&kv3.1),
+            size_of_vec(&kv4.1),
+        ].iter().sum::<usize>());
     }
 }

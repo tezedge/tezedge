@@ -29,15 +29,15 @@ where K: Ord,
     #[inline]
     fn is_persisted(&self) -> bool { false }
 
-    /// put kv in map if key doesn't exist. If it does then error.
-    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
+    /// put kv in map if key doesn't exist. If it does then return false.
+    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<bool, Self::Error> {
         match self.kv_map.entry(key) {
             Entry::Vacant(entry) => {
                 entry.insert(value);
-                Ok(())
+                Ok(true)
             },
             // _ => Err(KVStoreError::EntryOccupied),
-            _ => Ok(())
+            _ => Ok(false)
         }
     }
 

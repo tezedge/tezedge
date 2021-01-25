@@ -44,7 +44,7 @@
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::array::TryFromSliceError;
 use std::collections::hash_map::Entry as MapEntry;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::time::Instant;
@@ -62,7 +62,7 @@ use rocksdb::{ColumnFamilyDescriptor, Cache};
 use crypto::hash::HashType;
 
 use crate::kv_store::{KVStore as KVStoreBase, KVStoreError};
-use crate::kv_store_gced::KVStoreGCed;
+use crate::kv_store_gced::{KVStoreGCed, KVStoreStats};
 use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 use crate::context_action_storage::{ContextAction, ContextActionStorage};
 
@@ -198,8 +198,6 @@ pub struct MerkleStorage {
     perf_stats: MerklePerfStats,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
-    /// reference counts of entries for garbage collection
-    ref_counts: HashMap<EntryHash, u32>,
 }
 
 #[derive(Debug, Fail)]
@@ -297,6 +295,7 @@ pub struct MerklePerfStats {
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
     pub perf_stats: MerklePerfStats,
+    pub kv_store_stats: KVStoreStats,
 }
 
 impl BincodeEncoded for EntryHash {}
@@ -464,7 +463,6 @@ impl MerkleStorage {
                 perpath: HashMap::new(),
             },
             actions: Arc::new(Vec::new()),
-            ref_counts: HashMap::new(),
         }
     }
 
@@ -1326,7 +1324,7 @@ impl MerkleStorage {
         self.db.put(
             entry_hash.clone(),
             bincode::serialize(entry)?,
-        );
+        )?;
         self.db.mark_reused(entry_hash);
 
         match entry {
@@ -1493,7 +1491,10 @@ impl MerkleStorage {
                 }
             }
         }
-        Ok(MerkleStorageStats { perf_stats: perf })
+        Ok(MerkleStorageStats {
+            perf_stats: perf,
+            kv_store_stats: self.db.get_total_stats(),
+        })
     }
 
     /// Update global and per-path execution stats. Pass Instant with operation execution time
@@ -1565,7 +1566,6 @@ mod tests {
     use assert_json_diff::assert_json_eq;
 
     use super::*;
-    use crate::in_memory::KVStore;
     use crate::context_key;
 
     fn get_empty_storage() -> MerkleStorage {

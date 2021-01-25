@@ -43,8 +43,8 @@ pub trait KVStore {
 
     fn is_persisted(&self) -> bool;
 
-    /// put kv in map if key doesn't exist. If it does then fail.
-    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error>;
+    /// put kv in map if key doesn't exist. If it does then return false.
+    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<bool, Self::Error>;
 
     fn merge(&mut self, key: Self::Key, value: Self::Value) -> Result<Option<Self::Value>, Self::Error>;
 

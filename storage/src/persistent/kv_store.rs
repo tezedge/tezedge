@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 use sled::transaction::{TransactionError, ConflictableTransactionError};
+use sled::CompareAndSwapError;
 
 use crate::persistent::{Codec, SchemaError};
 use crate::kv_store::{
@@ -26,13 +27,18 @@ where K: Codec,
     #[inline]
     fn is_persisted(&self) -> bool { true }
 
-    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<(), Self::Error> {
-        self.db.compare_and_swap(
+    fn put(&mut self, key: Self::Key, value: Self::Value) -> Result<bool, Self::Error> {
+        let result = self.db.compare_and_swap(
             key.encode()?,
             None as Option<Vec<_>>,
             Some(value.encode()?)
         )?;
-        Ok(())
+
+        if let Err(CompareAndSwapError { .. }) = &result {
+            return Ok(false);
+        }
+        result?;
+        Ok(true)
     }
 
     fn merge(&mut self, key: Self::Key, value: Self::Value) -> Result<Option<Self::Value>, Self::Error> {
