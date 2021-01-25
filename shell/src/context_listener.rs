@@ -58,6 +58,7 @@ impl ContextListener {
                 let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
+                    true,
                 ));
                 let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
                 while listener_run.load(Ordering::Acquire) {

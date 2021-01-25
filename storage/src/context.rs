@@ -129,34 +129,36 @@ impl ContextApi for TezedgeContext {
         let commit_hash = &commit_hash[..].to_vec();
 
         // associate block and context_hash
-        // if let Err(e) = self
-        //     .block_storage
-        //     .assign_to_context(block_hash, &commit_hash)
-        // {
-        //     match e {
-        //         StorageError::MissingKey => {
-        //             // TODO: is this needed? check it when removing assign_to_context
-        //             if parent_context_hash.is_some() {
-        //                 return Err(ContextError::ContextHashAssignError {
-        //                     block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-        //                     context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
-        //                     error: e,
-        //                 });
-        //             } else {
-        //                 // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
-        //                 // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-        //                 // but we need to storage assignment elsewhere
-        //             }
-        //         }
-        //         _ => {
-        //             return Err(ContextError::ContextHashAssignError {
-        //                 block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-        //                 context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
-        //                 error: e,
-        //             })
-        //         }
-        //     };
-        // }
+        if self.assign_to_context {
+            if let Err(e) = self
+                .block_storage
+                .assign_to_context(block_hash, &commit_hash)
+            {
+                match e {
+                    StorageError::MissingKey => {
+                        // TODO: is this needed? check it when removing assign_to_context
+                        if parent_context_hash.is_some() {
+                            return Err(ContextError::ContextHashAssignError {
+                                block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                                context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+                                error: e,
+                            });
+                        } else {
+                            // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
+                            // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
+                            // but we need to storage assignment elsewhere
+                        }
+                    }
+                    _ => {
+                        return Err(ContextError::ContextHashAssignError {
+                            block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
+                            context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+                            error: e,
+                        })
+                    }
+                };
+            }
+        }
         self.store_hash(&merkle);
         Ok(commit_hash.to_vec())
     }
@@ -286,10 +288,11 @@ pub struct TezedgeContext {
     block_storage: BlockStorage,
     merkle: Arc<RwLock<MerkleStorage>>,
     merkle_hash: RefCell<EntryHash>,
+    assign_to_context: bool
 }
 
 impl TezedgeContext {
-    pub fn new(block_storage: BlockStorage, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
+    pub fn new(block_storage: BlockStorage, merkle: Arc<RwLock<MerkleStorage>>, assign_to_context: bool) -> Self {
         TezedgeContext {
             block_storage,
             merkle: merkle.clone(),
@@ -299,6 +302,7 @@ impl TezedgeContext {
                     .expect("lock poisoning")
                     .get_staged_root_hash(),
             ),
+            assign_to_context
         }
     }
 

@@ -4,8 +4,8 @@ use failure::Error;
 use riker::actors::SystemBuilder;
 use rocksdb::Cache;
 use shell::context_listener::ContextListener;
-use slog::{Drain, Level, Logger, debug, error, info};
-use storage::{BlockStorage, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
+use slog::{Drain, Level, Logger, crit, debug, error, info};
+use storage::{BlockStorage, context::{ContextApi, TezedgeContext}, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::{IpcEvtServer, NoopMessage};
 use ipc::IpcClient;
@@ -74,50 +74,104 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
     let key_value_store = create_key_value_store(&key_value_db_path, &cache);
     let storage = PersistentStorage::new(key_value_store.clone(), commit_log.clone());
     
-    let event_server = IpcEvtServer::try_new().unwrap();
-    let socket_path = event_server.socket_path();
-    let sys = SystemBuilder::new()
-        .name("block_header_with_hash_encoded_equals_decoded")
-        .log(logger.clone())
-        .create()
-        .unwrap();
+    let mut context = TezedgeContext::new(
+        BlockStorage::new(&storage),
+        storage.merkle(),
+        false
+    );
 
-    
-    info!(logger, "initial commit hash");
-    //spawns actions receiver thread
-    let _actor = ContextListener::actor(&sys, &storage, event_server, logger.clone(), false).unwrap();
-    
-    
-
-    let client:  IpcClient<NoopMessage, io::channel::ContextAction> = IpcClient::new(&socket_path);
-    let (_, mut tx) = client.connect().unwrap();
-
-    let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
+        let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
     info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
     info!(logger, "{}", actions_reader.header());
     for (block,actions) in actions_reader{
         debug!(logger, "processing block hash:{:?} with {} actions", &block, actions.len());
-
+        
         for (_, action) in actions.iter().enumerate(){
-            if let Err(e) =tx.send(action){
-                error!(logger,"reason => {}", e);
-                tx.send(&io::channel::ContextAction::Shutdown).unwrap();
-                thread::sleep(Duration::from_secs(1));
-                return Ok(());
-            }
+            match action {
+                    io::channel::ContextAction::Get { key, .. } => {
+                        context.get_key(key)?;
+                    }
+                    io::channel::ContextAction::Mem { key, .. } => {
+                        context.mem(key)?;
+                    }
+                    io::channel::ContextAction::DirMem { key, .. } => {
+                        context.dirmem(key)?;
+                    }
+                    io::channel::ContextAction::Set {
+                        key,
+                        value,
+                        context_hash,
+                        ignored,
+                        ..
+                    } => {
+                        if !ignored {
+                            context.set(context_hash, key, value)?;
+                        }
+                    }
+                    io::channel::ContextAction::Copy {
+                        to_key: key,
+                        from_key,
+                        context_hash,
+                        ignored,
+                        ..
+                    } => {
+                        if !ignored {
+                            context.copy_to_diff(context_hash, from_key, key)?;
+                        }
+                    }
+                    io::channel::ContextAction::Delete {
+                        key,
+                        context_hash,
+                        ignored,
+                        ..
+                    } => {
+                        if !ignored {
+                            context.delete_to_diff(context_hash, key)?;
+                        }
+                    }
+                    io::channel::ContextAction::RemoveRecursively {
+                        key,
+                        context_hash,
+                        ignored,
+                        ..
+                    } => {
+                        if !ignored {
+                            context.remove_recursively_to_diff(context_hash, key)?;
+                        }
+                    }
+                    io::channel::ContextAction::Commit {
+                        parent_context_hash,
+                        new_context_hash,
+                        block_hash: Some(block_hash),
+                        author,
+                        message,
+                        date,
+                        ..
+                    } => {
+                        debug!(logger,"commit message received {:?}", action);
+                        let hash_result = context.commit(
+                            block_hash,
+                            parent_context_hash,
+                            author.to_string(),
+                            message.to_string(),
+                            *date,
+                        );
+                        if let Err(err) = &hash_result{
+                            crit!(logger, "commit failure reason => {}", err);        
+                        }
+                        let hash = hash_result?;
+                        debug!(logger,"commit success");
+                        debug!(logger,"commit validation success");
+                    }
+
+                    io::channel::ContextAction::Checkout { context_hash, .. } => {
+                        context.checkout(context_hash)?;
+                    }
+                    _ => (),
+                    };
         }
 
-        // loop{
-        //     if let Some(hash) = storage.merkle().read().unwrap().get_last_commit_hash(){
-        //         info!(logger,"found merkle root hash {:?}", &hash);
-        //         break;
-        //     };
-        //     thread::sleep(Duration::from_millis(100));
-        // }
-
     }
-
-
     
     Ok(())
 }

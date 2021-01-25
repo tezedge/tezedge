@@ -575,6 +575,7 @@ fn main() {
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),
+            true,
         );
         match resolve_storage_init_chain_data(
             &tezos_env,
