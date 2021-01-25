@@ -17,7 +17,7 @@ impl ActionFileStorage {
     pub fn new(file: String, persistence : &PersistentStorage ) -> ActionFileStorage {
         ActionFileStorage {
             file,
-            staging : presistence.actions_staging(),
+            staging : persistence.actions_staging(),
             block_storage : BlockStorage::new(persistence)
         }
     }

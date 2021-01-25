@@ -1631,6 +1631,7 @@ name = "light-node"
 version = "0.9.1"
 dependencies = [
  "clap",
+ "dashmap",
  "failure",
  "futures",
  "logging",

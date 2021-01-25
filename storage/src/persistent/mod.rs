@@ -118,7 +118,7 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 #[derive(Clone)]
 pub struct PersistentStorage {
     /// actions_staging
-    actions_staging: Arc<DashMap<String, Vec<ContextAction>>>,
+    actions_staging: Arc<DashMap<Vec<u8>, Vec<ContextAction>>>,
     /// key-value store
     kv: Arc<DB>,
     /// commit log store
@@ -130,7 +130,7 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, actions_staging: Arc<DashMap<String, Vec<ContextAction>>>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(kv: Arc<DB>, actions_staging: Arc<DashMap<Vec<u8>, Vec<ContextAction>>>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
             clog,
@@ -162,7 +162,7 @@ impl PersistentStorage {
     }
 
     #[inline]
-    pub fn actions_staging(&self) -> Arc<DashMap<String, Vec<ContextAction>>> {
+    pub fn actions_staging(&self) -> Arc<DashMap<Vec<u8>, Vec<ContextAction>>> {
         self.actions_staging.clone()
     }
 

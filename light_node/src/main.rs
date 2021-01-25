@@ -44,6 +44,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
+use dashmap::DashMap;
 
 mod configuration;
 mod identity;
@@ -536,6 +537,8 @@ fn main() {
         ChainMetaStorage::descriptor(&cache),
         PredecessorStorage::descriptor(&cache),
     ];
+
+    let action_staging = Arc::new(DashMap<>)
 
     let rocks_db = match open_kv(&env.storage.db_path, schemas, &env.storage.db_cfg) {
         Ok(db) => Arc::new(db),

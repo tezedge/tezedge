@@ -19,6 +19,7 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
+use failure::_core::convert::Infallible;
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -41,6 +42,7 @@ pub struct Storage {
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
     pub patch_context: Option<PatchContext>,
+    pub actions_file_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -155,6 +157,28 @@ pub fn tezos_app() -> App<'static, 'static> {
                         Err(format!("Unable to create required tezos data dir '{}': {} ", v, e))
                     } else {
                         Ok(())
+                    }
+                }
+            }))
+        .arg(Arg::with_name("actions-file")
+            .long("actions-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Preferred actions.bin file location")
+            .validator(|v| {
+                let path = Path::new(&v);
+                match path.parent() {
+                    None => {
+                        Ok(())
+                    }
+                    Some(dir) => {
+                        if dir.exists() {
+                            if dir.is_dir() {
+                                Ok(())
+                            } else {
+                                Err(format!("Required action file parent dir '{}' exists", v))
+                            }
+                        }
                     }
                 }
             }))
@@ -702,6 +726,19 @@ impl Environment {
                     }
 
                     db_cfg.build().unwrap()
+                },
+                actions_file_path: {
+                    match args
+                        .value_of("actions-file")
+                        .unwrap_or("")
+                        .parse::<PathBuf>() {
+                        Ok(p) => {
+                            Some(p)
+                        }
+                        Err(_) => {
+                            None
+                        }
+                    }
                 },
                 db_path: {
                     let db_path = args
