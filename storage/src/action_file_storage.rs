@@ -6,6 +6,7 @@ use crate::persistent::PersistentStorage;
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::collections::hash_map::RandomState;
+use slog::{error};
 
 pub struct ActionFileStorage {
     block_storage: BlockStorage,
@@ -124,12 +125,22 @@ impl ActionFileStorage {
 
                 // remove block action from staging and save it to action file
 
+
                 if let Some(actions) = w.remove(&block_hash) {
                     let pred = hex::encode(&block.predecessor);
                     let hash = block.block_hash.to_owned();
+                    info!(log, "Actions File header {}", action_file_writer.header());
                     info!(log,"Saving Block {}", hash; "predecessor" => pred );
-                    action_file_writer.update(block, actions);
-                    info!(log,"Saved Block {}", hash);
+                    match action_file_writer.update(block, actions) {
+                        Ok(_) => {
+                            info!(log,"Block saved to file {}", hash);
+                        }
+                        Err(e) => {
+                            debug!(log,"Error storing Block {}", hash);
+                            error!(log,"Error storing Block {}", e);
+                        }
+                    };
+
                 }
             }
             _ => {}
