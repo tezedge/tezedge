@@ -59,7 +59,60 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB>{
 }
 
 #[test]
-fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
+fn feed_context_listener_with_actions() -> Result<(), Error> {
+
+    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+    let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
+    let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
+    let actions_storage_path = PathBuf::from("/mnt/hdd/actions.bin");
+
+    let _ = fs::remove_dir_all(&commit_log_db_path);
+    let _ = fs::remove_dir_all(&key_value_db_path);
+
+    let logger = create_logger();
+    let commit_log = create_commit_log(&commit_log_db_path);
+    let key_value_store = create_key_value_store(&key_value_db_path, &cache);
+    let storage = PersistentStorage::new(key_value_store.clone(), commit_log.clone());
+    
+    let event_server = IpcEvtServer::try_new().unwrap();
+    let socket_path = event_server.socket_path();
+    let sys = SystemBuilder::new()
+        .name("block_header_with_hash_encoded_equals_decoded")
+        .log(logger.clone())
+        .create()
+        .unwrap();
+
+    
+    info!(logger, "initial commit hash");
+    //spawns actions receiver thread
+    let _actor = ContextListener::actor(&sys, &storage, event_server, logger.clone(), false).unwrap();
+    
+    
+
+    let client:  IpcClient<NoopMessage, io::channel::ContextAction> = IpcClient::new(&socket_path);
+    let (_, mut tx) = client.connect().unwrap();
+
+    let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
+    info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
+    info!(logger, "{}", actions_reader.header());
+    for (block,actions) in actions_reader{
+        debug!(logger, "processing block hash:{:?} with {} actions", &block, actions.len());
+
+        for (_, action) in actions.iter().enumerate(){
+            if let Err(e) =tx.send(action){
+                error!(logger,"reason => {}", e);
+                tx.send(&io::channel::ContextAction::Shutdown).unwrap();
+                thread::sleep(Duration::from_secs(1));
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
+
+#[test]
+fn feed_tezedge_context_with_Actions() -> Result<(), Error> {
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
     let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
@@ -80,7 +133,7 @@ fn block_header_with_hash_encoded_equals_decoded() -> Result<(), Error> {
         false
     );
 
-        let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
+    let actions_reader = io::ActionsFileReader::new(&actions_storage_path).unwrap();
     info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
     info!(logger, "{}", actions_reader.header());
     for (block,actions) in actions_reader{
