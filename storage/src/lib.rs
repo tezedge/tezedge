@@ -55,6 +55,7 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
+mod action_file_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

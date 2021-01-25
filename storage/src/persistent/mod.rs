@@ -14,6 +14,8 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use dashmap::DashMap;
+use tezos_context::channel::ContextAction;
 
 pub mod codec;
 pub mod commit_log;
@@ -41,9 +43,9 @@ impl Default for DbConfiguration {
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = ColumnFamilyDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item=ColumnFamilyDescriptor>,
 {
     DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
 }
@@ -105,9 +107,9 @@ pub fn default_table_options(cache: &Cache) -> Options {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item=CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
@@ -115,6 +117,8 @@ where
 /// Groups all components required for correct permanent storage functioning
 #[derive(Clone)]
 pub struct PersistentStorage {
+    /// actions_staging
+    actions_staging: Arc<DashMap<String, Vec<ContextAction>>>,
     /// key-value store
     kv: Arc<DB>,
     /// commit log store
@@ -126,10 +130,11 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(kv: Arc<DB>, actions_staging: Arc<DashMap<String, Vec<ContextAction>>>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
             clog,
+            actions_staging,
             kv: kv.clone(),
             seq,
             merkle: Arc::new(RwLock::new(MerkleStorage::new(kv))),
@@ -154,6 +159,11 @@ impl PersistentStorage {
     #[inline]
     pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
         self.merkle.clone()
+    }
+
+    #[inline]
+    pub fn actions_staging(&self) -> Arc<DashMap<String, Vec<ContextAction>>> {
+        self.actions_staging.clone()
     }
 
     pub fn flush_dbs(&mut self) {

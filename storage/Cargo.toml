@@ -19,11 +19,14 @@ num_cpus = "1.13"
 rocksdb = "0.15"
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = "2.5"
+dashmap = "4.0.2"
+
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+action_sync = { path = "../action_sync" }
 
 [[bench]]
 name = "predecessor_benchmarks"

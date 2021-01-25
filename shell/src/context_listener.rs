@@ -297,6 +297,7 @@ fn listen_protocol_events(
                             HashType::ContextHash.hash_to_b58check(new_context_hash),
                             HashType::ContextHash.hash_to_b58check(&hash),
                         );
+                        // save actions to file
                     }
 
                     ContextAction::Checkout { context_hash, .. } => {
