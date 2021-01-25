@@ -15,7 +15,6 @@ pub struct ActionFileStorage {
 }
 
 ///staging: Arc<DashMap<String, Vec<ContextAction>>>
-
 use slog::{crit, debug, info, warn, Logger};
 
 impl ActionFileStorage {
@@ -121,20 +120,12 @@ impl ActionFileStorage {
                 };
 
                 // remove block action from staging and save it to action file
-
-
                 if let Some(actions) = w.remove(&block_hash) {
-                    let pred = hex::encode(&block.predecessor);
-                    let hash = block.block_hash_hex.to_owned();
-                    info!(log, "Actions File header {}", action_file_writer.header());
-                    info!(log,"Saving Block {}", hash; "predecessor" => pred );
                     match action_file_writer.update(block, actions) {
                         Ok(_) => {
-                            info!(log, "Block saved to file {}", hash);
                         }
                         Err(e) => {
-                            debug!(log, "Error storing Block {}", hash);
-                            error!(log, "Error storing Block {}", e);
+                            warn!(log, "Error storing Block {}", e);
                         }
                     };
                 }
