@@ -94,16 +94,6 @@ pub fn setup() -> OCamlRuntime {
     ocaml_runtime
 }
 
-/// Tries to shutdown ocaml runtime gracefully - give chance to close resources, trigger GC finalization...
-///
-/// https://caml.inria.fr/pub/docs/manual-ocaml/intfc.html#sec467
-pub fn shutdown() {
-    // TODO: down in the executor now, which calls setup() to obtain the runtime handle,
-    // then runs the executor thread, and once done, it calls the shutdown() method on the
-    // runtime handle.
-    // What to do here? remove?
-}
-
 pub fn change_runtime_configuration(
     settings: TezosRuntimeConfiguration,
 ) -> Result<(), TezosRuntimeConfigurationError> {

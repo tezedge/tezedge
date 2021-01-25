@@ -114,10 +114,9 @@ pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), Ipc
 
 /// Establish connection to existing IPC endpoint (which was created by tezedge node).
 /// Begin receiving commands from the tezedge node until `ShutdownCall` command is received.
-pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Logger)>(
+pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>>(
     socket_path: P,
     log: &Logger,
-    shutdown_callback: SDC,
 ) -> Result<(), IpcError> {
     let ipc_client: IpcClient<ProtocolMessage, NodeMessage> = IpcClient::new(socket_path);
     let (mut rx, mut tx) = ipc_client.connect()?;
@@ -188,9 +187,6 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 if let Err(e) = context_send(ContextAction::Shutdown) {
                     warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
                 }
-
-                // we trigger shutdown callback before, returning response
-                shutdown_callback(log);
 
                 // return result
                 if let Err(e) = tx.send(&NodeMessage::ShutdownResult) {

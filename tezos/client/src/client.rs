@@ -161,7 +161,3 @@ pub fn assert_encoding_for_protocol_data(
         }
     })
 }
-
-pub fn shutdown_runtime() {
-    ffi::shutdown();
-}
