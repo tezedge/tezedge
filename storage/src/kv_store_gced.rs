@@ -170,7 +170,8 @@ pub struct KVStoreGCed<T: KVStore> {
     current: T,
     current_stats: KVStoreStats,
     thread: thread::JoinHandle<()>,
-    msg: mpsc::Sender<CmdMsg>,
+    // TODO: Mutex because it's required to be Sync. Better way?
+    msg: Mutex<mpsc::Sender<CmdMsg>>,
 }
 
 impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
@@ -190,7 +191,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
             stores: stores.clone(),
             stores_stats: stores_stats.clone(),
             thread: thread::spawn(move || kvstore_gc_thread_fn(stores, stores_stats, rx)),
-            msg: tx,
+            msg: Mutex::new(tx),
             current: Default::default(),
             current_stats: Default::default(),
         }
@@ -233,7 +234,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     }
 
     pub fn mark_reused(&mut self, key: EntryHash) {
-        let _ = self.msg.send(CmdMsg::MarkReused(key));
+        let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
     pub fn start_new_cycle(&mut self) {
@@ -243,7 +244,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         self.stores.write().unwrap().push(
             mem::take(&mut self.current)
         );
-        let _ = self.msg.send(CmdMsg::StartNewCycle);
+        let _ = self.msg.lock().unwrap().send(CmdMsg::StartNewCycle);
     }
 
     pub fn wait_for_gc_finish(&self) {
