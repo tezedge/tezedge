@@ -24,7 +24,7 @@ use networking::p2p::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed,
 };
 use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage};
-use networking::{PeerId, ShellCompatibilityVersion};
+use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -105,11 +105,15 @@ pub struct PeerManager {
     network_channel: NetworkChannelRef,
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
+    /// Tokio runtime
+    tokio_executor: Handle,
+
     /// Peer count threshold
     threshold: PeerConnectionThreshold,
     /// Map of all peers
     peers: HashMap<ActorUri, PeerState>,
-
+    /// List of potential peers to connect to
+    potential_peers: HashSet<SocketAddr>,
     /// Bootstrap peer, which we try to connect all the the, if no other peers presents
     bootstrap_addresses: HashSet<(String, u16)>,
 
@@ -117,16 +121,13 @@ pub struct PeerManager {
     disable_mempool: bool,
     /// Indicates that p2p is working in private mode
     private_node: bool,
-    /// List of potential peers to connect to
-    potential_peers: HashSet<SocketAddr>,
-    /// Tokio runtime
-    tokio_executor: Handle,
-    /// We will listen for incoming connection at this port
-    listener_port: u16,
-    /// Tezos identity
-    identity: Arc<Identity>,
-    /// Network/protocol version
-    shell_compatibility_version: Arc<ShellCompatibilityVersion>,
+
+    /// Local node info covers:
+    /// - listener_port - we will listen for incoming connection at this port
+    /// - identity
+    /// - Network/protocol version
+    local_node_info: Arc<LocalPeerInfo>,
+
     /// Message receiver boolean indicating whether
     /// more connections should be accepted from network
     rx_run: Arc<AtomicBool>,
@@ -225,18 +226,18 @@ impl PeerManager {
 
     /// Create new peer actor
     fn create_peer(
-        &mut self,
         sys: &impl ActorRefFactory,
-        socket_address: &SocketAddr,
+        local_node_info: Arc<LocalPeerInfo>,
+        network_channel: NetworkChannelRef,
+        tokio_executor: Handle,
+        remote_socket_address: &SocketAddr,
     ) -> Result<PeerRef, CreateError> {
         Peer::actor(
             sys,
-            self.network_channel.clone(),
-            self.listener_port,
-            self.identity.clone(),
-            self.shell_compatibility_version.clone(),
-            self.tokio_executor.clone(),
-            socket_address,
+            network_channel,
+            local_node_info,
+            tokio_executor,
+            remote_socket_address,
         )
     }
 
@@ -372,9 +373,11 @@ impl
             tokio_executor,
             bootstrap_addresses,
             threshold: p2p_config.peer_threshold,
-            listener_port: p2p_config.listener_port,
-            identity,
-            shell_compatibility_version,
+            local_node_info: Arc::new(LocalPeerInfo::new(
+                p2p_config.listener_port,
+                identity,
+                shell_compatibility_version,
+            )),
             disable_mempool: p2p_config.disable_mempool,
             private_node: p2p_config.private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
@@ -412,7 +415,7 @@ impl Actor for PeerManager {
             WhitelistAllIpAddresses.into(),
         );
 
-        let listener_port = self.listener_port;
+        let listener_port = self.local_node_info.listener_port();
         let myself = ctx.myself();
         let rx_run = self.rx_run.clone();
         let log = ctx.system.log();
@@ -588,34 +591,36 @@ impl Receive<ConnectToPeer> for PeerManager {
             return;
         }
 
-        match self.create_peer(ctx, &msg.address) {
-            Ok(peer) => {
-                let system = ctx.system.clone();
-                let disable_mempool = self.disable_mempool;
-                let private_node = self.private_node;
+        // spawn non-blocking tcp stream for outgoing connection
+        let system = ctx.system.clone();
+        let local_node_info = self.local_node_info.clone();
+        let network_channel = self.network_channel.clone();
+        let tokio_executor = self.tokio_executor.clone();
+        let disable_mempool = self.disable_mempool;
+        let private_node = self.private_node;
 
-                self.tokio_executor.spawn(async move {
-                    debug!(system.log(), "Connecting to IP"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                    match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
-                        Ok(Ok(stream)) => {
-                            info!(system.log(), "Connection successful"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                            peer.tell(Bootstrap::outgoing(stream, msg.address, disable_mempool, private_node), None);
+        self.tokio_executor.spawn(async move {
+            debug!(system.log(), "(Outgoing) Connecting to IP"; "ip" => msg.address);
+            match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
+                Ok(Ok(stream)) => {
+                    debug!(system.log(), "(Outgoing) Connection to peer successful"; "ip" => msg.address);
+                    match Self::create_peer(&system, local_node_info, network_channel, tokio_executor, &msg.address) {
+                        Ok(peer) => {
+                            peer.tell(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), None);
                         }
-                        Ok(Err(e)) => {
-                            info!(system.log(), "Connection failed"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string(), "reason" => format!("{:?}", e));
-                            system.stop(peer);
-                        }
-                        Err(_) => {
-                            info!(system.log(), "Connection timed out"; "ip" => msg.address, "peer" => peer.name(), "peer_uri" => peer.uri().to_string());
-                            system.stop(peer);
+                        Err(e) => {
+                            warn!(system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
                         }
                     }
-                });
+                }
+                Ok(Err(e)) => {
+                    info!(system.log(), "(Outgoing) Connection to peer failed"; "ip" => msg.address, "reason" => format!("{:?}", e));
+                }
+                Err(_) => {
+                    info!(system.log(), "(Outgoing) Connection timed out"; "ip" => msg.address);
+                }
             }
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
-            }
-        }
+        });
     }
 }
 
@@ -627,14 +632,22 @@ impl Receive<AcceptPeer> for PeerManager {
             warn!(ctx.system.log(), "Peer is blacklisted - will not accept connection"; "ip" => format!("{}", msg.address.ip()));
         } else if self.peers.len() < self.threshold.high {
             debug!(ctx.system.log(), "Connection from"; "ip" => msg.address);
-            match self.create_peer(ctx, &msg.address) {
+
+            let local_node_info = self.local_node_info.clone();
+            let network_channel = self.network_channel.clone();
+            let tokio_executor = self.tokio_executor.clone();
+            let disable_mempool = self.disable_mempool;
+            let private_node = self.private_node;
+
+            match Self::create_peer(
+                ctx,
+                local_node_info,
+                network_channel,
+                tokio_executor,
+                &msg.address,
+            ) {
                 Ok(peer) => peer.tell(
-                    Bootstrap::incoming(
-                        msg.stream,
-                        msg.address,
-                        self.disable_mempool,
-                        self.private_node,
-                    ),
+                    Bootstrap::incoming(msg.stream, msg.address, disable_mempool, private_node),
                     None,
                 ),
                 Err(e) => {

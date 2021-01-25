@@ -1196,9 +1196,9 @@ mod test_node_peer {
 
     use crypto::hash::OperationHash;
     use networking::p2p::peer;
-    use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
+    use networking::p2p::peer::{Bootstrap, BootstrapOutput};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
-    use networking::ShellCompatibilityVersion;
+    use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
 
@@ -1251,7 +1251,7 @@ mod test_node_peer {
                     match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
                         Ok(Ok(stream)) => {
                             // authenticate
-                            let local = Arc::new(Local::new(
+                            let local = Arc::new(LocalPeerInfo::new(
                                 1235,
                                 identity,
                                 Arc::new(shell_compatibility_version),
