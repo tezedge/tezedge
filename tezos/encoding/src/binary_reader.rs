@@ -250,11 +250,11 @@ impl BinaryReader {
 
                 Ok(Value::List(values))
             }
-            Encoding::Option(_) => {
+            Encoding::Option(inner_encoding) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
                 match is_present_byte {
                     types::BYTE_VAL_SOME => {
-                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        let v = self.decode_value(buf, inner_encoding)?;
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_VAL_NONE => Ok(Value::Option(None)),
@@ -265,11 +265,11 @@ impl BinaryReader {
                     .into()),
                 }
             }
-            Encoding::OptionalField(_) => {
+            Encoding::OptionalField(inner_encoding) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
                 match is_present_byte {
                     types::BYTE_FIELD_SOME => {
-                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        let v = self.decode_value(buf, inner_encoding)?;
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_FIELD_NONE => Ok(Value::Option(None)),
