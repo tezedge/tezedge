@@ -196,17 +196,28 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                     None => break, // unreachable!
                 };
 
-                let entry_bytes = stores_get(&stores, &key).unwrap();
-                let entry: Entry = bincode::deserialize(&entry_bytes).unwrap();
-                // let entry_bytes = match stores_get(&stores, &key) {
-                //     Some(value) => value,
-                //     None => continue,
-                // };
-                // let entry: Entry = match bincode::deserialize(&entry_bytes) {
-                //     Ok(value) => value,
-                //     Err(_) => continue
-                // };
-                stores.last_mut().unwrap().put(key.clone(), entry_bytes).unwrap();
+                let entry_bytes = match stores.first_mut().unwrap().delete(&key) {
+                    Ok(Some(value)) => value,
+                    Ok(None) => {
+                        eprintln!("MerkleStorage GC: entry not found for key: {:?}", &key);
+                        continue;
+                    }
+                    Err(err) => {
+                        eprintln!("MerkleStorage GC: error while getting entry from store: {:?}", err);
+                        continue;
+                    }
+                };
+                let entry: Entry = match bincode::deserialize(&entry_bytes) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        eprintln!("MerkleStorage GC: error while decerializing entry: {:?}", err);
+                        continue;
+                    }
+                };
+
+                if let Err(err) = stores.last_mut().unwrap().put(key.clone(), entry_bytes) {
+                    eprintln!("MerkleStorage GC: error while adding entry to store: {:?}", err);
+                }
 
                 match entry {
                     Entry::Blob(_) => {}
