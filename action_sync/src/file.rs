@@ -230,10 +230,11 @@ impl ActionsFileWriter {
         Ok((block_level + 1))
     }
 
-    fn _update_header(&mut self, block_level: u32, actions_count: u32) {
+    fn _update_header(&mut self, block_level: u32, actions_count: u32, block_hash : [u8;32]) {
         self.header.block_height = block_level;
         self.header.actions_count += actions_count;
         self.header.block_count += 1;
+        self.header.current_block_hash = block_hash;
 
         let header_bytes = self.header.to_vec();
         self.file.seek(SeekFrom::Start(0));
