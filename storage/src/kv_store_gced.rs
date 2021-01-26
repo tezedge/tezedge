@@ -75,7 +75,7 @@ pub struct KVStoreStats {
 impl KVStoreStats {
     /// increases `reused_keys_bytes` based on `key`
     pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        self.reused_keys_bytes += list.capacity() * mem::size_of::<EntryHash>();
+        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
     }
 
     pub fn total_as_bytes(&self) -> usize {
@@ -304,7 +304,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         match msg {
             Some(CmdMsg::StartNewCycle) => {
                 reused_keys.push(Default::default());
-                println!("reused_keys vec count: {}", reused_keys.len());
             }
             Some(CmdMsg::Exit) => {
                 received_exit_msg = true;
