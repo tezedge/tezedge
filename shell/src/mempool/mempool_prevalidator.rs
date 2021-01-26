@@ -92,7 +92,7 @@ impl MempoolPrevalidator {
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_readonly_api.pool.get() {
-                        Ok(protocol_controller) => match process_prevalidation(
+                        Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
                             &mempool_storage,
@@ -104,8 +104,12 @@ impl MempoolPrevalidator {
                             &mut validator_event_receiver,
                             &log,
                         ) {
-                            Ok(()) => info!(log, "Mempool - prevalidation process finished"),
+                            Ok(()) => {
+                                protocol_controller.set_release_on_return_to_pool();
+                                info!(log, "Mempool - prevalidation process finished")
+                            }
                             Err(err) => {
+                                protocol_controller.set_release_on_return_to_pool();
                                 if validator_run.load(Ordering::Acquire) {
                                     warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                 }

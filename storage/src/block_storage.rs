@@ -75,6 +75,28 @@ impl
     }
 }
 
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    ) {
+        (
+            self.block_metadata_hash,
+            self.ops_metadata_hash,
+            self.max_operations_ttl,
+        )
+    }
+}
+
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
