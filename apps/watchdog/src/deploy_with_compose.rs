@@ -4,7 +4,7 @@
 
 use std::process::{Command, Output};
 
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
 pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_rust-debugger_1";
@@ -15,7 +15,7 @@ pub async fn launch_stack() {
 
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
-        delay_for(Duration::from_millis(1000)).await;
+        sleep(Duration::from_millis(1000)).await;
     }
     start_with_compose(NODE_CONTAINER_NAME, "rust-node");
 
@@ -24,7 +24,7 @@ pub async fn launch_stack() {
         .await
         .is_err()
     {
-        delay_for(Duration::from_millis(1000)).await;
+        sleep(Duration::from_millis(1000)).await;
     }
 
     start_with_compose("deploy_ocaml-node_1", "ocaml-node");

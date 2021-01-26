@@ -9,14 +9,14 @@ default-run = "watchdog"
 clap = "2.33"
 failure = "0.1"
 http = "0.2.2"
-reqwest = { version = "0.10.10", features = ["json"] }
+reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-shiplift = { git = "https://github.com/softprops/shiplift.git", branch = "master" }
+shiplift = { git = "https://github.com/simplestaking/shiplift.git", branch = "master" }
 slack-hook = ""
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.6"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1.1", features = ["full"] }
 wait-timeout = "0.2"
 shell = { path = "../../shell" }
