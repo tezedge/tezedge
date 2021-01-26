@@ -132,10 +132,6 @@ impl OperationsState {
         Ok(())
     }
 
-    pub fn are_operations_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.operations_meta_storage.is_complete(block_hash)
-    }
-
     #[inline]
     pub fn has_missing_block_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()

@@ -24,6 +24,8 @@ pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sy
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
 
+    fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+
     /// Returns n-th predecessor for block_hash
     fn find_block_at_distance(
         &self,
@@ -187,6 +189,14 @@ impl BlockMetaStorage {
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.kv.get(block_hash).map_err(StorageError::from)
+    }
+
+    fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+        match self.get(block_hash) {
+            Ok(Some(meta)) => Ok(meta.is_applied),
+            Ok(None) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     // NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
@@ -384,6 +394,10 @@ impl Meta {
             level,
             chain_id,
         }
+    }
+
+    pub fn take_successors(self) -> Vec<BlockHash> {
+        self.successors
     }
 }
 

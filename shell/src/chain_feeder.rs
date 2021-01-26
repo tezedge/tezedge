@@ -16,13 +16,14 @@ use failure::{format_err, Error, Fail};
 use riker::actors::*;
 use slog::{debug, error, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
-    BlockMetaStorage, BlockStorage, ChainMetaStorage, OperationsMetaStorage, StorageError,
+    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
+    OperationsMetaStorage, OperationsStorage, OperationsStorageReader, StorageError,
     StorageInitInfo,
 };
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -32,40 +33,71 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::chain_manager::{ChainManagerMsg, ChainManagerRef, ProcessValidatedBlock};
+use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::stats::BlockValidationTimer;
 use crate::subscription::subscribe_to_shell_shutdown;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::validation;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
-/// Message commands [`ChainFeeder`] to apply block.
+/// Message commands [`ChainFeeder`] to apply completed block.
 #[derive(Clone, Debug)]
-pub struct ApplyBlock {
+pub struct ApplyCompletedBlock {
     block_hash: BlockHash,
-    request: Arc<ApplyBlockRequest>,
+    chain_id: ChainId,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
-
-    chain_manager: ActorRef<ChainManagerMsg>,
+    chain_manager: ChainManagerRef,
     roundtrip_timer: Arc<Instant>,
 }
 
-impl ApplyBlock {
-    pub(crate) fn new(
+/// Message commands [`ChainFeeder`] to check blocks, if they could be applied.
+#[derive(Clone, Debug)]
+pub struct CheckBlocksForApply {
+    blocks: Vec<BlockHash>,
+    chain_id: ChainId,
+    chain_manager: ChainManagerRef,
+    roundtrip_timer: Instant,
+}
+
+impl ApplyCompletedBlock {
+    pub fn new(
         block_hash: BlockHash,
-        request: ApplyBlockRequest,
+        chain_id: ChainId,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         chain_manager: ChainManagerRef,
         roundtrip_timer: Instant,
     ) -> Self {
-        ApplyBlock {
+        Self {
             block_hash,
-            request: Arc::new(request),
+            chain_id,
             result_callback,
             chain_manager,
             roundtrip_timer: Arc::new(roundtrip_timer),
+        }
+    }
+}
+
+/// Message commands [`ChainFeeder`] to apply block.
+#[derive(Clone, Debug)]
+pub struct ApplyBlock {
+    envelope: ApplyCompletedBlock,
+    chain_feeder: ChainFeederRef,
+    request: Arc<ApplyBlockRequest>,
+}
+
+impl ApplyBlock {
+    pub(crate) fn new(
+        envelope: ApplyCompletedBlock,
+        chain_feeder: ChainFeederRef,
+        request: ApplyBlockRequest,
+    ) -> Self {
+        ApplyBlock {
+            envelope,
+            chain_feeder,
+            request: Arc::new(request),
         }
     }
 }
@@ -76,17 +108,20 @@ pub(crate) enum Event {
     ShuttingDown,
 }
 
-impl From<ApplyBlock> for Event {
-    fn from(apply_block_request: ApplyBlock) -> Self {
-        Event::ApplyBlock(apply_block_request)
-    }
-}
-
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ShellChannelMsg, ApplyBlock)]
+#[actor(ShellChannelMsg, ApplyCompletedBlock, CheckBlocksForApply)]
 pub struct ChainFeeder {
     /// Just for subscribing to shell shutdown channel
     shell_channel: ShellChannelRef,
+
+    /// Block storage
+    block_storage: Box<dyn BlockStorageReader>,
+    /// Block meta storage
+    block_meta_storage: Box<dyn BlockMetaStorageReader>,
+    /// Operations storage
+    operations_storage: Box<dyn OperationsStorageReader>,
+    /// Operations meta storage
+    operations_meta_storage: OperationsMetaStorage,
 
     /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
@@ -117,19 +152,28 @@ impl ChainFeeder {
         tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
     ) -> Result<ChainFeederRef, CreateError> {
-        let myself = sys.actor_of_props::<ChainFeeder>(
+        // spawn inner thread
+        let (block_applier_event_sender, block_applier_run, block_applier_thread) =
+            BlockApplierThreadSpawner::new(
+                shell_channel.clone(),
+                persistent_storage.clone(),
+                Arc::new(init_storage_data),
+                Arc::new(tezos_env),
+                tezos_writeable_api,
+                log,
+            )
+            .spawn_feeder_thread();
+
+        sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
             Props::new_args((
                 shell_channel,
                 persistent_storage,
-                tezos_writeable_api,
-                init_storage_data.clone(),
-                tezos_env.clone(),
-                log,
+                Arc::new(Mutex::new(block_applier_event_sender)),
+                block_applier_run,
+                Arc::new(Mutex::new(Some(block_applier_thread))),
             )),
-        )?;
-
-        Ok(myself)
+        )
     }
 
     /// The `ChainFeeder` is intended to serve as a singleton actor so that's why
@@ -145,52 +189,161 @@ impl ChainFeeder {
             .send(event)
             .map_err(|e| format_err!("Failed to send to queue, reason: {}", e))
     }
+
+    /// This should be called by [ApplyCompletedBlock], only if we have block which can be applied [chain_state.can_apply_block]
+    fn apply_completed_block(
+        &self,
+        msg: ApplyCompletedBlock,
+        chain_feeder: ChainFeederRef,
+        log: &Logger,
+    ) -> Result<(), Error> {
+        // check if block is already applied (not necessray here)
+        match self.block_meta_storage.get(&msg.block_hash)? {
+            Some(meta) => {
+                if meta.is_applied() {
+                    // block already applied - ok, doing nothing
+                    debug!(log, "Block is already applied"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
+                    return Ok(());
+                }
+            }
+            None => {
+                return Err(format_err!(
+                    "Block metadata not found for block_hash: {}",
+                    HashType::BlockHash.hash_to_b58check(&msg.block_hash)
+                ));
+            }
+        }
+
+        // collect data
+        let request = self.prepare_apply_request(&msg.block_hash, msg.chain_id.clone())?;
+
+        // add request to queue
+        let result_callback = msg.result_callback.clone();
+        match self.send_to_queue(Event::ApplyBlock(ApplyBlock::new(
+            msg,
+            chain_feeder,
+            request,
+        ))) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                let err = format_err!(
+                    "Failed to send `apply block request` to queue, reason: {}",
+                    format!("{}", e)
+                );
+                if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
+                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                }
+                Err(err)
+            }
+        }
+    }
+
+    /// Collects complete data for applying block, if not complete, return None
+    fn prepare_apply_request(
+        &self,
+        block_hash: &BlockHash,
+        chain_id: ChainId,
+    ) -> Result<ApplyBlockRequest, StorageError> {
+        // get block header
+        let current_head = match self.block_storage.get(block_hash)? {
+            Some(block) => block,
+            None => return Err(StorageError::MissingKey),
+        };
+
+        // get operations
+        let operations = self.operations_storage.get_operations(block_hash)?;
+
+        // get predecessor metadata
+        let (
+            predecessor,
+            (
+                predecessor_block_metadata_hash,
+                predecessor_ops_metadata_hash,
+                predecessor_max_operations_ttl,
+            ),
+        ) = match self
+            .block_storage
+            .get_with_additional_data(&current_head.header.predecessor())?
+        {
+            Some((predecessor, predecessor_additional_data)) => {
+                (predecessor, predecessor_additional_data.into())
+            }
+            None => return Err(StorageError::MissingKey),
+        };
+
+        Ok(ApplyBlockRequest {
+            chain_id: chain_id.clone(),
+            block_header: (&*current_head.header).clone(),
+            pred_header: (&*predecessor.header).clone(),
+            operations: ApplyBlockRequest::convert_operations(operations),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+        })
+    }
+
+    fn check_blocks_for_apply(
+        &self,
+        msg: CheckBlocksForApply,
+        chain_feeder: ChainFeederRef,
+        log: &Logger,
+    ) -> Result<(), Error> {
+        for block in &msg.blocks {
+            if let Some(block_metadata) = self.block_meta_storage.get(&block)? {
+                if validation::can_apply_block(
+                    (&block, &block_metadata),
+                    |bh| self.operations_meta_storage.is_complete(bh),
+                    |predecessor| self.block_meta_storage.is_applied(predecessor),
+                )? {
+                    self.apply_completed_block(
+                        ApplyCompletedBlock::new(
+                            block.clone(),
+                            msg.chain_id.clone(),
+                            None,
+                            msg.chain_manager.clone(),
+                            Instant::now(),
+                        ),
+                        chain_feeder.clone(),
+                        log,
+                    )?;
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
         PersistentStorage,
-        Arc<TezosApiConnectionPool>,
-        StorageInitInfo,
-        TezosEnvironmentConfiguration,
-        Logger,
+        Arc<Mutex<QueueSender<Event>>>,
+        Arc<AtomicBool>,
+        SharedJoinHandle,
     )> for ChainFeeder
 {
     fn create_args(
         (
             shell_channel,
             persistent_storage,
-            tezos_writeable_api,
-            init_storage_data,
-            tezos_env,
-            log,
+            block_applier_event_sender,
+            block_applier_run,
+            block_applier_thread,
         ): (
             ShellChannelRef,
             PersistentStorage,
-            Arc<TezosApiConnectionPool>,
-            StorageInitInfo,
-            TezosEnvironmentConfiguration,
-            Logger,
+            Arc<Mutex<QueueSender<Event>>>,
+            Arc<AtomicBool>,
+            SharedJoinHandle,
         ),
     ) -> Self {
-        // spawn applier thread with internal queue
-        let (block_applier_event_sender, block_applier_run, block_applier_thread) =
-            spawn_feeder_thread(
-                &shell_channel,
-                &persistent_storage,
-                init_storage_data,
-                tezos_env,
-                tezos_writeable_api.clone(),
-                log,
-            );
-
-        let block_applier_run = block_applier_run;
-        let block_applier_thread = Arc::new(Mutex::new(Some(block_applier_thread)));
-        let block_applier_event_sender = Arc::new(Mutex::new(block_applier_event_sender));
-
         ChainFeeder {
             shell_channel,
+            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
+            operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
+            operations_meta_storage: OperationsMetaStorage::new(&persistent_storage),
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
@@ -227,19 +380,35 @@ impl Actor for ChainFeeder {
     }
 }
 
-impl Receive<ApplyBlock> for ChainFeeder {
+impl Receive<ApplyCompletedBlock> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlock, _: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyCompletedBlock, _sender: Sender) {
         if !self.block_applier_run.load(Ordering::Acquire) {
             return;
         }
 
-        let result_callback = msg.result_callback.clone();
-        if let Err(e) = self.send_to_queue(msg.into()) {
-            warn!(ctx.system.log(), "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
-            if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
-                warn!(ctx.system.log(), "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+        match self.apply_completed_block(msg, ctx.myself().clone(), &ctx.system.log()) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to apply completed block"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<CheckBlocksForApply> for ChainFeeder {
+    type Msg = ChainFeederMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CheckBlocksForApply, _sender: Sender) {
+        if !self.block_applier_run.load(Ordering::Acquire) {
+            return;
+        }
+
+        match self.check_blocks_for_apply(msg, ctx.myself().clone(), &ctx.system.log()) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Failed to check blocks for apply"; "reason" => format!("{:?}", e))
             }
         }
     }
@@ -251,7 +420,7 @@ impl Receive<ShellChannelMsg> for ChainFeeder {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         if let ShellChannelMsg::ShuttingDown(_) = msg {
             self.block_applier_run.store(false, Ordering::Release);
-            // TODO: remove inner thread, this evet just pings the thread
+            // This event just pings the inner thread to shutdown
             if let Err(e) = self.send_to_queue(Event::ShuttingDown) {
                 warn!(ctx.system.log(), "Failed to send ShuttinDown event do internal queue"; "reason" => format!("{:?}", e));
             }
@@ -284,80 +453,113 @@ impl From<ProtocolServiceError> for FeedChainError {
     }
 }
 
-// TODO: refactor and remove this inner thread somehow in future
-/// Spawns asynchronous thread, which process events from internal queue
-fn spawn_feeder_thread(
-    shell_channel: &ActorRef<ChannelMsg<ShellChannelMsg>>,
-    persistent_storage: &PersistentStorage,
-    init_storage_data: StorageInitInfo,
-    tezos_env: TezosEnvironmentConfiguration,
+#[derive(Clone)]
+pub(crate) struct BlockApplierThreadSpawner {
+    shell_channel: ShellChannelRef,
+    persistent_storage: PersistentStorage,
+    init_storage_data: Arc<StorageInitInfo>,
+    tezos_env: Arc<TezosEnvironmentConfiguration>,
     tezos_writeable_api: Arc<TezosApiConnectionPool>,
     log: Logger,
-) -> (
-    QueueSender<Event>,
-    Arc<AtomicBool>,
-    JoinHandle<Result<(), Error>>,
-) {
-    // spawn thread which processes event
-    let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
-    let block_applier_run = Arc::new(AtomicBool::new(true));
-    let block_applier_thread = {
-        let apply_block_run = block_applier_run.clone();
-        let shell_channel = shell_channel.clone();
-        let persistent_storage = persistent_storage.clone();
+}
 
-        thread::spawn(move || -> Result<(), Error> {
-            let block_storage = BlockStorage::new(&persistent_storage);
-            let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-            let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
-            let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
-            let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                block_storage.clone(),
-                persistent_storage.merkle(),
-            ));
+impl BlockApplierThreadSpawner {
+    pub(crate) fn new(
+        shell_channel: ShellChannelRef,
+        persistent_storage: PersistentStorage,
+        init_storage_data: Arc<StorageInitInfo>,
+        tezos_env: Arc<TezosEnvironmentConfiguration>,
+        tezos_writeable_api: Arc<TezosApiConnectionPool>,
+        log: Logger,
+    ) -> Self {
+        Self {
+            shell_channel,
+            persistent_storage,
+            tezos_writeable_api,
+            init_storage_data,
+            tezos_env,
+            log,
+        }
+    }
 
-            while apply_block_run.load(Ordering::Acquire) {
-                match tezos_writeable_api.pool.get() {
-                    Ok(mut protocol_controller) => match feed_chain_to_protocol(
-                        &tezos_env,
-                        &init_storage_data,
-                        &apply_block_run,
-                        &shell_channel,
-                        &block_storage,
-                        &block_meta_storage,
-                        &chain_meta_storage,
-                        &operations_meta_storage,
-                        &context,
-                        &protocol_controller.api,
-                        &mut block_applier_event_receiver,
-                        &log,
-                    ) {
-                        Ok(()) => {
-                            protocol_controller.set_release_on_return_to_pool();
-                            debug!(log, "Feed chain to protocol finished")
-                        }
-                        Err(err) => {
-                            protocol_controller.set_release_on_return_to_pool();
-                            if apply_block_run.load(Ordering::Acquire) {
-                                warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
+    /// Spawns asynchronous thread, which process events from internal queue
+    fn spawn_feeder_thread(
+        &self,
+    ) -> (
+        QueueSender<Event>,
+        Arc<AtomicBool>,
+        JoinHandle<Result<(), Error>>,
+    ) {
+        // spawn thread which processes event
+        let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
+        let block_applier_run = Arc::new(AtomicBool::new(false));
+
+        let block_applier_thread = {
+            let shell_channel = self.shell_channel.clone();
+            let persistent_storage = self.persistent_storage.clone();
+            let tezos_writeable_api = self.tezos_writeable_api.clone();
+            let init_storage_data = self.init_storage_data.clone();
+            let tezos_env = self.tezos_env.clone();
+            let log = self.log.clone();
+            let block_applier_run = block_applier_run.clone();
+
+            // TOOD: meno
+            thread::spawn(move || -> Result<(), Error> {
+                let block_storage = BlockStorage::new(&persistent_storage);
+                let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+                let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
+                let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+                let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
+                    block_storage.clone(),
+                    persistent_storage.merkle(),
+                ));
+
+                block_applier_run.store(true, Ordering::Release);
+                info!(log, "Chain feeder started processing");
+
+                while block_applier_run.load(Ordering::Acquire) {
+                    match tezos_writeable_api.pool.get() {
+                        Ok(mut protocol_controller) => match feed_chain_to_protocol(
+                            &tezos_env,
+                            &init_storage_data,
+                            &block_applier_run,
+                            &shell_channel,
+                            &block_storage,
+                            &block_meta_storage,
+                            &chain_meta_storage,
+                            &operations_meta_storage,
+                            &context,
+                            &protocol_controller.api,
+                            &mut block_applier_event_receiver,
+                            &log,
+                        ) {
+                            Ok(()) => {
+                                protocol_controller.set_release_on_return_to_pool();
+                                debug!(log, "Feed chain to protocol finished")
                             }
+                            Err(err) => {
+                                protocol_controller.set_release_on_return_to_pool();
+                                if block_applier_run.load(Ordering::Acquire) {
+                                    warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
+                                }
+                            }
+                        },
+                        Err(err) => {
+                            warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err))
                         }
-                    },
-                    Err(err) => {
-                        warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err))
                     }
                 }
-            }
 
-            info!(log, "Chain feeder thread finished");
-            Ok(())
-        })
-    };
-    (
-        block_applier_event_sender,
-        block_applier_run,
-        block_applier_thread,
-    )
+                info!(log, "Chain feeder thread finished");
+                Ok(())
+            })
+        };
+        (
+            block_applier_event_sender,
+            block_applier_run,
+            block_applier_thread,
+        )
+    }
 }
 
 fn feed_chain_to_protocol(
@@ -391,10 +593,11 @@ fn feed_chain_to_protocol(
         &init_storage_data,
     )?;
 
-    let chain_id = &init_storage_data.chain_id;
-
     // now just check current head (at least genesis should be there)
-    if chain_meta_storage.get_current_head(chain_id)?.is_none() {
+    if chain_meta_storage
+        .get_current_head(&init_storage_data.chain_id)?
+        .is_none()
+    {
         // this should not happen here, we applied at least genesis before
         return Err(FeedChainError::UnknownCurrentHeadError);
     };
@@ -405,11 +608,16 @@ fn feed_chain_to_protocol(
         if let Ok(event) = block_applier_event_receiver.recv() {
             match event {
                 Event::ApplyBlock(ApplyBlock {
-                    block_hash,
+                    envelope:
+                        ApplyCompletedBlock {
+                            block_hash,
+                            result_callback,
+                            chain_manager,
+                            roundtrip_timer,
+                            chain_id,
+                        },
+                    chain_feeder,
                     request,
-                    result_callback,
-                    chain_manager,
-                    roundtrip_timer,
                 }) => {
                     let validated_at_timer = Instant::now();
                     debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash));
@@ -530,6 +738,23 @@ fn feed_chain_to_protocol(
 
                             // notify chain_manager, which sent request
                             if apply_block_run.load(Ordering::Acquire) {
+                                // now we want to parallelize and speed-up
+
+                                // 1. ping chain_feeder for successors check -> to queue
+                                let successors = current_head_meta.take_successors();
+                                if !successors.is_empty() {
+                                    chain_feeder.tell(
+                                        CheckBlocksForApply {
+                                            blocks: successors,
+                                            chain_id,
+                                            chain_manager: chain_manager.clone(),
+                                            roundtrip_timer: Instant::now(),
+                                        },
+                                        None,
+                                    );
+                                }
+
+                                // 2. ping chain_managers
                                 chain_manager.tell(
                                     ProcessValidatedBlock::new(
                                         Arc::new(block_hash),

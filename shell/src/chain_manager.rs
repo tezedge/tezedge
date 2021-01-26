@@ -36,7 +36,6 @@ use storage::{
     BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage,
     OperationsStorageReader, StorageError,
 };
-use tezos_api::ffi::ApplyBlockRequest;
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -44,7 +43,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::chain_feeder::{ApplyBlock, ChainFeederRef};
+use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{
@@ -102,13 +101,6 @@ pub struct CheckChainCompleteness;
 /// Message commands [`ChainManager`] to check if all mempool operations were fetched from peer.
 #[derive(Clone, Debug)]
 pub struct CheckMempoolCompleteness;
-
-/// Message commands [`ChainManager`] to apply completed blocks.
-#[derive(Clone, Debug)]
-pub struct ApplyCompletedBlock {
-    block_hash: BlockHash,
-    result_callback: Option<CondvarResult<(), failure::Error>>,
-}
 
 /// Message commands [`ChainManager`] to process applied block.
 /// Chain_feeder propagates if block successfully validated and applied
@@ -250,7 +242,6 @@ impl Stats {
 #[actor(
     DisconnectStalledPeers,
     CheckChainCompleteness,
-    ApplyCompletedBlock,
     CheckMempoolCompleteness,
     AskPeersAboutCurrentBranch,
     AskPeersAboutCurrentHead,
@@ -520,6 +511,7 @@ impl ChainManager {
             current_head,
             identity_peer_id,
             check_chain_completeness_triggered,
+            block_applier,
             ..
         } = self;
 
@@ -579,7 +571,7 @@ impl ChainManager {
                                                 .into(),
                                                 topic: ShellChannelTopic::ShellEvents.into(),
                                             },
-                                            Some(ctx.myself().into()),
+                                            None,
                                         );
 
                                         // trigger CheckChainCompleteness
@@ -634,8 +626,10 @@ impl ChainManager {
                                             Self::process_downloaded_header(
                                                 block_header_with_hash,
                                                 ctx.myself(),
+                                                block_applier,
                                                 &log,
                                                 chain_state,
+                                                block_meta_storage,
                                                 operations_state,
                                                 stats,
                                                 check_chain_completeness_triggered,
@@ -706,15 +700,22 @@ impl ChainManager {
                                                         .ok_or(StorageError::MissingKey)?;
 
                                                     // check if block can be applied
-                                                    if chain_state.can_apply_block(
+                                                    if validation::can_apply_block(
                                                         (&block_hash, &block_meta),
                                                         |_| Ok(true),
+                                                        |predecessor| {
+                                                            block_meta_storage
+                                                                .is_applied(predecessor)
+                                                        },
                                                     )? {
-                                                        ctx.myself().tell(
-                                                            ApplyCompletedBlock {
-                                                                block_hash: block_hash.clone(),
-                                                                result_callback: None,
-                                                            },
+                                                        block_applier.tell(
+                                                            ApplyCompletedBlock::new(
+                                                                block_hash.clone(),
+                                                                chain_state.get_chain_id().clone(),
+                                                                None,
+                                                                ctx.myself(),
+                                                                Instant::now(),
+                                                            ),
                                                             None,
                                                         );
                                                     }
@@ -740,7 +741,7 @@ impl ChainManager {
                                                             topic: ShellChannelTopic::ShellEvents
                                                                 .into(),
                                                         },
-                                                        Some(ctx.myself().into()),
+                                                        None,
                                                     );
 
                                                     // remove operations from queue
@@ -795,8 +796,10 @@ impl ChainManager {
                                             Self::process_downloaded_header(
                                                 message_current_head,
                                                 ctx.myself(),
+                                                block_applier,
                                                 &log,
                                                 chain_state,
+                                                block_meta_storage,
                                                 operations_state,
                                                 stats,
                                                 check_chain_completeness_triggered,
@@ -941,7 +944,7 @@ impl ChainManager {
                                                     .into(),
                                                     topic: ShellChannelTopic::ShellEvents.into(),
                                                 },
-                                                Some(ctx.myself().into()),
+                                                None,
                                             );
                                         }
                                         None => {
@@ -1044,8 +1047,10 @@ impl ChainManager {
     fn process_downloaded_header(
         received_block: BlockHeaderWithHash,
         myself: ChainManagerRef,
+        block_applier: &ChainFeederRef,
         log: &Logger,
         chain_state: &mut BlockchainState,
+        block_meta_storage: &Box<dyn BlockMetaStorageReader>,
         operations_state: &mut OperationsState,
         stats: &mut Stats,
         check_chain_completeness_triggered: &mut AtomicBool,
@@ -1063,14 +1068,19 @@ impl ChainManager {
             })?;
 
         // check if block can be applied
-        if chain_state.can_apply_block((&received_block.hash, &block_metadata), |_| {
-            Ok(are_operations_complete)
-        })? {
-            myself.tell(
-                ApplyCompletedBlock {
-                    block_hash: received_block.hash.clone(),
-                    result_callback: None,
-                },
+        if validation::can_apply_block(
+            (&received_block.hash, &block_metadata),
+            |_| Ok(are_operations_complete),
+            |predecessor| block_meta_storage.is_applied(predecessor),
+        )? {
+            block_applier.tell(
+                ApplyCompletedBlock::new(
+                    received_block.hash.clone(),
+                    chain_state.get_chain_id().clone(),
+                    None,
+                    myself.clone(),
+                    Instant::now(),
+                ),
                 None,
             );
         }
@@ -1165,7 +1175,7 @@ impl ChainManager {
                     .into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 },
-                Some(ctx.myself().into()),
+                None,
             );
 
             // handle operations (if expecting any)
@@ -1264,7 +1274,7 @@ impl ChainManager {
                                         .into(),
                                         topic: ShellChannelTopic::ShellEvents.into(),
                                     },
-                                    Some(ctx.myself().into()),
+                                    None,
                                 );
                             }
                             all_operations_received
@@ -1286,18 +1296,21 @@ impl ChainManager {
             }
 
             // check if block can be applied
-            match self
-                .chain_state
-                .can_apply_block((&block_header_with_hash.hash, &block_metadata), |_| {
-                    Ok(are_operations_complete)
-                }) {
+            match validation::can_apply_block(
+                (&block_header_with_hash.hash, &block_metadata),
+                |_| Ok(are_operations_complete),
+                |predecessor| self.block_meta_storage.is_applied(predecessor),
+            ) {
                 Ok(can_apply) => {
                     if can_apply {
-                        ctx.myself().tell(
-                            ApplyCompletedBlock {
-                                block_hash: block_header_with_hash.hash.clone(),
+                        self.block_applier.tell(
+                            ApplyCompletedBlock::new(
+                                block_header_with_hash.hash.clone(),
+                                self.chain_state.get_chain_id().clone(),
                                 result_callback,
-                            },
+                                ctx.myself(),
+                                Instant::now(),
+                            ),
                             None,
                         );
                     } else {
@@ -1433,9 +1446,6 @@ impl ChainManager {
             }
         }
 
-        // check successors, if can be applied
-        self.check_successors_for_apply(ctx, &block.hash)?;
-
         Ok(())
     }
 
@@ -1531,121 +1541,6 @@ impl ChainManager {
             self.is_bootstrapped = true;
             info!(log, "Chain manager is bootstrapped"; "num_of_peers_for_bootstrap_threshold" => self.num_of_peers_for_bootstrap_threshold, "num_of_bootstrapped_peers" => num_of_bootstrapped_peers, "reached_on_level" => chain_manager_current_level)
         }
-    }
-
-    fn check_successors_for_apply(
-        &self,
-        ctx: &Context<ChainManagerMsg>,
-        block: &BlockHash,
-    ) -> Result<(), StorageError> {
-        if let Some(metadata) = self.block_meta_storage.get(&block)? {
-            for successor in metadata.successors() {
-                if let Some(successor_metadata) = self.block_meta_storage.get(&successor)? {
-                    if self
-                        .chain_state
-                        .can_apply_block((&successor, &successor_metadata), |bh| {
-                            self.operations_state.are_operations_complete(bh)
-                        })?
-                    {
-                        ctx.myself().tell(
-                            ApplyCompletedBlock {
-                                block_hash: successor.clone(),
-                                result_callback: None,
-                            },
-                            None,
-                        );
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// This should be called by [ApplyCompletedBlock], only if we have block which can be applied [chain_state.can_apply_block]
-    fn apply_completed_block(
-        &mut self,
-        ctx: &Context<ChainManagerMsg>,
-        msg: ApplyCompletedBlock,
-    ) -> Result<(), Error> {
-        // check if block is already applied (not necessray here)
-        match self.block_meta_storage.get(&msg.block_hash)? {
-            Some(meta) => {
-                if meta.is_applied() {
-                    // block already applied - ok, doing nothing
-                    debug!(ctx.system.log(), "Block is already applied"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
-                    return Ok(());
-                }
-            }
-            None => {
-                return Err(format_err!(
-                    "Block metadata not found for block_hash: {}",
-                    HashType::BlockHash.hash_to_b58check(&msg.block_hash)
-                ));
-            }
-        }
-
-        // collect data
-        let request = self.prepare_apply_request(&msg.block_hash)?;
-
-        // ping chain_feeder
-        self.block_applier.tell(
-            ApplyBlock::new(
-                msg.block_hash,
-                request,
-                msg.result_callback,
-                ctx.myself(),
-                Instant::now(),
-            ),
-            None,
-        );
-
-        Ok(())
-    }
-
-    /// Collects complete data for applying block, if not complete, return None
-    fn prepare_apply_request(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<ApplyBlockRequest, StorageError> {
-        // chain_id
-        let chain_id = self.chain_state.get_chain_id();
-
-        // get block header
-        let current_head = match self.block_storage.get(block_hash)? {
-            Some(block) => block,
-            None => return Err(StorageError::MissingKey),
-        };
-
-        // get operations
-        let operations = self.operations_storage.get_operations(block_hash)?;
-
-        // get predecessor metadata
-        let (
-            predecessor,
-            (
-                predecessor_block_metadata_hash,
-                predecessor_ops_metadata_hash,
-                predecessor_max_operations_ttl,
-            ),
-        ) = match self
-            .block_storage
-            .get_with_additional_data(&current_head.header.predecessor())?
-        {
-            Some((predecessor, predecessor_additional_data)) => {
-                (predecessor, predecessor_additional_data.into())
-            }
-            None => return Err(StorageError::MissingKey),
-        };
-
-        Ok(ApplyBlockRequest {
-            chain_id: chain_id.clone(),
-            block_header: (&*current_head.header).clone(),
-            pred_header: (&*predecessor.header).clone(),
-            operations: ApplyBlockRequest::convert_operations(operations),
-            max_operations_ttl: predecessor_max_operations_ttl as i32,
-            predecessor_block_metadata_hash,
-            predecessor_ops_metadata_hash,
-        })
     }
 
     /// Send CurrentBranch message to the p2p
@@ -2128,23 +2023,6 @@ impl Receive<CheckChainCompleteness> for ChainManager {
     }
 }
 
-impl Receive<ApplyCompletedBlock> for ChainManager {
-    type Msg = ChainManagerMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyCompletedBlock, _sender: Sender) {
-        if self.shutting_down {
-            return;
-        }
-
-        match self.apply_completed_block(ctx, msg) {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(ctx.system.log(), "Failed to apply completed block"; "reason" => format!("{:?}", e))
-            }
-        }
-    }
-}
-
 impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
@@ -2371,17 +2249,17 @@ pub mod tests {
     use networking::p2p::peer::Peer;
     use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use storage::tests_common::TmpStorage;
+    use storage::StorageInitInfo;
     use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
     use tezos_api::ffi::TezosRuntimeConfiguration;
     use tezos_wrapper::ProtocolEndpointConfiguration;
     use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
-    use crate::chain_feeder::ChainFeeder;
+    use crate::chain_feeder::{BlockApplierThreadSpawner, ChainFeeder};
     use crate::mempool::init_mempool_state_storage;
     use crate::shell_channel::{ShellChannel, ShuttingDown};
 
     use super::*;
-    use storage::StorageInitInfo;
 
     fn create_logger(level: Level) -> Logger {
         let drain = slog_async::Async::new(
@@ -2501,24 +2379,19 @@ pub mod tests {
         ));
 
         // chain feeder mock
-        let block_applier_run = Arc::new(AtomicBool::new(true));
-        let block_applier = {
-            actor_system.actor_of_props::<ChainFeeder>(
-                "chain-feeder-mock",
-                Props::new_args((
-                    shell_channel.clone(),
-                    storage.storage().clone(),
-                    pool.clone(),
-                    StorageInitInfo {
-                        chain_id: chain_id.clone(),
-                        genesis_block_header_hash: tezos_env.genesis_header_hash()?,
-                        patch_context: None,
-                    },
-                    tezos_env.clone(),
-                    log.clone(),
-                )),
-            )?
-        };
+        let block_applier = ChainFeeder::actor(
+            &actor_system,
+            shell_channel.clone(),
+            storage.storage().clone(),
+            pool.clone(),
+            StorageInitInfo {
+                chain_id: chain_id.clone(),
+                genesis_block_header_hash: tezos_env.genesis_header_hash()?,
+                patch_context: None,
+            },
+            tezos_env.clone(),
+            log.clone(),
+        )?;
 
         // direct instance of ChainManager (not throught actor_system)
         let mut chain_manager = ChainManager::create_args((
@@ -2583,7 +2456,6 @@ pub mod tests {
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, true);
 
         // close
-        block_applier_run.store(false, Ordering::Release);
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
