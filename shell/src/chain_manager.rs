@@ -2236,9 +2236,10 @@ pub mod tests {
     use std::net::SocketAddr;
 
     use slog::{Drain, Level, Logger};
+    use futures::lock::Mutex as TokioMutex;
 
     use crypto::hash::CryptoboxPublicKeyHash;
-    use networking::p2p::network_channel::NetworkChannel;
+    use networking::p2p::{network_channel::NetworkChannel, peer::BootstrapOutput};
     use networking::p2p::peer::Peer;
     use storage::tests_common::TmpStorage;
     use storage::StorageInitInfo;
@@ -2288,11 +2289,21 @@ pub mod tests {
         let peer_id_marker =
             HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
 
+        let metadata = MetadataMessage::new(false, false);
+        let version = NetworkVersion::new("".to_owned(), 0, 0);
         let peer_ref = Peer::actor(
             sys,
             network_channel,
             tokio_runtime.handle().clone(),
-            &socket_address,
+            BootstrapOutput(
+                Arc::new(TokioMutex::new(None)),
+                Arc::new(TokioMutex::new(None)),
+                peer_public_key_hash.clone(),
+                peer_id_marker.clone(),
+                metadata.clone(),
+                version,
+                socket_address,
+            ),
         )
         .unwrap();
 
@@ -2303,7 +2314,7 @@ pub mod tests {
                 peer_id_marker,
                 socket_address,
             )),
-            &MetadataMessage::new(false, false),
+            &metadata,
         )
     }
 
