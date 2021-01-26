@@ -14,16 +14,17 @@ use storage::{
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::utils::collections::{BlockData, UniqueBlockData};
+use std::sync::Arc;
 
 pub struct OperationsState {
     operations_storage: OperationsStorage,
     operations_meta_storage: OperationsMetaStorage,
     missing_operations_for_blocks: UniqueBlockData<MissingOperations>,
-    chain_id: ChainId,
+    chain_id: Arc<ChainId>,
 }
 
 impl OperationsState {
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>) -> Self {
         OperationsState {
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
@@ -132,10 +133,6 @@ impl OperationsState {
         Ok(())
     }
 
-    pub fn are_operations_complete(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.operations_meta_storage.is_complete(block_hash)
-    }
-
     #[inline]
     pub fn has_missing_block_operations(&self) -> bool {
         !self.missing_operations_for_blocks.is_empty()
@@ -149,7 +146,7 @@ impl OperationsState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.operations_meta_storage.iter(IteratorMode::Start)? {
             let (key, value) = (key?, value?);
-            if !value.is_complete() && (value.chain_id() == &self.chain_id) {
+            if !value.is_complete() && (value.chain_id() == self.chain_id.as_ref()) {
                 self.missing_operations_for_blocks.push(MissingOperations {
                     block_hash: key,
                     validation_passes: value.get_missing_validation_passes(),

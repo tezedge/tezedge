@@ -12,7 +12,7 @@ use tokio::runtime::Handle;
 use crypto::hash::ChainId;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use shell::subscription::subscribe_to_shell_events;
+use shell::subscription::subscribe_to_shell_new_current_head;
 use storage::context::TezedgeContext;
 use storage::persistent::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
@@ -125,7 +125,7 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {

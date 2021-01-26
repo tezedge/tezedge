@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::{cmp, convert::TryFrom};
+use std::sync::Arc;
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -51,11 +52,11 @@ pub struct BlockchainState {
     /// retrieve the block data. If the block data cannot be fetched it's the responsibility
     /// of the [`chain_manager`](crate::chain_manager::ChainManager) to return the block to this queue.
     missing_blocks: UniqueBlockData<MissingBlock>,
-    chain_id: ChainId,
+    chain_id: Arc<ChainId>,
 }
 
 impl BlockchainState {
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>) -> Self {
         BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
@@ -72,8 +73,7 @@ impl BlockchainState {
         current_head: &Option<Head>,
     ) -> bool {
         // validate chain which we operate on
-        if self.get_chain_id() != branch.chain_id() {
-            // return Ok(BlockAcceptanceResult::IgnoreBlock);
+        if self.chain_id.as_ref() != branch.chain_id() {
             return false;
         }
         if branch.current_branch().current_head().level() <= 0 {
@@ -103,7 +103,7 @@ impl BlockchainState {
         api: &ProtocolController,
     ) -> Result<BlockAcceptanceResult, failure::Error> {
         // validate chain which we operate on
-        if self.get_chain_id() != head.chain_id() {
+        if self.chain_id.as_ref() != head.chain_id() {
             return Ok(BlockAcceptanceResult::IgnoreBlock);
         }
 
@@ -269,42 +269,6 @@ impl BlockchainState {
                 }
             }
         }
-    }
-
-    /// Returns true, if [block] can be applied
-    pub fn can_apply_block<'b, OP>(
-        &self,
-        (block, block_metadata): (&'b BlockHash, &'b Meta),
-        operations_complete: OP,
-    ) -> Result<bool, StorageError>
-    where
-        OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
-    {
-        let block_predecessor = block_metadata.predecessor();
-
-        // check if block is already applied, dont need to apply second time
-        if block_metadata.is_applied() {
-            return Ok(false);
-        }
-
-        // we need to have predecessor (every block has)
-        if block_predecessor.is_none() {
-            return Ok(false);
-        }
-
-        // if operations are not complete, we cannot apply block
-        if !operations_complete(block)? {
-            return Ok(false);
-        }
-
-        // check if predecesor is applied
-        if let Some(predecessor) = block_predecessor {
-            if let Some(predecessor_meta) = self.block_meta_storage.get(predecessor)? {
-                return Ok(predecessor_meta.is_applied());
-            }
-        }
-
-        Ok(false)
     }
 
     /// Resolves missing blocks and schedules them for download from network
@@ -485,7 +449,7 @@ impl BlockchainState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             let (block_hash, meta) = (key?, value?);
-            if meta.predecessor().is_none() && (meta.chain_id() == &self.chain_id) {
+            if meta.predecessor().is_none() && (meta.chain_id() == self.chain_id.as_ref()) {
                 self.missing_blocks
                     .push(MissingBlock::with_level(block_hash, meta.level()));
             }
@@ -495,7 +459,7 @@ impl BlockchainState {
     }
 
     #[inline]
-    pub fn get_chain_id(&self) -> &ChainId {
+    pub fn get_chain_id(&self) -> &Arc<ChainId> {
         &self.chain_id
     }
 

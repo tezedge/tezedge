@@ -76,11 +76,8 @@ pub struct NoopMessage;
 pub mod infra {
     use std::collections::HashSet;
     use std::path::PathBuf;
-    use std::process::Child;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
     use std::thread;
-    use std::thread::JoinHandle;
     use std::time::{Duration, SystemTime};
 
     use riker::actors::*;
@@ -106,8 +103,7 @@ pub mod infra {
     use tezos_api::environment::TezosEnvironmentConfiguration;
     use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
     use tezos_identity::Identity;
-    use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
-    use tezos_wrapper::service::ProtocolRunnerEndpoint;
+    use tezos_wrapper::service::IpcEvtServer;
     use tezos_wrapper::ProtocolEndpointConfiguration;
     use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
@@ -125,9 +121,6 @@ pub mod infra {
         pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
         pub tezos_env: TezosEnvironmentConfiguration,
         pub tokio_runtime: Runtime,
-
-        apply_block_restarting_feature: Arc<AtomicBool>,
-        apply_block_restarting_thread: Arc<Mutex<Option<JoinHandle<Child>>>>,
     }
 
     impl NodeInfrastructure {
@@ -167,45 +160,6 @@ pub mod infra {
             )
             .expect("Failed to resolve init storage chain data");
 
-            // apply block protocol runner endpoint
-            let apply_protocol_runner = common::protocol_runner_executable_path();
-            let mut apply_protocol_runner_endpoint = ProtocolRunnerEndpoint::<
-                ExecutableProtocolRunner,
-            >::try_new(
-                &format!("{}_write_runner", name),
-                ProtocolEndpointConfiguration::new(
-                    TezosRuntimeConfiguration {
-                        log_enabled: common::is_ocaml_log_enabled(),
-                        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
-                        debug_mode: false,
-                    },
-                    tezos_env.clone(),
-                    false,
-                    &context_db_path,
-                    &apply_protocol_runner,
-                    log_level,
-                    true,
-                ),
-                log.clone(),
-            )?;
-            let (apply_restarting_feature, apply_protocol_commands, apply_protocol_events) =
-                match apply_protocol_runner_endpoint.start_in_restarting_mode() {
-                    Ok(restarting_feature) => {
-                        let ProtocolRunnerEndpoint {
-                            commands, events, ..
-                        } = apply_protocol_runner_endpoint;
-                        (restarting_feature, commands, events)
-                    }
-                    Err(e) => panic!(
-                        "Error to start test_protocol_runner_endpoint: {} - error: {:?}",
-                        apply_protocol_runner
-                            .as_os_str()
-                            .to_str()
-                            .unwrap_or("-none-"),
-                        e
-                    ),
-                };
-
             // create pool for ffi protocol runner connections (used just for readonly context)
             let tezos_readonly_api = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
                 String::from(&format!("{}_readonly_runner_pool", name)),
@@ -227,7 +181,34 @@ pub mod infra {
                     &context_db_path,
                     &common::protocol_runner_executable_path(),
                     log_level,
+                    None,
+                ),
+                log.clone(),
+            ));
+
+            // create pool for ffi protocol runner connections (used just for readonly context)
+            let apply_protocol_events = IpcEvtServer::try_bind_new()?;
+            let tezos_writeable_api = Arc::new(TezosApiConnectionPool::new_without_context(
+                String::from(&format!("{}_writeable_runner_pool", name)),
+                TezosApiConnectionPoolConfiguration {
+                    min_connections: 0,
+                    max_connections: 1,
+                    connection_timeout: Duration::from_secs(3),
+                    max_lifetime: Duration::from_secs(60),
+                    idle_timeout: Duration::from_secs(60),
+                },
+                ProtocolEndpointConfiguration::new(
+                    TezosRuntimeConfiguration {
+                        log_enabled: common::is_ocaml_log_enabled(),
+                        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
+                        debug_mode: false,
+                    },
+                    tezos_env.clone(),
                     false,
+                    &context_db_path,
+                    &common::protocol_runner_executable_path(),
+                    log_level,
+                    Some(apply_protocol_events.server_path()),
                 ),
                 log.clone(),
             ));
@@ -247,7 +228,7 @@ pub mod infra {
             let _ = ContextListener::actor(
                 &actor_system,
                 &persistent_storage,
-                apply_protocol_events.expect("Context listener needs event server"),
+                apply_protocol_events,
                 log.clone(),
                 false,
             )
@@ -255,10 +236,10 @@ pub mod infra {
             let block_applier = ChainFeeder::actor(
                 &actor_system,
                 shell_channel.clone(),
-                &persistent_storage,
-                &init_storage_data,
-                &tezos_env,
-                apply_protocol_commands,
+                persistent_storage.clone(),
+                tezos_writeable_api,
+                init_storage_data.clone(),
+                tezos_env.clone(),
                 log.clone(),
             )
             .expect("Failed to create chain feeder");
@@ -308,10 +289,6 @@ pub mod infra {
             Ok(NodeInfrastructure {
                 name: String::from(name),
                 log,
-                apply_block_restarting_feature: apply_restarting_feature.0,
-                apply_block_restarting_thread: Arc::new(Mutex::new(Some(
-                    apply_restarting_feature.1,
-                ))),
                 peer_manager,
                 shell_channel,
                 network_channel,
@@ -326,8 +303,6 @@ pub mod infra {
         fn stop(&mut self) {
             let NodeInfrastructure {
                 log,
-                apply_block_restarting_feature,
-                apply_block_restarting_thread,
                 shell_channel,
                 actor_system,
                 tokio_runtime,
@@ -335,13 +310,7 @@ pub mod infra {
             } = self;
             warn!(log, "[NODE] Stopping node infrastructure"; "name" => self.name.clone());
 
-            // clean up
-            // shutdown events listening
-            // disable/stop protocol runner for applying blocks feature
-            // let (apply_blocks_protocol_runner_endpoint_run_feature, apply_blocks_protocol_runner_endpoint_watchdog_thread) = apply_restarting_feature;
-            // stop restarting feature
-            apply_block_restarting_feature.store(false, Ordering::Release);
-
+            // clean up + shutdown events listening
             shell_channel.tell(
                 Publish {
                     msg: ShuttingDown.into(),
@@ -349,22 +318,6 @@ pub mod infra {
                 },
                 None,
             );
-
-            let apply_restarting_feature = apply_block_restarting_thread
-                .lock()
-                .expect("Failed to lock mutex")
-                .take();
-
-            if let Some(apply_restarting_feature) = apply_restarting_feature {
-                if let Ok(mut protocol_runner_process) = apply_restarting_feature.join() {
-                    if let Err(e) = ExecutableProtocolRunner::wait_and_terminate_ref(
-                        &mut protocol_runner_process,
-                        Duration::from_secs(2),
-                    ) {
-                        warn!(log, "Failed to terminate/kill protocol runner"; "reason" => e);
-                    }
-                };
-            }
 
             let _ = tokio_runtime.block_on(actor_system.shutdown());
 
