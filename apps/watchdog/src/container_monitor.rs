@@ -8,7 +8,7 @@ use std::sync::Arc;
 use shiplift::Docker;
 use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
-use tokio::time::{delay_for, Duration};
+use tokio::time::{sleep, Duration};
 
 use crate::deploy::DeployMonitor;
 use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose};
@@ -28,7 +28,7 @@ pub fn start_deploy_monitoring(
             if let Err(e) = deploy_monitor.monitor_stack().await {
                 error!(log, "Deploy monitoring error: {}", e);
             }
-            delay_for(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(interval)).await;
         }
     })
 }
@@ -45,7 +45,7 @@ pub fn start_info_monitoring(
             if let Err(e) = info_monitor.send_monitoring_info().await {
                 error!(log, "Info monitoring error: {}", e);
             }
-            delay_for(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(interval)).await;
         }
     })
 }
