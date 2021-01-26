@@ -39,7 +39,7 @@ unsafe fn set_file_desc_limit(num: u64) {
     // Set rlimit to num, but not higher than hard limit
     soft = num.min(hard);
     match rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard) {
-        Ok(()) => println!("Open files limit set to {}.", soft),
+        Ok(()) => (),
         Err(e) => eprintln!("Setting open files limit failed (setrlimit): {}", e),
     }
 }
