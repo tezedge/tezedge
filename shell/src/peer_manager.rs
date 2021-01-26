@@ -26,7 +26,7 @@ use networking::p2p::{
     },
     peer::PeerError,
 };
-use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage, bootstrap};
+use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage, bootstrap, BootstrapOutput};
 use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -229,13 +229,13 @@ impl PeerManager {
         sys: &impl ActorRefFactory,
         network_channel: NetworkChannelRef,
         tokio_executor: Handle,
-        remote_socket_address: &SocketAddr,
+        info: BootstrapOutput,
     ) -> Result<PeerRef, CreateError> {
         Peer::actor(
             sys,
             network_channel,
             tokio_executor,
-            remote_socket_address,
+            info,
         )
     }
 
@@ -637,21 +637,18 @@ impl Receive<ConnectToPeer> for PeerManager {
             debug!(system.log(), "(Outgoing) Connecting to IP"; "ip" => msg.address);
             match timeout(CONNECT_TIMEOUT, TcpStream::connect(&msg.address)).await {
                 Ok(Ok(stream)) => {
-                    debug!(system.log(), "(Outgoing) Connection to peer successful"; "ip" => msg.address);
-                    debug!(system.log(), "Bootstrapping"; "incoming" => false, "ip" => &msg.address);
+                    debug!(system.log(), "(Outgoing) Connection to peer successful, so start bootstrapping"; "incoming" => false, "ip" => msg.address);
                     match bootstrap(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
                         Ok(bootstrap_output) => {
-                            match Self::create_peer(&system, network_channel.clone(), tokio_executor, &msg.address) {
-                                Ok(peer) => {
-                                    peer.tell(bootstrap_output, None)
-                                }
+                            match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output) {
+                                Ok(_peer) => (),
                                 Err(e) => {
-                                    warn!(system.log(), "Failed to connect to peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
+                                    warn!(system.log(), "(Outgoing) Connection failed to create peer actor"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e))
                                 }
-                            }                
+                            }
                         },
                         Err(err) => {
-                            warn!(system.log(), "Connection to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
+                            warn!(system.log(), "(Outgoing) Connection to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
                             failed_bootstrap_peer(err, msg.address, network_channel);
                         },
                     }
@@ -687,8 +684,8 @@ impl Receive<AcceptPeer> for PeerManager {
                 debug!(system.log(), "Bootstrapping"; "incoming" => true, "ip" => &msg.address);
                 match bootstrap(Bootstrap::incoming(msg.stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &system.log()).await {
                     Ok(bootstrap_output) => {
-                        match Self::create_peer(&system, network_channel.clone(), tokio_executor, &msg.address) {
-                            Ok(peer) => peer.tell(bootstrap_output, None),
+                        match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output) {
+                            Ok(_peer) => (),
                             Err(e) => {
                                 warn!(system.log(), "Failed to process connection from peer - create peer actor error"; "ip" => format!("{}", msg.address.ip()), "reason" => format!("{}", e));
                             }
