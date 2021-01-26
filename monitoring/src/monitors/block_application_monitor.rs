@@ -5,7 +5,7 @@ use std::time::Instant;
 
 use tezos_messages::Head;
 
-use crate::handlers::handler_messages::{BlockApplicationMessage, BlockInfo};
+use crate::websocket::handler_messages::{BlockApplicationMessage, BlockInfo};
 
 pub struct ApplicationMonitor {
     total_applied: usize,
