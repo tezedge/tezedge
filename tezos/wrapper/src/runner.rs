@@ -80,15 +80,20 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     fn new(
         configuration: ProtocolEndpointConfiguration,
         sock_cmd_path: &Path,
-        sock_evt_path: Option<PathBuf>,
         endpoint_name: String,
     ) -> Self {
+        let ProtocolEndpointConfiguration {
+            event_server_path,
+            executable_path,
+            log_level,
+            ..
+        } = configuration;
         ExecutableProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
-            sock_evt_path,
-            executable_path: configuration.executable_path().clone(),
+            sock_evt_path: event_server_path,
+            executable_path,
             endpoint_name,
-            log_level: configuration.log_level().clone(),
+            log_level,
         }
     }
 
@@ -144,7 +149,6 @@ pub trait ProtocolRunner: Clone + Send + Sync {
     fn new(
         configuration: ProtocolEndpointConfiguration,
         sock_cmd_path: &Path,
-        sock_evt_path: Option<PathBuf>,
         endpoint_name: String,
     ) -> Self;
 

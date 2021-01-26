@@ -3,17 +3,14 @@
 
 use std::cell::RefCell;
 use std::convert::AsRef;
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
-use std::thread::JoinHandle;
 use std::time::Duration;
 
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use slog::{crit, debug, info, warn, Logger};
+use slog::{debug, warn, Logger};
 use strum_macros::IntoStaticStr;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
@@ -347,7 +344,7 @@ pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
 /// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
 impl IpcEvtServer {
-    pub fn try_new() -> Result<Self, IpcError> {
+    pub fn try_bind_new() -> Result<Self, IpcError> {
         Ok(IpcEvtServer(IpcServer::bind_path(&temp_sock())?))
     }
 
@@ -358,6 +355,11 @@ impl IpcEvtServer {
     ) -> Result<IpcReceiver<ContextAction>, IpcError> {
         let (rx, _) = self.0.try_accept(timeout)?;
         Ok(rx)
+    }
+
+    /// Returns socket path
+    pub fn server_path(&self) -> PathBuf {
+        self.0.path.clone()
     }
 }
 
@@ -814,7 +816,6 @@ pub struct ProtocolRunnerEndpoint<Runner: ProtocolRunner> {
     log: Logger,
 
     pub commands: IpcCmdServer,
-    pub events: Option<IpcEvtServer>,
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
@@ -825,23 +826,13 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     ) -> Result<ProtocolRunnerEndpoint<Runner>, IpcError> {
         let cmd_server = IpcCmdServer::try_new(configuration.clone())?;
 
-        let (evt_server, evt_server_path) = if configuration.need_event_server {
-            let evt_server = IpcEvtServer::try_new()?;
-            let evt_server_path = evt_server.0.path.clone();
-            (Some(evt_server), Some(evt_server_path))
-        } else {
-            (None, None)
-        };
-
         Ok(ProtocolRunnerEndpoint {
             runner: Runner::new(
                 configuration,
                 cmd_server.0.client().path(),
-                evt_server_path,
                 endpoint_name.to_string(),
             ),
             commands: cmd_server,
-            events: evt_server,
             log,
         })
     }
@@ -850,45 +841,5 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     pub fn start(&self) -> Result<Runner::Subprocess, ProtocolRunnerError> {
         debug!(self.log, "Starting protocol runner process");
         self.runner.spawn()
-    }
-
-    /// Starts protocol runner sub-process and takes care of it automatically.
-    /// If sub-process failed, it is automatically spawned another sub-process.
-    /// Returns AtomicBool, if set to false, than terminates sub-process
-    pub fn start_in_restarting_mode(
-        &mut self,
-    ) -> Result<(Arc<AtomicBool>, JoinHandle<Runner::Subprocess>), ProtocolRunnerError> {
-        let run_restarting_feature = Arc::new(AtomicBool::new(true));
-        let watchdog_thread = {
-            let log = self.log.clone();
-            let run = run_restarting_feature.clone();
-            let runner = self.runner.clone();
-            let mut protocol_runner_process = self.start()?;
-            info!(log, "Protocol runner started successfully");
-
-            // watchdog thread, which checks if sub-process is running, if not, than starts new one
-            thread::spawn(move || {
-                while run.load(Ordering::Acquire) {
-                    if !Runner::is_running(&mut protocol_runner_process) {
-                        info!(log, "Restarting protocol runner process");
-                        protocol_runner_process = match runner.spawn() {
-                            Ok(process) => {
-                                info!(log, "Protocol runner restarted successfully");
-                                process
-                            }
-                            Err(e) => {
-                                crit!(log, "Failed to spawn protocol runner process"; "reason" => e);
-                                break;
-                            }
-                        };
-                    }
-                    thread::sleep(Duration::from_secs(1));
-                }
-                info!(log, "Protocol runner (watchdog) stopped restarting_mode");
-                protocol_runner_process
-            })
-        };
-
-        Ok((run_restarting_feature, watchdog_thread))
     }
 }

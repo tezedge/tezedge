@@ -28,8 +28,9 @@ use storage::{
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_wrapper::service::{
-    handle_protocol_service_error, IpcCmdServer, ProtocolController, ProtocolServiceError,
+    handle_protocol_service_error, ProtocolController, ProtocolServiceError,
 };
+use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{ChainManagerMsg, ChainManagerRef, ProcessValidatedBlock};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -99,9 +100,6 @@ pub struct ChainFeeder {
 pub type ChainFeederRef = ActorRef<ChainFeederMsg>;
 
 impl ChainFeeder {
-    // TODO: if needed, can go to cfg
-    const IPC_ACCEPT_TIMEOUT: Duration = Duration::from_secs(3);
-
     /// Create new actor instance.
     ///
     /// If the actor is successfully created then reference to the actor is returned.
@@ -113,74 +111,21 @@ impl ChainFeeder {
     pub fn actor(
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
-        persistent_storage: &PersistentStorage,
-        init_storage_data: &StorageInitInfo,
-        tezos_env: &TezosEnvironmentConfiguration,
-        ipc_server: IpcCmdServer,
+        persistent_storage: PersistentStorage,
+        tezos_writeable_api: Arc<TezosApiConnectionPool>,
+        init_storage_data: StorageInitInfo,
+        tezos_env: TezosEnvironmentConfiguration,
         log: Logger,
     ) -> Result<ChainFeederRef, CreateError> {
-        // spawn thread which processes event
-        let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
-        let block_applier_run = Arc::new(AtomicBool::new(true));
-        let block_applier_thread = {
-            let apply_block_run = block_applier_run.clone();
-            let shell_channel = shell_channel.clone();
-            let persistent_storage = persistent_storage.clone();
-            let init_storage_data = init_storage_data.clone();
-            let tezos_env = tezos_env.clone();
-
-            thread::spawn(move || -> Result<(), Error> {
-                let block_storage = BlockStorage::new(&persistent_storage);
-                let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-                let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
-                let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
-                let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                    block_storage.clone(),
-                    persistent_storage.merkle(),
-                ));
-                let mut ipc_server = ipc_server;
-
-                while apply_block_run.load(Ordering::Acquire) {
-                    match ipc_server.try_accept(Self::IPC_ACCEPT_TIMEOUT) {
-                        Ok(protocol_controller) => match feed_chain_to_protocol(
-                            &tezos_env,
-                            &init_storage_data,
-                            &apply_block_run,
-                            &shell_channel,
-                            &block_storage,
-                            &block_meta_storage,
-                            &chain_meta_storage,
-                            &operations_meta_storage,
-                            &context,
-                            protocol_controller,
-                            &mut block_applier_event_receiver,
-                            &log,
-                        ) {
-                            Ok(()) => debug!(log, "Feed chain to protocol finished"),
-                            Err(err) => {
-                                if apply_block_run.load(Ordering::Acquire) {
-                                    warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
-                                }
-                            }
-                        },
-                        Err(err) => {
-                            warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err))
-                        }
-                    }
-                }
-
-                info!(log, "Chain feeder thread finished");
-                Ok(())
-            })
-        };
-
         let myself = sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
             Props::new_args((
                 shell_channel,
-                block_applier_run,
-                Arc::new(Mutex::new(Some(block_applier_thread))),
-                Arc::new(Mutex::new(block_applier_event_sender)),
+                persistent_storage,
+                tezos_writeable_api,
+                init_storage_data.clone(),
+                tezos_env.clone(),
+                log,
             )),
         )?;
 
@@ -205,19 +150,45 @@ impl ChainFeeder {
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
-        Arc<AtomicBool>,
-        SharedJoinHandle,
-        Arc<Mutex<QueueSender<Event>>>,
+        PersistentStorage,
+        Arc<TezosApiConnectionPool>,
+        StorageInitInfo,
+        TezosEnvironmentConfiguration,
+        Logger,
     )> for ChainFeeder
 {
     fn create_args(
-        (shell_channel, block_applier_run, block_applier_thread, block_applier_event_sender): (
+        (
+            shell_channel,
+            persistent_storage,
+            tezos_writeable_api,
+            init_storage_data,
+            tezos_env,
+            log,
+        ): (
             ShellChannelRef,
-            Arc<AtomicBool>,
-            SharedJoinHandle,
-            Arc<Mutex<QueueSender<Event>>>,
+            PersistentStorage,
+            Arc<TezosApiConnectionPool>,
+            StorageInitInfo,
+            TezosEnvironmentConfiguration,
+            Logger,
         ),
     ) -> Self {
+        // spawn applier thread with internal queue
+        let (block_applier_event_sender, block_applier_run, block_applier_thread) =
+            spawn_feeder_thread(
+                &shell_channel,
+                &persistent_storage,
+                init_storage_data,
+                tezos_env,
+                tezos_writeable_api.clone(),
+                log,
+            );
+
+        let block_applier_run = block_applier_run;
+        let block_applier_thread = Arc::new(Mutex::new(Some(block_applier_thread)));
+        let block_applier_event_sender = Arc::new(Mutex::new(block_applier_event_sender));
+
         ChainFeeder {
             shell_channel,
             block_applier_event_sender,
@@ -313,6 +284,82 @@ impl From<ProtocolServiceError> for FeedChainError {
     }
 }
 
+// TODO: refactor and remove this inner thread somehow in future
+/// Spawns asynchronous thread, which process events from internal queue
+fn spawn_feeder_thread(
+    shell_channel: &ActorRef<ChannelMsg<ShellChannelMsg>>,
+    persistent_storage: &PersistentStorage,
+    init_storage_data: StorageInitInfo,
+    tezos_env: TezosEnvironmentConfiguration,
+    tezos_writeable_api: Arc<TezosApiConnectionPool>,
+    log: Logger,
+) -> (
+    QueueSender<Event>,
+    Arc<AtomicBool>,
+    JoinHandle<Result<(), Error>>,
+) {
+    // spawn thread which processes event
+    let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
+    let block_applier_run = Arc::new(AtomicBool::new(true));
+    let block_applier_thread = {
+        let apply_block_run = block_applier_run.clone();
+        let shell_channel = shell_channel.clone();
+        let persistent_storage = persistent_storage.clone();
+
+        thread::spawn(move || -> Result<(), Error> {
+            let block_storage = BlockStorage::new(&persistent_storage);
+            let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+            let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
+            let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+            let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
+                block_storage.clone(),
+                persistent_storage.merkle(),
+            ));
+
+            while apply_block_run.load(Ordering::Acquire) {
+                match tezos_writeable_api.pool.get() {
+                    Ok(mut protocol_controller) => match feed_chain_to_protocol(
+                        &tezos_env,
+                        &init_storage_data,
+                        &apply_block_run,
+                        &shell_channel,
+                        &block_storage,
+                        &block_meta_storage,
+                        &chain_meta_storage,
+                        &operations_meta_storage,
+                        &context,
+                        &protocol_controller.api,
+                        &mut block_applier_event_receiver,
+                        &log,
+                    ) {
+                        Ok(()) => {
+                            protocol_controller.set_release_on_return_to_pool();
+                            debug!(log, "Feed chain to protocol finished")
+                        }
+                        Err(err) => {
+                            protocol_controller.set_release_on_return_to_pool();
+                            if apply_block_run.load(Ordering::Acquire) {
+                                warn!(log, "Error while feeding chain to protocol"; "reason" => format!("{:?}", err));
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        warn!(log, "No connection from protocol runner"; "reason" => format!("{:?}", err))
+                    }
+                }
+            }
+
+            info!(log, "Chain feeder thread finished");
+            Ok(())
+        })
+    };
+    (
+        block_applier_event_sender,
+        block_applier_run,
+        block_applier_thread,
+    )
+}
+
 fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
@@ -323,7 +370,7 @@ fn feed_chain_to_protocol(
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
     context: &Box<dyn ContextApi>,
-    protocol_controller: ProtocolController,
+    protocol_controller: &ProtocolController,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), FeedChainError> {

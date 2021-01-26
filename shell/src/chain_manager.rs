@@ -1407,7 +1407,7 @@ impl ChainManager {
                     msg: ShellChannelMsg::NewCurrentHead(new_head, block.clone()),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 },
-                Some(ctx.myself().into()),
+                None,
             );
 
             // broadcast new head/branch to other peers
@@ -1620,12 +1620,19 @@ impl ChainManager {
         let operations = self.operations_storage.get_operations(block_hash)?;
 
         // get predecessor metadata
-        let (predecessor, predecessor_additional_data) = match self
+        let (
+            predecessor,
+            (
+                predecessor_block_metadata_hash,
+                predecessor_ops_metadata_hash,
+                predecessor_max_operations_ttl,
+            ),
+        ) = match self
             .block_storage
             .get_with_additional_data(&current_head.header.predecessor())?
         {
             Some((predecessor, predecessor_additional_data)) => {
-                (predecessor, predecessor_additional_data)
+                (predecessor, predecessor_additional_data.into())
             }
             None => return Err(StorageError::MissingKey),
         };
@@ -1635,11 +1642,9 @@ impl ChainManager {
             block_header: (&*current_head.header).clone(),
             pred_header: (&*predecessor.header).clone(),
             operations: ApplyBlockRequest::convert_operations(operations),
-            max_operations_ttl: predecessor_additional_data.max_operations_ttl() as i32,
-            predecessor_block_metadata_hash: predecessor_additional_data
-                .block_metadata_hash()
-                .clone(),
-            predecessor_ops_metadata_hash: predecessor_additional_data.ops_metadata_hash().clone(),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
         })
     }
 
@@ -2358,9 +2363,6 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
 pub mod tests {
     use std::net::SocketAddr;
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::mpsc::channel;
-    use std::sync::Mutex;
-    use std::thread;
 
     use slog::{Drain, Level, Logger};
 
@@ -2379,6 +2381,7 @@ pub mod tests {
     use crate::shell_channel::{ShellChannel, ShuttingDown};
 
     use super::*;
+    use storage::StorageInitInfo;
 
     fn create_logger(level: Level) -> Logger {
         let drain = slog_async::Async::new(
@@ -2492,7 +2495,7 @@ pub mod tests {
                 "__test_resolve_is_bootstrapped/context",
                 "--no-executable-needed-here--",
                 Level::Debug,
-                false,
+                None,
             ),
             log.clone(),
         ));
@@ -2500,16 +2503,19 @@ pub mod tests {
         // chain feeder mock
         let block_applier_run = Arc::new(AtomicBool::new(true));
         let block_applier = {
-            let block_applier_thread = thread::spawn(move || -> Result<(), Error> { Ok(()) });
-            let (block_applier_event_sender, _) = channel();
-
             actor_system.actor_of_props::<ChainFeeder>(
                 "chain-feeder-mock",
                 Props::new_args((
                     shell_channel.clone(),
-                    block_applier_run.clone(),
-                    Arc::new(Mutex::new(Some(block_applier_thread))),
-                    Arc::new(Mutex::new(block_applier_event_sender)),
+                    storage.storage().clone(),
+                    pool.clone(),
+                    StorageInitInfo {
+                        chain_id: chain_id.clone(),
+                        genesis_block_header_hash: tezos_env.genesis_header_hash()?,
+                        patch_context: None,
+                    },
+                    tezos_env.clone(),
+                    log.clone(),
                 )),
             )?
         };
