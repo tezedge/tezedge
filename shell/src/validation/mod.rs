@@ -11,7 +11,7 @@ use std::time::Duration;
 use chrono::TimeZone;
 use failure::Fail;
 
-use crypto::hash::{ChainId, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, HashType, OperationHash, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
@@ -25,6 +25,7 @@ use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::validation::fitness_comparator::FitnessWrapper;
+use storage::block_meta_storage::Meta;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
 pub fn can_update_current_head(
@@ -128,6 +129,43 @@ pub fn can_accept_operation_from_p2p(
 
     // any just false
     false
+}
+
+/// Returns true, if [block] can be applied
+pub fn can_apply_block<'b, OP, PA>(
+    (block, block_metadata): (&'b BlockHash, &'b Meta),
+    operations_complete: OP,
+    predecessor_applied: PA,
+) -> Result<bool, StorageError>
+where
+    OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
+    PA: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if predecessor is applied */
+{
+    let block_predecessor = block_metadata.predecessor();
+
+    // check if block is already applied, dont need to apply second time
+    if block_metadata.is_applied() {
+        return Ok(false);
+    }
+
+    // we need to have predecessor (every block has)
+    if block_predecessor.is_none() {
+        return Ok(false);
+    }
+
+    // if operations are not complete, we cannot apply block
+    if !operations_complete(block)? {
+        return Ok(false);
+    }
+
+    // check if predecesor is applied
+    if let Some(predecessor) = block_predecessor {
+        if predecessor_applied(predecessor)? {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
 }
 
 /// Error produced by a [prevalidate_operation].

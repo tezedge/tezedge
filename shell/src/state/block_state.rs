@@ -271,42 +271,6 @@ impl BlockchainState {
         }
     }
 
-    /// Returns true, if [block] can be applied
-    pub fn can_apply_block<'b, OP>(
-        &self,
-        (block, block_metadata): (&'b BlockHash, &'b Meta),
-        operations_complete: OP,
-    ) -> Result<bool, StorageError>
-    where
-        OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
-    {
-        let block_predecessor = block_metadata.predecessor();
-
-        // check if block is already applied, dont need to apply second time
-        if block_metadata.is_applied() {
-            return Ok(false);
-        }
-
-        // we need to have predecessor (every block has)
-        if block_predecessor.is_none() {
-            return Ok(false);
-        }
-
-        // if operations are not complete, we cannot apply block
-        if !operations_complete(block)? {
-            return Ok(false);
-        }
-
-        // check if predecesor is applied
-        if let Some(predecessor) = block_predecessor {
-            if let Some(predecessor_meta) = self.block_meta_storage.get(predecessor)? {
-                return Ok(predecessor_meta.is_applied());
-            }
-        }
-
-        Ok(false)
-    }
-
     /// Resolves missing blocks and schedules them for download from network
     pub fn schedule_branch_bootstrap(
         &mut self,
