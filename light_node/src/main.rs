@@ -340,7 +340,7 @@ fn block_on_actors(
     )
     .expect("Failed to create peer manager");
     let websocket_handler =
-        WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
+        WebsocketHandler::actor(&actor_system, tokio_runtime.handle().clone(), env.rpc.websocket_address, log.clone())
             .expect("Failed to start websocket actor");
     let _ = Monitor::actor(
         &actor_system,

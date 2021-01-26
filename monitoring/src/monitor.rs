@@ -14,9 +14,9 @@ use shell::subscription::{
 };
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
-use crate::handlers::handler_messages::HandlerMessage;
+use crate::websocket::handler_messages::HandlerMessage;
 use crate::{
-    handlers::handler_messages::PeerConnectionStatus, handlers::WebsocketHandlerMsg, monitors::*,
+    monitors::*, websocket::handler_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
 };
 
 #[derive(Clone, Debug)]
