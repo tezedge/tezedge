@@ -1,4 +1,3 @@
-use crate::persistent::KeyValueStoreWithSchema;
 use crate::storage_backend::{Batch, StorageBackend, StorageBackendError};
 use rocksdb::{WriteBatch, WriteOptions, DB};
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,5 @@
 use crate::storage_backend::{Batch, StorageBackend, StorageBackendError};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 pub struct InMemoryBackend {
@@ -69,7 +69,7 @@ impl StorageBackend for InMemoryBackend {
 
     fn get(&self, key: &Vec<u8>) -> Result<Option<Vec<u8>>, StorageBackendError> {
         let db = self.inner.clone();
-        let mut r = db
+        let r = db
             .read()
             .map(|r| r)
             .map_err(|e| StorageBackendError::GuardPoison {

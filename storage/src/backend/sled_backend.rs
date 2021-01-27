@@ -1,5 +1,4 @@
 use crate::storage_backend::{Batch, StorageBackend, StorageBackendError};
-use sled::IVec;
 
 pub struct SledBackend {
     inner: sled::Tree,
