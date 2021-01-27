@@ -1420,6 +1420,20 @@ mod tests {
         MerkleStorage::new(Arc::new(SledBackend::new(db)))
     }
 
+    fn get_storage() -> MerkleStorage {
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled = sled::Config::new().temporary(true).open().unwrap();
+        let backend = get_backend_env();
+        let storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {
+                panic!()
+            }
+        };
+        storage
+    }
+
     #[test]
     fn test_duplicate_entry_in_staging() {
         let db = Arc::new(RwLock::new(HashMap::new()));
@@ -1871,16 +1885,7 @@ mod tests {
 
     #[test]
     fn test_mem() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let mut storage = get_storage();
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
@@ -1900,16 +1905,7 @@ mod tests {
 
     #[test]
     fn test_dirmem() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let mut storage = get_storage();
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
@@ -1930,17 +1926,7 @@ mod tests {
 
     #[test]
     fn test_copy() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
-
+        let mut storage = get_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -1956,16 +1942,7 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let mut storage = get_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -1978,16 +1955,7 @@ mod tests {
 
     #[test]
     fn test_deleted_entry_available() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let mut storage = get_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1999,16 +1967,7 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let mut storage = get_storage();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -2124,10 +2083,7 @@ mod tests {
     // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
-        let backend = get_backend_env();
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-
+        let mut storage = get_storage();
         let all_json = serde_json::json!(
             {
                 "adata": {
@@ -2167,14 +2123,6 @@ mod tests {
                 "c":"0102"
             }
         );
-
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db.clone()),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
