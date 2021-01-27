@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use failure::Error;
 
-use crypto::hash::HashType;
 use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_context::channel::ContextAction;
@@ -13,9 +14,9 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_block_hash")?;
 
     let str_block_hash_1 = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash_1 = HashType::BlockHash.b58check_to_hash(str_block_hash_1)?;
+    let block_hash_1 = str_block_hash_1.try_into()?;
     let str_block_hash_2 = "BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ";
-    let block_hash_2 = HashType::BlockHash.b58check_to_hash(str_block_hash_2)?;
+    let block_hash_2 = str_block_hash_2.try_into()?;
     let value_1_0 = ContextAction::Set {
         key: vec![
             "hello".to_string(),
@@ -118,7 +119,7 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_contract_address")?;
 
     let str_block_hash = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash = HashType::BlockHash.b58check_to_hash(str_block_hash)?;
+    let block_hash = str_block_hash.try_into()?;
     let value = ContextAction::Set {
         key: vec![
             "data".to_string(),

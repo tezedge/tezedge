@@ -3,6 +3,8 @@
 
 use std::sync::Arc;
 
+use std::convert::TryFrom;
+
 use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
@@ -221,9 +223,9 @@ impl MetaKey {
 
 impl Encoder for MetaKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        if self.chain_id.len() == Self::LEN_CHAIN_ID {
+        if self.chain_id.as_ref().len() == Self::LEN_CHAIN_ID {
             let mut bytes = Vec::with_capacity(Self::LEN_CHAIN_ID);
-            bytes.extend(&self.chain_id);
+            bytes.extend(self.chain_id.as_ref());
             bytes.extend(self.key.encode()?);
             Ok(bytes)
         } else {
@@ -235,7 +237,7 @@ impl Encoder for MetaKey {
 impl Decoder for MetaKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if bytes.len() > Self::LEN_CHAIN_ID {
-            let chain_id = bytes[Self::IDX_CHAIN_ID..Self::IDX_KEY].to_vec();
+            let chain_id = ChainId::try_from(&bytes[Self::IDX_CHAIN_ID..Self::IDX_KEY])?;
             let key = String::decode(&bytes[Self::IDX_KEY..])?;
             Ok(MetaKey { chain_id, key })
         } else {
@@ -256,9 +258,9 @@ impl BincodeEncoded for Head {}
 
 #[cfg(test)]
 mod tests {
-    use failure::Error;
+    use std::convert::TryInto;
 
-    use crypto::hash::HashType;
+    use failure::Error;
 
     use crate::tests_common::TmpStorage;
 
@@ -269,18 +271,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_current_head")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
         let block_1 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
+        let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
             vec![],
         );
@@ -332,18 +332,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_caboose")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
         let block_1 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
+        let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
             vec![],
         );
@@ -395,18 +393,16 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_genesis")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
         let block_1 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
             1,
             vec![],
         );
 
-        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
+        let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
         let block_2 = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7")?,
+            "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7".try_into()?,
             2,
             vec![],
         );
@@ -458,9 +454,9 @@ mod tests {
         let tmp_storage = TmpStorage::create("__test_test_chain_id")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
-        let chain_id1 = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
-        let chain_id2 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
-        let chain_id3 = HashType::ChainId.b58check_to_hash("NetXjD3HPJJjmcd")?;
+        let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
+        let chain_id2 = "NetXjD3HPJJjmcd".try_into()?;
+        let chain_id3 = "NetXjD3HPJJjmcd".try_into()?;
 
         assert!(index.get_test_chain_id(&chain_id1)?.is_none());
         assert!(index.get_test_chain_id(&chain_id2)?.is_none());

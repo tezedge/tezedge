@@ -5,12 +5,12 @@ use std::env;
 
 use serial_test::serial;
 
-use crypto::hash::{HashType, ProtocolHash};
+use crypto::hash::ProtocolHash;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_client::client;
 
 fn protocol(hash: &str) -> ProtocolHash {
-    HashType::ProtocolHash.b58check_to_hash(hash).unwrap()
+    ProtocolHash::from_base58_check(hash).unwrap()
 }
 
 fn data(data_as_hex: &str) -> Vec<u8> {

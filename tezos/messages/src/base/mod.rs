@@ -5,6 +5,7 @@ use failure::Fail;
 use hex::FromHexError;
 
 use crypto::base58::FromBase58CheckError;
+use crypto::hash::FromBytesError;
 
 pub mod rpc_support;
 pub mod signature_public_key;
@@ -32,6 +33,14 @@ impl From<hex::FromHexError> for ConversionError {
 
 impl From<FromBase58CheckError> for ConversionError {
     fn from(error: FromBase58CheckError) -> Self {
+        ConversionError::InvalidHash {
+            hash: error.to_string(),
+        }
+    }
+}
+
+impl From<FromBytesError> for ConversionError {
+    fn from(error: FromBytesError) -> Self {
         ConversionError::InvalidHash {
             hash: error.to_string(),
         }

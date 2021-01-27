@@ -3,6 +3,7 @@
 
 use std::time::SystemTime;
 
+use crypto::hash::OperationHash;
 use failure::Error;
 
 use storage::mempool_storage::MempoolOperationType;
@@ -18,7 +19,7 @@ fn mempool_storage_read_write() -> Result<(), Error> {
     let mut storage = MempoolStorage::new(tmp_storage.storage());
 
     let operation = make_test_operation_message()?;
-    let operation_hash = operation.message_hash()?.clone();
+    let operation_hash = operation.message_typed_hash::<OperationHash>()?;
     let ttl = SystemTime::now();
 
     storage.put_known_valid(operation.clone(), ttl)?;

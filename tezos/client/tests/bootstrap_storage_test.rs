@@ -634,7 +634,9 @@ fn assert_contains(value: &str, attribute: &str) {
 }
 
 mod test_data {
-    use crypto::hash::{ContextHash, HashType};
+    use std::convert::TryFrom;
+
+    use crypto::hash::{BlockHash, ContextHash};
     use tezos_api::environment::TezosEnvironment;
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
@@ -642,7 +644,7 @@ mod test_data {
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash.b58check_to_hash(hash).unwrap()
+        ContextHash::from_base58_check(hash).unwrap()
     }
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
@@ -691,7 +693,7 @@ mod test_data {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                    OperationsForBlock::new(BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(), 4),
                     Path::Op,
                     ops,
                 )

@@ -322,6 +322,8 @@ where
 pub enum MessageHashError {
     #[fail(display = "Message serialization error")]
     SerializationError { error: ser::Error },
+    #[fail(display = "Error constructing hash")]
+    FromBytesError { error: crypto::hash::FromBytesError },
 }
 
 impl From<ser::Error> for MessageHashError {
@@ -330,9 +332,16 @@ impl From<ser::Error> for MessageHashError {
     }
 }
 
+impl From<crypto::hash::FromBytesError> for MessageHashError {
+    fn from(error: crypto::hash::FromBytesError) -> Self {
+        MessageHashError::FromBytesError{error}
+    }
+}
+
 /// Trait for getting hash of the message.
 pub trait MessageHash {
     fn message_hash(&self) -> Result<Hash, MessageHashError>;
+    fn message_typed_hash<H>(&self) -> Result<H, MessageHashError> where H: crypto::hash::HashTrait;
 }
 
 impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
@@ -340,6 +349,15 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
         Ok(blake2b::digest_256(&bytes))
+    }
+
+    #[inline]
+    fn message_typed_hash<H>(&self) -> Result<H, MessageHashError>
+    where H: crypto::hash::HashTrait
+    {
+        let bytes = self.as_bytes()?;
+        let digest = blake2b::digest_256(&bytes);
+        H::try_from_bytes(&digest).map_err(|e| e.into())
     }
 }
 

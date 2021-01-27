@@ -35,9 +35,9 @@ pub struct Step {
 impl Step {
     pub fn init(seed: &Seed, block_hash: &BlockHash) -> Step {
         let mut hash_state = sha256::State::new();
-        hash_state.update(&seed.sender_id);
-        hash_state.update(&seed.receiver_id);
-        hash_state.update(&block_hash);
+        hash_state.update(seed.sender_id.as_ref());
+        hash_state.update(seed.receiver_id.as_ref());
+        hash_state.update(block_hash.as_ref());
         let Digest(h) = hash_state.finalize();
         Step {
             step: 1,
@@ -90,6 +90,8 @@ impl Step {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::{TryFrom, TryInto};
+
     use crate::hash::{CryptoboxPublicKeyHash, HashType};
     use crate::seeded_step::{Seed, Step};
 
@@ -97,8 +99,7 @@ mod tests {
     pub fn test_step_init() -> Result<(), failure::Error> {
         let step = Step::init(
             &Seed::new(&generate_key_string('s'), &generate_key_string('r')),
-            &HashType::BlockHash
-                .b58check_to_hash("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
+            &"BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm".try_into()?,
         );
         assert_step_state(
             &step,
@@ -114,8 +115,7 @@ mod tests {
     pub fn test_step_next() -> Result<(), failure::Error> {
         let mut step = Step::init(
             &Seed::new(&generate_key_string('s'), &generate_key_string('r')),
-            &HashType::BlockHash
-                .b58check_to_hash("BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm")?,
+            &"BLrJE6yTjLLuEYgyqLxDBduEuA5S1uCkiq499tCK81TLoqTbNmm".try_into()?,
         );
         assert_step_state(
             &step,
@@ -431,9 +431,9 @@ mod tests {
     }
 
     fn generate_key_string(c: char) -> CryptoboxPublicKeyHash {
-        std::iter::repeat(c)
+        CryptoboxPublicKeyHash::try_from(std::iter::repeat(c)
             .take(HashType::CryptoboxPublicKeyHash.size())
             .collect::<String>()
-            .into_bytes()
+            .into_bytes()).unwrap()
     }
 }

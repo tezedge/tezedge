@@ -16,7 +16,7 @@ use tokio::runtime::Handle;
 use tokio::time::timeout;
 
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
-use crypto::hash::{CryptoboxPublicKeyHash, HashType};
+use crypto::hash::CryptoboxPublicKeyHash;
 use crypto::nonce::{self, Nonce, NoncePair};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_identity::Identity;
@@ -393,7 +393,7 @@ pub async fn bootstrap(
 
     // generate public key hash for PublicKey, which will be used as a peer_id
     let peer_public_key_hash = peer_public_key.public_key_hash();
-    let peer_id_marker = HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
+    let peer_id_marker = peer_public_key_hash.to_base58_check();
     let log = log.new(o!("peer_id" => peer_id_marker.clone()));
 
     // from now on all messages will be encrypted

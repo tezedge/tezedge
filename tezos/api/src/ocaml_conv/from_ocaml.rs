@@ -1,21 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use super::{
-    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash,
-    OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
-    OCamlProtocolHash,
-};
+use super::{FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash, OCamlProtocolHash};
 use crate::ffi::{
     Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
     HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
     ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationHash, OperationMetadataHash,
-    OperationMetadataListListHash, ProtocolHash,
-};
+use crypto::hash::{BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash};
 use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
     OCamlInt32, OCamlList, ToRust,
@@ -32,22 +25,37 @@ macro_rules! from_ocaml_hash {
     };
 }
 
+macro_rules! from_ocaml_typed_hash {
+    ($ocaml_name:ident, $rust_name:ident) => {
+        unsafe impl FromOCaml<$ocaml_name> for $rust_name {
+            fn from_ocaml(v: OCaml<$ocaml_name>) -> Self {
+                unsafe {
+                    let vec: Vec<u8> = v.field::<OCamlBytes>(0).to_rust();
+                    use std::convert::TryFrom;
+                    $rust_name::try_from(vec).unwrap()
+                }
+            }
+        }
+    };
+}
+
 from_ocaml_hash!(OCamlHash, Hash);
-from_ocaml_hash!(OCamlOperationHash, OperationHash);
-from_ocaml_hash!(OCamlBlockHash, BlockHash);
-from_ocaml_hash!(OCamlContextHash, ContextHash);
-from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
-from_ocaml_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
-from_ocaml_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
-from_ocaml_hash!(
+from_ocaml_typed_hash!(OCamlOperationHash, OperationHash);
+from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);
+from_ocaml_typed_hash!(OCamlContextHash, ContextHash);
+from_ocaml_typed_hash!(OCamlProtocolHash, ProtocolHash);
+from_ocaml_typed_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+from_ocaml_typed_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
+from_ocaml_typed_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
+from_ocaml_typed_hash!(OCamlChainId, ChainId);
 
 impl_from_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlBytes,
+        test_chain_id: OCamlChainId,
     }
 }
 
@@ -76,7 +84,7 @@ impl_from_ocaml_record! {
 
 impl_from_ocaml_record! {
     PrevalidatorWrapper {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>
     }

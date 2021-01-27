@@ -21,7 +21,7 @@ use failure::{format_err, Error, Fail};
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ChainId, HashType, OperationHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
@@ -309,7 +309,7 @@ fn process_prevalidation(
             match event {
                 Event::NewHead(header_hash, header) => {
                     debug!(log, "Mempool - new head received, so begin construction a new context";
-                                "received_block_hash" => HashType::BlockHash.hash_to_b58check(&header_hash));
+                                "received_block_hash" => header_hash.to_base58_check());
 
                     // try to begin construction new context
                     let (prevalidator, head) =
@@ -325,7 +325,7 @@ fn process_prevalidation(
                         .iter()
                         .for_each(|oph| {
                             if let Err(err) = mempool_storage.delete(&oph) {
-                                warn!(log, "Mempool - delete operation failed"; "hash" => HashType::OperationHash.hash_to_b58check(&oph), "error" => format!("{:?}", err))
+                                warn!(log, "Mempool - delete operation failed"; "hash" => oph.to_base58_check(), "error" => format!("{:?}", err))
                             }
                         });
                 }
@@ -342,11 +342,11 @@ fn process_prevalidation(
                             .write()?
                             .add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
-                            trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
+                            trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || {
-                                    Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", HashType::OperationHash.hash_to_b58check(&oph)))
+                                    Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check()))
                                 },
                                 true,
                             ) {
@@ -360,11 +360,11 @@ fn process_prevalidation(
                             }
                         }
                     } else {
-                        debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => HashType::OperationHash.hash_to_b58check(&oph));
+                        debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
                         if let Err(e) = dispatch_condvar_result(
                             result_callback,
                             || {
-                                Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", HashType::OperationHash.hash_to_b58check(&oph)))
+                                Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check()))
                             },
                             true,
                         ) {
@@ -451,7 +451,7 @@ fn begin_construction(
         Err(pse) => {
             handle_protocol_service_error(
                 pse,
-                |e| warn!(log, "Mempool - failed to begin construction"; "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash), "error" => format!("{:?}", e)),
+                |e| warn!(log, "Mempool - failed to begin construction"; "block_hash" => block_hash.to_base58_check(), "error" => format!("{:?}", e)),
             )?;
             (None, None)
         }
@@ -489,7 +489,7 @@ fn handle_pending_operations(
         // handle validation
         match operations.get(&pending_op) {
             Some(operation) => {
-                trace!(log, "Mempool - lets validate "; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op));
+                trace!(log, "Mempool - lets validate "; "hash" => pending_op.to_base58_check());
 
                 // lets validate throught protocol
                 match api.validate_operation(ValidateOperationRequest {
@@ -497,7 +497,7 @@ fn handle_pending_operations(
                     operation: operation.clone(),
                 }) {
                     Ok(response) => {
-                        debug!(log, "Mempool - validate operation response finished with success"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "result" => format!("{:?}", response.result));
+                        debug!(log, "Mempool - validate operation response finished with success"; "hash" => pending_op.to_base58_check(), "result" => format!("{:?}", response.result));
 
                         // merge new result with existing one
                         let _ = validation_result.merge(response.result);
@@ -508,7 +508,7 @@ fn handle_pending_operations(
                     Err(pse) => {
                         handle_protocol_service_error(
                             pse,
-                            |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op), "error" => format!("{:?}", e)),
+                            |e| warn!(log, "Mempool - failed to validate operation message"; "hash" => pending_op.to_base58_check(), "error" => format!("{:?}", e)),
                         )?
 
                         // TODO: create custom error and add to refused or just revalidate (retry algorithm?)
@@ -516,7 +516,7 @@ fn handle_pending_operations(
                 }
             }
             None => {
-                warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => HashType::OperationHash.hash_to_b58check(&pending_op))
+                warn!(log, "Mempool - missing operation in mempool state (should not happen)"; "hash" => pending_op.to_base58_check())
             }
         }
     }

@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
+use std::{collections::HashSet, convert::TryFrom};
 
 use enum_iterator::IntoEnumIterator;
 
-use crypto::hash::{ContextHash, HashType, ProtocolHash};
+use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
 use tezos_client::client;
@@ -115,8 +115,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
             if let Some(commit_hash) = &init_info.genesis_commit_hash {
                 assert_eq!(
                     *commit_hash,
-                    HashType::ContextHash
-                        .b58check_to_hash("CoVBYdAGWBoDTkiVXJEGX6FQvDN1oGCPJu8STMvaTYdeh7N3KGTz")?
+                    ContextHash::try_from("CoVBYdAGWBoDTkiVXJEGX6FQvDN1oGCPJu8STMvaTYdeh7N3KGTz")?
                 )
             } else {
                 panic!("Expected some context hash")
@@ -163,8 +162,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
             if let Some(commit_hash) = &init_info.genesis_commit_hash {
                 assert_eq!(
                     *commit_hash,
-                    HashType::ContextHash
-                        .b58check_to_hash("CoVewPVcrKctWXSbrRgoGD6NmkdbDhmTFk5oi1FZpEcRT3bmKxdQ")?
+                    ContextHash::try_from("CoVewPVcrKctWXSbrRgoGD6NmkdbDhmTFk5oi1FZpEcRT3bmKxdQ")?
                 )
             } else {
                 panic!("Expected some context hash")

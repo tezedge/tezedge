@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use failure::Error;
 
 use crypto::hash::HashType;
@@ -61,7 +63,7 @@ fn block_storage_assign_context() -> Result<(), Error> {
     let storage = BlockStorage::new(tmp_storage.storage());
 
     let block_header = make_test_block_header()?;
-    let context_hash = vec![1; HashType::ContextHash.size()];
+    let context_hash = vec![1; HashType::ContextHash.size()].try_into()?;
 
     storage.put_block_header(&block_header)?;
     storage.assign_to_context(&block_header.hash, &context_hash)?;

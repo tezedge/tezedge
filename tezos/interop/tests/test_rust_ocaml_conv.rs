@@ -3,6 +3,9 @@
 #![feature(test)]
 extern crate test;
 
+use std::convert::TryFrom;
+
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, OCaml, ToOCaml, ToRust};
 use serial_test::serial;
 
@@ -36,12 +39,7 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
 
-    use tezos_api::{
-        ffi::ApplyBlockRequest, ffi::BeginConstructionRequest, ffi::PrevalidatorWrapper,
-        ffi::ProtocolRpcRequest, ffi::RpcMethod, ffi::RpcRequest, ffi::ValidateOperationRequest,
-        ocaml_conv::OCamlBlockHash, ocaml_conv::OCamlContextHash, ocaml_conv::OCamlOperationHash,
-        ocaml_conv::OCamlProtocolHash,
-    };
+    use tezos_api::{ffi::ApplyBlockRequest, ffi::BeginConstructionRequest, ffi::PrevalidatorWrapper, ffi::ProtocolRpcRequest, ffi::RpcMethod, ffi::RpcRequest, ffi::ValidateOperationRequest, ocaml_conv::OCamlBlockHash, ocaml_conv::OCamlContextHash, ocaml_conv::OCamlOperationHash, ocaml_conv::OCamlOperationListListHash, ocaml_conv::{OCamlChainId, OCamlProtocolHash}};
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
     ocaml! {
@@ -55,14 +53,14 @@ mod tezos_ffi {
                 /* timestamp: */ OCamlInt64,
             ),
             predecessor:  OCamlBlockHash,
-            operations_hash: OCamlOperationHash,
+            operations_hash: OCamlOperationListListHash,
             fitness: OCamlList<OCamlBytes>,
             context: OCamlContextHash,
             protocol_data: OCamlBytes,
         ) -> bool;
         pub fn construct_and_compare_apply_block_request(
             apply_block_request: ApplyBlockRequest,
-            chain_id: OCamlBytes,
+            chain_id: OCamlChainId,
             block_header: BlockHeader,
             pred_header: BlockHeader,
             max_operations_ttl: OCamlInt,
@@ -70,7 +68,7 @@ mod tezos_ffi {
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
             begin_construction_request: BeginConstructionRequest,
-            chain_id: OCamlBytes,
+            chain_id: OCamlChainId,
             predecessor: BlockHeader,
             protocol_data: Option<OCamlBytes>,
         ) -> bool;
@@ -90,7 +88,7 @@ mod tezos_ffi {
         pub fn construct_and_compare_protocol_rpc_request(
             protocol_rpc_request: ProtocolRpcRequest,
             block_header: BlockHeader,
-            chain_id: OCamlBytes,
+            chain_id: OCamlChainId,
             chain_arg: OCamlBytes,
             request: RpcRequest,
         ) -> bool;
@@ -101,7 +99,7 @@ mod tezos_ffi {
         ) -> bool;
         pub fn construct_and_compare_prevalidator_wrapper(
             prevalidator_wrapper: PrevalidatorWrapper,
-            chain_id: OCamlBytes,
+            chain_id: OCamlChainId,
             protocol: OCamlProtocolHash,
             context_fitness: Option<OCamlList<OCamlBytes>>,
         ) -> bool;
@@ -120,7 +118,7 @@ fn block_operations_from_hex(
                 .map(|op| Operation::from_bytes(op).unwrap())
                 .collect();
             OperationsForBlocksMessage::new(
-                OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                OperationsForBlock::new(BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(), 4),
                 Path::Op,
                 ops,
             )
@@ -217,7 +215,7 @@ fn test_block_header_conv() {
 #[serial]
 fn test_apply_block_request_conv() {
     let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
-        .chain_id(hex::decode(CHAIN_ID).unwrap())
+        .chain_id(ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap())
         .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
         .max_operations_ttl(MAX_OPERATIONS_TTL)
@@ -282,7 +280,7 @@ fn test_apply_block_request_conv() {
 #[serial]
 fn test_begin_construction_request_conv() {
     let begin_construction_request = BeginConstructionRequest {
-        chain_id: hex::decode(CHAIN_ID).unwrap(),
+        chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         predecessor: BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap(),
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
     };
@@ -321,8 +319,8 @@ fn test_begin_construction_request_conv() {
 #[serial]
 fn test_validate_operation_request_conv() {
     let prevalidator = PrevalidatorWrapper {
-        chain_id: hex::decode(CHAIN_ID).unwrap(),
-        protocol: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        chain_id: ChainId::try_from( hex::decode(CHAIN_ID).unwrap()).unwrap(),
+        protocol: ProtocolHash::try_from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap(),
         context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
     let operations = ApplyBlockRequest::convert_operations(block_operations_from_hex(
@@ -421,7 +419,7 @@ fn test_validate_protocol_rpc_request_conv() {
     let protocol_rpc_request = ProtocolRpcRequest {
         block_header: BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap(),
         chain_arg: "some chain arg".to_owned(),
-        chain_id: hex::decode(CHAIN_ID).unwrap(),
+        chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         request: rpc_request,
     };
     let result: bool = runtime::execute(move || {
@@ -494,8 +492,8 @@ fn test_validate_operation_conv() {
 #[serial]
 fn test_validate_prevalidator_wrapper_conv() {
     let prevalidator_wrapper = PrevalidatorWrapper {
-        chain_id: hex::decode(CHAIN_ID).unwrap(),
-        protocol: vec![1, 2, 3, 4, 5, 6, 7, 8, 9],
+        chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
+        protocol: ProtocolHash::try_from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap(),
         context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
 

@@ -8,7 +8,7 @@ use chrono::prelude::*;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::BlockHash;
 
 use crate::p2p::encoding::block_header::{display_fitness, Fitness, Level};
 
@@ -49,7 +49,7 @@ impl Head {
 
     pub fn to_debug_info(&self) -> (String, Level, String) {
         (
-            HashType::BlockHash.hash_to_b58check(&self.block_hash),
+            self.block_hash.to_base58_check(),
             self.level,
             display_fitness(&self.fitness),
         )

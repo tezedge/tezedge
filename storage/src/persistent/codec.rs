@@ -7,7 +7,7 @@ use std::ops::Range;
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::Hash;
+use crypto::hash::*;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -16,6 +16,12 @@ pub enum SchemaError {
     EncodeError,
     #[fail(display = "Failed to decode value")]
     DecodeError,
+}
+
+impl From<crypto::hash::FromBytesError> for SchemaError {
+    fn from(_: crypto::hash::FromBytesError) -> Self {
+        SchemaError::DecodeError
+    }
 }
 
 /// Encode input value to binary format.
@@ -46,6 +52,41 @@ impl Decoder for Hash {
         Ok(bytes.to_vec())
     }
 }
+
+macro_rules! hash_codec {
+	($hash:ident) => {
+		impl Encoder for $hash{
+            fn encode(&self)-> Result<Vec<u8>, SchemaError> {
+                Ok(self.as_ref().clone())
+            }
+        }
+        impl Decoder for $hash  {
+            fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+                use std::convert::TryFrom;
+                Self::try_from(bytes).map_err(|_| SchemaError::DecodeError)
+            }
+        }
+
+	};
+}
+
+hash_codec!(ChainId);
+hash_codec!(BlockHash);
+hash_codec!(BlockMetadataHash);
+hash_codec!(OperationHash);
+hash_codec!(OperationListListHash);
+hash_codec!(OperationMetadataHash);
+hash_codec!(OperationMetadataListListHash);
+hash_codec!(ContextHash);
+hash_codec!(ProtocolHash);
+hash_codec!(ContractKt1Hash);
+hash_codec!(ContractTz1Hash);
+hash_codec!(ContractTz2Hash);
+hash_codec!(ContractTz3Hash);
+hash_codec!(CryptoboxPublicKeyHash);
+hash_codec!(PublicKeyEd25519);
+hash_codec!(PublicKeySecp256k1);
+hash_codec!(PublicKeyP256);
 
 impl Encoder for String {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {

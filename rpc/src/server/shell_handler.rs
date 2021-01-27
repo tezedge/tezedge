@@ -9,7 +9,7 @@ use hyper::body::Buf;
 use hyper::{Body, Method, Request};
 use serde::Serialize;
 
-use crypto::hash::{chain_id_to_b58_string, HashType};
+use crypto::hash::{ProtocolHash, chain_id_to_b58_string};
 use tezos_api::ffi::ProtocolRpcError;
 use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
@@ -97,7 +97,7 @@ pub async fn head_chain(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let protocol = if let Some(protocol) = query.get_str("next_protocol") {
-        HashType::ProtocolHash.b58check_to_hash(protocol).ok()
+        ProtocolHash::from_base58_check(protocol).ok()
     } else {
         None
     };
@@ -370,7 +370,7 @@ pub async fn get_block_hash(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        Ok(HashType::BlockHash.hash_to_b58check(&block_hash)),
+        Ok(block_hash.to_base58_check()),
         env.log(),
     )
 }

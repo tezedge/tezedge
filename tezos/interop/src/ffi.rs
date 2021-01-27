@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{convert::TryFrom, sync::atomic::{AtomicBool, Ordering}};
 use std::sync::Once;
 
+use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{
     ocaml_call, ocaml_frame, to_ocaml, FromOCaml, OCaml, OCamlFn1, ToOCaml, ToRust,
 };
@@ -174,7 +175,8 @@ pub fn init_protocol_context(
                             Vec<RustBytes>,
                             Option<RustBytes>,
                         ) = result.to_rust();
-
+                        let supported_protocol_hashes = supported_protocol_hashes.into_iter().map(|h| ProtocolHash::try_from(h)).collect::<Result<_, _>>()?;
+                        let genesis_commit_hash = genesis_commit_hash.map(|bytes| ContextHash::try_from(bytes.to_vec())).map_or(Ok(None), |r| r.map(Some))?;
                         Ok(InitProtocolContextResult {
                             supported_protocol_hashes,
                             genesis_commit_hash,
@@ -309,7 +311,7 @@ pub fn compute_path(
 ) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request.operations);
+            let ocaml_request = to_ocaml!(gc, request.operations.iter().map(|hs| hs.iter().map(|h| h.as_ref().to_vec()).collect::<Vec<_>>()).collect::<Vec<_>>());
             let result = ocaml_call!(tezos_ffi::compute_path(gc, ocaml_request));
             match result {
                 Ok(response) => {
@@ -363,6 +365,7 @@ pub fn assert_encoding_for_protocol_data(
 ) -> Result<Result<(), ProtocolDataError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc(protocol_hash_ref), {
+            let protocol_hash = ProtocolHash::try_from(protocol_hash)?;
             let protocol_hash = to_ocaml!(gc, protocol_hash, protocol_hash_ref);
             let data = to_ocaml!(gc, protocol_data);
 

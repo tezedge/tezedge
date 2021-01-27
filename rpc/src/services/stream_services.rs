@@ -12,7 +12,7 @@ use slog::{warn, Logger};
 use tokio::time::{interval_at, Interval};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::persistent::PersistentStorage;
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader};
@@ -181,7 +181,7 @@ impl OperationMonitorStream {
                     let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
                     monitor_op.protocol = protocol_hash
                         .as_ref()
-                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                        .map(|ph| ph.to_base58_check());
                     monitor_op
                 })
                 .collect();
@@ -214,7 +214,7 @@ impl OperationMonitorStream {
                     };
                     monitor_op.protocol = protocol_hash
                         .as_ref()
-                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                        .map(|ph| ph.to_base58_check());
                     Ok(monitor_op)
                 })
                 .filter_map(Result::ok)
@@ -259,7 +259,7 @@ impl HeadMonitorStream {
             None => {
                 return Err(format_err!(
                     "Missing block json data for block_hash: {}",
-                    HashType::BlockHash.hash_to_b58check(&current_head.hash),
+                    current_head.hash.to_base58_check(),
                 ));
             }
         };
@@ -274,7 +274,7 @@ impl HeadMonitorStream {
             let block_next_protocol = block_info.metadata["next_protocol"]
                 .to_string()
                 .replace("\"", "");
-            if &HashType::ProtocolHash.b58check_to_hash(&block_next_protocol)? != protocol {
+            if &ProtocolHash::from_base58_check(&block_next_protocol)? != protocol {
                 return Ok(None);
             }
         }

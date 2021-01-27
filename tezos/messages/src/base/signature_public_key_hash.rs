@@ -4,13 +4,16 @@
 //! This crate provides functions for manipulation with 'public key hash'.
 //! Tezos uses this kinds: tz1(ed25519), tz2 (secp256k1), tz3(p256)
 
+use std::convert::TryInto;
+
 use failure::Fail;
 use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 
 use crypto::base58::FromBase58CheckError;
 use crypto::blake2b;
-use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType};
+use crypto::hash::FromBytesError;
+use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ConversionError {
@@ -40,6 +43,14 @@ impl From<FromBase58CheckError> for ConversionError {
     }
 }
 
+impl From<FromBytesError> for ConversionError {
+    fn from(error: FromBytesError) -> Self {
+        ConversionError::InvalidHash {
+            hash: error.to_string(),
+        }
+    }
+}
+
 /// This is a wrapper for Signature.PublicKeyHash, which tezos uses with different curves: tz1(ed25519), tz2 (secp256k1), tz3(p256).
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum SignaturePublicKeyHash {
@@ -52,9 +63,9 @@ impl SignaturePublicKeyHash {
     #[inline]
     pub fn to_string_representation(&self) -> String {
         match self {
-            SignaturePublicKeyHash::Ed25519(h) => HashType::ContractTz1Hash.hash_to_b58check(h),
-            SignaturePublicKeyHash::Secp256k1(h) => HashType::ContractTz2Hash.hash_to_b58check(h),
-            SignaturePublicKeyHash::P256(h) => HashType::ContractTz3Hash.hash_to_b58check(h),
+            SignaturePublicKeyHash::Ed25519(h) => h.to_base58_check(),
+            SignaturePublicKeyHash::Secp256k1(h) => h.to_base58_check(),
+            SignaturePublicKeyHash::P256(h) => h.to_base58_check(),
         }
     }
 
@@ -64,23 +75,11 @@ impl SignaturePublicKeyHash {
         curve: &str,
     ) -> Result<SignaturePublicKeyHash, ConversionError> {
         if hash.len() == 40 {
+            let hash = hex::decode(hash)?;
             let public_hash_key = match curve {
-                "ed25519" => {
-                    let key = HashType::ContractTz1Hash.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKeyHash::Ed25519(
-                        HashType::ContractTz1Hash.b58check_to_hash(&key)?,
-                    )
-                }
-                "secp256k1" => {
-                    let key = HashType::ContractTz2Hash.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKeyHash::Secp256k1(
-                        HashType::ContractTz2Hash.b58check_to_hash(&key)?,
-                    )
-                }
-                "p256" => {
-                    let key = HashType::ContractTz3Hash.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKeyHash::P256(HashType::ContractTz3Hash.b58check_to_hash(&key)?)
-                }
+                "ed25519" => SignaturePublicKeyHash::Ed25519(hash.try_into()?),
+                "secp256k1" => SignaturePublicKeyHash::Secp256k1(hash.try_into()?),
+                "p256" => SignaturePublicKeyHash::P256(hash.try_into()?),
                 _ => {
                     return Err(ConversionError::InvalidCurveTag {
                         curve_tag: curve.to_string(),
@@ -100,13 +99,13 @@ impl SignaturePublicKeyHash {
         if b58_hash.len() > 3 {
             match &b58_hash[0..3] {
                 "tz1" => Ok(SignaturePublicKeyHash::Ed25519(
-                    HashType::ContractTz1Hash.b58check_to_hash(b58_hash)?,
+                    ContractTz1Hash::from_base58_check(b58_hash)?,
                 )),
                 "tz2" => Ok(SignaturePublicKeyHash::Secp256k1(
-                    HashType::ContractTz2Hash.b58check_to_hash(b58_hash)?,
+                    ContractTz2Hash::from_base58_check(b58_hash)?,
                 )),
                 "tz3" => Ok(SignaturePublicKeyHash::P256(
-                    HashType::ContractTz3Hash.b58check_to_hash(b58_hash)?,
+                    ContractTz3Hash::from_base58_check(b58_hash)?,
                 )),
                 _ => Err(ConversionError::InvalidCurveTag {
                     curve_tag: String::from(&b58_hash[0..3]),
@@ -147,8 +146,6 @@ impl SignaturePublicKeyHash {
 
 #[cfg(test)]
 mod tests {
-    use crypto::hash::HashType;
-
     use crate::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
     #[test]
@@ -173,9 +170,7 @@ mod tests {
         };
         assert!(decoded.is_some());
 
-        let decoded = decoded
-            .map(|h| HashType::ContractTz1Hash.hash_to_b58check(&h))
-            .unwrap();
+        let decoded = decoded.map(|h| h.to_base58_check()).unwrap();
         assert_eq!("tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17", decoded);
 
         let result = SignaturePublicKeyHash::from_tagged_bytes(short_pk);
@@ -199,7 +194,7 @@ mod tests {
 
         let expected_valid_pk = hex::decode("2cca28ab019ae2d8c26f4ce4924cad67a2dc6618")?;
         let decoded = decoded.unwrap();
-        assert_eq!(decoded, expected_valid_pk);
+        assert_eq!(decoded.as_ref(), &expected_valid_pk);
         Ok(())
     }
 

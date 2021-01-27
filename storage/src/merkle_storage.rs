@@ -57,7 +57,7 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crypto::hash::HashType;
+use crypto::hash::{FromBytesError, HashType};
 
 use crate::persistent;
 use crate::persistent::database::RocksDBStats;
@@ -183,6 +183,8 @@ pub enum MerkleError {
     KeyEmpty,
     #[fail(display = "Failed to convert hash to array: {}", error)]
     HashConversionError { error: TryFromSliceError },
+    #[fail(display = "Failed to encode hash: {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<persistent::database::DBError> for MerkleError {
@@ -200,6 +202,12 @@ impl From<bincode::Error> for MerkleError {
 impl From<TryFromSliceError> for MerkleError {
     fn from(error: TryFromSliceError) -> Self {
         MerkleError::HashConversionError { error }
+    }
+}
+
+impl From<FromBytesError> for MerkleError {
+    fn from(error: FromBytesError) -> Self {
+        MerkleError::HashError { error }
     }
 }
 
@@ -779,7 +787,7 @@ impl MerkleStorage {
             }
             None => {
                 return Err(MerkleError::EntryNotFoundInStaging {
-                    hash: HashType::ContextHash.hash_to_b58check(hash),
+                    hash: HashType::ContextHash.hash_to_b58check(hash)?,
                 });
             }
         }
@@ -1226,7 +1234,7 @@ impl MerkleStorage {
         let entry_bytes = self.db.get(hash)?;
         match entry_bytes {
             None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash),
+                hash: HashType::ContextHash.hash_to_b58check(hash)?,
             }),
             Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
         }
@@ -1238,7 +1246,7 @@ impl MerkleStorage {
                 let entry_bytes = self.db.get(hash)?;
                 match entry_bytes {
                     None => Err(MerkleError::EntryNotFound {
-                        hash: HashType::ContextHash.hash_to_b58check(hash),
+                        hash: HashType::ContextHash.hash_to_b58check(hash)?,
                     }),
                     Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
                 }

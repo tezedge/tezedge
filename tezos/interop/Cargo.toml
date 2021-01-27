@@ -15,6 +15,7 @@ serde_json = "1.0"
 tezos_api = { path = "../api" }
 tezos_interop_callback = { path = "../interop_callback" }
 tezos_messages = { path = "../messages" }
+crypto = { path = "../../crypto" }
 
 [build-dependencies]
 colored = "2.0"

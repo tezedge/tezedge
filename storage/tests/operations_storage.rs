@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+
+use crypto::hash::BlockHash;
 use failure::Error;
 
-use crypto::hash::HashType;
 use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -12,12 +14,9 @@ use tezos_messages::p2p::encoding::prelude::*;
 fn test_get_operations() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__op_storage_get_operations")?;
 
-    let block_hash_1 = HashType::BlockHash
-        .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
-    let block_hash_2 = HashType::BlockHash
-        .b58check_to_hash("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
-    let block_hash_3 = HashType::BlockHash
-        .b58check_to_hash("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
+    let block_hash_1 = BlockHash::try_from("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?;
+    let block_hash_2 = BlockHash::try_from("BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ")?;
+    let block_hash_3 = BlockHash::try_from("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?;
 
     let storage = OperationsStorage::new(tmp_storage.storage());
     let message = OperationsForBlocksMessage::new(

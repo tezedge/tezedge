@@ -16,7 +16,7 @@ use failure::{format_err, Error, Fail};
 use riker::actors::*;
 use slog::{debug, error, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, HashType};
+use crypto::hash::{BlockHash, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
@@ -327,8 +327,6 @@ fn feed_chain_to_protocol(
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
 ) -> Result<(), FeedChainError> {
-    let block_hash_encoding = HashType::BlockHash;
-
     // at first we initialize protocol runtime and ffi context
     initialize_protocol_context(
         &apply_block_run,
@@ -365,7 +363,7 @@ fn feed_chain_to_protocol(
                     roundtrip_timer,
                 }) => {
                     let validated_at_timer = Instant::now();
-                    debug!(log, "Applying block"; "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash));
+                    debug!(log, "Applying block"; "block_header_hash" => block_hash.to_base58_check());
 
                     // check if block is already applied (not necessery here)
                     let load_metadata_timer = Instant::now();
@@ -373,7 +371,7 @@ fn feed_chain_to_protocol(
                         Some(meta) => {
                             if meta.is_applied() {
                                 // block already applied - ok, doing nothing
-                                debug!(log, "Block is already applied (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
+                                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
                                 if let Err(e) = dispatch_condvar_result(
                                     result_callback,
                                     || Err(format_err!("Block is already applied")),
@@ -386,7 +384,7 @@ fn feed_chain_to_protocol(
                             meta
                         }
                         None => {
-                            warn!(log, "Block metadata not found (feeder)"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash));
+                            warn!(log, "Block metadata not found (feeder)"; "block" => block_hash.to_base58_check());
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || Err(format_err!("Block metadata not found")),
@@ -405,8 +403,8 @@ fn feed_chain_to_protocol(
                         Ok(apply_block_result) => {
                             let protocol_call_elapsed = protocol_call_timer.elapsed();
                             debug!(log, "Block was applied";
-                                "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
-                                "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
+                                "block_header_hash" => block_hash.to_base58_check(),
+                                "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                 "validation_result_message" => &apply_block_result.validation_result_message);
 
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
@@ -416,14 +414,14 @@ fn feed_chain_to_protocol(
                             {
                                 error!(log,
                                       "Failed to wait for context";
-                                      "block" => HashType::BlockHash.hash_to_b58check(&block_hash),
-                                      "context" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
+                                      "block" => block_hash.to_base58_check(),
+                                      "context" => apply_block_result.context_hash.to_base58_check(),
                                       "reason" => format!("{}", e)
                                 );
                                 if let Err(e) = dispatch_condvar_result(
                                     result_callback,
                                     || {
-                                        Err(format_err!("Failed to wait for context, context_hash: {}, reason: {}", HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash), e)
+                                        Err(format_err!("Failed to wait for context, context_hash: {}, reason: {}", apply_block_result.context_hash.to_base58_check(), e)
                                         )
                                     },
                                     true,
@@ -431,15 +429,14 @@ fn feed_chain_to_protocol(
                                     warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
                                 }
                                 return Err(FeedChainError::MissingContextError {
-                                    context_hash: HashType::ContextHash
-                                        .hash_to_b58check(&apply_block_result.context_hash),
+                                    context_hash: apply_block_result.context_hash.to_base58_check()
                                 });
                             }
                             let context_wait_elapsed = context_wait_timer.elapsed();
                             if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
                                 info!(log, "Block was applied with long context processing";
-                                           "block_header_hash" => block_hash_encoding.hash_to_b58check(&block_hash),
-                                           "context_hash" => HashType::ContextHash.hash_to_b58check(&apply_block_result.context_hash),
+                                           "block_header_hash" => block_hash.to_base58_check(),
+                                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed));
                             }
 
@@ -509,7 +506,7 @@ fn feed_chain_to_protocol(
                             }
                             handle_protocol_service_error(
                                 pse,
-                                |e| warn!(log, "Failed to apply block"; "block" => HashType::BlockHash.hash_to_b58check(&block_hash), "reason" => format!("{:?}", e)),
+                                |e| warn!(log, "Failed to apply block"; "block" => block_hash.to_base58_check(), "reason" => format!("{:?}", e)),
                             )?;
                         }
                     }
@@ -578,12 +575,12 @@ pub(crate) fn initialize_protocol_context(
             if let Err(e) = wait_for_context(context, &genesis_context_hash) {
                 error!(log,
                        "Failed to wait for genesis context";
-                       "block" => HashType::BlockHash.hash_to_b58check(&init_storage_data.genesis_block_header_hash),
-                       "context" => HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                       "block" => init_storage_data.genesis_block_header_hash.to_base58_check(),
+                       "context" => genesis_context_hash.to_base58_check(),
                        "reason" => format!("{}", e)
                 );
                 return Err(FeedChainError::MissingContextError {
-                    context_hash: HashType::ContextHash.hash_to_b58check(&genesis_context_hash),
+                    context_hash: genesis_context_hash.to_base58_check(),
                 });
             }
             let context_wait_elapsed = context_wait_timer.elapsed();
@@ -655,7 +652,7 @@ pub fn wait_for_context(
         if start.elapsed()?.le(&timeout) {
             thread::sleep(delay);
         } else {
-            break Err(failure::format_err!("Block inject - context was not processed for context_hash: {}, timeout (timeout: {:?}, delay: {:?})", HashType::ContextHash.hash_to_b58check(&context_hash), timeout, delay));
+            break Err(failure::format_err!("Block inject - context was not processed for context_hash: {}, timeout (timeout: {:?}, delay: {:?})", context_hash.to_base58_check(), timeout, delay));
         }
     }
 }

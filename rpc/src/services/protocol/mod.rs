@@ -17,7 +17,7 @@ use getset::Getters;
 use itertools::Itertools;
 use serde::Serialize;
 
-use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, FromBytesError, ProtocolHash};
 use storage::context::ContextApi;
 use storage::merkle_storage::MerkleError;
 use storage::{context_key, num_from_slice, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
@@ -344,6 +344,14 @@ impl From<UnsupportedProtocolError> for VotesError {
     }
 }
 
+impl From<FromBytesError> for VotesError {
+    fn from(error: FromBytesError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
 pub(crate) fn get_votes_listings(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
@@ -355,12 +363,12 @@ pub(crate) fn get_votes_listings(
         .tezedge_context()
         .get_key_from_history(&context_hash, &context_key!("protocol"))?
     {
-        protocol_hash
+        ProtocolHash::try_from(protocol_hash)?
     } else {
         return Err(VotesError::ServiceError {
             reason: format_err!(
                 "No protocol found in context for block_hash: {}",
-                HashType::BlockHash.hash_to_b58check(&block_hash)
+                block_hash.to_base58_check()
             ),
         });
     };
@@ -387,12 +395,12 @@ pub(crate) fn get_votes_listings(
 
 fn get_votes_listings_before_008(
     env: &RpcServiceEnvironment,
-    context_hash: &Vec<u8>,
+    context_hash: &ContextHash,
 ) -> Result<Option<Vec<VoteListings>>, VotesError> {
     // filter out the listings data
     let listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))?
+        .get_key_values_by_prefix(context_hash, &context_key!("data/votes/listings"))?
     {
         val
     } else {
@@ -535,7 +543,7 @@ pub(crate) fn preapply_block(
             }
             None => bail!(
                 "No block header found for hash: {}",
-                HashType::BlockHash.hash_to_b58check(&block_hash)
+                block_hash.to_base58_check()
             ),
         };
 
@@ -574,7 +582,7 @@ fn create_protocol_rpc_request(
         Some(header) => header.header.as_ref().clone(),
         None => bail!(
             "No block header found for hash: {}",
-            HashType::BlockHash.hash_to_b58check(&block_hash)
+            block_hash.to_base58_check()
         ),
     };
 
@@ -611,6 +619,8 @@ pub enum ContextParamsError {
     },
     #[fail(display = "Unsupported protocol {}", protocol)]
     UnsupportedProtocolError { protocol: String },
+    #[fail(display = "Hash error {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<storage::StorageError> for ContextParamsError {
@@ -636,6 +646,12 @@ impl From<UnsupportedProtocolError> for ContextParamsError {
 impl From<tezos_messages::protocol::ContextConstantsDecodeError> for ContextParamsError {
     fn from(error: tezos_messages::protocol::ContextConstantsDecodeError) -> Self {
         ContextParamsError::ContextConstantsDecodeError { reason: error }
+    }
+}
+
+impl From<FromBytesError> for ContextParamsError {
+    fn from(error: FromBytesError) -> ContextParamsError {
+        ContextParamsError::HashError{ error }
     }
 }
 
@@ -667,10 +683,10 @@ pub(crate) fn get_context_protocol_params(
         if let Some(data) =
             context.get_key_from_history(&context_hash, &context_key!("protocol"))?
         {
-            protocol_hash = data;
+            protocol_hash = ProtocolHash::try_from(data)?;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(
-                HashType::BlockHash.hash_to_b58check(&block_hash),
+                block_hash.to_base58_check(),
             ));
         }
 
@@ -680,7 +696,7 @@ pub(crate) fn get_context_protocol_params(
             constants = data;
         } else {
             return Err(ContextParamsError::NoConstantsForBlock(
-                HashType::BlockHash.hash_to_b58check(&block_hash),
+                block_hash.to_base58_check(),
             ));
         }
     };

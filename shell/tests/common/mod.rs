@@ -88,7 +88,7 @@ pub mod infra {
     use slog::{info, warn, Level, Logger};
     use tokio::runtime::Runtime;
 
-    use crypto::hash::{BlockHash, ContextHash, HashType, OperationHash};
+    use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use networking::ShellCompatibilityVersion;
     use shell::chain_feeder::ChainFeeder;
@@ -379,17 +379,13 @@ pub mod infra {
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
+            let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
             let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
             let result = loop {
                 let current_head = chain_meta_data
                     .get_current_head(&self.tezos_env.main_chain_id()?)?
-                    .map(|ch| {
-                        let ch: BlockHash = ch.into();
-                        ch
-                    })
-                    .map(|ch| HashType::BlockHash.hash_to_b58check(&ch));
+                    .map(|ch| ch.block_hash().to_base58_check());
 
                 if current_head.eq(&tested_head) {
                     info!(self.log, "[NODE] Expected current head detected"; "head" => tested_head, "marker" => marker);
@@ -425,7 +421,7 @@ pub mod infra {
             let result = loop {
                 // if success, than ok
                 if let Ok(true) = context.is_committed(&context_hash) {
-                    info!(self.log, "[NODE] Expected context found"; "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash), "marker" => marker);
+                    info!(self.log, "[NODE] Expected context found"; "context_hash" => context_hash.to_base58_check(), "marker" => marker);
                     break Ok(());
                 }
 
@@ -433,7 +429,7 @@ pub mod infra {
                 if start.elapsed()?.le(&timeout) {
                     thread::sleep(delay);
                 } else {
-                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", HashType::ContextHash.hash_to_b58check(&context_hash), timeout, delay, marker));
+                    break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", context_hash.to_base58_check(), timeout, delay, marker));
                 }
             };
             result
@@ -447,7 +443,7 @@ pub mod infra {
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let tested_head = Some(tested_head).map(|th| HashType::BlockHash.hash_to_b58check(&th));
+            let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
             let result = loop {
                 let mempool_state = self
@@ -456,7 +452,7 @@ pub mod infra {
                     .expect("Failed to obtain lock");
                 let current_head = mempool_state
                     .head()
-                    .map(|ch| HashType::BlockHash.hash_to_b58check(&ch));
+                    .map(|ch| ch.to_base58_check());
 
                 if current_head.eq(&tested_head) {
                     info!(self.log, "[NODE] Expected mempool head detected"; "head" => tested_head, "marker" => marker);

@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+
+use crypto::hash::ChainId;
 use failure::Error;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
 fn can_serialize_get_current_head_message() -> Result<(), Error> {
-    let response: PeerMessageResponse = GetCurrentHeadMessage::new(hex::decode("8eceda2f")?).into();
+    let response: PeerMessageResponse = GetCurrentHeadMessage::new(ChainId::try_from(hex::decode("8eceda2f")?)?).into();
     let message_bytes = response.as_bytes().unwrap();
     let expected_writer_result = hex::decode("0000000600138eceda2f").expect("Failed to decode");
     Ok(assert_eq!(expected_writer_result, message_bytes))
@@ -22,7 +25,7 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentHead(current_head_message) => {
-            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id());
+            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id().as_ref());
 
             let block_header = current_head_message.current_block_header();
             assert_eq!(245_395, block_header.level());
@@ -35,7 +38,7 @@ fn can_deserialize_get_current_head_message_known_valid() -> Result<(), Error> {
             assert_eq!(1, mempool.known_valid().len());
             let expected_known_valid =
                 hex::decode("c533d1d8a515b35fac67eb9926a6c983397208511ce69808d57177415654bf09")?;
-            assert_eq!(&expected_known_valid, mempool.known_valid().get(0).unwrap());
+            assert_eq!(&expected_known_valid, mempool.known_valid().get(0).unwrap().as_ref());
             Ok(assert_eq!(0, mempool.pending().len()))
         }
         _ => panic!("Unsupported encoding: {:?}", message),
@@ -51,7 +54,7 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentHead(current_head_message) => {
-            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id());
+            assert_eq!(&hex::decode("8eceda2f")?, current_head_message.chain_id().as_ref());
 
             let block_header = current_head_message.current_block_header();
             assert_eq!(248_533, block_header.level());
@@ -65,12 +68,12 @@ fn can_deserialize_get_current_head_message_pending() -> Result<(), Error> {
             assert_eq!(2, mempool.pending().len());
             let expected_pending =
                 hex::decode("3cebec53e6ff9207dd669c3777cec4e74feadcd5f0131c819d261cdb0d9b5d94")?;
-            assert_eq!(&expected_pending, mempool.pending().get(0).unwrap());
+            assert_eq!(&expected_pending, mempool.pending().get(0).unwrap().as_ref());
             let expected_pending =
                 hex::decode("70669010ec4053d96d750daefbcdc1f51ed79f9e29fb16931515eccb84cb6a55")?;
             Ok(assert_eq!(
                 &expected_pending,
-                mempool.pending().get(1).unwrap()
+                mempool.pending().get(1).unwrap().as_ref()
             ))
         }
         _ => panic!("Unsupported encoding: {:?}", message),

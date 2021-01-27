@@ -19,7 +19,7 @@ fn can_deserialize_get_operations_for_blocks() -> Result<(), Error> {
             assert_eq!(4, operations.len());
             assert_eq!(
                 "BMWmj9CTojf7AnA8ZQFWGkh1cXB6FkST8Ey5coaeHX6cVNAZqA6",
-                HashType::BlockHash.hash_to_b58check(operations[0].hash())
+                operations[0].hash().to_base58_check()
             );
             Ok(assert_eq!(1, operations[0].validation_pass()))
         }
@@ -38,20 +38,20 @@ fn can_deserialize_operations_for_blocks_right() -> Result<(), Error> {
         PeerMessage::OperationsForBlocks(message) => {
             assert_eq!(
                 "BM4Hyf4ay3u2PcUBmumTEPcWW8Z7t45HXGZAjLNnenSC2f8bLte",
-                HashType::BlockHash.hash_to_b58check(message.operations_for_block().hash())
+                message.operations_for_block().hash().to_base58_check()
             );
 
             match message.operation_hashes_path() {
                 Path::Right(path) => {
                     assert_eq!(
                         "LLobFmsoFEGPP3q9ZxpE84rH1vPC1uKqEV8L1x8zUjGwanEYuHBVB",
-                        HashType::OperationListListHash.hash_to_b58check(path.left())
+                                HashType::OperationListListHash.hash_to_b58check(path.left()).unwrap()
                     );
                     match path.path() {
                         Path::Right(path) => {
                             assert_eq!(
                                 "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash.hash_to_b58check(path.left())
+                                HashType::OperationListListHash.hash_to_b58check(path.left()).unwrap()
                             );
                             match path.path() {
                                 Path::Op => Ok(()),
@@ -82,7 +82,7 @@ fn can_deserialize_operations_for_blocks_left() -> Result<(), Error> {
         PeerMessage::OperationsForBlocks(message) => {
             assert_eq!(
                 "BL61qJKRdXg6i628H62DyDqBNotK7f6CZrHGv4k7jEe8a86B7n8",
-                HashType::BlockHash.hash_to_b58check(message.operations_for_block().hash())
+                message.operations_for_block().hash().to_base58_check()
             );
             assert_eq!(
                 5,
@@ -94,13 +94,13 @@ fn can_deserialize_operations_for_blocks_left() -> Result<(), Error> {
                 Path::Left(path) => {
                     assert_eq!(
                         "LLoZQD2o1hNgoUhg6ha9dCVyRUY25GX1KN2TttXW2PZsyS8itbfpK",
-                        HashType::OperationListListHash.hash_to_b58check(path.right())
+                        HashType::OperationListListHash.hash_to_b58check(path.right()).unwrap()
                     );
                     match path.path() {
                         Path::Left(path) => {
                             assert_eq!(
                                 "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash.hash_to_b58check(path.right())
+                                HashType::OperationListListHash.hash_to_b58check(path.right()).unwrap()
                             );
                             match path.path() {
                                 Path::Op => Ok(()),

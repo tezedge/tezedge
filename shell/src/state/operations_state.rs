@@ -211,27 +211,31 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
 mod tests {
     use super::*;
 
+    fn block(d: u8) -> BlockHash {
+        [d; crypto::hash::HashType::BlockHash.size()].to_vec().try_into().unwrap()
+    }
+
     #[test]
     fn missing_operation_has_correct_ordering() {
         let mut heap = UniqueBlockData::new();
         heap.push(MissingOperations {
             level: 15,
-            block_hash: vec![0, 0, 0, 1],
+            block_hash: block(1),
             validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 7,
-            block_hash: vec![0, 0, 0, 9],
+            block_hash: block(9),
             validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 0,
-            block_hash: vec![0, 0, 0, 4],
+            block_hash: block(4),
             validation_passes: HashSet::new(),
         });
         heap.push(MissingOperations {
             level: 1,
-            block_hash: vec![0, 0, 0, 5],
+            block_hash: block(5),
             validation_passes: HashSet::new(),
         });
 

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use super::base_types::*;
@@ -70,7 +70,7 @@ pub struct BootstrapInfo {
 impl BootstrapInfo {
     pub fn new(block: &BlockHash, timestamp: TimeStamp) -> Self {
         Self {
-            block: HashType::BlockHash.hash_to_b58check(block),
+            block: block.to_base58_check(),
             timestamp,
         }
     }
