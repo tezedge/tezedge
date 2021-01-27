@@ -30,7 +30,7 @@ use storage::{
     block_storage, check_database_compatibility, context_action_storage,
     resolve_storage_init_chain_data, BlockMetaStorage, BlockStorage, ChainMetaStorage,
     ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
-    PredecessorStorage, StorageInitInfo, SystemStorage,
+    PredecessorStorage, StorageInitInfo, SystemStorage, MerkleStorage,
 };
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -529,6 +529,7 @@ fn main() {
         context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
         ContextActionStorage::descriptor(&cache),
         SystemStorage::descriptor(&cache),
+        MerkleStorage::descriptor(&cache),
         Sequences::descriptor(&cache),
         MempoolStorage::descriptor(&cache),
         ChainMetaStorage::descriptor(&cache),

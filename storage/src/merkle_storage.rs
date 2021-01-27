@@ -518,25 +518,17 @@ impl MerkleStorage {
 
     pub fn apply_context_action(&mut self, context_action: &ContextAction) -> Result<(), MerkleError> {
         match context_action {
-            ContextAction::Set { key, value, ignored, .. } => {
-                if !ignored {
-                    self.set(&key, &value)?;
-                }
+            ContextAction::Set { key, value, .. } => {
+                self.set(&key, &value)?;
             }
-            ContextAction::Copy { to_key, from_key, ignored, .. } => {
-                if !ignored {
-                    self.copy(&from_key, &to_key)?;
-                }
+            ContextAction::Copy { to_key, from_key, .. } => {
+                self.copy(&from_key, &to_key)?;
             }
-            ContextAction::Delete { key, ignored, .. } => {
-                if !ignored {
-                    self.delete(&key)?;
-                }
+            ContextAction::Delete { key, .. } => {
+                self.delete(&key)?;
             }
-            ContextAction::RemoveRecursively { key, ignored, .. } => {
-                if !ignored {
-                    self.delete(&key)?;
-                }
+            ContextAction::RemoveRecursively { key, .. } => {
+                self.delete(&key)?;
             }
             ContextAction::Commit { author, message, date, new_context_hash, .. } => {
                 let commit_hash = self.commit(*date as u64, author.to_string(), message.to_string())?;
@@ -1380,10 +1372,6 @@ impl MerkleStorage {
                     Ok(entry) => self.persist_staged_entry_to_db(&entry),
                 }
             }
-            Entry::Commit(commit) => match self.get_entry(&commit.root_hash) {
-                Err(err) => Err(err),
-                Ok(entry) => self.get_entries_recursively(&entry, batch),
-            },
         }
     }
 
@@ -1606,9 +1594,6 @@ impl MerkleStorage {
 #[allow(unused_must_use)]
 mod tests {
     use assert_json_diff::assert_json_eq;
-    use rocksdb::{Options, DB};
-    use std::path::{Path, PathBuf};
-    use std::{env, fs};
     use std::time::Duration;
 
     use super::*;
@@ -1616,18 +1601,6 @@ mod tests {
 
     fn get_empty_storage() -> MerkleStorage {
         MerkleStorage::new(7)
-    }
-
-    fn get_tree_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
-        hash_tree(&storage.find_tree(root, path).unwrap()).unwrap()
-    }
-
-    fn get_blob_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {
-        let parent_path = &path[..(path.len() - 1)];
-        storage
-            .find_tree(&root, parent_path).unwrap()
-            .get(path.last().unwrap()).unwrap()
-            .entry_hash
     }
 
     #[test]
@@ -1970,17 +1943,17 @@ mod tests {
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
     }
 
-    #[test]
-    fn test_empty_commit_should_be_rejeted() {
-        let mut storage = get_empty_storage();
-        storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+    // #[test]
+    // fn test_empty_commit_should_be_rejeted() {
+    //     let mut storage = get_empty_storage();
+    //     storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
-        storage.set(&context_key!("a/b/c"), &vec![97]);
-        let commit = storage.commit(1, "Tezos".to_string(), "1".to_string());
-        let empty_commit = storage.commit(2, "Tezos".to_string(), "2".to_string());
+    //     storage.set(&context_key!("a/b/c"), &vec![97]);
+    //     let commit = storage.commit(1, "Tezos".to_string(), "1".to_string());
+    //     let empty_commit = storage.commit(2, "Tezos".to_string(), "2".to_string());
 
-        assert_eq!(commit.unwrap(), empty_commit.unwrap());
-    }
+    //     assert_eq!(commit.unwrap(), empty_commit.unwrap());
+    // }
 
     #[test]
     fn test_get() {
@@ -2296,12 +2269,7 @@ mod tests {
 
     #[test]
     fn test_block_latenices() {
-        let db_name = "ms_test_block_latencies";
-        let mut storage = {
-            clean_db(db_name);
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache)
-        };
+        let mut storage = get_empty_storage();
 
         let t = |milis: u64| Instant::now() - Duration::from_nanos(milis * 1000);
 
