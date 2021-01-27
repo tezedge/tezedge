@@ -25,7 +25,12 @@ pub struct PeerId {
 }
 
 impl PeerId {
-    pub fn new(peer_ref: PeerRef, peer_public_key_hash: CryptoboxPublicKeyHash, peer_id_marker: String, peer_address: SocketAddr) -> Self {
+    pub fn new(
+        peer_ref: PeerRef,
+        peer_public_key_hash: CryptoboxPublicKeyHash,
+        peer_id_marker: String,
+        peer_address: SocketAddr,
+    ) -> Self {
         Self {
             peer_ref,
             peer_public_key_hash,

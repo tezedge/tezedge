@@ -63,7 +63,7 @@ use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
-use crate::storage_backend::{StorageBackend, Batch, StorageBackendError};
+use crate::storage_backend::{Batch, StorageBackend, StorageBackendError};
 
 const HASH_LEN: usize = 32;
 
@@ -157,9 +157,7 @@ pub enum MerkleError {
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
     #[fail(display = "Backend error: {:?}", error)]
-    StorageBackendError {
-        error: StorageBackendError,
-    },
+    StorageBackendError { error: StorageBackendError },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -201,7 +199,6 @@ impl From<StorageBackendError> for MerkleError {
         MerkleError::StorageBackendError { error }
     }
 }
-
 
 impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self {
@@ -1164,17 +1161,12 @@ impl MerkleStorage {
     }
 
     /// Builds vector of entries to be persisted to DB, recursively
-    fn get_entries_recursively(
-        &self,
-        entry: &Entry,
-        batch: &mut Batch,
-    ) -> Result<(), MerkleError> {
-
+    fn get_entries_recursively(&self, entry: &Entry, batch: &mut Batch) -> Result<(), MerkleError> {
         let key = self.hash_entry(entry)?;
-        let value =  bincode::serialize(entry)?;
+        let value = bincode::serialize(entry)?;
 
         // add entry to batch
-       batch.put(key.to_vec(), value);
+        batch.put(key.to_vec(), value);
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1420,9 +1412,9 @@ mod tests {
     use std::{env, fs};
 
     use super::*;
-    use crate::backend::{RocksDBBackend, InMemoryBackend, SledBackend};
-    use std::sync::RwLock;
+    use crate::backend::{InMemoryBackend, RocksDBBackend, SledBackend};
     use std::ops::Deref;
+    use std::sync::RwLock;
 
     /// Open DB at path, used in tests
     fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
@@ -1451,11 +1443,11 @@ mod tests {
         MerkleStorage::new(Arc::new(get_db(dn_name, &cache)))
     }
 
-    fn get_mem_storage(db : Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>) -> MerkleStorage {
+    fn get_mem_storage(db: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>) -> MerkleStorage {
         MerkleStorage::new(Arc::new(InMemoryBackend::new(db)))
     }
 
-    fn get_sled_storage(db : sled::Tree) -> MerkleStorage {
+    fn get_sled_storage(db: sled::Tree) -> MerkleStorage {
         MerkleStorage::new(Arc::new(SledBackend::new(db)))
     }
 
@@ -1693,12 +1685,14 @@ mod tests {
     #[test]
     fn test_tree_hash() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => { panic!()}
+            _ => {
+                panic!()
+            }
         };
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
@@ -1720,16 +1714,17 @@ mod tests {
         assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
     }
 
-
     #[test]
     fn test_commit_hash() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
@@ -1758,12 +1753,14 @@ mod tests {
     #[test]
     fn test_examples_from_article_about_storage() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         storage.set(&vec!["a".to_string()], &vec![1]);
@@ -1811,12 +1808,14 @@ mod tests {
     #[test]
     fn test_multiple_commit_hash() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
@@ -1836,11 +1835,9 @@ mod tests {
 
     #[test]
     fn test_get() {
-
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
-
 
         let commit1;
         let commit2;
@@ -1854,7 +1851,9 @@ mod tests {
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
+                _ => {
+                    panic!()
+                }
             };
 
             let res = storage.get(&vec![]);
@@ -1882,7 +1881,9 @@ mod tests {
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         assert_eq!(
@@ -1896,16 +1897,17 @@ mod tests {
         assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
     }
 
-
     #[test]
     fn test_mem() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1927,12 +1929,14 @@ mod tests {
     #[test]
     fn test_dirmem() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1955,12 +1959,14 @@ mod tests {
     #[test]
     fn test_copy() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1979,12 +1985,14 @@ mod tests {
     #[test]
     fn test_delete() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
@@ -1999,12 +2007,14 @@ mod tests {
     #[test]
     fn test_deleted_entry_available() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -2017,14 +2027,15 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
@@ -2041,7 +2052,7 @@ mod tests {
     #[test]
     fn test_checkout() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
 
         let commit1;
         let commit2;
@@ -2049,13 +2060,13 @@ mod tests {
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
         {
-
-
             let backend = env::var("BACKEND").unwrap();
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
+                _ => {
+                    panic!()
+                }
             };
             storage.set(key_abc, &vec![1u8]).unwrap();
             storage.set(key_abx, &vec![2u8]).unwrap();
@@ -2066,12 +2077,13 @@ mod tests {
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
-
         let backend = env::var("BACKEND").unwrap();
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
@@ -2087,7 +2099,7 @@ mod tests {
     #[test]
     fn test_persistence_over_reopens() {
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap();
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
@@ -2095,7 +2107,9 @@ mod tests {
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
+                _ => {
+                    panic!()
+                }
             };
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
             storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -2106,7 +2120,9 @@ mod tests {
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db.clone()),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
@@ -2134,7 +2150,7 @@ mod tests {
     fn test_get_context_tree_by_prefix() {
         let backend = env::var("BACKEND").unwrap();
         let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let sled = sled::Config::new().temporary(true).open().unwrap();
 
         let all_json = serde_json::json!(
             {
@@ -2179,7 +2195,9 @@ mod tests {
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db.clone()),
             "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
+            _ => {
+                panic!()
+            }
         };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 

@@ -1,20 +1,15 @@
-use crate::storage_backend::{StorageBackend, Batch, StorageBackendError};
+use crate::storage_backend::{Batch, StorageBackend, StorageBackendError};
 use sled::IVec;
 
 pub struct SledBackend {
-    inner: sled::Tree
+    inner: sled::Tree,
 }
 
 impl SledBackend {
-    pub fn new(db : sled::Tree) -> Self{
-        SledBackend {
-            inner: db
-        }
+    pub fn new(db: sled::Tree) -> Self {
+        SledBackend { inner: db }
     }
 }
-
-
-
 
 impl StorageBackend for SledBackend {
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError> {
@@ -45,12 +40,8 @@ impl StorageBackend for SledBackend {
         let r = self.inner.get(key)?;
 
         match r {
-            None => {
-                Err(StorageBackendError::BackendError)
-            }
-            Some(v) => {
-                Ok(Some(v.to_vec()))
-            }
+            None => Err(StorageBackendError::BackendError),
+            Some(v) => Ok(Some(v.to_vec())),
         }
     }
 }

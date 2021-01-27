@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use failure::Fail;
 use std::collections::hash_map::Iter;
+use std::collections::HashMap;
 
 #[derive(Debug, Fail)]
 pub enum StorageBackendError {
@@ -14,7 +14,6 @@ pub enum StorageBackendError {
     SledDBError { error: sled::Error },
     #[fail(display = "Guard Poison {} ", error)]
     GuardPoison { error: String },
-
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -41,12 +40,12 @@ impl slog::Value for StorageBackendError {
 }
 
 pub struct Batch {
-    inner: HashMap<Vec<u8>, Vec<u8>>
+    inner: HashMap<Vec<u8>, Vec<u8>>,
 }
 impl Default for Batch {
     fn default() -> Self {
         Batch {
-            inner: Default::default()
+            inner: Default::default(),
         }
     }
 }
@@ -59,14 +58,12 @@ impl Batch {
         self.inner.remove(key);
     }
 
-    pub fn iter(&self) -> Iter<Vec<u8>,Vec<u8>> {
+    pub fn iter(&self) -> Iter<Vec<u8>, Vec<u8>> {
         self.inner.iter()
     }
 }
 
-
 pub trait StorageBackend {
-
     fn put(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError>;
     fn merge(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), StorageBackendError>;
     fn delete(&self, key: &Vec<u8>) -> Result<(), StorageBackendError>;
