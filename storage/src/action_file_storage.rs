@@ -90,7 +90,6 @@ impl ActionFileStorage {
                     Err(_) => { return; }
                 };
                 let mut block_actions = w.entry(block_hash.clone()).or_insert(Vec::new());
-                //Todo Check if empty
                 block_actions.push(action);
 
                 let mut action_file_writer = match ActionsFileWriter::new(&self.file) {
@@ -119,7 +118,7 @@ impl ActionFileStorage {
                     }
                 };
 
-                // remove block action from staging and save it to action file
+                // remove block actions from staging and save it to action file
                 if let Some(actions) = w.remove(&block_hash) {
                     match action_file_writer.update(block, actions) {
                         Ok(_) => {
