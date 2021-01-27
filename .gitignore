@@ -20,3 +20,4 @@ target/
 /.vscode
 
 light_node/etc/tezedge/identity.json
+test_out/

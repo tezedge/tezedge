@@ -18,7 +18,7 @@ impl RocksDBBackend {
 }
 
 impl RocksDBBackend {
-    fn default_write_options() -> WriteOptions {
+    pub fn default_write_options() -> WriteOptions {
         let mut opts = WriteOptions::default();
         opts.set_sync(false);
         opts
@@ -73,7 +73,12 @@ impl StorageBackend for RocksDBBackend {
     fn batch_write(&self, batch: Batch) -> Result<(), StorageBackendError> {
         let mut wb = WriteBatch::default();
         for (k, v) in batch.iter() {
-            wb.put(k, v);
+            let cf = self.inner.cf_handle(&self.column_name).ok_or(
+                StorageBackendError::MissingColumnFamily {
+                    name: &self.column_name,
+                },
+            )?;
+            wb.put_cf(cf, k, v);
         }
         self.inner.write_opt(wb, &Self::default_write_options())?;
         Ok(())

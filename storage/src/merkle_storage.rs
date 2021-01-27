@@ -494,7 +494,7 @@ impl MerkleStorage {
             None => {
                 return Err(MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
-                })
+                });
             }
             Some(entry) => entry,
         };
@@ -844,7 +844,7 @@ impl MerkleStorage {
                             &copy.to_key,
                             Some(self.get_non_leaf(source_tree_hash)),
                         )?;
-                    //TODO: check if there is need to increment refcounts recursively
+                        //TODO: check if there is need to increment refcounts recursively
                     } else {
                         return Err(MerkleError::FoundUnexpectedStructure {
                             sought: "Tree".to_string(),
@@ -1406,11 +1406,32 @@ impl MerkleStorage {
 mod tests {
     // use hex;
     use super::*;
-    use crate::backend::{InMemoryBackend, SledBackend};
+    use crate::backend::{InMemoryBackend, RocksDBBackend, SledBackend};
     use assert_json_diff::assert_json_eq;
-    use std::env;
+    use num_cpus::get;
+    use rocksdb::{Options, DB};
     use std::ops::Deref;
+    use std::path::{Path, PathBuf};
     use std::sync::RwLock;
+    use std::{env, fs};
+
+    /// Open DB at path, used in tests
+    fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
+
+        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
+    }
+
+    pub fn out_dir_path(dir_name: &str) -> PathBuf {
+        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+        Path::new(out_dir.as_str()).join(Path::new(dir_name))
+    }
+
+    fn get_rocks_db(db_name: &str, cache: &Cache) -> DB {
+        open_db(out_dir_path(db_name), &cache)
+    }
 
     fn get_mem_storage(db: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>) -> MerkleStorage {
         MerkleStorage::new(Arc::new(InMemoryBackend::new(db)))
@@ -1420,13 +1441,22 @@ mod tests {
         MerkleStorage::new(Arc::new(SledBackend::new(db)))
     }
 
-    fn get_storage() -> MerkleStorage {
+    fn get_rocksdb_storage(db: Arc<rocksdb::DB>) -> MerkleStorage {
+        MerkleStorage::new(Arc::new(RocksDBBackend::new(db, MerkleStorage::name())))
+    }
+    fn clean_db(db_name: &str) {
+        let _ = DB::destroy(&Options::default(), out_dir_path(db_name));
+        let _ = fs::remove_dir_all(out_dir_path(db_name));
+    }
+
+    fn get_storage(rocksdb: Arc<rocksdb::DB>) -> MerkleStorage {
         let db = Arc::new(RwLock::new(HashMap::new()));
         let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = get_backend_env();
         let storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
+            "rocksdb" => get_rocksdb_storage(rocksdb),
             _ => {
                 panic!()
             }
@@ -1436,16 +1466,10 @@ mod tests {
 
     #[test]
     fn test_duplicate_entry_in_staging() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let db_name = "_ms_test_duplicate_entry_in_staging";
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1670,16 +1694,11 @@ mod tests {
 
     #[test]
     fn test_tree_hash() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let db_name = "_ms_test_tree_hash";
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
+
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1702,16 +1721,10 @@ mod tests {
 
     #[test]
     fn test_commit_hash() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let db_name = "_ms_test_commit_hash";
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
 
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
@@ -1738,16 +1751,12 @@ mod tests {
 
     #[test]
     fn test_examples_from_article_about_storage() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let db_name = "_ms_test_examples_from_article_about_storage";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
 
         storage.set(&vec!["a".to_string()], &vec![1]);
         storage.apply_actions_to_staging_area();
@@ -1785,7 +1794,7 @@ mod tests {
         println!("\nCOMMIT time:0 author:'tezedge' message:'persist'");
         println!("ROOT: {}", get_short_hash(&commit_hash));
         if let Entry::Commit(c) = storage.get_entry(&commit_hash).unwrap() {
-            println!("{} : Commit{{time:{}, message:{}, author:{}, root_hash:{}, parent_commit_hash: None}}", get_short_hash(&commit_hash), c.time,  c.message, c.author, get_short_hash(&c.root_hash));
+            println!("{} : Commit{{time:{}, message:{}, author:{}, root_hash:{}, parent_commit_hash: None}}", get_short_hash(&commit_hash), c.time, c.message, c.author, get_short_hash(&c.root_hash));
         }
         print!("{}", entries);
         assert_eq!("e6de3f", get_short_hash(&commit_hash))
@@ -1793,16 +1802,11 @@ mod tests {
 
     #[test]
     fn test_multiple_commit_hash() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
-        let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = get_backend_env();
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {
-                panic!()
-            }
-        };
+        let db_name = "_ms_test_multiple_commit_hash";
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -1821,6 +1825,11 @@ mod tests {
 
     #[test]
     fn test_get() {
+        let db_name = "_ms_test_get";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+
         let db = Arc::new(RwLock::new(HashMap::new()));
         let sled = sled::Config::new().temporary(true).open().unwrap();
         let backend = get_backend_env();
@@ -1834,9 +1843,11 @@ mod tests {
         let key_d: &ContextKey = &vec!["d".to_string()];
 
         {
+            let rocksdb = get_rocks_db(db_name, &cache);
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
+                "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
                 _ => {
                     panic!()
                 }
@@ -1863,10 +1874,11 @@ mod tests {
             assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
-
+        let rocksdb = get_rocks_db(db_name, &cache);
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db),
             "sled" => get_sled_storage(sled.deref().clone()),
+            "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
             _ => {
                 panic!()
             }
@@ -1885,7 +1897,12 @@ mod tests {
 
     #[test]
     fn test_mem() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_mem";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
@@ -1905,7 +1922,12 @@ mod tests {
 
     #[test]
     fn test_dirmem() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_dirmem";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
@@ -1926,7 +1948,12 @@ mod tests {
 
     #[test]
     fn test_copy() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_copy";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -1942,7 +1969,12 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_delete";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -1955,7 +1987,13 @@ mod tests {
 
     #[test]
     fn test_deleted_entry_available() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_deleted_entry_available";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
+
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1967,7 +2005,13 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_delete_in_separate_commit";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
+
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -1986,19 +2030,24 @@ mod tests {
 
     #[test]
     fn test_checkout() {
+        let db_name = "_ms_test_checkout";
+        clean_db(db_name);
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = Arc::new(RwLock::new(HashMap::new()));
         let sled = sled::Config::new().temporary(true).open().unwrap();
-
+        let backend = get_backend_env();
         let commit1;
         let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
         {
-            let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+            let rocksdb = get_rocks_db(db_name, &cache);
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
+                "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
                 _ => {
                     panic!()
                 }
@@ -2013,9 +2062,11 @@ mod tests {
         }
 
         let backend = get_backend_env();
+        let rocksdb = get_rocks_db(db_name, &cache);
         let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
+            "mem" => get_mem_storage(db.clone()),
             "sled" => get_sled_storage(sled.deref().clone()),
+            "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
             _ => {
                 panic!()
             }
@@ -2033,15 +2084,23 @@ mod tests {
 
     #[test]
     fn test_persistence_over_reopens() {
+        let db_name = "_ms_test_persistence_over_reopens";
+        {
+            clean_db(db_name);
+        }
+
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = Arc::new(RwLock::new(HashMap::new()));
         let sled = sled::Config::new().temporary(true).open().unwrap();
-        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
         {
+            let backend = get_backend_env();
+            let rocksdb = get_rocks_db(db_name, &cache);
             let mut storage = match backend.as_str() {
                 "mem" => get_mem_storage(db.clone()),
                 "sled" => get_sled_storage(sled.deref().clone()),
+                "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
                 _ => {
                     panic!()
                 }
@@ -2052,9 +2111,12 @@ mod tests {
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
+        let backend = get_backend_env();
+        let rocksdb = get_rocks_db(db_name, &cache);
         let mut storage = match backend.as_str() {
             "mem" => get_mem_storage(db.clone()),
             "sled" => get_sled_storage(sled.deref().clone()),
+            "rocksdb" => get_rocksdb_storage(Arc::new(rocksdb)),
             _ => {
                 panic!()
             }
@@ -2062,28 +2124,45 @@ mod tests {
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    /*Test a DB error by writing into a read-only database.
     #[test]
     fn test_db_error() {
+        let backend = get_backend_env();
+        // Pass test if backend is not rocks db
+        if backend != "rocksdb" {
+            return;
+        }
         let db_name = "ms_test_db_error";
         {
             clean_db(db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache);
+            let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+            get_storage(rocksdb);
         }
 
-        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(Arc::new(db),MerkleStorage::name())));
+        let db = DB::open_for_read_only(&Options::default(), out_dir_path(db_name), true).unwrap();
+        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(
+            Arc::new(db),
+            MerkleStorage::name(),
+        )));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
 
-        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
-    }*/
+        assert!(matches!(
+            res.err().unwrap(),
+            MerkleError::StorageBackendError { .. }
+        ));
+    }
 
     // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
-        let mut storage = get_storage();
+        let db_name = "_ms_test_get_context_tree_by_prefix";
+        {
+            clean_db(db_name);
+        }
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
+        let mut storage = get_storage(rocksdb);
         let all_json = serde_json::json!(
             {
                 "adata": {
