@@ -107,6 +107,9 @@ pub enum ShellChannelTopic {
     /// Ordinary events generated from shell layer
     ShellEvents,
 
+    /// Dedicated channel for new current head
+    ShellNewCurrentHead,
+
     /// Control event
     ShellCommands,
 
@@ -118,6 +121,7 @@ impl From<ShellChannelTopic> for Topic {
     fn from(evt: ShellChannelTopic) -> Self {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
+            ShellChannelTopic::ShellNewCurrentHead => Topic::from("shell.new_current_head"),
             ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
             ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }

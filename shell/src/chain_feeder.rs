@@ -46,28 +46,19 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 #[derive(Clone, Debug)]
 pub struct ApplyCompletedBlock {
     block_hash: BlockHash,
-    chain_id: ChainId,
+    chain_id: Arc<ChainId>,
+    roundtrip_timer: Arc<Instant>,
+    chain_manager: Arc<ChainManagerRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
-    chain_manager: ChainManagerRef,
-    roundtrip_timer: Arc<Instant>,
-}
-
-/// Message commands [`ChainFeeder`] to check blocks, if they could be applied.
-#[derive(Clone, Debug)]
-pub struct CheckBlocksForApply {
-    blocks: Vec<BlockHash>,
-    chain_id: ChainId,
-    chain_manager: ChainManagerRef,
-    roundtrip_timer: Instant,
 }
 
 impl ApplyCompletedBlock {
     pub fn new(
         block_hash: BlockHash,
-        chain_id: ChainId,
+        chain_id: Arc<ChainId>,
         result_callback: Option<CondvarResult<(), failure::Error>>,
-        chain_manager: ChainManagerRef,
+        chain_manager: Arc<ChainManagerRef>,
         roundtrip_timer: Instant,
     ) -> Self {
         Self {
@@ -80,12 +71,36 @@ impl ApplyCompletedBlock {
     }
 }
 
-/// Message commands [`ChainFeeder`] to apply block.
+/// Message commands [`ChainFeeder`] to check blocks, if they could be applied.
 #[derive(Clone, Debug)]
+pub struct CheckBlocksForApply {
+    blocks: Vec<BlockHash>,
+    chain_id: Arc<ChainId>,
+    chain_manager: Arc<ChainManagerRef>,
+    roundtrip_timer: Instant,
+}
+
+impl CheckBlocksForApply {
+    pub fn new(
+        blocks: Vec<BlockHash>,
+        chain_id: Arc<ChainId>,
+        chain_manager: Arc<ChainManagerRef>,
+        roundtrip_timer: Instant,
+    ) -> Self {
+        Self {
+            chain_id,
+            blocks,
+            chain_manager,
+            roundtrip_timer,
+        }
+    }
+}
+
+/// Message commands [`ChainFeeder`] to apply block.
 pub struct ApplyBlock {
     envelope: ApplyCompletedBlock,
     chain_feeder: ChainFeederRef,
-    request: Arc<ApplyBlockRequest>,
+    request: ApplyBlockRequest,
 }
 
 impl ApplyBlock {
@@ -97,7 +112,7 @@ impl ApplyBlock {
         ApplyBlock {
             envelope,
             chain_feeder,
-            request: Arc::new(request),
+            request,
         }
     }
 }
@@ -215,7 +230,7 @@ impl ChainFeeder {
         }
 
         // collect data
-        let request = self.prepare_apply_request(&msg.block_hash, msg.chain_id.clone())?;
+        let request = self.prepare_apply_request(&msg.block_hash, msg.chain_id.as_ref().clone())?;
 
         // add request to queue
         let result_callback = msg.result_callback.clone();
@@ -272,7 +287,7 @@ impl ChainFeeder {
         };
 
         Ok(ApplyBlockRequest {
-            chain_id: chain_id.clone(),
+            chain_id,
             block_header: (&*current_head.header).clone(),
             pred_header: (&*predecessor.header).clone(),
             operations: ApplyBlockRequest::convert_operations(operations),
@@ -656,7 +671,7 @@ fn feed_chain_to_protocol(
 
                     // try apply block
                     let protocol_call_timer = Instant::now();
-                    match protocol_controller.apply_block((&*request).clone()) {
+                    match protocol_controller.apply_block(request) {
                         Ok(apply_block_result) => {
                             let protocol_call_elapsed = protocol_call_timer.elapsed();
                             debug!(log, "Block was applied";
@@ -744,12 +759,12 @@ fn feed_chain_to_protocol(
                                 let successors = current_head_meta.take_successors();
                                 if !successors.is_empty() {
                                     chain_feeder.tell(
-                                        CheckBlocksForApply {
-                                            blocks: successors,
+                                        CheckBlocksForApply::new(
+                                            successors,
                                             chain_id,
-                                            chain_manager: chain_manager.clone(),
-                                            roundtrip_timer: Instant::now(),
-                                        },
+                                            chain_manager.clone(),
+                                            Instant::now(),
+                                        ),
                                         None,
                                     );
                                 }

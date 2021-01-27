@@ -5,6 +5,7 @@ use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -51,11 +52,11 @@ pub struct BlockchainState {
     /// retrieve the block data. If the block data cannot be fetched it's the responsibility
     /// of the [`chain_manager`](crate::chain_manager::ChainManager) to return the block to this queue.
     missing_blocks: UniqueBlockData<MissingBlock>,
-    chain_id: ChainId,
+    chain_id: Arc<ChainId>,
 }
 
 impl BlockchainState {
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: ChainId) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>) -> Self {
         BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
@@ -72,8 +73,7 @@ impl BlockchainState {
         current_head: &Option<Head>,
     ) -> bool {
         // validate chain which we operate on
-        if self.get_chain_id() != branch.chain_id() {
-            // return Ok(BlockAcceptanceResult::IgnoreBlock);
+        if self.chain_id.as_ref() != branch.chain_id() {
             return false;
         }
         if branch.current_branch().current_head().level() <= 0 {
@@ -103,7 +103,7 @@ impl BlockchainState {
         api: &ProtocolController,
     ) -> Result<BlockAcceptanceResult, failure::Error> {
         // validate chain which we operate on
-        if self.get_chain_id() != head.chain_id() {
+        if self.chain_id.as_ref() != head.chain_id() {
             return Ok(BlockAcceptanceResult::IgnoreBlock);
         }
 
@@ -454,7 +454,7 @@ impl BlockchainState {
     pub fn hydrate(&mut self) -> Result<(), StorageError> {
         for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
             let (block_hash, meta) = (key?, value?);
-            if meta.predecessor().is_none() && (meta.chain_id() == &self.chain_id) {
+            if meta.predecessor().is_none() && (meta.chain_id() == self.chain_id.as_ref()) {
                 self.missing_blocks
                     .push(MissingBlock::with_level(block_hash, meta.level()));
             }
@@ -464,7 +464,7 @@ impl BlockchainState {
     }
 
     #[inline]
-    pub fn get_chain_id(&self) -> &ChainId {
+    pub fn get_chain_id(&self) -> &Arc<ChainId> {
         &self.chain_id
     }
 

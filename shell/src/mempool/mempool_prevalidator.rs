@@ -38,7 +38,9 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::subscription::{subscribe_to_shell_events, subscribe_to_shell_shutdown};
+use crate::subscription::{
+    subscribe_to_shell_events, subscribe_to_shell_new_current_head, subscribe_to_shell_shutdown,
+};
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -214,6 +216,7 @@ impl Actor for MempoolPrevalidator {
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
     }
 
     fn post_stop(&mut self) {

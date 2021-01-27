@@ -155,6 +155,23 @@ pub mod subscription {
     }
 
     #[inline]
+    pub fn subscribe_to_shell_new_current_head<M, E>(
+        shell_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        shell_channel.tell(
+            Subscribe {
+                actor: Box::new(myself),
+                topic: ShellChannelTopic::ShellNewCurrentHead.into(),
+            },
+            None,
+        );
+    }
+
+    #[inline]
     pub(crate) fn subscribe_to_shell_commands<M, E>(
         shell_channel: &ChannelRef<E>,
         myself: ActorRef<M>,
