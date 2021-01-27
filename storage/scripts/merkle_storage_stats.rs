@@ -2,185 +2,68 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryInto;
-use std::error::Error;
-use std::time::Instant;
-use std::collections::VecDeque;
-use std::sync::{mpsc, Arc};
-use std::thread;
-use serde::{Serialize, Deserialize};
 use crypto::hash::{HashType, BlockHash};
-use rocksdb::{DB, Cache, Options};
+use clap::{Arg, App};
 
 use storage::*;
-use in_memory::KVStore;
 use context_action_storage::ContextAction;
-use merkle_storage::{MerkleStorage, MerkleError, Entry, EntryHash, check_commit_hashes};
-use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
-use persistent::sequence::Sequences;
+use merkle_storage::{MerkleStorage, Entry, EntryHash, check_commit_hashes};
 
-const OPEN_FILES_LIMIT: u64 = 64 * 1024; //64k open files limit for process
+mod actions_tool;
+use actions_tool::ActionsFileReader;
 
-// Sets the limit of open file descriptors for the process
-// If user set a higher limit before, it will be left as is
-unsafe fn set_file_desc_limit(num: u64) {
-    // Get current open file desc limit
-    let rlim = match rlimit::getrlimit(rlimit::Resource::NOFILE) {
-        Ok(rlim) => rlim,
-        Err(e) => {
-            eprintln!("Setting open files limit failed (getrlimit): {}", e);
-            return;
-        }
-    };
-    let (mut soft, hard) = rlim;
-    // If the currently set rlimit is higher, do not change it
-    if soft >= num {
-        return;
-    }
-    // Set rlimit to num, but not higher than hard limit
-    soft = num.min(hard);
-    match rlimit::setrlimit(rlimit::Resource::NOFILE, soft, hard) {
-        Ok(()) => (),
-        Err(e) => eprintln!("Setting open files limit failed (setrlimit): {}", e),
-    }
+struct Args {
+    preserved_cycles: usize,
+    cycle_block_count: u32,
+    actions_file: String,
 }
 
-fn init_persistent_storage() -> PersistentStorage {
-    unsafe { set_file_desc_limit(OPEN_FILES_LIMIT); };
-    // Parses config + cli args
-    // let env = crate::configuration::Environment::from_args();
-    let db_path = "/tmp/tezedge/light-node";
+impl Args {
+    pub fn read_args() -> Self {
+        let app = App::new("merkle_storage_stats")
+            .about("generate merkle storage statistics data")
+            .arg(Arg::with_name("preserved_cycles")
+                 .help("last number of cycles which should be preserved")
+                 .default_value("5"))
+            .arg(Arg::with_name("cycle_block_count")
+                 .help("amount of blocks in each cycle")
+                 .default_value("2048"))
+            .arg(Arg::with_name("actions_file")
+                 .required(true)
+                 .help("path to the actions.bin")
+                 .index(1));
 
-    // create common RocksDB block cache to be shared among column families
-    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
-    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+        let matches = app.get_matches();
 
-    let schemas = vec![
-        block_storage::BlockPrimaryIndex::descriptor(&cache),
-        block_storage::BlockByLevelIndex::descriptor(&cache),
-        block_storage::BlockByContextHashIndex::descriptor(&cache),
-        BlockMetaStorage::descriptor(&cache),
-        OperationsStorage::descriptor(&cache),
-        OperationsMetaStorage::descriptor(&cache),
-        context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-        context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-        context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-        ContextActionStorage::descriptor(&cache),
-        SystemStorage::descriptor(&cache),
-        Sequences::descriptor(&cache),
-        MempoolStorage::descriptor(&cache),
-        ChainMetaStorage::descriptor(&cache),
-        PredecessorStorage::descriptor(&cache),
-        MerkleStorage::descriptor(&cache),
-    ];
-
-    let opts = DbConfiguration::default();
-    let rocks_db = Arc::new(open_kv(db_path, schemas, &opts).unwrap());
-    let commit_logs = match open_cl(db_path, vec![BlockStorage::descriptor()]) {
-        Ok(commit_logs) => Arc::new(commit_logs),
-        Err(e) => panic!(e),
-    };
-
-    PersistentStorage::new(rocks_db, commit_logs)
-}
-
-struct BlocksIterator {
-    block_storage: BlockStorage,
-    blocks: std::vec::IntoIter<BlockHeaderWithHash>,
-    next_block_chunk_hash: Option<BlockHash>,
-    limit: usize,
-}
-
-impl BlocksIterator {
-    pub fn new(block_storage: BlockStorage, start_block_hash: &BlockHash, limit: usize) -> Self {
-        let mut this = Self { block_storage, limit, next_block_chunk_hash: None, blocks: vec![].into_iter() };
-
-        this.get_and_set_blocks(start_block_hash).unwrap();
-        this
-    }
-
-    fn get_and_set_blocks(&mut self, from_block_hash: &BlockHash) -> Result<(), ()> {
-        let mut new_blocks = Self::get_blocks_after_block(
-            &self.block_storage,
-            from_block_hash,
-            self.limit,
-        );
-
-        if new_blocks.len() == 0 {
-            return Err(());
-        }
-        if new_blocks.len() >= self.limit {
-            self.next_block_chunk_hash = Some(new_blocks.pop().unwrap().hash);
-        }
-        self.blocks = new_blocks.into_iter();
-
-        Ok(())
-    }
-
-    fn get_blocks_after_block(
-        block_storage: &BlockStorage,
-        block_hash: &BlockHash,
-        limit: usize
-    ) -> Vec<BlockHeaderWithHash> {
-        block_storage.get_multiple_without_json(block_hash, limit).unwrap_or(vec![])
-    }
-}
-
-impl Iterator for BlocksIterator {
-    type Item = BlockHeaderWithHash;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.blocks.next() {
-            Some(block) => Some(block),
-            None => {
-                if let Some(next_block_chunk_hash) = self.next_block_chunk_hash.take() {
-                    if self.get_and_set_blocks(&next_block_chunk_hash).is_ok() {
-                        return self.next();
-                    }
-                }
-                None
-            },
+        Self {
+            preserved_cycles: matches.value_of("preserved_cycles")
+                .unwrap_or("5")
+                .parse()
+                .unwrap(),
+            cycle_block_count: matches.value_of("cycle_block_count")
+                .unwrap_or("2048")
+                .parse()
+                .unwrap(),
+            actions_file: matches.value_of("actions_file")
+                .expect("actions_file is required argument")
+                .to_string(),
         }
     }
-}
-
-type BlockAndActions = (BlockHeaderWithHash, Vec<ContextAction>);
-
-fn recv_blocks(
-    block_storage: BlockStorage,
-    ctx_action_storage: ContextActionStorage,
-) -> impl Iterator<Item = BlockAndActions> {
-    let genesis_block_hash = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv").unwrap();
-    let (tx, rx) = mpsc::sync_channel(128);
-
-    thread::spawn(move || {
-        for block in BlocksIterator::new(block_storage, &genesis_block_hash, 8) {
-            let mut actions = ctx_action_storage.get_by_block_hash(&block.hash).unwrap();
-            actions.sort_by_key(|x| x.id);
-            let actions = actions.into_iter().map(|x| x.action).collect();
-            if let Err(_) = tx.send((block, actions)) {
-                dbg!("blocks receiver disconnected, shutting down sender thread");
-                return;
-            }
-        }
-    });
-
-    rx.into_iter()
 }
 
 fn main() {
-    let persistent_storage = init_persistent_storage();
+    gen_stats(Args::read_args());
+}
 
-    let preserved_cycles = 5usize;
-    let mut cycle_commit_hashes:Vec<Vec<EntryHash>> = vec![Default::default(); preserved_cycles - 1];
+fn gen_stats(args: Args) {
+    let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
+        vec![Default::default(); args.preserved_cycles - 1];
 
-    let block_storage = BlockStorage::new(&persistent_storage);
-    let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
-    let merkle_rwlock = persistent_storage.merkle();
-    let mut merkle = merkle_rwlock.write().unwrap();
+    let mut merkle = MerkleStorage::new();
 
     println!("block level, key bytes, value bytes, reused keys bytes, total mem, total latency");
 
-    for (block, actions) in recv_blocks(block_storage, ctx_action_storage) {
+    for (block, actions) in ActionsFileReader::new(&args.actions_file).unwrap().into_iter() {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
@@ -194,7 +77,7 @@ fn main() {
 
         let stats = merkle.get_merkle_stats().unwrap();
         println!("{}, {}, {}, {}, {}, {}",
-            block.header.level(),
+            block.block_level,
             stats.kv_store_stats.key_bytes,
             stats.kv_store_stats.value_bytes,
             stats.kv_store_stats.reused_keys_bytes,
@@ -202,10 +85,9 @@ fn main() {
             merkle.get_block_latency(0).unwrap(),
         );
 
-        let (level, context_hash) = (block.header.level(), block.header.context());
-        let cycles = 2048;
+        let level = block.block_level;
 
-        if level % cycles == 0 && level > 0 {
+        if level % args.cycle_block_count == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
 
             let commits_iter = cycle_commit_hashes.iter()
