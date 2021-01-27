@@ -17,3 +17,4 @@ cluFlock = "1.2.5"
 hex = "0.4"
 # local dependencies
 tezos_context = { path = "../tezos/context" }
+crypto = { path = "../crypto" }

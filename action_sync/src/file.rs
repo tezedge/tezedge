@@ -9,6 +9,7 @@ use anyhow::anyhow;
 use cluFlock::{ToFlock, FlockLock};
 
 use serde::{Serialize, Deserialize};
+use crypto::hash::HashType;
 
 type Hash = Vec<u8>;
 
@@ -57,7 +58,7 @@ pub struct ActionsFileHeader {
 impl std::fmt::Display for ActionsFileHeader {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let mut formatter: String = String::new();
-        formatter.push_str(&format!("{:<24}{}", "Block Hash:", hex::encode(self.current_block_hash)));
+        formatter.push_str(&format!("{:<24}{}\n", "Block Hash:", HashType::BlockHash.hash_to_b58check(&self.current_block_hash)));
         formatter.push_str(&format!("{:<24}{}\n", "Block Height:", self.block_height));
         formatter.push_str(&format!("{:<24}{}\n", "Block Count:", self.block_count));
         formatter.push_str(&format!("{:<24}{}", "Actions Count:", self.actions_count));
