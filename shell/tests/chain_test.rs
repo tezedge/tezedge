@@ -1263,11 +1263,11 @@ mod test_node_peer {
                                 Ok(BootstrapOutput(rx, txw, ..)) => {
                                     info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
-                                    *tx.lock().await = Some(txw);
+                                    *tx.lock().await = txw.lock().await.take();
                                     connected.store(true, Ordering::Release);
 
                                     // process messages
-                                    Self::begin_process_incoming(name, rx, tx, connected, log, server_address, test_mempool, handle_message_callback).await;
+                                    Self::begin_process_incoming(name, rx, tx.clone(), connected, log, server_address, test_mempool, handle_message_callback).await;
                                 }
                                 Err(e) => {
                                     error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
@@ -1298,7 +1298,7 @@ mod test_node_peer {
         /// Start to process incoming data
         async fn begin_process_incoming(
             name: &str,
-            mut rx: EncryptedMessageReader,
+            rx: Arc<Mutex<Option<EncryptedMessageReader>>>,
             tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
             connected: Arc<AtomicBool>,
             log: Logger,
@@ -1311,6 +1311,8 @@ mod test_node_peer {
         ) {
             info!(log, "[{}] Starting to accept messages", name; "ip" => format!("{:?}", &peer_address));
 
+            let mut rx = rx.lock().await;
+            let mut rx = rx.take().unwrap();
             while connected.load(Ordering::Acquire) {
                 match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
                     Ok(res) => match res {
