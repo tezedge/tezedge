@@ -20,7 +20,7 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_context::channel::{context_receive, context_send, ContextAction};
+use tezos_context::channel::{context_receive, context_send, ContextAction, ContextActionMessage};
 
 use crate::protocol::*;
 use crate::runner::{ProtocolRunner, ProtocolRunnerError};
@@ -50,7 +50,7 @@ enum ProtocolMessage {
     ValidateOperationCall(ValidateOperationRequest),
     ProtocolRpcCall(ProtocolRpcRequest),
     HelpersPreapplyOperationsCall(ProtocolRpcRequest),
-    HelpersPreapplyBlockCall(ProtocolRpcRequest),
+    HelpersPreapplyBlockCall(HelpersPreapplyBlockRequest),
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
@@ -100,11 +100,11 @@ enum NodeMessage {
 struct NoopMessage;
 
 pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
+    let ipc_client: IpcClient<NoopMessage, ContextActionMessage> = IpcClient::new(socket_path);
     let (_, mut tx) = ipc_client.connect()?;
-    while let Ok(action) = context_receive() {
-        tx.send(&action)?;
-        if let ContextAction::Shutdown = action {
+    while let Ok(msg) = context_receive() {
+        tx.send(&msg)?;
+        if let ContextAction::Shutdown = &msg.action {
             break;
         }
     }
@@ -185,7 +185,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
             ProtocolMessage::ShutdownCall => {
-                if let Err(e) = context_send(ContextAction::Shutdown) {
+                if let Err(e) = context_send(ContextActionMessage {
+                    action: ContextAction::Shutdown,
+                    record: false,
+                    perform: false,
+                }) {
                     warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
                 }
 
@@ -291,7 +295,7 @@ pub fn handle_protocol_service_error<LC: Fn(ProtocolServiceError)>(
     match error {
         ProtocolServiceError::IpcError { .. } | ProtocolServiceError::UnexpectedMessage { .. } => {
             // we need to refresh protocol runner endpoint, so propagate error
-            return Err(error);
+            Err(error)
         }
         _ => {
             // just log error
@@ -341,7 +345,7 @@ impl IpcCmdServer {
 }
 
 /// IPC event server is listening for incoming IPC connections.
-pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
+pub struct IpcEvtServer(IpcServer<ContextActionMessage, NoopMessage>);
 
 /// Difference between `IpcCmdServer` and `IpcEvtServer` is:
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
@@ -355,7 +359,7 @@ impl IpcEvtServer {
     pub fn try_accept(
         &mut self,
         timeout: Duration,
-    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
+    ) -> Result<IpcReceiver<ContextActionMessage>, IpcError> {
         let (rx, _) = self.0.try_accept(timeout)?;
         Ok(rx)
     }
@@ -591,7 +595,7 @@ impl ProtocolController {
     /// Call helpers_preapply_block shell service
     pub fn helpers_preapply_block(
         &self,
-        request: ProtocolRpcRequest,
+        request: HelpersPreapplyBlockRequest,
     ) -> Result<HelpersPreapplyResponse, ProtocolServiceError> {
         self.call_helpers_preapply_internal(ProtocolMessage::HelpersPreapplyBlockCall(request))
     }

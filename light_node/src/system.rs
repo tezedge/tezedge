@@ -20,9 +20,9 @@ unsafe fn enable_core_dumps(log: &Logger) {
     };
     let (mut soft, hard) = rlim;
     // Bump soft limit to the hard limit, but only if it was not set before
-    if soft == 0 {
+    if soft.as_raw() == 0 {
         soft = hard;
-        if soft > 0 {
+        if soft.as_raw() > 0 {
             match rlimit::setrlimit(rlimit::Resource::CORE, soft, hard) {
                 Ok(()) => info!(log, "Core dumps enabled with maximum size."),
                 Err(e) => {
@@ -37,6 +37,8 @@ unsafe fn enable_core_dumps(log: &Logger) {
 // Sets the limit of open file descriptors for the process
 // If user set a higher limit before, it will be left as is
 unsafe fn set_file_desc_limit(log: &Logger, num: u64) {
+    let num = rlimit::Rlim::from_raw(num);
+
     // Get current open file desc limit
     let rlim = match rlimit::getrlimit(rlimit::Resource::NOFILE) {
         Ok(rlim) => rlim,

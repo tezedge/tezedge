@@ -15,6 +15,7 @@ use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 use crate::PeerId;
 
 use super::peer::PeerRef;
+use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 pub const DEFAULT_TOPIC: &str = "network";
 
@@ -47,7 +48,7 @@ pub struct PeerMessageReceived {
 pub enum NetworkChannelMsg {
     /// Events
     PeerCreated(PeerCreated),
-    PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>),
+    PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>, Arc<NetworkVersion>),
     PeerBlacklisted(Arc<PeerId>),
     PeerMessageReceived(PeerMessageReceived),
     /// Commands

@@ -1,6 +1,6 @@
 [package]
 name = "tezos_api"
-version = "0.9.1"
+version = "0.10.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -18,5 +18,5 @@ crypto = { path = "../../crypto" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
-assert-json-diff = "1.0.0"
+assert-json-diff = "1.1"
 hex = "0.4"

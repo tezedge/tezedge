@@ -7,7 +7,9 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContextHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
+};
 
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
@@ -40,12 +42,37 @@ pub struct BlockJsonData {
     operations_proto_metadata_json: String,
 }
 
-#[derive(Clone, Builder, CopyGetters, Serialize, Deserialize, Debug)]
+#[derive(Clone, Builder, CopyGetters, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockAdditionalData {
     #[get_copy = "pub"]
     max_operations_ttl: u16,
     #[get_copy = "pub"]
     last_allowed_fork_level: i32,
+    #[get = "pub"]
+    block_metadata_hash: Option<BlockMetadataHash>,
+    // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
+    // TODO: TE-207 - not needed, can be calculated from ops_metadata_hashes
+    #[get = "pub"]
+    ops_metadata_hash: Option<OperationMetadataListListHash>,
+    /// Note: This is calculated from ops_metadata_hashes - we need this in request
+    ///       This is calculated as merkle tree hash, like operation paths
+    ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
+}
+
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    ) {
+        (self.block_metadata_hash, self.ops_metadata_hash)
+    }
 }
 
 pub trait BlockStorageReader: Sync + Send {

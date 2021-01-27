@@ -228,7 +228,7 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("network")
             .long("network")
             .takes_value(true)
-            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "delphinet", "delphi", "sandbox"])
+            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "delphinet", "delphi", "edonet", "edo", "sandbox"])
             .help("Choose the Tezos environment"))
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")

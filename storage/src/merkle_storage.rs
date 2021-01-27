@@ -69,7 +69,6 @@ const HASH_LEN: usize = 32;
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 enum NodeKind {
     NonLeaf,
@@ -77,7 +76,7 @@ enum NodeKind {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
+pub struct Node {
     node_kind: NodeKind,
     entry_hash: EntryHash,
 }
@@ -87,7 +86,7 @@ struct Node {
 type Tree = BTreeMap<String, Node>;
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
+pub struct Commit {
     parent_commit_hash: Option<EntryHash>,
     root_hash: EntryHash,
     time: u64,
@@ -96,10 +95,21 @@ struct Commit {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
+}
+
+impl Encoder for Entry {
+    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
+        bincode::serialize(self).map_err(|_| SchemaError::EncodeError {})
+    }
+}
+impl Decoder for Entry {
+    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        bincode::deserialize(bytes).map_err(|_| SchemaError::DecodeError {})
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,9 +137,7 @@ enum Action {
 }
 
 pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
-
 pub type RefCnt = usize;
-
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
@@ -235,6 +243,7 @@ impl Default for OperationLatencies {
         }
     }
 }
+pub type WriteTransaction = Vec<(EntryHash, Entry)>;
 
 // Latency statistics indexed by operation name (e.g. "Set")
 pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
@@ -260,7 +269,7 @@ impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry
     type Key = EntryHash;
     // Entry (serialized)
-    type Value = Vec<u8>;
+    type Value = Entry;
 
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
@@ -354,10 +363,18 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
+fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
+    match entry {
+        Entry::Commit(commit) => hash_commit(&commit),
+        Entry::Tree(tree) => hash_tree(&tree),
+        Entry::Blob(blob) => hash_blob(blob),
+    }
+}
+
 impl MerkleStorage {
     pub fn new(db: Arc<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db,
+            db: db.clone(),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1192,14 +1209,6 @@ impl MerkleStorage {
         }
     }
 
-    fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
-        match entry {
-            Entry::Commit(commit) => hash_commit(&commit),
-            Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => hash_blob(blob),
-        }
-    }
-
     fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
         match self.get_entry(hash)? {
             Entry::Tree(tree) => Ok(tree),
@@ -1233,9 +1242,7 @@ impl MerkleStorage {
         match entry_bytes {
             None => Err(MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash),
-            }),
-            Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-        }
+            })
     }
     /// Get entry from staging area or look up in DB if not found
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
@@ -1748,7 +1755,7 @@ mod tests {
         let hash = hash_tree(&tree).unwrap();
         get_short_hash(&hash)
     }
-
+      
     #[test]
     fn test_examples_from_article_about_storage() {
         let db_name = "_ms_test_examples_from_article_about_storage";
@@ -2133,7 +2140,7 @@ mod tests {
         }
         let db_name = "ms_test_db_error";
         {
-            clean_db(db_name);
+            clean_db(&db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let rocksdb = Arc::new(get_rocks_db(db_name, &cache));
             get_storage(rocksdb);

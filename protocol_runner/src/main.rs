@@ -158,12 +158,12 @@ mod tezos {
         ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
         BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-        ComputePathResponse, GenesisChain, GetDataError, HelpersPreapplyError,
-        HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper,
-        ProtocolDataError, ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest,
-        ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
-        TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
-        ValidateOperationResponse,
+        ComputePathResponse, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
+        HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
+        PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
+        ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
+        TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
+        ValidateOperationRequest, ValidateOperationResponse,
     };
     use tezos_client::client::*;
     use tezos_wrapper::protocol::ProtocolApi;
@@ -206,7 +206,7 @@ mod tezos {
         }
 
         fn helpers_preapply_block(
-            request: ProtocolRpcRequest,
+            request: HelpersPreapplyBlockRequest,
         ) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
             helpers_preapply_block(request)
         }

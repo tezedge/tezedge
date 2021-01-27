@@ -3,15 +3,19 @@
 
 use super::{
     FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
-    OCamlBlockHash, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationListListHash,
+    OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash, OCamlOperationHash,
+    OCamlOperationListListHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
     OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    ForkingTestchainData, PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest,
-    ValidateOperationRequest,
+    ForkingTestchainData, HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest,
+    RpcMethod, RpcRequest, ValidateOperationRequest,
 };
-use crypto::hash::{BlockHash, ContextHash, Hash, OperationListListHash, ProtocolHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationListListHash, OperationMetadataHash,
+    OperationMetadataListListHash, ProtocolHash,
+};
 use ocaml_interop::{
     impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,
     OCamlAllocResult, OCamlAllocToken, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList,
@@ -62,7 +66,12 @@ to_ocaml_hash!(OCamlOperationHash, Hash);
 to_ocaml_hash!(OCamlBlockHash, BlockHash);
 to_ocaml_hash!(OCamlContextHash, ContextHash);
 to_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
-
+to_ocaml_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+to_ocaml_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
+to_ocaml_hash!(
+    OCamlOperationMetadataListListHash,
+    OperationMetadataListListHash
+);
 // Other
 
 impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
@@ -119,6 +128,8 @@ impl_to_ocaml_record! {
                       .map(|ops| ops.iter().map(FfiOperation::from).collect())
                       .collect::<Vec<Vec<FfiOperation>>>()
         },
+        predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 
@@ -133,6 +144,9 @@ impl_to_ocaml_record! {
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,
         forking_testchain_data: Option<ForkingTestchainData>,
+        block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
+        ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 
@@ -200,6 +214,14 @@ impl_to_ocaml_record! {
         chain_id: OCamlBytes,
         chain_arg: OCamlBytes,
         request: RpcRequest,
+    }
+}
+
+impl_to_ocaml_record! {
+    HelpersPreapplyBlockRequest {
+        protocol_rpc_request: ProtocolRpcRequest,
+        predecessor_block_metadata_hash: Option<OCamlBlockMetadataHash>,
+        predecessor_ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
     }
 }
 

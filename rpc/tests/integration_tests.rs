@@ -1,16 +1,24 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::env;
+use std::iter::FromIterator;
 
 use assert_json_diff::assert_json_eq_no_panic;
-use bytes::buf::BufExt;
 use enum_iterator::IntoEnumIterator;
 use failure::format_err;
+use hyper::body::Buf;
 use hyper::Client;
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
-use serde_json::Value;
+
+lazy_static! {
+    static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
+    static ref NODE_RPC_CONTEXT_ROOT_1: String = node_rpc_context_root_1();
+    static ref NODE_RPC_CONTEXT_ROOT_2: String = node_rpc_context_root_2();
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, IntoEnumIterator)]
 pub enum NodeType {
@@ -133,17 +141,17 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         .await;
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
-            "chains/main/blocks", level, "votes/listings"
-        ))
-        .await;
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}",
             "chains/main/blocks", level, "helpers/current_level"
         ))
         .await;
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "minimal_valid_time"
+        ))
+        .await;
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "votes/listings"
         ))
         .await;
         // --------------------------------- End of tests --------------------------------
@@ -334,49 +342,23 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 cycle, level, blocks_per_cycle
             );
 
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks", level, "helpers/endorsing_rights", cycle
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                cycle + preserved_cycles
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/endorsing_rights",
-                std::cmp::max(0, cycle - 2)
-            ))
-            .await;
+            let cycles_to_check: HashSet<i64> = HashSet::from_iter(
+                [cycle, cycle + preserved_cycles, std::cmp::max(0, cycle - 2)].to_vec(),
+            );
 
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks", level, "helpers/baking_rights", cycle
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                cycle + preserved_cycles
-            ))
-            .await;
-            test_rpc_compare_json(&format!(
-                "{}/{}/{}?all=true&cycle={}",
-                "chains/main/blocks",
-                level,
-                "helpers/baking_rights",
-                std::cmp::max(0, cycle - 2)
-            ))
-            .await;
+            for cycle_to_check in cycles_to_check {
+                test_rpc_compare_json(&format!(
+                    "{}/{}/{}?cycle={}",
+                    "chains/main/blocks", level, "helpers/endorsing_rights", cycle_to_check
+                ))
+                .await;
+
+                test_rpc_compare_json(&format!(
+                    "{}/{}/{}?all=true&cycle={}",
+                    "chains/main/blocks", level, "helpers/baking_rights", cycle_to_check
+                ))
+                .await;
+            }
 
             // get all cycles - it is like json: [0,1,2,3,4,5,7,8]
             let cycles = try_get_data_as_json(&format!(
@@ -464,12 +446,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) {
-    let _ = test_rpc_compare_json_and_return_if_eq(rpc_path).await;
-}
-
-async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value) {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
-    println!("Checking: {}", rpc_path);
+    if is_ignored(&IGNORE_PATH_PATTERNS, rpc_path) {
+        println!("Skipping rpc_path check: {}", rpc_path);
+        return;
+    } else {
+        println!("Checking: {}", rpc_path);
+    }
     let node1_json = match get_rpc_as_json(NodeType::Node1, rpc_path).await {
         Ok(json) => json,
         Err(e) => panic!(
@@ -488,11 +471,13 @@ async fn test_rpc_compare_json_and_return_if_eq(rpc_path: &str) -> (Value, Value
     };
     if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
         panic!(
-            "\n\nError: \n{}\n\nnode2_json:\n{}\n\nnode1_json:\n{}",
-            error, node2_json, node1_json
+            "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
+            error,
+            node_rpc_url(NodeType::Node2, rpc_path),
+            node2_json,
+            node_rpc_url(NodeType::Node1, rpc_path),
+            node1_json,
         );
-    } else {
-        (node1_json, node2_json)
     }
 }
 
@@ -541,8 +526,8 @@ async fn get_rpc_as_json(
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
     match node {
-        NodeType::Node1 => format!("{}/{}", &node_rpc_context_root_1(), rpc_path),
-        NodeType::Node2 => format!("{}/{}", &node_rpc_context_root_2(), rpc_path), // Tezedge node
+        NodeType::Node1 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_1.as_str(), rpc_path),
+        NodeType::Node2 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_2.as_str(), rpc_path),
     }
 }
 
@@ -570,6 +555,29 @@ fn to_block_header() -> i64 {
         })
 }
 
+fn ignore_path_patterns() -> Vec<String> {
+    env::var("IGNORE_PATH_PATTERNS").map_or_else(
+        |_| vec![],
+        |paths| {
+            paths
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect()
+        },
+    )
+}
+
+fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
+    if ignore_patters.is_empty() {
+        return false;
+    }
+
+    ignore_patters
+        .iter()
+        .any(|ignored| rpc_path.contains(ignored))
+}
+
 fn node_rpc_context_root_1() -> String {
     env::var("NODE_RPC_CONTEXT_ROOT_1")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set")
@@ -578,4 +586,28 @@ fn node_rpc_context_root_1() -> String {
 fn node_rpc_context_root_2() -> String {
     env::var("NODE_RPC_CONTEXT_ROOT_2")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set")
+}
+
+#[test]
+fn test_ignored_matching() {
+    assert!(is_ignored(
+        &vec!["minimal_valid_time".to_string()],
+        "/chains/main/blocks/1/minimal_valid_time",
+    ));
+    assert!(is_ignored(
+        &vec!["/minimal_valid_time".to_string()],
+        "/chains/main/blocks/1/minimal_valid_time",
+    ));
+    assert!(is_ignored(
+        &vec!["1/minimal_valid_time".to_string()],
+        "/chains/main/blocks/1/minimal_valid_time",
+    ));
+    assert!(is_ignored(
+        &vec!["vote/listing".to_string()],
+        "/chains/main/blocks/1/vote/listing",
+    ));
+    assert!(!is_ignored(
+        &vec!["vote/listing".to_string()],
+        "/chains/main/blocks/1/votesasa/listing",
+    ));
 }

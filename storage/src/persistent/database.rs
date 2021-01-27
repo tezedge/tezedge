@@ -99,23 +99,11 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// * `key` - Key (specified by schema), to be checked for existence
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
 
-    /// Insert new key value pair into WriteBatch.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &S::Key,
-        value: &S::Value,
-    ) -> Result<(), DBError>;
-
     /// Write batch into DB atomically
     ///
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError>;
+    fn write(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), DBError>;
 
     /// Get memory usage statistics from DB
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError>;
@@ -206,24 +194,17 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
         Ok(val.is_some())
     }
 
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &S::Key,
-        value: &S::Value,
-    ) -> Result<(), DBError> {
-        let key = key.encode()?;
-        let value = value.encode()?;
-        let cf = self
-            .cf_handle(S::name())
-            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+    fn write(&self, transaction: Vec<(S::Key, S::Value)>) -> Result<(), DBError> {
+        let mut batch = WriteBatch::default();
 
-        batch.put_cf(cf, &key, &value);
-
-        Ok(())
-    }
-
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
+        for (key, value) in transaction.into_iter() {
+            let key = key.encode()?;
+            let value = value.encode()?;
+            let cf = self
+                .cf_handle(S::name())
+                .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+            batch.put_cf(cf, &key, &value);
+        }
         self.write_opt(batch, &default_write_options())?;
         Ok(())
     }

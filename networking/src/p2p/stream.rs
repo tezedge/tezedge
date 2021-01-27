@@ -10,11 +10,9 @@ use std::io;
 
 use bytes::Buf;
 use failure::_core::time::Duration;
-use failure::{Error, Fail};
-use slog::{trace, FnValue, Logger};
-use tokio::io::{ReadHalf, WriteHalf};
+use slog::{FnValue, Logger, trace};
+use tokio::io::{ReadHalf, WriteHalf, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio::prelude::*;
 
 use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
