@@ -11,6 +11,7 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Pee
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
     subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
+    subscribe_to_shell_new_current_head,
 };
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
@@ -121,6 +122,7 @@ impl Actor for Monitor {
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
         subscribe_to_network_events(&self.network_channel, ctx.myself());
 
         // Every second, send yourself a message to broadcast the monitoring to all connected clients

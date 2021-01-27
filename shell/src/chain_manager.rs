@@ -43,7 +43,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
+use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef, CheckBlocksForApply};
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{
@@ -132,10 +132,6 @@ impl ProcessValidatedBlock {
 /// Message commands [`ChainManager`] to re-hydrate state.
 #[derive(Clone, Debug)]
 pub struct RehydrateState;
-
-/// Message commands [`ChainManager`] to ask all connected peers for their current branch.
-#[derive(Clone, Debug)]
-pub struct AskPeersAboutCurrentBranch;
 
 /// Message commands [`ChainManager`] to ask all connected peers for their current head.
 #[derive(Clone, Debug)]
@@ -243,7 +239,6 @@ impl Stats {
     DisconnectStalledPeers,
     CheckChainCompleteness,
     CheckMempoolCompleteness,
-    AskPeersAboutCurrentBranch,
     AskPeersAboutCurrentHead,
     LogStats,
     NetworkChannelMsg,
@@ -334,7 +329,7 @@ impl ChainManager {
                 shell_channel,
                 persistent_storage,
                 tezos_readonly_prevalidation_api,
-                chain_id,
+                Arc::new(chain_id),
                 is_sandbox,
                 current_mempool_state,
                 p2p_disable_mempool,
@@ -524,7 +519,8 @@ impl ChainManager {
                 // retrieve mutable reference and use it as `tell_peer()` parameter
                 if let Some(peer) = self.peers.get_mut(&actor_uri) {
                     tell_peer(
-                        GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(),
+                        GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
+                            .into(),
                         peer,
                     );
                 }
@@ -585,7 +581,7 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
-                                    if chain_state.get_chain_id() == &message.chain_id {
+                                    if chain_state.get_chain_id().as_ref() == &message.chain_id {
                                         if let Some(current_head_local) = &current_head.local {
                                             if let Some(current_head) = block_storage
                                                 .get(current_head_local.block_hash())?
@@ -600,7 +596,7 @@ impl ChainManager {
                                                 )?;
                                                 // send message
                                                 let msg = CurrentBranchMessage::new(
-                                                    chain_state.get_chain_id().clone(),
+                                                    chain_state.get_chain_id().as_ref().clone(),
                                                     CurrentBranch::new(
                                                         (*current_head.header).clone(),
                                                         history,
@@ -651,13 +647,13 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::GetCurrentHead(message) => {
-                                    if chain_state.get_chain_id() == message.chain_id() {
+                                    if chain_state.get_chain_id().as_ref() == message.chain_id() {
                                         if let Some(current_head_local) = &current_head.local {
                                             if let Some(current_head) = block_storage
                                                 .get(current_head_local.block_hash())?
                                             {
                                                 let msg = CurrentHeadMessage::new(
-                                                    chain_state.get_chain_id().clone(),
+                                                    chain_state.get_chain_id().as_ref().clone(),
                                                     current_head.header.as_ref().clone(),
                                                     Self::resolve_mempool_to_send_to_peer(
                                                         &peer,
@@ -713,7 +709,7 @@ impl ChainManager {
                                                                 block_hash.clone(),
                                                                 chain_state.get_chain_id().clone(),
                                                                 None,
-                                                                ctx.myself(),
+                                                                Arc::new(ctx.myself()),
                                                                 Instant::now(),
                                                             ),
                                                             None,
@@ -1029,7 +1025,7 @@ impl ChainManager {
                     peers, chain_state, ..
                 } = self;
                 let msg: Arc<PeerMessageResponse> =
-                    GetCurrentHeadMessage::new(chain_state.get_chain_id().clone()).into();
+                    GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into();
                 peers
                     .iter_mut()
                     .for_each(|(_, peer)| tell_peer(msg.clone(), peer));
@@ -1078,7 +1074,7 @@ impl ChainManager {
                     received_block.hash.clone(),
                     chain_state.get_chain_id().clone(),
                     None,
-                    myself.clone(),
+                    Arc::new(myself.clone()),
                     Instant::now(),
                 ),
                 None,
@@ -1307,7 +1303,7 @@ impl ChainManager {
                                 block_header_with_hash.hash.clone(),
                                 self.chain_state.get_chain_id().clone(),
                                 result_callback,
-                                ctx.myself(),
+                                Arc::new(ctx.myself()),
                                 Instant::now(),
                             ),
                             None,
@@ -1410,14 +1406,15 @@ impl ChainManager {
             );
 
             // update internal state with new head
-            self.update_local_current_head(new_head.clone(), &ctx.system.log());
+            let is_bootstrapped =
+                self.update_local_current_head(new_head.clone(), &ctx.system.log());
 
             // notify other actors that new current head was changed
             // (this also notifies [mempool_prevalidator])
             self.shell_channel.tell(
                 Publish {
                     msg: ShellChannelMsg::NewCurrentHead(new_head, block.clone()),
-                    topic: ShellChannelTopic::ShellEvents.into(),
+                    topic: ShellChannelTopic::ShellNewCurrentHead.into(),
                 },
                 None,
             );
@@ -1425,7 +1422,7 @@ impl ChainManager {
             // broadcast new head/branch to other peers
             // we can do this, only if we are bootstrapped,
             // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
-            if self.is_bootstrapped {
+            if is_bootstrapped {
                 match new_head_result {
                     HeadResult::BranchSwitch => {
                         self.advertise_current_branch_to_p2p(
@@ -1475,8 +1472,22 @@ impl ChainManager {
             "Hydrating/checking current head successors (if can be applied)"
         );
         if let Some(current_head_local) = self.current_head.local.as_ref() {
-            if let Err(e) = self.check_successors_for_apply(ctx, current_head_local.block_hash()) {
-                warn!(ctx.system.log(), "Failed to hydrate/check successors for apply (lets wait for new peers and bootstrap process)"; "reason" => e);
+            if let Ok(Some(current_head_meta)) =
+                self.block_meta_storage.get(current_head_local.block_hash())
+            {
+                // ping chain_feeder for successors check -> to queue
+                let successors = current_head_meta.take_successors();
+                if !successors.is_empty() {
+                    self.block_applier.tell(
+                        CheckBlocksForApply::new(
+                            successors,
+                            self.chain_state.get_chain_id().clone(),
+                            Arc::new(ctx.myself()),
+                            Instant::now(),
+                        ),
+                        None,
+                    );
+                }
             }
         }
 
@@ -1496,21 +1507,23 @@ impl ChainManager {
 
     /// Updates currnet local head and some stats.
     /// Also checks/sets [is_bootstrapped] flag
-    fn update_local_current_head(&mut self, new_head: Head, log: &Logger) {
+    ///
+    /// Returns bool flag [is_bootstrapped]
+    fn update_local_current_head(&mut self, new_head: Head, log: &Logger) -> bool {
         let new_level = *new_head.level();
         self.current_head.local = Some(new_head);
         self.stats.applied_block_level = Some(new_level);
         self.stats.applied_block_last = Some(Instant::now());
-        self.resolve_is_bootstrapped(log);
+        self.resolve_is_bootstrapped(log)
     }
 
     /// Resolves if chain_manager is bootstrapped,
     /// means that we have at_least <> boostrapped peers
     ///
     /// "bootstrapped peer" means, that peer.current_level <= chain_manager.current_level
-    fn resolve_is_bootstrapped(&mut self, log: &Logger) {
+    fn resolve_is_bootstrapped(&mut self, log: &Logger) -> bool {
         if self.is_bootstrapped {
-            return;
+            return self.is_bootstrapped;
         }
 
         // simple implementation:
@@ -1540,6 +1553,8 @@ impl ChainManager {
             self.is_bootstrapped = true;
             info!(log, "Chain manager is bootstrapped"; "num_of_peers_for_bootstrap_threshold" => self.num_of_peers_for_bootstrap_threshold, "num_of_bootstrapped_peers" => num_of_bootstrapped_peers, "reached_on_level" => chain_manager_current_level)
         }
+
+        self.is_bootstrapped
     }
 
     /// Send CurrentBranch message to the p2p
@@ -1677,7 +1692,7 @@ impl
         ShellChannelRef,
         PersistentStorage,
         Arc<TezosApiConnectionPool>,
-        ChainId,
+        Arc<ChainId>,
         bool,
         CurrentMempoolStateStorageRef,
         bool,
@@ -1704,7 +1719,7 @@ impl
             ShellChannelRef,
             PersistentStorage,
             Arc<TezosApiConnectionPool>,
-            ChainId,
+            Arc<ChainId>,
             bool,
             CurrentMempoolStateStorageRef,
             bool,
@@ -2086,27 +2101,6 @@ impl Receive<ProcessValidatedBlock> for ChainManager {
     }
 }
 
-impl Receive<AskPeersAboutCurrentBranch> for ChainManager {
-    type Msg = ChainManagerMsg;
-
-    fn receive(
-        &mut self,
-        _ctx: &Context<Self::Msg>,
-        _msg: AskPeersAboutCurrentBranch,
-        _sender: Sender,
-    ) {
-        let ChainManager {
-            peers, chain_state, ..
-        } = self;
-        peers.iter_mut().for_each(|(_, peer)| {
-            tell_peer(
-                GetCurrentBranchMessage::new(chain_state.get_chain_id().clone()).into(),
-                peer,
-            )
-        })
-    }
-}
-
 impl Receive<AskPeersAboutCurrentHead> for ChainManager {
     type Msg = ChainManagerMsg;
 
@@ -2121,7 +2115,7 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
         } = self;
         peers.iter_mut().for_each(|(_, peer)| {
             tell_peer(
-                GetCurrentHeadMessage::new(chain_state.get_chain_id().clone()).into(),
+                GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into(),
                 peer,
             )
         })
@@ -2396,7 +2390,7 @@ pub mod tests {
             shell_channel.clone(),
             storage.storage().clone(),
             pool,
-            chain_id,
+            Arc::new(chain_id),
             false,
             init_mempool_state_storage(),
             false,
@@ -2405,7 +2399,8 @@ pub mod tests {
         ));
 
         // empty chain_manager
-        chain_manager.resolve_is_bootstrapped(&log);
+        let is_bootstrapped = chain_manager.resolve_is_bootstrapped(&log);
+        assert!(!is_bootstrapped);
         assert!(!chain_manager.is_bootstrapped);
 
         // add one not bootstrapped peer with level 0
@@ -2421,7 +2416,8 @@ pub mod tests {
         chain_manager.peers.insert(peer_key.clone(), peer_state);
 
         // check chain_manager and peer (not bootstrapped)
-        chain_manager.resolve_is_bootstrapped(&log);
+        let is_bootstrapped = chain_manager.resolve_is_bootstrapped(&log);
+        assert!(!is_bootstrapped);
         assert!(!chain_manager.is_bootstrapped);
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
@@ -2431,9 +2427,10 @@ pub mod tests {
             4,
             vec![],
         );
-        chain_manager.update_local_current_head(new_head, &log);
+        let is_bootstrapped = chain_manager.update_local_current_head(new_head, &log);
 
         // check chain_manager and peer (not bootstrapped)
+        assert!(!is_bootstrapped);
         assert!(!chain_manager.is_bootstrapped);
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, false);
 
@@ -2443,9 +2440,10 @@ pub mod tests {
             5,
             vec![],
         );
-        chain_manager.update_local_current_head(new_head, &log);
+        let is_bootstrapped = chain_manager.update_local_current_head(new_head, &log);
 
         // check chain_manager and peer (should be bootstrapped now)
+        assert!(is_bootstrapped);
         assert!(chain_manager.is_bootstrapped);
         assert_peer_bootstrapped(&mut chain_manager, &peer_key, true);
 

@@ -11,7 +11,7 @@ use std::time::Duration;
 use chrono::TimeZone;
 use failure::Fail;
 
-use crypto::hash::{BlockHash, ChainId, HashType, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
