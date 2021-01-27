@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::error::Error;
 use std::path::{Path};
 use bytes::{BytesMut, Buf, BufMut};
-use bytes::buf::BufExt;
+// use bytes::buf::BufExt;
 use std::fmt::Formatter;
 use crate::context_action_storage::ContextAction;
 use serde::{Serialize, Deserialize};
@@ -88,9 +88,9 @@ impl ActionsFileReader {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn Error>> {
         let mut file = OpenOptions::new().write(false).create(false).read(true).open(path)?;
         let mut reader = BufReader::new(file);
-        reader.seek(SeekFrom::Start(0));
+        reader.seek(SeekFrom::Start(0)).unwrap();
         let mut h = [0_u8; HEADER_LEN];
-        reader.read_exact(&mut h);
+        reader.read_exact(&mut h).unwrap();
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileReader {
             reader,
@@ -105,9 +105,9 @@ impl ActionsFileReader {
     }
 
     pub fn fetch_header(&mut self) -> ActionsFileHeader {
-        self.reader.seek(SeekFrom::Start(0));
+        self.reader.seek(SeekFrom::Start(0)).unwrap();
         let mut h = [0_u8; HEADER_LEN];
-        self.reader.read_exact(&mut h);
+        self.reader.read_exact(&mut h).unwrap();
         self.header = ActionsFileHeader::from(h);
         self.header()
     }
@@ -127,14 +127,14 @@ impl Iterator for ActionsFileReader {
             }
         };
         let mut h = [0_u8; 4];
-        self.reader.read_exact(&mut h);
+        self.reader.read_exact(&mut h).unwrap();
         let content_len = u32::from_be_bytes(h);
         if content_len <= 0 {
             return None;
         }
         let mut b = BytesMut::with_capacity(content_len as usize);
         unsafe { b.set_len(content_len as usize) }
-        self.reader.read_exact(&mut b);
+        self.reader.read_exact(&mut b).unwrap();
 
         let mut reader = snap::read::FrameDecoder::new(b.reader());
 

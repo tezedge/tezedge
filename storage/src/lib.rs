@@ -42,9 +42,6 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
-pub mod kv_store_gced;
-pub mod kv_store;
-pub mod in_memory;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -58,6 +55,8 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
+pub mod storage_backend;
+pub mod backend;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

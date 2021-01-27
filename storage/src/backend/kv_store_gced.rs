@@ -8,14 +8,16 @@ use std::ops::{Deref, DerefMut};
 use crypto::hash::HashType;
 use serde::Serialize;
 
-use crate::kv_store::KVStoreError;
-use crate::merkle_storage::{KVStore, Entry, EntryHash, ContextValue};
+use crate::merkle_storage::{Entry, EntryHash, ContextValue};
+use crate::storage_backend::{
+    StorageBackend as KVStore,
+    StorageBackendError as KVStoreError,
+    StorageBackendStats as KVStoreStats,
+    size_of_vec,
+};
+
 
 // TODO: add assertions for EntryHash to make sure it is stack allocated.
-
-fn size_of_vec<T>(v: &Vec<T>) -> usize {
-    mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
-}
 
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where T: KVStore,
@@ -64,108 +66,6 @@ pub enum CmdMsg {
     MarkReused(EntryHash),
 }
 
-// TODO: measure reused keys size
-#[derive(Debug, Default, Clone, Copy, Serialize)]
-pub struct KVStoreStats {
-    pub key_bytes: usize,
-    pub value_bytes: usize,
-    pub reused_keys_bytes: usize,
-}
-
-impl KVStoreStats {
-    /// increases `reused_keys_bytes` based on `key`
-    pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-    }
-
-    pub fn total_as_bytes(&self) -> usize {
-        self.key_bytes + self.value_bytes + self.reused_keys_bytes
-    }
-}
-
-impl<'a> std::ops::Add<&'a Self> for KVStoreStats {
-    type Output = Self;
-
-    fn add(self, other: &'a Self) -> Self::Output {
-        Self {
-            key_bytes: self.key_bytes + other.key_bytes,
-            value_bytes: self.value_bytes + other.value_bytes,
-            reused_keys_bytes: self.reused_keys_bytes + other.reused_keys_bytes,
-        }
-    }
-}
-
-impl std::ops::Add for KVStoreStats {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        self + &other
-    }
-}
-
-impl<'a> std::ops::AddAssign<&'a Self> for KVStoreStats {
-    fn add_assign(&mut self, other: &'a Self) {
-        *self = *self + other;
-    }
-}
-
-impl std::ops::AddAssign for KVStoreStats {
-    fn add_assign(&mut self, other: Self) {
-        *self = *self + other;
-    }
-}
-
-impl<'a> std::ops::Sub<&'a Self> for KVStoreStats {
-    type Output = Self;
-
-    fn sub(self, other: &'a Self) -> Self::Output {
-        Self {
-            key_bytes: self.key_bytes - other.key_bytes,
-            value_bytes: self.value_bytes - other.value_bytes,
-            reused_keys_bytes: self.reused_keys_bytes - other.reused_keys_bytes,
-        }
-    }
-}
-
-impl std::ops::Sub for KVStoreStats {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        self - &other
-    }
-}
-
-impl<'a> std::ops::SubAssign<&'a Self> for KVStoreStats {
-    fn sub_assign(&mut self, other: &'a Self) {
-        *self = *self - other;
-    }
-}
-
-impl std::ops::SubAssign for KVStoreStats {
-    fn sub_assign(&mut self, other: Self) {
-        *self = *self - other;
-    }
-}
-
-impl<'a> std::iter::Sum<&'a KVStoreStats> for KVStoreStats {
-    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
-        iter.fold(KVStoreStats::default(), |acc, cur| {
-            acc + cur
-        })
-    }
-}
-
-impl From<(&EntryHash, &ContextValue)> for KVStoreStats {
-    fn from((_entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
-        KVStoreStats {
-            key_bytes: mem::size_of::<EntryHash>(),
-            value_bytes: size_of_vec(&value),
-            reused_keys_bytes: 0,
-        }
-    }
-}
-
-
 /// Garbage Collected Key Value Store
 pub struct KVStoreGCed<T: KVStore> {
     cycle_count: usize,
@@ -201,8 +101,6 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         }
     }
 
-    pub fn is_persisted(&self) -> bool { false }
-
     fn stores_get(&self, key: &EntryHash) -> Option<ContextValue> {
         stores_get(&self.stores.read().unwrap(), key)
     }
@@ -210,19 +108,23 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     fn stores_contains(&self, key: &EntryHash) -> bool {
         stores_contains(&self.stores.read().unwrap(), key)
     }
+}
 
-    pub fn get(&self, key: &EntryHash) -> Option<ContextValue> {
-        self.current.get(key)
-            .unwrap_or(None)
-            .or_else(|| self.stores_get(key))
+impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
+    fn is_persisted(&self) -> bool {
+        self.current.is_persisted()
     }
 
-    pub fn contains(&self, key: &EntryHash) -> bool {
-        self.current.contains(key).unwrap_or(false)
-            || self.stores_contains(key)
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
+        Ok(self.current.get(key)?
+            .or_else(|| self.stores_get(key)))
     }
 
-    pub fn put(
+    fn contains(&self, key: &EntryHash) -> Result<bool, KVStoreError> {
+        Ok(self.current.contains(key)? || self.stores_contains(key))
+    }
+
+    fn put(
         &mut self,
         key: EntryHash,
         value: ContextValue,
@@ -237,11 +139,19 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         Ok(was_added)
     }
 
-    pub fn mark_reused(&mut self, key: EntryHash) {
+    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
+        self.current.merge(key, value)
+    }
+
+    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
+        self.current.delete(key)
+    }
+
+    fn mark_reused(&mut self, key: EntryHash) {
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
-    pub fn start_new_cycle(&mut self) {
+    fn start_new_cycle(&mut self) {
         self.stores_stats.lock().unwrap().push(
             mem::take(&mut self.current_stats)
         );
@@ -251,25 +161,17 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         let _ = self.msg.lock().unwrap().send(CmdMsg::StartNewCycle);
     }
 
-    pub fn wait_for_gc_finish(&self) {
+    fn wait_for_gc_finish(&self) {
         while self.stores.read().unwrap().len() >= self.cycle_count {
             thread::sleep(Duration::from_millis(2));
         }
     }
 
-    pub fn get_stats(&self) -> Vec<KVStoreStats> {
+    fn get_stats(&self) -> Vec<KVStoreStats> {
         self.stores_stats.lock().unwrap().iter()
             .chain(vec![&self.current_stats])
             .cloned()
             .collect()
-    }
-
-    pub fn get_total_stats(&self) -> KVStoreStats {
-        self.get_stats().iter().sum()
-    }
-
-    pub fn total_mem_usage_as_bytes(&self) -> usize {
-        self.get_total_stats().total_as_bytes()
     }
 }
 

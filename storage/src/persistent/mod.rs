@@ -11,19 +11,16 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
-pub use sled_error::SledError;
 
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use crate::in_memory;
+use crate::backend::RocksDBBackend;
 
 pub mod codec;
 pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
-pub mod kv_store;
-pub mod sled_error;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -45,9 +42,9 @@ impl Default for DbConfiguration {
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = ColumnFamilyDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item=ColumnFamilyDescriptor>,
 {
     DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
 }
@@ -124,9 +121,9 @@ pub fn default_table_options(cache: &Cache) -> Options {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item=CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
@@ -147,7 +144,9 @@ pub struct PersistentStorage {
 impl PersistentStorage {
     pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
-        let merkle = MerkleStorage::new(7);
+        let merkle = MerkleStorage::new(
+            Box::new(RocksDBBackend::new(kv.clone(), MerkleStorage::name()))
+        );
         Self {
             clog,
             kv: kv.clone(),

@@ -61,10 +61,9 @@ use rocksdb::{ColumnFamilyDescriptor, Cache};
 
 use crypto::hash::HashType;
 
-use crate::kv_store::{KVStore as KVStoreBase, KVStoreError};
-use crate::kv_store_gced::{KVStoreGCed, KVStoreStats};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 use crate::context_action_storage::{ContextAction, ContextActionStorage};
+use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 
 const HASH_LEN: usize = 32;
 
@@ -138,32 +137,7 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKVStore = crate::in_memory::KVStore<EntryHash, ContextValue>;
-
-pub trait KVStore:
-    KVStoreBase<
-        Error = KVStoreError,
-        Key = EntryHash,
-        Value = ContextValue>
-    + Send
-    + Sync
-{
-}
-
-/// required since `KVStore` that is declared above isn't implemented
-/// for types that implement [crate::kv_Store::KVStore] and [crate::kv_store::ApplyBatch].
-/// must be same as above.
-impl<T> KVStore for T
-where T:
-    KVStoreBase<
-        Error = KVStoreError,
-        Key = EntryHash,
-        Value = ContextValue>
-    + Send
-    + Sync
-{
-}
-
+pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 impl KeyValueSchema for MerkleStorage {
     // keys is hash of Entry
@@ -188,7 +162,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: KVStoreGCed<MerkleStorageKVStore>,
+    db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -205,9 +179,13 @@ pub struct MerkleStorage {
 pub enum MerkleError {
     /// External libs errors
     #[fail(display = "KVStore error: {:?}", error)]
-    DBError { error: KVStoreError },
+    DBError { error: StorageBackendError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
+    #[fail(display = "Backend error: {:?}", error)]
+    StorageBackendError {
+        error: StorageBackendError,
+    },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -238,11 +216,12 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
 }
 
-impl From<KVStoreError> for MerkleError {
-    fn from(error: KVStoreError) -> Self {
-        MerkleError::DBError { error }
+impl From<StorageBackendError> for MerkleError {
+    fn from(error: StorageBackendError) -> Self {
+        MerkleError::StorageBackendError { error }
     }
 }
+
 
 impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self {
@@ -325,7 +304,7 @@ pub struct MerklePerfStats {
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
     pub perf_stats: MerklePerfStats,
-    pub kv_store_stats: KVStoreStats,
+    pub kv_store_stats: StorageBackendStats,
 }
 
 impl BincodeEncoded for EntryHash {}
@@ -361,7 +340,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
     tree.iter().for_each(|(k, v)| {
-        hasher.update(encode_irmin_node_kind(&v.node_kind));
+        hasher.update(&encode_irmin_node_kind(&v.node_kind));
         hasher.update(&[k.len() as u8]);
         hasher.update(&k.clone().into_bytes());
         hasher.update(&(HASH_LEN as u64).to_be_bytes());
@@ -480,9 +459,9 @@ where I: IntoIterator<Item = EntryHash> {
 }
 
 impl MerkleStorage {
-    pub fn new(preserved_cycles: usize) -> Self {
+    pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db: KVStoreGCed::new(preserved_cycles),
+            db,
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -495,6 +474,10 @@ impl MerkleStorage {
             block_latencies: Default::default(),
             actions: Arc::new(Vec::new()),
         }
+    }
+
+    pub fn is_persisted(&self) -> bool {
+        self.db.is_persisted()
     }
 
     /// if `MerkleStorage` is not persisted, restore it from `ContextActionStorage`.
@@ -555,11 +538,6 @@ impl MerkleStorage {
             _ => {}
         };
         Ok(())
-    }
-
-    #[inline]
-    pub fn is_persisted(&self) -> bool {
-        self.db.is_persisted()
     }
 
     /// Get value from current staged root
@@ -1404,7 +1382,7 @@ impl MerkleStorage {
     }
 
     fn get_entry_db(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = self.db.get(hash);
+        let entry_bytes = self.db.get(hash)?;
         match entry_bytes {
             None => Err(MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash),
@@ -1415,15 +1393,7 @@ impl MerkleStorage {
     /// Get entry from staging area or look up in DB if not found
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
-            None => {
-                let entry_bytes = self.db.get(hash);
-                match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound {
-                        hash: HashType::ContextHash.hash_to_b58check(hash),
-                    }),
-                    Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-                }
-            }
+            None => Ok(self.get_entry_db(hash)?),
             Some(entry) => Ok(entry.clone()),
         }
     }
@@ -1595,17 +1565,57 @@ impl MerkleStorage {
 mod tests {
     use assert_json_diff::assert_json_eq;
     use std::time::Duration;
-
-    use super::*;
+    use std::sync::RwLock;
+    use std::ops::Deref;
+    
     use crate::context_key;
+    use super::*;
+    use crate::backend::{RocksDBBackend, InMemoryBackend, SledBackend};
+    
+    /// Open DB at path, used in tests
+    fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
+        let mut db_opts = Options::default();
+        db_opts.create_if_missing(true);
+        db_opts.create_missing_column_families(true);
 
-    fn get_empty_storage() -> MerkleStorage {
-        MerkleStorage::new(7)
+        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
+    }
+
+    pub fn out_dir_path(dir_name: &str) -> PathBuf {
+        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+        Path::new(out_dir.as_str()).join(Path::new(dir_name))
+    }
+
+    fn get_db_name(db_name: &str) -> PathBuf {
+        out_dir_path(db_name)
+    }
+
+    fn get_db(db_name: &str, cache: &Cache) -> RocksDBBackend {
+        let rocks = open_db(get_db_name(db_name), &cache);
+        RocksDBBackend::new(Arc::new(rocks), MerkleStorage::name())
+    }
+
+    fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
+        MerkleStorage::new(get_db(dn_name, &cache))
+    }
+
+    fn get_mem_storage(db : Arc<EntryHash, ContextValue>) -> MerkleStorage {
+        MerkleStorage::new(InMemoryBackend::new(db))
+    }
+
+    fn get_sled_storage(db : sled::Tree) -> MerkleStorage {
+        MerkleStorage::new(SledBackend::new(db))
+    }
+
+    fn clean_db(db_name: &str) {
+        let _ = DB::destroy(&Options::default(), get_db_name(db_name));
+        let _ = fs::remove_dir_all(get_db_name(db_name));
     }
 
     #[test]
     fn test_duplicate_entry_in_staging() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let mut storage = get_mem_storage(db);
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1830,7 +1840,14 @@ mod tests {
 
     #[test]
     fn test_tree_hash() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => { panic!()}
+        };
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1853,7 +1870,15 @@ mod tests {
 
     #[test]
     fn test_commit_hash() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1879,7 +1904,14 @@ mod tests {
 
     #[test]
     fn test_examples_from_article_about_storage() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
         storage.set(&vec!["a".to_string()], &vec![1]);
         storage.apply_actions_to_staging_area();
@@ -1925,9 +1957,15 @@ mod tests {
 
     #[test]
     fn test_multiple_commit_hash() {
-        let mut storage = get_empty_storage();
-        let _commit = storage.commit(
-            0, "Tezos".to_string(), "Genesis".to_string());
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+        let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
             &vec!["data".to_string(), "a".to_string(), "x".to_string()],
@@ -1957,14 +1995,27 @@ mod tests {
 
     #[test]
     fn test_get() {
+
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+
+
+        let commit1;
+        let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         let key_eab: &ContextKey = &vec!["e".to_string(), "a".to_string(), "b".to_string()];
         let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
         let key_d: &ContextKey = &vec!["d".to_string()];
 
-        let mut storage = get_empty_storage();
-        let (commit1, commit2) = {
+        {
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
+
             let res = storage.get(&vec![]);
             assert_eq!(res.unwrap().is_empty(), true);
             let res = storage.get(&vec!["a".to_string()]);
@@ -1985,8 +2036,12 @@ mod tests {
             assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
             assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
             let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        }
 
-            (commit1, commit2)
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
         };
 
         assert_eq!(
@@ -2002,10 +2057,18 @@ mod tests {
 
     #[test]
     fn test_mem() {
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let mut storage = get_empty_storage();
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
         storage.set(key_abc, &vec![1u8, 2u8]);
@@ -2021,11 +2084,19 @@ mod tests {
 
     #[test]
     fn test_dirmem() {
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
         let key_a: &ContextKey = &vec!["a".to_string()];
 
-        let mut storage = get_empty_storage();
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -2041,7 +2112,15 @@ mod tests {
 
     #[test]
     fn test_copy() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -2057,7 +2136,14 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -2070,7 +2156,14 @@ mod tests {
 
     #[test]
     fn test_deleted_entry_available() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -2082,7 +2175,14 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-        let mut storage = get_empty_storage();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -2097,18 +2197,36 @@ mod tests {
 
     #[test]
     fn test_checkout() {
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+
+        let commit1;
+        let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let mut storage = get_empty_storage();
-        storage.set(key_abc, &vec![1u8]).unwrap();
-        storage.set(key_abx, &vec![2u8]).unwrap();
-        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-
+        {
+            let backend = env::var("BACKEND").unwrap();
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
+            storage.set(key_abc, &vec![1u8]).unwrap();
+            storage.set(key_abx, &vec![2u8]).unwrap();
+            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        }
         storage.set(key_abc, &vec![3u8]).unwrap();
         storage.set(key_abx, &vec![4u8]).unwrap();
         let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
+
+        let backend = env::var("BACKEND").unwrap();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
@@ -2120,9 +2238,58 @@ mod tests {
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
     }
 
+    #[test]
+    fn test_persistence_over_reopens() {
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap();
+        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
+        let commit1;
+        {
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
+            let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
+            storage.set(key_abc, &vec![2_u8]).unwrap();
+            storage.set(key_abx, &vec![3_u8]).unwrap();
+            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        }
+
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db.clone()),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
+    }
+
+    /*Test a DB error by writing into a read-only database.
+    #[test]
+    fn test_db_error() {
+        let db_name = "ms_test_db_error";
+        {
+            clean_db(db_name);
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            get_storage(db_name, &cache);
+        }
+
+        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
+        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(Arc::new(db),MerkleStorage::name())));
+        storage.set(&vec!["a".to_string()], &vec![1u8]);
+        let res = storage.commit(0, "".to_string(), "".to_string());
+
+        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
+    }*/
+
     // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
+        let backend = env::var("BACKEND").unwrap();
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+
         let all_json = serde_json::json!(
             {
                 "adata": {
@@ -2163,7 +2330,11 @@ mod tests {
             }
         );
 
-        let mut storage = get_empty_storage();
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db.clone()),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(

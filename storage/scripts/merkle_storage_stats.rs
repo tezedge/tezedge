@@ -10,6 +10,7 @@ use clap::{Arg, App};
 use storage::*;
 use context_action_storage::ContextAction;
 use merkle_storage::{MerkleStorage, Entry, EntryHash, check_commit_hashes};
+use backend::{BTreeMapBackend, KVStoreGCed};
 
 mod actions_tool;
 use actions_tool::ActionsFileReader;
@@ -100,7 +101,9 @@ fn gen_stats(args: Args) {
     let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
         vec![Default::default(); args.preserved_cycles - 1];
 
-    let mut merkle = MerkleStorage::new(args.preserved_cycles);
+    let mut merkle = MerkleStorage::new(
+        Box::new(KVStoreGCed::<BTreeMapBackend>::new(args.preserved_cycles))
+    );
 
     println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
 
