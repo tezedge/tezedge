@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryInto;
+use std::io::Read;
+use std::fs::File;
 use crypto::hash::{HashType, BlockHash};
 use clap::{Arg, App};
 
@@ -11,6 +13,45 @@ use merkle_storage::{MerkleStorage, Entry, EntryHash, check_commit_hashes};
 
 mod actions_tool;
 use actions_tool::ActionsFileReader;
+
+fn parse_mem_value(value: &str) -> usize {
+    let mut pair = value.split_whitespace();
+    let value: usize = pair.next().unwrap().parse().unwrap();
+
+    match pair.next() {
+        Some("kB") => value * 1024,
+        _ => panic!("unknown memory usage unit."),
+    }
+}
+
+#[cfg(target_os="linux")]
+fn mem_usage() -> usize {
+    let mut text_buf = Default::default();
+
+    File::open("/proc/self/status")
+        .and_then(|mut f| f.read_to_string(&mut text_buf))
+        .unwrap();
+
+    let mut res = 0;
+
+    for line in text_buf.lines() {
+        let mut pairs = line.split(':');
+        match (pairs.next(), pairs.next()) {
+            // (Some("VmPeak"), Some(text)) => virt_peak = parse_mem_value(text),
+            // (Some("VmSize"), Some(text)) => virt = parse_mem_value(text),
+            (Some("VmRSS"), Some(text)) => res = parse_mem_value(text),
+            // (Some("VmSwap"), Some(text))
+            _ => {}
+        }
+    }
+
+    res
+}
+
+#[cfg(not(target_os="linux"))]
+fn mem_usage() -> usize {
+    0
+}
 
 struct Args {
     preserved_cycles: usize,
@@ -61,7 +102,7 @@ fn gen_stats(args: Args) {
 
     let mut merkle = MerkleStorage::new();
 
-    println!("block level, key bytes, value bytes, reused keys bytes, total mem, total latency");
+    println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
 
     for (block, actions) in ActionsFileReader::new(&args.actions_file).unwrap().into_iter() {
         let actions_len = actions.len();
@@ -76,12 +117,13 @@ fn gen_stats(args: Args) {
         }
 
         let stats = merkle.get_merkle_stats().unwrap();
-        println!("{}, {}, {}, {}, {}, {}",
+        println!("{}, {}, {}, {}, {}, {}, {}",
             block.block_level,
             stats.kv_store_stats.key_bytes,
             stats.kv_store_stats.value_bytes,
             stats.kv_store_stats.reused_keys_bytes,
             stats.kv_store_stats.total_as_bytes(),
+            mem_usage(),
             merkle.get_block_latency(0).unwrap(),
         );
 
