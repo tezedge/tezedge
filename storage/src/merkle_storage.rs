@@ -480,9 +480,9 @@ where I: IntoIterator<Item = EntryHash> {
 }
 
 impl MerkleStorage {
-    pub fn new() -> Self {
+    pub fn new(preserved_cycles: usize) -> Self {
         MerkleStorage {
-            db: KVStoreGCed::new(5),
+            db: KVStoreGCed::new(preserved_cycles),
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1615,7 +1615,7 @@ mod tests {
     use crate::context_key;
 
     fn get_empty_storage() -> MerkleStorage {
-        MerkleStorage::new()
+        MerkleStorage::new(7)
     }
 
     fn get_tree_hash(storage: &MerkleStorage, root: &Tree, path: &ContextKey) -> EntryHash {

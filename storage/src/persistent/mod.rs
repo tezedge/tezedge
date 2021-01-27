@@ -147,7 +147,7 @@ pub struct PersistentStorage {
 impl PersistentStorage {
     pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
-        let merkle = MerkleStorage::new();
+        let merkle = MerkleStorage::new(7);
         Self {
             clog,
             kv: kv.clone(),

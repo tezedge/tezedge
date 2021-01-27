@@ -78,7 +78,7 @@ impl Args {
 
         Self {
             preserved_cycles: matches.value_of("preserved_cycles")
-                .unwrap_or("5")
+                .unwrap_or("7")
                 .parse()
                 .unwrap(),
             cycle_block_count: matches.value_of("cycle_block_count")
@@ -100,7 +100,7 @@ fn gen_stats(args: Args) {
     let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
         vec![Default::default(); args.preserved_cycles - 1];
 
-    let mut merkle = MerkleStorage::new();
+    let mut merkle = MerkleStorage::new(args.preserved_cycles);
 
     println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
 
