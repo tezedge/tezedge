@@ -54,20 +54,19 @@ impl Decoder for Hash {
 }
 
 macro_rules! hash_codec {
-	($hash:ident) => {
-		impl Encoder for $hash{
-            fn encode(&self)-> Result<Vec<u8>, SchemaError> {
+    ($hash:ident) => {
+        impl Encoder for $hash {
+            fn encode(&self) -> Result<Vec<u8>, SchemaError> {
                 Ok(self.as_ref().clone())
             }
         }
-        impl Decoder for $hash  {
+        impl Decoder for $hash {
             fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
                 use std::convert::TryFrom;
                 Self::try_from(bytes).map_err(|_| SchemaError::DecodeError)
             }
         }
-
-	};
+    };
 }
 
 hash_codec!(ChainId);

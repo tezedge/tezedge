@@ -225,7 +225,10 @@ mod test_data {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(hex::decode(block_hash).unwrap().try_into().unwrap(), 4),
+                    OperationsForBlock::new(
+                        hex::decode(block_hash).unwrap().try_into().unwrap(),
+                        4,
+                    ),
                     Path::Op,
                     ops,
                 )

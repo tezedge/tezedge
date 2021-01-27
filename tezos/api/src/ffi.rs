@@ -10,7 +10,10 @@ use failure::Fail;
 use ocaml_interop::OCamlError;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, BlockMetadataHash, ChainId, ContextHash, FromBytesError, OperationHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, FromBytesError, OperationHash,
+    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
+};
 use tezos_messages::base::rpc_support::{RpcJsonMap, UniversalValue};
 use tezos_messages::p2p::binary_message::{MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
@@ -417,7 +420,7 @@ impl From<OCamlError> for TezosStorageInitError {
 impl From<FromBytesError> for TezosStorageInitError {
     fn from(error: FromBytesError) -> Self {
         TezosStorageInitError::InitializeError {
-            message: format!("Error constructing hash from bytes: {:?}", error)
+            message: format!("Error constructing hash from bytes: {:?}", error),
         }
     }
 }

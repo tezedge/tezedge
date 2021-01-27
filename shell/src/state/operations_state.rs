@@ -212,7 +212,10 @@ mod tests {
     use super::*;
 
     fn block(d: u8) -> BlockHash {
-        [d; crypto::hash::HashType::BlockHash.size()].to_vec().try_into().unwrap()
+        [d; crypto::hash::HashType::BlockHash.size()]
+            .to_vec()
+            .try_into()
+            .unwrap()
     }
 
     #[test]

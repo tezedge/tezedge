@@ -94,7 +94,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
         validation_result_message: "validation_result_message".to_string(),
-        context_hash: "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE".try_into()
+        context_hash: "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE"
+            .try_into()
             .expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
         block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
@@ -103,9 +104,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         last_allowed_fork_level: 8,
         forking_testchain: true,
         forking_testchain_data: Some(ForkingTestchainData {
-            test_chain_id: "NetXgtSLGNJvNye".try_into()
-                .unwrap(),
-            forking_block_hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()
+            test_chain_id: "NetXgtSLGNJvNye".try_into().unwrap(),
+            forking_block_hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET"
+                .try_into()
                 .unwrap(),
         }),
         block_metadata_hash: None,

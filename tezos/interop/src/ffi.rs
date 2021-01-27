@@ -1,8 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, sync::atomic::{AtomicBool, Ordering}};
 use std::sync::Once;
+use std::{
+    convert::TryFrom,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{
@@ -175,8 +178,13 @@ pub fn init_protocol_context(
                             Vec<RustBytes>,
                             Option<RustBytes>,
                         ) = result.to_rust();
-                        let supported_protocol_hashes = supported_protocol_hashes.into_iter().map(|h| ProtocolHash::try_from(h)).collect::<Result<_, _>>()?;
-                        let genesis_commit_hash = genesis_commit_hash.map(|bytes| ContextHash::try_from(bytes.to_vec())).map_or(Ok(None), |r| r.map(Some))?;
+                        let supported_protocol_hashes = supported_protocol_hashes
+                            .into_iter()
+                            .map(|h| ProtocolHash::try_from(h))
+                            .collect::<Result<_, _>>()?;
+                        let genesis_commit_hash = genesis_commit_hash
+                            .map(|bytes| ContextHash::try_from(bytes.to_vec()))
+                            .map_or(Ok(None), |r| r.map(Some))?;
                         Ok(InitProtocolContextResult {
                             supported_protocol_hashes,
                             genesis_commit_hash,
@@ -311,7 +319,14 @@ pub fn compute_path(
 ) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(gc, request.operations.iter().map(|hs| hs.iter().map(|h| h.as_ref().to_vec()).collect::<Vec<_>>()).collect::<Vec<_>>());
+            let ocaml_request = to_ocaml!(
+                gc,
+                request
+                    .operations
+                    .iter()
+                    .map(|hs| hs.iter().map(|h| h.as_ref().to_vec()).collect::<Vec<_>>())
+                    .collect::<Vec<_>>()
+            );
             let result = ocaml_call!(tezos_ffi::compute_path(gc, ocaml_request));
             match result {
                 Ok(response) => {

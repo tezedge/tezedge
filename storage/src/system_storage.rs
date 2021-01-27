@@ -37,17 +37,22 @@ impl SystemStorage {
     #[inline]
     pub fn get_chain_id(&self) -> Result<Option<ChainId>, StorageError> {
         use std::convert::TryFrom;
-        match self.kv
+        match self
+            .kv
             .get(&Self::CHAIN_ID.to_string())
-            .map(|result| match result {
-                Some(SystemValue::Hash(value)) => Some(ChainId::try_from(value)),
-                _ => None,
-            }.map_or(Ok(None), |r| r.map(Some).map_err(StorageError::from)))
-            .map_err(StorageError::from) {
-                Ok(Err(e)) => Err(e),
-                Ok(Ok(o)) => Ok(o),
-                Err(e) => Err(e),
-            }
+            .map(|result| {
+                match result {
+                    Some(SystemValue::Hash(value)) => Some(ChainId::try_from(value)),
+                    _ => None,
+                }
+                .map_or(Ok(None), |r| r.map(Some).map_err(StorageError::from))
+            })
+            .map_err(StorageError::from)
+        {
+            Ok(Err(e)) => Err(e),
+            Ok(Ok(o)) => Ok(o),
+            Err(e) => Err(e),
+        }
     }
 
     #[inline]

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use std::array::TryFromSliceError;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
 use std::sync::{Arc, RwLock};
-use std::convert::TryFrom;
 
 use failure::Fail;
 

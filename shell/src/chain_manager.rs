@@ -1115,9 +1115,10 @@ impl ChainManager {
             operations,
             operation_paths,
         } = injected_block;
-        let log = ctx.system.log().new(
-            slog::o!("block" => block_header_with_hash.hash.to_base58_check()),
-        );
+        let log = ctx
+            .system
+            .log()
+            .new(slog::o!("block" => block_header_with_hash.hash.to_base58_check()));
 
         // this should  allways return [is_new_block==true], as we are injecting a forged new block
         let (block_metadata, is_new_block, mut are_operations_complete) = match self
@@ -2354,11 +2355,11 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
 
 #[cfg(test)]
 pub mod tests {
-    use std::{convert::TryInto, net::SocketAddr};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::channel;
     use std::sync::Mutex;
     use std::thread;
+    use std::{convert::TryInto, net::SocketAddr};
 
     use slog::{Drain, Level, Logger};
 

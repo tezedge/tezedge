@@ -1,14 +1,21 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use super::{FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash, OCamlProtocolHash};
+use super::{
+    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
+    OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
+    OCamlProtocolHash,
+};
 use crate::ffi::{
     Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
     HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
     ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse,
     ValidateOperationResult,
 };
-use crypto::hash::{BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
+    OperationMetadataListListHash, ProtocolHash,
+};
 use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
     OCamlInt32, OCamlList, ToRust,

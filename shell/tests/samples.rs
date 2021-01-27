@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::TryFrom};
 use std::fs::File;
 use std::io::BufRead;
 use std::path::Path;
+use std::{collections::HashMap, convert::TryFrom};
 use std::{env, io};
 
 use itertools::Itertools;
@@ -129,8 +129,7 @@ pub fn read_data_zip(
             let split = line.split('|').collect_vec();
             assert_eq!(3, split.len());
 
-            let block_hash = BlockHash::try_from(split[0])
-                .expect("Failed to parse block_hash");
+            let block_hash = BlockHash::try_from(split[0]).expect("Failed to parse block_hash");
             let validation_pass = split[1]
                 .parse::<i8>()
                 .expect("Failed to parse validation_pass");

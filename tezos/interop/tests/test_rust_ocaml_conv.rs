@@ -39,7 +39,20 @@ const MAX_OPERATIONS_TTL: i32 = 5;
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlInt64, OCamlList};
 
-    use tezos_api::{ffi::ApplyBlockRequest, ffi::BeginConstructionRequest, ffi::PrevalidatorWrapper, ffi::ProtocolRpcRequest, ffi::RpcMethod, ffi::RpcRequest, ffi::ValidateOperationRequest, ocaml_conv::OCamlBlockHash, ocaml_conv::OCamlContextHash, ocaml_conv::OCamlOperationHash, ocaml_conv::OCamlOperationListListHash, ocaml_conv::{OCamlChainId, OCamlProtocolHash}};
+    use tezos_api::{
+        ffi::ApplyBlockRequest,
+        ffi::BeginConstructionRequest,
+        ffi::PrevalidatorWrapper,
+        ffi::ProtocolRpcRequest,
+        ffi::RpcMethod,
+        ffi::RpcRequest,
+        ffi::ValidateOperationRequest,
+        ocaml_conv::OCamlBlockHash,
+        ocaml_conv::OCamlContextHash,
+        ocaml_conv::OCamlOperationHash,
+        ocaml_conv::OCamlOperationListListHash,
+        ocaml_conv::{OCamlChainId, OCamlProtocolHash},
+    };
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
     ocaml! {
@@ -118,7 +131,10 @@ fn block_operations_from_hex(
                 .map(|op| Operation::from_bytes(op).unwrap())
                 .collect();
             OperationsForBlocksMessage::new(
-                OperationsForBlock::new(BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(), 4),
+                OperationsForBlock::new(
+                    BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
+                    4,
+                ),
                 Path::Op,
                 ops,
             )
@@ -319,7 +335,7 @@ fn test_begin_construction_request_conv() {
 #[serial]
 fn test_validate_operation_request_conv() {
     let prevalidator = PrevalidatorWrapper {
-        chain_id: ChainId::try_from( hex::decode(CHAIN_ID).unwrap()).unwrap(),
+        chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         protocol: ProtocolHash::try_from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap(),
         context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
     };

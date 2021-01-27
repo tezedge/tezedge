@@ -48,7 +48,11 @@ fn can_deserialize_get_block_headers() -> Result<(), Error> {
             assert_eq!(1, message.get_block_headers().len());
             Ok(assert_eq!(
                 "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET",
-                message.get_block_headers().get(0).unwrap().to_base58_check()
+                message
+                    .get_block_headers()
+                    .get(0)
+                    .unwrap()
+                    .to_base58_check()
             ))
         }
         _ => panic!("Unsupported encoding: {:?}", message),

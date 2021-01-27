@@ -431,9 +431,12 @@ mod tests {
     }
 
     fn generate_key_string(c: char) -> CryptoboxPublicKeyHash {
-        CryptoboxPublicKeyHash::try_from(std::iter::repeat(c)
-            .take(HashType::CryptoboxPublicKeyHash.size())
-            .collect::<String>()
-            .into_bytes()).unwrap()
+        CryptoboxPublicKeyHash::try_from(
+            std::iter::repeat(c)
+                .take(HashType::CryptoboxPublicKeyHash.size())
+                .collect::<String>()
+                .into_bytes(),
+        )
+        .unwrap()
     }
 }

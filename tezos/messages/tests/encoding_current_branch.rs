@@ -47,7 +47,10 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentBranch(current_branch_message) => {
-            assert_eq!(&hex::decode("8eceda2f")?, current_branch_message.chain_id().as_ref());
+            assert_eq!(
+                &hex::decode("8eceda2f")?,
+                current_branch_message.chain_id().as_ref()
+            );
 
             let current_head = current_branch_message.current_branch().current_head();
             assert_eq!(198_392, current_head.level());

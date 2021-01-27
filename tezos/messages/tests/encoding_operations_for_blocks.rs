@@ -45,13 +45,17 @@ fn can_deserialize_operations_for_blocks_right() -> Result<(), Error> {
                 Path::Right(path) => {
                     assert_eq!(
                         "LLobFmsoFEGPP3q9ZxpE84rH1vPC1uKqEV8L1x8zUjGwanEYuHBVB",
-                                HashType::OperationListListHash.hash_to_b58check(path.left()).unwrap()
+                        HashType::OperationListListHash
+                            .hash_to_b58check(path.left())
+                            .unwrap()
                     );
                     match path.path() {
                         Path::Right(path) => {
                             assert_eq!(
                                 "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash.hash_to_b58check(path.left()).unwrap()
+                                HashType::OperationListListHash
+                                    .hash_to_b58check(path.left())
+                                    .unwrap()
                             );
                             match path.path() {
                                 Path::Op => Ok(()),
@@ -94,13 +98,17 @@ fn can_deserialize_operations_for_blocks_left() -> Result<(), Error> {
                 Path::Left(path) => {
                     assert_eq!(
                         "LLoZQD2o1hNgoUhg6ha9dCVyRUY25GX1KN2TttXW2PZsyS8itbfpK",
-                        HashType::OperationListListHash.hash_to_b58check(path.right()).unwrap()
+                        HashType::OperationListListHash
+                            .hash_to_b58check(path.right())
+                            .unwrap()
                     );
                     match path.path() {
                         Path::Left(path) => {
                             assert_eq!(
                                 "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash.hash_to_b58check(path.right()).unwrap()
+                                HashType::OperationListListHash
+                                    .hash_to_b58check(path.right())
+                                    .unwrap()
                             );
                             match path.path() {
                                 Path::Op => Ok(()),

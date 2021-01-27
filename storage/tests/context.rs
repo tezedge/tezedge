@@ -1,9 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::{TryFrom, TryInto}, env};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{
+    convert::{TryFrom, TryInto},
+    env,
+};
 
 use crypto::hash::ContextHash;
 use storage::context::{ContextApi, TezedgeContext};
@@ -115,7 +118,8 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_1: ContextHash = "CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB".try_into()?;
+    let context_hash_1: ContextHash =
+        "CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -183,7 +187,8 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = "CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF".try_into()?;
+    let context_hash_2: ContextHash =
+        "CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -278,7 +283,8 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_1: ContextHash = "CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR".try_into()?;
+    let context_hash_1: ContextHash =
+        "CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -337,7 +343,8 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = "CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G".try_into()?;
+    let context_hash_2: ContextHash =
+        "CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -422,12 +429,12 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, fail
             BlockHeaderBuilder::default()
                 .level(level)
                 .proto(0)
-                .predecessor(
-                    "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
-                )
+                .predecessor("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?)
                 .timestamp(5_635_634)
                 .validation_pass(0)
-                .operations_hash("LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?)
+                .operations_hash(
+                    "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
+                )
                 .fitness(vec![])
                 .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
                 .protocol_data(vec![])

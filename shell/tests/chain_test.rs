@@ -634,7 +634,10 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         .get_operations(&db.block_hash(1325)?)?
         .iter()
         .flatten()
-        .map(|a| a.message_typed_hash().expect("Failed to decode operation has"))
+        .map(|a| {
+            a.message_typed_hash()
+                .expect("Failed to decode operation has")
+        })
         .collect();
     mocked_peer_node.clear_mempool();
     mocked_peer_node.send_msg(CurrentHeadMessage::new(
@@ -762,7 +765,8 @@ mod test_data {
                 for ops in request.operations {
                     for op in ops {
                         operation_hashes.insert(
-                            op.message_typed_hash().expect("Failed to compute message hash"),
+                            op.message_typed_hash()
+                                .expect("Failed to compute message hash"),
                             level,
                         );
                     }

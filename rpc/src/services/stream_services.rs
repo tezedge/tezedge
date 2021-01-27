@@ -179,9 +179,7 @@ impl OperationMonitorStream {
                 .filter(|(k, _)| !streamed_operations.contains(k))
                 .map(|(_, v)| {
                     let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = protocol_hash
-                        .as_ref()
-                        .map(|ph| ph.to_base58_check());
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
                     monitor_op
                 })
                 .collect();
@@ -212,9 +210,7 @@ impl OperationMonitorStream {
                             return Err(e);
                         }
                     };
-                    monitor_op.protocol = protocol_hash
-                        .as_ref()
-                        .map(|ph| ph.to_base58_check());
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
                     Ok(monitor_op)
                 })
                 .filter_map(Result::ok)

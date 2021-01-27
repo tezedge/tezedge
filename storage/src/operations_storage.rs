@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 

@@ -42,7 +42,17 @@ pub enum FromBytesError {
 
 macro_rules! define_hash {
     ($name:ident) => {
-        #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, std::cmp::PartialOrd, std::cmp::Ord, std::hash::Hash)]
+        #[derive(
+            Debug,
+            Clone,
+            PartialEq,
+            Eq,
+            Serialize,
+            Deserialize,
+            std::cmp::PartialOrd,
+            std::cmp::Ord,
+            std::hash::Hash,
+        )]
         pub struct $name(pub Hash);
 
         impl $name {
@@ -348,11 +358,10 @@ mod tests {
 
     #[test]
     fn test_encode_block_header_new() -> Result<(), failure::Error> {
-        let encoded = BlockHash
-            ::from_bytes(&hex::decode(
-                "46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d",
-            )?)?
-            .to_base58_check();
+        let encoded = BlockHash::from_bytes(&hex::decode(
+            "46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d",
+        )?)?
+        .to_base58_check();
         let expected = "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9";
         assert_eq!(expected, encoded);
 
@@ -506,8 +515,8 @@ mod tests {
 
     #[test]
     fn test_decode_protocol_hash() -> Result<(), failure::Error> {
-        let decoded = ProtocolHash
-            ::from_base58_check("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+        let decoded =
+            ProtocolHash::from_base58_check("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
         let decoded = hex::encode(decoded.as_ref());
         let expected = "3e5e3a606afab74a59ca09e333633e2770b6492c5e594455b71e9a2f0ea92afb";
         assert_eq!(expected, decoded);

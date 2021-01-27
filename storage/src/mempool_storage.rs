@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Formatter;
 use std::sync::Arc;
 use std::time::SystemTime;
-use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
 
@@ -216,7 +216,8 @@ impl Decoder for MempoolKey {
             let operation_type =
                 MempoolOperationType::from_u8(num_from_slice!(bytes, Self::IDX_TYPE, u8))
                     .map_err(|_| SchemaError::DecodeError)?;
-            let operation_hash = OperationHash::try_from(&bytes[Self::IDX_HASH..Self::IDX_HASH + Self::LEN_HASH])?;
+            let operation_hash =
+                OperationHash::try_from(&bytes[Self::IDX_HASH..Self::IDX_HASH + Self::LEN_HASH])?;
             Ok(MempoolKey {
                 operation_type,
                 operation_hash,

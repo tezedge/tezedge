@@ -429,7 +429,7 @@ fn feed_chain_to_protocol(
                                     warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
                                 }
                                 return Err(FeedChainError::MissingContextError {
-                                    context_hash: apply_block_result.context_hash.to_base58_check()
+                                    context_hash: apply_block_result.context_hash.to_base58_check(),
                                 });
                             }
                             let context_wait_elapsed = context_wait_timer.elapsed();

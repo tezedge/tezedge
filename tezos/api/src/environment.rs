@@ -1,8 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::{TryFrom, TryInto}};
 use std::str::FromStr;
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 use chrono::prelude::*;
 use chrono::ParseError;
@@ -13,8 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::base58::FromBase58CheckError;
 use crypto::hash::{
-    chain_id_from_block_hash, BlockHash, ChainId, ContextHash, OperationListListHash,
-    ProtocolHash,
+    chain_id_from_block_hash, BlockHash, ChainId, ContextHash, OperationListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
@@ -311,11 +313,12 @@ pub struct TezosEnvironmentConfiguration {
 impl TezosEnvironmentConfiguration {
     /// Resolves genesis hash from configuration of GenesisChain.block
     pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
-        BlockHash::from_base58_check(&self.genesis.block)
-            .map_err(|e| TezosEnvironmentError::InvalidBlockHash {
+        BlockHash::from_base58_check(&self.genesis.block).map_err(|e| {
+            TezosEnvironmentError::InvalidBlockHash {
                 hash: self.genesis.block.clone(),
                 error: e,
-            })
+            }
+        })
     }
 
     /// Resolves main chain_id, which is computed from genesis header
@@ -325,11 +328,12 @@ impl TezosEnvironmentConfiguration {
 
     /// Resolves genesis protocol
     pub fn genesis_protocol(&self) -> Result<ProtocolHash, TezosEnvironmentError> {
-        self.genesis.protocol.as_str().try_into()
-            .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
+        self.genesis.protocol.as_str().try_into().map_err(|e| {
+            TezosEnvironmentError::InvalidProtocolHash {
                 hash: self.genesis.protocol.clone(),
                 error: e,
-            })
+            }
+        })
     }
 
     pub fn genesis_time(&self) -> Result<i64, TezosEnvironmentError> {

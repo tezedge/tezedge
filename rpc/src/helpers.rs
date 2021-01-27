@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryInto, ops::Neg};
 use std::{collections::HashMap, convert::TryFrom};
+use std::{convert::TryInto, ops::Neg};
 
 use failure::{bail, format_err};
 use hyper::{Body, Request};

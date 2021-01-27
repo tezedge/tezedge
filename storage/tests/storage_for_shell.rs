@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::{TryFrom, TryInto}, env};
 use std::path::{Path, PathBuf};
+use std::{
+    convert::{TryFrom, TryInto},
+    env,
+};
 
 use failure::Error;
 use slog::{Drain, Level, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, chain_id_from_block_hash};
+use crypto::hash::{chain_id_from_block_hash, BlockHash, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
@@ -168,7 +171,9 @@ fn test_storage() -> Result<(), Error> {
     let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
-        context_hash: ContextHash::from_base58_check("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
+        context_hash: ContextHash::from_base58_check(
+            "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd",
+        )?,
         block_header_proto_json: "{block_header_proto_json}".to_string(),
         block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),

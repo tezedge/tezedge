@@ -2,22 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::mem;
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
-use std::convert::TryFrom;
 
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType};
+use crypto::hash::{
+    BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
+};
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
-use crate::persistent::codec::{range_from_idx_len};
+use crate::persistent::codec::range_from_idx_len;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
     default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
@@ -419,7 +421,9 @@ impl ContextActionByBlockHashKey {
 impl Decoder for ContextActionByBlockHashKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
-            let block_hash = BlockHash::try_from(&bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH+Self::LEN_BLOCK_HASH])?;
+            let block_hash = BlockHash::try_from(
+                &bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH],
+            )?;
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
             Ok(Self { block_hash, id })
         } else {
@@ -636,23 +640,19 @@ pub fn contract_id_to_contract_address_for_index(
             match &contract_id[0..3] {
                 "tz1" => {
                     contract_address.extend(&[0, 0]);
-                    contract_address
-                        .extend(ContractTz1Hash::try_from(contract_id)?.as_ref());
+                    contract_address.extend(ContractTz1Hash::try_from(contract_id)?.as_ref());
                 }
                 "tz2" => {
                     contract_address.extend(&[0, 1]);
-                    contract_address
-                        .extend(ContractTz2Hash::try_from(contract_id)?.as_ref());
+                    contract_address.extend(ContractTz2Hash::try_from(contract_id)?.as_ref());
                 }
                 "tz3" => {
                     contract_address.extend(&[0, 2]);
-                    contract_address
-                        .extend(ContractTz3Hash::try_from(contract_id)?.as_ref());
+                    contract_address.extend(ContractTz3Hash::try_from(contract_id)?.as_ref());
                 }
                 "KT1" => {
                     contract_address.push(1);
-                    contract_address
-                        .extend(ContractKt1Hash::try_from(contract_id)?.as_ref());
+                    contract_address.extend(ContractKt1Hash::try_from(contract_id)?.as_ref());
                     contract_address.push(0);
                 }
                 _ => {

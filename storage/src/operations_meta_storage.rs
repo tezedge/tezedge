@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
@@ -234,7 +234,8 @@ impl Decoder for Meta {
             );
             // chain_id
             let chain_id_pos = level_pos + std::mem::size_of::<i32>();
-            let chain_id = ChainId::try_from(&bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()])?;
+            let chain_id =
+                ChainId::try_from(&bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()])?;
             Ok(Meta {
                 validation_passes,
                 is_validation_pass_present,
@@ -285,7 +286,6 @@ mod tests {
     use std::{convert::TryInto, path::Path};
 
     use failure::Error;
-
 
     use crate::persistent::{open_kv, DbConfiguration};
     use crate::tests_common::TmpStorage;

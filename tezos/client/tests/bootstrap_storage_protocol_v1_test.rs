@@ -6,8 +6,7 @@
 use serial_test::serial;
 
 use crypto::hash::{
-    BlockMetadataHash, ChainId, OperationMetadataHash, OperationMetadataListListHash,
-    ProtocolHash,
+    BlockMetadataHash, ChainId, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_api::environment::{
     TezosEnvironment, TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV,
@@ -803,10 +802,7 @@ fn assert_contains(value: &str, attribute: &str) {
 
 fn assert_block_metadata_hash(expected_base58_string: &str, tested: &Option<BlockMetadataHash>) {
     match tested {
-        Some(hash) => assert_eq!(
-            expected_base58_string,
-            &hash.to_base58_check()
-        ),
+        Some(hash) => assert_eq!(expected_base58_string, &hash.to_base58_check()),
         None => panic!(
             "assert_block_metadata_hash failed: expecting : `{:?}` but has None",
             expected_base58_string
@@ -819,10 +815,7 @@ fn assert_operation_metadata_hash(
     tested: &Option<OperationMetadataListListHash>,
 ) {
     match tested {
-        Some(hash) => assert_eq!(
-            expected_base58_string,
-            hash.to_base58_check()
-        ),
+        Some(hash) => assert_eq!(expected_base58_string, hash.to_base58_check()),
         None => panic!(
             "assert_operation_metadata_list_list_hash failed: expecting : `{:?}` but has None",
             expected_base58_string
@@ -936,7 +929,8 @@ mod test_data_protocol_v1 {
     pub fn block_header_level3_operation_metadata_hashes() -> Option<Vec<Vec<OperationMetadataHash>>>
     {
         Some(vec![
-            vec!["r3niv7sM81cVxAgKRy2NbYpj3JgAJfWGaqqeHZR63FqphTRpQqo".try_into()
+            vec!["r3niv7sM81cVxAgKRy2NbYpj3JgAJfWGaqqeHZR63FqphTRpQqo"
+                .try_into()
                 .expect("Failed to decode hash")],
             vec![],
             vec![],
@@ -972,11 +966,14 @@ mod test_data_protocol_v1 {
     {
         Some(vec![
             vec![
-                "r3E9xb2QxUeG56eujC66B56CV8mpwjwfdVmEpYu3FRtuEx9tyfG".try_into()
+                "r3E9xb2QxUeG56eujC66B56CV8mpwjwfdVmEpYu3FRtuEx9tyfG"
+                    .try_into()
                     .expect("Failed to decode hash"),
-                "r3fqRzBrSWQ7U7kPXppiSrCUrFJss6J96XZddYjkCemT8hohQ7R".try_into()
+                "r3fqRzBrSWQ7U7kPXppiSrCUrFJss6J96XZddYjkCemT8hohQ7R"
+                    .try_into()
                     .expect("Failed to decode hash"),
-                "r49uWMVdKFmM3icKjtfVP9yywhLLAWANW1jMxZwN5MxRA7mC4tL".try_into()
+                "r49uWMVdKFmM3icKjtfVP9yywhLLAWANW1jMxZwN5MxRA7mC4tL"
+                    .try_into()
                     .expect("Failed to decode hash"),
             ],
             vec![],
@@ -997,7 +994,10 @@ mod test_data_protocol_v1 {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(hex::decode(block_hash).unwrap().try_into().unwrap(), 4),
+                    OperationsForBlock::new(
+                        hex::decode(block_hash).unwrap().try_into().unwrap(),
+                        4,
+                    ),
                     Path::Op,
                     ops,
                 )

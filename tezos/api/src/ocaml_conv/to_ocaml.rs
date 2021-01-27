@@ -3,9 +3,9 @@
 
 use super::{
     FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
-    OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash, OCamlOperationHash,
-    OCamlOperationListListHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
-    OCamlProtocolHash, TaggedHash, OCamlChainId,
+    OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
+    OCamlOperationHash, OCamlOperationListListHash, OCamlOperationMetadataHash,
+    OCamlOperationMetadataListListHash, OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
@@ -13,8 +13,8 @@ use crate::ffi::{
     RpcMethod, RpcRequest, ValidateOperationRequest,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationListListHash, OperationMetadataHash,
-    OperationMetadataListListHash, ProtocolHash, ChainId,
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationListListHash,
+    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,

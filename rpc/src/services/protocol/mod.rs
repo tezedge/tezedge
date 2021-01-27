@@ -651,7 +651,7 @@ impl From<tezos_messages::protocol::ContextConstantsDecodeError> for ContextPara
 
 impl From<FromBytesError> for ContextParamsError {
     fn from(error: FromBytesError) -> ContextParamsError {
-        ContextParamsError::HashError{ error }
+        ContextParamsError::HashError { error }
     }
 }
 

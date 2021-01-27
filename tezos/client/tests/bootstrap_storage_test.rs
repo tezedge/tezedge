@@ -693,7 +693,10 @@ mod test_data {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(), 4),
+                    OperationsForBlock::new(
+                        BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
+                        4,
+                    ),
                     Path::Op,
                     ops,
                 )

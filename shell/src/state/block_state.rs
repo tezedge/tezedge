@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cmp, convert::TryFrom};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::{cmp, convert::TryFrom};
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
@@ -194,9 +194,7 @@ impl BlockchainState {
                                 if let Some(Some(protocol_hash)) = protocol_hash {
                                     // return next_protocol and header
                                     (
-                                        Some(
-                                            ProtocolHash::from_base58_check(protocol_hash)?,
-                                        ),
+                                        Some(ProtocolHash::from_base58_check(protocol_hash)?),
                                         Some(predecessor_header),
                                         false,
                                     )
@@ -699,7 +697,10 @@ mod tests {
     use super::*;
 
     fn block(d: u8) -> BlockHash {
-        [d; crypto::hash::HashType::BlockHash.size()].to_vec().try_into().unwrap()
+        [d; crypto::hash::HashType::BlockHash.size()]
+            .to_vec()
+            .try_into()
+            .unwrap()
     }
 
     #[test]
@@ -1020,8 +1021,8 @@ mod tests {
             };
 
             ($blocks:ident, $name:expr, $block_hash:expr, $block_hash_expected:expr, $block_header_hex_data:expr) => {
-                let block_hash = BlockHash::from_base58_check($block_hash)
-                    .expect("Failed to create block hash");
+                let block_hash =
+                    BlockHash::from_base58_check($block_hash).expect("Failed to create block hash");
                 let block_hash_expected = BlockHash::from_base58_check($block_hash_expected)
                     .expect("Failed to create block hash");
                 $blocks.insert(
@@ -1269,7 +1270,8 @@ mod tests {
                 .map(|c| c as u8)
                 .take(HashType::CryptoboxPublicKeyHash.size())
                 .collect::<Vec<_>>()
-                .try_into().unwrap()
+                .try_into()
+                .unwrap()
         }
 
         pub(crate) fn assert_history(

@@ -660,7 +660,10 @@ mod tests {
         storage.put(&k, &v)?;
 
         // add successor
-        v.successors = vec![vec![21; 32].try_into().unwrap(), vec![121; 32].try_into().unwrap()];
+        v.successors = vec![
+            vec![21; 32].try_into().unwrap(),
+            vec![121; 32].try_into().unwrap(),
+        ];
         storage.put(&k, &v)?;
 
         // check stored meta
@@ -669,7 +672,10 @@ mod tests {
                 let expected = Meta {
                     is_applied: true,
                     predecessor: Some(vec![98; 32].try_into().unwrap()),
-                    successors: vec![vec![21; 32].try_into().unwrap(), vec![121; 32].try_into().unwrap()],
+                    successors: vec![
+                        vec![21; 32].try_into().unwrap(),
+                        vec![121; 32].try_into().unwrap(),
+                    ],
                     level: 1_245_762,
                     chain_id: vec![44; 4].try_into().unwrap(),
                 };
@@ -721,7 +727,7 @@ mod tests {
                 &DbConfiguration::default(),
             )
             .unwrap();
-            let k : BlockHash = vec![44; 32].try_into().unwrap();
+            let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
                 predecessor: None,
@@ -773,7 +779,12 @@ mod tests {
         let mut rng = rand::thread_rng();
 
         let k: BlockHash = vec![0; 32].try_into().unwrap();
-        let v = Meta::new(false, Some(vec![0; 32].try_into().unwrap()), 0, vec![44; 4].try_into().unwrap());
+        let v = Meta::new(
+            false,
+            Some(vec![0; 32].try_into().unwrap()),
+            0,
+            vec![44; 4].try_into().unwrap(),
+        );
 
         block_hash_set.insert(k.clone());
 
@@ -789,10 +800,18 @@ mod tests {
         // we can  deduct its level from its index in the vector)
         let block_hashes: Vec<BlockHash> = (1..number_of_blocks)
             .map(|_| {
-                let mut random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect::<Vec<_>>().try_into().unwrap();
+                let mut random_hash = (0..32)
+                    .map(|_| rng.gen_range(0, 255))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
                 // regenerate on collision
                 while block_hash_set.contains(&random_hash) {
-                    random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect::<Vec<_>>().try_into().unwrap();
+                    random_hash = (0..32)
+                        .map(|_| rng.gen_range(0, 255))
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap();
                 }
                 block_hash_set.insert(random_hash.clone());
                 random_hash

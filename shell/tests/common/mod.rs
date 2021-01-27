@@ -450,9 +450,7 @@ pub mod infra {
                     .current_mempool_state_storage
                     .read()
                     .expect("Failed to obtain lock");
-                let current_head = mempool_state
-                    .head()
-                    .map(|ch| ch.to_base58_check());
+                let current_head = mempool_state.head().map(|ch| ch.to_base58_check());
 
                 if current_head.eq(&tested_head) {
                     info!(self.log, "[NODE] Expected mempool head detected"; "head" => tested_head, "marker" => marker);

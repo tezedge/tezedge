@@ -3,12 +3,12 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use std::convert::TryFrom;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::convert::TryFrom;
 
 use failure::Error;
 use riker::actors::*;
@@ -274,7 +274,6 @@ fn listen_protocol_events(
                         ..
                     } => {
                         if !ignored {
-
                             let context_hash = try_from_untyped_option(context_hash)?;
                             context.remove_recursively_to_diff(&context_hash, key)?;
                         }
@@ -328,11 +327,11 @@ fn listen_protocol_events(
     Ok(())
 }
 
-
 fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
-where H: TryFrom<Vec<u8>, Error = FromBytesError>
+where
+    H: TryFrom<Vec<u8>, Error = FromBytesError>,
 {
     h.as_ref()
-     .map(|h| H::try_from(h.clone()))
-     .map_or(Ok(None), |r| r.map(Some))
+        .map(|h| H::try_from(h.clone()))
+        .map_or(Ok(None), |r| r.map(Some))
 }

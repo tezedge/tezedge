@@ -155,7 +155,10 @@ fn check_context(
     let merkle_last_hash = merkle.get_last_commit_hash();
 
     // compare with context hash of last applied expected_context_hash
-    assert_eq!(expected_context_hash.as_ref(), &merkle_last_hash.unwrap().to_vec());
+    assert_eq!(
+        expected_context_hash.as_ref(),
+        &merkle_last_hash.unwrap().to_vec()
+    );
 
     // print stats
     let stats = merkle.get_merkle_stats().unwrap();
