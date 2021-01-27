@@ -3,9 +3,9 @@
 #![feature(test)]
 extern crate test;
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
-use crypto::hash::{BlockHash, ChainId, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, OCaml, ToOCaml, ToRust};
 use serial_test::serial;
 
@@ -331,12 +331,18 @@ fn test_begin_construction_request_conv() {
     assert!(result, "BeginConstructionRequest conversion failed")
 }
 
+fn get_protocol_hash(prefix: &[u8]) -> ProtocolHash {
+    let mut vec = prefix.to_vec();
+    vec.extend(std::iter::repeat(0).take(HashType::ProtocolHash.size() - prefix.len()));
+    vec.try_into().unwrap()
+}
+
 #[test]
 #[serial]
 fn test_validate_operation_request_conv() {
     let prevalidator = PrevalidatorWrapper {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
-        protocol: ProtocolHash::try_from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap(),
+        protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
         context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
     let operations = ApplyBlockRequest::convert_operations(block_operations_from_hex(
@@ -509,7 +515,7 @@ fn test_validate_operation_conv() {
 fn test_validate_prevalidator_wrapper_conv() {
     let prevalidator_wrapper = PrevalidatorWrapper {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
-        protocol: ProtocolHash::try_from(vec![1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap(),
+        protocol: get_protocol_hash(&[1, 2, 3, 4, 5, 6, 7, 8, 9]),
         context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
 

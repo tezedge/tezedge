@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+
 use super::{
     FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
     OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
@@ -57,7 +59,14 @@ from_ocaml_typed_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
-from_ocaml_typed_hash!(OCamlChainId, ChainId);
+
+unsafe impl FromOCaml<OCamlChainId> for ChainId {
+    fn from_ocaml(v: OCaml<OCamlChainId>) -> Self {
+        let v: OCaml<OCamlBytes> = unsafe { std::mem::transmute(v) };
+        let vec: Vec<u8> = v.to_rust();
+        ChainId::try_from(vec).unwrap()
+    }
+}
 
 impl_from_ocaml_record! {
     ForkingTestchainData {

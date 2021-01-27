@@ -72,9 +72,15 @@ to_ocaml_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
-to_ocaml_hash!(OCamlChainId, ChainId);
 
 // Other
+
+unsafe impl ToOCaml<OCamlChainId> for ChainId {
+    fn to_ocaml(&self, gc: OCamlAllocToken) -> OCamlAllocResult<OCamlChainId> {
+        let ocaml_bytes: OCamlAllocResult<OCamlBytes> = self.0.to_ocaml(gc);
+        unsafe { std::mem::transmute(ocaml_bytes) }
+    }
+}
 
 impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
     fn from(block_header: &'a BlockHeader) -> Self {
@@ -158,7 +164,7 @@ impl_to_ocaml_record! {
 impl_to_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlChainId,
+        test_chain_id: OCamlBytes => test_chain_id.as_ref(),
     }
 }
 
