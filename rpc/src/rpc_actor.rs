@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 
 use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
-use slog::{warn, Logger};
+use slog::{error, info, warn, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
@@ -101,8 +101,9 @@ impl RpcServer {
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
+                info!(inner_log, "Starting RPC server"; "address" => format!("{}", &rpc_listen_address));
                 if let Err(e) = spawn_server(&rpc_listen_address, env).await {
-                    warn!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
+                    error!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
                 }
             });
         }

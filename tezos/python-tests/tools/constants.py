@@ -59,8 +59,8 @@ IDENTITIES_SHORT = {
 }
 
 
-ALPHA = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
-ALPHA_DAEMON = "006-PsCARTHA"  # TODO:fix this, we only support CARTHAGE (rpc router needed); 
+ALPHA = "ProtoALphaALphaALphaALphaALphaALphaALphaALphaDdp3zK"
+ALPHA_DAEMON = "alpha"  # tezos-baker-alpha
 
 BABYLON = "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"
 BABYLON_DAEMON = "005-PsBabyM1"
@@ -68,8 +68,11 @@ BABYLON_DAEMON = "005-PsBabyM1"
 CARTHAGE = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
 CARTHAGE_DAEMON = "006-PsCARTHA"
 
+DELPHI = "PsDELPH1Kxsxt8f9eWbxQeRxkjfbxoqM52jvs5Y5fBxWWh4ifpo"
+DELPHI_DAEMON = "007-PsDELPH1"
+
 # Protocols supported by the mockup mode
-MOCKUP_PROTOCOLS = [ALPHA, CARTHAGE]
+MOCKUP_PROTOCOLS = [ALPHA, CARTHAGE, DELPHI]
 
 TEZOS_CRT = """
 Certificate:

@@ -17,7 +17,7 @@ use crypto::hash::HashType;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use storage::{BlockStorage, ContextActionStorage};
-use tezos_context::channel::ContextAction;
+use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 use storage::action_file_storage::ActionFileStorage;
 
@@ -135,7 +135,7 @@ impl Actor for ContextListener {
     }
 }
 
-fn store_action(
+fn store_context_action(
     storage: &mut ContextActionStorage,
     should_store: bool,
     action: ContextAction,
@@ -208,7 +208,10 @@ fn listen_protocol_events(
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
-            Ok(ContextAction::Shutdown) => {
+            Ok(ContextActionMessage {
+                action: ContextAction::Shutdown,
+                ..
+            }) => {
                 apply_block_run.store(false, Ordering::Release);
             }
             Ok(msg) => {
@@ -223,101 +226,31 @@ fn listen_protocol_events(
                         }
                     );
                 }
-                event_count += 1;
 
-                match &msg {
-                    ContextAction::Get { key, .. } => {
-                        context.get_key(key)?;
-                    }
-                    ContextAction::Mem { key, .. } => {
-                        context.mem(key)?;
-                    }
-                    ContextAction::DirMem { key, .. } => {
-                        context.dirmem(key)?;
-                    }
-                    ContextAction::Set {
-                        key,
-                        value,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            context.set(context_hash, key, value)?;
-                        }
-                    }
-                    ContextAction::Copy {
-                        to_key: key,
-                        from_key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            context.copy_to_diff(context_hash, from_key, key)?;
-                        }
-                    }
-                    ContextAction::Delete {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            context.delete_to_diff(context_hash, key)?;
-                        }
-                    }
-                    ContextAction::RemoveRecursively {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            context.remove_recursively_to_diff(context_hash, key)?;
-                        }
-                    }
-                    ContextAction::Commit {
-                        parent_context_hash,
-                        new_context_hash,
-                        block_hash: Some(block_hash),
-                        author,
-                        message,
-                        date,
-                        ..
-                    } => {
-                        let hash = context.commit(
-                            block_hash,
-                            parent_context_hash,
-                            author.to_string(),
-                            message.to_string(),
-                            *date,
-                        )?;
-                        assert_eq!(
-                            &hash,
-                            new_context_hash,
-                            "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                            HashType::BlockHash.hash_to_b58check(block_hash),
-                            HashType::ContextHash.hash_to_b58check(new_context_hash),
-                            HashType::ContextHash.hash_to_b58check(&hash),
-                        );
-                    }
-
-                    ContextAction::Checkout { context_hash, .. } => {
-                        event_count = 0;
-                        context.checkout(context_hash)?;
-                    }
-                    _ => (),
+                event_count = if let ContextAction::Shutdown = &msg.action {
+                    0
+                } else {
+                    event_count + 1
                 };
                 match actions_file_storage {
                     None => {}
                     Some(afs) => {
                         //info!(log,"Storing action");
-                        afs.store_action( log,msg.clone())
+                        afs.store_action( log,msg.action.clone())
                     }
                 };
 
-                store_action(context_action_storage, store_context_actions, msg)?;
+                if msg.perform {
+                    perform_context_action(&msg.action, context)?;
+                }
+
+                if msg.record {
+                    store_context_action(
+                        context_action_storage,
+                        store_context_actions,
+                        msg.action,
+                    )?;
+                }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
@@ -325,6 +258,86 @@ fn listen_protocol_events(
             }
         }
     }
+
+    Ok(())
+}
+
+fn perform_context_action(
+    action: &ContextAction,
+    context: &mut Box<dyn ContextApi>,
+) -> Result<(), Error> {
+    match action {
+        ContextAction::Get { key, .. } => {
+            context.get_key(key)?;
+        }
+        ContextAction::Mem { key, .. } => {
+            context.mem(key)?;
+        }
+        ContextAction::DirMem { key, .. } => {
+            context.dirmem(key)?;
+        }
+        ContextAction::Set {
+            key,
+            value,
+            context_hash,
+            ..
+        } => {
+            context.set(context_hash, key, value)?;
+        }
+        ContextAction::Copy {
+            to_key: key,
+            from_key,
+            context_hash,
+            ..
+        } => {
+            context.copy_to_diff(context_hash, from_key, key)?;
+        }
+        ContextAction::Delete {
+            key, context_hash, ..
+        } => {
+            context.delete_to_diff(context_hash, key)?;
+        }
+        ContextAction::RemoveRecursively {
+            key, context_hash, ..
+        } => {
+            context.remove_recursively_to_diff(context_hash, key)?;
+        }
+        ContextAction::Commit {
+            parent_context_hash,
+            new_context_hash,
+            block_hash: Some(block_hash),
+            author,
+            message,
+            date,
+            ..
+        } => {
+            let hash = context.commit(
+                block_hash,
+                parent_context_hash,
+                author.to_string(),
+                message.to_string(),
+                *date,
+            )?;
+            assert_eq!(
+                &hash,
+                new_context_hash,
+                "Invalid context_hash for block: {}, expected: {}, but was: {}",
+                HashType::BlockHash.hash_to_b58check(block_hash),
+                HashType::ContextHash.hash_to_b58check(new_context_hash),
+                HashType::ContextHash.hash_to_b58check(&hash),
+            );
+        }
+
+        ContextAction::Checkout { context_hash, .. } => {
+            context.checkout(context_hash)?;
+        }
+
+        ContextAction::Commit { .. } => (), // Ignored (no block_hash)
+
+        ContextAction::Fold { .. } => (), // Ignored
+
+        ContextAction::Shutdown => (), // Ignored
+    };
 
     Ok(())
 }

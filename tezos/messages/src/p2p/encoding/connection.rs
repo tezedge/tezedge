@@ -23,7 +23,7 @@ use crate::p2p::encoding::version::NetworkVersion;
 pub struct ConnectionMessage {
     port: u16,
     #[get = "pub"]
-    versions: Vec<NetworkVersion>,
+    version: NetworkVersion,
     #[get = "pub"]
     public_key: Vec<u8>,
     proof_of_work_stamp: Vec<u8>,
@@ -31,16 +31,16 @@ pub struct ConnectionMessage {
 }
 
 impl ConnectionMessage {
-    pub fn new(
+    pub fn try_new(
         port: u16,
         public_key: &PublicKey,
         proof_of_work_stamp: &ProofOfWork,
         message_nonce: Nonce,
-        versions: Vec<NetworkVersion>,
+        version: NetworkVersion,
     ) -> Result<Self, CryptoError> {
         Ok(ConnectionMessage {
             port,
-            versions,
+            version,
             public_key: public_key.as_ref().as_ref().to_vec(),
             proof_of_work_stamp: proof_of_work_stamp.as_ref().to_vec(),
             message_nonce: message_nonce.get_bytes()?.into(),
@@ -75,9 +75,6 @@ has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
             "message_nonce",
             Encoding::sized(NONCE_SIZE, Encoding::Bytes),
         ),
-        Field::new(
-            "versions",
-            Encoding::list(NetworkVersion::encoding().clone()),
-        ),
+        Field::new("version", NetworkVersion::encoding().clone()),
     ])
 });

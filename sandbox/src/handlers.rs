@@ -99,7 +99,7 @@ pub async fn stop_node(
     peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
     node_ref: Option<NodeRpcIpPort>,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    info!(log, "Received request to stop the sandbox launcher...");
+    info!(log, "Received request to stop the sandbox node..."; "node_ref" => format!("{:?}", &node_ref));
 
     let node_ref = ensure_node(node_ref)?;
     let mut runner = runner.write().unwrap();

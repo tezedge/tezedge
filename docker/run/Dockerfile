@@ -1,6 +1,6 @@
 # Build stage 1
 FROM simplestakingcom/tezos-opam-builder:debian10
-ARG rust_toolchain="nightly-2020-10-24"
+ARG rust_toolchain="nightly-2020-12-31"
 RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolchain} -y
 ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1

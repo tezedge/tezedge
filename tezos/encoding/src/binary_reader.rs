@@ -4,7 +4,6 @@
 //! Tezos binary data reader.
 
 use bit_vec::BitVec;
-use bytes::buf::ext::BufExt;
 use bytes::Buf;
 use failure::Fail;
 use serde::de::Error as SerdeError;

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
+
+// TODO: re-enable this once ocaml-interop has been upgraded
+//#![forbid(unsafe_code)]
 
 //! This crate contains code which is used to move context messages between OCaml and Rust worlds.
 //!
@@ -9,3 +11,4 @@
 //! the crossbeam channel.
 
 pub mod channel;
+pub mod from_ocaml;

@@ -15,6 +15,7 @@ use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
+use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
@@ -37,7 +38,6 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
-use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
 use tezos_wrapper::service::ProtocolRunnerEndpoint;
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -51,9 +51,7 @@ mod configuration;
 mod identity;
 mod system;
 
-const DATABASE_VERSION: i64 = 16;
-const SUPPORTED_DISTRIBUTED_DB_VERSION: u16 = 0;
-const SUPPORTED_P2P_VERSION: u16 = 1;
+const DATABASE_VERSION: i64 = 17;
 
 macro_rules! shutdown_and_exit {
     ($err:expr, $sys:ident) => {{
@@ -121,12 +119,12 @@ fn create_logger(env: &crate::configuration::Environment) -> Logger {
 }
 
 fn create_tokio_runtime(env: &crate::configuration::Environment) -> tokio::runtime::Runtime {
-    let mut builder = tokio::runtime::Builder::new();
     // use threaded work staling scheduler
-    builder.threaded_scheduler().enable_all();
+    let mut builder = tokio::runtime::Builder::new_multi_thread();
+    builder.enable_all();
     // set number of threads in a thread pool
     if env.tokio_threads > 0 {
-        builder.core_threads(env.tokio_threads);
+        builder.worker_threads(env.tokio_threads);
     }
     // build runtime
     builder.build().expect("Failed to create tokio runtime")
@@ -238,10 +236,10 @@ fn block_on_actors(
     // if feeding is started, than run chain manager
     let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
     // version
-    let network_version = Arc::new(NetworkVersion::new(
+    let shell_compatibility_version = Arc::new(ShellCompatibilityVersion::new(
         tezos_env.version.clone(),
-        SUPPORTED_DISTRIBUTED_DB_VERSION,
-        SUPPORTED_P2P_VERSION,
+        shell::SUPPORTED_DISTRIBUTED_DB_VERSION.to_vec(),
+        shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
     // create pool for ffi protocol runner connections (used just for readonly context)
@@ -318,13 +316,13 @@ fn block_on_actors(
 
     let current_mempool_state_storage = init_mempool_state_storage();
 
-    let mut tokio_runtime = create_tokio_runtime(&env);
+    let tokio_runtime = create_tokio_runtime(&env);
 
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
+    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
         &persistent_storage,
@@ -381,7 +379,7 @@ fn block_on_actors(
         shell_channel.clone(),
         tokio_runtime.handle().clone(),
         identity,
-        network_version.clone(),
+        shell_compatibility_version.clone(),
         env.p2p.clone(),
     )
     .expect("Failed to create peer manager");
@@ -407,7 +405,7 @@ fn block_on_actors(
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
         tezos_env.clone(),
-        network_version,
+        Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
         is_sandbox,
     )
@@ -415,6 +413,7 @@ fn block_on_actors(
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
+        use tokio::time::timeout;
 
         signal::ctrl_c()
             .await
@@ -429,7 +428,7 @@ fn block_on_actors(
         // stop restarting feature
         apply_blocks_protocol_runner_endpoint_run_feature.store(false, Ordering::Release);
 
-        info!(log, "Sending shutdown notification to actors");
+        info!(log, "Sending shutdown notification to actors (1/5)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -439,13 +438,15 @@ fn block_on_actors(
         );
 
         // give actors some time to shut down
-        thread::sleep(Duration::from_secs(2));
+        tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors");
-        let _ = actor_system.shutdown().await;
-        info!(log, "Shutdown actors complete");
+        info!(log, "Shutting down actors (2/5)");
+        match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
+            Ok(_) => info!(log, "Shutdown actors complete"),
+            Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
+        };
 
-        info!(log, "Shutting down protocol runner pools");
+        info!(log, "Shutting down protocol runner pools (3/5)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
@@ -461,11 +462,11 @@ fn block_on_actors(
         };
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases");
+        info!(log, "Flushing databases (4/5)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete");
+        info!(log, "Shutdown complete (5/5)");
     });
 }
 

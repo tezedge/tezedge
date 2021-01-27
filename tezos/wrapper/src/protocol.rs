@@ -36,7 +36,7 @@ pub trait ProtocolApi {
 
     /// Call helpers_preapply_block shell service
     fn helpers_preapply_block(
-        request: ProtocolRpcRequest,
+        request: HelpersPreapplyBlockRequest,
     ) -> Result<HelpersPreapplyResponse, HelpersPreapplyError>;
 
     /// Change tezos runtime configuration

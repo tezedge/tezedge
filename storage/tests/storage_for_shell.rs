@@ -177,6 +177,9 @@ fn test_storage() -> Result<(), Error> {
         validation_result_message: "applied".to_string(),
         forking_testchain: false,
         forking_testchain_data: None,
+        block_metadata_hash: None,
+        ops_metadata_hashes: None,
+        ops_metadata_hash: None,
     };
     let (block_json_data, block_additional_data) = store_applied_block_result(
         &block_storage,
