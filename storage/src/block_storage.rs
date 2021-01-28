@@ -139,8 +139,6 @@ pub trait BlockStorageReader: Sync + Send {
         context_hash: &ContextHash,
     ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
-
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 }
 
@@ -444,11 +442,6 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.by_context_hash_index.contains(context_hash)
-    }
-
-    #[inline]
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.primary_index.contains(block_hash)
     }
 }
 

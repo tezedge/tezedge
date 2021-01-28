@@ -20,13 +20,13 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
+use networking::p2p::peer::{bootstrap, Bootstrap, BootstrapOutput, Peer, PeerRef, SendMessage};
 use networking::p2p::{
     network_channel::{
         NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed,
     },
     peer::PeerError,
 };
-use networking::p2p::peer::{Bootstrap, Peer, PeerRef, SendMessage, bootstrap, BootstrapOutput};
 use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -231,12 +231,7 @@ impl PeerManager {
         tokio_executor: Handle,
         info: BootstrapOutput,
     ) -> Result<PeerRef, CreateError> {
-        Peer::actor(
-            sys,
-            network_channel,
-            tokio_executor,
-            info,
-        )
+        Peer::actor(sys, network_channel, tokio_executor, info)
     }
 
     /// Check if given ip address is blacklisted to connect to
@@ -707,22 +702,29 @@ impl Receive<AcceptPeer> for PeerManager {
     }
 }
 
-fn failed_bootstrap_peer(err: PeerError, peer_address: SocketAddr, network_channel: NetworkChannelRef) {
+fn failed_bootstrap_peer(
+    err: PeerError,
+    peer_address: SocketAddr,
+    network_channel: NetworkChannelRef,
+) {
     let potential_peers = match err {
-        PeerError::NackWithMotiveReceived { nack_info } => Some(nack_info.potential_peers_to_connect().clone()),
-        _ => None
+        PeerError::NackWithMotiveReceived { nack_info } => {
+            Some(nack_info.potential_peers_to_connect().clone())
+        }
+        _ => None,
     };
 
     // notify that peer failed at bootstrap process
-    network_channel.tell(Publish {
-        msg: NetworkChannelMsg::ProcessFailedBootstrapAddress(
-            PeerBootstrapFailed {
+    network_channel.tell(
+        Publish {
+            msg: NetworkChannelMsg::ProcessFailedBootstrapAddress(PeerBootstrapFailed {
                 address: peer_address,
                 potential_peers_to_connect: potential_peers,
-            }
-        ),
-        topic: NetworkChannelTopic::NetworkCommands.into(),
-    }, None);
+            }),
+            topic: NetworkChannelTopic::NetworkCommands.into(),
+        },
+        None,
+    );
 }
 
 /// Start to listen for incoming connections indefinitely.
