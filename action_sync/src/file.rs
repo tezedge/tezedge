@@ -110,9 +110,9 @@ impl ActionsFileReader {
             .read(true)
             .open(path)?;
         let mut reader = BufReader::new(file);
-        let _ = reader.seek(SeekFrom::Start(0));
+        reader.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
-        let _ = reader.read_exact(&mut h);
+        reader.read_exact(&mut h)?;
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileReader {
             reader,
@@ -126,12 +126,12 @@ impl ActionsFileReader {
         self.header
     }
 
-    pub fn fetch_header(&mut self) -> ActionsFileHeader {
-        let _ = self.reader.seek(SeekFrom::Start(0));
+    pub fn fetch_header(&mut self) -> Result<ActionsFileHeader> {
+        self.reader.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
-        let _ = self.reader.read_exact(&mut h);
+        self.reader.read_exact(&mut h)?;
         self.header = ActionsFileHeader::from(h);
-        self.header()
+        Ok(self.header())
     }
 }
 
@@ -147,7 +147,12 @@ impl Iterator for ActionsFileReader {
             }
         };
         let mut h = [0_u8; 4];
-        let _ = self.reader.read_exact(&mut h);
+        match self.reader.read_exact(&mut h){
+            Ok(_) => {}
+            Err(_) => {
+                return None
+            }
+        }
         let content_len = u32::from_be_bytes(h);
         if content_len <= 0 {
             return None;
@@ -186,9 +191,9 @@ impl ActionsFileWriter {
             .read(true)
             .open(path)?;
         let mut reader = BufReader::new(file.try_clone()?);
-        let _ = reader.seek(SeekFrom::Start(0));
+        reader.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
-        let _ = reader.read_exact(&mut h);
+        reader.read_exact(&mut h)?;
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileWriter { file, header })
     }
@@ -198,16 +203,13 @@ impl ActionsFileWriter {
     }
 }
 
-unsafe impl Send for ActionsFileWriter {}
-
-unsafe impl Sync for ActionsFileWriter {}
 
 impl ActionsFileWriter {
     pub fn update(&mut self, block: Block, actions: Vec<ContextActionMessage>) -> Result<u32> {
         let block_level = block.block_level;
         let actions_count = actions.len() as u32;
         let block_hash = block.block_hash;
-        self._fetch_header();
+        self._fetch_header()?;
 
         // Check if currently saved block precedes the incoming block
         if block.predecessor != self.header.current_block_hash && self.header.block_count > 0 {
@@ -221,11 +223,11 @@ impl ActionsFileWriter {
         // Writes the header if its not already set
         if self.header.block_count <= 0 {
             let header_bytes = self.header.to_vec();
-            let _ = self.file.seek(SeekFrom::Start(0));
-            let _ = self.file.write(&header_bytes);
+            self.file.seek(SeekFrom::Start(0))?;
+            self.file.write(&header_bytes)?;
         }
-        self._update(&out);
-        self._update_header(block_level, actions_count, block_hash);
+        self._update(&out)?;
+        self._update_header(block_level, actions_count, block_hash)?;
         Ok(block_level + 1)
     }
 
@@ -234,30 +236,33 @@ impl ActionsFileWriter {
         block_level: u32,
         actions_count: u32,
         block_hash: [u8; BLOCK_HASH_HEADER_LEN],
-    ) {
+    ) -> Result<()> {
         self.header.block_height = block_level;
         self.header.actions_count += actions_count;
         self.header.block_count += 1;
         self.header.current_block_hash = block_hash;
 
         let header_bytes = self.header.to_vec();
-        let _ = self.file.seek(SeekFrom::Start(0));
-        let _ = self.file.write(&header_bytes);
+        self.file.seek(SeekFrom::Start(0))?;
+        self.file.write(&header_bytes)?;
+        Ok(())
     }
 
-    fn _fetch_header(&mut self) {
-        let _ = self.file.seek(SeekFrom::Start(0));
+    fn _fetch_header(&mut self) -> Result<()>{
+        self.file.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
-        let _ = self.file.read_exact(&mut h);
+        self.file.read_exact(&mut h)?;
         self.header = ActionsFileHeader::from(h);
+        Ok(())
     }
 
-    pub fn _update(&mut self, data: &[u8]) {
-        let _ = self.file.seek(SeekFrom::End(0));
+    pub fn _update(&mut self, data: &[u8]) -> Result<()>{
+        self.file.seek(SeekFrom::End(0))?;
         let header = (data.len() as u32).to_be_bytes();
         let mut dt = vec![];
         dt.extend_from_slice(&header);
         dt.extend_from_slice(data);
-        let _ = self.file.write(dt.as_slice());
+        self.file.write(dt.as_slice())?;
+        Ok(())
     }
 }
