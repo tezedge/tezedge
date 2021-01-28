@@ -53,12 +53,8 @@ impl StorageBackend for InMemoryBackend {
         )?;
 
          match r.get(key) {
-            None => {
-                Err(StorageBackendError::BackendError)
-            }
-            Some(v) => {
-                Ok(Some(v.clone()))
-            }
+            None => Ok(None),
+            Some(v) => Ok(Some(v.clone())),
         }
     }
 

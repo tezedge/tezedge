@@ -26,14 +26,16 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     fn get_entry(&self, key: &EntryHash) -> Result<Option<Entry>, KVStoreError> {
         match self.store.get(key)? {
             None => Ok(None),
-            Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
+            Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
         }
     }
 
     pub fn gc(&mut self, last_commit_hash: Option<EntryHash>) -> Result<(), KVStoreError>{
-        let mut todo = HashSet::new();
-        self.mark_entries(&mut todo, last_commit_hash);
-        self.sweep_entries(todo);
+        if let Some(_) = &last_commit_hash {
+            let mut todo = HashSet::new();
+            self.mark_entries(&mut todo, last_commit_hash);
+            self.sweep_entries(todo);
+        }
         Ok(())
     }
 
