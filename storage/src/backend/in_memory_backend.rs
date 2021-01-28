@@ -7,13 +7,15 @@ use crate::merkle_storage::{EntryHash, ContextValue};
 
 #[derive(Default)]
 pub struct InMemoryBackend {
-    inner: Arc<RwLock<HashMap<EntryHash, ContextValue>>>
+    inner: Arc<RwLock<HashMap<EntryHash, ContextValue>>>,
+    stats: StorageBackendStats,
 }
 
 impl InMemoryBackend {
     pub fn new(db : Arc<RwLock<HashMap<EntryHash, ContextValue>>>) -> Self {
         InMemoryBackend {
-            inner: db
+            inner: db,
+            stats: Default::default(),
         }
     }
 }
@@ -22,11 +24,17 @@ impl StorageBackend for InMemoryBackend {
     fn is_persisted(&self) -> bool { false }
 
     fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+        let measurement = StorageBackendStats::from((&key, &value));
         let mut w = self.inner.write()
-            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)}
-        )?;
+            .map(|w| w).map_err(|e| StorageBackendError::GuardPoison {error : format!("{}", e)})?;
 
-        Ok(w.insert(key, value).is_none())
+        let was_added = w.insert(key, value).is_none();
+
+        if was_added {
+            self.stats += measurement;
+        }
+
+        Ok(was_added)
     }
 
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
@@ -79,7 +87,10 @@ impl StorageBackend for InMemoryBackend {
 
         let mut writer = self.inner.write().unwrap();
         for k in garbage_keys {
-            writer.remove(&k);
+            match writer.remove(&k) {
+                Some(v) => self.stats -= StorageBackendStats::from((&k, &v)),
+                None => (),
+            }
         }
         Ok(())
     }
@@ -88,6 +99,6 @@ impl StorageBackend for InMemoryBackend {
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) { }
     fn wait_for_gc_finish(&self) { }
     fn get_stats(&self) -> Vec<StorageBackendStats> {
-      unimplemented!()
+        vec![self.stats]
     }
 }

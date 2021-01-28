@@ -11,15 +11,13 @@ use crate::storage_backend::{
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: KVStore> {
-    store: T,
-    stats: KVStoreStats,
+    store: T
 }
 
 impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     pub fn new(_cycle_count: usize) -> Self {
         Self {
           store: Default::default(),
-          stats: Default::default(),
         }
     }
 
@@ -100,14 +98,7 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
         key: EntryHash,
         value: ContextValue,
     ) -> Result<bool, KVStoreError> {
-        let measurement = KVStoreStats::from((&key, &value));
-        let was_added = self.store.put(key, value)?;
-
-        if was_added {
-            self.stats += measurement;
-        }
-
-        Ok(was_added)
+        self.store.put(key, value)
     }
 
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
@@ -131,7 +122,7 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
     fn wait_for_gc_finish(&self) { }
 
     fn get_stats(&self) -> Vec<KVStoreStats> {
-        vec![self.stats]
+        self.store.get_stats()
     }
 }
 
