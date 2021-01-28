@@ -234,7 +234,8 @@ impl From<&MempoolState> for Mempool {
 
 #[cfg(test)]
 mod tests {
-    use crypto::hash::HashType;
+    use std::convert::TryInto;
+
     use tezos_api::ffi::PrevalidatorWrapper;
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::Operation;
@@ -243,10 +244,8 @@ mod tests {
 
     #[test]
     fn test_state_reinit() -> Result<(), failure::Error> {
-        let op_hash1 = HashType::OperationHash
-            .b58check_to_hash("opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr")?;
-        let op_hash2 = HashType::OperationHash
-            .b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?;
+        let op_hash1 = "opJ4FdKumPfykAP9ZqwY7rNB8y1SiMupt44RqBDMWL7cmb4xbNr".try_into()?;
+        let op_hash2 = "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?;
 
         // init state with two pendings
         let mut state = MempoolState::default();
@@ -267,15 +266,11 @@ mod tests {
         // add header/prevalidator
         let _ = state.reinit(
             Some(PrevalidatorWrapper {
-                chain_id: HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?,
-                protocol: HashType::ProtocolHash
-                    .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?,
+                chain_id: "NetXgtSLGNJvNye".try_into()?,
+                protocol: "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?,
                 context_fitness: Some(vec![vec![0, 1], vec![0, 0, 1, 2, 3, 4, 5]]),
             }),
-            Some(
-                HashType::BlockHash
-                    .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
-            ),
+            Some("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9".try_into()?),
         );
 
         // remove from pending

@@ -3,7 +3,7 @@
 
 use failure::bail;
 
-use crypto::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{BlockHash, ChainId};
 use storage::block_storage::BlockJsonData;
 use storage::context::ContextApi;
 use storage::merkle_storage::StringTreeEntry;
@@ -99,7 +99,7 @@ pub(crate) fn live_blocks(
         Some((_, json_data)) => json_data.max_operations_ttl().into(),
         None => bail!(
             "Max_ttl not found for block id: {}",
-            HashType::BlockHash.hash_to_b58check(&block_hash)
+            block_hash.to_base58_check()
         ),
     };
 
@@ -107,7 +107,7 @@ pub(crate) fn live_blocks(
     let live_blocks = block_meta_storage
         .get_live_blocks(block_hash, max_ttl)?
         .iter()
-        .map(|block| HashType::BlockHash.hash_to_b58check(&block))
+        .map(|block| block.to_base58_check())
         .collect();
 
     Ok(live_blocks)
@@ -152,7 +152,7 @@ pub(crate) fn get_block_protocols(
     } else {
         bail!(
             "Cannot retrieve protocols, block_hash {} not found!",
-            HashType::BlockHash.hash_to_b58check(block_hash)
+            block_hash.to_base58_check()
         )
     }
 }
@@ -178,7 +178,7 @@ pub(crate) fn get_block_operation_hashes(
     } else {
         bail!(
             "Cannot retrieve operation hashes from block, block_hash {} not found!",
-            HashType::BlockHash.hash_to_b58check(block_hash)
+            block_hash.to_base58_check()
         )
     }
 }

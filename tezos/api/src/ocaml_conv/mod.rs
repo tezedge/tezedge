@@ -50,6 +50,7 @@ pub struct OCamlProtocolHash {}
 pub struct OCamlBlockMetadataHash {}
 pub struct OCamlOperationMetadataHash {}
 pub struct OCamlOperationMetadataListListHash {}
+pub struct OCamlChainId {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;

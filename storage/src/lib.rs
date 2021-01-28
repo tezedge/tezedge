@@ -12,7 +12,7 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType};
 use tezos_api::environment::{
     TezosEnvironmentConfiguration, TezosEnvironmentError, OPERATION_LIST_LIST_HASH_EMPTY,
 };
@@ -67,7 +67,7 @@ impl BlockHeaderWithHash {
     /// Create block header extensions from plain block header
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
         Ok(BlockHeaderWithHash {
-            hash: block_header.message_hash()?,
+            hash: block_header.message_hash()?.try_into()?,
             header: Arc::new(block_header),
         })
     }
@@ -85,7 +85,7 @@ impl Encoder for BlockHeaderWithHash {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = vec![];
-        result.extend(&self.hash);
+        result.extend(self.hash.as_ref());
         result.extend(
             self.header
                 .as_bytes()
@@ -102,7 +102,7 @@ impl Decoder for BlockHeaderWithHash {
         let header = BlockHeader::from_bytes(&bytes[HashType::BlockHash.size()..])
             .map_err(|_| SchemaError::DecodeError)?;
         Ok(BlockHeaderWithHash {
-            hash,
+            hash: hash.try_into()?,
             header: Arc::new(header),
         })
     }
@@ -127,6 +127,8 @@ pub enum StorageError {
     MessageHashError { error: MessageHashError },
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
+    #[fail(display = "Error constructing hash: {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<DBError> for StorageError {
@@ -167,6 +169,12 @@ impl From<TezosEnvironmentError> for StorageError {
     }
 }
 
+impl From<FromBytesError> for StorageError {
+    fn from(error: FromBytesError) -> Self {
+        StorageError::HashError { error }
+    }
+}
+
 impl slog::Value for StorageError {
     fn serialize(
         &self,
@@ -204,8 +212,8 @@ pub fn resolve_storage_init_chain_data(
         log,
         "Storage based on data";
         "chain_name" => &tezos_env.version,
-        "init_data.chain_id" => format!("{:?}", HashType::ChainId.hash_to_b58check(&init_data.chain_id)),
-        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.hash_to_b58check(&init_data.genesis_block_header_hash)),
+        "init_data.chain_id" => format!("{:?}", init_data.chain_id.to_base58_check()),
+        "init_data.genesis_header" => format!("{:?}", init_data.genesis_block_header_hash.to_base58_check()),
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_db_path" => format!("{:?}", context_db_path),
         "patch_context" => match patch_context {
@@ -370,8 +378,8 @@ pub fn initialize_storage_with_genesis_block(
 
     info!(log,
         "Storage initialized with genesis block";
-        "genesis" => HashType::BlockHash.hash_to_b58check(&genesis_with_hash.hash),
-        "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash),
+        "genesis" => genesis_with_hash.hash.to_base58_check(),
+        "context_hash" => context_hash.to_base58_check(),
     );
     Ok(genesis_with_hash)
 }

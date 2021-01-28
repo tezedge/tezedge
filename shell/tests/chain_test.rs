@@ -634,7 +634,10 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         .get_operations(&db.block_hash(1325)?)?
         .iter()
         .flatten()
-        .map(|a| a.message_hash().expect("Failed to decode operation has"))
+        .map(|a| {
+            a.message_typed_hash()
+                .expect("Failed to decode operation has")
+        })
         .collect();
     mocked_peer_node.clear_mempool();
     mocked_peer_node.send_msg(CurrentHeadMessage::new(
@@ -754,7 +757,7 @@ mod test_data {
 
                 let block = request
                     .block_header
-                    .message_hash()
+                    .message_typed_hash()
                     .expect("Failed to decode message_hash");
                 let context_hash: ContextHash = request.block_header.context().clone();
                 headers.insert(block, (level, context_hash));
@@ -762,7 +765,8 @@ mod test_data {
                 for ops in request.operations {
                     for op in ops {
                         operation_hashes.insert(
-                            op.message_hash().expect("Failed to compute message hash"),
+                            op.message_typed_hash()
+                                .expect("Failed to compute message hash"),
                             level,
                         );
                     }
@@ -794,7 +798,7 @@ mod test_data {
                     let mut found = None;
                     for ops in self.captured_requests(*level)?.operations {
                         for op in ops {
-                            if op.message_hash()?.eq(operation_hash) {
+                            if op.message_typed_hash::<OperationHash>()?.eq(operation_hash) {
                                 found = Some(op);
                                 break;
                             }
@@ -1533,7 +1537,7 @@ mod test_actor {
 
     use riker::actors::*;
 
-    use crypto::hash::{CryptoboxPublicKeyHash, HashType};
+    use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
     use shell::subscription::subscribe_to_network_events;
 
@@ -1681,7 +1685,7 @@ mod test_actor {
                     break Err(
                         failure::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, HashType::CryptoboxPublicKeyHash.hash_to_b58check(peer_public_key_hash), expected_state, timeout, delay
+                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
                         )
                     );
                 }

@@ -3,7 +3,7 @@
 #![feature(test)]
 extern crate test;
 
-use std::{env, thread};
+use std::{convert::TryFrom, env, thread};
 
 use ocaml_interop::{
     ocaml_alloc, ocaml_call, ocaml_frame, to_ocaml, FromOCaml, OCaml, OCamlBytes, OCamlList,
@@ -135,7 +135,7 @@ roundtrip_test!(
 
 fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let header: BlockHeader = BlockHeader::from_bytes(hex::decode(HEADER).unwrap())?;
-    let expected_block_hash: BlockHash = header.message_hash()?;
+    let expected_block_hash: BlockHash = header.message_typed_hash()?;
     let expected_chain_id = chain_id_from_block_hash(&expected_block_hash);
 
     let result = runtime::execute(move || {
@@ -145,8 +145,8 @@ fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Err
             let result = ocaml_call!(tezos_ffi::block_header_struct_roundtrip(gc, header));
             let (block_hash, chain_id) = <(String, String)>::from_ocaml(result.unwrap());
 
-            let block_hash: BlockHash = block_hash.as_bytes().to_vec();
-            let chain_id: ChainId = chain_id.as_bytes().to_vec();
+            let block_hash: BlockHash = BlockHash::try_from(block_hash.as_bytes()).unwrap();
+            let chain_id: ChainId = ChainId::try_from(chain_id.as_bytes()).unwrap();
 
             assert_eq!(expected_block_hash, block_hash);
             assert_eq!(expected_chain_id, chain_id);

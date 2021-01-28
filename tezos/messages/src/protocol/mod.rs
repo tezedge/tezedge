@@ -9,7 +9,7 @@ use lazy_static::lazy_static;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crypto::hash::{HashType, ProtocolHash};
+use crypto::hash::ProtocolHash;
 use tezos_encoding::binary_reader::BinaryReaderError;
 
 use crate::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
@@ -76,7 +76,7 @@ impl TryFrom<&ProtocolHash> for SupportedProtocol {
     type Error = UnsupportedProtocolError;
 
     fn try_from(protocol_hash: &ProtocolHash) -> Result<Self, Self::Error> {
-        let protocol = HashType::ProtocolHash.hash_to_b58check(protocol_hash);
+        let protocol = protocol_hash.to_base58_check();
         match SUPPORTED_PROTOCOLS.get(&protocol) {
             Some(proto) => Ok(proto.clone()),
             None => Err(UnsupportedProtocolError { protocol }),

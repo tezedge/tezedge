@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::env;
 use std::path::{Path, PathBuf};
+use std::{
+    convert::{TryFrom, TryInto},
+    env,
+};
 
 use failure::Error;
 use slog::{Drain, Level, Logger};
 
-use crypto::hash::{chain_id_from_block_hash, ContextHash, HashType};
+use crypto::hash::{chain_id_from_block_hash, BlockHash, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
@@ -59,11 +62,11 @@ fn test_storage() -> Result<(), Error> {
     let init_data = init_data.unwrap();
     assert_eq!(
         init_data.genesis_block_header_hash,
-        HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?
+        BlockHash::try_from(tezos_env.genesis.block.as_str())?
     );
     assert_eq!(
         init_data.chain_id,
-        chain_id_from_block_hash(&HashType::BlockHash.b58check_to_hash(&tezos_env.genesis.block)?)
+        chain_id_from_block_hash(&BlockHash::try_from(tezos_env.genesis.block.as_str())?)
     );
 
     // load current head (non)
@@ -76,8 +79,7 @@ fn test_storage() -> Result<(), Error> {
     assert!(genesis.is_none());
 
     // simulate commit genesis in two steps
-    let new_context_hash: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")?;
+    let new_context_hash = "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE".try_into()?;
     let _ = initialize_storage_with_genesis_block(
         &block_storage,
         &init_data,
@@ -169,8 +171,9 @@ fn test_storage() -> Result<(), Error> {
     let apply_result = ApplyBlockResponse {
         last_allowed_fork_level: 5,
         max_operations_ttl: 6,
-        context_hash: HashType::ContextHash
-            .b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
+        context_hash: ContextHash::from_base58_check(
+            "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd",
+        )?,
         block_header_proto_json: "{block_header_proto_json}".to_string(),
         block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
         operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),

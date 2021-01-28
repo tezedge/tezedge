@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::info;
 
-use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
+use crypto::hash::{ChainId, OperationHash, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{
     InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelMsg, ShellChannelRef,
@@ -99,7 +99,7 @@ fn convert_applied(
 ) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
     let mut result: Vec<HashMap<String, Value>> = Vec::new();
     for a in applied {
-        let operation_hash = HashType::OperationHash.hash_to_b58check(&a.hash);
+        let operation_hash = a.hash.to_base58_check();
         let protocol_data: HashMap<String, Value> = serde_json::from_str(&a.protocol_data_json)?;
         let operation = match operations.get(&a.hash) {
             Some(b) => b,
@@ -115,7 +115,7 @@ fn convert_applied(
         m.insert(String::from("hash"), Value::String(operation_hash));
         m.insert(
             String::from("branch"),
-            Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())),
+            Value::String(operation.branch().to_base58_check()),
         );
         m.extend(protocol_data);
         result.push(m);
@@ -130,10 +130,10 @@ fn convert_errored(
     protocol: &ProtocolHash,
 ) -> Result<Vec<Value>, failure::Error> {
     let mut result: Vec<Value> = Vec::new();
-    let protocol = HashType::ProtocolHash.hash_to_b58check(&protocol);
+    let protocol = protocol.to_base58_check();
 
     for e in errored {
-        let operation_hash = HashType::OperationHash.hash_to_b58check(&e.hash);
+        let operation_hash = e.hash.to_base58_check();
         let operation = match operations.get(&e.hash) {
             Some(b) => b,
             None => {
@@ -164,7 +164,7 @@ fn convert_errored(
         m.insert(String::from("protocol"), Value::String(protocol.clone()));
         m.insert(
             String::from("branch"),
-            Value::String(HashType::BlockHash.hash_to_b58check(&operation.branch())),
+            Value::String(operation.branch().to_base58_check()),
         );
         m.extend(protocol_data);
         m.insert(String::from("error"), error);
@@ -200,7 +200,7 @@ pub fn inject_operation(
 
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
-    let operation_hash = operation.message_hash()?;
+    let operation_hash = operation.message_typed_hash()?;
 
     // do prevalidation before add the operation to mempool
     let result = validation::prevalidate_operation(
@@ -217,14 +217,14 @@ pub fn inject_operation(
     if !validation::can_accept_operation_from_rpc(&operation_hash, &result) {
         return Err(format_err!(
             "Operation from rpc ({}) was not added to mempool. Reason: {:?}",
-            HashType::OperationHash.hash_to_b58check(&operation_hash),
+            operation_hash.to_base58_check(),
             result
         ));
     }
 
     // store operation in mempool storage
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
-    let operation_hash_b58check_string = HashType::OperationHash.hash_to_b58check(&operation_hash);
+    let operation_hash_b58check_string = operation_hash.to_base58_check();
     let ttl = SystemTime::now() + Duration::from_secs(60);
     mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
 
@@ -300,7 +300,7 @@ pub fn inject_block(
 
     let header: BlockHeaderWithHash =
         BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
-    let block_hash_b58check_string = HashType::BlockHash.hash_to_b58check(&header.hash);
+    let block_hash_b58check_string = header.hash.to_base58_check();
     info!(env.log(),
           "Block injection requested";
           "block_hash" => block_hash_b58check_string.clone(),
@@ -329,7 +329,7 @@ pub fn inject_block(
 
         for vps in validation_passes {
             for vp in vps {
-                let oph: OperationHash = vp.message_hash()?;
+                let oph: OperationHash = vp.message_typed_hash()?;
                 current_mempool_state.remove_operation(oph);
             }
         }
@@ -422,12 +422,11 @@ pub fn request_operations(shell_channel: ShellChannelRef) -> Result<(), failure:
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, convert::TryInto};
 
     use assert_json_diff::assert_json_eq;
     use serde_json::json;
 
-    use crypto::hash::HashType;
     use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::Operation;
@@ -438,7 +437,7 @@ mod tests {
     fn test_convert_applied() -> Result<(), failure::Error> {
         let data = vec![
             Applied {
-                hash: HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
                 protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
             }
         ];
@@ -446,7 +445,7 @@ mod tests {
         let mut operations = HashMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
-            HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
         );
 
@@ -475,7 +474,7 @@ mod tests {
     fn test_convert_errored() -> Result<(), failure::Error> {
         let data = vec![
             Errored {
-                hash: HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
                 is_endorsement: None,
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "{ \"contents\": [ { \"kind\": \"endorsement\", \"level\": 459020 } ],\n  \"signature\":\n    \"siguKbKFVDkXo2m1DqZyftSGg7GZRq43EVLSutfX5yRLXXfWYG5fegXsDT6EUUqawYpjYE1GkyCVHfc2kr3hcaDAvWSAhnV9\" }".to_string(),
@@ -487,11 +486,10 @@ mod tests {
         let mut operations = HashMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
-            HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
         );
-        let protocol = HashType::ProtocolHash
-            .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
 
         let expected_json = json!(
                 [
@@ -522,7 +520,7 @@ mod tests {
     fn test_convert_errored_missing_protocol_data() -> Result<(), failure::Error> {
         let data = vec![
             Errored {
-                hash: HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+                hash: "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
                 is_endorsement: Some(true),
                 protocol_data_json_with_error_json: OperationProtocolDataJsonWithErrorListJson {
                     protocol_data_json: "".to_string(),
@@ -534,11 +532,10 @@ mod tests {
         let mut operations = HashMap::new();
         // operation with branch=BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H
         operations.insert(
-            HashType::OperationHash.b58check_to_hash("onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ")?,
+            "onvN8U6QJ6DGJKVYkHXYRtFm3tgBJScj9P5bbPjSZUuFaGzwFuJ".try_into()?,
             Operation::from_bytes(hex::decode("10490b79070cf19175cd7e3b9c1ee66f6e85799980404b119132ea7e58a4a97e000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08")?)?,
         );
-        let protocol = HashType::ProtocolHash
-            .b58check_to_hash("PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb")?;
+        let protocol = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb".try_into()?;
 
         let expected_json = json!(
                 [

@@ -1,6 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+
+use crypto::hash::ChainId;
 use failure::Error;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -27,7 +30,7 @@ fn can_deserialize_and_serialize_current_branch_message() {
 #[test]
 fn can_serialize_get_current_branch_message() {
     let get_current_branch_message = PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(
-        hex::decode("8eceda2f").unwrap(),
+        ChainId::try_from(hex::decode("8eceda2f").unwrap()).unwrap(),
     ));
     let response: PeerMessageResponse = get_current_branch_message.into();
     let message_bytes = response.as_bytes().unwrap();
@@ -44,7 +47,10 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
 
     match message {
         PeerMessage::CurrentBranch(current_branch_message) => {
-            assert_eq!(&hex::decode("8eceda2f")?, current_branch_message.chain_id());
+            assert_eq!(
+                &hex::decode("8eceda2f")?,
+                current_branch_message.chain_id().as_ref()
+            );
 
             let current_head = current_branch_message.current_branch().current_head();
             assert_eq!(198_392, current_head.level());
@@ -52,15 +58,15 @@ fn can_deserialize_current_branch_message() -> Result<(), Error> {
 
             assert_eq!(
                 &hex::decode("46a6aefde9243ae18b191a8d010b7237d5130b3530ce5d1f60457411b2fa632d")?,
-                current_head.predecessor()
+                current_head.predecessor().as_ref()
             );
             assert_eq!(
                 &hex::decode("934484026d24be9ad40c98341c20e51092dd62bbf470bb9ff85061fa981ebbd9")?,
-                current_head.context()
+                current_head.context().as_ref()
             );
             assert_eq!(
                 &hex::decode("acecbfac449678f1d68b90c7b7a86c9280fd373d872e072f3fb1b395681e7149")?,
-                current_head.operations_hash()
+                current_head.operations_hash().as_ref()
             );
 
             assert_eq!(2, current_head.fitness().len());

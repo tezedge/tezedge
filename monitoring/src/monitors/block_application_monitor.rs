@@ -3,7 +3,6 @@
 
 use std::time::Instant;
 
-use crypto::hash::HashType;
 use tezos_messages::Head;
 
 use crate::handlers::handler_messages::{BlockApplicationMessage, BlockInfo};
@@ -45,7 +44,7 @@ impl ApplicationMonitor {
     pub fn snapshot(&mut self) -> BlockApplicationMessage {
         let last_block = if let Some(block) = &self.last_applied_block {
             Some(BlockInfo {
-                hash: HashType::BlockHash.hash_to_b58check(block.block_hash()),
+                hash: block.block_hash().to_base58_check(),
                 level: *block.level(),
             })
         } else {

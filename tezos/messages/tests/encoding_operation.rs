@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::hash::HashType;
 use failure::Error;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -12,7 +11,7 @@ fn can_deserialize() -> Result<(), Error> {
     let operation = Operation::from_bytes(message_bytes)?;
     assert_eq!(
         "BKqTKfGwK3zHnVXX33X5PPHy1FDTnbkajj3eFtCXGFyfimQhT1H",
-        HashType::BlockHash.hash_to_b58check(&operation.branch())
+        operation.branch().to_base58_check()
     );
     Ok(assert_eq!("000008c387fa065a181d45d47a9b78ddc77e92a881779ff2cbabbf9646eade4bf1405a08e00b725ed849eea46953b10b5cdebc518e6fd47e69b82d2ca18c4cf6d2f312dd08", &hex::encode(&operation.data())))
 }

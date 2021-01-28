@@ -23,7 +23,7 @@ use itertools::Itertools;
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType, OperationHash};
+use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use networking::p2p::peer::SendMessage;
@@ -552,7 +552,7 @@ impl ChainManager {
                                     {
                                         let head = message.current_branch().current_head();
                                         debug!(log, "Ignoring received (low) current branch";
-                                                    "branch" => HashType::BlockHash.hash_to_b58check(&head.message_hash()?),
+                                                    "branch" => head.message_typed_hash::<BlockHash>()?.to_base58_check(),
                                                     "level" => head.level());
                                     } else {
                                         let message_current_head = BlockHeaderWithHash::new(
@@ -618,7 +618,7 @@ impl ChainManager {
                                             }
                                         }
                                     } else {
-                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => HashType::ChainId.hash_to_b58check(chain_state.get_chain_id()));
+                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
                                     }
                                 }
                                 PeerMessage::BlockHeader(message) => {
@@ -643,7 +643,7 @@ impl ChainManager {
                                             )?;
                                         }
                                         None => {
-                                            warn!(log, "Received unexpected block header"; "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash));
+                                            warn!(log, "Received unexpected block header"; "block_header_hash" => block_header_with_hash.hash.to_base58_check());
                                         }
                                     }
                                 }
@@ -691,7 +691,7 @@ impl ChainManager {
                                             if operation_was_expected {
                                                 peer.block_operations_response_last =
                                                     Instant::now();
-                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_hash));
+                                                trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => block_hash.to_base58_check());
 
                                                 if operations_state
                                                     .process_block_operations(&operations)?
@@ -748,7 +748,7 @@ impl ChainManager {
                                                         .remove(&block_hash);
                                                 }
                                             } else {
-                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => HashType::BlockHash.hash_to_b58check(&block_hash));
+                                                warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => block_hash.to_base58_check());
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
@@ -883,7 +883,7 @@ impl ChainManager {
                                     // handling new mempool operations here
                                     // parse operation data
                                     let operation = message.operation();
-                                    let operation_hash = operation.message_hash()?;
+                                    let operation_hash = operation.message_typed_hash()?;
 
                                     match peer.queued_mempool_operations.remove(&operation_hash) {
                                         Some((operation_type, op_ttl)) => {
@@ -906,7 +906,7 @@ impl ChainManager {
                                                     }
                                                     poe => {
                                                         // other error just propagate
-                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.hash_to_b58check(&operation_hash), poe));
+                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), poe));
                                                     }
                                                 }
                                             };
@@ -916,7 +916,7 @@ impl ChainManager {
                                                 &operation_hash,
                                                 &result,
                                             ) {
-                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", HashType::OperationHash.hash_to_b58check(&operation_hash), result));
+                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), result));
                                             }
 
                                             // store mempool operation
@@ -1014,7 +1014,7 @@ impl ChainManager {
                 } else {
                     return Err(format_err!(
                         "BlockHeader ({}) was not found!",
-                        HashType::BlockHash.hash_to_b58check(&block_hash)
+                        block_hash.to_base58_check()
                     ));
                 }
             }
@@ -1026,7 +1026,7 @@ impl ChainManager {
                     peers, chain_state, ..
                 } = self;
                 let msg: Arc<PeerMessageResponse> =
-                    GetCurrentHeadMessage::new(chain_state.get_chain_id().to_vec()).into();
+                    GetCurrentHeadMessage::new(chain_state.get_chain_id().clone()).into();
                 peers
                     .iter_mut()
                     .for_each(|(_, peer)| tell_peer(msg.clone(), peer));
@@ -1115,9 +1115,10 @@ impl ChainManager {
             operations,
             operation_paths,
         } = injected_block;
-        let log = ctx.system.log().new(
-            slog::o!("block" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)),
-        );
+        let log = ctx
+            .system
+            .log()
+            .new(slog::o!("block" => block_header_with_hash.hash.to_base58_check()));
 
         // this should  allways return [is_new_block==true], as we are injecting a forged new block
         let (block_metadata, is_new_block, mut are_operations_complete) = match self
@@ -1137,7 +1138,7 @@ impl ChainManager {
                     || {
                         Err(format_err!(
                             "Failed to store injected block, block_hash: {}, reason: {}",
-                            HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash),
+                            block_header_with_hash.hash.to_base58_check(),
                             e
                         ))
                     },
@@ -1178,8 +1179,7 @@ impl ChainManager {
                             || {
                                 Err(format_err!(
                                     "Missing operations in request, block_hash: {}",
-                                    HashType::BlockHash
-                                        .hash_to_b58check(&block_header_with_hash.hash)
+                                    block_header_with_hash.hash.to_base58_check()
                                 ))
                             },
                             true,
@@ -1188,7 +1188,7 @@ impl ChainManager {
                         }
                         return Err(format_err!(
                             "Missing operations in request, block_hash: {}",
-                            HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)
+                            block_header_with_hash.hash.to_base58_check()
                         ));
                     }
                 };
@@ -1200,8 +1200,7 @@ impl ChainManager {
                             || {
                                 Err(format_err!(
                                     "Missing operation paths in request, block_hash: {}",
-                                    HashType::BlockHash
-                                        .hash_to_b58check(&block_header_with_hash.hash)
+                                    block_header_with_hash.hash.to_base58_check()
                                 ))
                             },
                             true,
@@ -1210,7 +1209,7 @@ impl ChainManager {
                         }
                         return Err(format_err!(
                             "Missing operation paths in request, block_hash: {}",
-                            HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)
+                            block_header_with_hash.hash.to_base58_check()
                         ));
                     }
                 };
@@ -1228,7 +1227,7 @@ impl ChainManager {
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || {
-                                    Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)))
+                                    Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check()))
                                 },
                                 true,
                             ) {
@@ -1237,7 +1236,7 @@ impl ChainManager {
                             return Err(format_err!(
                                 "Missing operation paths in request for index: {}, block_hash: {}",
                                 idx,
-                                HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)
+                                block_header_with_hash.hash.to_base58_check()
                             ));
                         }
                     };
@@ -1273,7 +1272,7 @@ impl ChainManager {
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || {
-                                    Err(format_err!("Failed to store injected block operations, block_hash: {}, reason: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), e))
+                                    Err(format_err!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
                                 },
                                 true,
                             ) {
@@ -1302,12 +1301,12 @@ impl ChainManager {
                         );
                     } else {
                         warn!(log, "Injected block cannot be applied - will be ignored!";
-                                   "block_predecessor" => HashType::BlockHash.hash_to_b58check(&block_header_with_hash.header.predecessor()),
+                                   "block_predecessor" => block_header_with_hash.header.predecessor().to_base58_check(),
                                    "are_operations_complete" => are_operations_complete);
                         if let Err(e) = dispatch_condvar_result(
                             result_callback,
                             || {
-                                Err(format_err!("Injected block cannot be applied - will be ignored!, block_hash: {}, are_operations_complete: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), are_operations_complete))
+                                Err(format_err!("Injected block cannot be applied - will be ignored!, block_hash: {}, are_operations_complete: {}", block_header_with_hash.hash.to_base58_check(), are_operations_complete))
                             },
                             true,
                         ) {
@@ -1319,7 +1318,7 @@ impl ChainManager {
                     if let Err(e) = dispatch_condvar_result(
                         result_callback,
                         || {
-                            Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash), e))
+                            Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
                         },
                         true,
                     ) {
@@ -1335,7 +1334,7 @@ impl ChainManager {
                 || {
                     Err(format_err!(
                         "Injected duplicated block - will be ignored!, block_hash: {}",
-                        HashType::BlockHash.hash_to_b58check(&block_header_with_hash.hash)
+                        block_header_with_hash.hash.to_base58_check()
                     ))
                 },
                 true,
@@ -1379,7 +1378,7 @@ impl ChainManager {
             None => {
                 return Err(format_err!(
                     "Block/json_data not found for block_hash: {}",
-                    HashType::BlockHash.hash_to_b58check(&block)
+                    block.to_base58_check()
                 ));
             }
         };
@@ -1391,7 +1390,7 @@ impl ChainManager {
             self.current_mempool_state.clone(),
         )? {
             debug!(ctx.system.log(), "New current head";
-                                     "block_header_hash" => HashType::BlockHash.hash_to_b58check(new_head.block_hash()),
+                                     "block_header_hash" => new_head.block_hash().to_base58_check(),
                                      "level" => new_head.level(),
                                      "is_bootstrapped" => self.is_bootstrapped,
                                      "result" => format!("{}", new_head_result)
@@ -1572,14 +1571,14 @@ impl ChainManager {
             Some(meta) => {
                 if meta.is_applied() {
                     // block already applied - ok, doing nothing
-                    debug!(ctx.system.log(), "Block is already applied"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
+                    debug!(ctx.system.log(), "Block is already applied"; "block" => msg.block_hash.to_base58_check());
                     return Ok(());
                 }
             }
             None => {
                 return Err(format_err!(
                     "Block metadata not found for block_hash: {}",
-                    HashType::BlockHash.hash_to_b58check(&msg.block_hash)
+                    msg.block_hash.to_base58_check()
                 ));
             }
         }
@@ -2356,11 +2355,11 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerState) {
 
 #[cfg(test)]
 pub mod tests {
-    use std::net::SocketAddr;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc::channel;
     use std::sync::Mutex;
     use std::thread;
+    use std::{convert::TryInto, net::SocketAddr};
 
     use slog::{Drain, Level, Logger};
 
@@ -2412,8 +2411,7 @@ pub mod tests {
         let node_identity = Arc::new(Identity::generate(0f64));
         let peer_public_key_hash: CryptoboxPublicKeyHash =
             node_identity.public_key.public_key_hash();
-        let peer_id_marker =
-            HashType::CryptoboxPublicKeyHash.hash_to_b58check(&peer_public_key_hash);
+        let peer_id_marker = peer_public_key_hash.to_base58_check();
 
         let peer_ref = Peer::actor(
             sys,
@@ -2465,7 +2463,7 @@ pub mod tests {
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let chain_id = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let chain_id = ChainId::from_base58_check("NetXgtSLGNJvNye")?;
         let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
             .get(&TezosEnvironment::Sandbox)
             .expect("no environment configuration");
@@ -2550,8 +2548,7 @@ pub mod tests {
 
         // simulate - block applied event with level 4
         let new_head = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9".try_into()?,
             4,
             vec![],
         );
@@ -2563,8 +2560,7 @@ pub mod tests {
 
         // simulate - block applied event with level 5
         let new_head = Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9")?,
+            "BLFQ2JjYWHC95Db21cRZC4cgyA1mcXmx1Eg6jKywWy9b8xLzyK9".try_into()?,
             5,
             vec![],
         );

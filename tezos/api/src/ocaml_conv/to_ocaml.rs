@@ -3,9 +3,9 @@
 
 use super::{
     FfiBlockHeader, FfiBlockHeaderShellHeader, FfiOperation, FfiOperationShellHeader,
-    OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash, OCamlOperationHash,
-    OCamlOperationListListHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
-    OCamlProtocolHash, TaggedHash,
+    OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
+    OCamlOperationHash, OCamlOperationListListHash, OCamlOperationMetadataHash,
+    OCamlOperationMetadataListListHash, OCamlProtocolHash, TaggedHash,
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
@@ -13,8 +13,8 @@ use crate::ffi::{
     RpcMethod, RpcRequest, ValidateOperationRequest,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationListListHash, OperationMetadataHash,
-    OperationMetadataListListHash, ProtocolHash,
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
+    OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
     impl_to_ocaml_record, impl_to_ocaml_variant, ocaml_alloc_record, ocaml_alloc_variant,
@@ -50,7 +50,7 @@ macro_rules! to_ocaml_hash {
     ($ocaml_name:ty, $rust_name:ty) => {
         unsafe impl ToOCaml<$ocaml_name> for $rust_name {
             fn to_ocaml(&self, _token: OCamlAllocToken) -> OCamlAllocResult<$ocaml_name> {
-                let tagged = TaggedHash::Hash(self);
+                let tagged = TaggedHash::Hash(self.as_ref());
                 ocaml_alloc_variant! {
                     tagged => {
                         TaggedHash::Hash(hash: OCamlBytes)
@@ -62,7 +62,7 @@ macro_rules! to_ocaml_hash {
 }
 
 to_ocaml_hash!(OCamlOperationListListHash, OperationListListHash);
-to_ocaml_hash!(OCamlOperationHash, Hash);
+to_ocaml_hash!(OCamlOperationHash, OperationHash);
 to_ocaml_hash!(OCamlBlockHash, BlockHash);
 to_ocaml_hash!(OCamlContextHash, ContextHash);
 to_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
@@ -72,19 +72,31 @@ to_ocaml_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
+
 // Other
+
+// TODO: TE-367: review once ocaml-interop has been upgraded
+unsafe impl ToOCaml<OCamlChainId> for ChainId {
+    fn to_ocaml(&self, gc: OCamlAllocToken) -> OCamlAllocResult<OCamlChainId> {
+        let ocaml_bytes: OCamlAllocResult<OCamlBytes> = self.0.to_ocaml(gc);
+        unsafe { std::mem::transmute(ocaml_bytes) }
+    }
+}
 
 impl<'a> From<&'a BlockHeader> for FfiBlockHeaderShellHeader<'a> {
     fn from(block_header: &'a BlockHeader) -> Self {
+        let predecessor_hash: &'a Hash = block_header.predecessor().as_ref();
+        let operations_hash: &'a Hash = block_header.operations_hash().as_ref();
+        let context: &'a Hash = block_header.context().as_ref();
         Self {
             level: block_header.level(),
             proto_level: block_header.proto() as i32,
-            predecessor: block_header.predecessor().into(),
+            predecessor: predecessor_hash.into(),
             timestamp: block_header.timestamp(),
             validation_passes: block_header.validation_pass() as i32,
-            operations_hash: block_header.operations_hash().into(),
+            operations_hash: operations_hash.into(),
             fitness: block_header.fitness(),
-            context: block_header.context().into(),
+            context: context.into(),
         }
     }
 }
@@ -102,7 +114,7 @@ impl<'a> From<&'a BlockHeader> for FfiBlockHeader<'a> {
 impl<'a> From<&'a Operation> for FfiOperationShellHeader<'a> {
     fn from(operation: &'a Operation) -> Self {
         Self {
-            branch: TaggedHash::Hash(operation.branch()),
+            branch: TaggedHash::Hash(operation.branch().as_ref()),
         }
     }
 }
@@ -119,7 +131,7 @@ impl<'a> From<&'a Operation> for FfiOperation<'a> {
 
 impl_to_ocaml_record! {
     ApplyBlockRequest {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
         pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
         max_operations_ttl: OCamlInt,
@@ -153,13 +165,13 @@ impl_to_ocaml_record! {
 impl_to_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlBytes,
+        test_chain_id: OCamlChainId,
     }
 }
 
 impl_to_ocaml_record! {
     BeginApplicationRequest {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
     }
@@ -167,7 +179,7 @@ impl_to_ocaml_record! {
 
 impl_to_ocaml_record! {
     BeginConstructionRequest {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         predecessor: BlockHeader => FfiBlockHeader::from(predecessor),
         protocol_data: Option<OCamlBytes>,
     }
@@ -175,7 +187,7 @@ impl_to_ocaml_record! {
 
 impl_to_ocaml_record! {
     PrevalidatorWrapper {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>
     }
@@ -211,7 +223,7 @@ impl_to_ocaml_variant! {
 impl_to_ocaml_record! {
     ProtocolRpcRequest {
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         chain_arg: OCamlBytes,
         request: RpcRequest,
     }

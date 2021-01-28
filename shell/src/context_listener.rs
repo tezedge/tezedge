@@ -3,6 +3,7 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use std::convert::TryFrom;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -13,7 +14,7 @@ use failure::Error;
 use riker::actors::*;
 use slog::{crit, debug, info, warn, Logger};
 
-use crypto::hash::HashType;
+use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use storage::{BlockStorage, ContextActionStorage};
@@ -177,7 +178,7 @@ fn store_action(
             block_hash: Some(block_hash),
             ..
         } => {
-            storage.put_action(&block_hash.clone(), action)?;
+            storage.put_action(&BlockHash::try_from(block_hash.clone())?, action)?;
             Ok(())
         }
         _ => Ok(()),
@@ -215,7 +216,7 @@ fn listen_protocol_events(
                         "count" => event_count,
                         "context_hash" => match &context.get_last_commit_hash() {
                             None => "-none-".to_string(),
-                            Some(c) => HashType::ContextHash.hash_to_b58check(c)
+                            Some(c) => HashType::ContextHash.hash_to_b58check(c)?
                         }
                     );
                 }
@@ -239,7 +240,8 @@ fn listen_protocol_events(
                         ..
                     } => {
                         if !ignored {
-                            context.set(context_hash, key, value)?;
+                            let context_hash = try_from_untyped_option(context_hash)?;
+                            context.set(&context_hash, key, value)?;
                         }
                     }
                     ContextAction::Copy {
@@ -250,7 +252,8 @@ fn listen_protocol_events(
                         ..
                     } => {
                         if !ignored {
-                            context.copy_to_diff(context_hash, from_key, key)?;
+                            let context_hash = try_from_untyped_option(context_hash)?;
+                            context.copy_to_diff(&context_hash, from_key, key)?;
                         }
                     }
                     ContextAction::Delete {
@@ -260,7 +263,8 @@ fn listen_protocol_events(
                         ..
                     } => {
                         if !ignored {
-                            context.delete_to_diff(context_hash, key)?;
+                            let context_hash = try_from_untyped_option(context_hash)?;
+                            context.delete_to_diff(&context_hash, key)?;
                         }
                     }
                     ContextAction::RemoveRecursively {
@@ -270,7 +274,8 @@ fn listen_protocol_events(
                         ..
                     } => {
                         if !ignored {
-                            context.remove_recursively_to_diff(context_hash, key)?;
+                            let context_hash = try_from_untyped_option(context_hash)?;
+                            context.remove_recursively_to_diff(&context_hash, key)?;
                         }
                     }
                     ContextAction::Commit {
@@ -282,26 +287,30 @@ fn listen_protocol_events(
                         date,
                         ..
                     } => {
+                        let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
+                        let block_hash = BlockHash::try_from(block_hash.clone())?;
+                        let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
+
                         let hash = context.commit(
-                            block_hash,
-                            parent_context_hash,
+                            &block_hash,
+                            &parent_context_hash,
                             author.to_string(),
                             message.to_string(),
                             *date,
                         )?;
                         assert_eq!(
-                            &hash,
+                            hash,
                             new_context_hash,
                             "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                            HashType::BlockHash.hash_to_b58check(block_hash),
-                            HashType::ContextHash.hash_to_b58check(new_context_hash),
-                            HashType::ContextHash.hash_to_b58check(&hash),
+                            block_hash.to_base58_check(),
+                            new_context_hash.to_base58_check(),
+                            hash.to_base58_check(),
                         );
                     }
 
                     ContextAction::Checkout { context_hash, .. } => {
                         event_count = 0;
-                        context.checkout(context_hash)?;
+                        context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
                     }
                     _ => (),
                 };
@@ -316,4 +325,13 @@ fn listen_protocol_events(
     }
 
     Ok(())
+}
+
+fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
+where
+    H: TryFrom<Vec<u8>, Error = FromBytesError>,
+{
+    h.as_ref()
+        .map(|h| H::try_from(h.clone()))
+        .map_or(Ok(None), |r| r.map(Some))
 }

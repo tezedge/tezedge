@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Formatter;
 use std::sync::Arc;
@@ -95,7 +96,7 @@ impl MempoolStorage {
     ) -> Result<(), StorageError> {
         let key = MempoolKey {
             operation_type,
-            operation_hash: operation.message_hash()?,
+            operation_hash: OperationHash::try_from(operation.message_hash()?)?,
         };
         let value = MempoolValue {
             operation,
@@ -198,10 +199,10 @@ impl MempoolKey {
 
 impl Encoder for MempoolKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        if self.operation_hash.len() == Self::LEN_HASH {
+        if self.operation_hash.as_ref().len() == Self::LEN_HASH {
             let mut bytes = Vec::with_capacity(Self::LEN_KEY);
             bytes.push(self.operation_type.to_u8());
-            bytes.extend(&self.operation_hash);
+            bytes.extend(self.operation_hash.as_ref());
             Ok(bytes)
         } else {
             Err(SchemaError::EncodeError)
@@ -215,7 +216,8 @@ impl Decoder for MempoolKey {
             let operation_type =
                 MempoolOperationType::from_u8(num_from_slice!(bytes, Self::IDX_TYPE, u8))
                     .map_err(|_| SchemaError::DecodeError)?;
-            let operation_hash = bytes[Self::IDX_HASH..Self::IDX_HASH + Self::LEN_HASH].to_vec();
+            let operation_hash =
+                OperationHash::try_from(&bytes[Self::IDX_HASH..Self::IDX_HASH + Self::LEN_HASH])?;
             Ok(MempoolKey {
                 operation_type,
                 operation_hash,

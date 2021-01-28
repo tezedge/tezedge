@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::{
+    convert::{TryFrom, TryInto},
+    env,
+};
 
-use crypto::hash::{ContextHash, HashType};
+use crypto::hash::ContextHash;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::tests_common::TmpStorage;
 use storage::{context_key, BlockHeaderWithHash, BlockStorage};
@@ -39,8 +42,8 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let new_context_hash: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
+    let new_context_hash =
+        ContextHash::try_from("CoVf53zSDGcSWS74Mxe2i2RJnVfCaMrAjxK2Xq7tgiFMtkNwUdPv")?;
 
     let hash = context.commit(
         &block.hash,
@@ -115,8 +118,8 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_1: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB")?;
+    let context_hash_1: ContextHash =
+        "CoUyfscSjC3XYECq1aFYQQLrVZuNSW17B7SbFDV9W1REfhJpxZwB".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -184,8 +187,8 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF")?;
+    let context_hash_2: ContextHash =
+        "CoVGom58bpVjHWVsKuc8k7JC7QyzZ7n4ntGZiPpw2CwM43sxC4XF".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -280,8 +283,8 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_1: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR")?;
+    let context_hash_1: ContextHash =
+        "CoVu1KaQQd2SFPqJh7go1t9q11upv1BewzShtTrNK7ZF6uCAcUQR".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -340,8 +343,8 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     )?;
 
     // commit
-    let context_hash_2: ContextHash = HashType::ContextHash
-        .b58check_to_hash("CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G")?;
+    let context_hash_2: ContextHash =
+        "CoVX1ptKigdesVSqaREXTTHKGegLGM4x1bSSFvPgX5V8qj85r98G".try_into()?;
 
     let hash = context.commit(
         &block.hash,
@@ -421,27 +424,19 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 
 fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, failure::Error> {
     Ok(BlockHeaderWithHash {
-        hash: HashType::BlockHash.b58check_to_hash(block_hash)?,
+        hash: block_hash.try_into()?,
         header: Arc::new(
             BlockHeaderBuilder::default()
                 .level(level)
                 .proto(0)
-                .predecessor(
-                    HashType::BlockHash
-                        .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?,
-                )
+                .predecessor("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?)
                 .timestamp(5_635_634)
                 .validation_pass(0)
                 .operations_hash(
-                    HashType::OperationListListHash.b58check_to_hash(
-                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                    )?,
+                    "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
                 )
                 .fitness(vec![])
-                .context(
-                    HashType::ContextHash
-                        .b58check_to_hash("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd")?,
-                )
+                .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
                 .protocol_data(vec![])
                 .build()
                 .unwrap(),

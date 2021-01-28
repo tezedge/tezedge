@@ -70,8 +70,13 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
     let mut block_hash_set = HashSet::new();
     let mut rng = rand::thread_rng();
 
-    let k = vec![0; 32];
-    let v = Meta::new(false, Some(vec![0; 32]), 0, vec![44; 4]);
+    let k: BlockHash = vec![0; 32].try_into()?;
+    let v = Meta::new(
+        false,
+        Some(vec![0; 32].try_into()?),
+        0,
+        vec![44; 4].try_into()?,
+    );
 
     block_hash_set.insert(k.clone());
 
@@ -84,10 +89,18 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
     // generate random block hashes, watch out for colissions
     let block_hashes: Vec<BlockHash> = (1..number_of_blocks)
         .map(|_| {
-            let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+            let mut random_hash: BlockHash = (0..32)
+                .map(|_| rng.gen_range(0, 255))
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap();
             // regenerate on collision
             while block_hash_set.contains(&random_hash) {
-                random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+                random_hash = (0..32)
+                    .map(|_| rng.gen_range(0, 255))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
             }
             block_hash_set.insert(random_hash.clone());
             random_hash
@@ -100,7 +113,7 @@ fn init_mocked_storage(number_of_blocks: usize) -> Result<(BlockMetaStorage, Blo
             true,
             Some(predecessor.clone()),
             idx.try_into()?,
-            vec![44; 4],
+            vec![44; 4].try_into()?,
         );
         storage.put(&block_hash, &v)?;
         storage.store_predecessors(&block_hash, &v)?;

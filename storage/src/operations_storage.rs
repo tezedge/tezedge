@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
@@ -138,7 +139,7 @@ impl Decoder for OperationKey {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         Ok(OperationKey {
-            block_hash: bytes[0..HashType::BlockHash.size()].to_vec(),
+            block_hash: BlockHash::try_from(&bytes[0..HashType::BlockHash.size()])?,
             validation_pass: bytes[HashType::BlockHash.size()],
         })
     }
@@ -148,7 +149,7 @@ impl Encoder for OperationKey {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(HashType::BlockHash.size() + 1);
-        value.extend(&self.block_hash);
+        value.extend(self.block_hash.as_ref());
         value.push(self.validation_pass);
         Ok(value)
     }
@@ -170,17 +171,16 @@ impl Encoder for OperationsForBlocksMessage {
 
 #[cfg(test)]
 mod tests {
-    use failure::Error;
+    use std::convert::TryInto;
 
-    use crypto::hash::HashType;
+    use failure::Error;
 
     use super::*;
 
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = OperationKey {
-            block_hash: HashType::BlockHash
-                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            block_hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()?,
             validation_pass: 4,
         };
         let encoded_bytes = expected.encode()?;

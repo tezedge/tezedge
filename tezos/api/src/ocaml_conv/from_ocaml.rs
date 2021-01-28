@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+
 use super::{
-    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlContextHash, OCamlHash,
+    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
     OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
     OCamlProtocolHash,
 };
@@ -13,7 +15,7 @@ use crate::ffi::{
     ValidateOperationResult,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ContextHash, Hash, OperationHash, OperationMetadataHash,
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
     OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
@@ -32,22 +34,47 @@ macro_rules! from_ocaml_hash {
     };
 }
 
+macro_rules! from_ocaml_typed_hash {
+    ($ocaml_name:ident, $rust_name:ident) => {
+        unsafe impl FromOCaml<$ocaml_name> for $rust_name {
+            fn from_ocaml(v: OCaml<$ocaml_name>) -> Self {
+                unsafe {
+                    let vec: Vec<u8> = v.field::<OCamlBytes>(0).to_rust();
+                    use std::convert::TryFrom;
+                    $rust_name::try_from(vec).unwrap_or_else(|e| {
+                        unreachable!(format!("Wrong bytes received from OCaml: {:?}", e))
+                    })
+                }
+            }
+        }
+    };
+}
+
 from_ocaml_hash!(OCamlHash, Hash);
-from_ocaml_hash!(OCamlOperationHash, OperationHash);
-from_ocaml_hash!(OCamlBlockHash, BlockHash);
-from_ocaml_hash!(OCamlContextHash, ContextHash);
-from_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
-from_ocaml_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
-from_ocaml_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
-from_ocaml_hash!(
+from_ocaml_typed_hash!(OCamlOperationHash, OperationHash);
+from_ocaml_typed_hash!(OCamlBlockHash, BlockHash);
+from_ocaml_typed_hash!(OCamlContextHash, ContextHash);
+from_ocaml_typed_hash!(OCamlProtocolHash, ProtocolHash);
+from_ocaml_typed_hash!(OCamlBlockMetadataHash, BlockMetadataHash);
+from_ocaml_typed_hash!(OCamlOperationMetadataHash, OperationMetadataHash);
+from_ocaml_typed_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
 
+// TODO: TE-367: review once ocaml-interop has been upgraded
+unsafe impl FromOCaml<OCamlChainId> for ChainId {
+    fn from_ocaml(v: OCaml<OCamlChainId>) -> Self {
+        let v: OCaml<OCamlBytes> = unsafe { std::mem::transmute(v) };
+        let vec: Vec<u8> = v.to_rust();
+        ChainId::try_from(vec).unwrap()
+    }
+}
+
 impl_from_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlBytes,
+        test_chain_id: OCamlChainId,
     }
 }
 
@@ -76,7 +103,7 @@ impl_from_ocaml_record! {
 
 impl_from_ocaml_record! {
     PrevalidatorWrapper {
-        chain_id: OCamlBytes,
+        chain_id: OCamlChainId,
         protocol: OCamlProtocolHash,
         context_fitness: Option<OCamlList<OCamlBytes>>
     }

@@ -177,7 +177,9 @@ fn apply_blocks_1_2(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bl
 
 /// Test data for protocol_v1 like 008 edo
 mod test_data_protocol_v1 {
-    use crypto::hash::{ContextHash, HashType};
+    use std::convert::TryFrom;
+
+    use crypto::hash::{BlockHash, ContextHash};
     use tezos_api::environment::TezosEnvironment;
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
@@ -185,7 +187,7 @@ mod test_data_protocol_v1 {
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Edonet;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash.b58check_to_hash(hash).unwrap()
+        ContextHash::from_base58_check(hash).unwrap()
     }
 
     // BLUzCt33hGwAsT4UdPXgqH2MjEZErpPfo5nL4rtQR5dStpixNrA
@@ -228,7 +230,10 @@ mod test_data_protocol_v1 {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                    OperationsForBlock::new(
+                        BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
+                        4,
+                    ),
                     Path::Op,
                     ops,
                 )

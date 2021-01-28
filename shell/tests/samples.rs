@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::BufRead;
 use std::path::Path;
+use std::{collections::HashMap, convert::TryFrom};
 use std::{env, io};
 
 use itertools::Itertools;
@@ -58,7 +58,7 @@ pub struct OperationsForBlocksMessageKey {
 impl OperationsForBlocksMessageKey {
     pub fn new(block_hash: BlockHash, validation_pass: i8) -> Self {
         OperationsForBlocksMessageKey {
-            block_hash: HashType::BlockHash.hash_to_b58check(&block_hash),
+            block_hash: block_hash.to_base58_check(),
             validation_pass,
         }
     }
@@ -129,9 +129,7 @@ pub fn read_data_zip(
             let split = line.split('|').collect_vec();
             assert_eq!(3, split.len());
 
-            let block_hash = HashType::BlockHash
-                .b58check_to_hash(split[0])
-                .expect("Failed to parse block_hash");
+            let block_hash = BlockHash::try_from(split[0]).expect("Failed to parse block_hash");
             let validation_pass = split[1]
                 .parse::<i8>()
                 .expect("Failed to parse validation_pass");

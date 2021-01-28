@@ -1,7 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
+use std::{convert::TryInto, sync::Arc};
+
+use std::convert::TryFrom;
 
 use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
@@ -75,9 +77,9 @@ impl BlockMetaStorage {
                         if *stored_predecessor != block_predecessor {
                             warn!(
                                 log, "Detected rewriting predecessor - not allowed (change is just ignored)";
-                                "block_hash" => HashType::BlockHash.hash_to_b58check(&block_header.hash),
-                                "stored_predecessor" => HashType::BlockHash.hash_to_b58check(&stored_predecessor),
-                                "new_predecessor" => HashType::BlockHash.hash_to_b58check(&block_predecessor)
+                                "block_hash" => block_header.hash.to_base58_check(),
+                                "stored_predecessor" => stored_predecessor.to_base58_check(),
+                                "new_predecessor" => block_predecessor.to_base58_check()
                             );
                         }
                     }
@@ -118,15 +120,15 @@ impl BlockMetaStorage {
                         if !meta.successors.contains(&block_hash) {
                             warn!(
                                 log, "Extending successors - means detected reorg or new branch";
-                                "block_hash_predecessor" => HashType::BlockHash.hash_to_b58check(&block_header.header.predecessor()),
+                                "block_hash_predecessor" => block_header.header.predecessor().to_base58_check(),
                                 "stored_successors" => {
                                     meta.successors
                                         .iter()
-                                        .map(|bh| HashType::BlockHash.hash_to_b58check(bh))
+                                        .map(|bh| bh.to_base58_check())
                                         .collect::<Vec<String>>()
                                         .join(", ")
                                 },
-                                "new_successor" => HashType::BlockHash.hash_to_b58check(&block_hash)
+                                "new_successor" => block_hash.to_base58_check()
                             );
                             true
                         } else {
@@ -406,7 +408,7 @@ impl Decoder for Meta {
                     LEN_BLOCK_HASH,
                     block_hash.len()
                 );
-                Some(block_hash)
+                Some(block_hash.try_into()?)
             } else {
                 None
             };
@@ -432,7 +434,7 @@ impl Decoder for Meta {
                             LEN_BLOCK_HASH,
                             block_hash.len()
                         );
-                        successors.push(block_hash);
+                        successors.push(BlockHash::try_from(block_hash)?);
                     }
                 }
                 successors
@@ -450,7 +452,7 @@ impl Decoder for Meta {
                 successors,
                 is_applied: is_processed,
                 level,
-                chain_id,
+                chain_id: chain_id.try_into()?,
             })
         } else {
             Err(SchemaError::DecodeError)
@@ -476,15 +478,15 @@ impl Encoder for Meta {
         let mut value = Vec::with_capacity(total_len);
         value.push(mask);
         match &self.predecessor {
-            Some(predecessor) => value.extend(predecessor),
+            Some(predecessor) => value.extend(predecessor.as_ref()),
             None => value.extend(&BLANK_BLOCK_HASH),
         }
         value.extend(&self.level.to_be_bytes());
-        value.extend(&self.chain_id);
+        value.extend(self.chain_id.as_ref());
         value.extend(&successors_count.to_be_bytes());
         if successors_count > 0 {
             self.successors.iter().for_each(|successor| {
-                value.extend(successor);
+                value.extend(successor.as_ref());
             });
         }
         assert_eq!(
@@ -581,8 +583,6 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crypto::hash::HashType;
-
     use crate::persistent::{open_kv, DbConfiguration};
     use crate::tests_common::TmpStorage;
 
@@ -592,10 +592,10 @@ mod tests {
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
         let expected = Meta {
             is_applied: false,
-            predecessor: Some(vec![98; 32]),
-            successors: vec![vec![21; 32]],
+            predecessor: Some(vec![98; 32].try_into().unwrap()),
+            successors: vec![vec![21; 32].try_into().unwrap()],
             level: 34,
-            chain_id: vec![44; 4],
+            chain_id: vec![44; 4].try_into().unwrap(),
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -607,9 +607,8 @@ mod tests {
     fn genesis_block_initialized_success() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__blockmeta_genesistest")?;
 
-        let k = HashType::BlockHash
-            .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-        let chain_id = HashType::ChainId.b58check_to_hash("NetXgtSLGNJvNye")?;
+        let k = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?;
+        let chain_id = "NetXgtSLGNJvNye".try_into()?;
         let v = Meta::genesis_meta(&k, &chain_id, true);
         let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
@@ -634,13 +633,13 @@ mod tests {
     fn block_meta_storage_test() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__blockmeta_storagetest")?;
 
-        let k = vec![44; 32];
+        let k = vec![44; 32].try_into().unwrap();
         let mut v = Meta {
             is_applied: false,
             predecessor: None,
             successors: vec![],
             level: 1_245_762,
-            chain_id: vec![44; 4],
+            chain_id: vec![44; 4].try_into().unwrap(),
         };
         let storage = BlockMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
@@ -648,8 +647,8 @@ mod tests {
 
         // change applied to true and predecessor + add successor
         v.is_applied = true;
-        v.predecessor = Some(vec![98; 32]);
-        v.successors = vec![vec![21; 32]];
+        v.predecessor = Some(vec![98; 32].try_into().unwrap());
+        v.successors = vec![vec![21; 32].try_into().unwrap()];
         storage.put(&k, &v)?;
 
         // try change is_applied (cannot be overwritten - see merge_meta_value)
@@ -657,11 +656,14 @@ mod tests {
         storage.put(&k, &v)?;
 
         // try change predecessor (cannot be overwritten - see merge_meta_value)
-        v.predecessor = Some(vec![198; 32]);
+        v.predecessor = Some(vec![198; 32].try_into().unwrap());
         storage.put(&k, &v)?;
 
         // add successor
-        v.successors = vec![vec![21; 32], vec![121; 32]];
+        v.successors = vec![
+            vec![21; 32].try_into().unwrap(),
+            vec![121; 32].try_into().unwrap(),
+        ];
         storage.put(&k, &v)?;
 
         // check stored meta
@@ -669,10 +671,13 @@ mod tests {
             Some(value) => {
                 let expected = Meta {
                     is_applied: true,
-                    predecessor: Some(vec![98; 32]),
-                    successors: vec![vec![21; 32], vec![121; 32]],
+                    predecessor: Some(vec![98; 32].try_into().unwrap()),
+                    successors: vec![
+                        vec![21; 32].try_into().unwrap(),
+                        vec![121; 32].try_into().unwrap(),
+                    ],
                     level: 1_245_762,
-                    chain_id: vec![44; 4],
+                    chain_id: vec![44; 4].try_into().unwrap(),
                 };
                 assert_eq!(expected, value);
             }
@@ -684,7 +689,7 @@ mod tests {
         storage.put(&k, &v)?;
 
         // modify successors
-        v.successors = vec![vec![121; 32]];
+        v.successors = vec![vec![121; 32].try_into().unwrap()];
         storage.put(&k, &v)?;
 
         // check stored meta
@@ -692,10 +697,10 @@ mod tests {
             Some(value) => {
                 let expected = Meta {
                     is_applied: true,
-                    predecessor: Some(vec![98; 32]),
-                    successors: vec![vec![121; 32]],
+                    predecessor: Some(vec![98; 32].try_into().unwrap()),
+                    successors: vec![vec![121; 32].try_into().unwrap()],
                     level: 1_245_762,
-                    chain_id: vec![44; 4],
+                    chain_id: vec![44; 4].try_into().unwrap(),
                 };
                 assert_eq!(expected, value);
             }
@@ -722,22 +727,22 @@ mod tests {
                 &DbConfiguration::default(),
             )
             .unwrap();
-            let k = vec![44; 32];
+            let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
                 predecessor: None,
                 successors: vec![],
                 level: 2,
-                chain_id: vec![44; 4],
+                chain_id: vec![44; 4].try_into().unwrap(),
             };
             let p = BlockMetaStorageKV::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_applied = true;
-            v.successors = vec![vec![21; 32]];
+            v.successors = vec![vec![21; 32].try_into().unwrap()];
             let _ = BlockMetaStorageKV::merge(&db, &k, &v);
 
             v.is_applied = false;
-            v.predecessor = Some(vec![98; 32]);
+            v.predecessor = Some(vec![98; 32].try_into().unwrap());
             v.successors = vec![];
             let _ = BlockMetaStorageKV::merge(&db, &k, &v);
 
@@ -749,10 +754,10 @@ mod tests {
                 Ok(Some(value)) => {
                     let expected = Meta {
                         is_applied: true,
-                        predecessor: Some(vec![98; 32]),
+                        predecessor: Some(vec![98; 32].try_into().unwrap()),
                         successors: vec![],
                         level: 2,
-                        chain_id: vec![44; 4],
+                        chain_id: vec![44; 4].try_into().unwrap(),
                     };
                     assert_eq!(expected, value);
                 }
@@ -773,8 +778,13 @@ mod tests {
         let mut block_hash_set = HashSet::new();
         let mut rng = rand::thread_rng();
 
-        let k = vec![0; 32];
-        let v = Meta::new(false, Some(vec![0; 32]), 0, vec![44; 4]);
+        let k: BlockHash = vec![0; 32].try_into().unwrap();
+        let v = Meta::new(
+            false,
+            Some(vec![0; 32].try_into().unwrap()),
+            0,
+            vec![44; 4].try_into().unwrap(),
+        );
 
         block_hash_set.insert(k.clone());
 
@@ -790,10 +800,18 @@ mod tests {
         // we can  deduct its level from its index in the vector)
         let block_hashes: Vec<BlockHash> = (1..number_of_blocks)
             .map(|_| {
-                let mut random_hash: BlockHash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+                let mut random_hash = (0..32)
+                    .map(|_| rng.gen_range(0, 255))
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
                 // regenerate on collision
                 while block_hash_set.contains(&random_hash) {
-                    random_hash = (0..32).map(|_| rng.gen_range(0, 255)).collect();
+                    random_hash = (0..32)
+                        .map(|_| rng.gen_range(0, 255))
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap();
                 }
                 block_hash_set.insert(random_hash.clone());
                 random_hash
@@ -806,7 +824,7 @@ mod tests {
                 true,
                 Some(predecessor.clone()),
                 idx.try_into()?,
-                vec![44; 4],
+                vec![44; 4].try_into().unwrap(),
             );
             storage.put(&block_hash, &v)?;
             storage.store_predecessors(&block_hash, &v)?;
@@ -872,7 +890,7 @@ mod tests {
                 println!("Checked {} blocks from {}", idx, BLOCK_COUNT);
             }
             for i in 1..idx {
-                let res = storage.find_block_at_distance(hash.to_vec(), i as i32)?;
+                let res = storage.find_block_at_distance(hash.clone(), i as i32)?;
                 assert_eq!(block_hashes[idx - i], res.unwrap())
             }
         }

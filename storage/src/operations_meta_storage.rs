@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
@@ -233,7 +234,8 @@ impl Decoder for Meta {
             );
             // chain_id
             let chain_id_pos = level_pos + std::mem::size_of::<i32>();
-            let chain_id = bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()].to_vec();
+            let chain_id =
+                ChainId::try_from(&bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()])?;
             Ok(Meta {
                 validation_passes,
                 is_validation_pass_present,
@@ -255,7 +257,7 @@ impl Encoder for Meta {
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
             value.extend(&self.level.to_be_bytes());
-            value.extend(&self.chain_id);
+            value.extend(self.chain_id.as_ref());
             assert_eq!(
                 expected_data_length(self.validation_passes),
                 value.len(),
@@ -281,16 +283,20 @@ fn expected_data_length(validation_passes: u8) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{convert::TryInto, path::Path};
 
     use failure::Error;
-
-    use crypto::hash::HashType;
 
     use crate::persistent::{open_kv, DbConfiguration};
     use crate::tests_common::TmpStorage;
 
     use super::*;
+
+    fn block_hash(bytes: &[u8]) -> BlockHash {
+        let mut vec = bytes.to_vec();
+        vec.extend(std::iter::repeat(0).take(HashType::BlockHash.size() - bytes.len()));
+        vec.try_into().unwrap()
+    }
 
     #[test]
     fn operations_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -299,7 +305,7 @@ mod tests {
             is_complete: false,
             validation_passes: 5,
             level: 93_422,
-            chain_id: vec![44; 4],
+            chain_id: vec![44; 4].try_into()?,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -311,9 +317,8 @@ mod tests {
     fn genesis_ops_initialized_success() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__opmeta_genesistest")?;
 
-        let k = HashType::BlockHash
-            .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe")?;
-        let v = Meta::genesis_meta(&vec![44; 4]);
+        let k = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?;
+        let v = Meta::genesis_meta(&vec![44; 4].try_into()?);
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
@@ -323,7 +328,7 @@ mod tests {
                     is_validation_pass_present: vec![],
                     is_complete: true,
                     level: 0,
-                    chain_id: vec![44; 4],
+                    chain_id: vec![44; 4].try_into()?,
                 };
                 assert_eq!(expected, value);
             }
@@ -340,13 +345,13 @@ mod tests {
         let t = true as u8;
         let f = false as u8;
 
-        let k = vec![3, 1, 3, 3, 7];
+        let k = block_hash(&[3, 1, 3, 3, 7]);
         let mut v = Meta {
             is_complete: false,
             is_validation_pass_present: vec![f; 5],
             validation_passes: 5,
             level: 785,
-            chain_id: vec![44; 4],
+            chain_id: vec![44; 4].try_into()?,
         };
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
@@ -364,7 +369,8 @@ mod tests {
                 assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                 assert!(value.is_complete);
                 assert_eq!(785, value.level);
-                assert_eq!(vec![44; 4], value.chain_id);
+                let ci: ChainId = vec![44; 4].try_into()?;
+                assert_eq!(ci, value.chain_id);
             }
             _ => panic!("value not present"),
         }
@@ -391,13 +397,13 @@ mod tests {
                 vec![OperationsMetaStorage::descriptor(&cache)],
                 &DbConfiguration::default(),
             )?;
-            let k = vec![3, 1, 3, 3, 7];
+            let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
                 level: 31_337,
-                chain_id: vec![44; 4],
+                chain_id: vec![44; 4].try_into()?,
             };
             let p = OperationsMetaStorageKV::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -416,7 +422,8 @@ mod tests {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
                     assert_eq!(31_337, value.level);
-                    assert_eq!(vec![44; 4], value.chain_id);
+                    let chain_id: ChainId = vec![44; 4].try_into()?;
+                    assert_eq!(chain_id, value.chain_id);
                 }
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
@@ -430,16 +437,16 @@ mod tests {
     fn operations_meta_storage_test_contains() -> Result<(), Error> {
         let tmp_storage = TmpStorage::create("__opmeta_storage_test_contains")?;
 
-        let k = vec![3, 1, 3, 3, 7];
+        let k = block_hash(&[3, 1, 3, 3, 7]);
         let v = Meta {
             is_complete: false,
             is_validation_pass_present: vec![false as u8; 5],
             validation_passes: 5,
             level: 785,
-            chain_id: vec![44; 4],
+            chain_id: vec![44; 4].try_into()?,
         };
-        let k_missing_1 = vec![0, 1, 2];
-        let k_added_later = vec![6, 7, 8, 9];
+        let k_missing_1 = block_hash(&[0, 1, 2]);
+        let k_added_later = block_hash(&[6, 7, 8, 9]);
 
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         assert!(!storage.contains(&k)?);

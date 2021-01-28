@@ -240,7 +240,11 @@ impl JsonWriter {
                                 _ => return Err(Error::custom(format!("Encoding::Hash could be applied only to &[u8] value but found: {:?}", value)))
                             }
                     }
-                    Ok(self.push_str(&hash_encoding.hash_to_b58check(&bytes)))
+                    Ok(self.push_str(
+                        &hash_encoding.hash_to_b58check(&bytes).map_err(|e| {
+                            Error::custom(format!("Failed to encode hash: {:?}", e))
+                        })?,
+                    ))
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },

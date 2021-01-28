@@ -3,7 +3,7 @@
 
 use slog::Logger;
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{
@@ -48,7 +48,7 @@ pub(crate) fn get_block_actions_cursor(
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<ContextActionJson>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
-    let mut filters = ContextActionFilters::with_block_hash(block_hash);
+    let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
     if let Some(action_types) = action_types {
         filters = filters.with_action_types(get_action_types(action_types));
     }
@@ -125,15 +125,15 @@ pub(crate) fn get_cycle_length_for_block(
         )?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-                    slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+                    slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
                     4096
                 })
             ).flatten().unwrap_or_else(|| {
-            slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+            slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
             4096
         }))
     } else {
-        slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+        slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
         Ok(4096)
     }
 }

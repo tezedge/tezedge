@@ -12,6 +12,8 @@
 //!
 //! CryptoboxPublicKeyHash - generated as a hash of [`PublicKey`], for example used as a peer_id
 
+use std::convert::TryFrom;
+
 use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
 
@@ -50,7 +52,8 @@ pub struct PublicKey(box_::PublicKey);
 impl PublicKey {
     /// Generates public key hash for public key
     pub fn public_key_hash(&self) -> CryptoboxPublicKeyHash {
-        crate::blake2b::digest_128(self.0.as_ref())
+        CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref()))
+            .unwrap_or_else(|_| unreachable!())
     }
 }
 

@@ -1,16 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
+use std::{cmp, convert::TryFrom};
 
 use rand::prelude::ThreadRng;
 use rand::Rng;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
@@ -194,10 +194,7 @@ impl BlockchainState {
                                 if let Some(Some(protocol_hash)) = protocol_hash {
                                     // return next_protocol and header
                                     (
-                                        Some(
-                                            HashType::ProtocolHash
-                                                .b58check_to_hash(protocol_hash)?,
-                                        ),
+                                        Some(ProtocolHash::from_base58_check(protocol_hash)?),
                                         Some(predecessor_header),
                                         false,
                                     )
@@ -205,7 +202,7 @@ impl BlockchainState {
                                     return Err(
                                         failure::format_err!(
                                             "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                            HashType::BlockHash.hash_to_b58check(validated_header.predecessor())
+                                            validated_header.predecessor().to_base58_check()
                                         )
                                     );
                                 }
@@ -213,8 +210,7 @@ impl BlockchainState {
                             None => {
                                 return Err(failure::format_err!(
                                     "Missing data for applied predecessor: {}!",
-                                    HashType::BlockHash
-                                        .hash_to_b58check(validated_header.predecessor())
+                                    validated_header.predecessor().to_base58_check()
                                 ));
                             }
                         }
@@ -251,15 +247,14 @@ impl BlockchainState {
                         if let Some(Some(protocol_hash)) = protocol_hash {
                             // return protocol
                             Ok((
-                                Some(HashType::ProtocolHash.b58check_to_hash(protocol_hash)?),
+                                Some(ProtocolHash::try_from(protocol_hash)?),
                                 predecessor_header,
                                 missing_predecessor,
                             ))
                         } else {
                             return Err(failure::format_err!(
                                 "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                HashType::BlockHash
-                                    .hash_to_b58check(validated_header.predecessor())
+                                validated_header.predecessor().to_base58_check()
                             ));
                         }
                     } else {
@@ -269,7 +264,7 @@ impl BlockchainState {
                 None => {
                     return Err(failure::format_err!(
                         "Missing data for applied current_head: {}!",
-                        HashType::BlockHash.hash_to_b58check(current_head.block_hash())
+                        current_head.block_hash().to_base58_check()
                     ));
                 }
             }
@@ -692,6 +687,8 @@ impl fmt::Display for HeadResult {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use slog::{Drain, Level, Logger};
 
     use crypto::hash::chain_id_from_block_hash;
@@ -699,20 +696,27 @@ mod tests {
 
     use super::*;
 
+    fn block(d: u8) -> BlockHash {
+        [d; crypto::hash::HashType::BlockHash.size()]
+            .to_vec()
+            .try_into()
+            .unwrap()
+    }
+
     #[test]
     fn test_missing_blocks_has_correct_ordering() {
         let mut heap = UniqueBlockData::new();
 
         // simulate header and predecesor
-        heap.push(MissingBlock::with_level(vec![0, 0, 0, 1], 10));
-        heap.push(MissingBlock::with_level(vec![0, 0, 0, 2], 9));
+        heap.push(MissingBlock::with_level(block(1), 10));
+        heap.push(MissingBlock::with_level(block(2), 9));
 
         // simulate history
-        heap.push(MissingBlock::with_level_guess(vec![0, 0, 0, 3], 4));
-        heap.push(MissingBlock::with_level_guess(vec![0, 0, 0, 7], 0));
-        heap.push(MissingBlock::with_level_guess(vec![0, 0, 0, 5], 2));
-        heap.push(MissingBlock::with_level_guess(vec![0, 0, 0, 6], 1));
-        heap.push(MissingBlock::with_level_guess(vec![0, 0, 0, 4], 3));
+        heap.push(MissingBlock::with_level_guess(block(3), 4));
+        heap.push(MissingBlock::with_level_guess(block(7), 0));
+        heap.push(MissingBlock::with_level_guess(block(5), 2));
+        heap.push(MissingBlock::with_level_guess(block(6), 1));
+        heap.push(MissingBlock::with_level_guess(block(4), 3));
 
         // pop all from heap
         let ordered_hashes = (0..heap.len())
@@ -721,14 +725,14 @@ mod tests {
             .collect::<Vec<BlockHash>>();
 
         // from level: 0, 1, 2, 3, 4, 9, 10
-        let expected_order = vec![
-            vec![0, 0, 0, 7],
-            vec![0, 0, 0, 6],
-            vec![0, 0, 0, 5],
-            vec![0, 0, 0, 4],
-            vec![0, 0, 0, 3],
-            vec![0, 0, 0, 2],
-            vec![0, 0, 0, 1],
+        let expected_order: Vec<BlockHash> = vec![
+            block(7),
+            block(6),
+            block(5),
+            block(4),
+            block(3),
+            block(2),
+            block(1),
         ];
 
         assert_eq!(expected_order, ordered_hashes)
@@ -995,12 +999,12 @@ mod tests {
     }
 
     mod data {
-        use std::collections::HashMap;
+        use std::{collections::HashMap, convert::TryInto};
 
         use itertools::Itertools;
         use slog::Logger;
 
-        use crypto::hash::{BlockHash, CryptoboxPublicKeyHash, HashType};
+        use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType};
         use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader};
         use tezos_messages::p2p::binary_message::BinaryMessage;
         use tezos_messages::p2p::encoding::block_header::BlockHeader;
@@ -1017,11 +1021,9 @@ mod tests {
             };
 
             ($blocks:ident, $name:expr, $block_hash:expr, $block_hash_expected:expr, $block_header_hex_data:expr) => {
-                let block_hash = HashType::BlockHash
-                    .b58check_to_hash($block_hash)
-                    .expect("Failed to create block hash");
-                let block_hash_expected = HashType::BlockHash
-                    .b58check_to_hash($block_hash_expected)
+                let block_hash =
+                    BlockHash::from_base58_check($block_hash).expect("Failed to create block hash");
+                let block_hash_expected = BlockHash::from_base58_check($block_hash_expected)
                     .expect("Failed to create block hash");
                 $blocks.insert(
                     $name,
@@ -1039,7 +1041,7 @@ mod tests {
                 );
                 let (hash, header) = $blocks.get($name).unwrap();
                 assert_eq!(block_hash, *hash);
-                assert_eq!(block_hash_expected, *header.hash);
+                assert_eq!(block_hash_expected, header.hash);
             };
         }
 
@@ -1209,7 +1211,7 @@ mod tests {
 
         pub(crate) fn store_branch(
             branch: &Vec<&str>,
-            chain_id: &Vec<u8>,
+            chain_id: &ChainId,
             blocks: &BlocksDb,
             block_storage: &BlockStorage,
             block_meta_storage: &BlockMetaStorage,
@@ -1265,9 +1267,11 @@ mod tests {
 
         pub(crate) fn generate_key_string(c: char) -> CryptoboxPublicKeyHash {
             std::iter::repeat(c)
+                .map(|c| c as u8)
                 .take(HashType::CryptoboxPublicKeyHash.size())
-                .collect::<String>()
-                .into_bytes()
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
         }
 
         pub(crate) fn assert_history(
