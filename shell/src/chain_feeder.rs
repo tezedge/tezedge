@@ -216,8 +216,23 @@ impl ChainFeeder {
         match self.block_meta_storage.get(&msg.block_hash)? {
             Some(meta) => {
                 if meta.is_applied() {
-                    // block already applied - ok, doing nothing
-                    debug!(log, "Block is already applied"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
+                    // block already applied - ok, just ping successors run
+                    debug!(log, "Block is already applied, so ping successors"; "block" => HashType::BlockHash.hash_to_b58check(&msg.block_hash));
+
+                    // check successors
+                    let successors = meta.take_successors();
+                    if !successors.is_empty() {
+                        chain_feeder.tell(
+                            CheckBlocksForApply::new(
+                                successors,
+                                msg.chain_id,
+                                msg.chain_manager,
+                                Instant::now(),
+                            ),
+                            None,
+                        );
+                    }
+
                     return Ok(());
                 }
             }
@@ -305,6 +320,25 @@ impl ChainFeeder {
     ) -> Result<(), Error> {
         for block in &msg.blocks {
             if let Some(block_metadata) = self.block_meta_storage.get(&block)? {
+                // if block is already applied, check successors
+                if block_metadata.is_applied() {
+                    // check successors
+                    let successors = block_metadata.take_successors();
+                    if !successors.is_empty() {
+                        chain_feeder.tell(
+                            CheckBlocksForApply::new(
+                                successors,
+                                msg.chain_id.clone(),
+                                msg.chain_manager.clone(),
+                                Instant::now(),
+                            ),
+                            None,
+                        );
+                    }
+                    continue;
+                }
+
+                // if not applied, check if we can apply this block
                 if validation::can_apply_block(
                     (&block, &block_metadata),
                     |bh| self.operations_meta_storage.is_complete(bh),

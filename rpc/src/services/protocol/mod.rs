@@ -162,17 +162,16 @@ pub(crate) fn check_and_get_baking_rights(
             env.tezedge_context(),
         )
         .map_err(RightsError::from),
-        SupportedProtocol::Proto008 => {
-            proto_008::rights_service::check_and_get_baking_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                max_priority,
-                has_all,
-                env.tezedge_context(),
-            ).map_err(RightsError::from)
-        }
+        SupportedProtocol::Proto008 => proto_008::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
     }
 }
 
@@ -270,16 +269,15 @@ pub(crate) fn check_and_get_endorsing_rights(
             env.tezedge_context(),
         )
         .map_err(RightsError::from),
-        SupportedProtocol::Proto008 => {
-            proto_008::rights_service::check_and_get_endorsing_rights(
-                context_proto_params,
-                level,
-                delegate,
-                cycle,
-                has_all,
-                env.tezedge_context(),
-            ).map_err(RightsError::from)
-        }
+        SupportedProtocol::Proto008 => proto_008::rights_service::check_and_get_endorsing_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
     }
 }
 

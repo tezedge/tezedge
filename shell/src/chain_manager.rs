@@ -56,6 +56,7 @@ use crate::{validation, PeerConnectionThreshold};
 
 /// How often to check chain completeness
 const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(30);
+
 /// How often to ask all connected peers for current head
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
 /// Initial delay to ask the peers for current head
@@ -64,7 +65,7 @@ const ASK_CURRENT_HEAD_INITIAL_DELAY: Duration = Duration::from_secs(15);
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
 /// After this time we will disconnect peer if his current head level stays the same
-const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(120);
+const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(60 * 2);
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
@@ -161,6 +162,26 @@ impl CurrentHead {
             Some(head) => head.to_debug_info(),
         }
     }
+
+    fn has_any_higher_than(&self, level_to_check: Level) -> bool {
+        // check remote head
+        // TODO: maybe fitness check?
+        if let Some(remote_head) = self.remote.as_ref() {
+            if remote_head.level() > &level_to_check {
+                return true;
+            }
+        }
+
+        // check local head
+        // TODO: maybe fitness check?
+        if let Some(local_head) = self.local.as_ref() {
+            if local_head.level() > &level_to_check {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 /// Holds various stats with info about internal synchronization.
@@ -175,8 +196,6 @@ struct Stats {
     applied_block_level: Option<Level>,
     /// Last time a block was applied
     applied_block_last: Option<Instant>,
-    /// Last time state was hydrated
-    hydrated_state_last: Option<Instant>,
 
     /// Count of applied blocks, from last LogStats run
     applied_block_lasts_count: u32,
@@ -427,6 +446,10 @@ impl ChainManager {
                         for message in received.message.messages() {
                             match message {
                                 PeerMessage::CurrentBranch(message) => {
+                                    peer.update_current_head_level(
+                                        message.current_branch().current_head().level(),
+                                    );
+
                                     // at first, check if we can accept branch or just ignore it
                                     if !chain_state.can_accept_branch(&message, &current_head.local)
                                     {
@@ -679,6 +702,11 @@ impl ChainManager {
                                     }
                                 }
                                 PeerMessage::CurrentHead(message) => {
+                                    peer.current_head_response_last = Instant::now();
+                                    peer.update_current_head_level(
+                                        message.current_block_header().level(),
+                                    );
+
                                     // process current head only if we are bootstrapped
                                     if !self.is_bootstrapped {
                                         continue;
@@ -938,9 +966,10 @@ impl ChainManager {
                 } = self;
                 let msg: Arc<PeerMessageResponse> =
                     GetCurrentHeadMessage::new(chain_state.get_chain_id().to_vec()).into();
-                peers
-                    .iter_mut()
-                    .for_each(|(_, peer)| tell_peer(msg.clone(), peer));
+                peers.iter_mut().for_each(|(_, peer)| {
+                    peer.current_head_request_last = Instant::now();
+                    tell_peer(msg.clone(), peer)
+                });
             }
             ShellChannelMsg::ShuttingDown(_) => {
                 self.shutting_down = true;
@@ -1355,7 +1384,7 @@ impl ChainManager {
             }
         }
 
-        info!(
+        debug!(
             ctx.system.log(),
             "Hydrating/checking current head successors (if can be applied)"
         );
@@ -1387,8 +1416,6 @@ impl ChainManager {
             "local_head_level" => local_head_level,
             "local_fitness" => local_fitness,
         );
-
-        self.stats.hydrated_state_last = Some(Instant::now());
     }
 
     /// Updates currnet local head and some stats.
@@ -1633,7 +1660,6 @@ impl
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
                 unseen_block_operations_last: Instant::now(),
-                hydrated_state_last: None,
                 applied_block_level: None,
                 applied_block_last: None,
                 applied_block_lasts_count: 0,
@@ -1830,6 +1856,8 @@ impl Receive<LogStats> for ChainManager {
                 "missing_block_operations" => peer.missing_operations_for_blocks.missing_data_count(),
                 "queued_block_headers" => peer.queued_block_headers.len(),
                 "queued_block_operations" => peer.queued_block_operations.len(),
+                "current_head_request_secs" => peer.current_head_request_last.elapsed().as_secs(),
+                "current_head_response_secs" => peer.current_head_response_last.elapsed().as_secs(),
                 "block_request_secs" => peer.block_request_last.elapsed().as_secs(),
                 "block_response_secs" => peer.block_response_last.elapsed().as_secs(),
                 "block_operations_request_secs" => peer.block_operations_request_last.elapsed().as_secs(),
@@ -1841,7 +1869,6 @@ impl Receive<LogStats> for ChainManager {
         }
         info!(log, "Various info";
                    "peer_count" => self.peers.len(),
-                   "hydrated_state_secs" => self.stats.hydrated_state_last.map(|i| i.elapsed().as_secs()),
                    "local_level" => local_level,
                    "last_applied" => last_applied,
         );
@@ -1854,12 +1881,39 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: DisconnectStalledPeers, _sender: Sender) {
         self.peers.iter()
             .for_each(|(uri, state)| {
+                let current_head_response_pending = state.current_head_request_last > state.current_head_response_last;
                 let block_response_pending = state.block_request_last > state.block_response_last;
                 let block_operations_response_pending = state.block_operations_request_last > state.block_operations_response_last;
                 let mempool_operations_response_pending = state.mempool_operations_request_last > state.mempool_operations_response_last;
+                let known_higher_head = match state.current_head_level {
+                    Some(peer_level) => self.current_head.has_any_higher_than(peer_level),
+                    None => true,
+                };
 
-                let should_disconnect = if state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT {
+                let should_disconnect = if current_head_response_pending && (state.current_head_request_last - state.current_head_response_last > msg.silent_peer_timeout) {
+                    warn!(ctx.system.log(), "Peer did not respond to our request for current_head on time"; "request_secs" => state.current_head_request_last.elapsed().as_secs(), "response_secs" => state.current_head_response_last.elapsed().as_secs(),
+                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
+                    true
+                } else if known_higher_head && (state.current_head_update_last.elapsed() > CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT) {
                     warn!(ctx.system.log(), "Peer failed to update its current head";
+                                            "request_secs" => state.current_head_request_last.elapsed().as_secs(),
+                                            "response_secs" => state.current_head_response_last.elapsed().as_secs(),
+                                            "current_head_update_last" => state.current_head_update_last.elapsed().as_secs(),
+                                            "peer_current_level" => {
+                                                if let Some(level) = state.current_head_level {
+                                                    level.to_string()
+                                                } else {
+                                                    "-".to_string()
+                                                }
+                                            },
+                                            "node_current_level_remote" => {
+                                                let (_, remote_level, _) = self.current_head.remote_debug_info();
+                                                remote_level
+                                            },
+                                            "node_current_level_local" => {
+                                                let (_, local_level, _) = self.current_head.local_debug_info();
+                                                local_level
+                                            },
                                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
                 } else if block_response_pending && (state.block_request_last - state.block_response_last > msg.silent_peer_timeout) {
@@ -1971,6 +2025,7 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
             peers, chain_state, ..
         } = self;
         peers.iter_mut().for_each(|(_, peer)| {
+            peer.current_head_request_last = Instant::now();
             tell_peer(
                 GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into(),
                 peer,

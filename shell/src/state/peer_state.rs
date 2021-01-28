@@ -14,6 +14,7 @@ use networking::p2p::peer::SendMessage;
 use networking::PeerId;
 use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, GetOperationsMessage, MetadataMessage,
     PeerMessageResponse,
@@ -54,14 +55,22 @@ pub struct PeerState {
     pub(crate) current_head_level: Option<i32>,
     /// Last time we received updated head from peer
     pub(crate) current_head_update_last: Instant,
+
+    /// Last time we requested current head from the peer
+    pub(crate) current_head_request_last: Instant,
+    /// Last time we received current_head from the peer
+    pub(crate) current_head_response_last: Instant,
+
     /// Last time we requested block from the peer
     pub(crate) block_request_last: Instant,
     /// Last time we received block from the peer
     pub(crate) block_response_last: Instant,
+
     /// Last time we requested block operations from the peer
     pub(crate) block_operations_request_last: Instant,
     /// Last time we received block operations from the peer
     pub(crate) block_operations_response_last: Instant,
+
     /// Last time we requested mempool operations from the peer
     pub(crate) mempool_operations_request_last: Instant,
     /// Last time we received mempool operations from the peer
@@ -90,6 +99,8 @@ impl PeerState {
             queued_mempool_operations: HashMap::default(),
             current_head_level: None,
             current_head_update_last: Instant::now(),
+            current_head_request_last: Instant::now(),
+            current_head_response_last: Instant::now(),
             block_request_last: Instant::now(),
             block_response_last: Instant::now(),
             block_operations_request_last: Instant::now(),
@@ -129,9 +140,17 @@ impl PeerState {
     pub fn update_current_head(&mut self, block_header: &BlockHeaderWithHash) {
         // TODO: maybe fitness check?
         if self.current_head_level.is_none()
-            || (block_header.header.level() > self.current_head_level.unwrap())
+            || (block_header.header.level() >= self.current_head_level.unwrap())
         {
             self.current_head_level = Some(block_header.header.level());
+            self.current_head_update_last = Instant::now();
+        }
+    }
+
+    pub fn update_current_head_level(&mut self, new_level: Level) {
+        // TODO: maybe fitness check?
+        if self.current_head_level.is_none() || (self.current_head_level.unwrap() <= new_level) {
+            self.current_head_level = Some(new_level);
             self.current_head_update_last = Instant::now();
         }
     }
