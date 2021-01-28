@@ -54,7 +54,16 @@ name: build-and-tests
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 steps:
+- name: clone
+  image: alpine/git
+  commands:
+  - git clone https://github.com/simplestaking/tezedge.git .
+  - git checkout $DRONE_COMMIT
+
 - name: cleanup-data
   image: alpine/git
   user: root
@@ -196,6 +205,7 @@ steps:
     ref:
       exclude:
         - refs/pull/*/head
+  detach: true
 
 # prepare and compiles (async) bench for target branch (only for PR)
 - name: compile-benchmarks-for-target-branch
@@ -249,7 +259,8 @@ steps:
   commands:
     - /artifacts/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - /artifacts/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
-
+  detach: true
+  
 - name: apply/block-context-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -267,7 +278,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/actors_apply_blocks_test --nocapture --ignored test_actors_apply_blocks_and_check_context_and_mempool
-
+  detach: true
+  
 - name: current-branch/head-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -286,7 +298,8 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_heads_to_level3
-
+  detach: true
+  
 - name: simple-reorg-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -304,7 +317,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_reorg_with_different_current_branches
-
+  detach: true
+  
 - name: multipass-blacklist-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -322,7 +336,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
-
+  detach: true
+  
 - name: bootstrap-and-mempool-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -340,7 +355,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
-
+  detach: true
+  
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -403,6 +419,7 @@ steps:
   when:
     ref:
       - refs/pull/*/head
+  detach: true
 
 volumes:
   - name: build
