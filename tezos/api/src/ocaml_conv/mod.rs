@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::Hash;
-use ocaml_interop::OCamlBytes;
 use tezos_messages::p2p::encoding::{
     block_header::{Fitness, Level},
     operations_for_blocks::Path,
@@ -51,7 +50,7 @@ pub struct OCamlProtocolHash {}
 pub struct OCamlBlockMetadataHash {}
 pub struct OCamlOperationMetadataHash {}
 pub struct OCamlOperationMetadataListListHash {}
-pub struct OCamlChainId(OCamlBytes);
+pub struct OCamlChainId {}
 
 pub mod from_ocaml;
 pub mod to_ocaml;
