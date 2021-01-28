@@ -10,19 +10,22 @@
 //!     - if service has the same implementation for various protocol, can be place directly here
 //!     - if in new version of protocol is changed behavior, we have to splitted it here aslo by protocol_hash
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
-use failure::{bail, Error, Fail};
+use failure::{bail, format_err, Error, Fail};
 
 use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
 use storage::context::ContextApi;
+use storage::merkle_storage::MerkleError;
 use storage::{context_key, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
 };
 use tezos_messages::base::rpc_support::RpcJsonMap;
+use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
+use crate::helpers::get_context_hash;
 use crate::server::RpcServiceEnvironment;
 
 mod proto_001;
@@ -278,6 +281,117 @@ pub(crate) fn check_and_get_endorsing_rights(
             env.tezedge_context(),
         )
         .map_err(RightsError::from),
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum VotesError {
+    #[fail(display = "Votes error, reason: {}", reason)]
+    ServiceError { reason: Error },
+    #[fail(display = "Unsupported protocol {}", protocol)]
+    UnsupportedProtocolError { protocol: String },
+    #[fail(display = "This rpc is not suported in this protocol {}", protocol)]
+    UnsupportedProtocolRpc { protocol: String },
+}
+
+impl From<failure::Error> for VotesError {
+    fn from(error: failure::Error) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<storage::context::ContextError> for VotesError {
+    fn from(error: storage::context::ContextError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<MerkleError> for VotesError {
+    fn from(error: MerkleError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<ConversionError> for VotesError {
+    fn from(error: ConversionError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<UnsupportedProtocolError> for VotesError {
+    fn from(error: UnsupportedProtocolError) -> Self {
+        VotesError::UnsupportedProtocolError {
+            protocol: error.protocol,
+        }
+    }
+}
+
+impl From<serde_json::Error> for VotesError {
+    fn from(error: serde_json::Error) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+pub(crate) fn get_votes_listings(
+    block_hash: &BlockHash,
+    env: &RpcServiceEnvironment,
+) -> Result<Option<serde_json::Value>, VotesError> {
+    let context_hash = get_context_hash(block_hash, env)?;
+
+    // get protocol version
+    let protocol_hash = if let Some(protocol_hash) = env
+        .tezedge_context()
+        .get_key_from_history(&context_hash, &context_key!("protocol"))?
+    {
+        protocol_hash
+    } else {
+        return Err(VotesError::ServiceError {
+            reason: format_err!(
+                "No protocol found in context for block_hash: {}",
+                HashType::BlockHash.hash_to_b58check(&block_hash)
+            ),
+        });
+    };
+
+    // check if we support impl for this protocol
+    let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
+    match supported_protocol {
+        SupportedProtocol::Proto001 | SupportedProtocol::Proto002 => {
+            Err(VotesError::UnsupportedProtocolRpc {
+                protocol: supported_protocol.protocol_hash(),
+            })
+        }
+        SupportedProtocol::Proto003 => {
+            proto_003::votes_services::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto004 => {
+            proto_004::votes_services::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto005 => Err(VotesError::UnsupportedProtocolError {
+            protocol: supported_protocol.protocol_hash(),
+        }),
+        SupportedProtocol::Proto005_2 => {
+            proto_005_2::votes_services::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto006 => {
+            proto_006::votes_services::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto007 => {
+            proto_007::votes_services::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto008 => {
+            proto_008::votes_service::get_votes_listings(env, &context_hash)
+        }
     }
 }
 

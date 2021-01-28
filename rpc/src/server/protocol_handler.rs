@@ -1,12 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::not_found;
 use hyper::{Body, Request};
 use slog::warn;
 
 use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
-use crate::services::protocol::{ContextParamsError, RightsError};
+use crate::services::protocol::{ContextParamsError, RightsError, VotesError};
 use crate::{required_param, result_to_json_response, services, ServiceResult};
 
 pub async fn context_constants(
@@ -143,6 +144,45 @@ pub async fn endorsing_rights(
             let res: Result<Option<String>, failure::Error> = Ok(None);
             result_to_json_response(res, env.log())
         }
+    }
+}
+
+pub async fn votes_listings(
+    req: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id_param = required_param!(params, "chain_id")?;
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    // try to call our implementation
+    let result = services::protocol::get_votes_listings(&block_hash, &env);
+
+    // if our implementation returns None, it means that the protocol does not support
+    if let Err(VotesError::UnsupportedProtocolRpc { protocol }) = result {
+        warn!(
+            env.log(),
+            "This rpc is not supported in protocol {}", protocol
+        );
+        return not_found();
+    }
+
+    // fallback, if protocol is not supported, we trigger rpc protocol router
+    if let Err(VotesError::UnsupportedProtocolError { .. }) = result {
+        result_to_json_response(
+            services::protocol::call_protocol_rpc(
+                chain_id_param,
+                chain_id,
+                block_hash,
+                create_rpc_request(req).await?,
+                &env,
+            ),
+            env.log(),
+        )
+    } else {
+        result_to_json_response(result.map_err(|e| e.into()), env.log())
     }
 }
 

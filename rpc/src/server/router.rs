@@ -194,6 +194,11 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
         "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
         protocol_handler::endorsing_rights,
     );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/votes/listings",
+        protocol_handler::votes_listings,
+    );
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(
