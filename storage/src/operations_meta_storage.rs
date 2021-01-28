@@ -35,12 +35,18 @@ impl OperationsMetaStorage {
     }
 
     /// Initialize stored validation_passes metadata for block and check if is_complete
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         is_complete,
+    ///         missing_validation_passes,
+    ///     )
     #[inline]
     pub fn put_block_header(
         &self,
         block_header: &BlockHeaderWithHash,
         chain_id: &ChainId,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         let meta = Meta {
             validation_passes: block_header.header.validation_pass(),
             is_validation_pass_present: vec![
@@ -52,14 +58,20 @@ impl OperationsMetaStorage {
             chain_id: chain_id.clone(),
         };
         self.put(&block_header.hash, &meta)
-            .and(Ok(meta.is_complete))
+            .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
     }
 
     /// Stores operation validation_passes metadata and check if is_complete
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         is_complete,
+    ///         missing_validation_passes,
+    ///     )
     pub fn put_operations(
         &self,
         message: &OperationsForBlocksMessage,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         let block_hash = message.operations_for_block().hash();
 
         match self.get(&block_hash)? {
@@ -72,7 +84,9 @@ impl OperationsMetaStorage {
                     .is_validation_pass_present
                     .iter()
                     .all(|v| *v == (true as u8));
-                self.put(&block_hash, &meta).and(Ok(meta.is_complete))
+
+                self.put(&block_hash, &meta)
+                    .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
             None => Err(StorageError::MissingKey),
         }
@@ -188,16 +202,18 @@ impl Meta {
         }
     }
 
-    pub fn get_missing_validation_passes(&self) -> HashSet<i8> {
+    pub fn get_missing_validation_passes(&self) -> Option<HashSet<u8>> {
         if self.is_complete {
-            HashSet::new()
+            None
         } else {
-            self.is_validation_pass_present
-                .iter()
-                .enumerate()
-                .filter(|(_, is_present)| **is_present == (false as u8))
-                .map(|(idx, _)| idx as i8)
-                .collect()
+            Some(
+                self.is_validation_pass_present
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, is_present)| **is_present == (false as u8))
+                    .map(|(idx, _)| idx as u8)
+                    .collect(),
+            )
         }
     }
 

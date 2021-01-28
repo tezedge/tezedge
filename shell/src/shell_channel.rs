@@ -60,6 +60,7 @@ pub enum ShellChannelMsg {
     /// If chain_manager resolved new current head for chain
     NewCurrentHead(Head, Arc<BlockHeaderWithHash>),
     BlockReceived(BlockReceived),
+    BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
     MempoolOperationReceived(MempoolOperationReceived),
 
@@ -110,6 +111,9 @@ pub enum ShellChannelTopic {
     /// Dedicated channel for new current head
     ShellNewCurrentHead,
 
+    /// Dedicated channel for block applied
+    ShellBlockApplied,
+
     /// Control event
     ShellCommands,
 
@@ -122,6 +126,7 @@ impl From<ShellChannelTopic> for Topic {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
             ShellChannelTopic::ShellNewCurrentHead => Topic::from("shell.new_current_head"),
+            ShellChannelTopic::ShellBlockApplied => Topic::from("shell.block_applied"),
             ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
             ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }

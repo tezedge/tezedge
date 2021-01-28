@@ -404,6 +404,11 @@ impl Meta {
         }
     }
 
+    pub fn is_downloaded(&self) -> bool {
+        // if we updated predecessor, we can get this information just from block_header, so it measn it should be downloaded
+        self.predecessor.is_some()
+    }
+
     pub fn take_successors(self) -> Vec<BlockHash> {
         self.successors
     }

@@ -138,8 +138,8 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -284,9 +284,9 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(4)?));
 
     // stop nodes
-    drop(node);
-    drop(mocked_peer_node_branch_1);
     drop(mocked_peer_node_branch_2);
+    drop(mocked_peer_node_branch_1);
+    drop(node);
 
     Ok(())
 }
@@ -391,8 +391,8 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -527,8 +527,8 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     test_actor::NetworkChannelListener::verify_blacklisted(&mocked_peer_node, peers_mirror)?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -694,8 +694,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     }
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }

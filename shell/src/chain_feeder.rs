@@ -34,6 +34,7 @@ use tezos_wrapper::service::{
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
+use crate::peer_branch_bootstrapper::{BlockApplied, PeerBranchBootstrapperRef};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::stats::BlockValidationTimer;
 use crate::subscription::subscribe_to_shell_shutdown;
@@ -45,10 +46,12 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 /// Message commands [`ChainFeeder`] to apply completed block.
 #[derive(Clone, Debug)]
 pub struct ApplyCompletedBlock {
+    // TODO: TE-369 - Arc refactor
     block_hash: BlockHash,
     chain_id: Arc<ChainId>,
     roundtrip_timer: Arc<Instant>,
     chain_manager: Arc<ChainManagerRef>,
+    bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
 }
@@ -59,6 +62,7 @@ impl ApplyCompletedBlock {
         chain_id: Arc<ChainId>,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         chain_manager: Arc<ChainManagerRef>,
+        bootstrapper: Option<PeerBranchBootstrapperRef>,
         roundtrip_timer: Instant,
     ) -> Self {
         Self {
@@ -66,6 +70,7 @@ impl ApplyCompletedBlock {
             chain_id,
             result_callback,
             chain_manager,
+            bootstrapper,
             roundtrip_timer: Arc::new(roundtrip_timer),
         }
     }
@@ -77,6 +82,9 @@ pub struct CheckBlocksForApply {
     blocks: Vec<BlockHash>,
     chain_id: Arc<ChainId>,
     chain_manager: Arc<ChainManagerRef>,
+    bootstrapper: Option<PeerBranchBootstrapperRef>,
+
+    on_non_notify_with: Option<Arc<BlockHash>>,
     roundtrip_timer: Instant,
 }
 
@@ -85,6 +93,8 @@ impl CheckBlocksForApply {
         blocks: Vec<BlockHash>,
         chain_id: Arc<ChainId>,
         chain_manager: Arc<ChainManagerRef>,
+        bootstrapper: Option<PeerBranchBootstrapperRef>,
+        on_non_notify_with: Option<Arc<BlockHash>>,
         roundtrip_timer: Instant,
     ) -> Self {
         Self {
@@ -92,19 +102,21 @@ impl CheckBlocksForApply {
             blocks,
             chain_manager,
             roundtrip_timer,
+            bootstrapper,
+            on_non_notify_with,
         }
     }
 }
 
 /// Message commands [`ChainFeeder`] to apply block.
-pub struct ApplyBlock {
+struct ApplyBlock {
     envelope: ApplyCompletedBlock,
     chain_feeder: ChainFeederRef,
     request: ApplyBlockRequest,
 }
 
 impl ApplyBlock {
-    pub(crate) fn new(
+    fn new(
         envelope: ApplyCompletedBlock,
         chain_feeder: ChainFeederRef,
         request: ApplyBlockRequest,
@@ -118,7 +130,7 @@ impl ApplyBlock {
 }
 
 /// Internal queue commands
-pub(crate) enum Event {
+enum Event {
     ApplyBlock(ApplyBlock),
     ShuttingDown,
 }
@@ -217,7 +229,7 @@ impl ChainFeeder {
             Some(meta) => {
                 if meta.is_applied() {
                     // block already applied - ok, just ping successors run
-                    debug!(log, "Block is already applied, so ping successors"; "block" => msg.block_hash.to_base58_check());
+                    debug!(log, "Block is already applied, so ping successors"; "block" => msg.block_hash.to_base58_check(), "sender" => sender_to_string(&msg.bootstrapper));
 
                     // check successors
                     let successors = meta.take_successors();
@@ -227,10 +239,30 @@ impl ChainFeeder {
                                 successors,
                                 msg.chain_id,
                                 msg.chain_manager,
+                                msg.bootstrapper,
+                                Some(Arc::new(msg.block_hash.clone())),
                                 Instant::now(),
                             ),
                             None,
                         );
+                    } else {
+                        // TODO: TE-369 - refactor pinging bootstrapper
+                        if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
+                            bootstrapper.tell(
+                                BlockApplied {
+                                    block_hash: Arc::new(msg.block_hash),
+                                },
+                                None,
+                            );
+                        } else {
+                            self.shell_channel.tell(
+                                Publish {
+                                    msg: ShellChannelMsg::BlockApplied(Arc::new(msg.block_hash)),
+                                    topic: ShellChannelTopic::ShellBlockApplied.into(),
+                                },
+                                None,
+                            );
+                        }
                     }
 
                     return Ok(());
@@ -318,6 +350,8 @@ impl ChainFeeder {
         chain_feeder: ChainFeederRef,
         log: &Logger,
     ) -> Result<(), Error> {
+        let mut notify_on_non_processed = true;
+
         for block in &msg.blocks {
             if let Some(block_metadata) = self.block_meta_storage.get(&block)? {
                 // if block is already applied, check successors
@@ -330,11 +364,34 @@ impl ChainFeeder {
                                 successors,
                                 msg.chain_id.clone(),
                                 msg.chain_manager.clone(),
+                                msg.bootstrapper.clone(),
+                                Some(Arc::new(block.clone())),
                                 Instant::now(),
                             ),
                             None,
                         );
+                        notify_on_non_processed = false;
+                    } else {
+                        // TODO: TE-369 - refactor pinging bootstrapper
+                        // if we have sender, we send him direct info
+                        if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
+                            bootstrapper.tell(
+                                BlockApplied {
+                                    block_hash: Arc::new(block.clone()),
+                                },
+                                None,
+                            );
+                        } else {
+                            self.shell_channel.tell(
+                                Publish {
+                                    msg: ShellChannelMsg::BlockApplied(Arc::new(block.clone())),
+                                    topic: ShellChannelTopic::ShellBlockApplied.into(),
+                                },
+                                None,
+                            );
+                        }
                     }
+
                     continue;
                 }
 
@@ -350,11 +407,30 @@ impl ChainFeeder {
                             msg.chain_id.clone(),
                             None,
                             msg.chain_manager.clone(),
+                            msg.bootstrapper.clone(),
                             Instant::now(),
                         ),
                         chain_feeder.clone(),
                         log,
                     )?;
+                }
+            }
+        }
+
+        if notify_on_non_processed {
+            if let Some(block) = msg.on_non_notify_with {
+                // TODO: TE-369 - refactor pinging bootstrapper
+                // if we have sender, we send him direct info
+                if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
+                    bootstrapper.tell(BlockApplied { block_hash: block }, None);
+                } else {
+                    self.shell_channel.tell(
+                        Publish {
+                            msg: ShellChannelMsg::BlockApplied(block),
+                            topic: ShellChannelTopic::ShellBlockApplied.into(),
+                        },
+                        None,
+                    );
                 }
             }
         }
@@ -432,11 +508,10 @@ impl Actor for ChainFeeder {
 impl Receive<ApplyCompletedBlock> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyCompletedBlock, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyCompletedBlock, _: Sender) {
         if !self.block_applier_run.load(Ordering::Acquire) {
             return;
         }
-
         match self.apply_completed_block(msg, ctx.myself().clone(), &ctx.system.log()) {
             Ok(_) => (),
             Err(e) => {
@@ -449,7 +524,7 @@ impl Receive<ApplyCompletedBlock> for ChainFeeder {
 impl Receive<CheckBlocksForApply> for ChainFeeder {
     type Msg = ChainFeederMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CheckBlocksForApply, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: CheckBlocksForApply, _: Sender) {
         if !self.block_applier_run.load(Ordering::Acquire) {
             return;
         }
@@ -660,12 +735,14 @@ fn feed_chain_to_protocol(
                             block_hash,
                             result_callback,
                             chain_manager,
+                            bootstrapper,
                             roundtrip_timer,
                             chain_id,
                         },
                     chain_feeder,
                     request,
                 }) => {
+                    let block_hash = Arc::new(block_hash);
                     let validated_at_timer = Instant::now();
                     debug!(log, "Applying block"; "block_header_hash" => block_hash.to_base58_check());
 
@@ -675,7 +752,7 @@ fn feed_chain_to_protocol(
                         Some(meta) => {
                             if meta.is_applied() {
                                 // block already applied - ok, doing nothing
-                                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+                                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
                                 if let Err(e) = dispatch_condvar_result(
                                     result_callback,
                                     || Err(format_err!("Block is already applied")),
@@ -683,6 +760,26 @@ fn feed_chain_to_protocol(
                                 ) {
                                     warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
                                 }
+
+                                // TODO: TE-369 - refactor pinging bootstrapper
+                                // if we have sender, we send him direct info
+                                if let Some(bootstrapper) = bootstrapper.as_ref() {
+                                    bootstrapper.tell(
+                                        BlockApplied {
+                                            block_hash: block_hash.clone(),
+                                        },
+                                        None,
+                                    );
+                                } else {
+                                    shell_channel.tell(
+                                        Publish {
+                                            msg: ShellChannelMsg::BlockApplied(block_hash.clone()),
+                                            topic: ShellChannelTopic::ShellBlockApplied.into(),
+                                        },
+                                        None,
+                                    );
+                                }
+
                                 continue;
                             }
                             meta
@@ -709,7 +806,8 @@ fn feed_chain_to_protocol(
                             debug!(log, "Block was applied";
                                 "block_header_hash" => block_hash.to_base58_check(),
                                 "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                                "validation_result_message" => &apply_block_result.validation_result_message);
+                                "validation_result_message" => &apply_block_result.validation_result_message,
+                                "sender" => sender_to_string(&bootstrapper));
 
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
                             let context_wait_timer = Instant::now();
@@ -741,7 +839,8 @@ fn feed_chain_to_protocol(
                                 info!(log, "Block was applied with long context processing";
                                            "block_header_hash" => block_hash.to_base58_check(),
                                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                                           "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed));
+                                           "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
+                                           "sender" => sender_to_string(&bootstrapper));
                             }
 
                             // Lets mark header as applied and store result
@@ -794,16 +893,39 @@ fn feed_chain_to_protocol(
                                             successors,
                                             chain_id,
                                             chain_manager.clone(),
+                                            bootstrapper.clone(),
+                                            Some(block_hash.clone()),
                                             Instant::now(),
                                         ),
                                         None,
                                     );
+                                } else {
+                                    // TODO: TE-369 - refactor pinging bootstrapper
+                                    // if we have sender, we send him direct info
+                                    if let Some(bootstrapper) = bootstrapper.as_ref() {
+                                        bootstrapper.tell(
+                                            BlockApplied {
+                                                block_hash: block_hash.clone(),
+                                            },
+                                            None,
+                                        );
+                                    } else {
+                                        shell_channel.tell(
+                                            Publish {
+                                                msg: ShellChannelMsg::BlockApplied(
+                                                    block_hash.clone(),
+                                                ),
+                                                topic: ShellChannelTopic::ShellBlockApplied.into(),
+                                            },
+                                            None,
+                                        );
+                                    }
                                 }
 
                                 // 2. ping chain_managers
                                 chain_manager.tell(
                                     ProcessValidatedBlock::new(
-                                        Arc::new(block_hash),
+                                        block_hash,
                                         roundtrip_timer,
                                         Arc::new(BlockValidationTimer::new(
                                             validated_at_timer.elapsed(),
@@ -948,6 +1070,13 @@ pub(crate) fn initialize_protocol_context(
     }
 
     Ok(())
+}
+
+fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
+    match sender {
+        Some(sender) => format!("{}-{}", sender.name(), sender.uri().to_string()),
+        None => "--none--".to_string(),
+    }
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =

@@ -13,7 +13,6 @@
 
 use std::collections::HashMap;
 use std::ops::AddAssign;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -30,7 +29,7 @@ use storage::persistent::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage,
-    OperationsStorageReader, StorageError,
+    OperationsStorageReader, StorageError, StorageInitInfo,
 };
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
@@ -48,14 +47,11 @@ use crate::shell_channel::{
 };
 use crate::state::block_state::{BlockAcceptanceResult, BlockchainState, HeadResult};
 use crate::state::peer_state::{tell_peer, PeerState};
-use crate::state::HistoryOrderPriority;
+use crate::state::StateError;
 use crate::stats::BlockValidationTimer;
 use crate::subscription::*;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 use crate::{validation, PeerConnectionThreshold};
-
-/// How often to check chain completeness
-const CHECK_CHAIN_COMPLETENESS_INTERVAL: Duration = Duration::from_secs(30);
 
 /// How often to ask all connected peers for current head
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
@@ -76,10 +72,6 @@ const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
 pub struct DisconnectStalledPeers {
     silent_peer_timeout: Duration,
 }
-
-/// Message commands [`ChainManager`] to check completeness of the chain.
-#[derive(Clone, Debug)]
-pub struct CheckChainCompleteness;
 
 /// Message commands [`ChainManager`] to check if all mempool operations were fetched from peer.
 #[derive(Clone, Debug)]
@@ -233,7 +225,6 @@ impl Stats {
 /// Purpose of this actor is to perform chain synchronization.
 #[actor(
     DisconnectStalledPeers,
-    CheckChainCompleteness,
     CheckMempoolCompleteness,
     AskPeersAboutCurrentHead,
     LogStats,
@@ -272,10 +263,6 @@ pub struct ChainManager {
     current_head: CurrentHead,
     /// Internal stats
     stats: Stats,
-    /// Indicates that we triggered check_chain_completeness
-    /// (means, waiting in actor's mailbox)
-    /// this is optimization
-    check_chain_completeness_triggered: AtomicBool,
 
     /// Holds ref to global current shared mempool state
     current_mempool_state: CurrentMempoolStateStorageRef,
@@ -307,7 +294,7 @@ impl ChainManager {
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        chain_id: ChainId,
+        init_storage_data: StorageInitInfo,
         is_sandbox: bool,
         current_mempool_state: CurrentMempoolStateStorageRef,
         p2p_disable_mempool: bool,
@@ -322,7 +309,7 @@ impl ChainManager {
                 shell_channel,
                 persistent_storage,
                 tezos_readonly_prevalidation_api,
-                Arc::new(chain_id),
+                init_storage_data,
                 is_sandbox,
                 current_mempool_state,
                 p2p_disable_mempool,
@@ -345,60 +332,6 @@ impl ChainManager {
         PeerState::schedule_missing_operations_for_mempool(peers);
     }
 
-    /// Check for missing blocks in local chain copy, and schedule downloading for those blocks
-    fn check_chain_completeness(&mut self) {
-        let ChainManager {
-            peers,
-            chain_state,
-            current_head,
-            check_chain_completeness_triggered,
-            ..
-        } = self;
-
-        // at first we need to wait for at least genesis
-        if current_head.local.is_none() {
-            // this means that we are not prepare to process anything
-            // we need to have at least genesis
-            return;
-        }
-
-        // schedule/queue missing BLOCKS for every peer from their own: missing -> queued queues
-        PeerState::schedule_missing_blocks(peers, |peer, drain_count, _| {
-            peer.missing_blocks
-                .drain_missing_data(drain_count, |_| true)
-        });
-
-        // schedule/queue missing OPERATIONS for every peer from their own: missing -> queued queues
-        PeerState::schedule_missing_operations(peers, |peer, drain_count, _| {
-            peer.missing_operations_for_blocks
-                .drain_missing_data(drain_count, |_| true)
-        });
-
-        // Note: this is GLOBAL missing queues, it is a fallback for returned blocks after peer's termination,
-        // where requests were queued, but responses never came
-
-        // check for BLOBAL missing blocks
-        if chain_state.missing_blocks.has_missing_data() {
-            PeerState::schedule_missing_blocks(peers, |_, drain_count, _| {
-                chain_state
-                    .missing_blocks
-                    .drain_missing_data(drain_count, |_| true)
-            });
-        }
-
-        // check for GLOBAL missing block operations
-        if chain_state.missing_operations_for_blocks.has_missing_data() {
-            PeerState::schedule_missing_operations(peers, |_, drain_count, _| {
-                chain_state
-                    .missing_operations_for_blocks
-                    .drain_missing_data(drain_count, |_| true)
-            });
-        }
-
-        // allow next run
-        check_chain_completeness_triggered.store(false, Ordering::Release);
-    }
-
     fn process_network_channel_message(
         &mut self,
         ctx: &Context<ChainManagerMsg>,
@@ -416,7 +349,6 @@ impl ChainManager {
             mempool_storage,
             current_head,
             identity_peer_id,
-            check_chain_completeness_triggered,
             block_applier,
             ..
         } = self;
@@ -462,55 +394,20 @@ impl ChainManager {
                                             message.current_branch().current_head().clone(),
                                         )?;
 
-                                        // schedule to download missing branch blocks
-                                        chain_state.schedule_branch_bootstrap(
-                                            peer,
-                                            &message_current_head,
-                                            message.current_branch().history().to_vec(),
-                                            block_applier,
-                                            ctx.myself(),
-                                        )?;
-
                                         // update remote heads
                                         current_head.update_remote_head(&message_current_head);
                                         peer.update_current_head(&message_current_head);
 
-                                        // notify others that new block was received
-                                        shell_channel.tell(
-                                            Publish {
-                                                msg: BlockReceived {
-                                                    hash: message_current_head.hash.clone(),
-                                                    level: message_current_head.header.level(),
-                                                }
-                                                .into(),
-                                                topic: ShellChannelTopic::ShellEvents.into(),
-                                            },
-                                            None,
-                                        );
-
-                                        // process downloaded block
-                                        Self::process_downloaded_header(
-                                            message_current_head,
-                                            None,
-                                            ctx.myself(),
-                                            block_applier,
-                                            &log,
-                                            chain_state,
+                                        // schedule to download missing branch blocks
+                                        chain_state.schedule_history_bootstrap(
+                                            &ctx.system,
                                             peer,
-                                            block_meta_storage,
-                                            stats,
-                                            check_chain_completeness_triggered,
-                                            shell_channel,
+                                            &message_current_head,
+                                            message.current_branch().history().to_vec(),
+                                            shell_channel.clone(),
+                                            block_applier,
+                                            Arc::new(ctx.myself()),
                                         )?;
-
-                                        // trigger CheckChainCompleteness
-                                        if !check_chain_completeness_triggered
-                                            .load(Ordering::Acquire)
-                                        {
-                                            check_chain_completeness_triggered
-                                                .store(true, Ordering::Release);
-                                            ctx.myself().tell(CheckChainCompleteness, None);
-                                        }
                                     }
                                 }
                                 PeerMessage::GetCurrentBranch(message) => {
@@ -544,29 +441,32 @@ impl ChainManager {
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash =
-                                        BlockHeaderWithHash::new(message.block_header().clone())
-                                            .unwrap();
-                                    match peer
-                                        .queued_block_headers
-                                        .remove(&block_header_with_hash.hash)
-                                    {
-                                        Some(missing) => {
+                                        BlockHeaderWithHash::new(message.block_header().clone())?;
+
+                                    let was_queued = {
+                                        peer.queued_block_headers2
+                                            .write()
+                                            .map_err(StateError::from)?
+                                            .remove(&block_header_with_hash.hash)
+                                    };
+
+                                    match was_queued {
+                                        true => {
+                                            // TODO: TE-369 - peers stats
                                             peer.block_response_last = Instant::now();
+
                                             Self::process_downloaded_header(
                                                 block_header_with_hash,
-                                                Some(missing.history_order_priority),
-                                                ctx.myself(),
-                                                block_applier,
-                                                &log,
-                                                chain_state,
                                                 peer,
-                                                block_meta_storage,
                                                 stats,
-                                                check_chain_completeness_triggered,
+                                                block_applier,
+                                                ctx.myself(),
+                                                chain_state,
                                                 shell_channel,
+                                                &log,
                                             )?;
                                         }
-                                        None => {
+                                        false => {
                                             warn!(log, "Received unexpected block header"; "block_header_hash" => block_header_with_hash.hash.to_base58_check());
                                         }
                                     }
@@ -604,61 +504,55 @@ impl ChainManager {
                                 PeerMessage::OperationsForBlocks(operations) => {
                                     let block_hash =
                                         operations.operations_for_block().hash().clone();
-                                    match peer.queued_block_operations.get_mut(&block_hash) {
-                                        Some(missing_operations) => {
-                                            let operation_was_expected =
-                                                missing_operations.validation_passes.remove(
-                                                    &operations
-                                                        .operations_for_block()
-                                                        .validation_pass(),
-                                                );
+
+                                    // check if we queued operation
+                                    let (was_queued, operation_was_expected) = {
+                                        let mut queued_block_operations2 = peer
+                                            .queued_block_operations2
+                                            .write()
+                                            .map_err(StateError::from)?;
+                                        let queued_operations =
+                                            queued_block_operations2.get_mut(&block_hash);
+                                        match queued_operations {
+                                            Some(missing_operations) => {
+                                                // try dequeue
+                                                let operation_was_expected =
+                                                    missing_operations.validation_passes.remove(
+                                                        &operations
+                                                            .operations_for_block()
+                                                            .validation_pass(),
+                                                    );
+                                                (true, operation_was_expected)
+                                            }
+                                            None => (false, false),
+                                        }
+                                    };
+
+                                    match was_queued {
+                                        true => {
                                             if operation_was_expected {
                                                 peer.block_operations_response_last =
                                                     Instant::now();
                                                 trace!(log, "Received operations validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => block_hash.to_base58_check());
 
-                                                if chain_state
-                                                    .process_block_operations(&operations)?
-                                                {
+                                                // update operations state
+                                                if chain_state.process_block_operations_from_peer(
+                                                    peer,
+                                                    &block_hash,
+                                                    &operations,
+                                                    block_applier,
+                                                    ctx.myself(),
+                                                )? {
+                                                    // TODO: TE-369 - peers stats
                                                     // update stats
                                                     stats.unseen_block_operations_last =
                                                         Instant::now();
 
+                                                    // TODO: TE-369 - is this necessery?
                                                     // notify others that new all operations for block were received
                                                     let block_meta = block_meta_storage
                                                         .get(&block_hash)?
                                                         .ok_or(StorageError::MissingKey)?;
-
-                                                    // check if block can be applied
-                                                    if validation::can_apply_block(
-                                                        (&block_hash, &block_meta),
-                                                        |_| Ok(true),
-                                                        |predecessor| {
-                                                            block_meta_storage
-                                                                .is_applied(predecessor)
-                                                        },
-                                                    )? {
-                                                        block_applier.tell(
-                                                            ApplyCompletedBlock::new(
-                                                                block_hash.clone(),
-                                                                chain_state.get_chain_id().clone(),
-                                                                None,
-                                                                Arc::new(ctx.myself()),
-                                                                Instant::now(),
-                                                            ),
-                                                            None,
-                                                        );
-                                                    }
-
-                                                    // trigger CheckChainCompleteness
-                                                    if !check_chain_completeness_triggered
-                                                        .load(Ordering::Acquire)
-                                                    {
-                                                        check_chain_completeness_triggered
-                                                            .store(true, Ordering::Release);
-                                                        ctx.myself()
-                                                            .tell(CheckChainCompleteness, None);
-                                                    }
 
                                                     // notify others that new all operations for block were received
                                                     shell_channel.tell(
@@ -673,17 +567,13 @@ impl ChainManager {
                                                         },
                                                         None,
                                                     );
-
-                                                    // remove operations from queue
-                                                    peer.queued_block_operations
-                                                        .remove(&block_hash);
                                                 }
                                             } else {
                                                 warn!(log, "Received unexpected validation pass"; "validation_pass" => operations.operations_for_block().validation_pass(), "block_header_hash" => block_hash.to_base58_check());
                                                 ctx.system.stop(received.peer.clone());
                                             }
                                         }
-                                        None => {
+                                        false => {
                                             warn!(log, "Received unexpected operations");
                                             ctx.system.stop(received.peer.clone());
                                         }
@@ -727,20 +617,46 @@ impl ChainManager {
                                             current_head.update_remote_head(&message_current_head);
                                             peer.update_current_head(&message_current_head);
 
-                                            // schedule header/operations download
-                                            Self::process_downloaded_header(
-                                                message_current_head,
-                                                None,
-                                                ctx.myself(),
-                                                block_applier,
-                                                &log,
-                                                chain_state,
+                                            // here we accept head, which also means that we know predecessor
+                                            // so we can schedule to download diff (last_applied_block .. current_head)
+                                            let mut history = Vec::with_capacity(1);
+                                            if let Some(cur) = &current_head.local {
+                                                history.push(cur.block_hash().clone());
+                                            }
+                                            chain_state.schedule_history_bootstrap(
+                                                &ctx.system,
                                                 peer,
-                                                block_meta_storage,
-                                                stats,
-                                                check_chain_completeness_triggered,
-                                                shell_channel,
+                                                &message_current_head,
+                                                history,
+                                                shell_channel.clone(),
+                                                block_applier,
+                                                Arc::new(ctx.myself()),
                                             )?;
+
+                                            // we need to simulate scheduling, so we add
+                                            let is_scheduled = {
+                                                peer.queued_block_headers2
+                                                    .write()
+                                                    .map_err(StateError::from)?
+                                                    .insert(Arc::new(
+                                                        message_current_head.hash.clone(),
+                                                    ))
+                                            };
+
+                                            // if scheduled, we can proces it directly, if not, we will wait scheduled bootstrap
+                                            if is_scheduled {
+                                                // process downloaded block directlly
+                                                Self::process_downloaded_header(
+                                                    message_current_head,
+                                                    peer,
+                                                    stats,
+                                                    block_applier,
+                                                    ctx.myself(),
+                                                    chain_state,
+                                                    shell_channel,
+                                                    &log,
+                                                )?;
+                                            }
 
                                             // schedule mempool download
                                             let peer_current_mempool = message.current_mempool();
@@ -983,49 +899,25 @@ impl ChainManager {
 
     fn process_downloaded_header(
         received_block: BlockHeaderWithHash,
-        history_order_priority: Option<HistoryOrderPriority>,
-        myself: ChainManagerRef,
-        block_applier: &ChainFeederRef,
-        log: &Logger,
-        chain_state: &mut BlockchainState,
         peer: &mut PeerState,
-        block_meta_storage: &Box<dyn BlockMetaStorageReader>,
         stats: &mut Stats,
-        check_chain_completeness_triggered: &mut AtomicBool,
+        block_applier: &ChainFeederRef,
+        myself: ChainManagerRef,
+        chain_state: &mut BlockchainState,
         shell_channel: &ShellChannelRef,
+        log: &Logger,
     ) -> Result<(), Error> {
-        // stored header and operations
-        let (block_metadata, is_new_block, are_operations_complete) =
-            chain_state.process_block_header(peer, &received_block, history_order_priority, log)?;
-
-        // check if block can be applied
-        if validation::can_apply_block(
-            (&received_block.hash, &block_metadata),
-            |_| Ok(are_operations_complete),
-            |predecessor| block_meta_storage.is_applied(predecessor),
+        // store header
+        if chain_state.process_block_header_from_peer(
+            peer,
+            &received_block,
+            block_applier,
+            Arc::new(myself),
+            log,
         )? {
-            block_applier.tell(
-                ApplyCompletedBlock::new(
-                    received_block.hash.clone(),
-                    chain_state.get_chain_id().clone(),
-                    None,
-                    Arc::new(myself.clone()),
-                    Instant::now(),
-                ),
-                None,
-            );
-        }
-
-        if is_new_block {
-            // update stats
+            // update stats for new header
             stats.unseen_block_last = Instant::now();
             stats.unseen_block_count += 1;
-
-            // trigger CheckChainCompleteness
-            if !check_chain_completeness_triggered.load(Ordering::Acquire) {
-                check_chain_completeness_triggered.store(true, Ordering::Release);
-                myself.tell(CheckChainCompleteness, None);
-            }
 
             // notify others that new block was received
             shell_channel.tell(
@@ -1037,7 +929,7 @@ impl ChainManager {
                     .into(),
                     topic: ShellChannelTopic::ShellEvents.into(),
                 },
-                Some(myself.into()),
+                None,
             );
         }
 
@@ -1180,7 +1072,7 @@ impl ChainManager {
 
                     are_operations_complete = match self.chain_state.process_block_operations(&msg)
                     {
-                        Ok(all_operations_received) => {
+                        Ok((all_operations_received, _)) => {
                             if all_operations_received {
                                 // update stats
                                 self.stats.unseen_block_operations_last = Instant::now();
@@ -1230,6 +1122,7 @@ impl ChainManager {
                                 self.chain_state.get_chain_id().clone(),
                                 result_callback,
                                 Arc::new(ctx.myself()),
+                                None,
                                 Instant::now(),
                             ),
                             None,
@@ -1364,6 +1257,9 @@ impl ChainManager {
                             false,
                         );
                     }
+                    HeadResult::GenesisInitialized => {
+                        (/* doing nothing, we dont advertise genesis */)
+                    }
                 }
             }
         }
@@ -1399,6 +1295,8 @@ impl ChainManager {
                             successors,
                             self.chain_state.get_chain_id().clone(),
                             Arc::new(ctx.myself()),
+                            None,
+                            None,
                             Instant::now(),
                         ),
                         None,
@@ -1604,7 +1502,7 @@ impl
         ShellChannelRef,
         PersistentStorage,
         Arc<TezosApiConnectionPool>,
-        Arc<ChainId>,
+        StorageInitInfo,
         bool,
         CurrentMempoolStateStorageRef,
         bool,
@@ -1619,7 +1517,7 @@ impl
             shell_channel,
             persistent_storage,
             tezos_readonly_prevalidation_api,
-            chain_id,
+            init_storage_data,
             is_sandbox,
             current_mempool_state,
             p2p_disable_mempool,
@@ -1631,7 +1529,7 @@ impl
             ShellChannelRef,
             PersistentStorage,
             Arc<TezosApiConnectionPool>,
-            Arc<ChainId>,
+            StorageInitInfo,
             bool,
             CurrentMempoolStateStorageRef,
             bool,
@@ -1648,7 +1546,11 @@ impl
             chain_meta_storage: Box::new(ChainMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
-            chain_state: BlockchainState::new(&persistent_storage, chain_id.clone()),
+            chain_state: BlockchainState::new(
+                &persistent_storage,
+                Arc::new(init_storage_data.chain_id),
+                Arc::new(init_storage_data.genesis_block_header_hash),
+            ),
             peers: HashMap::new(),
             current_head: CurrentHead {
                 local: None,
@@ -1665,7 +1567,6 @@ impl
                 applied_block_lasts_sum_validation_timer: BlockValidationTimer::default(),
                 applied_block_lasts_sum_roundtrip_timer: Duration::new(0, 0),
             },
-            check_chain_completeness_triggered: AtomicBool::new(false),
             is_sandbox,
             identity_peer_id,
             is_bootstrapped: false,
@@ -1687,13 +1588,6 @@ impl Actor for ChainManager {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
         subscribe_to_shell_commands(&self.shell_channel, ctx.myself());
 
-        ctx.schedule::<Self::Msg, _>(
-            CHECK_CHAIN_COMPLETENESS_INTERVAL / 4,
-            CHECK_CHAIN_COMPLETENESS_INTERVAL,
-            ctx.myself(),
-            None,
-            CheckChainCompleteness.into(),
-        );
         ctx.schedule::<Self::Msg, _>(
             ASK_CURRENT_HEAD_INITIAL_DELAY,
             ASK_CURRENT_HEAD_INTERVAL,
@@ -1752,28 +1646,12 @@ impl Receive<SystemEvent> for ChainManager {
 
     fn receive(
         &mut self,
-        _ctx: &Context<Self::Msg>,
+        _: &Context<Self::Msg>,
         msg: SystemEvent,
         _sender: Option<BasicActorRef>,
     ) {
         if let SystemEvent::ActorTerminated(evt) = msg {
-            if let Some(mut peer) = self.peers.remove(evt.actor.uri()) {
-                peer.queued_block_headers
-                    .drain()
-                    .for_each(|(_, mut missing_block)| {
-                        if missing_block.retry() {
-                            self.chain_state.missing_blocks.push_data(missing_block);
-                        }
-                    });
-
-                peer.queued_block_operations
-                    .drain()
-                    .for_each(|(_, mut op)| {
-                        if op.retry() {
-                            self.chain_state.missing_operations_for_blocks.push_data(op)
-                        }
-                    });
-            }
+            self.peers.remove(evt.actor.uri());
         }
     }
 }
@@ -1842,19 +1720,18 @@ impl Receive<LogStats> for ChainManager {
             "remote_fitness" => remote_fitness);
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
-            "missing_blocks" => self.chain_state.missing_blocks.missing_data_count(),
-            "missing_block_operations" => self.chain_state.missing_operations_for_blocks.missing_data_count(),
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),
             "last_block_operations_secs" => self.stats.unseen_block_operations_last.elapsed().as_secs(),
             "applied_block_level" => self.stats.applied_block_level,
             "applied_block_secs" => self.stats.applied_block_last.map(|i| i.elapsed().as_secs()));
+        // TODO: TE-369 - peers stats
         for peer in self.peers.values() {
             debug!(log, "Peer state info";
                 "actor_ref" => format!("{}", peer.peer_id.peer_ref),
-                "missing_blocks" => peer.missing_blocks.missing_data_count(),
-                "missing_block_operations" => peer.missing_operations_for_blocks.missing_data_count(),
-                "queued_block_headers" => peer.queued_block_headers.len(),
-                "queued_block_operations" => peer.queued_block_operations.len(),
+                // "missing_blocks" => peer.missing_blocks.missing_data_count(),
+                // "missing_block_operations" => peer.missing_operations_for_blocks.missing_data_count(),
+                // "queued_block_headers" => peer.queued_block_headers.len(),
+                // "queued_block_operations" => peer.queued_block_operations.len(),
                 "current_head_request_secs" => peer.current_head_request_last.elapsed().as_secs(),
                 "current_head_response_secs" => peer.current_head_response_last.elapsed().as_secs(),
                 "block_request_secs" => peer.block_request_last.elapsed().as_secs(),
@@ -1923,14 +1800,14 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                     warn!(ctx.system.log(), "Peer did not respond to our request for block operations on time"; "request_secs" => state.block_operations_request_last.elapsed().as_secs(), "response_secs" => state.block_operations_response_last.elapsed().as_secs(),
                                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
-                } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > msg.silent_peer_timeout) {
-                    warn!(ctx.system.log(), "Peer is not providing requested blocks"; "queued_count" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs(),
-                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                    true
-                } else if block_operations_response_pending && !state.queued_block_operations.is_empty() && (state.block_operations_response_last.elapsed() > msg.silent_peer_timeout) {
-                    warn!(ctx.system.log(), "Peer is not providing requested block operations"; "queued_count" => state.queued_block_operations.len(), "response_secs" => state.block_operations_response_last.elapsed().as_secs(),
-                                            "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                    true
+                // } else if block_response_pending && !state.queued_block_headers.is_empty() && (state.block_response_last.elapsed() > msg.silent_peer_timeout) {
+                //     warn!(ctx.system.log(), "Peer is not providing requested blocks"; "queued_count" => state.queued_block_headers.len(), "response_secs" => state.block_response_last.elapsed().as_secs(),
+                //                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
+                //     true
+                // } else if block_operations_response_pending && !state.queued_block_operations.is_empty() && (state.block_operations_response_last.elapsed() > msg.silent_peer_timeout) {
+                //     warn!(ctx.system.log(), "Peer is not providing requested block operations"; "queued_count" => state.queued_block_operations.len(), "response_secs" => state.block_operations_response_last.elapsed().as_secs(),
+                //                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
+                //     true
                 } else if mempool_operations_response_pending && !state.queued_mempool_operations.is_empty() && (state.mempool_operations_response_last.elapsed() > msg.silent_peer_timeout) {
                     warn!(ctx.system.log(), "Peer is not providing requested mempool operations"; "queued_count" => state.queued_mempool_operations.len(), "response_secs" => state.mempool_operations_response_last.elapsed().as_secs(),
                                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
@@ -1940,7 +1817,13 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                 };
 
                 if should_disconnect {
+                    // stop peer
                     ctx.system.stop(state.peer_id.peer_ref.clone());
+
+                    // stop peer's bootstrap
+                    if let Some(boot) = state.peer_branch_bootstrapper.as_ref() {
+                        ctx.system.stop(boot);
+                    }
                 }
             });
     }
@@ -1958,17 +1841,6 @@ impl Receive<CheckMempoolCompleteness> for ChainManager {
         if !self.shutting_down {
             self.check_mempool_completeness(ctx)
         }
-    }
-}
-
-impl Receive<CheckChainCompleteness> for ChainManager {
-    type Msg = ChainManagerMsg;
-
-    fn receive(&mut self, _: &Context<Self::Msg>, _msg: CheckChainCompleteness, _sender: Sender) {
-        if self.shutting_down {
-            return;
-        }
-        self.check_chain_completeness()
     }
 }
 
@@ -2174,17 +2046,19 @@ pub mod tests {
             log.clone(),
         ));
 
+        let init_storage_data = StorageInitInfo {
+            chain_id: chain_id.clone(),
+            genesis_block_header_hash: tezos_env.genesis_header_hash()?,
+            patch_context: None,
+        };
+
         // chain feeder mock
         let block_applier = ChainFeeder::actor(
             &actor_system,
             shell_channel.clone(),
             storage.storage().clone(),
             pool.clone(),
-            StorageInitInfo {
-                chain_id: chain_id.clone(),
-                genesis_block_header_hash: tezos_env.genesis_header_hash()?,
-                patch_context: None,
-            },
+            init_storage_data.clone(),
             tezos_env.clone(),
             log.clone(),
         )?;
@@ -2196,7 +2070,7 @@ pub mod tests {
             shell_channel.clone(),
             storage.storage().clone(),
             pool,
-            Arc::new(chain_id),
+            init_storage_data,
             false,
             init_mempool_state_storage(),
             false,

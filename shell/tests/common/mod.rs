@@ -252,7 +252,7 @@ pub mod infra {
                 shell_channel.clone(),
                 persistent_storage.clone(),
                 tezos_readonly_api.clone(),
-                init_storage_data.chain_id.clone(),
+                init_storage_data.clone(),
                 is_sandbox,
                 current_mempool_state_storage.clone(),
                 false,

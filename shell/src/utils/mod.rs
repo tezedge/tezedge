@@ -6,9 +6,8 @@ use std::time::Duration;
 
 use failure::Fail;
 
-use crate::utils::collections::{BlockData, UniqueBlockData};
-
-pub mod collections;
+// TODO: TE-386 - remove not needed
+// pub mod collections;
 
 /// Simple condvar synchronized result callback
 pub type CondvarResult<T, E> = Arc<(Mutex<Option<Result<T, E>>>, Condvar)>;
@@ -93,55 +92,59 @@ pub fn try_wait_for_condvar_result<T, E>(
     }
 }
 
-/// Unility to help manage [`UniqueBlockData`] structure
-pub(crate) struct MissingBlockData<D> {
-    missing_data: UniqueBlockData<D>,
-}
+// TODO: TE-386 - remove not needed
+// /// Unility to help manage [`UniqueBlockData`] structure
+// pub(crate) struct MissingBlockData<D> {
+//     pub missing_data: UniqueBlockData<D>,
+// }
 
-impl<D: BlockData + Ord> MissingBlockData<D> {
-    pub fn push_data(&mut self, missing_data: D) {
-        self.missing_data.push(missing_data);
-    }
+// impl<D: BlockData + Ord> MissingBlockData<D> {
+// TODO: TE-386 - remove not needed
+// pub fn push_data(&mut self, missing_data: D) {
+//     self.missing_data.push(missing_data);
+// }
 
-    #[inline]
-    pub fn has_missing_data(&self) -> bool {
-        !self.missing_data.is_empty()
-    }
+// TODO: TE-386 - remove not needed
+// #[inline]
+// pub fn has_missing_data(&self) -> bool {
+//     !self.missing_data.is_empty()
+// }
+//
+// #[inline]
+// pub fn missing_data_count(&self) -> usize {
+//     self.missing_data.len()
+// }
 
-    #[inline]
-    pub fn missing_data_count(&self) -> usize {
-        self.missing_data.len()
-    }
-
-    #[inline]
-    pub fn drain_missing_data<F>(&mut self, n: usize, filter: F) -> Vec<D>
-    where
-        F: Fn(&D) -> bool,
-    {
-        (0..std::cmp::min(self.missing_data.len(), n))
-            .filter_map(|_| {
-                if self
-                    .missing_data
-                    .peek()
-                    .filter(|block| filter(block))
-                    .is_some()
-                {
-                    self.missing_data.pop()
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-}
-
-impl<D: BlockData + Ord> Default for MissingBlockData<D> {
-    fn default() -> Self {
-        Self {
-            missing_data: UniqueBlockData::default(),
-        }
-    }
-}
+// TODO: TE-386 - remove not needed
+// #[inline]
+// pub fn drain_missing_data<F>(&mut self, n: usize, filter: F) -> Vec<D>
+// where
+//     F: Fn(&D) -> bool,
+// {
+//     (0..std::cmp::min(self.missing_data.len(), n))
+//         .filter_map(|_| {
+//             if self
+//                 .missing_data
+//                 .peek()
+//                 .filter(|block| filter(block))
+//                 .is_some()
+//             {
+//                 self.missing_data.pop()
+//             } else {
+//                 None
+//             }
+//         })
+//         .collect()
+// }
+// }
+//
+// impl<D: BlockData + Ord> Default for MissingBlockData<D> {
+//     fn default() -> Self {
+//         Self {
+//             missing_data: UniqueBlockData::default(),
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp;
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
-use itertools::Itertools;
 use riker::actors::*;
 
 use crypto::hash::{BlockHash, OperationHash};
@@ -16,17 +15,17 @@ use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{
-    GetBlockHeadersMessage, GetOperationsForBlocksMessage, GetOperationsMessage, MetadataMessage,
-    PeerMessageResponse,
+    GetOperationsMessage, MetadataMessage, PeerMessageResponse,
 };
 
-use crate::state::{MissingBlock, MissingOperations};
-use crate::utils::MissingBlockData;
+use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::state::MissingOperations;
 
-/// Limit to how many blocks to request in a batch
-const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
-/// Limit to how many block operations to request in a batch
-const BLOCK_OPERATIONS_BATCH_SIZE: usize = 15;
+// TODO: TE-386 - remove not needed
+// /// Limit to how many blocks to request in a batch
+// const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
+// /// Limit to how many block operations to request in a batch
+// const BLOCK_OPERATIONS_BATCH_SIZE: usize = 15;
 /// Limit to how many mempool operations to request in a batch
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = 20;
 /// Mempool operation time to live
@@ -41,15 +40,26 @@ pub struct PeerState {
     /// Is bootstrapped flag
     pub(crate) is_bootstrapped: bool,
 
-    /// Missing blocks
-    pub(crate) missing_blocks: MissingBlockData<MissingBlock>,
-    /// Missing operations
-    pub(crate) missing_operations_for_blocks: MissingBlockData<MissingOperations>,
+    /// Actor for managing current branch bootstrap from peer
+    pub(crate) peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
-    /// Queued blocks
-    pub(crate) queued_block_headers: HashMap<BlockHash, MissingBlock>,
+    // TODO: TE-386 - rename
+    /// Queued blocks shared with peer_branch_bootstrapper
+    pub(crate) queued_block_headers2: Arc<RwLock<HashSet<Arc<BlockHash>>>>,
     /// Queued block operations
-    pub(crate) queued_block_operations: HashMap<BlockHash, MissingOperations>,
+    pub(crate) queued_block_operations2: Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+
+    // TODO: TE-386 - remove not needed
+    // /// Missing blocks
+    // pub(crate) missing_blocks: MissingBlockData<MissingBlock>,
+    // /// Missing operations
+    // pub(crate) missing_operations_for_blocks: MissingBlockData<MissingOperations>,
+
+    // TODO: TE-386 - remove not needed
+    /// Queued blocks
+    // pub(crate) queued_block_headers: HashMap<Arc<BlockHash>, MissingBlock>,
+    // /// Queued block operations
+    // pub(crate) queued_block_operations: HashMap<BlockHash, MissingOperations>,
 
     /// Level of the current head received from peer
     pub(crate) current_head_level: Option<i32>,
@@ -91,10 +101,13 @@ impl PeerState {
             peer_id,
             mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
-            missing_blocks: MissingBlockData::default(),
-            missing_operations_for_blocks: MissingBlockData::default(),
-            queued_block_headers: HashMap::new(),
-            queued_block_operations: HashMap::new(),
+            peer_branch_bootstrapper: None,
+            queued_block_headers2: Arc::new(RwLock::new(HashSet::default())),
+            queued_block_operations2: Arc::new(RwLock::new(HashMap::default())),
+            // missing_blocks: MissingBlockData::default(),
+            // missing_operations_for_blocks: MissingBlockData::default(),
+            // queued_block_headers: HashMap::new(),
+            // queued_block_operations: HashMap::new(),
             missing_mempool_operations: Vec::new(),
             queued_mempool_operations: HashMap::default(),
             current_head_level: None,
@@ -110,23 +123,25 @@ impl PeerState {
         }
     }
 
-    fn available_block_queue_capacity(&self) -> usize {
-        let queued_count = self.queued_block_headers.len();
-        if queued_count < BLOCK_HEADERS_BATCH_SIZE {
-            BLOCK_HEADERS_BATCH_SIZE - queued_count
-        } else {
-            0
-        }
-    }
+    // TODO: TE-386 - remove not needed
+    // pub(crate) fn available_block_queue_capacity(&self) -> usize {
+    //     let queued_count = self.queued_block_headers.len();
+    //     if queued_count < BLOCK_HEADERS_BATCH_SIZE {
+    //         BLOCK_HEADERS_BATCH_SIZE - queued_count
+    //     } else {
+    //         0
+    //     }
+    // }
 
-    fn available_block_operations_queue_capacity(&self) -> usize {
-        let queued_count = self.queued_block_operations.len();
-        if queued_count < BLOCK_OPERATIONS_BATCH_SIZE {
-            BLOCK_OPERATIONS_BATCH_SIZE - queued_count
-        } else {
-            0
-        }
-    }
+    // TODO: TE-386 - remove not needed
+    // fn available_block_operations_queue_capacity(&self) -> usize {
+    //     let queued_count = self.queued_block_operations.len();
+    //     if queued_count < BLOCK_OPERATIONS_BATCH_SIZE {
+    //         BLOCK_OPERATIONS_BATCH_SIZE - queued_count
+    //     } else {
+    //         0
+    //     }
+    // }
 
     fn available_mempool_operations_queue_capacity(&self) -> usize {
         let queued_count = self.queued_mempool_operations.len();
@@ -157,110 +172,111 @@ impl PeerState {
 
     pub fn clear(&mut self) {
         self.missing_mempool_operations.clear();
-        self.queued_block_headers.clear();
-        self.queued_block_operations.clear();
+        // self.queued_block_headers.clear();
+        // self.queued_block_operations.clear();
         self.queued_mempool_operations.clear();
     }
 
-    pub fn schedule_missing_blocks<MD>(
-        peers: &mut HashMap<ActorUri, PeerState>,
-        mut get_missing_blocks: MD,
-    ) where
-        MD: FnMut(&mut PeerState, usize, Option<i32>) -> Vec<MissingBlock>,
-    {
-        peers
-            .values_mut()
-            .filter(|peer| peer.current_head_level.is_some())
-            .filter(|peer| peer.available_block_queue_capacity() > 0)
-            .sorted_by_key(|peer| peer.available_block_queue_capacity())
-            .rev()
-            .for_each(|peer| {
-                let available_capacity = peer.available_block_queue_capacity();
-                let peer_current_head_level = peer.current_head_level;
-
-                let mut missing_blocks =
-                    get_missing_blocks(peer, available_capacity, peer_current_head_level);
-
-                if !missing_blocks.is_empty() {
-                    let queued_blocks = missing_blocks
-                        .drain(..)
-                        .filter_map(|missing_block| {
-                            let missing_block_hash = missing_block.block_hash.clone();
-                            if peer
-                                .queued_block_headers
-                                .insert(missing_block_hash.clone(), missing_block)
-                                .is_none()
-                            {
-                                // block was not already present in queue
-                                Some(missing_block_hash)
-                            } else {
-                                // block was already in queue
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>();
-
-                    if !queued_blocks.is_empty() {
-                        peer.block_request_last = Instant::now();
-                        tell_peer(GetBlockHeadersMessage::new(queued_blocks).into(), peer);
-                    }
-                }
-            });
-    }
-
-    pub fn schedule_missing_operations<MD>(
-        peers: &mut HashMap<ActorUri, PeerState>,
-        mut get_missing_operations: MD,
-    ) where
-        MD: FnMut(&mut PeerState, usize, Option<i32>) -> Vec<MissingOperations>,
-    {
-        peers
-            .values_mut()
-            .filter(|peer| peer.current_head_level.is_some())
-            .filter(|peer| peer.available_block_operations_queue_capacity() > 0)
-            .sorted_by_key(|peer| peer.available_block_operations_queue_capacity())
-            .rev()
-            .for_each(|peer| {
-                let available_capacity = peer.available_block_operations_queue_capacity();
-                let peer_current_head_level = peer.current_head_level;
-
-                let missing_operations =
-                    get_missing_operations(peer, available_capacity, peer_current_head_level);
-
-                if !missing_operations.is_empty() {
-                    let queued_operations = missing_operations
-                        .iter()
-                        .map(|missing_operation| {
-                            if peer
-                                .queued_block_operations
-                                .insert(
-                                    missing_operation.block_hash.clone(),
-                                    missing_operation.clone(),
-                                )
-                                .is_none()
-                            {
-                                // operations were not already present in queue
-                                Some(missing_operation)
-                            } else {
-                                // operations were already in queue
-                                None
-                            }
-                        })
-                        .filter_map(|missing_operation| missing_operation)
-                        .collect::<Vec<_>>();
-
-                    if !queued_operations.is_empty() {
-                        peer.block_operations_request_last = Instant::now();
-                        queued_operations.iter().for_each(|&missing_operation| {
-                            tell_peer(
-                                GetOperationsForBlocksMessage::new(missing_operation.into()).into(),
-                                peer,
-                            )
-                        });
-                    }
-                }
-            });
-    }
+    // TODO: TE-386 - remove not needed
+    // pub fn schedule_missing_blocks<MD>(
+    //     peers: &mut HashMap<ActorUri, PeerState>,
+    //     mut get_missing_blocks: MD,
+    // ) where
+    //     MD: FnMut(&mut PeerState, usize, Option<i32>) -> Vec<MissingBlock>,
+    // {
+    //     peers
+    //         .values_mut()
+    //         .filter(|peer| peer.current_head_level.is_some())
+    //         .filter(|peer| peer.available_block_queue_capacity() > 0)
+    //         .sorted_by_key(|peer| peer.available_block_queue_capacity())
+    //         .rev()
+    //         .for_each(|peer| {
+    //             let available_capacity = peer.available_block_queue_capacity();
+    //             let peer_current_head_level = peer.current_head_level;
+    //
+    //             let mut missing_blocks =
+    //                 get_missing_blocks(peer, available_capacity, peer_current_head_level);
+    //
+    //             if !missing_blocks.is_empty() {
+    //                 let queued_blocks = missing_blocks
+    //                     .drain(..)
+    //                     .filter_map(|missing_block| {
+    //                         let missing_block_hash = missing_block.block_hash.clone();
+    //                         if peer
+    //                             .queued_block_headers
+    //                             .insert(missing_block_hash.clone(), missing_block)
+    //                             .is_none()
+    //                         {
+    //                             // block was not already present in queue
+    //                             Some(missing_block_hash.as_ref().clone())
+    //                         } else {
+    //                             // block was already in queue
+    //                             None
+    //                         }
+    //                     })
+    //                     .collect::<Vec<_>>();
+    //
+    //                 if !queued_blocks.is_empty() {
+    //                     peer.block_request_last = Instant::now();
+    //                     tell_peer(GetBlockHeadersMessage::new(queued_blocks).into(), peer);
+    //                 }
+    //             }
+    //         });
+    // }
+    //
+    // pub fn schedule_missing_operations<MD>(
+    //     peers: &mut HashMap<ActorUri, PeerState>,
+    //     mut get_missing_operations: MD,
+    // ) where
+    //     MD: FnMut(&mut PeerState, usize, Option<i32>) -> Vec<MissingOperations>,
+    // {
+    //     peers
+    //         .values_mut()
+    //         .filter(|peer| peer.current_head_level.is_some())
+    //         .filter(|peer| peer.available_block_operations_queue_capacity() > 0)
+    //         .sorted_by_key(|peer| peer.available_block_operations_queue_capacity())
+    //         .rev()
+    //         .for_each(|peer| {
+    //             let available_capacity = peer.available_block_operations_queue_capacity();
+    //             let peer_current_head_level = peer.current_head_level;
+    //
+    //             let missing_operations =
+    //                 get_missing_operations(peer, available_capacity, peer_current_head_level);
+    //
+    //             if !missing_operations.is_empty() {
+    //                 let queued_operations = missing_operations
+    //                     .iter()
+    //                     .map(|missing_operation| {
+    //                         if peer
+    //                             .queued_block_operations
+    //                             .insert(
+    //                                 missing_operation.block_hash.clone(),
+    //                                 missing_operation.clone(),
+    //                             )
+    //                             .is_none()
+    //                         {
+    //                             // operations were not already present in queue
+    //                             Some(missing_operation)
+    //                         } else {
+    //                             // operations were already in queue
+    //                             None
+    //                         }
+    //                     })
+    //                     .filter_map(|missing_operation| missing_operation)
+    //                     .collect::<Vec<_>>();
+    //
+    //                 if !queued_operations.is_empty() {
+    //                     peer.block_operations_request_last = Instant::now();
+    //                     queued_operations.iter().for_each(|&missing_operation| {
+    //                         tell_peer(
+    //                             GetOperationsForBlocksMessage::new(missing_operation.into()).into(),
+    //                             peer,
+    //                         )
+    //                     });
+    //                 }
+    //             }
+    //         });
+    // }
 
     pub fn schedule_missing_operations_for_mempool(peers: &mut HashMap<ActorUri, PeerState>) {
         peers

@@ -51,9 +51,9 @@ class Sandbox:
     def __init__(self,
                  binaries_path: str,
                  identities: Dict[str, Dict[str, str]],
-                 rpc: int = 18730,
-                 p2p: int = 19730,
-                 websocket: int = 4932,
+                 rpc: int = 28730,
+                 p2p: int = 29730,
+                 websocket: int = 27730,
                  num_peers: int = 45,
                  log_dir: str = None,
                  singleprocess: bool = False):
