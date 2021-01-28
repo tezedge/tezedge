@@ -9,7 +9,7 @@ use riker::actors::*;
 use slog::{error, info, warn, Logger};
 use tokio::runtime::Handle;
 
-use crypto::hash::ChainId;
+use crypto::hash::{ChainId, HashType};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
@@ -138,6 +138,10 @@ impl Receive<ShellChannelMsg> for RpcServer {
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
         if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+            info!(_ctx.system.log(),
+                  "RPC block received";
+                  "block_hash" => HashType::BlockHash.hash_to_b58check(&block.hash),
+            );
             let current_head_ref = &mut *self.state.write().unwrap();
             current_head_ref.current_head = Some(block);
         }

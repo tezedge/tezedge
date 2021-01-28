@@ -243,8 +243,31 @@ pub async fn chains_block_id_metadata(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
+    slog::info!(env.log(),
+                  "RPC call chains_block_id_metadata";
+                  "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash),
+            );
+    let response = match base_services::get_block_metadata(&chain_id, &block_hash, &env) {
+        Ok(response) => {
+            slog::info!(env.log(),
+                  "RPC call chains_block_id_metadata - response OK";
+                  "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash),
+                  "response" => format!("{:?}", response.clone()),
+            );
+            Ok(response)
+        },
+        Err(e) => {
+            slog::info!(env.log(),
+                  "RPC call chains_block_id_metadata - response ERROR";
+                  "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash),
+                  "response" => format!("{:?}", e),
+            );
+            Err(e)
+        }
+    };
+
     result_option_to_json_response(
-        base_services::get_block_metadata(&chain_id, &block_hash, &env),
+        response,
         env.log(),
     )
 }

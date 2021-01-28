@@ -438,6 +438,13 @@ pub(crate) fn call_protocol_rpc(
     env: &RpcServiceEnvironment,
 ) -> Result<serde_json::value::Value, failure::Error> {
     let context_path = rpc_request.context_path.clone();
+
+    slog::info!(env.log(),
+                  "RPC call received";
+                  "context_path" => context_path.clone(),
+                  "block_hash" => HashType::BlockHash.hash_to_b58check(&block_hash),
+            );
+
     let request =
         create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
