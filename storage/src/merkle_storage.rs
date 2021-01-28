@@ -890,9 +890,9 @@ impl MerkleStorage {
     }
 
     pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
-        // let instant = Instant::now();
+        let instant = Instant::now();
         self.db.start_new_cycle(self.last_commit_hash.clone());
-        // self.update_execution_stats("GC".to_string(), None, &instant);
+        self.update_execution_stats("GC".to_string(), None, &instant);
         Ok(())
     }
 
