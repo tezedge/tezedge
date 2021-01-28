@@ -201,8 +201,6 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     )?;
     println!("\nProcessed [branch1-3] in {:?}!\n", clocks.elapsed());
 
-    drop(mocked_peer_node_branch_1);
-
     // connect mocked node peer with data for branch_2
     let clocks = Instant::now();
     let (db_branch_2, ..) = test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
@@ -287,7 +285,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
 
     // stop nodes
     drop(node);
-    // drop(mocked_peer_node_branch_1);
+    drop(mocked_peer_node_branch_1);
     drop(mocked_peer_node_branch_2);
 
     Ok(())
