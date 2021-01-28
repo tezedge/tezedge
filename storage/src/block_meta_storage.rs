@@ -24,6 +24,8 @@ pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sy
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
 
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+
     fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 
     /// Returns n-th predecessor for block_hash
@@ -189,6 +191,10 @@ impl BlockMetaStorage {
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.kv.get(block_hash).map_err(StorageError::from)
+    }
+
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+        self.kv.contains(block_hash).map_err(StorageError::from)
     }
 
     fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {

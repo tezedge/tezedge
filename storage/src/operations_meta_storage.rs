@@ -59,7 +59,7 @@ impl OperationsMetaStorage {
         &self,
         message: &OperationsForBlocksMessage,
     ) -> Result<bool, StorageError> {
-        let block_hash = message.operations_for_block().hash().clone();
+        let block_hash = message.operations_for_block().hash();
 
         match self.get(&block_hash)? {
             Some(mut meta) => {

@@ -12,6 +12,7 @@ use chrono::TimeZone;
 use failure::Fail;
 
 use crypto::hash::{BlockHash, ChainId, HashType, OperationHash, ProtocolHash};
+use storage::block_meta_storage::Meta;
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
@@ -25,7 +26,6 @@ use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::validation::fitness_comparator::FitnessWrapper;
-use storage::block_meta_storage::Meta;
 
 /// Validates if new_head is stronger or at least equals to old_head - according to fitness
 pub fn can_update_current_head(
@@ -214,24 +214,20 @@ pub fn prevalidate_operation(
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
     // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
-    match block_storage.contains(operation_branch)? {
-        true => {
-            let is_applied = match block_meta_storage.get(operation_branch)? {
-                Some(metadata) => metadata.is_applied(),
-                None => false,
-            };
 
-            if !is_applied {
-                return Err(PrevalidateOperationError::BranchNotAppliedYet {
-                    branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
-                });
-            }
-        }
-        false => {
+    let is_applied = match block_meta_storage.get(operation_branch)? {
+        Some(metadata) => metadata.is_applied(),
+        None => {
             return Err(PrevalidateOperationError::UnknownBranch {
                 branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
             })
         }
+    };
+
+    if !is_applied {
+        return Err(PrevalidateOperationError::BranchNotAppliedYet {
+            branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
+        });
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
@@ -242,7 +238,7 @@ pub fn prevalidate_operation(
             None => {
                 return Err(PrevalidateOperationError::UnknownBranch {
                     branch: HashType::BlockHash.hash_to_b58check(&head),
-                })
+                });
             }
         },
         None => {

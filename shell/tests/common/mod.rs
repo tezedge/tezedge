@@ -319,7 +319,9 @@ pub mod infra {
                 None,
             );
 
-            let _ = tokio_runtime.block_on(actor_system.shutdown());
+            let _ = tokio_runtime.block_on(async move {
+                tokio::time::timeout(Duration::from_secs(10), actor_system.shutdown()).await
+            });
 
             warn!(log, "[NODE] Node infrastructure stopped"; "name" => self.name.clone());
         }

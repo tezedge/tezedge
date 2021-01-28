@@ -12,13 +12,6 @@ pub(crate) struct UniqueBlockData<T> {
 }
 
 impl<T: BlockData + Ord> UniqueBlockData<T> {
-    pub(crate) fn new() -> Self {
-        UniqueBlockData {
-            binary_heap: BinaryHeap::new(),
-            hash_set: HashSet::new(),
-        }
-    }
-
     #[inline]
     pub(crate) fn push(&mut self, item: T) {
         if self.hash_set.insert(item.block_hash().clone()) {
@@ -53,6 +46,15 @@ impl<T> UniqueBlockData<T> {
     #[inline]
     pub(crate) fn is_empty(&self) -> bool {
         self.hash_set.is_empty()
+    }
+}
+
+impl<T: BlockData + Ord> Default for UniqueBlockData<T> {
+    fn default() -> Self {
+        UniqueBlockData {
+            binary_heap: BinaryHeap::new(),
+            hash_set: HashSet::new(),
+        }
     }
 }
 
