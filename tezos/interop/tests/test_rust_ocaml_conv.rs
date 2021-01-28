@@ -5,7 +5,7 @@ extern crate test;
 
 use std::convert::{TryFrom, TryInto};
 
-use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, HashType, OperationHash, ProtocolHash};
 use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, OCaml, ToOCaml, ToRust};
 use serial_test::serial;
 
@@ -155,12 +155,12 @@ fn sample_operations_for_request_decoded() -> Vec<Vec<RustBytes>> {
 #[test]
 #[serial]
 fn test_hash_conv() {
-    let operation_hash = hex::decode(OPERATION_HASH).unwrap();
+    let operation_hash = OperationHash::try_from(hex::decode(OPERATION_HASH).unwrap()).unwrap();
 
     let result: bool = runtime::execute(move || {
         ocaml_frame!(gc(hash_root), {
             let hash = to_ocaml!(gc, operation_hash, hash_root);
-            let hash_bytes = to_ocaml!(gc, operation_hash);
+            let hash_bytes = to_ocaml!(gc, operation_hash.as_ref());
             ocaml_call!(tezos_ffi::construct_and_compare_hash(
                 gc,
                 gc.get(&hash),
