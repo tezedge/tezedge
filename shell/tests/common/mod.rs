@@ -88,8 +88,8 @@ pub mod infra {
     use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use networking::ShellCompatibilityVersion;
-    use shell::chain_feeder::ChainFeeder;
-    use shell::chain_manager::ChainManager;
+    use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
+    use shell::chain_manager::{ChainManager, ChainManagerRef};
     use shell::context_listener::ContextListener;
     use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
     use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
@@ -114,6 +114,8 @@ pub mod infra {
         name: String,
         pub log: Logger,
         pub peer_manager: Option<PeerManagerRef>,
+        pub block_applier: ChainFeederRef,
+        pub chain_manager: ChainManagerRef,
         pub shell_channel: ShellChannelRef,
         pub network_channel: NetworkChannelRef,
         pub actor_system: ActorSystem,
@@ -243,9 +245,9 @@ pub mod infra {
                 log.clone(),
             )
             .expect("Failed to create chain feeder");
-            let _ = ChainManager::actor(
+            let chain_manager = ChainManager::actor(
                 &actor_system,
-                block_applier,
+                block_applier.clone(),
                 network_channel.clone(),
                 shell_channel.clone(),
                 persistent_storage.clone(),
@@ -290,6 +292,8 @@ pub mod infra {
                 name: String::from(name),
                 log,
                 peer_manager,
+                chain_manager,
+                block_applier,
                 shell_channel,
                 network_channel,
                 tokio_runtime,

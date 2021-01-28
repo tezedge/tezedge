@@ -14,6 +14,7 @@ use riker::actors::*;
 use slog::{info, Logger};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash, OperationHash};
+use shell::chain_feeder::ApplyCompletedBlock;
 use shell::shell_channel::{MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
@@ -99,6 +100,18 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
     )?;
 
     let clocks = Instant::now();
+
+    // just ping chain_feeder, becausae we dont have p2p layer
+    node.block_applier.tell(
+        ApplyCompletedBlock::new(
+            tezos_env.genesis_header_hash()?,
+            Arc::new(chain_id.clone()),
+            None,
+            Arc::new(node.chain_manager.clone()),
+            Instant::now(),
+        ),
+        None,
+    );
 
     // 1. test - apply and context - prepare data for apply blocks and wait for current head, and check context
     assert!(
