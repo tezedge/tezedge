@@ -12,17 +12,23 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use failure::{bail, Error, Fail};
+use failure::{bail, format_err, Error, Fail};
+use getset::Getters;
+use itertools::Itertools;
+use serde::Serialize;
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::context::ContextApi;
-use storage::{context_key, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
+use storage::merkle_storage::MerkleError;
+use storage::{context_key, num_from_slice, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
 };
 use tezos_messages::base::rpc_support::RpcJsonMap;
+use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
+use crate::helpers::get_context_hash;
 use crate::server::RpcServiceEnvironment;
 
 mod proto_001;
@@ -278,6 +284,185 @@ pub(crate) fn check_and_get_endorsing_rights(
             env.tezedge_context(),
         )
         .map_err(RightsError::from),
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum VotesError {
+    #[fail(display = "Votes error, reason: {}", reason)]
+    ServiceError { reason: Error },
+    #[fail(display = "Unsupported protocol {}", protocol)]
+    UnsupportedProtocolError { protocol: String },
+}
+
+impl From<failure::Error> for VotesError {
+    fn from(error: failure::Error) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<storage::context::ContextError> for VotesError {
+    fn from(error: storage::context::ContextError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<MerkleError> for VotesError {
+    fn from(error: MerkleError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<ConversionError> for VotesError {
+    fn from(error: ConversionError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
+impl From<UnsupportedProtocolError> for VotesError {
+    fn from(error: UnsupportedProtocolError) -> Self {
+        VotesError::UnsupportedProtocolError {
+            protocol: error.protocol,
+        }
+    }
+}
+
+pub(crate) fn get_votes_listings(
+    block_hash: &BlockHash,
+    env: &RpcServiceEnvironment,
+) -> Result<Option<Vec<VoteListings>>, VotesError> {
+    let context_hash = get_context_hash(block_hash, env)?;
+
+    // get protocol version
+    let protocol_hash = if let Some(protocol_hash) = env
+        .tezedge_context()
+        .get_key_from_history(&context_hash, &context_key!("protocol"))?
+    {
+        protocol_hash
+    } else {
+        return Err(VotesError::ServiceError {
+            reason: format_err!(
+                "No protocol found in context for block_hash: {}",
+                HashType::BlockHash.hash_to_b58check(&block_hash)
+            ),
+        });
+    };
+
+    // check if we support impl for this protocol
+    let supported_protocol = SupportedProtocol::try_from(protocol_hash)?;
+    match supported_protocol {
+        SupportedProtocol::Proto001
+        | SupportedProtocol::Proto002
+        | SupportedProtocol::Proto003
+        | SupportedProtocol::Proto004
+        | SupportedProtocol::Proto005
+        | SupportedProtocol::Proto005_2
+        | SupportedProtocol::Proto006
+        | SupportedProtocol::Proto007 => get_votes_listings_before_008(env, &context_hash),
+        SupportedProtocol::Proto008 => get_votes_listings_008(env, &context_hash),
+    }
+}
+
+fn get_votes_listings_before_008(
+    env: &RpcServiceEnvironment,
+    context_hash: &Vec<u8>,
+) -> Result<Option<Vec<VoteListings>>, VotesError> {
+    // filter out the listings data
+    let listings_data = if let Some(val) = env
+        .tezedge_context()
+        .get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))?
+    {
+        val
+    } else {
+        return Err(VotesError::ServiceError {
+            reason: format_err!("No votes listings found in context"),
+        });
+    };
+
+    // convert the raw context data to VoteListings
+    let mut listings = Vec::with_capacity(listings_data.len());
+    for (key, value) in listings_data.into_iter() {
+        // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
+        let keystr = key.join("/");
+        let address = keystr.split('/').skip(4).take(6).join("");
+        let curve = keystr.split('/').skip(3).take(1).join("");
+
+        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?
+            .to_string_representation();
+        listings.push(VoteListings::new(
+            address_decoded,
+            num_from_slice!(value, 0, i32),
+        ));
+    }
+
+    // sort the vector in reverse ordering (as in ocaml node)
+    listings.sort();
+    listings.reverse();
+    Ok(Some(listings))
+}
+
+fn get_votes_listings_008(
+    env: &RpcServiceEnvironment,
+    context_hash: &Vec<u8>,
+) -> Result<Option<Vec<VoteListings>>, VotesError> {
+    // filter out the listings data
+    let mut listings_data = if let Some(val) = env
+        .tezedge_context()
+        .get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))?
+    {
+        val
+    } else {
+        return Err(VotesError::ServiceError {
+            reason: format_err!("No votes listings found in context"),
+        });
+    };
+
+    // sort the raw data from the context
+    listings_data.sort();
+    listings_data.reverse();
+    // convert the raw context data to VoteListings
+    let mut listings = Vec::with_capacity(listings_data.len());
+    for (key, value) in listings_data.into_iter() {
+        // get the address an the curve tag from the key (e.g. data/votes/listings/ed25519/2c/ca/28/ab/01/9ae2d8c26f4ce4924cad67a2dc6618)
+        let keystr = key.join("/");
+        let address = keystr.split('/').skip(4).take(6).join("");
+        let curve = keystr.split('/').skip(3).take(1).join("");
+
+        let address_decoded = SignaturePublicKeyHash::from_hex_hash_and_curve(&address, &curve)?
+            .to_string_representation();
+        listings.push(VoteListings::new(
+            address_decoded,
+            num_from_slice!(value, 0, i32),
+        ));
+    }
+
+    Ok(Some(listings))
+}
+
+/// Struct for the delegates and they voting power (in rolls)
+#[derive(Serialize, Debug, Clone, Getters, Eq, Ord, PartialEq, PartialOrd)]
+pub struct VoteListings {
+    /// Public key hash (address, e.g tz1...)
+    #[get = "pub(crate)"]
+    pkh: String,
+
+    /// Number of rolls the pkh owns
+    #[get = "pub(crate)"]
+    rolls: i32,
+}
+
+impl VoteListings {
+    /// Simple constructor to construct VoteListings
+    pub fn new(pkh: String, rolls: i32) -> Self {
+        Self { pkh, rolls }
     }
 }
 
