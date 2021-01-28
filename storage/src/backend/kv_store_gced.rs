@@ -196,7 +196,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             match rx.recv() {
                 Ok(value) => Some(value),
                 Err(_) => {
-                    println!("MerkleStorage GC thread shut down! reason: mpsc::Sender dropped.");
+                    // println!("MerkleStorage GC thread shut down! reason: mpsc::Sender dropped.");
                     return;
                 },
             }
@@ -228,7 +228,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
             None => {
                 if received_exit_msg && todo_keys.len() == 0 && reused_keys.len() == len {
-                    println!("MerkleStorage GC thread shut down! reason: received exit message.");
+                    // println!("MerkleStorage GC thread shut down! reason: received exit message.");
                     return;
                 }
             }
@@ -291,7 +291,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
     }
 
-    println!("MerkleStorage GC thread shut down!");
+    // println!("MerkleStorage GC thread shut down!");
 }
 
 // when key is reused
