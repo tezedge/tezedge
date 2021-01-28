@@ -154,7 +154,7 @@ fn gen_stats(args: Args) {
 
         let level = block.block_level;
 
-        if level % args.cycle_block_count == 0 && level > 0 {
+        if level % args.cycle_block_count == 1 && level > 1 {
             merkle.start_new_cycle().unwrap();
 
             let commits_iter = cycle_commit_hashes.iter()
