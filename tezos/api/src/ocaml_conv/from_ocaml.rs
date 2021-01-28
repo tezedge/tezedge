@@ -41,7 +41,9 @@ macro_rules! from_ocaml_typed_hash {
                 unsafe {
                     let vec: Vec<u8> = v.field::<OCamlBytes>(0).to_rust();
                     use std::convert::TryFrom;
-                    $rust_name::try_from(vec).unwrap()
+                    $rust_name::try_from(vec).unwrap_or_else(|e| {
+                        unreachable!(format!("Wrong bytes received from OCaml: {:?}", e))
+                    })
                 }
             }
         }
@@ -60,6 +62,7 @@ from_ocaml_typed_hash!(
     OperationMetadataListListHash
 );
 
+// TODO: TE-367: review once ocaml-interop has been upgraded
 unsafe impl FromOCaml<OCamlChainId> for ChainId {
     fn from_ocaml(v: OCaml<OCamlChainId>) -> Self {
         let v: OCaml<OCamlBytes> = unsafe { std::mem::transmute(v) };

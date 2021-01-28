@@ -319,14 +319,7 @@ pub fn compute_path(
 ) -> Result<Result<ComputePathResponse, CallError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc, {
-            let ocaml_request = to_ocaml!(
-                gc,
-                request
-                    .operations
-                    .iter()
-                    .map(|hs| hs.iter().map(|h| h.as_ref().to_vec()).collect::<Vec<_>>())
-                    .collect::<Vec<_>>()
-            );
+            let ocaml_request = to_ocaml!(gc, request.operations);
             let result = ocaml_call!(tezos_ffi::compute_path(gc, ocaml_request));
             match result {
                 Ok(response) => {

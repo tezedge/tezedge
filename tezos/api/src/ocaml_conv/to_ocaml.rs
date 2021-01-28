@@ -13,7 +13,7 @@ use crate::ffi::{
     RpcMethod, RpcRequest, ValidateOperationRequest,
 };
 use crypto::hash::{
-    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationListListHash,
+    BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
     OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
 };
 use ocaml_interop::{
@@ -62,7 +62,7 @@ macro_rules! to_ocaml_hash {
 }
 
 to_ocaml_hash!(OCamlOperationListListHash, OperationListListHash);
-to_ocaml_hash!(OCamlOperationHash, Hash);
+to_ocaml_hash!(OCamlOperationHash, OperationHash);
 to_ocaml_hash!(OCamlBlockHash, BlockHash);
 to_ocaml_hash!(OCamlContextHash, ContextHash);
 to_ocaml_hash!(OCamlProtocolHash, ProtocolHash);
@@ -75,6 +75,7 @@ to_ocaml_hash!(
 
 // Other
 
+// TODO: TE-367: review once ocaml-interop has been upgraded
 unsafe impl ToOCaml<OCamlChainId> for ChainId {
     fn to_ocaml(&self, gc: OCamlAllocToken) -> OCamlAllocResult<OCamlChainId> {
         let ocaml_bytes: OCamlAllocResult<OCamlBytes> = self.0.to_ocaml(gc);
@@ -130,7 +131,7 @@ impl<'a> From<&'a Operation> for FfiOperation<'a> {
 
 impl_to_ocaml_record! {
     ApplyBlockRequest {
-        chain_id: OCamlBytes => chain_id.as_ref(),
+        chain_id: OCamlChainId,
         block_header: BlockHeader => FfiBlockHeader::from(block_header),
         pred_header: BlockHeader => FfiBlockHeader::from(pred_header),
         max_operations_ttl: OCamlInt,
@@ -164,7 +165,7 @@ impl_to_ocaml_record! {
 impl_to_ocaml_record! {
     ForkingTestchainData {
         forking_block_hash: OCamlBlockHash,
-        test_chain_id: OCamlBytes => test_chain_id.as_ref(),
+        test_chain_id: OCamlChainId,
     }
 }
 
