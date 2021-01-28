@@ -296,9 +296,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 mod tests {
     use super::*;
     use std::mem;
-    use crate::in_memory;
+    use crate::backend::BTreeMapBackend;
 
-    fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<in_memory::KVStore<EntryHash, ContextValue>> {
+    fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<BTreeMapBackend> {
         KVStoreGCed::new(cycle_count)
     }
 
@@ -322,7 +322,7 @@ mod tests {
     }
 
     fn get<T: 'static + KVStore + Default>(store: &KVStoreGCed<T>, key: &[u8]) -> Option<Entry> {
-        store.get(&entry_hash(key))
+        store.get(&entry_hash(key)).unwrap()
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
