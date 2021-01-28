@@ -10,7 +10,8 @@ use clap::{Arg, App};
 use storage::*;
 use context_action_storage::ContextAction;
 use merkle_storage::{MerkleStorage, Entry, EntryHash, check_commit_hashes};
-use backend::{BTreeMapBackend, KVStoreGCed};
+use storage_backend::StorageBackend;
+use backend::{RocksDBBackend, SledBackend, InMemoryBackend, BTreeMapBackend, MarkSweepGCed, KVStoreGCed};
 
 mod actions_tool;
 use actions_tool::ActionsFileReader;
@@ -55,6 +56,7 @@ fn mem_usage() -> usize {
 }
 
 struct Args {
+    backend: String,
     preserved_cycles: usize,
     cycle_block_count: u32,
     actions_file: String,
@@ -73,11 +75,20 @@ impl Args {
             .arg(Arg::with_name("actions_file")
                  .required(true)
                  .help("path to the actions.bin")
-                 .index(1));
+                 .index(1))
+            .arg(Arg::with_name("backend")
+                 .short("b")
+                 .long("backend")
+                 .default_value("in-memory-gced")
+                 .help("backend to use for storing merkle storage. Possible values: in-memory-gced, in-memory-mark-sweep-gced")
+                       // + "rocksdb, sled, in-memory-gced, in-memory-mark-sweep-gced")
+                 );
 
         let matches = app.get_matches();
 
+
         Self {
+            backend: matches.value_of("backend").unwrap_or("in-memory-gced").to_string(),
             preserved_cycles: matches.value_of("preserved_cycles")
                 .unwrap_or("7")
                 .parse()
@@ -101,9 +112,20 @@ fn gen_stats(args: Args) {
     let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
         vec![Default::default(); args.preserved_cycles - 1];
 
-    let mut merkle = MerkleStorage::new(
-        Box::new(KVStoreGCed::<BTreeMapBackend>::new(args.preserved_cycles))
-    );
+    let backend: Box<dyn StorageBackend + Send + Sync> = match args.backend.as_str() {
+        "in-memory-gced" => Box::new(
+            KVStoreGCed::<BTreeMapBackend>::new(args.preserved_cycles)
+        ),
+        "in-memory-mark-sweep-gced" => Box::new(
+            MarkSweepGCed::<InMemoryBackend>::new(args.preserved_cycles)
+        ),
+        _ => {
+            eprintln!("unsupported backend supplied: {}", args.backend);
+            return;
+        },
+    };
+
+    let mut merkle = MerkleStorage::new(backend);
 
     println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
 

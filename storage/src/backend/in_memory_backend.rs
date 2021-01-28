@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
 use crate::merkle_storage::{EntryHash, ContextValue};
 
+#[derive(Default)]
 pub struct InMemoryBackend {
     inner: Arc<RwLock<HashMap<EntryHash, ContextValue>>>
 }
