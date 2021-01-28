@@ -3,6 +3,4 @@
 /// Measure Key
 
 #[test]
-fn test_merkle_storage_with_testnet_data() {
-
-}
+fn test_merkle_storage_with_testnet_data() {}

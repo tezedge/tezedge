@@ -4,7 +4,6 @@
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
-use std::thread;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -44,7 +43,6 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
-use rpc::encoding::monitor::ContextHash;
 use std::collections::HashMap;
 
 mod configuration;
@@ -576,9 +574,8 @@ fn main() {
             ),
         };
 
-
-
-        let persistent_storage = PersistentStorage::new(rocks_db, action_file_path,actions_staging, commit_logs);
+        let persistent_storage =
+            PersistentStorage::new(rocks_db, action_file_path, actions_staging, commit_logs);
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),

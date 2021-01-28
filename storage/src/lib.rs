@@ -42,6 +42,7 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
+pub mod action_file_storage;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -55,7 +56,6 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
-pub mod action_file_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -512,9 +512,13 @@ pub mod tests_common {
 
             let actions_staging = Arc::new(RwLock::new(HashMap::new()));
 
-
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), None, actions_staging, Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(
+                    Arc::new(kv),
+                    None,
+                    actions_staging,
+                    Arc::new(clog),
+                ),
                 path,
                 remove_on_destroy,
             })

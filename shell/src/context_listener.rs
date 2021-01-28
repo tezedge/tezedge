@@ -14,12 +14,12 @@ use riker::actors::*;
 use slog::{crit, debug, info, warn, Logger};
 
 use crypto::hash::HashType;
+use storage::action_file_storage::ActionFileStorage;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
 use storage::{BlockStorage, ContextActionStorage};
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
-use storage::action_file_storage::ActionFileStorage;
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -191,7 +191,7 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    actions_file_storage : &mut Option<ActionFileStorage>,
+    actions_file_storage: &mut Option<ActionFileStorage>,
     context_action_storage: &mut ContextActionStorage,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
@@ -236,7 +236,7 @@ fn listen_protocol_events(
                     None => {}
                     Some(afs) => {
                         //info!(log,"Storing action");
-                        afs.store_action( log,msg.action.clone())
+                        afs.store_action(log, msg.clone())
                     }
                 };
 

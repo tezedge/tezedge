@@ -82,7 +82,7 @@ impl From<NetworkChannelTopic> for Topic {
     fn from(evt: NetworkChannelTopic) -> Self {
         match evt {
             NetworkChannelTopic::NetworkEvents => Topic::from("network.events"),
-            NetworkChannelTopic::NetworkCommands => Topic::from("network.commands")
+            NetworkChannelTopic::NetworkCommands => Topic::from("network.commands"),
         }
     }
 }

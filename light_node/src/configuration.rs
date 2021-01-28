@@ -19,7 +19,6 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
-use failure::_core::convert::Infallible;
 
 #[derive(Debug, Clone)]
 pub struct Rpc {
@@ -733,13 +732,10 @@ impl Environment {
                     match args
                         .value_of("actions-file")
                         .unwrap_or("")
-                        .parse::<PathBuf>() {
-                        Ok(p) => {
-                            Some(p)
-                        }
-                        Err(_) => {
-                            None
-                        }
+                        .parse::<PathBuf>()
+                    {
+                        Ok(p) => Some(p),
+                        Err(_) => None,
                     }
                 },
                 db_path: {

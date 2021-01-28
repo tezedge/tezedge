@@ -14,8 +14,8 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use tezos_context::channel::ContextAction;
 use std::collections::HashMap;
+use tezos_context::channel::ContextActionMessage;
 
 pub mod codec;
 pub mod commit_log;
@@ -43,9 +43,9 @@ impl Default for DbConfiguration {
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=ColumnFamilyDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = ColumnFamilyDescriptor>,
 {
     DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
 }
@@ -107,9 +107,9 @@ pub fn default_table_options(cache: &Cache) -> Options {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=CommitLogDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
@@ -120,7 +120,7 @@ pub struct PersistentStorage {
     /// actions file path
     action_file_path: Option<PathBuf>,
     /// actions_staging
-    actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>,
+    actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextActionMessage>>>>,
     /// key-value store
     kv: Arc<DB>,
     /// commit log store
@@ -132,7 +132,12 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, action_file_path: Option<PathBuf>, actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(
+        kv: Arc<DB>,
+        action_file_path: Option<PathBuf>,
+        actions_staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextActionMessage>>>>,
+        clog: Arc<CommitLogs>,
+    ) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         Self {
             clog,
@@ -170,7 +175,7 @@ impl PersistentStorage {
     }
 
     #[inline]
-    pub fn actions_staging(&self) -> Arc<RwLock<HashMap<Vec<u8>, Vec<ContextAction>>>> {
+    pub fn actions_staging(&self) -> Arc<RwLock<HashMap<Vec<u8>, Vec<ContextActionMessage>>>> {
         self.actions_staging.clone()
     }
 
