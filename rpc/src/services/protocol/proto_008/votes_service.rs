@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::ContextHash;
 use failure::format_err;
 use itertools::Itertools;
 
@@ -14,7 +15,7 @@ use crate::services::protocol::VotesError;
 
 pub fn get_votes_listings(
     env: &RpcServiceEnvironment,
-    context_hash: &Vec<u8>,
+    context_hash: &ContextHash,
 ) -> Result<Option<serde_json::Value>, VotesError> {
     // filter out the listings data
     let mut listings_data = if let Some(val) = env

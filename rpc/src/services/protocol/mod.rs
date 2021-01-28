@@ -342,6 +342,14 @@ impl From<serde_json::Error> for VotesError {
     }
 }
 
+impl From<FromBytesError> for VotesError {
+    fn from(error: FromBytesError) -> Self {
+        VotesError::ServiceError {
+            reason: error.into(),
+        }
+    }
+}
+
 pub(crate) fn get_votes_listings(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
@@ -353,12 +361,12 @@ pub(crate) fn get_votes_listings(
         .tezedge_context()
         .get_key_from_history(&context_hash, &context_key!("protocol"))?
     {
-        protocol_hash
+        ProtocolHash::try_from(protocol_hash)?
     } else {
         return Err(VotesError::ServiceError {
             reason: format_err!(
                 "No protocol found in context for block_hash: {}",
-                HashType::BlockHash.hash_to_b58check(&block_hash)
+                block_hash.to_base58_check()
             ),
         });
     };

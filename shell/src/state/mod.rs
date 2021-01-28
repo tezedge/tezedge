@@ -141,24 +141,33 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use crate::utils::MissingBlockData;
 
     use super::*;
+
+    fn block(d: u8) -> BlockHash {
+        [d; crypto::hash::HashType::BlockHash.size()]
+            .to_vec()
+            .try_into()
+            .unwrap()
+    }
 
     #[test]
     fn test_missing_blocks_has_correct_ordering() {
         let mut heap = MissingBlockData::default();
 
         // simulate header and predecesor
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 1], 10, 1));
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 2], 9, 1));
+        heap.push_data(MissingBlock::with_history_order(block(1), 10, 1));
+        heap.push_data(MissingBlock::with_history_order(block(2), 9, 1));
 
         // simulate history
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 3], 4, 1));
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 7], 0, 1));
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 5], 2, 1));
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 6], 1, 1));
-        heap.push_data(MissingBlock::with_history_order(vec![0, 0, 0, 4], 3, 1));
+        heap.push_data(MissingBlock::with_history_order(block(3), 4, 1));
+        heap.push_data(MissingBlock::with_history_order(block(7), 0, 1));
+        heap.push_data(MissingBlock::with_history_order(block(5), 2, 1));
+        heap.push_data(MissingBlock::with_history_order(block(6), 1, 1));
+        heap.push_data(MissingBlock::with_history_order(block(4), 3, 1));
 
         // pop all from heap
         let ordered_hashes = heap
@@ -168,14 +177,14 @@ mod tests {
             .collect::<Vec<BlockHash>>();
 
         // ordered by priority: 0, 1, 2, 3, 4, 9, 10
-        let expected_order = vec![
-            vec![0, 0, 0, 7],
-            vec![0, 0, 0, 6],
-            vec![0, 0, 0, 5],
-            vec![0, 0, 0, 4],
-            vec![0, 0, 0, 3],
-            vec![0, 0, 0, 2],
-            vec![0, 0, 0, 1],
+        let expected_order: Vec<BlockHash> = vec![
+            block(7),
+            block(6),
+            block(5),
+            block(4),
+            block(3),
+            block(2),
+            block(1),
         ];
 
         assert_eq!(expected_order, ordered_hashes)
@@ -186,25 +195,25 @@ mod tests {
         let mut heap = MissingBlockData::default();
         heap.push_data(MissingOperations {
             history_order_priority: 15,
-            block_hash: vec![0, 0, 0, 1],
+            block_hash: block(1),
             validation_passes: HashSet::new(),
             retries: 1,
         });
         heap.push_data(MissingOperations {
             history_order_priority: 7,
-            block_hash: vec![0, 0, 0, 9],
+            block_hash: block(9),
             validation_passes: HashSet::new(),
             retries: 1,
         });
         heap.push_data(MissingOperations {
             history_order_priority: 0,
-            block_hash: vec![0, 0, 0, 4],
+            block_hash: block(4),
             validation_passes: HashSet::new(),
             retries: 1,
         });
         heap.push_data(MissingOperations {
             history_order_priority: 1,
-            block_hash: vec![0, 0, 0, 5],
+            block_hash: block(5),
             validation_passes: HashSet::new(),
             retries: 1,
         });
@@ -223,7 +232,7 @@ mod tests {
     fn test_retry() {
         let mut data = MissingOperations {
             history_order_priority: 1,
-            block_hash: vec![0, 0, 0, 5],
+            block_hash: block(5),
             validation_passes: HashSet::new(),
             retries: 5,
         };

@@ -677,8 +677,6 @@ impl fmt::Display for HeadResult {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use slog::{Drain, Level, Logger};
 
     use crypto::hash::chain_id_from_block_hash;
