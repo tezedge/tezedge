@@ -238,6 +238,7 @@ fn listen_protocol_events(
                         //info!(log,"Storing action");
                         afs.store_action(log, msg.clone())
                     }
+
                 };
 
                 if msg.perform {

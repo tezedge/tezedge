@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use std::time::Duration;
 use failure::{Error, Fail};
 use futures::lock::Mutex;
 use riker::actors::*;
-use slog::{debug, info, o, trace, warn, Logger};
+use slog::{debug, info, Logger, o, trace, warn};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::runtime::Handle;
@@ -24,8 +25,8 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryM
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::p2p::network_channel::NetworkChannelMsg;
 use crate::{PeerId, ShellCompatibilityVersion};
+use crate::p2p::network_channel::NetworkChannelMsg;
 
 use super::network_channel::{
     NetworkChannelRef, NetworkChannelTopic, PeerBootstrapFailed, PeerMessageReceived,
@@ -40,10 +41,7 @@ static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Fail)]
 pub enum PeerError {
-    #[fail(
-        display = "Unsupported protocol - shell: ({}) is not compatible with peer: ({})",
-        supported_version, incompatible_version
-    )]
+    #[fail(display = "Unsupported protocol - shell: ({}) is not compatible with peer: ({})", supported_version, incompatible_version)]
     UnsupportedProtocol {
         supported_version: String,
         incompatible_version: String,
@@ -193,11 +191,7 @@ pub struct Local {
 }
 
 impl Local {
-    pub fn new(
-        listener_port: u16,
-        identity: Arc<Identity>,
-        version: Arc<ShellCompatibilityVersion>,
-    ) -> Self {
+    pub fn new(listener_port: u16, identity: Arc<Identity>, version: Arc<ShellCompatibilityVersion>) -> Self {
         Local {
             listener_port,
             identity,
@@ -225,15 +219,14 @@ pub struct Peer {
 
 impl Peer {
     /// Create instance of a peer actor.
-    pub fn actor(
-        sys: &impl ActorRefFactory,
-        network_channel: NetworkChannelRef,
-        listener_port: u16,
-        node_identity: Arc<Identity>,
-        version: Arc<ShellCompatibilityVersion>,
-        tokio_executor: Handle,
-        socket_address: &SocketAddr,
-    ) -> Result<PeerRef, CreateError> {
+    pub fn actor(sys: &impl ActorRefFactory,
+                 network_channel: NetworkChannelRef,
+                 listener_port: u16,
+                 node_identity: Arc<Identity>,
+                 version: Arc<ShellCompatibilityVersion>,
+                 tokio_executor: Handle,
+                 socket_address: &SocketAddr) -> Result<PeerRef, CreateError>
+    {
         let info = Local::new(listener_port, node_identity, version);
         let props = Props::new_args::<Peer, _>((
             network_channel,
@@ -386,14 +379,7 @@ impl Receive<SendMessage> for Peer {
 }
 
 /// Output values of the successful bootstrap process
-pub struct BootstrapOutput(
-    pub EncryptedMessageReader,
-    pub EncryptedMessageWriter,
-    pub CryptoboxPublicKeyHash,
-    pub String,
-    pub MetadataMessage,
-    pub NetworkVersion,
-);
+pub struct BootstrapOutput(pub EncryptedMessageReader, pub EncryptedMessageWriter, pub CryptoboxPublicKeyHash, pub String, pub MetadataMessage, pub NetworkVersion);
 
 pub async fn bootstrap(
     msg: Bootstrap,
@@ -493,40 +479,31 @@ pub async fn bootstrap(
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
-    let compatible_network_version =
-        match supported_protocol_version.choose_compatible_version(connection_message.version()) {
-            Ok(compatible_version) => compatible_version,
-            Err(nack_motive) => {
-                // send nack
-                if connection_message
-                    .version()
-                    .supports_nack_with_list_and_motive()
-                {
-                    timeout(
-                        IO_TIMEOUT,
-                        msg_tx.write_message(&AckMessage::Nack(NackInfo::new(nack_motive, &[]))),
-                    )
-                    .await??;
-                } else {
-                    timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::NackV0)).await??;
-                }
 
-                return Err(PeerError::UnsupportedProtocol {
+    let compatible_network_version = match supported_protocol_version.choose_compatible_version(connection_message.version()) {
+        Ok(compatible_version) => compatible_version,
+        Err(nack_motive) => {
+            // send nack
+            if connection_message.version().supports_nack_with_list_and_motive() {
+                timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Nack(NackInfo::new(nack_motive, &[])))).await??;
+            } else {
+                timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::NackV0)).await??;
+            }
+
+            return Err(
+                PeerError::UnsupportedProtocol {
                     supported_version: format!(
                         "{}/distributed_db_versions {:?}/p2p_versions {:?}",
-                        supported_protocol_version.version.chain_name(),
-                        supported_protocol_version.distributed_db_versions,
-                        supported_protocol_version.p2p_versions
+                        supported_protocol_version.version.chain_name(), supported_protocol_version.distributed_db_versions, supported_protocol_version.p2p_versions
                     ),
                     incompatible_version: format!(
                         "{}/distributed_db_version {}/p2p_version {}",
-                        connection_message.version().chain_name(),
-                        connection_message.version().distributed_db_version(),
-                        connection_message.version().p2p_version()
+                        connection_message.version().chain_name(), connection_message.version().distributed_db_version(), connection_message.version().p2p_version()
                     ),
-                });
-            }
-        };
+                }
+            );
+        }
+    };
 
     // send ack
     timeout(IO_TIMEOUT, msg_tx.write_message(&AckMessage::Ack)).await??;
@@ -537,14 +514,7 @@ pub async fn bootstrap(
     match ack_received {
         AckMessage::Ack => {
             debug!(log, "Received ACK");
-            Ok(BootstrapOutput(
-                msg_rx,
-                msg_tx,
-                peer_public_key_hash,
-                peer_id_marker,
-                metadata_received,
-                compatible_network_version,
-            ))
+            Ok(BootstrapOutput(msg_rx, msg_tx, peer_public_key_hash, peer_id_marker, metadata_received, compatible_network_version))
         }
         AckMessage::NackV0 => {
             debug!(log, "Received NACK");
@@ -619,12 +589,8 @@ async fn begin_process_incoming(
     if let Some(tx) = tx_lock.take() {
         let mut socket = rx.unsplit(tx);
         match socket.shutdown().await {
-            Ok(()) => {
-                debug!(log, "Connection shutdown successful"; "socket" => format!("{:?}", socket))
-            }
-            Err(err) => {
-                debug!(log, "Failed to shutdown connection"; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket))
-            }
+            Ok(()) => debug!(log, "Connection shutdown successful"; "socket" => format!("{:?}", socket)),
+            Err(err) => debug!(log, "Failed to shutdown connection"; "err" => format!("{:?}", err), "socket" => format!("{:?}", socket)),
         }
     }
 
