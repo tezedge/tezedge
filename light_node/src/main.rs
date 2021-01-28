@@ -328,23 +328,12 @@ fn block_on_actors(
         )
         .expect("Failed to create mempool prevalidator");
     }
-    // and than open p2p and others
-    let _ = PeerManager::actor(
-        &actor_system,
-        network_channel.clone(),
-        shell_channel.clone(),
-        tokio_runtime.handle().clone(),
-        identity,
-        shell_compatibility_version.clone(),
-        env.p2p.clone(),
-    )
-    .expect("Failed to create peer manager");
     let websocket_handler =
         WebsocketHandler::actor(&actor_system, env.rpc.websocket_address, log.clone())
             .expect("Failed to start websocket actor");
     let _ = Monitor::actor(
         &actor_system,
-        network_channel,
+        network_channel.clone(),
         websocket_handler,
         shell_channel.clone(),
     )
@@ -366,6 +355,21 @@ fn block_on_actors(
         is_sandbox,
     )
     .expect("Failed to create RPC server");
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // and than open p2p and others
+    let _ = PeerManager::actor(
+        &actor_system,
+        network_channel.clone(),
+        shell_channel.clone(),
+        tokio_runtime.handle().clone(),
+        identity,
+        shell_compatibility_version.clone(),
+        env.p2p.clone(),
+    )
+        .expect("Failed to create peer manager");
+
     info!(log, "Actors initialized");
 
     tokio_runtime.block_on(async move {
