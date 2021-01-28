@@ -44,25 +44,26 @@
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::array::TryFromSliceError;
 use std::collections::hash_map::Entry as MapEntry;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryInto;
 use std::hash::Hash;
-use std::sync::Arc;
 use std::time::Instant;
+use std::sync::Arc;
+use std::iter::FromIterator;
+use hex;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
-use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch};
+use failure::{Fail, Error};
 use serde::Deserialize;
 use serde::Serialize;
+use rocksdb::{ColumnFamilyDescriptor, Cache};
 
 use crypto::hash::HashType;
 
-use crate::persistent;
-use crate::persistent::database::RocksDBStats;
-use crate::persistent::BincodeEncoded;
-use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::context_action_storage::{ContextAction, ContextActionStorage};
+use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, default_table_options};
 
 const HASH_LEN: usize = 32;
 
@@ -70,36 +71,46 @@ pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum NodeKind {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum NodeKind {
     NonLeaf,
     Leaf,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
-    node_kind: NodeKind,
-    entry_hash: EntryHash,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub node_kind: NodeKind,
+    pub entry_hash: EntryHash,
 }
 
 // Tree must be an ordered structure for consistent hash in hash_tree
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead
-type Tree = BTreeMap<String, Node>;
+pub type Tree = BTreeMap<String, Node>;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
-    parent_commit_hash: Option<EntryHash>,
-    root_hash: EntryHash,
-    time: u64,
-    author: String,
-    message: String,
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Commit {
+    pub parent_commit_hash: Option<EntryHash>,
+    pub root_hash: EntryHash,
+    pub time: u64,
+    pub author: String,
+    pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
+}
+
+impl Entry {
+    pub fn get_type(&self) -> &'static str {
+        match self {
+            Entry::Blob(_) => "blob",
+            Entry::Tree(_) => "tree",
+            Entry::Commit(_) => "commit",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,7 +137,24 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
+
+impl KeyValueSchema for MerkleStorage {
+    // keys is hash of Entry
+    type Key = EntryHash;
+    // Entry (serialized)
+    type Value = Vec<u8>;
+
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let cf_opts = default_table_options(cache);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "merkle_storage"
+    }
+}
 
 pub type RefCnt = usize;
 
@@ -134,7 +162,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: Arc<MerkleStorageKV>,
+    db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -142,6 +170,7 @@ pub struct MerkleStorage {
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
     perf_stats: MerklePerfStats,
+    block_latencies: BlockLatencies,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
 }
@@ -149,12 +178,14 @@ pub struct MerkleStorage {
 #[derive(Debug, Fail)]
 pub enum MerkleError {
     /// External libs errors
-    #[fail(display = "RocksDB error: {:?}", error)]
-    DBError {
-        error: persistent::database::DBError,
-    },
+    #[fail(display = "KVStore error: {:?}", error)]
+    DBError { error: StorageBackendError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
+    #[fail(display = "Backend error: {:?}", error)]
+    StorageBackendError {
+        error: StorageBackendError,
+    },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -185,11 +216,12 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
-        MerkleError::DBError { error }
+impl From<StorageBackendError> for MerkleError {
+    fn from(error: StorageBackendError) -> Self {
+        MerkleError::StorageBackendError { error }
     }
 }
+
 
 impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self {
@@ -228,6 +260,35 @@ impl Default for OperationLatencies {
     }
 }
 
+/// Block application latencies
+#[derive(Serialize, Default, Debug, Clone)]
+pub struct BlockLatencies {
+    latencies: Vec<u64>,
+    current: u64,
+}
+
+impl BlockLatencies {
+    fn new() -> Self {
+        Default::default()
+    }
+
+    fn update(&mut self, latency: u64) {
+        self.current += latency;
+    }
+
+    fn end_block(&mut self) {
+        self.latencies.push(self.current);
+        self.current = 0;
+    }
+
+    pub fn get(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.latencies.len()
+            .checked_sub(offset_from_last_applied + 1)
+            .and_then(|index| self.latencies.get(index))
+            .map(|x| *x)
+    }
+}
+
 // Latency statistics indexed by operation name (e.g. "Set")
 pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
 
@@ -242,28 +303,11 @@ pub struct MerklePerfStats {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
-    rocksdb_stats: RocksDBStats,
     pub perf_stats: MerklePerfStats,
+    pub kv_store_stats: StorageBackendStats,
 }
 
 impl BincodeEncoded for EntryHash {}
-
-impl KeyValueSchema for MerkleStorage {
-    // keys is hash of Entry
-    type Key = EntryHash;
-    // Entry (serialized)
-    type Value = Vec<u8>;
-
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
-        "merkle_storage"
-    }
-}
 
 // Tree in String form needed for JSON RPCs
 pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
@@ -291,12 +335,12 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
-fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
+pub fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
     tree.iter().for_each(|(k, v)| {
-        hasher.update(encode_irmin_node_kind(&v.node_kind));
+        hasher.update(&encode_irmin_node_kind(&v.node_kind));
         hasher.update(&[k.len() as u8]);
         hasher.update(&k.clone().into_bytes());
         hasher.update(&(HASH_LEN as u64).to_be_bytes());
@@ -309,7 +353,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 // Calculates hash of BLOB
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
-fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
+pub fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
@@ -325,7 +369,7 @@ fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
 // <time in epoch format (8bytes)
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
-fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
+pub fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
@@ -346,8 +390,76 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
+pub fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
+    match entry {
+        Entry::Commit(commit) => hash_commit(&commit),
+        Entry::Tree(tree) => hash_tree(&tree),
+        Entry::Blob(blob) => hash_blob(blob),
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum CheckEntryHashError {
+    #[fail(display = "MerkleError error: {:?}", error)]
+    MerkleError { error: MerkleError },
+    #[fail(display = "Calculated hash for {} not matching expected hash: expected {:?}, calculated {:?}", entry_type, calculated, expected)]
+    InvalidHashError { entry_type: String, calculated: String, expected: String }
+}
+
+impl From<MerkleError> for CheckEntryHashError {
+    fn from(error: MerkleError) -> Self { CheckEntryHashError::MerkleError { error } }
+}
+
+/// Recursively check if entry hash is valid
+pub fn check_commit_hashes<I>(storage: &MerkleStorage, commits: I) -> Result<(), CheckEntryHashError>
+where I: IntoIterator<Item = EntryHash> {
+    let mut entries = Vec::from_iter(commits);
+    let mut checked = HashSet::new();
+
+    loop {
+        let entry_hash = match entries.pop() {
+            Some(hash) => hash,
+            None => break,
+        };
+        if checked.contains(&entry_hash) {
+            continue;
+        }
+
+        let entry = storage.get_entry(&entry_hash)?;
+        let entry_type = entry.get_type();
+
+        let calculated_hash = match entry {
+            Entry::Blob(blob) => { hash_blob(&blob)? }
+            Entry::Tree(tree) => {
+                let hash = hash_tree(&tree)?;
+                for (_, node) in tree.into_iter() {
+                    entries.push(node.entry_hash);
+                }
+                hash
+            }
+            Entry::Commit(commit) => {
+                let hash = hash_commit(&commit)?;
+                entries.push(commit.root_hash);
+                hash
+            }
+        };
+
+        if &calculated_hash != &entry_hash {
+            return Err(CheckEntryHashError::InvalidHashError {
+                entry_type: entry_type.to_string(),
+                expected: HashType::ContextHash.hash_to_b58check(&entry_hash),
+                calculated: HashType::ContextHash.hash_to_b58check(&calculated_hash),
+            });
+        }
+
+        checked.insert(entry_hash);
+    }
+
+    Ok(())
+}
+
 impl MerkleStorage {
-    pub fn new(db: Arc<MerkleStorageKV>) -> Self {
+    pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
             staged: Vec::new(),
@@ -359,8 +471,73 @@ impl MerkleStorage {
                 global: HashMap::new(),
                 perpath: HashMap::new(),
             },
+            block_latencies: Default::default(),
             actions: Arc::new(Vec::new()),
         }
+    }
+
+    pub fn is_persisted(&self) -> bool {
+        self.db.is_persisted()
+    }
+
+    /// if `MerkleStorage` is not persisted, restore it from `ContextActionStorage`.
+    /// TODO: modify general `Error` with `MerkleError`
+    pub fn apply_context_actions_from_store(&mut self, ctx_action_storage: &ContextActionStorage) -> Result<(), Error> {
+        let it = ctx_action_storage.get_by_mut_action_types()?
+            .into_iter()
+            .map(|x| x.action);
+        self.apply_context_actions(it)?;
+        Ok(())
+    }
+
+    pub fn apply_context_actions<I>(&mut self, it: I) -> Result<(), MerkleError>
+    where I: IntoIterator<Item = ContextAction>,
+    {
+        for context_action in it {
+            self.apply_context_action(&context_action)?;
+        }
+        Ok(())
+    }
+
+    pub fn apply_context_action(&mut self, context_action: &ContextAction) -> Result<(), MerkleError> {
+        match context_action {
+            ContextAction::Set { key, value, .. } => {
+                self.set(&key, &value)?;
+            }
+            ContextAction::Copy { to_key, from_key, .. } => {
+                self.copy(&from_key, &to_key)?;
+            }
+            ContextAction::Delete { key, .. } => {
+                self.delete(&key)?;
+            }
+            ContextAction::RemoveRecursively { key, .. } => {
+                self.delete(&key)?;
+            }
+            ContextAction::Commit { author, message, date, new_context_hash, .. } => {
+                let commit_hash = self.commit(*date as u64, author.to_string(), message.to_string())?;
+                assert_eq!(
+                    &commit_hash,
+                    &new_context_hash[..],
+                    "Invalid commit_hash detected while applying context action to MerkleStorage, expected: {}, but was: {}",
+                    HashType::ContextHash.hash_to_b58check(&new_context_hash),
+                    HashType::ContextHash.hash_to_b58check(&commit_hash),
+                );
+            }
+            ContextAction::Checkout { context_hash, .. } => {
+                self.checkout(context_hash.as_slice().try_into()?)?;
+            }
+            // ContextAction::Get { key, value, .. } => {
+            //     assert_eq!(&self.get(key)?, value);
+            // }
+            // ContextAction::Mem { key, value, .. } => {
+            //     assert_eq!(&self.mem(key)?, value);
+            // }
+            // ContextAction::DirMem { key, value, .. } => {
+            //     assert_eq!(&self.dirmem(key)?, value);
+            // }
+            _ => {}
+        };
+        Ok(())
     }
 
     /// Get value from current staged root
@@ -701,15 +878,22 @@ impl MerkleStorage {
         };
         let entry = Entry::Commit(new_commit.clone());
 
-        self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone())?;
+        let new_commit_hash = hash_commit(&new_commit)?;
+        self.put_to_staging_area(&new_commit_hash, entry.clone())?;
         self.persist_staged_entry_to_db(&entry)?;
         self.staged = Vec::new();
         self.staged_indices = HashMap::new();
-        let last_commit_hash = hash_commit(&new_commit)?;
-        self.last_commit_hash = Some(last_commit_hash);
+        self.last_commit_hash = Some(new_commit_hash.clone());
 
         self.update_execution_stats("Commit".to_string(), None, &instant);
-        Ok(last_commit_hash)
+        Ok(new_commit_hash)
+    }
+
+    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        let instant = Instant::now();
+        self.db.start_new_cycle(self.last_commit_hash.clone());
+        self.update_execution_stats("GC".to_string(), None, &instant);
+        Ok(())
     }
 
     /// Set key/val to the staging area.
@@ -1138,59 +1322,36 @@ impl MerkleStorage {
         Ok(Some(idx))
     }
 
-    /// Persists an entry and its descendants from staged area to database on disk.
-    fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
-
-        // build list of entries to be persisted
-        self.get_entries_recursively(entry, &mut batch)?;
-
-        // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
-
-        Ok(())
-    }
-
-    /// Builds vector of entries to be persisted to DB, recursively
-    fn get_entries_recursively(
-        &self,
-        entry: &Entry,
-        batch: &mut WriteBatch,
-    ) -> Result<(), MerkleError> {
-        // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+    fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
+        let entry_hash = hash_entry(entry)?;
+        self.db.put(
+            entry_hash.clone(),
+            bincode::serialize(entry)?,
+        )?;
+        self.db.mark_reused(entry_hash);
 
         match entry {
             Entry::Blob(_) => Ok(()),
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
-                tree.iter()
-                    .map(
-                        |(_, child_node)| match self.staged_get(&child_node.entry_hash) {
-                            None => Ok(()),
-                            Some(entry) => self.get_entries_recursively(entry, batch),
-                        },
-                    )
-                    .find_map(|res| match res {
-                        Ok(_) => None,
-                        Err(err) => Some(Err(err)),
-                    })
-                    .unwrap_or(Ok(()))
+                for (_, child_node) in tree.iter() {
+                    let node_entry = self.staged_get(&child_node.entry_hash).cloned();
+                    match node_entry {
+                        // if child node isn't in staging area it means it
+                        // hasn't changed from last commit and we should reuse it.
+                        None => self.db.mark_reused(child_node.entry_hash),
+                        Some(entry) => self.persist_staged_entry_to_db(&entry)?,
+                    }
+                }
+                Ok(())
             }
-            Entry::Commit(commit) => match self.get_entry(&commit.root_hash) {
-                Err(err) => Err(err),
-                Ok(entry) => self.get_entries_recursively(&entry, batch),
-            },
-        }
-    }
-
-    fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
-        match entry {
-            Entry::Commit(commit) => hash_commit(&commit),
-            Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => hash_blob(blob),
+            Entry::Commit(commit) => {
+                match self.get_entry(&commit.root_hash) {
+                    Err(err) => Err(err),
+                    Ok(entry) => self.persist_staged_entry_to_db(&entry),
+                }
+            }
         }
     }
 
@@ -1234,15 +1395,7 @@ impl MerkleStorage {
     /// Get entry from staging area or look up in DB if not found
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.staged_get(hash) {
-            None => {
-                let entry_bytes = self.db.get(hash)?;
-                match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound {
-                        hash: HashType::ContextHash.hash_to_b58check(hash),
-                    }),
-                    Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-                }
-            }
+            None => Ok(self.get_entry_db(hash)?),
             Some(entry) => Ok(entry.clone()),
         }
     }
@@ -1310,8 +1463,6 @@ impl MerkleStorage {
 
     /// Get various merkle storage statistics
     pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let db_stats = self.db.get_mem_use_stats()?;
-
         // calculate average values for global stats
         let mut perf = self.perf_stats.clone();
         for (_, stat) in perf.global.iter_mut() {
@@ -1332,9 +1483,13 @@ impl MerkleStorage {
             }
         }
         Ok(MerkleStorageStats {
-            rocksdb_stats: db_stats,
             perf_stats: perf,
+            kv_store_stats: self.db.get_total_stats(),
         })
+    }
+
+    pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.block_latencies.get(offset_from_last_applied)
     }
 
     /// Update global and per-path execution stats. Pass Instant with operation execution time
@@ -1345,7 +1500,14 @@ impl MerkleStorage {
         instant: &Instant,
     ) {
         // stop timer and get duration
-        let exec_time: f64 = instant.elapsed().as_nanos() as f64;
+        let exec_time_nanos = instant.elapsed().as_nanos();
+        let exec_time: f64 = exec_time_nanos as f64;
+
+        self.block_latencies.update(exec_time_nanos as u64);
+        // commit signifies end of the block
+        if &op == "Commit" {
+            self.block_latencies.end_block();
+        }
 
         // collect global stats
         let entry = self
@@ -1393,18 +1555,27 @@ impl MerkleStorage {
             }
         }
     }
+
+    /// Blocks until gc finishes. Useful for testing.
+    pub fn wait_for_gc_finish(&self) {
+        self.db.wait_for_gc_finish();
+    }
 }
 
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    // use hex;
     use assert_json_diff::assert_json_eq;
-    use rocksdb::{Options, DB};
+    use std::time::Duration;
+    use std::sync::RwLock;
+    use std::ops::Deref;
     use std::path::{Path, PathBuf};
-    use std::{env, fs};
+    use rocksdb::{DB, Cache, Options};
+    use std::{fs, env};
 
+    use crate::context_key;
     use super::*;
+    use crate::backend::{RocksDBBackend, InMemoryBackend, SledBackend};
 
     /// Open DB at path, used in tests
     fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
@@ -1424,12 +1595,21 @@ mod tests {
         out_dir_path(db_name)
     }
 
-    fn get_db(db_name: &str, cache: &Cache) -> DB {
-        open_db(get_db_name(db_name), &cache)
+    fn get_db(db_name: &str, cache: &Cache) -> RocksDBBackend {
+        let rocks = open_db(get_db_name(db_name), &cache);
+        RocksDBBackend::new(Arc::new(rocks), MerkleStorage::name())
     }
 
     fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
-        MerkleStorage::new(Arc::new(get_db(dn_name, &cache)))
+        MerkleStorage::new(Box::new(get_db(dn_name, &cache)))
+    }
+
+    fn get_mem_storage(db : Arc<RwLock<HashMap<EntryHash, ContextValue>>>) -> MerkleStorage {
+        MerkleStorage::new(Box::new(InMemoryBackend::new(db)))
+    }
+
+    fn get_sled_storage(db : sled::Tree) -> MerkleStorage {
+        MerkleStorage::new(Box::new(SledBackend::new(db)))
     }
 
     fn clean_db(db_name: &str) {
@@ -1437,10 +1617,13 @@ mod tests {
         let _ = fs::remove_dir_all(get_db_name(db_name));
     }
 
+    fn empty_mem_storage() -> MerkleStorage {
+        get_mem_storage(Arc::new(RwLock::new(HashMap::new())))
+    }
+
     #[test]
     fn test_duplicate_entry_in_staging() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_duplicate_entry", &cache);
+        let mut storage = empty_mem_storage();
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1665,8 +1848,13 @@ mod tests {
 
     #[test]
     fn test_tree_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_tree_hash", &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => { panic!()}
+        };
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1689,8 +1877,14 @@ mod tests {
 
     #[test]
     fn test_commit_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_commit_hash", &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
+
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1716,10 +1910,13 @@ mod tests {
 
     #[test]
     fn test_examples_from_article_about_storage() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db_name = "test_examples_from_article_about_storage";
-        clean_db(db_name);
-        let mut storage = get_storage(db_name, &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
         storage.set(&vec!["a".to_string()], &vec![1]);
         storage.apply_actions_to_staging_area();
@@ -1765,8 +1962,13 @@ mod tests {
 
     #[test]
     fn test_multiple_commit_hash() {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_multiple_commit_hash", &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -1783,10 +1985,25 @@ mod tests {
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
     }
 
+    // #[test]
+    // fn test_empty_commit_should_be_rejeted() {
+    //     let mut storage = get_empty_storage();
+    //     storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+
+    //     storage.set(&context_key!("a/b/c"), &vec![97]);
+    //     let commit = storage.commit(1, "Tezos".to_string(), "1".to_string());
+    //     let empty_commit = storage.commit(2, "Tezos".to_string(), "2".to_string());
+
+    //     assert_eq!(commit.unwrap(), empty_commit.unwrap());
+    // }
+
     #[test]
     fn test_get() {
-        let db_name = "ms_get_test";
-        clean_db(db_name);
+
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+
 
         let commit1;
         let commit2;
@@ -1797,8 +2014,11 @@ mod tests {
         let key_d: &ContextKey = &vec!["d".to_string()];
 
         {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
 
             let res = storage.get(&vec![]);
             assert_eq!(res.unwrap().is_empty(), true);
@@ -1822,8 +2042,11 @@ mod tests {
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -1838,14 +2061,17 @@ mod tests {
 
     #[test]
     fn test_mem() {
-        let db_name = "ms_test_mem";
-        clean_db(db_name);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
         storage.set(key_abc, &vec![1u8, 2u8]);
@@ -1861,15 +2087,18 @@ mod tests {
 
     #[test]
     fn test_dirmem() {
-        let db_name = "ms_test_dirmem";
-        clean_db(db_name);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
         let key_a: &ContextKey = &vec!["a".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -1885,11 +2114,14 @@ mod tests {
 
     #[test]
     fn test_copy() {
-        let db_name = "ms_test_copy";
-        clean_db(db_name);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -1905,11 +2137,13 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let db_name = "ms_test_delete";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -1922,11 +2156,13 @@ mod tests {
 
     #[test]
     fn test_deleted_entry_available() {
-        let db_name = "ms_test_deleted_entry_available";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1938,11 +2174,13 @@ mod tests {
 
     #[test]
     fn test_delete_in_separate_commit() {
-        let db_name = "ms_test_delete_in_separate_commit";
-        clean_db(db_name);
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => empty_mem_storage(),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -1957,8 +2195,8 @@ mod tests {
 
     #[test]
     fn test_checkout() {
-        let db_name = "ms_test_checkout";
-        clean_db(db_name);
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
 
         let commit1;
         let commit2;
@@ -1966,8 +2204,12 @@ mod tests {
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
         {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
             storage.set(key_abc, &vec![1u8]).unwrap();
             storage.set(key_abx, &vec![2u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1977,8 +2219,13 @@ mod tests {
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
@@ -1992,28 +2239,32 @@ mod tests {
 
     #[test]
     fn test_persistence_over_reopens() {
-        let db_name = "ms_test_persistence_over_reopens";
-        {
-            clean_db(db_name);
-        }
-
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
         {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let mut storage = match backend.as_str() {
+                "mem" => get_mem_storage(db.clone()),
+                "sled" => get_sled_storage(sled.deref().clone()),
+                _ => {panic!()}
+            };
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
             storage.set(key_abc, &vec![2_u8]).unwrap();
             storage.set(key_abx, &vec![3_u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db.clone()),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    // Test a DB error by writing into a read-only database.
+    /*Test a DB error by writing into a read-only database.
     #[test]
     fn test_db_error() {
         let db_name = "ms_test_db_error";
@@ -2024,20 +2275,19 @@ mod tests {
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(db));
+        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(Arc::new(db),MerkleStorage::name())));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
 
         assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
-    }
+    }*/
 
     // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
-        let db_name = "ms_test_get_context_tree_by_prefix";
-        {
-            clean_db(db_name);
-        }
+        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let db = Arc::new(RwLock::new(HashMap::new()));
+        let sled  = sled::Config::new().temporary(true).open().unwrap();
 
         let all_json = serde_json::json!(
             {
@@ -2079,8 +2329,11 @@ mod tests {
             }
         );
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = match backend.as_str() {
+            "mem" => get_mem_storage(db.clone()),
+            "sled" => get_sled_storage(sled.deref().clone()),
+            _ => {panic!()}
+        };
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -2183,4 +2436,24 @@ mod tests {
             .unwrap()
         );
     }
+
+    // TODO: use mock_instant crate or something like and enable this unit test
+    // #[test]
+    // fn test_block_latenices() {
+    //     let mut storage = get_empty_storage();
+
+    //     let t = |milis: u64| Instant::now() - Duration::from_nanos(milis * 1000);
+
+    //     storage.update_execution_stats("Get".to_string(), None, &t(10));
+    //     storage.update_execution_stats("Set".to_string(), None, &t(20));
+    //     storage.update_execution_stats("Commit".to_string(), None, &t(30));
+
+    //     assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 60);
+
+    //     storage.update_execution_stats("Set".to_string(), None, &t(6));
+    //     storage.update_execution_stats("Commit".to_string(), None, &t(60));
+
+    //     assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 66);
+    //     assert_eq!(storage.get_block_latency(1).unwrap() / 1000, 60);
+    // }
 }

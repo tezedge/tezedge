@@ -30,8 +30,8 @@ pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{
     ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
 };
+pub use crate::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
-use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
@@ -55,6 +55,8 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
+pub mod storage_backend;
+pub mod backend;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -506,6 +508,7 @@ pub mod tests_common {
                 ],
                 &cfg,
             )?;
+            // let sled_db = sled::open(&path).unwrap();
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {

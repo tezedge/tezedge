@@ -16,16 +16,27 @@ itertools = "0.10"
 num_cpus = "1.13"
 rocksdb = "0.15"
 serde = { version = "1.0", features = ["derive", "rc"] }
-slog = "2.7"
+slog = "2.5"
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+sled = "0.34.6"
+# used in scripts/ and tests/
+rlimit = "0.4.0"
+# used in scripts/
+snap = "1.0.3"
+clap = "2.33.3"
+bytes = "1.0.1"
 
 [[bench]]
 name = "predecessor_benchmarks"
 harness = false
+
+[[bin]]
+name = "merkle_storage_stats"
+path = "scripts/merkle_storage_stats.rs"
 
 [dev-dependencies]
 assert-json-diff = "1.1"
