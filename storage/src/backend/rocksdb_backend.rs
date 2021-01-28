@@ -84,8 +84,12 @@ impl StorageBackend for RocksDBBackend {
         self.get(key).map(|v| v.is_some())
     }
 
+    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError> {
+        unimplemented!()
+    }
+
     fn mark_reused(&mut self, key: EntryHash) { }
-    fn start_new_cycle(&mut self) { }
+    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) { }
     fn wait_for_gc_finish(&self) { }
     fn get_stats(&self) -> Vec<StorageBackendStats> {
       unimplemented!()

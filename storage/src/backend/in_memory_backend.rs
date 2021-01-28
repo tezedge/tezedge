@@ -1,5 +1,7 @@
 use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
+use rayon::prelude::*;
+
 use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
 use crate::merkle_storage::{EntryHash, ContextValue};
 
@@ -67,8 +69,26 @@ impl StorageBackend for InMemoryBackend {
         Ok(r.contains_key(key))
     }
 
+    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError> {
+        let garbage_keys: Vec<_> = self.inner.read().unwrap()
+            .par_iter().filter_map(|(k, v)| {
+                if !pred.contains(&k) {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut writer = self.inner.write().unwrap();
+        for k in garbage_keys {
+            writer.remove(&k);
+        }
+        Ok(())
+    }
+
     fn mark_reused(&mut self, key: EntryHash) { }
-    fn start_new_cycle(&mut self) { }
+    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) { }
     fn wait_for_gc_finish(&self) { }
     fn get_stats(&self) -> Vec<StorageBackendStats> {
       unimplemented!()

@@ -335,7 +335,7 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
-fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
+pub fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
@@ -353,7 +353,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 // Calculates hash of BLOB
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
-fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
+pub fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
@@ -369,7 +369,7 @@ fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
 // <time in epoch format (8bytes)
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
-fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
+pub fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
@@ -390,7 +390,7 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
-fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
+pub fn hash_entry(entry: &Entry) -> Result<EntryHash, MerkleError> {
     match entry {
         Entry::Commit(commit) => hash_commit(&commit),
         Entry::Tree(tree) => hash_tree(&tree),
@@ -890,7 +890,9 @@ impl MerkleStorage {
     }
 
     pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
-        self.db.start_new_cycle();
+        // let instant = Instant::now();
+        self.db.start_new_cycle(self.last_commit_hash.clone());
+        // self.update_execution_stats("GC".to_string(), None, &instant);
         Ok(())
     }
 

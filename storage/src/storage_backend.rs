@@ -21,6 +21,8 @@ pub enum StorageBackendError {
     SledDBError { error: sled::Error },
     #[fail(display = "Guard Poison {} ", error)]
     GuardPoison { error: String },
+    #[fail(display = "Serialization error: {:?}", error)]
+    SerializationError { error: bincode::Error },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -32,6 +34,12 @@ impl From<rocksdb::Error> for StorageBackendError {
 impl From<sled::Error> for StorageBackendError {
     fn from(error: sled::Error) -> Self {
         StorageBackendError::SledDBError { error }
+    }
+}
+
+impl From<bincode::Error> for StorageBackendError {
+    fn from(error: bincode::Error) -> Self {
+        StorageBackendError::SerializationError { error }
     }
 }
 
@@ -53,8 +61,9 @@ pub trait StorageBackend: Send + Sync {
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
+    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError>;
     fn mark_reused(&mut self, key: EntryHash);
-    fn start_new_cycle(&mut self);
+    fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>);
     fn wait_for_gc_finish(&self);
     fn get_stats(&self) -> Vec<StorageBackendStats>;
 

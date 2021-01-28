@@ -151,7 +151,11 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
-    fn start_new_cycle(&mut self) {
+    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
+        unimplemented!()
+    }
+
+    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {
         self.stores_stats.lock().unwrap().push(
             mem::take(&mut self.current_stats)
         );
