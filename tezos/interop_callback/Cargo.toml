@@ -8,6 +8,8 @@ edition = "2018"
 crate-type = ["dylib", "rlib"]
 
 [dependencies]
-ocaml-interop = { version = "0.4.4", features = ["docs-rs"] }
+# patched version of v.0.4.4 - once new version of ocaml interop
+# is integrated git reference should be no longer used
+ocaml-interop = { git="https://github.com/simplestaking/ocaml-interop/", branch="v0.4.4_saddr_fix"}
 # local dependencies
 tezos_context = { path = "../context" }
