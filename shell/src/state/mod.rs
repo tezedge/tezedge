@@ -18,7 +18,6 @@ pub mod peer_state;
 /// lowest value means as-soon-as-possible
 pub type HistoryOrderPriority = usize;
 
-#[derive(Clone, Debug)]
 pub struct MissingBlock {
     pub block_hash: BlockHash,
     pub history_order_priority: HistoryOrderPriority,
@@ -80,7 +79,7 @@ impl Ord for MissingBlock {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct MissingOperations {
     block_hash: BlockHash,
     pub(crate) validation_passes: HashSet<i8>,

@@ -351,13 +351,6 @@ impl ChainManager {
             ..
         } = self;
 
-        // at first we need to wait for at least genesis
-        if current_head.local.is_none() {
-            // this means that we are not prepare to process anything
-            // we need to have at least genesis
-            return;
-        }
-
         // schedule/queue missing BLOCKS for every peer from their own: missing -> queued queues
         PeerState::schedule_missing_blocks(peers, |peer, drain_count, _| {
             peer.missing_blocks
@@ -540,8 +533,7 @@ impl ChainManager {
                                 }
                                 PeerMessage::BlockHeader(message) => {
                                     let block_header_with_hash =
-                                        BlockHeaderWithHash::new(message.block_header().clone())
-                                            .unwrap();
+                                        BlockHeaderWithHash::new(message.block_header().clone())?;
                                     match peer
                                         .queued_block_headers
                                         .remove(&block_header_with_hash.hash)

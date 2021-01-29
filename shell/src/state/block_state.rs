@@ -472,7 +472,7 @@ impl BlockchainState {
             .unwrap_or(0);
 
         // schedule predecessor
-        if self
+        if !self
             .block_meta_storage
             .contains(block_header.header.predecessor())?
         {
@@ -641,7 +641,7 @@ impl BlockchainState {
             let distance = step.next();
 
             // need to find predecesor at requested distance
-            match block_meta_storage.find_block_at_distance(current_block_hash, distance)? {
+            match block_meta_storage.find_block_at_distance(current_block_hash.clone(), distance)? {
                 Some(predecessor) => {
                     // add to history
                     history.push(predecessor.clone());
@@ -658,7 +658,10 @@ impl BlockchainState {
                                 history.push(caboose.into());
                             }
                         } else {
-                            history.push(caboose.into());
+                            // this covers genesis case, when we dont want to add genesis to history for genesis block
+                            if !current_block_hash.eq(caboose.block_hash()) {
+                                history.push(caboose.into());
+                            }
                         }
                     }
                     break;
@@ -858,9 +861,24 @@ mod tests {
             &blocksdb,
             BlockchainState::compute_history(
                 &block_meta_storage,
-                caboose,
+                caboose.clone(),
                 &blocksdb.block_hash("C62"),
                 29,
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
+            )?,
+        );
+
+        data::assert_history(
+            &[],
+            &blocksdb,
+            BlockchainState::compute_history(
+                &block_meta_storage,
+                caboose,
+                &blocksdb.block_hash("Genesis"),
+                5,
                 &Seed::new(
                     &data::generate_key_string('s'),
                     &data::generate_key_string('r'),
