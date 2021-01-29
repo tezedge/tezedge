@@ -304,7 +304,7 @@ fn block_on_actors(
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
-        init_storage_data.chain_id.clone(),
+        init_storage_data.clone(),
         is_sandbox,
         current_mempool_state_storage.clone(),
         env.p2p.disable_mempool,

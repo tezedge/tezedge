@@ -67,13 +67,14 @@ pub struct BlockchainState {
     pub(crate) missing_operations_for_blocks: MissingBlockData<MissingOperations>,
 
     chain_id: Arc<ChainId>,
+    chain_genesis_block_hash: Arc<BlockHash>,
 }
 
 impl BlockchainState {
     const MISSING_BLOCK_MAX_RETRIES: u8 = 8;
     const MISSING_OPERATIONS_MAX_RETRIES: u8 = 8;
 
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>) -> Self {
+    pub fn new(persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>, chain_genesis_block_hash: Arc<BlockHash>) -> Self {
         BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
@@ -83,6 +84,7 @@ impl BlockchainState {
             missing_blocks: MissingBlockData::default(),
             missing_operations_for_blocks: MissingBlockData::default(),
             chain_id,
+            chain_genesis_block_hash,
         }
     }
 
@@ -410,7 +412,14 @@ impl BlockchainState {
                     HeadResult::BranchSwitch
                 }
             }
-            None => HeadResult::HeadIncrement,
+            None => {
+                // we check, if new head is genesis
+                if self.chain_genesis_block_hash.as_ref().eq(&potential_new_head.hash) {
+                    HeadResult::GenesisInitialized
+                } else {
+                    HeadResult::HeadIncrement
+                }
+            },
         };
 
         // this will be new head
@@ -664,6 +673,7 @@ impl BlockchainState {
 pub enum HeadResult {
     BranchSwitch,
     HeadIncrement,
+    GenesisInitialized,
 }
 
 impl fmt::Display for HeadResult {
@@ -671,6 +681,7 @@ impl fmt::Display for HeadResult {
         match *self {
             HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
             HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
+            HeadResult::GenesisInitialized => write!(f, "GenesisInitialized"),
         }
     }
 }

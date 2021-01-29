@@ -27,11 +27,7 @@ use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, Net
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::mempool_storage::MempoolOperationType;
 use storage::persistent::PersistentStorage;
-use storage::{
-    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage,
-    OperationsStorageReader, StorageError,
-};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError, StorageInitInfo};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -307,7 +303,7 @@ impl ChainManager {
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
-        chain_id: ChainId,
+        init_storage_data: StorageInitInfo,
         is_sandbox: bool,
         current_mempool_state: CurrentMempoolStateStorageRef,
         p2p_disable_mempool: bool,
@@ -322,7 +318,7 @@ impl ChainManager {
                 shell_channel,
                 persistent_storage,
                 tezos_readonly_prevalidation_api,
-                Arc::new(chain_id),
+                init_storage_data,
                 is_sandbox,
                 current_mempool_state,
                 p2p_disable_mempool,
@@ -1364,6 +1360,7 @@ impl ChainManager {
                             false,
                         );
                     }
+                    HeadResult::GenesisInitialized => (/* doing nothing, we dont advertise genesis */),
                 }
             }
         }
@@ -1604,7 +1601,7 @@ impl
         ShellChannelRef,
         PersistentStorage,
         Arc<TezosApiConnectionPool>,
-        Arc<ChainId>,
+        StorageInitInfo,
         bool,
         CurrentMempoolStateStorageRef,
         bool,
@@ -1619,7 +1616,7 @@ impl
             shell_channel,
             persistent_storage,
             tezos_readonly_prevalidation_api,
-            chain_id,
+            init_storage_data,
             is_sandbox,
             current_mempool_state,
             p2p_disable_mempool,
@@ -1631,7 +1628,7 @@ impl
             ShellChannelRef,
             PersistentStorage,
             Arc<TezosApiConnectionPool>,
-            Arc<ChainId>,
+            StorageInitInfo,
             bool,
             CurrentMempoolStateStorageRef,
             bool,
@@ -1648,7 +1645,11 @@ impl
             chain_meta_storage: Box::new(ChainMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
-            chain_state: BlockchainState::new(&persistent_storage, chain_id.clone()),
+            chain_state: BlockchainState::new(
+                &persistent_storage,
+                Arc::new(init_storage_data.chain_id),
+                Arc::new(init_storage_data.genesis_block_header_hash),
+            ),
             peers: HashMap::new(),
             current_head: CurrentHead {
                 local: None,
@@ -2174,17 +2175,19 @@ pub mod tests {
             log.clone(),
         ));
 
+        let init_storage_data = StorageInitInfo {
+            chain_id: chain_id.clone(),
+            genesis_block_header_hash: tezos_env.genesis_header_hash()?,
+            patch_context: None,
+        };
+
         // chain feeder mock
         let block_applier = ChainFeeder::actor(
             &actor_system,
             shell_channel.clone(),
             storage.storage().clone(),
             pool.clone(),
-            StorageInitInfo {
-                chain_id: chain_id.clone(),
-                genesis_block_header_hash: tezos_env.genesis_header_hash()?,
-                patch_context: None,
-            },
+            init_storage_data.clone(),
             tezos_env.clone(),
             log.clone(),
         )?;
@@ -2196,7 +2199,7 @@ pub mod tests {
             shell_channel.clone(),
             storage.storage().clone(),
             pool,
-            Arc::new(chain_id),
+            init_storage_data,
             false,
             init_mempool_state_storage(),
             false,
