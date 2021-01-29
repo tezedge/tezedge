@@ -10,10 +10,20 @@ use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::deploy::DeployMonitor;
 use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose};
-use crate::info::InfoMonitor;
+use crate::monitors::deploy::DeployMonitor;
+use crate::monitors::info::InfoMonitor;
 use crate::slack::SlackServer;
+
+pub mod deploy;
+pub mod info;
+
+// TODO: get this info from docker (shiplift needs to implement docker volume inspect)
+// path to the volumes
+pub const TEZEDGE_VOLUME_PATH: &'static str =
+    "/var/lib/docker/volumes/deploy_rust-shared-data/_data";
+pub const OCAML_VOLUME_PATH: &'static str =
+    "/var/lib/docker/volumes/deploy_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
     slack: SlackServer,

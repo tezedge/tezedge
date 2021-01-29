@@ -1,5 +1,8 @@
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
+USER root
+RUN apt-get update && apt-get install -y libssl-dev
+
 # Checkout and compile tezedge source code
 ARG tezedge_git="https://github.com/simplestaking/tezedge.git"
 ARG rust_toolchain="nightly-2020-12-31"
