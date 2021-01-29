@@ -55,7 +55,7 @@ impl DeployMonitor {
                     .send_message("Updating tezedge node docker image")
                     .await?;
                 info!(self.log, "Updating docker image...");
-                shutdown_and_update().await;
+                shutdown_and_update(self.log.clone()).await;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");
@@ -67,7 +67,7 @@ impl DeployMonitor {
                 .await?;
 
             self.send_log_dump().await?;
-            restart_stack().await;
+            restart_stack(self.log.clone()).await;
         };
 
         Ok(())
