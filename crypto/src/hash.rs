@@ -77,10 +77,12 @@ macro_rules! define_hash {
             }
 
             pub fn to_base58_check(&self) -> String {
-                // error is reported only if data lenght mismatches type size
+                // TODO: Fixing TE-373 will allow to get rid of this `unreachable`
                 HashType::$name
                     .hash_to_b58check(&self.0)
-                    .unwrap_or_else(|_| unreachable!())
+                    .unwrap_or_else(|_| {
+                        unreachable!("Typed hash should always be representable in base58")
+                    })
             }
         }
 
@@ -272,7 +274,8 @@ pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
 #[inline]
 pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> ChainId {
     let result = crate::blake2b::digest_256(&block_hash.0);
-    ChainId::from_bytes(&result[0..4]).unwrap_or_else(|_| unreachable!())
+    ChainId::from_bytes(&result[0..HashType::ChainId.size()])
+        .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size"))
 }
 
 #[cfg(test)]
