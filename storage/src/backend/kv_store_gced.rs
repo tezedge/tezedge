@@ -285,9 +285,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
 
         if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
-            reused_keys.drain(..1);
-            stores_stats.lock().unwrap().drain(..1);
-            stores.write().unwrap().drain(..1);
+            drop(reused_keys.drain(..1));
+            drop(stores_stats.lock().unwrap().drain(..1));
+            drop(stores.write().unwrap().drain(..1));
         }
     }
 
