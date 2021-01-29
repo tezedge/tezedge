@@ -404,6 +404,9 @@ steps:
     ref:
       - refs/pull/*/head
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -629,6 +632,9 @@ steps:
     - mkdir $${DRONE_STEP_NAME}_logs
     - poetry run pytest -s --log-dir=./$${DRONE_STEP_NAME}_logs tests/test_basic.py
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -725,6 +731,9 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     - cd /home/appuser/tezos-src/tezos/tests_python && poetry run pytest -s tests/test_basic.py
+
+image_pull_secrets:
+  - docker_pull_secret
 
 trigger:
   branch:
@@ -913,6 +922,9 @@ steps:
     - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
     - nodes_count=$(echo $resp | jq '. | length')
     - /artifacts/assert_equals.sh 0 $nodes_count
+
+image_pull_secrets:
+  - docker_pull_secret
 
 volumes:
   - name: build
@@ -1140,6 +1152,9 @@ steps:
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
     - /artifacts/rpc_integration_test --nocapture --ignored test_rpc_compare
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -1268,6 +1283,9 @@ steps:
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap --bootstrap --level=0 --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+image_pull_secrets:
+  - docker_pull_secret
 
 volumes:
   - name: tezedge-node-data
@@ -1549,6 +1567,9 @@ steps:
     ref:
     - refs/pull/*/head
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -1759,6 +1780,9 @@ steps:
     commands:
       - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -1963,6 +1987,9 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
+
+image_pull_secrets:
+  - docker_pull_secret
 
 volumes:
   - name: build
@@ -2173,6 +2200,9 @@ steps:
     commands:
       - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
 
+image_pull_secrets:
+  - docker_pull_secret
+
 volumes:
   - name: build
     host:
@@ -2238,6 +2268,9 @@ steps:
     password:
       from_secret: docker_hub_pswd
 
+image_pull_secrets:
+  - docker_pull_secret
+
 trigger:
   branch: develop
   event: push
@@ -2287,6 +2320,9 @@ steps:
         from_secret: docker_hub_username
       password:
         from_secret: docker_hub_pswd
+
+image_pull_secrets:
+  - docker_pull_secret
 
 trigger:
   ref: refs/tags/**
