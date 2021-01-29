@@ -4,8 +4,8 @@
 
 use std::process::{Command, Output};
 
-use tokio::time::{sleep, Duration};
 use slog::{info, Logger};
+use tokio::time::{sleep, Duration};
 
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
 pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_rust-debugger_1";
@@ -29,17 +29,17 @@ pub async fn launch_stack(log: Logger) {
     }
     info!(log, "Tezedge node is running");
 
-    // start_with_compose("deploy_ocaml-node_1", "ocaml-node");
-    // start_with_compose("deploy_ocaml-debugger_1", "ocaml-debugger");
-    // info!(log, "Debugger for ocaml node started");
-    // // node healthcheck
-    // while reqwest::get("http://localhost:18733/chains/main/blocks/head/header")
-    //     .await
-    //     .is_err()
-    // {
-    //     sleep(Duration::from_millis(1000)).await;
-    // }
-    // info!(log, "Ocaml node is running");
+    start_with_compose("deploy_ocaml-node_1", "ocaml-node");
+    start_with_compose("deploy_ocaml-debugger_1", "ocaml-debugger");
+    info!(log, "Debugger for ocaml node started");
+    // node healthcheck
+    while reqwest::get("http://localhost:18733/chains/main/blocks/head/header")
+        .await
+        .is_err()
+    {
+        sleep(Duration::from_millis(1000)).await;
+    }
+    info!(log, "Ocaml node is running");
 }
 
 pub async fn restart_stack(log: Logger) {
