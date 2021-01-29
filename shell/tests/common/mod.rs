@@ -213,7 +213,7 @@ pub mod infra {
                     Some(apply_protocol_events.server_path()),
                 ),
                 log.clone(),
-            ));
+            )?);
 
             let tokio_runtime = create_tokio_runtime();
 
