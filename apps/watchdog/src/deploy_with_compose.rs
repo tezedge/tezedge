@@ -5,43 +5,54 @@
 use std::process::{Command, Output};
 
 use tokio::time::{sleep, Duration};
+use slog::{info, Logger};
 
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
 pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_rust-debugger_1";
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
-pub async fn launch_stack() {
+pub async fn launch_stack(log: Logger) {
     start_with_compose(DEBUGGER_CONTAINER_NAME, "rust-debugger");
-
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
         sleep(Duration::from_millis(1000)).await;
     }
-    start_with_compose(NODE_CONTAINER_NAME, "rust-node");
+    info!(log, "Debugger for tezedge node is running");
 
+    start_with_compose(NODE_CONTAINER_NAME, "rust-node");
     // node healthcheck
-    while reqwest::get("http://localhost:18732/chains/main/head/header")
+    while reqwest::get("http://localhost:18732/chains/main/blocks/head/header")
         .await
         .is_err()
     {
         sleep(Duration::from_millis(1000)).await;
     }
+    info!(log, "Tezedge node is running");
 
-    start_with_compose("deploy_ocaml-node_1", "ocaml-node");
-    start_with_compose("deploy_ocaml-debugger_1", "ocaml-debugger");
+    // start_with_compose("deploy_ocaml-node_1", "ocaml-node");
+    // start_with_compose("deploy_ocaml-debugger_1", "ocaml-debugger");
+    // info!(log, "Debugger for ocaml node started");
+    // // node healthcheck
+    // while reqwest::get("http://localhost:18733/chains/main/blocks/head/header")
+    //     .await
+    //     .is_err()
+    // {
+    //     sleep(Duration::from_millis(1000)).await;
+    // }
+    // info!(log, "Ocaml node is running");
 }
 
-pub async fn restart_stack() {
+pub async fn restart_stack(log: Logger) {
     stop_with_compose();
     cleanup_volumes();
-    launch_stack().await;
+    launch_stack(log).await;
 }
 
-pub async fn shutdown_and_update() {
+pub async fn shutdown_and_update(log: Logger) {
     stop_with_compose();
     cleanup_docker();
     update_with_compose();
-    restart_stack().await;
+    restart_stack(log).await;
 }
 
 pub fn cleanup_docker() {

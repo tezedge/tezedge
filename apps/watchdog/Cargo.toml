@@ -8,6 +8,8 @@ default-run = "watchdog"
 [dependencies]
 clap = "2.33"
 failure = "0.1"
+fs2 = "0.4"
+fs_extra = "1.2"
 http = "0.2.2"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive", "rc"] }

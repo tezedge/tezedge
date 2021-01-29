@@ -52,8 +52,8 @@ services:
       - "3030:3030"       # sandbox launcher port
 
   ocaml-node:
-    image: tezos/tezos:v7.0
-    entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733"
+    image: tezos/tezos:v8.1
+    entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --network delphinet"
     depends_on:
       - explorer
     logging:
@@ -75,10 +75,11 @@ services:
   explorer:
     image: simplestakingcom/tezedge-explorer:${TEZEDGE_EXPLORER_IMAGE_TAG}
     environment:
-      - SANDBOX=https://carthage.tezedge.com:3030
+      - SANDBOX=http://116.202.128.230:3030
       # need a better way to provide such information
       - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","debugger":"http://${HOSTNAME}.dev.tezedge.com:17732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","debugger":"http://${HOSTNAME}.dev.tezedge.com:17733","ws":false}]
-
+    ports:
+      - "80:80"
 volumes:
   rust-shared-data:
     external: false

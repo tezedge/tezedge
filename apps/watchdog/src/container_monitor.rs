@@ -64,7 +64,7 @@ pub async fn start_stack(slack: SlackServer, log: Logger) -> Result<(), failure:
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
-    restart_stack().await;
+    restart_stack(log).await;
     slack.send_message("Tezedge stack started").await?;
     Ok(())
 }
