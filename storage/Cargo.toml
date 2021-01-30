@@ -23,6 +23,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 sled = "0.34.6"
+rayon = "1.5.0"
 # used in scripts/ and tests/
 rlimit = "0.4.0"
 # used in scripts/

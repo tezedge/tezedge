@@ -239,20 +239,22 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
 
         if todo_keys.len() > 0 {
-            let processed_len = todo_keys.len().min(64);
-
             let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
-            for _ in 0..processed_len {
+
+            let max_iter = if stores.len() - len <= 1 { 2048 } else { usize::MAX };
+
+            for _ in 0..max_iter {
                 let key = match todo_keys.pop() {
                     Some(key) => key,
-                    None => break, // unreachable!
+                    None => break,
                 };
 
                 let (store_index, entry_bytes) = match stores_delete(&mut stores, &key) {
                     Some(result) => result,
                     None => continue,
                 };
+
                 let stat: KVStoreStats = (&key, &entry_bytes).into();
                 stats[store_index] -= &stat;
 
@@ -285,9 +287,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
 
         if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
-            reused_keys.drain(..1);
-            stores_stats.lock().unwrap().drain(..1);
-            stores.write().unwrap().drain(..1);
+            drop(reused_keys.drain(..1));
+            drop(stores_stats.lock().unwrap().drain(..1));
+            drop(stores.write().unwrap().drain(..1));
         }
     }
 

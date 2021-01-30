@@ -3062,6 +3062,7 @@ dependencies = [
  "maplit",
  "num_cpus",
  "rand 0.7.3",
+ "rayon",
  "rlimit 0.4.0",
  "rocksdb",
  "serde 1.0.119",
