@@ -1,4 +1,4 @@
-use std::collections::{HashMap};
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 use rayon::prelude::*;
 
@@ -74,10 +74,10 @@ impl StorageBackend for InMemoryBackend {
         Ok(r.contains_key(key))
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         let garbage_keys: Vec<_> = self.inner.read().unwrap()
             .par_iter().filter_map(|(k, v)| {
-                if !pred.contains(&k) {
+                if !pred.contains(&k[..]) {
                     Some(k.clone())
                 } else {
                     None

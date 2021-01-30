@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::{BTreeMap, btree_map::Entry, HashSet};
 use rayon::prelude::*;
 
 use crate::storage_backend::{
@@ -59,9 +59,9 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         Ok(self.kv_map.contains_key(key))
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         let garbage_keys: Vec<_> = self.kv_map.par_iter().filter_map(|(k, v)| {
-            if !pred.contains(&k) {
+            if !pred.contains(&k[..]) {
                 Some(k.clone())
             } else {
                 None

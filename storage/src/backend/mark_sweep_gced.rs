@@ -46,8 +46,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     }
 
     fn sweep_entries(&mut self, todo: HashSet<EntryHash>)  -> Result<(), KVStoreError> {
-        let p = todo.into_iter().collect::<Vec<_>>();
-        self.retain(p);
+        self.retain(todo);
         Ok(())
     }
 
@@ -109,7 +108,7 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
         self.store.delete(key)
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         self.store.retain(pred)
     }
 

@@ -151,7 +151,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
 

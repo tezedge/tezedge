@@ -2,6 +2,7 @@ use sled::IVec;
 
 use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
 use crate::merkle_storage::{EntryHash, ContextValue};
+use std::collections::HashSet;
 
 pub struct SledBackend {
     inner: sled::Tree
@@ -48,7 +49,7 @@ impl StorageBackend for SledBackend {
         Ok(self.inner.contains_key(key)?)
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         unimplemented!()
     }
 

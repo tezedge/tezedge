@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
 use crate::merkle_storage::{EntryHash, ContextValue};
+use std::collections::HashSet;
 
 pub struct RocksDBBackend {
     column_name: &'static str,
@@ -84,7 +85,7 @@ impl StorageBackend for RocksDBBackend {
         self.get(key).map(|v| v.is_some())
     }
 
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         unimplemented!()
     }
 
