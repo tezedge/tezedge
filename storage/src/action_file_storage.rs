@@ -12,8 +12,7 @@ pub struct ActionFileStorage {
     staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextActionMessage>>>>,
 }
 
-///staging: Arc<DashMap<String, Vec<ContextAction>>>
-use slog::{warn, Logger};
+use slog::{error,warn, Logger};
 
 impl ActionFileStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Option<ActionFileStorage> {
