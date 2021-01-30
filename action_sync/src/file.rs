@@ -192,10 +192,13 @@ impl ActionsFileWriter {
             .open(path)?;
 
         let mut h = [0_u8; HEADER_LEN];
-
         let mut reader = BufReader::new(file.try_clone()?);
         reader.seek(SeekFrom::Start(0))?;
-        reader.read_exact(&mut h) ;
+        // Error ignored
+        match reader.read_exact(&mut h) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileWriter { file, header })
     }
@@ -250,9 +253,13 @@ impl ActionsFileWriter {
     }
 
     fn _fetch_header(&mut self) -> Result<()>{
-        self.file.seek(SeekFrom::Start(0)).map_err(|e| anyhow!("_fetch_header seek error"));
         let mut h = [0_u8; HEADER_LEN];
-        self.file.read_exact(&mut h).map_err(|e| anyhow!("_fetch_header read error"));
+        self.file.seek(SeekFrom::Start(0))?;
+        // error ignored
+        match self.file.read_exact(&mut h) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
         self.header = ActionsFileHeader::from(h);
         Ok(())
     }

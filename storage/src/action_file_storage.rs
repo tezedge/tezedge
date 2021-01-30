@@ -12,7 +12,7 @@ pub struct ActionFileStorage {
     staging: Arc<RwLock<HashMap<Vec<u8>, Vec<ContextActionMessage>>>>,
 }
 
-use slog::{error,warn,info,Logger};
+use slog::{error,warn,Logger};
 
 impl ActionFileStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Option<ActionFileStorage> {
@@ -119,7 +119,6 @@ impl ActionFileStorage {
                 if let Some(actions) = w.remove(&block_hash) {
                     match action_file_writer.update(block, actions) {
                         Ok(_) => {
-                            info!(log, "Block Saved to File")
                         }
                         Err(e) => {
                             warn!(log, "Error storing Block {}", e);
