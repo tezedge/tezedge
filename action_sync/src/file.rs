@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Error};
+use anyhow::{anyhow};
 use anyhow::Result;
 use bytes::{Buf, BufMut, BytesMut};
 use std::fmt::Formatter;
