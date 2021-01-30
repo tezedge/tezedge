@@ -61,7 +61,7 @@ pub trait StorageBackend: Send + Sync {
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), StorageBackendError>;
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError>;
     fn mark_reused(&mut self, key: EntryHash);
     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>);
     fn wait_for_gc_finish(&self);
