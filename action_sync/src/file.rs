@@ -147,10 +147,10 @@ impl Iterator for ActionsFileReader {
             }
         };
         let mut h = [0_u8; 4];
-        match self.reader.read_exact(&mut h) {
+        match self.reader.read_exact(&mut h){
             Ok(_) => {}
             Err(_) => {
-                return None;
+                return None
             }
         }
         let content_len = u32::from_be_bytes(h);
@@ -194,15 +194,8 @@ impl ActionsFileWriter {
         let mut h = [0_u8; HEADER_LEN];
 
         let mut reader = BufReader::new(file.try_clone()?);
-        match reader.seek(SeekFrom::Start(0)) {
-            Ok(_) => {
-                match reader.read_exact(&mut h) {
-                    _ => {}
-                };
-            }
-            Err(_) => {}
-        };
-
+        reader.seek(SeekFrom::Start(0))?;
+        reader.read_exact(&mut h) ;
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileWriter { file, header })
     }
@@ -218,12 +211,7 @@ impl ActionsFileWriter {
         let block_level = block.block_level;
         let actions_count = actions.len() as u32;
         let block_hash = block.block_hash;
-        //ignore header
-        match self._fetch_header() {
-            Ok(_) => {}
-            Err(_) => {}
-        };
-
+        self._fetch_header()?;
         // Check if currently saved block precedes the incoming block
         if block.predecessor != self.header.current_block_hash && self.header.block_count > 0 {
             return Err(anyhow!("Block out of sequence"));
@@ -261,7 +249,7 @@ impl ActionsFileWriter {
         Ok(())
     }
 
-    fn _fetch_header(&mut self) -> Result<()> {
+    fn _fetch_header(&mut self) -> Result<()>{
         self.file.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
         self.file.read_exact(&mut h)?;
@@ -269,7 +257,7 @@ impl ActionsFileWriter {
         Ok(())
     }
 
-    pub fn _update(&mut self, data: &[u8]) -> Result<()> {
+    pub fn _update(&mut self, data: &[u8]) -> Result<()>{
         self.file.seek(SeekFrom::End(0))?;
         let header = (data.len() as u32).to_be_bytes();
         let mut dt = vec![];

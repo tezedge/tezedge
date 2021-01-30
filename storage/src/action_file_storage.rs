@@ -83,6 +83,7 @@ impl ActionFileStorage {
                 let mut w = match self.staging.write() {
                     Ok(w) => w,
                     Err(_) => {
+                        error!(log,"actions error {}", e);
                         return;
                     }
                 };
@@ -91,7 +92,8 @@ impl ActionFileStorage {
 
                 let mut action_file_writer = match ActionsFileWriter::new(&self.file) {
                     Ok(w) => w,
-                    Err(_) => {
+                    Err(e) => {
+                        error!(log,"File Open error {}", e);
                         return;
                     }
                 };
@@ -108,7 +110,8 @@ impl ActionFileStorage {
                             b.header.predecessor().to_vec(),
                         ),
                     },
-                    Err(_) => {
+                    Err(e) => {
+                        error!(log,"Block Storage Error {}", e);
                         return;
                     }
                 };
