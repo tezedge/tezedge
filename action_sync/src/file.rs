@@ -250,9 +250,9 @@ impl ActionsFileWriter {
     }
 
     fn _fetch_header(&mut self) -> Result<()>{
-        self.file.seek(SeekFrom::Start(0))?;
+        self.file.seek(SeekFrom::Start(0)).map_err(|e| anyhow!("_fetch_header seek error"));
         let mut h = [0_u8; HEADER_LEN];
-        self.file.read_exact(&mut h)?;
+        self.file.read_exact(&mut h).map_err(|e| anyhow!("_fetch_header read error"));
         self.header = ActionsFileHeader::from(h);
         Ok(())
     }
