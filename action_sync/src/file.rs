@@ -147,10 +147,10 @@ impl Iterator for ActionsFileReader {
             }
         };
         let mut h = [0_u8; 4];
-        match self.reader.read_exact(&mut h){
+        match self.reader.read_exact(&mut h) {
             Ok(_) => {}
             Err(_) => {
-                return None
+                return None;
             }
         }
         let content_len = u32::from_be_bytes(h);
@@ -190,10 +190,19 @@ impl ActionsFileWriter {
             .create(true)
             .read(true)
             .open(path)?;
-        let mut reader = BufReader::new(file.try_clone()?);
-        reader.seek(SeekFrom::Start(0))?;
+
         let mut h = [0_u8; HEADER_LEN];
-        reader.read_exact(&mut h)?;
+
+        let mut reader = BufReader::new(file.try_clone()?);
+        match reader.seek(SeekFrom::Start(0)) {
+            Ok(_) => {
+                match reader.read_exact(&mut h) {
+                    _ => {}
+                };
+            }
+            Err(_) => {}
+        };
+
         let header = ActionsFileHeader::from(h);
         Ok(ActionsFileWriter { file, header })
     }
@@ -210,7 +219,7 @@ impl ActionsFileWriter {
         let actions_count = actions.len() as u32;
         let block_hash = block.block_hash;
         //ignore header
-        match self._fetch_header(){
+        match self._fetch_header() {
             Ok(_) => {}
             Err(_) => {}
         };
@@ -252,7 +261,7 @@ impl ActionsFileWriter {
         Ok(())
     }
 
-    fn _fetch_header(&mut self) -> Result<()>{
+    fn _fetch_header(&mut self) -> Result<()> {
         self.file.seek(SeekFrom::Start(0))?;
         let mut h = [0_u8; HEADER_LEN];
         self.file.read_exact(&mut h)?;
@@ -260,7 +269,7 @@ impl ActionsFileWriter {
         Ok(())
     }
 
-    pub fn _update(&mut self, data: &[u8]) -> Result<()>{
+    pub fn _update(&mut self, data: &[u8]) -> Result<()> {
         self.file.seek(SeekFrom::End(0))?;
         let header = (data.len() as u32).to_be_bytes();
         let mut dt = vec![];
