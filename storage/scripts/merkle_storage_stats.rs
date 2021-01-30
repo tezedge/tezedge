@@ -109,8 +109,8 @@ fn main() {
 }
 
 fn gen_stats(args: Args) {
-    let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
-        vec![Default::default(); args.preserved_cycles - 1];
+    // let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
+    //     vec![Default::default(); args.preserved_cycles - 1];
 
     let backend: Box<dyn StorageBackend + Send + Sync> = match args.backend.as_str() {
         "in-memory-gced" => Box::new(
@@ -133,11 +133,11 @@ fn gen_stats(args: Args) {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
-            if let ContextAction::Commit { new_context_hash, .. } = &action {
-                cycle_commit_hashes.last_mut().unwrap().push(
-                    new_context_hash[..].try_into().unwrap()
-                );
-            }
+            // if let ContextAction::Commit { new_context_hash, .. } = &action {
+            //     cycle_commit_hashes.last_mut().unwrap().push(
+            //         new_context_hash[..].try_into().unwrap()
+            //     );
+            // }
             merkle.apply_context_action(&action).unwrap();
         }
 
@@ -154,18 +154,18 @@ fn gen_stats(args: Args) {
 
         let level = block.block_level;
 
-        if level % args.cycle_block_count == 1 && level > 1 {
+        if level % args.cycle_block_count == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
 
-            let commits_iter = cycle_commit_hashes.iter()
-                .flatten()
-                .cloned();
-            check_commit_hashes(&merkle, commits_iter).unwrap();
+            // let commits_iter = cycle_commit_hashes.iter()
+            //     .flatten()
+            //     .cloned();
+            // check_commit_hashes(&merkle, commits_iter).unwrap();
 
-            cycle_commit_hashes = cycle_commit_hashes.into_iter()
-                .skip(1)
-                .chain(vec![vec![]])
-                .collect();
+            // cycle_commit_hashes = cycle_commit_hashes.into_iter()
+            //     .skip(1)
+            //     .chain(vec![vec![]])
+            //     .collect();
         }
     }
 }
