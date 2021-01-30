@@ -1,4 +1,4 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Error};
 use anyhow::Result;
 use bytes::{Buf, BufMut, BytesMut};
 use std::fmt::Formatter;
@@ -209,7 +209,11 @@ impl ActionsFileWriter {
         let block_level = block.block_level;
         let actions_count = actions.len() as u32;
         let block_hash = block.block_hash;
-        self._fetch_header()?;
+        //ignore header
+        match self._fetch_header(){
+            Ok(_) => {}
+            Err(_) => {}
+        };
 
         // Check if currently saved block precedes the incoming block
         if block.predecessor != self.header.current_block_hash && self.header.block_count > 0 {
