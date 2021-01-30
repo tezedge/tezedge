@@ -119,7 +119,7 @@ impl ActionFileStorage {
                 if let Some(actions) = w.remove(&block_hash) {
                     match action_file_writer.update(block, actions) {
                         Ok(_) => {
-                            info!(log, "Block Saved to File {}", "",  )
+                            info!(log, "Block Saved to File")
                         }
                         Err(e) => {
                             warn!(log, "Error storing Block {}", e);
