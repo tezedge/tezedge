@@ -81,7 +81,7 @@ impl ActionFileStorage {
                 };
                 let mut w = match self.staging.write() {
                     Ok(w) => w,
-                    Err(_) => {
+                    Err(e) => {
                         error!(log,"actions error {}", e);
                         return;
                     }
