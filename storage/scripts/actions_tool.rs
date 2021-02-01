@@ -5,10 +5,11 @@ use std::path::{Path};
 use bytes::{BytesMut, Buf, BufMut};
 // use bytes::buf::BufExt;
 use std::fmt::Formatter;
-use crate::context_action_storage::ContextAction;
+// use crate::context_action_storage::ContextAction;
 use serde::{Serialize, Deserialize};
 
 const HEADER_LEN: usize = 12;
+type Hash = Vec<u8>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
@@ -21,6 +22,103 @@ pub struct ActionsFileHeader {
     pub block_height: u32,
     pub actions_count: u32,
     pub block_count: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum ContextAction {
+    Set {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        value: Vec<u8>,
+        value_as_json: Option<String>,
+        ignored: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    Delete {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        ignored: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    RemoveRecursively {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        ignored: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    Copy {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        from_key: Vec<String>,
+        to_key: Vec<String>,
+        ignored: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    Checkout {
+        context_hash: Hash,
+        start_time: f64,
+        end_time: f64,
+    },
+    Commit {
+        parent_context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        new_context_hash: Hash,
+        author: String,
+        message: String,
+        date: i64,
+        parents: Vec<Vec<u8>>,
+        start_time: f64,
+        end_time: f64,
+    },
+    Mem {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        value: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    DirMem {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        value: bool,
+        start_time: f64,
+        end_time: f64,
+    },
+    Get {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        value: Vec<u8>,
+        value_as_json: Option<String>,
+        start_time: f64,
+        end_time: f64,
+    },
+    Fold {
+        context_hash: Option<Hash>,
+        block_hash: Option<Hash>,
+        operation_hash: Option<Hash>,
+        key: Vec<String>,
+        start_time: f64,
+        end_time: f64,
+    },
+    /// This is a control event used to shutdown IPC channel
+    Shutdown,
 }
 
 impl std::fmt::Display for ActionsFileHeader {
@@ -127,14 +225,28 @@ impl Iterator for ActionsFileReader {
             }
         };
         let mut h = [0_u8; 4];
-        self.reader.read_exact(&mut h).unwrap();
+        //stops iteration when content length size cannot be read correctly
+        match self.reader.read_exact(&mut h) {
+            Ok(_) => {}
+            Err(_) => {
+                return None
+            }
+        };
         let content_len = u32::from_be_bytes(h);
         if content_len <= 0 {
             return None;
         }
         let mut b = BytesMut::with_capacity(content_len as usize);
         unsafe { b.set_len(content_len as usize) }
-        self.reader.read_exact(&mut b).unwrap();
+        
+        //stops iteration when content length doesnt match exactly
+        match self.reader.read_exact(&mut b){
+            Ok(_) => {}
+            Err(_) => {
+                return None
+            }
+        };
+        
 
         let mut reader = snap::read::FrameDecoder::new(b.reader());
 
