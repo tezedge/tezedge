@@ -13,7 +13,6 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
-        sanitizer: [none, address]
     steps:
       - uses: actions/checkout@v2
       - name: Setup Rust
@@ -21,13 +20,6 @@ jobs:
         with:
           toolchain: nightly-2020-12-31
           default: true
-      - name: Settings for cargo in Linux
-        if: matrix.os == 'ubuntu-latest'
-        if: matrix.sanitizer == 'address'
-        run: |
-            echo '[build]' >> ~/.cargo/config
-            echo 'rustflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
-            echo 'rustdocflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
       - name: Settings for cargo in OSX
         if: runner.os == 'macOS'
         run: |
@@ -52,6 +44,3 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          if: matrix.sanitizer == 'address'
-            args: --target x86_64-unknown-linux-gnu
-
