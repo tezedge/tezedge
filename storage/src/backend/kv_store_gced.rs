@@ -51,7 +51,7 @@ fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, Contex
 where T: KVStore,
       S: DerefMut<Target = Vec<T>>,
 {
-    stores.iter_mut().enumerate()
+    stores.iter_mut().enumerate().rev()
         .find_map(|(index, store)| {
             store.delete(key)
                 .unwrap_or(None)
