@@ -54,6 +54,14 @@ impl From<std::string::FromUtf8Error> for BinaryReaderError {
     }
 }
 
+impl From<crate::bit_utils::BitsError> for BinaryReaderError {
+    fn from(source: crate::bit_utils::BitsError) -> Self {
+        Self::DeserializationError {
+            error: crate::de::Error::custom(format!("Bits operation error: {:?}", source)),
+        }
+    }
+}
+
 /// Safely read from input buffer. If input buffer does not contain enough bytes to construct desired error is returned.
 #[macro_export]
 macro_rules! safe {
@@ -285,7 +293,7 @@ impl BinaryReader {
             Encoding::Z => {
                 // read first byte
                 let byte = safe!(buf, get_u8, u8);
-                let negative = byte.get(6);
+                let negative = byte.get(6)?;
                 if byte <= 0x3F {
                     let mut num = i32::from(byte);
                     if negative {
@@ -295,17 +303,17 @@ impl BinaryReader {
                 } else {
                     let mut bits = BitVec::new();
                     for bit_idx in 0..6 {
-                        bits.push(byte.get(bit_idx));
+                        bits.push(byte.get(bit_idx)?);
                     }
 
                     let mut has_next_byte = true;
                     while has_next_byte {
                         let byte = safe!(buf, get_u8, u8);
                         for bit_idx in 0..7 {
-                            bits.push(byte.get(bit_idx))
+                            bits.push(byte.get(bit_idx)?)
                         }
 
-                        has_next_byte = byte.get(7);
+                        has_next_byte = byte.get(7)?;
                     }
 
                     let bytes = bits.reverse().trim_left().to_byte_vec();
@@ -335,10 +343,10 @@ impl BinaryReader {
                 while has_next_byte {
                     let byte = safe!(buf, get_u8, u8);
                     for bit_idx in 0..7 {
-                        bits.push(byte.get(bit_idx))
+                        bits.push(byte.get(bit_idx)?)
                     }
 
-                    has_next_byte = byte.get(7);
+                    has_next_byte = byte.get(7)?;
                 }
 
                 let bytes = bits.reverse().trim_left().to_byte_vec();

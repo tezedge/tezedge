@@ -6,6 +6,15 @@ use std::mem::size_of;
 use std::ops::{BitAnd, BitAndAssign, BitOrAssign, Not, Shl, ShlAssign, Shr, ShrAssign};
 
 use bit_vec::BitVec;
+use failure::Fail;
+
+/// An error triggered when working with [Bits].
+#[derive(Debug, Fail)]
+pub enum BitsError {
+    /// Index is out of range
+    #[fail(display = "index out of range")]
+    IndexOutOfRange,
+}
 
 /// A trait for types that can be used as direct storage of bits.
 ///
@@ -57,19 +66,24 @@ pub trait Bits:
     const MAX_ELT: usize = core::usize::MAX >> Self::BITS;
 
     /// Set a specific bit in an element to a given value.
-    fn set(&mut self, place: u8, value: bool) {
-        assert!(place <= Self::MASK, "Index out of range");
+    fn set(&mut self, place: u8, value: bool) -> Result<(), BitsError> {
+        if place > Self::MASK {
+            return Err(BitsError::IndexOutOfRange);
+        }
         //  Blank the selected bit
         *self &= !(Self::from(1u8) << place);
         //  Set the selected bit
         *self |= Self::from(value as u8) << place;
+        Ok(())
     }
 
     /// Get a specific bit in an element.
-    fn get(&self, place: u8) -> bool {
-        assert!(place <= Self::MASK, "Index out of range");
+    fn get(&self, place: u8) -> Result<bool, BitsError> {
+        if place > Self::MASK {
+            return Err(BitsError::IndexOutOfRange);
+        }
         //  Shift down so the targeted bit is LSb, then blank all other bits.
-        (*self >> place) & Self::from(1) == Self::from(1)
+        Ok((*self >> place) & Self::from(1) == Self::from(1))
     }
 
     /// Rust doesn’t (as far as I know) have a way to render a typename at
@@ -144,7 +158,8 @@ impl ToBytes for BitVec {
         let mut offset = 0;
         for (idx_bit, bit) in self.iter().rev().enumerate() {
             let idx_byte = (idx_bit % 8) as u8;
-            byte.set(idx_byte, bit);
+            byte.set(idx_byte, bit)
+                .unwrap_or_else(|_| unreachable!("Byte should have 8-bit width"));
             if idx_byte == 7 {
                 bytes.push(byte);
                 byte = 0;
@@ -207,5 +222,21 @@ mod tests {
 
         bits.push(false); // 8
         assert_eq!(vec![1, 58], bits.to_byte_vec());
+    }
+
+    #[test]
+    fn set_out_of_range() {
+        let (mut b8, mut b16, mut b32) = (0_u8, 0_u16, 0_u32);
+        assert!(matches!(b8.set(8, true), Err(BitsError::IndexOutOfRange)));
+        assert!(matches!(b16.set(16, true), Err(BitsError::IndexOutOfRange)));
+        assert!(matches!(b32.set(32, true), Err(BitsError::IndexOutOfRange)));
+    }
+
+    #[test]
+    fn get_out_of_range() {
+        let (b8, b16, b32) = (0_u8, 0_u16, 0_u32);
+        assert!(matches!(b8.get(8), Err(BitsError::IndexOutOfRange)));
+        assert!(matches!(b16.get(16), Err(BitsError::IndexOutOfRange)));
+        assert!(matches!(b32.get(32), Err(BitsError::IndexOutOfRange)));
     }
 }
