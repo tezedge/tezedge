@@ -71,6 +71,14 @@ impl From<hex::FromHexError> for Error {
     }
 }
 
+impl From<crate::bit_utils::BitsError> for Error {
+    fn from(source: crate::bit_utils::BitsError) -> Self {
+        Error {
+            message: format!("Error operating with bits: {:?}", source),
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Serializer {}
 

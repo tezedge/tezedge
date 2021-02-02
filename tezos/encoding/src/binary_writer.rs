@@ -496,7 +496,7 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
                 bit_idx,
                 bits.pop()
                     .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
-            );
+            )?;
         }
         data.put_u8(n);
 
@@ -511,11 +511,11 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
                     bit_idx,
                     bits.pop()
                         .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
-                );
+                )?;
             }
             // set continuation bit if there are other chunks to be processed
             if chunk_idx != last_chunk_idx {
-                n.set(7, true);
+                n.set(7, true)?;
             }
             data.put_u8(n)
         }
