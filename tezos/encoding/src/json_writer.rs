@@ -45,7 +45,7 @@ impl JsonWriter {
                     let name = field.get_name();
                     let value = self
                         .find_value_in_record_values(name, values)
-                        .unwrap_or_else(|| panic!("No values found for {}", name));
+                        .ok_or_else(|| Error::custom(format!("No values found for {}", name)))?;
                     let encoding = field.get_encoding();
 
                     if idx > 0 {
@@ -196,7 +196,9 @@ impl JsonWriter {
             },
             Encoding::Enum => match value {
                 Value::Enum(name, _) => {
-                    let variant_name = name.as_ref().expect("Was expecting variant name");
+                    let variant_name = name
+                        .as_ref()
+                        .ok_or_else(|| Error::custom("Was expecting variant name"))?;
                     Ok(self.push_str(variant_name))
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
@@ -262,9 +264,9 @@ impl JsonWriter {
             Encoding::Dynamic(dynamic_encoding) => self.encode_value(value, dynamic_encoding),
             Encoding::Sized(_, sized_encoding) => self.encode_value(value, sized_encoding),
             Encoding::Greedy(un_sized_encoding) => self.encode_value(value, un_sized_encoding),
-            Encoding::Tags(_, _) => {
-                unimplemented!("Encoding::Tags encoding is not supported for JSON format")
-            }
+            Encoding::Tags(_, _) => Err(Error::custom(
+                "Encoding::Tags encoding is not supported for JSON format",
+            )),
             Encoding::Split(fn_encoding) => {
                 let inner_encoding = fn_encoding(SchemaType::Json);
                 self.encode_value(value, &inner_encoding)
