@@ -17,6 +17,17 @@ pub enum FromBase58CheckError {
     /// The input is missing checksum.
     #[fail(display = "missing checksum")]
     MissingChecksum,
+    /// Data is too long
+    #[fail(display = "data too long")]
+    DataTooLong,
+}
+
+/// Possible errors for ToBase58Check
+#[derive(Debug, Fail)]
+pub enum ToBase58CheckError {
+    /// Data is too long
+    #[fail(display = "data too long")]
+    DataTooLong,
 }
 
 /// Create double hash of given binary data
@@ -28,7 +39,7 @@ fn double_sha256(data: &[u8]) -> sha256::Digest {
 /// A trait for converting a value to base58 encoded string.
 pub trait ToBase58Check {
     /// Converts a value of `self` to a base58 value, returning the owned string.
-    fn to_base58check(&self) -> String;
+    fn to_base58check(&self) -> Result<String, ToBase58CheckError>;
 }
 
 /// A trait for converting base58check encoded values.
@@ -41,19 +52,25 @@ pub trait FromBase58Check {
 }
 
 impl ToBase58Check for [u8] {
-    fn to_base58check(&self) -> String {
+    fn to_base58check(&self) -> Result<String, ToBase58CheckError> {
+        if self.len() > 128 {
+            return Err(ToBase58CheckError::DataTooLong);
+        }
         // 4 bytes checksum
         let mut payload = Vec::with_capacity(self.len() + 4);
         payload.extend(self);
         let checksum = double_sha256(self);
         payload.extend(&checksum[..4]);
 
-        payload.to_base58()
+        Ok(payload.to_base58())
     }
 }
 
 impl FromBase58Check for str {
     fn from_base58check(&self) -> Result<Vec<u8>, FromBase58CheckError> {
+        if self.len() > 128 {
+            return Err(FromBase58CheckError::DataTooLong);
+        }
         match self.from_base58() {
             Ok(payload) => {
                 if payload.len() >= Self::CHECKSUM_BYTE_SIZE {
@@ -84,7 +101,7 @@ mod tests {
 
     #[test]
     fn test_encode() -> Result<(), failure::Error> {
-        let decoded = hex::decode("8eceda2f")?.to_base58check();
+        let decoded = hex::decode("8eceda2f")?.to_base58check().unwrap();
         let expected = "QtRAcc9FSRg";
         assert_eq!(expected, &decoded);
 
@@ -98,5 +115,19 @@ mod tests {
         assert_eq!(expected, decoded);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_encode_fail() {
+        let data = [0; 129].to_vec();
+        let res = data.to_base58check();
+        assert!(matches!(res, Err(ToBase58CheckError::DataTooLong)));
+    }
+
+    #[test]
+    fn test_decode_fail() {
+        let encoded = "111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111";
+        let res = encoded.from_base58check();
+        assert!(matches!(res, Err(FromBase58CheckError::DataTooLong)));
     }
 }

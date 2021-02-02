@@ -237,7 +237,12 @@ impl HashType {
             let mut hash = Vec::with_capacity(self.base58check_prefix().len() + data.len());
             hash.extend(self.base58check_prefix());
             hash.extend(data);
-            Ok(hash.to_base58check())
+            hash.to_base58check()
+                // currently the error is returned if the input lenght exceeds 128 bytes
+                // that is the limitation of base58 crate, and there are no hash types
+                // exceeding that limit.
+                // TODO: remove this when TE-373 is implemented
+                .map_err(|_| unreachable!("Hash size should not exceed allowed 128 bytes"))
         }
     }
 
