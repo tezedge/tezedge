@@ -57,6 +57,7 @@ fn mem_usage() -> usize {
 
 struct Args {
     backend: String,
+    test_integrity: bool,
     preserved_cycles: usize,
     cycle_block_count: u32,
     actions_file: String,
@@ -74,6 +75,10 @@ impl Args {
                  .long("cycle-block-count")
                  .help("amount of blocks in each cycle")
                  .default_value("2048"))
+            .arg(Arg::with_name("test_integrity")
+                 .takes_value(false)
+                 .long("test-integrity")
+                 .help("validate integrity of all commits for last 7 cycles"))
             .arg(Arg::with_name("actions_file")
                  .required(true)
                  .help("path to the actions.bin")
@@ -88,9 +93,11 @@ impl Args {
 
         let matches = app.get_matches();
 
-
         Self {
-            backend: matches.value_of("backend").unwrap_or("in-memory-gced").to_string(),
+            backend: matches.value_of("backend")
+                .unwrap_or("in-memory-gced")
+                .to_string(),
+            test_integrity: matches.is_present("test_integrity"),
             preserved_cycles: matches.value_of("preserved_cycles")
                 .unwrap_or("7")
                 .parse()
@@ -111,8 +118,8 @@ fn main() {
 }
 
 fn gen_stats(args: Args) {
-    // let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
-    //     vec![Default::default(); args.preserved_cycles - 1];
+    let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
+        vec![Default::default(); args.preserved_cycles - 1];
 
     let backend: Box<dyn StorageBackend + Send + Sync> = match args.backend.as_str() {
         "in-memory-gced" => Box::new(
@@ -129,17 +136,21 @@ fn gen_stats(args: Args) {
 
     let mut merkle = MerkleStorage::new(backend);
 
-    println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
+    if !args.test_integrity {
+        println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
+    }
 
     for (block, actions) in ActionsFileReader::new(&args.actions_file).unwrap().into_iter() {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
-            // if let ContextAction::Commit { new_context_hash, .. } = &action {
-            //     cycle_commit_hashes.last_mut().unwrap().push(
-            //         new_context_hash[..].try_into().unwrap()
-            //     );
-            // }
+            if args.test_integrity {
+                if let ContextAction::Commit { new_context_hash, .. } = &action {
+                    cycle_commit_hashes.last_mut().unwrap().push(
+                        new_context_hash[..].try_into().unwrap()
+                    );
+                }
+            }
 
             match &action {
                 ContextAction::Set { key, value, ignored, .. } => {
@@ -173,31 +184,37 @@ fn gen_stats(args: Args) {
             // merkle.apply_context_action(&action).unwrap();
         }
 
-        let stats = merkle.get_merkle_stats().unwrap();
-        println!("{}, {}, {}, {}, {}, {}, {}",
-            block.block_level,
-            stats.kv_store_stats.key_bytes,
-            stats.kv_store_stats.value_bytes,
-            stats.kv_store_stats.reused_keys_bytes,
-            stats.kv_store_stats.total_as_bytes(),
-            mem_usage(),
-            merkle.get_block_latency(0).unwrap(),
-        );
+        if !args.test_integrity {
+            let stats = merkle.get_merkle_stats().unwrap();
+            println!("{}, {}, {}, {}, {}, {}, {}",
+                 block.block_level,
+                 stats.kv_store_stats.key_bytes,
+                 stats.kv_store_stats.value_bytes,
+                 stats.kv_store_stats.reused_keys_bytes,
+                 stats.kv_store_stats.total_as_bytes(),
+                 mem_usage(),
+                 merkle.get_block_latency(0).unwrap(),
+             );
+        }
 
         let level = block.block_level;
+        let cycle = level / args.cycle_block_count;
 
         if level % args.cycle_block_count == 0 && level > 0 {
             merkle.start_new_cycle().unwrap();
 
-            // let commits_iter = cycle_commit_hashes.iter()
-            //     .flatten()
-            //     .cloned();
-            // check_commit_hashes(&merkle, commits_iter).unwrap();
+            if args.test_integrity {
+                let commits_iter = cycle_commit_hashes.iter()
+                    .flatten()
+                    .cloned();
+                check_commit_hashes(&merkle, commits_iter).unwrap();
 
-            // cycle_commit_hashes = cycle_commit_hashes.into_iter()
-            //     .skip(1)
-            //     .chain(vec![vec![]])
-            //     .collect();
+                cycle_commit_hashes = cycle_commit_hashes.into_iter()
+                    .skip(1)
+                    .chain(vec![vec![]])
+                    .collect();
+                println!("cycle #{} - integrity intact!", cycle);
+            }
         }
     }
 }
