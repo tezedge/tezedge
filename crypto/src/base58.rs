@@ -20,6 +20,11 @@ pub enum FromBase58CheckError {
     /// Data is too long
     #[fail(display = "data too long")]
     DataTooLong,
+    #[fail(
+        display = "mismatched data lenght: expected {}, actual {}",
+        expected, actual
+    )]
+    MismatchedLength { expected: usize, actual: usize },
 }
 
 /// Possible errors for ToBase58Check

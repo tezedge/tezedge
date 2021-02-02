@@ -252,13 +252,12 @@ impl HashType {
     pub fn b58check_to_hash(&self, data: &str) -> Result<Hash, FromBase58CheckError> {
         let mut hash = data.from_base58check()?;
         let expected_len = self.size() + self.base58check_prefix().len();
-        assert_eq!(
-            expected_len,
-            hash.len(),
-            "Expected decoded length is {} but instead found {}",
-            expected_len,
-            hash.len()
-        );
+        if expected_len != hash.len() {
+            return Err(FromBase58CheckError::MismatchedLength {
+                expected: expected_len,
+                actual: hash.len(),
+            });
+        }
         // prefix is not present in a binary representation
         hash.drain(0..self.base58check_prefix().len());
         Ok(hash)
@@ -578,6 +577,20 @@ mod tests {
             "r3E9xb2QxUeG56eujC66B56CV8mpwjwfdVmEpYu3FRtuEx9tyfG",
             HashType::OperationMetadataHash.hash_to_b58check(&hex::decode(decoded)?)?
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_b58_to_hash_mismatched_lenght() -> Result<(), failure::Error> {
+        let b58 = HashType::ChainId.hash_to_b58check(&[0, 0, 0, 0])?;
+        let result = HashType::BlockHash.b58check_to_hash(&b58);
+        assert!(matches!(
+            result,
+            Err(FromBase58CheckError::MismatchedLength {
+                expected: _,
+                actual: _
+            })
+        ));
         Ok(())
     }
 }
