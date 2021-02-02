@@ -9,6 +9,11 @@ use std::sync::Arc;
 
 use crypto::hash::HashType;
 
+use crate::binary_reader::BinaryReaderError;
+use crate::ser::Error;
+use crate::types::Value;
+use bytes::Buf;
+
 #[derive(Debug, Clone)]
 pub struct Field {
     name: String,
@@ -128,6 +133,32 @@ impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
     }
 }
 
+/// Custom encoder/decoder that converts between binary data
+/// and [Value]s and produces JSON from a [Value]
+pub trait CustomCodec {
+    fn encode(
+        &self,
+        data: &mut Vec<u8>,
+        value: &Value,
+        encoding: &Encoding,
+    ) -> Result<usize, Error>;
+
+    fn encode_json(
+        &self,
+        encoder: &mut crate::json_writer::JsonWriter,
+        value: &Value,
+        encoding: &Encoding,
+    ) -> Result<(), Error>;
+
+    fn decode(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError>;
+}
+
+impl fmt::Debug for dyn CustomCodec + Send + Sync {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Custom Codec")
+    }
+}
+
 /// Represents schema used for encoding a data into a json or a binary form.
 #[derive(Debug, Clone)]
 pub enum Encoding {
@@ -228,6 +259,10 @@ pub enum Encoding {
     /// This is used to handle recursive encodings needed to encode tree structure.
     /// Encoding itself produces no output in binary or json.
     Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>),
+    /// This is used to perform encoding using custom function
+    /// rather than basing on schema. Used to get rid of recursion
+    /// while encoding/decoding recursive types.
+    Custom(Arc<dyn CustomCodec + Send + Sync>),
 }
 
 impl Encoding {

@@ -76,17 +76,17 @@ impl JsonWriter {
         ))
     }
 
-    fn push_key(&mut self, key: &str) {
+    pub fn push_key(&mut self, key: &str) {
         self.data.push('"');
         self.data.push_str(&key);
         self.data.push_str("\": ");
     }
 
-    fn push_delimiter(&mut self) {
+    pub fn push_delimiter(&mut self) {
         self.data.push_str(", ");
     }
 
-    fn push_str(&mut self, value: &str) {
+    pub fn push_str(&mut self, value: &str) {
         self.data.push('"');
         self.data.push_str(
             &value
@@ -97,7 +97,7 @@ impl JsonWriter {
         self.data.push('"');
     }
 
-    fn push_num<T: Num + ToString>(&mut self, value: T) {
+    pub fn push_num<T: Num + ToString>(&mut self, value: T) {
         self.data.push_str(&value.to_string());
     }
 
@@ -113,19 +113,19 @@ impl JsonWriter {
         self.data.push_str("null")
     }
 
-    fn open_record(&mut self) {
+    pub fn open_record(&mut self) {
         self.data.push_str("{ ");
     }
 
-    fn close_record(&mut self) {
+    pub fn close_record(&mut self) {
         self.data.push_str(" }");
     }
 
-    fn open_array(&mut self) {
+    pub fn open_array(&mut self) {
         self.data.push('[');
     }
 
-    fn close_array(&mut self) {
+    pub fn close_array(&mut self) {
         self.data.push(']');
     }
 
@@ -273,6 +273,7 @@ impl JsonWriter {
                 let inner_encoding = fn_encoding();
                 self.encode_value(value, &inner_encoding)
             }
+            Encoding::Custom(codec) => codec.encode_json(self, value, encoding),
         }
     }
 
