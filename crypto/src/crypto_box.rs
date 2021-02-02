@@ -53,7 +53,9 @@ impl PublicKey {
     /// Generates public key hash for public key
     pub fn public_key_hash(&self) -> CryptoboxPublicKeyHash {
         CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref()))
-            .unwrap_or_else(|_| unreachable!())
+            .unwrap_or_else(|_| {
+                unreachable!("digest_128 result lenght should match CryptoboxPublicKeyHash")
+            })
     }
 }
 
