@@ -76,7 +76,7 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
             for field in schema {
                 let name = field.get_name();
                 let value = find_value_in_record_values(name, values)
-                    .unwrap_or_else(|| panic!("No values found for {}", name));
+                    .ok_or_else(|| Error::custom(format!("No values found for {}", name)))?;
                 let encoding = field.get_encoding();
 
                 bytes_sz = bytes_sz
@@ -979,6 +979,16 @@ mod encode_tests {
         );
         match encode_value(&mut data, &value, &encoding) {
             Ok(_) => panic!("Encoding an empty enum value should not succeed"),
+            Err(_) => (),
+        }
+    }
+
+    #[test]
+    fn error_encode_record_with_missing_field() {
+        let value = Value::Record(vec![("missing".to_string(), Value::Unit)]);
+        let schema = [Field::new("field", Encoding::Unit)];
+        match encode_record(&mut Vec::new(), &value, &schema) {
+            Ok(_) => panic!("Encoding a missing field should not succeed"),
             Err(_) => (),
         }
     }
