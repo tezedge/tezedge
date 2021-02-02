@@ -3,8 +3,8 @@
 
 //! Tezos binary data writer.
 
-use std::cmp;
 use std::mem::size_of;
+use std::{cmp, convert::TryFrom};
 
 use bit_vec::BitVec;
 use byteorder::{BigEndian, WriteBytesExt};
@@ -222,16 +222,22 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
-        Encoding::Enum => {
-            match value {
-                Value::Enum(_, ordinal) => {
-                    // TODO: handle enum of different sizes
-                    data.put_u8(ordinal.expect("Was expecting enum ordinal value") as u8);
+        Encoding::Enum => match value {
+            Value::Enum(_, ordinal) => match ordinal {
+                Some(ordinal) => {
+                    data.put_u8(u8::try_from(*ordinal).map_err(|_| {
+                        Error::custom(format!(
+                            "Enum ordinal {} is greater than {}",
+                            ordinal,
+                            u8::MAX
+                        ))
+                    })?);
                     Ok(size_of::<u8>())
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value)),
-            }
-        }
+                None => Err(Error::custom("Was expecting enum ordinal value")),
+            },
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
         Encoding::List(list_inner_encoding) => {
             match value {
                 Value::List(values) => {
@@ -401,7 +407,9 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     }
                 }
                 Value::Enum(ref tag_variant, _) => {
-                    let tag_variant = tag_variant.as_ref().expect("Was expecting variant name");
+                    let tag_variant = tag_variant
+                        .as_ref()
+                        .ok_or_else(|| Error::custom("Was expecting variant name"))?;
                     match tag_map.find_by_variant(tag_variant) {
                         Some(tag) => {
                             let data_len_before_write = data.len();
@@ -927,5 +935,51 @@ mod tests {
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("00").unwrap();
         assert_eq!(expected_writer_result, writer_result);
+    }
+}
+
+#[cfg(test)]
+mod encode_tests {
+    use super::*;
+
+    #[test]
+    fn error_encode_empty_enum_value() {
+        // empty enum value cannot be instantiated, so we can't test it
+        // using write() on real Rust value
+        let mut data = Vec::new();
+        let value = Value::Enum(None, None);
+        let encoding = Encoding::Enum;
+        match encode_value(&mut data, &value, &encoding) {
+            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
+            Err(_) => (),
+        }
+    }
+
+    #[test]
+    fn error_encode_enum_ordinal_too_big() {
+        let value = Value::Enum(Some("name".to_string()), Some(u8::MAX as u32 + 1));
+        let encoding = Encoding::Enum;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &encoding),
+            Err(_)
+        ));
+    }
+
+    #[test]
+    fn error_encode_empty_tag_enum_value() {
+        use crate::encoding::{Tag, TagMap};
+
+        // empty enum value cannot be instantiated, so we can't test it
+        // using write() on real Rust value
+        let mut data = Vec::new();
+        let value = Value::Enum(None, None);
+        let encoding = Encoding::Tags(
+            size_of::<u8>(),
+            TagMap::new(vec![Tag::new(0x0, "Unused", Encoding::Unit)]),
+        );
+        match encode_value(&mut data, &value, &encoding) {
+            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
+            Err(_) => (),
+        }
     }
 }
