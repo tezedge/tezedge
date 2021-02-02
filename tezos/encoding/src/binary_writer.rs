@@ -483,7 +483,11 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
 
         let mut n: u8 = if negative { 0xC0 } else { 0x80 };
         for bit_idx in 0..6 {
-            n.set(bit_idx, bits.pop().unwrap());
+            n.set(
+                bit_idx,
+                bits.pop()
+                    .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
+            );
         }
         data.put_u8(n);
 
@@ -494,7 +498,11 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
             let mut n = 0u8;
             let bit_count = cmp::min(chunk_size, bits.len()) as u8;
             for bit_idx in 0..bit_count {
-                n.set(bit_idx, bits.pop().unwrap());
+                n.set(
+                    bit_idx,
+                    bits.pop()
+                        .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
+                );
             }
             // set continuation bit if there are other chunks to be processed
             if chunk_idx != last_chunk_idx {
