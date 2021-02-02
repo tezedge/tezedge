@@ -266,15 +266,6 @@ pub enum Encoding {
 }
 
 impl Encoding {
-    #[inline]
-    pub fn try_unwrap_option_encoding(&self) -> &Encoding {
-        match self {
-            Encoding::Option(encoding) => encoding,
-            Encoding::OptionalField(encoding) => encoding,
-            _ => panic!("This function can be called only on Encoding::Option or Encoding::List but it was called on {:?}", self)
-        }
-    }
-
     /// Utility function to construct [Encoding::List] without the need
     /// to manually create new [Box].
     #[inline]
