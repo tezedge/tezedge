@@ -10,9 +10,7 @@ enum-iterator = "0.6"
 failure = "0.1"
 chrono = { version = "0.4", features = ["serde"] }
 lazy_static = "1.4"
-# patched version of v.0.4.4 - once new version of ocaml interop
-# is integrated git reference should be no longer used
-ocaml-interop = { git="https://github.com/simplestaking/ocaml-interop", branch="v0.4.4_saddr_fix"}
+ocaml-interop = { version = "0.4.5", features = ["docs-rs"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # local dependencies

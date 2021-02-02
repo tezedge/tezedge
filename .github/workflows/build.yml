@@ -27,6 +27,7 @@ jobs:
             echo '[build]' >> ~/.cargo/config
             echo 'rustflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
             echo 'rustdocflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
+            echo 'target = "x86_64-unknown-linux-gnu"' >> ~/.cargo/config
       - name: Settings for cargo in OSX
         if: runner.os == 'macOS'
         run: |
@@ -47,15 +48,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-      - name: cargo test SADDR
-        if: matrix.sanitizer == 'address'
+      - name: cargo test
+        if: matrix.sanitizer == 'none' || matrix.os == 'ubuntu-latest'
         uses: actions-rs/cargo@v1
         with:
           command: test
-      - name: cargo test 
-        if: matrix.sanitizer == 'none'
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-
 
