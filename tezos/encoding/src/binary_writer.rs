@@ -181,8 +181,8 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
-        Encoding::RangedInt => unimplemented!("Encoding::RangedInt is not implemented"),
-        Encoding::RangedFloat => unimplemented!("Encoding::RangedFloat is not implemented"),
+        Encoding::RangedInt => Err(Error::custom("Encoding::RangedInt is not implemented")),
+        Encoding::RangedFloat => Err(Error::custom("Encoding::RangedFloat is not implemented")),
         Encoding::Int64 | Encoding::Timestamp => match value {
             Value::Int64(v) => {
                 data.put_i64(*v);
@@ -991,5 +991,25 @@ mod encode_tests {
             Ok(_) => panic!("Encoding a missing field should not succeed"),
             Err(_) => (),
         }
+    }
+
+    #[test]
+    fn error_encode_ranged_int_unimplemented() {
+        let value = Value::RangedInt(0);
+        let schema = Encoding::RangedInt;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &schema),
+            Err(_)
+        ));
+    }
+
+    #[test]
+    fn error_encode_ranged_float_unimplemented() {
+        let value = Value::RangedFloat(0.);
+        let schema = Encoding::RangedFloat;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &schema),
+            Err(_)
+        ));
     }
 }
