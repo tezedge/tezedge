@@ -4,7 +4,6 @@
 use std::cmp;
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::convert::TryInto;
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::persistent::PersistentStorage;
@@ -46,12 +45,11 @@ impl OperationsState {
             Some(meta) => Ok(meta.is_complete()),
             None => {
                 if block_header.header.validation_pass() > 0 {
+                    let max_validation_pass =
+                        cmp::min(i8::MAX as u8, block_header.header.validation_pass()) as i8;
                     self.missing_operations_for_blocks.push(MissingOperations {
                         block_hash: block_header.hash.clone(),
-                        validation_passes: (0..block_header.header.validation_pass())
-                            .filter(|i| *i < std::i8::MAX.try_into().unwrap())
-                            .map(|i| i.try_into().unwrap())
-                            .collect(),
+                        validation_passes: (0..max_validation_pass).collect(),
                         level: block_header.header.level(),
                     });
                 }
@@ -209,6 +207,8 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use super::*;
 
     fn block(d: u8) -> BlockHash {
