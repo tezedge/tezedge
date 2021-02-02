@@ -68,7 +68,7 @@ impl Args {
             .about("generate merkle storage statistics data")
             .arg(Arg::with_name("preserved_cycles")
                  .help("last number of cycles which should be preserved")
-                 .default_value("5"))
+                 .default_value("7"))
             .arg(Arg::with_name("cycle_block_count")
                  .help("amount of blocks in each cycle")
                  .default_value("2048"))
