@@ -1,0 +1,10 @@
+[package]
+name = "git-hooks"
+version = "0.1.0"
+authors = ["Bruno Deferrari <bruno.deferrari@simplestaking.com>"]
+edition = "2018"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false # Disable features which are enabled by default
+features = ["user-hooks"]

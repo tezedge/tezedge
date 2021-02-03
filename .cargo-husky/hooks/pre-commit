@@ -1,0 +1,15 @@
+#!/bin/sh
+
+echo "+cargo fmt"
+echo
+
+for FILE in `git diff --cached --name-only`; do
+    if [[ "$FILE" == *.rs ]] && ! rustfmt --edition 2018 --check "$FILE" ; then
+        echo
+        echo "Commit rejected due to invalid formatting in '$FILE'."
+        echo
+        echo "Run the 'cargo fmt' command to automatically format everything."
+
+        exit 1
+    fi
+done
