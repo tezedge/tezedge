@@ -25,7 +25,7 @@ use tezos_encoding::json_writer::JsonWriter;
 /// Serde serialization is still recursive and can lead to stack overflow.
 /// This value can be handled by serde and still it is big enough.
 /// to handle 2 ** 512 elements tree.
-pub const PATH_MAX_DEPTH: RecursiveDataSize = 512;
+pub const PATH_MAX_DEPTH: RecursiveDataSize = 128;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters)]
 pub struct OperationsForBlock {
