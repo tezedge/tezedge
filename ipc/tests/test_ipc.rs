@@ -60,6 +60,8 @@ fn ipc_fork_and_client_exchange() -> Result<(), failure::Error> {
     let recv = rx.receive()?;
     assert_eq!(recv, "dog");
 
+    assert!(common::wait(child_pid));
+
     Ok(())
 }
 
@@ -130,7 +132,10 @@ fn ipc_fork_and_try_read_with_timeout() -> Result<(), failure::Error> {
         Err(IpcError::ReceiveMessageTimeouted { .. }) => {
             Err(format_err!("Unexpected IpcError::ReceiveMessageTimeouted"))
         }
-        Err(_) => Ok(()),
+        Err(_) => {
+            assert!(common::wait(child_pid));
+            Ok(())
+        }
         Ok(_) => Err(format_err!("Unexpected result")),
     }
 }

@@ -2011,9 +2011,9 @@ checksum = "8d3b63360ec3cb337817c2dbd47ab4a0f170d285d8e5a2064600f3def1402397"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.4.4"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73f6eb1378c49deceaf7fec407633c1f9ca8317ec58992da8a91e2c2164cc628"
+checksum = "90d094d3c6bfbefc8ea5a0e4b3ba542105cbf1262fc44478e12cb23eee4391c1"
 dependencies = [
  "ocaml-sys",
 ]

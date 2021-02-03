@@ -2,6 +2,9 @@
 # Copyright (c) SimpleStaking and Tezedge Contributors
 # SPDX-License-Identifier: MIT
 
+# stop on first error
+set -e
+
 warn_if_not_using_recommended_rust() {
   RUSTC_TOOLCHAIN_VERSION="2020-12-31"
 
@@ -28,26 +31,51 @@ help() {
   echo    "              # $0 docker --help"
 }
 
-build_all() {
-  # cargo build profile commandline argument
-  case $1 in
-    debug)
-      # nothing to do here
-      shift
-      ;;
-    release)
-      CARGO_PROFILE_ARG="--release"
-      shift
-      ;;
-    *)
-      echo "Invalid function argument"
-      exit 1
-      ;;
-  esac
+configure_env_variables() {
+  options=$(getopt --longoptions debug,release,addrsanitizer --options "" --name $0 -- "$@")
+  eval set -- "$options"
+  while true ; do
+    case $1 in
+      --debug)
+        export PROFILE="debug"
+        shift
+        ;;
+      --release)
+        export PROFILE="release"
+        shift
+        ;;
+      --addrsanitizer)
+        export RUSTFLAGS="-Z sanitizer=address"
+        export CARGO_BUILD_TARGET="x86_64-unknown-linux-gnu"
+        shift
+        ;;
+      --)
+        shift
+        break
+        ;;
+      *)
+        echo "Invalid function argument"
+        exit 1
+        ;;
+    esac
+  done
+}
 
-  # this is required for the most linux distributions
+print_configuration() {
+  echo -ne "\033[1;37mRunning Tezedge node in ${PROFILE^^} mode"
+  if [ -n "$CARGO_BUILD_TARGET" ]; then
+      echo -ne "($CARGO_BUILD_TARGET)"
+  fi
+
+  if [ -n "$RUSTFLAGS" ]; then
+      echo -ne " extra compilation flags : '$RUSTFLAGS'"
+  fi
+  echo -ne "\e[0m\n"
+}
+
+build_all() {
   export SODIUM_USE_PKG_CONFIG=1
-  cargo build $CARGO_PROFILE_ARG || exit 1
+  cargo build
 }
 
 run_node() {
@@ -66,25 +94,6 @@ run_node() {
   NETWORK=delphi
   # rest of the commandline arguments will end up here
   args=()
-
-
-  # set compilation profile and cargo commandline argument
-  PROFILE=""
-  case $1 in
-    debug)
-      PROFILE="debug"
-      shift
-      ;;
-    release)
-      CARGO_PROFILE_ARG="--release"
-      PROFILE="release"
-      shift
-      ;;
-    *)
-      echo "Invalid function argument"
-      exit 1
-      ;;
-  esac
 
   shift # shift past <MODE>
 
@@ -139,20 +148,26 @@ run_node() {
 
   # cleanup data directory
   if [ -z "$KEEP_DATA" ]; then
-    rm -rf "$BOOTSTRAP_DIR" && mkdir "$BOOTSTRAP_DIR"
-    rm -rf "$TEZOS_DIR" && mkdir "$TEZOS_DIR"
+    rm -rf $TEZOS_DIR $BOOTSTRAP_DIR || true
+    mkdir -p $TEZOS_DIR $BOOTSTRAP_DIR
   fi
 
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
-  cargo run $CARGO_PROFILE_ARG --bin light-node -- \
-                                --config-file "$CONFIG_FILE" \
-                                --tezos-data-dir "$TEZOS_DIR" \
-                                --identity-file "$IDENTITY_FILE" \
-                                --bootstrap-db-path "$BOOTSTRAP_DIR" \
-                                --network "$NETWORK" \
-                                --protocol-runner "./target/$PROFILE/protocol-runner" "${args[@]}"
+  if [ -z "$CARGO_BUILD_TARGET" ]; then
+    PROTOCOL_RUNNER_BINARY=./target/$PROFILE/protocol-runner
+  else
+    PROTOCOL_RUNNER_BINARY=./target/$CARGO_BUILD_TARGET/$PROFILE/protocol-runner
+  fi
+
+  cargo run --bin light-node -- \
+            --config-file "$CONFIG_FILE" \
+            --tezos-data-dir "$TEZOS_DIR" \
+            --identity-file "$IDENTITY_FILE" \
+            --bootstrap-db-path "$BOOTSTRAP_DIR" \
+            --network "$NETWORK" \
+            --protocol-runner $PROTOCOL_RUNNER_BINARY "${args[@]}"
 }
 
 run_docker() {
@@ -174,64 +189,55 @@ run_sandbox() {
   # -n | --network
   NETWORK=sandbox
 
-  # set compilation profile and cargo commandline argument
-  PROFILE=""
-  case $1 in
-    debug)
-      PROFILE="debug"
-      shift
-      ;;
-    release)
-      CARGO_PROFILE_ARG="--release"
-      PROFILE="release"
-      shift
-      ;;
-    *)
-      echo "Invalid function argument"
-      exit 1
-      ;;
-  esac
-
-  shift # shift past <MODE>
-
   # protocol_runner needs 'libtezos.so' to run
   export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/interop/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
 
   export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
 
-  cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
-                                --log-level "info" \
-                                --sandbox-rpc-port "3030" \
-                                --light-node-path "./target/$PROFILE/light-node" \
-                                --protocol-runner-path "./target/$PROFILE/protocol-runner" \
-                                --tezos-client-path "./sandbox/artifacts/tezos-client" "${args[@]}"
+  cargo run --bin sandbox -- \
+            --log-level "info" \
+            --sandbox-rpc-port "3030" \
+            --light-node-path "./target/$PROFILE/light-node" \
+            --protocol-runner-path "./target/$PROFILE/protocol-runner" \
+            --tezos-client-path "./sandbox/artifacts/tezos-client" "${args[@]}"
 }
 
 case $1 in
 
   node)
     warn_if_not_using_recommended_rust
-    printf "\033[1;37mRunning Tezedge node in DEBUG mode\e[0m\n"
-    build_all "debug"
-    run_node "debug" "$@"
+    configure_env_variables --debug
+    print_configuration
+    build_all
+    run_node "$@"
+    ;;
+
+  node-saddr)
+    warn_if_not_using_recommended_rust
+    configure_env_variables --debug --addrsanitizer
+    print_configuration
+    build_all
+    run_node "$@"
     ;;
 
   release)
     warn_if_not_using_recommended_rust
-    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
-    build_all "release"
-    run_node "release" "$@"
+    configure_env_variables --release
+    print_configuration
+    build_all
+    run_node "$@"
     ;;
 
   sandbox)
     warn_if_not_using_recommended_rust
-    printf "\033[1;37mRunning Tezedge node in RELEASE mode\e[0m\n"
-    build_all "release"
-    run_sandbox "release" "$@"
+    configure_env_variables --release
+    print_configuration
+    build_all
+    run_sandbox "$@"
     ;;
 
   docker)
-    printf "\033[1;37mRunning Tezedge node in docker\e[0m\n"
+    echo -ne "\033[1;37mRunning Tezedge node in docker\e[0m\n"
     run_docker "$@"
     ;;
 
