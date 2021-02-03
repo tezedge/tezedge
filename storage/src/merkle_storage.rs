@@ -1013,6 +1013,14 @@ impl MerkleStorage {
         }
     }
 
+    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        let instant = Instant::now();
+        self.db.start_new_cycle(self.last_commit_hash.clone());
+        self.update_execution_stats("GC".to_string(), None, &instant);
+        Ok(())
+    }
+        
+
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
     fn get_staged_root(&self) -> Tree {
         self.current_stage_tree.0.clone()
