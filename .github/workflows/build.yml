@@ -49,8 +49,14 @@ jobs:
         with:
           command: check
       - name: cargo test
-        if: matrix.sanitizer == 'none' || matrix.os == 'ubuntu-latest'
+        if: matrix.sanitizer == 'none'
         uses: actions-rs/cargo@v1
         with:
           command: test
+      - name: cargo test
+        if: matrix.sanitizer == 'address' && matrix.os == 'ubuntu-latest'
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all --exclude tezos_messages
 
