@@ -362,12 +362,12 @@ fn block_on_actors(
     // and than open p2p and others
     let _ = PeerManager::actor(
         &actor_system,
-        network_channel.clone(),
+        network_channel,
         shell_channel.clone(),
         tokio_runtime.handle().clone(),
         identity,
-        shell_compatibility_version.clone(),
-        env.p2p.clone(),
+        shell_compatibility_version,
+        env.p2p,
     )
     .expect("Failed to create peer manager");
 
