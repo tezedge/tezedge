@@ -258,6 +258,14 @@ pub enum ProtocolServiceError {
     LockPoisonError { message: String },
 }
 
+impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
+    fn from(source: std::sync::PoisonError<T>) -> Self {
+        Self::LockPoisonError {
+            message: source.to_string(),
+        }
+    }
+}
+
 impl slog::Value for ProtocolServiceError {
     fn serialize(
         &self,
@@ -637,17 +645,13 @@ impl ProtocolController {
             let lock: Arc<(Mutex<bool>, Condvar)> =
                 AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK.clone();
             let &(ref lock, ref cvar) = &*lock;
-            let was_one_write_success =
-                lock.lock()
-                    .map_err(|error| ProtocolServiceError::LockPoisonError {
-                        message: format!("{:?}", error),
-                    })?;
+            let was_one_write_success = lock.lock()?;
 
             // if we have already one write, we can just continue, if not we put thread to sleep and wait
             if !(*was_one_write_success) {
                 if readonly {
                     // release lock here and wait
-                    let _lock = cvar.wait(was_one_write_success).unwrap();
+                    let _lock = cvar.wait(was_one_write_success)?;
                 }
                 // TODO: handle situation, thah more writes - we cannot allowed to do so, just one write can exists
             }
@@ -734,7 +738,13 @@ impl ProtocolController {
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
-            self.configuration.data_dir().to_str().unwrap().to_string(),
+            self.configuration
+                .data_dir()
+                .to_str()
+                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
+                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
+                })?
+                .to_string(),
             self.configuration.environment(),
             commit_genesis,
             self.configuration.enable_testchain(),
@@ -749,7 +759,13 @@ impl ProtocolController {
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
         self.init_protocol_context(
-            self.configuration.data_dir().to_str().unwrap().to_string(),
+            self.configuration
+                .data_dir()
+                .to_str()
+                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
+                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
+                })?
+                .to_string(),
             self.configuration.environment(),
             false,
             self.configuration.enable_testchain(),
