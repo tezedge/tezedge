@@ -27,6 +27,7 @@ pub fn ts_to_rfc3339(ts: i64) -> String {
 /// (if you need here more attributes from block_header, consider refactor block_header with this struct as shell_header)
 #[derive(Clone, Debug, Getters, Serialize, Deserialize)]
 pub struct Head {
+    // TODO: TE-369 - Arc refactor
     /// BlockHash of head.
     #[get = "pub"]
     block_hash: BlockHash,

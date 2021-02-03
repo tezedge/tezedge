@@ -356,6 +356,7 @@ fn block_on_actors(
     )
     .expect("Failed to create RPC server");
 
+    // TODO: TE-386 - controlled startup
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     // and than open p2p and others
@@ -368,7 +369,7 @@ fn block_on_actors(
         shell_compatibility_version.clone(),
         env.p2p.clone(),
     )
-        .expect("Failed to create peer manager");
+    .expect("Failed to create peer manager");
 
     info!(log, "Actors initialized");
 

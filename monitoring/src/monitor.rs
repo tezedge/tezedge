@@ -170,8 +170,6 @@ impl Receive<SystemEvent> for Monitor {
                     )),
                     None,
                 );
-            } else {
-                warn!(ctx.system.log(), "Monitor for actor, was never set up."; "actor" => evt.actor.name());
             }
         }
     }
