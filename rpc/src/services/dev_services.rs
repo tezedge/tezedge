@@ -3,7 +3,7 @@
 
 use slog::Logger;
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::context_action_storage::{
@@ -48,14 +48,14 @@ pub(crate) fn get_block_actions_cursor(
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<ContextActionJson>, failure::Error> {
     let context_action_storage = ContextActionStorage::new(persistent_storage);
-    let mut filters = ContextActionFilters::with_block_hash(block_hash);
+    let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
     if let Some(action_types) = action_types {
         filters = filters.with_action_types(get_action_types(action_types));
     }
     let values = context_action_storage
         .load_cursor(cursor_id, limit, filters)?
         .into_iter()
-        .map(|value| ContextActionJson::from(value))
+        .map(ContextActionJson::from)
         .collect();
     Ok(values)
 }
@@ -76,7 +76,7 @@ pub(crate) fn get_contract_actions_cursor(
     let values = context_action_storage
         .load_cursor(cursor_id, limit, filters)?
         .into_iter()
-        .map(|value| ContextActionJson::from(value))
+        .map(ContextActionJson::from)
         .collect();
     Ok(values)
 }
@@ -119,18 +119,21 @@ pub(crate) fn get_cycle_length_for_block(
     log: &Logger,
 ) -> Result<i32, failure::Error> {
     if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
-        Ok(tezos_messages::protocol::get_constants_for_rpc(&context_proto_params.constants_data, context_proto_params.protocol_hash)?
+        Ok(tezos_messages::protocol::get_constants_for_rpc(
+            &context_proto_params.constants_data,
+            &context_proto_params.protocol_hash,
+        )?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
-                    slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+                    slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
                     4096
                 })
             ).flatten().unwrap_or_else(|| {
-            slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+            slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
             4096
         }))
     } else {
-        slog::warn!(log, "Cycle length missing"; "block" => HashType::BlockHash.hash_to_b58check(block_hash));
+        slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
         Ok(4096)
     }
 }

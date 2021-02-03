@@ -1,8 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::str::FromStr;
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+};
 
 use chrono::prelude::*;
 use chrono::ParseError;
@@ -13,8 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crypto::base58::FromBase58CheckError;
 use crypto::hash::{
-    chain_id_from_block_hash, BlockHash, ChainId, ContextHash, HashType, OperationListListHash,
-    ProtocolHash,
+    chain_id_from_block_hash, BlockHash, ChainId, ContextHash, OperationListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
@@ -23,7 +25,7 @@ use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
     /// alternative to ocaml Operation_list_list_hash.empty
-    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = HashType::OperationListListHash.b58check_to_hash("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap();
+    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = OperationListListHash::try_from("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap_or_else(|_| unreachable!("Incorrect hardcoded hash"));
 }
 
 /// Enum representing different Tezos environment.
@@ -33,6 +35,7 @@ pub enum TezosEnvironment {
     Babylonnet,
     Carthagenet,
     Delphinet,
+    Edonet,
     Mainnet,
     Zeronet,
     Sandbox,
@@ -50,6 +53,7 @@ impl FromStr for TezosEnvironment {
             "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
             "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
             "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
+            "edonet" | "edo" => Ok(TezosEnvironment::Edonet),
             "mainnet" => Ok(TezosEnvironment::Mainnet),
             "zeronet" => Ok(TezosEnvironment::Zeronet),
             "sandbox" => Ok(TezosEnvironment::Sandbox),
@@ -147,6 +151,34 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             "13.53.41.201".to_string(),
         ],
         version: "TEZOS_DELPHINET_2020-09-04T07:08:53Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
+    });
+
+    env.insert(TezosEnvironment::Edonet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2020-11-30T12:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "51.75.246.56:9733".to_string(),
+            "edonet.tezos.co.il".to_string(),
+            "46.245.179.161:9733".to_string(),
+            "edonet.smartpy.io".to_string(),
+            "188.40.128.216:29732".to_string(),
+            "51.79.165.131".to_string(),
+            "edonet.boot.tezostaquito.io".to_string(),
+            "95.216.228.228:9733".to_string(),
+        ],
+        version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
         protocol_overrides: ProtocolOverrides {
             user_activated_upgrades: vec![],
             user_activated_protocol_overrides: vec![],
@@ -281,12 +313,12 @@ pub struct TezosEnvironmentConfiguration {
 impl TezosEnvironmentConfiguration {
     /// Resolves genesis hash from configuration of GenesisChain.block
     pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
-        HashType::BlockHash
-            .b58check_to_hash(&self.genesis.block)
-            .map_err(|e| TezosEnvironmentError::InvalidBlockHash {
+        BlockHash::from_base58_check(&self.genesis.block).map_err(|e| {
+            TezosEnvironmentError::InvalidBlockHash {
                 hash: self.genesis.block.clone(),
                 error: e,
-            })
+            }
+        })
     }
 
     /// Resolves main chain_id, which is computed from genesis header
@@ -296,12 +328,12 @@ impl TezosEnvironmentConfiguration {
 
     /// Resolves genesis protocol
     pub fn genesis_protocol(&self) -> Result<ProtocolHash, TezosEnvironmentError> {
-        HashType::ProtocolHash
-            .b58check_to_hash(&self.genesis.protocol)
-            .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
+        self.genesis.protocol.as_str().try_into().map_err(|e| {
+            TezosEnvironmentError::InvalidProtocolHash {
                 hash: self.genesis.protocol.clone(),
                 error: e,
-            })
+            }
+        })
     }
 
     pub fn genesis_time(&self) -> Result<i64, TezosEnvironmentError> {

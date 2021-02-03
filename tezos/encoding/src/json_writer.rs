@@ -45,7 +45,7 @@ impl JsonWriter {
                     let name = field.get_name();
                     let value = self
                         .find_value_in_record_values(name, values)
-                        .unwrap_or_else(|| panic!("No values found for {}", name));
+                        .ok_or_else(|| Error::custom(format!("No values found for {}", name)))?;
                     let encoding = field.get_encoding();
 
                     if idx > 0 {
@@ -76,17 +76,17 @@ impl JsonWriter {
         ))
     }
 
-    fn push_key(&mut self, key: &str) {
+    pub fn push_key(&mut self, key: &str) {
         self.data.push('"');
         self.data.push_str(&key);
         self.data.push_str("\": ");
     }
 
-    fn push_delimiter(&mut self) {
+    pub fn push_delimiter(&mut self) {
         self.data.push_str(", ");
     }
 
-    fn push_str(&mut self, value: &str) {
+    pub fn push_str(&mut self, value: &str) {
         self.data.push('"');
         self.data.push_str(
             &value
@@ -97,7 +97,7 @@ impl JsonWriter {
         self.data.push('"');
     }
 
-    fn push_num<T: Num + ToString>(&mut self, value: T) {
+    pub fn push_num<T: Num + ToString>(&mut self, value: T) {
         self.data.push_str(&value.to_string());
     }
 
@@ -113,19 +113,19 @@ impl JsonWriter {
         self.data.push_str("null")
     }
 
-    fn open_record(&mut self) {
+    pub fn open_record(&mut self) {
         self.data.push_str("{ ");
     }
 
-    fn close_record(&mut self) {
+    pub fn close_record(&mut self) {
         self.data.push_str(" }");
     }
 
-    fn open_array(&mut self) {
+    pub fn open_array(&mut self) {
         self.data.push('[');
     }
 
-    fn close_array(&mut self) {
+    pub fn close_array(&mut self) {
         self.data.push(']');
     }
 
@@ -196,7 +196,9 @@ impl JsonWriter {
             },
             Encoding::Enum => match value {
                 Value::Enum(name, _) => {
-                    let variant_name = name.as_ref().expect("Was expecting variant name");
+                    let variant_name = name
+                        .as_ref()
+                        .ok_or_else(|| Error::custom("Was expecting variant name"))?;
                     Ok(self.push_str(variant_name))
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
@@ -240,7 +242,11 @@ impl JsonWriter {
                                 _ => return Err(Error::custom(format!("Encoding::Hash could be applied only to &[u8] value but found: {:?}", value)))
                             }
                     }
-                    Ok(self.push_str(&hash_encoding.hash_to_b58check(&bytes)))
+                    Ok(self.push_str(
+                        &hash_encoding.hash_to_b58check(&bytes).map_err(|e| {
+                            Error::custom(format!("Failed to encode hash: {:?}", e))
+                        })?,
+                    ))
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
@@ -258,9 +264,9 @@ impl JsonWriter {
             Encoding::Dynamic(dynamic_encoding) => self.encode_value(value, dynamic_encoding),
             Encoding::Sized(_, sized_encoding) => self.encode_value(value, sized_encoding),
             Encoding::Greedy(un_sized_encoding) => self.encode_value(value, un_sized_encoding),
-            Encoding::Tags(_, _) => {
-                unimplemented!("Encoding::Tags encoding is not supported for JSON format")
-            }
+            Encoding::Tags(_, _) => Err(Error::custom(
+                "Encoding::Tags encoding is not supported for JSON format",
+            )),
             Encoding::Split(fn_encoding) => {
                 let inner_encoding = fn_encoding(SchemaType::Json);
                 self.encode_value(value, &inner_encoding)
@@ -269,6 +275,7 @@ impl JsonWriter {
                 let inner_encoding = fn_encoding();
                 self.encode_value(value, &inner_encoding)
             }
+            Encoding::Custom(codec) => codec.encode_json(self, value, encoding),
         }
     }
 

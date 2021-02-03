@@ -3,8 +3,11 @@
 
 use maplit::hashmap;
 
-use storage::skip_list::{Lane, SkipListError, TryExtend, TypedLane};
 use storage::tests_common::TmpStorage;
+use storage::{
+    persistent::StorageType,
+    skip_list::{Lane, SkipListError, TryExtend, TypedLane},
+};
 
 #[test]
 fn lane_new() {
@@ -12,8 +15,8 @@ fn lane_new() {
     let lane = Lane::new(
         1,
         0,
-        tmp_storage.storage().kv(),
-        tmp_storage.storage().kv(),
+        tmp_storage.storage().kv(StorageType::Database),
+        tmp_storage.storage().kv(StorageType::Database),
         tmp_storage.storage().seq().generator("__lane:lane_new"),
     );
     assert_eq!(lane.level(), 0);
@@ -25,8 +28,8 @@ fn lane_higher() {
     let lane = Lane::new(
         2,
         0,
-        tmp_storage.storage().kv(),
-        tmp_storage.storage().kv(),
+        tmp_storage.storage().kv(StorageType::Database),
+        tmp_storage.storage().kv(StorageType::Database),
         tmp_storage.storage().seq().generator("__lane:lane_higher"),
     );
     let higher_lane = lane.higher_lane();
@@ -39,8 +42,8 @@ fn lane_lower() {
     let lane = Lane::new(
         3,
         1,
-        tmp_storage.storage().kv(),
-        tmp_storage.storage().kv(),
+        tmp_storage.storage().kv(StorageType::Database),
+        tmp_storage.storage().kv(StorageType::Database),
         tmp_storage.storage().seq().generator("__lane:lane_lower"),
     );
     let lower_lane = lane.lower_lane();
@@ -53,8 +56,8 @@ fn lane_lower_underflow() {
     let lane = Lane::new(
         4,
         0,
-        tmp_storage.storage().kv(),
-        tmp_storage.storage().kv(),
+        tmp_storage.storage().kv(StorageType::Database),
+        tmp_storage.storage().kv(StorageType::Database),
         tmp_storage
             .storage()
             .seq()
@@ -70,8 +73,8 @@ fn lane_put_get_values() {
     let mut lane = Lane::new(
         5,
         0,
-        tmp_storage.storage().kv(),
-        tmp_storage.storage().kv(),
+        tmp_storage.storage().kv(StorageType::Database),
+        tmp_storage.storage().kv(StorageType::Database),
         tmp_storage
             .storage()
             .seq()

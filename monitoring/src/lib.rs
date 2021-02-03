@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-mod handlers;
 mod monitor;
 mod monitors;
+mod websocket;
 
-pub use handlers::WebsocketHandler;
 pub use monitor::Monitor;
+pub use websocket::WebsocketHandler;

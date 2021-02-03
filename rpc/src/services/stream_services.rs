@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 use std::collections::{HashMap, HashSet};
-use std::future::Future;
 use std::pin::Pin;
 
 use failure::format_err;
@@ -10,10 +9,10 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{warn, Logger};
-use tokio::time::{delay_until, Delay};
+use tokio::time::{interval_at, Interval};
 use tokio::time::{Duration, Instant};
 
-use crypto::hash::{BlockHash, ChainId, HashType, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::persistent::PersistentStorage;
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader};
@@ -84,7 +83,7 @@ pub struct HeadMonitorStream {
     chain_id: ChainId,
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
-    delay: Option<Delay>,
+    delay: Option<Interval>,
     protocol: Option<ProtocolHash>,
 }
 
@@ -94,7 +93,7 @@ pub struct OperationMonitorStream {
     state: RpcCollectedStateRef,
     last_checked_head: BlockHash,
     log: Logger,
-    delay: Option<Delay>,
+    delay: Option<Interval>,
     streamed_operations: Option<HashSet<String>>,
     query: MempoolOperationsQuery,
 }
@@ -180,9 +179,7 @@ impl OperationMonitorStream {
                 .filter(|(k, _)| !streamed_operations.contains(k))
                 .map(|(_, v)| {
                     let mut monitor_op: MonitoredOperation = serde_json::from_value(v).unwrap();
-                    monitor_op.protocol = protocol_hash
-                        .as_ref()
-                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
                     monitor_op
                 })
                 .collect();
@@ -213,9 +210,7 @@ impl OperationMonitorStream {
                             return Err(e);
                         }
                     };
-                    monitor_op.protocol = protocol_hash
-                        .as_ref()
-                        .map(|ph| HashType::ProtocolHash.hash_to_b58check(ph));
+                    monitor_op.protocol = protocol_hash.as_ref().map(|ph| ph.to_base58_check());
                     Ok(monitor_op)
                 })
                 .filter_map(Result::ok)
@@ -260,8 +255,8 @@ impl HeadMonitorStream {
             None => {
                 return Err(format_err!(
                     "Missing block json data for block_hash: {}",
-                    HashType::BlockHash.hash_to_b58check(&current_head.hash),
-                ))
+                    current_head.hash.to_base58_check(),
+                ));
             }
         };
 
@@ -275,7 +270,7 @@ impl HeadMonitorStream {
             let block_next_protocol = block_info.metadata["next_protocol"]
                 .to_string()
                 .replace("\"", "");
-            if &HashType::ProtocolHash.b58check_to_hash(&block_next_protocol)? != protocol {
+            if &ProtocolHash::from_base58_check(&block_next_protocol)? != protocol {
                 return Ok(None);
             }
         }
@@ -301,16 +296,11 @@ impl Stream for HeadMonitorStream {
 
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
         let delay = self.delay.get_or_insert_with(|| {
-            let when = Instant::now() + Duration::from_millis(MONITOR_TIMER_MILIS);
-            delay_until(when)
+            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
         });
 
-        // pin the future pointer
-        let mut pinned = std::boxed::Box::pin(delay);
-        let pinned_mut = pinned.as_mut();
-
         // poll the delay future
-        match pinned_mut.poll(cx) {
+        match delay.poll_tick(cx) {
             Poll::Pending => Poll::Pending,
             _ => {
                 // get rid of the used delay
@@ -383,16 +373,11 @@ impl Stream for OperationMonitorStream {
     ) -> Poll<Option<Result<String, failure::Error>>> {
         // create or get a delay future, that blocks for MONITOR_TIMER_MILIS
         let delay = self.delay.get_or_insert_with(|| {
-            let when = Instant::now() + Duration::from_millis(MONITOR_TIMER_MILIS);
-            delay_until(when)
+            interval_at(Instant::now(), Duration::from_millis(MONITOR_TIMER_MILIS))
         });
 
-        // pin the future pointer
-        let mut pinned = std::boxed::Box::pin(delay);
-        let pinned_mut = pinned.as_mut();
-
         // poll the delay future
-        match pinned_mut.poll(cx) {
+        match delay.poll_tick(cx) {
             Poll::Pending => Poll::Pending,
             _ => {
                 // get rid of the used delay

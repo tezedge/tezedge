@@ -1,22 +1,26 @@
 [package]
 name = "monitoring"
-version = "0.9.1"
+version = "0.9.2"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
 erased-serde = "0.3"
 riker = "0.4"
-ws = "*"
 serde = "1.0"
 serde_json = "1.0"
-slog = { version = "2.5", features = ["nested-values"] }
+slog = { version = "2.7", features = ["nested-values"] }
 slog_derive = "0.1.1"
 # local dependencies
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell = { path = "../shell" }
 tezos_messages = { path = "../tezos/messages" }
+tokio = { version = "1.1", features = ["full"] }
+tokio-stream = "0.1.2"
+futures = { version = "0.3", default-features = false }
+warp = "0.3"
+uuid = { version = "0.8", features = ["serde", "v4"] }
 
 [dev-dependencies]
 rand = "0.7.3"

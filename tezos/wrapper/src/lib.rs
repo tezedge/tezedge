@@ -138,8 +138,7 @@ pub struct ProtocolEndpointConfiguration {
     executable_path: PathBuf,
     #[get = "pub"]
     log_level: Level,
-    #[get_copy = "pub"]
-    need_event_server: bool,
+    event_server_path: Option<PathBuf>,
 }
 
 impl ProtocolEndpointConfiguration {
@@ -150,7 +149,7 @@ impl ProtocolEndpointConfiguration {
         data_dir: P,
         executable_path: P,
         log_level: Level,
-        need_event_server: bool,
+        event_server_path: Option<PathBuf>,
     ) -> Self {
         ProtocolEndpointConfiguration {
             runtime_configuration,
@@ -159,7 +158,7 @@ impl ProtocolEndpointConfiguration {
             data_dir: data_dir.as_ref().into(),
             executable_path: executable_path.as_ref().into(),
             log_level,
-            need_event_server,
+            event_server_path,
         }
     }
 }

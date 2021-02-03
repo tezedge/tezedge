@@ -1,6 +1,8 @@
+use std::convert::TryFrom;
+
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-use crypto::hash::HashType;
+use crypto::hash::ProtocolHash;
 use serial_test::serial;
 use tezos_api::environment::{self, TezosEnvironment};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
@@ -23,7 +25,6 @@ fn test_init_protocol_context() {
     .unwrap()
     .unwrap();
 
-    let context_hash_encoding = HashType::ContextHash;
     let storage_dir = "test_storage_01";
     let tezos_env = TezosEnvironment::Carthagenet;
 
@@ -38,9 +39,7 @@ fn test_init_protocol_context() {
     assert!(genesis_commit_hash.is_some());
     let genesis_commit_hash = genesis_commit_hash.unwrap();
     assert_eq!(
-        context_hash_encoding
-            .hash_to_b58check(&genesis_commit_hash)
-            .as_str(),
+        genesis_commit_hash.to_base58_check(),
         "CoWZVRSM6DdNUpn3mamy7e8rUSxQVWkQCQfJBg7DrTVXUjzGZGCa",
     );
 
@@ -68,12 +67,12 @@ fn test_assert_encoding_for_protocol_data() {
         hex::decode("0000000201dd9fb5edc4f29e7d28f41fe56d57ad172b7686ed140ad50294488b68de29474d000000005c017cd804683625c2445a4e9564bf710c5528fd99a7d150d2a2a323bc22ff9e2710da4f6d0000001100000001000000000800000000000000029bd8c75dec93c276d2d8e8febc3aa6c9471cb2cb42236b3ab4ca5f1f2a0892f6000500000003ba671eef00d6a8bea20a4677fae51268ab6be7bd8cfc373cd6ac9e0a00064efcc404e1fb39409c5df255f7651e3d1bb5d91cb2172b687e5d56ebde58cfd92e1855aaafbf05").unwrap(),
     ).expect("Failed to decode block header 2");
 
-    let protocol_hash_1 = HashType::ProtocolHash
-        .b58check_to_hash("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex")
-        .expect("Failed to decode protocol hash");
-    let protocol_hash_2 = HashType::ProtocolHash
-        .b58check_to_hash("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")
-        .expect("Failed to decode protocol hash");
+    let protocol_hash_1 =
+        ProtocolHash::try_from("PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex")
+            .expect("Failed to decode protocol hash");
+    let protocol_hash_2 =
+        ProtocolHash::try_from("PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS")
+            .expect("Failed to decode protocol hash");
 
     // check
     assert!(client::assert_encoding_for_protocol_data(

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::mem;
 use std::ops::Range;
 use std::str::FromStr;
@@ -11,18 +12,20 @@ use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::{
+    BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
+};
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
-use crate::num_from_slice;
-use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
+use crate::persistent::codec::range_from_idx_len;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
     default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
     KeyValueStoreWithSchema, PersistentStorage, SchemaError,
 };
 use crate::StorageError;
+use crate::{num_from_slice, persistent::StorageType};
 
 pub enum ContextHashType {
     Block,
@@ -73,12 +76,13 @@ pub struct ContextActionStorage {
 
 impl ContextActionStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        let storage = persistent_storage.kv(StorageType::ContextAction);
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::ContextAction),
             generator: persistent_storage.seq().generator(Self::name()),
-            context_by_block_index: ContextActionByBlockHashIndex::new(persistent_storage.kv()),
-            context_by_contract_index: ContextActionByContractIndex::new(persistent_storage.kv()),
-            context_by_type_index: ContextActionByTypeIndex::new(persistent_storage.kv()),
+            context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
+            context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
+            context_by_type_index: ContextActionByTypeIndex::new(storage),
         }
     }
 
@@ -122,7 +126,7 @@ impl ContextActionStorage {
         if let ContextHashType::Block = addr_type {
             let base_iterator = self
                 .context_by_block_index
-                .get_by_block_hash_iterator(&hash, cursor_id)?;
+                .get_by_block_hash_iterator(&BlockHash::try_from(hash)?, cursor_id)?;
             if let Some(action_type) = cursor_filters.action_type {
                 let type_iterator = self
                     .context_by_type_index
@@ -418,7 +422,9 @@ impl ContextActionByBlockHashKey {
 impl Decoder for ContextActionByBlockHashKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
-            let block_hash = vec_from_slice(bytes, Self::IDX_BLOCK_HASH, Self::LEN_BLOCK_HASH);
+            let block_hash = BlockHash::try_from(
+                &bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH],
+            )?;
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
             Ok(Self { block_hash, id })
         } else {
@@ -433,7 +439,7 @@ impl Decoder for ContextActionByBlockHashKey {
 impl Encoder for ContextActionByBlockHashKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(Self::LEN_TOTAL);
-        result.extend(&self.block_hash);
+        result.extend(self.block_hash.as_ref());
         result.extend(&self.id.to_be_bytes());
         assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
         Ok(result)
@@ -635,23 +641,19 @@ pub fn contract_id_to_contract_address_for_index(
             match &contract_id[0..3] {
                 "tz1" => {
                     contract_address.extend(&[0, 0]);
-                    contract_address
-                        .extend(&HashType::ContractTz1Hash.b58check_to_hash(contract_id)?);
+                    contract_address.extend(ContractTz1Hash::try_from(contract_id)?.as_ref());
                 }
                 "tz2" => {
                     contract_address.extend(&[0, 1]);
-                    contract_address
-                        .extend(&HashType::ContractTz2Hash.b58check_to_hash(contract_id)?);
+                    contract_address.extend(ContractTz2Hash::try_from(contract_id)?.as_ref());
                 }
                 "tz3" => {
                     contract_address.extend(&[0, 2]);
-                    contract_address
-                        .extend(&HashType::ContractTz3Hash.b58check_to_hash(contract_id)?);
+                    contract_address.extend(ContractTz3Hash::try_from(contract_id)?.as_ref());
                 }
                 "KT1" => {
                     contract_address.push(1);
-                    contract_address
-                        .extend(&HashType::ContractKt1Hash.b58check_to_hash(contract_id)?);
+                    contract_address.extend(ContractKt1Hash::try_from(contract_id)?.as_ref());
                     contract_address.push(0);
                 }
                 _ => {
@@ -998,6 +1000,8 @@ pub mod sorted_intersect {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryInto;
+
     use failure::Error;
 
     use crypto::hash::HashType;
@@ -1019,7 +1023,7 @@ mod tests {
     #[test]
     fn context_record_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = ContextActionByBlockHashKey {
-            block_hash: vec![43; HashType::BlockHash.size()],
+            block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 6548654,
         };
         let encoded_bytes = expected.encode()?;
@@ -1031,7 +1035,7 @@ mod tests {
     #[test]
     fn context_record_key_blank_operation_encoded_equals_decoded() -> Result<(), Error> {
         let expected = ContextActionByBlockHashKey {
-            block_hash: vec![43; HashType::BlockHash.size()],
+            block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 176105218,
         };
         let encoded_bytes = expected.encode()?;

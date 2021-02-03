@@ -13,13 +13,21 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
+        sanitizer: [none, address]
     steps:
       - uses: actions/checkout@v2
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2020-10-24
+          toolchain: nightly-2020-12-31
           default: true
+      - name: Settings for cargo in Linux
+        if: matrix.os == 'ubuntu-latest' && matrix.sanitizer == 'address'
+        run: |
+            echo '[build]' >> ~/.cargo/config
+            echo 'rustflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
+            echo 'rustdocflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
+            echo 'target = "x86_64-unknown-linux-gnu"' >> ~/.cargo/config
       - name: Settings for cargo in OSX
         if: runner.os == 'macOS'
         run: |
@@ -41,6 +49,14 @@ jobs:
         with:
           command: check
       - name: cargo test
+        if: matrix.sanitizer == 'none'
         uses: actions-rs/cargo@v1
         with:
           command: test
+      - name: cargo test
+        if: matrix.sanitizer == 'address' && matrix.os == 'ubuntu-latest'
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all --exclude tezos_messages
+

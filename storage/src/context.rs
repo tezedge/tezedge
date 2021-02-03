@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use std::array::TryFromSliceError;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
 use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 
-use crypto::hash::{BlockHash, ContextHash, HashType};
+use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 
 use crate::merkle_storage::{
     ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats,
@@ -104,7 +105,7 @@ impl ContextApi for TezedgeContext {
     }
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.checkout(&context_hash_arr)?;
 
@@ -123,7 +124,7 @@ impl ContextApi for TezedgeContext {
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
-        let commit_hash = &commit_hash[..].to_vec();
+        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
 
         // associate block and context_hash
         if let Err(e) = self
@@ -135,8 +136,8 @@ impl ContextApi for TezedgeContext {
                     // TODO: is this needed? check it when removing assign_to_context
                     if parent_context_hash.is_some() {
                         return Err(ContextError::ContextHashAssignError {
-                            block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-                            context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+                            block_hash: block_hash.to_base58_check(),
+                            context_hash: commit_hash.to_base58_check(),
                             error: e,
                         });
                     } else {
@@ -147,15 +148,15 @@ impl ContextApi for TezedgeContext {
                 }
                 _ => {
                     return Err(ContextError::ContextHashAssignError {
-                        block_hash: HashType::BlockHash.hash_to_b58check(block_hash),
-                        context_hash: HashType::ContextHash.hash_to_b58check(commit_hash),
+                        block_hash: block_hash.to_base58_check(),
+                        context_hash: commit_hash.to_base58_check(),
                         error: e,
                     })
                 }
             };
         }
 
-        Ok(commit_hash.to_vec())
+        Ok(commit_hash)
     }
 
     fn delete_to_diff(
@@ -212,13 +213,13 @@ impl ContextApi for TezedgeContext {
         context_hash: &ContextHash,
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         let mut merkle = self.merkle.write().expect("lock poisoning");
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
                 Err(ContextError::UnknownContextHashError {
-                    context_hash: HashType::ContextHash.hash_to_b58check(context_hash),
+                    context_hash: context_hash.to_base58_check(),
                 })
             }
             Err(err) => Err(ContextError::MerkleStorageError { error: err }),
@@ -231,7 +232,7 @@ impl ContextApi for TezedgeContext {
         context_hash: &ContextHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
     }
@@ -242,7 +243,7 @@ impl ContextApi for TezedgeContext {
         prefix: &ContextKey,
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, MerkleError> {
-        let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
+        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
     }
@@ -309,6 +310,8 @@ pub enum ContextError {
     /// TODO: TE-203 - remove when context_listener will not be used
     #[fail(display = "Storage error: {}", error)]
     StorageError { error: StorageError },
+    #[fail(display = "Conversion from bytes error: {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<MerkleError> for ContextError {
@@ -326,6 +329,12 @@ impl From<TryFromIntError> for ContextError {
 impl From<TryFromSliceError> for ContextError {
     fn from(error: TryFromSliceError) -> Self {
         ContextError::HashConversionError { error }
+    }
+}
+
+impl From<FromBytesError> for ContextError {
+    fn from(error: FromBytesError) -> Self {
+        ContextError::HashError { error }
     }
 }
 

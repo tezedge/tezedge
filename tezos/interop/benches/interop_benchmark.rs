@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use tezos_api::ffi::{
@@ -8,7 +10,6 @@ use tezos_api::ffi::{
     RustBytes, TezosRuntimeConfiguration,
 };
 
-use crypto::hash::HashType;
 use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, ToOCaml, ToRust};
 use tezos_interop::ffi;
 use tezos_interop::runtime;
@@ -57,7 +58,7 @@ fn block_operations_from_hex(
                 .map(|op| Operation::from_bytes(op).unwrap())
                 .collect();
             OperationsForBlocksMessage::new(
-                OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                OperationsForBlock::new(hex::decode(block_hash).unwrap().try_into().unwrap(), 4),
                 Path::Op,
                 ops,
             )
@@ -84,8 +85,6 @@ fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> Result<(
             ))
             .unwrap();
             let _response: ApplyBlockResponse = result.to_rust();
-
-            ()
         })
     })
 }
@@ -95,8 +94,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let response_with_some_forking_data: ApplyBlockResponse = ApplyBlockResponse {
         validation_result_message: "validation_result_message".to_string(),
-        context_hash: HashType::ContextHash
-            .b58check_to_hash("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")
+        context_hash: "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE"
+            .try_into()
             .expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
         block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
@@ -105,13 +104,14 @@ fn criterion_benchmark(c: &mut Criterion) {
         last_allowed_fork_level: 8,
         forking_testchain: true,
         forking_testchain_data: Some(ForkingTestchainData {
-            test_chain_id: HashType::ChainId
-                .b58check_to_hash("NetXgtSLGNJvNye")
-                .unwrap(),
-            forking_block_hash: HashType::BlockHash
-                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")
+            test_chain_id: "NetXgtSLGNJvNye".try_into().unwrap(),
+            forking_block_hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET"
+                .try_into()
                 .unwrap(),
         }),
+        block_metadata_hash: None,
+        ops_metadata_hashes: None,
+        ops_metadata_hash: None,
     };
 
     let _ignored = runtime::execute(move || {
@@ -127,13 +127,15 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     c.bench_function("apply_block_request_decoded_roundtrip", |b| {
         let request: ApplyBlockRequest = ApplyBlockRequestBuilder::default()
-            .chain_id(hex::decode(CHAIN_ID).unwrap())
+            .chain_id(hex::decode(CHAIN_ID).unwrap().try_into().unwrap())
             .block_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
             .pred_header(BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap())
             .max_operations_ttl(MAX_OPERATIONS_TTL)
             .operations(ApplyBlockRequest::convert_operations(
                 block_operations_from_hex(HEADER_HASH, sample_operations_for_request_decoded()),
             ))
+            .predecessor_block_metadata_hash(None)
+            .predecessor_ops_metadata_hash(None)
             .build()
             .unwrap();
 

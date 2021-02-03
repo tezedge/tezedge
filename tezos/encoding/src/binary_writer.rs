@@ -3,8 +3,8 @@
 
 //! Tezos binary data writer.
 
-use std::cmp;
 use std::mem::size_of;
+use std::{cmp, convert::TryFrom};
 
 use bit_vec::BitVec;
 use byteorder::{BigEndian, WriteBytesExt};
@@ -76,7 +76,7 @@ fn encode_record(data: &mut Vec<u8>, value: &Value, schema: &[Field]) -> Result<
             for field in schema {
                 let name = field.get_name();
                 let value = find_value_in_record_values(name, values)
-                    .unwrap_or_else(|| panic!("No values found for {}", name));
+                    .ok_or_else(|| Error::custom(format!("No values found for {}", name)))?;
                 let encoding = field.get_encoding();
 
                 bytes_sz = bytes_sz
@@ -181,8 +181,8 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
-        Encoding::RangedInt => unimplemented!("Encoding::RangedInt is not implemented"),
-        Encoding::RangedFloat => unimplemented!("Encoding::RangedFloat is not implemented"),
+        Encoding::RangedInt => Err(Error::custom("Encoding::RangedInt is not implemented")),
+        Encoding::RangedFloat => Err(Error::custom("Encoding::RangedFloat is not implemented")),
         Encoding::Int64 | Encoding::Timestamp => match value {
             Value::Int64(v) => {
                 data.put_i64(*v);
@@ -222,16 +222,22 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
-        Encoding::Enum => {
-            match value {
-                Value::Enum(_, ordinal) => {
-                    // TODO: handle enum of different sizes
-                    data.put_u8(ordinal.expect("Was expecting enum ordinal value") as u8);
+        Encoding::Enum => match value {
+            Value::Enum(_, ordinal) => match ordinal {
+                Some(ordinal) => {
+                    data.put_u8(u8::try_from(*ordinal).map_err(|_| {
+                        Error::custom(format!(
+                            "Enum ordinal {} is greater than {}",
+                            ordinal,
+                            u8::MAX
+                        ))
+                    })?);
                     Ok(size_of::<u8>())
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value)),
-            }
-        }
+                None => Err(Error::custom("Was expecting enum ordinal value")),
+            },
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
         Encoding::List(list_inner_encoding) => {
             match value {
                 Value::List(values) => {
@@ -401,7 +407,9 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     }
                 }
                 Value::Enum(ref tag_variant, _) => {
-                    let tag_variant = tag_variant.as_ref().expect("Was expecting variant name");
+                    let tag_variant = tag_variant
+                        .as_ref()
+                        .ok_or_else(|| Error::custom("Was expecting variant name"))?;
                     match tag_map.find_by_variant(tag_variant) {
                         Some(tag) => {
                             let data_len_before_write = data.len();
@@ -429,6 +437,7 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             let inner_encoding = fn_encoding();
             encode_value(data, value, &inner_encoding)
         }
+        Encoding::Custom(codec) => codec.encode(data, value, encoding),
         Encoding::Obj(obj_schema) => encode_record(data, value, obj_schema),
         Encoding::Tup(tup_encodings) => encode_tuple(data, value, tup_encodings),
     }
@@ -483,7 +492,11 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
 
         let mut n: u8 = if negative { 0xC0 } else { 0x80 };
         for bit_idx in 0..6 {
-            n.set(bit_idx, bits.pop().unwrap());
+            n.set(
+                bit_idx,
+                bits.pop()
+                    .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
+            )?;
         }
         data.put_u8(n);
 
@@ -494,11 +507,15 @@ fn encode_z(data: &mut Vec<u8>, value: &str) -> Result<usize, Error> {
             let mut n = 0u8;
             let bit_count = cmp::min(chunk_size, bits.len()) as u8;
             for bit_idx in 0..bit_count {
-                n.set(bit_idx, bits.pop().unwrap());
+                n.set(
+                    bit_idx,
+                    bits.pop()
+                        .ok_or_else(|| Error::custom("Not enough bits to pop"))?,
+                )?;
             }
             // set continuation bit if there are other chunks to be processed
             if chunk_idx != last_chunk_idx {
-                n.set(7, true);
+                n.set(7, true)?;
             }
             data.put_u8(n)
         }
@@ -918,5 +935,81 @@ mod tests {
         let writer_result = write(&record, &record_encoding).unwrap();
         let expected_writer_result = hex::decode("00").unwrap();
         assert_eq!(expected_writer_result, writer_result);
+    }
+}
+
+#[cfg(test)]
+mod encode_tests {
+    use super::*;
+
+    #[test]
+    fn error_encode_empty_enum_value() {
+        // empty enum value cannot be instantiated, so we can't test it
+        // using write() on real Rust value
+        let mut data = Vec::new();
+        let value = Value::Enum(None, None);
+        let encoding = Encoding::Enum;
+        match encode_value(&mut data, &value, &encoding) {
+            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
+            Err(_) => (),
+        }
+    }
+
+    #[test]
+    fn error_encode_enum_ordinal_too_big() {
+        let value = Value::Enum(Some("name".to_string()), Some(u8::MAX as u32 + 1));
+        let encoding = Encoding::Enum;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &encoding),
+            Err(_)
+        ));
+    }
+
+    #[test]
+    fn error_encode_empty_tag_enum_value() {
+        use crate::encoding::{Tag, TagMap};
+
+        // empty enum value cannot be instantiated, so we can't test it
+        // using write() on real Rust value
+        let mut data = Vec::new();
+        let value = Value::Enum(None, None);
+        let encoding = Encoding::Tags(
+            size_of::<u8>(),
+            TagMap::new(vec![Tag::new(0x0, "Unused", Encoding::Unit)]),
+        );
+        match encode_value(&mut data, &value, &encoding) {
+            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
+            Err(_) => (),
+        }
+    }
+
+    #[test]
+    fn error_encode_record_with_missing_field() {
+        let value = Value::Record(vec![("missing".to_string(), Value::Unit)]);
+        let schema = [Field::new("field", Encoding::Unit)];
+        match encode_record(&mut Vec::new(), &value, &schema) {
+            Ok(_) => panic!("Encoding a missing field should not succeed"),
+            Err(_) => (),
+        }
+    }
+
+    #[test]
+    fn error_encode_ranged_int_unimplemented() {
+        let value = Value::RangedInt(0);
+        let schema = Encoding::RangedInt;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &schema),
+            Err(_)
+        ));
+    }
+
+    #[test]
+    fn error_encode_ranged_float_unimplemented() {
+        let value = Value::RangedFloat(0.);
+        let schema = Encoding::RangedFloat;
+        assert!(matches!(
+            encode_value(&mut Vec::new(), &value, &schema),
+            Err(_)
+        ));
     }
 }

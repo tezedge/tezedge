@@ -224,7 +224,7 @@ class Node:
         if self._process is not None:
             # self._process.terminate()
             self._process.send_signal(signal.SIGINT)
-            time.sleep(5)
+            time.sleep(3)
 
     def kill(self) -> None:
         """Send SIGKILL to node, do nothing if node hasn't been run yet"""
@@ -239,7 +239,8 @@ class Node:
         """
         if self._process is None:
             return
-        self._process.terminate()
+        # self._process.terminate()
+        self._process.send_signal(signal.SIGINT)
         try:
             self._process.wait(timeout=TERM_TIMEOUT)
         except subprocess.TimeoutExpired:

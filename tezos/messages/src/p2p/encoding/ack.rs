@@ -29,6 +29,26 @@ pub enum NackMotive {
     AlreadyConnected,
 }
 
+impl fmt::Display for NackMotive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let motive = match &self {
+            NackMotive::NoMotive => "No_motive",
+            NackMotive::TooManyConnections => "Too_many_connections ",
+            NackMotive::UnknownChainName => "Unknown_chain_name",
+            NackMotive::DeprecatedP2pVersion => "Deprecated_p2p_version",
+            NackMotive::DeprecatedDistributedDbVersion => "Deprecated_distributed_db_version",
+            NackMotive::AlreadyConnected => "Already_connected",
+        };
+        write!(f, "{}", motive)
+    }
+}
+
+impl fmt::Debug for NackMotive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self)
+    }
+}
+
 #[derive(Serialize, Deserialize, Getters, PartialEq)]
 pub struct NackInfo {
     #[get = "pub"]
@@ -48,21 +68,11 @@ impl NackInfo {
 
 impl fmt::Debug for NackInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let motive = match &self.motive {
-            NackMotive::NoMotive => "No_motive".to_string(),
-            NackMotive::TooManyConnections => "Too_many_connections ".to_string(),
-            NackMotive::UnknownChainName => "Unknown_chain_name".to_string(),
-            NackMotive::DeprecatedP2pVersion => "Deprecated_p2p_version".to_string(),
-            NackMotive::DeprecatedDistributedDbVersion => {
-                "Deprecated_distributed_db_version".to_string()
-            }
-            NackMotive::AlreadyConnected => "Already_connected".to_string(),
-        };
         let potential_peers_to_connect = self.potential_peers_to_connect.join(", ");
         write!(
             f,
             "motive: {}, potential_peers_to_connect: {:?}",
-            motive, potential_peers_to_connect
+            &self.motive, potential_peers_to_connect
         )
     }
 }

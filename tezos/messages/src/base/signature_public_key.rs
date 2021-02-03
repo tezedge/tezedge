@@ -4,9 +4,11 @@
 //! This crate provides functions for manipulation with 'public key'.
 //! Tezos uses this kinds: edpk(ed25519), sppk(secp256k1), p2pk(p256)
 
+use std::convert::TryInto;
+
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{HashType, PublicKeyEd25519, PublicKeyP256, PublicKeySecp256k1};
+use crypto::hash::{PublicKeyEd25519, PublicKeyP256, PublicKeySecp256k1};
 
 use crate::base::ConversionError;
 
@@ -22,9 +24,9 @@ impl SignaturePublicKey {
     #[inline]
     pub fn to_string_representation(&self) -> String {
         match self {
-            SignaturePublicKey::Ed25519(h) => HashType::PublicKeyEd25519.hash_to_b58check(h),
-            SignaturePublicKey::Secp256k1(h) => HashType::PublicKeySecp256k1.hash_to_b58check(h),
-            SignaturePublicKey::P256(h) => HashType::PublicKeyP256.hash_to_b58check(h),
+            SignaturePublicKey::Ed25519(h) => h.to_base58_check(),
+            SignaturePublicKey::Secp256k1(h) => h.to_base58_check(),
+            SignaturePublicKey::P256(h) => h.to_base58_check(),
         }
     }
 
@@ -32,15 +34,9 @@ impl SignaturePublicKey {
     pub fn from_b58_hash(b58_hash: &str) -> Result<SignaturePublicKey, ConversionError> {
         if b58_hash.len() > 4 {
             match &b58_hash[0..4] {
-                "edpk" => Ok(SignaturePublicKey::Ed25519(
-                    HashType::PublicKeyEd25519.b58check_to_hash(b58_hash)?,
-                )),
-                "sppk" => Ok(SignaturePublicKey::Secp256k1(
-                    HashType::PublicKeySecp256k1.b58check_to_hash(b58_hash)?,
-                )),
-                "p2pk" => Ok(SignaturePublicKey::P256(
-                    HashType::PublicKeyP256.b58check_to_hash(b58_hash)?,
-                )),
+                "edpk" => Ok(SignaturePublicKey::Ed25519(b58_hash.try_into()?)),
+                "sppk" => Ok(SignaturePublicKey::Secp256k1(b58_hash.try_into()?)),
+                "p2pk" => Ok(SignaturePublicKey::P256(b58_hash.try_into()?)),
                 _ => Err(ConversionError::InvalidCurveTag {
                     curve_tag: String::from(&b58_hash[0..4]),
                 }),
@@ -58,21 +54,11 @@ impl SignaturePublicKey {
         curve: &str,
     ) -> Result<SignaturePublicKey, ConversionError> {
         if hash.len() == 66 || hash.len() == 64 {
+            let hash = hex::decode(hash)?;
             let public_hash_key = match curve {
-                "ed25519" => {
-                    let key = HashType::PublicKeyEd25519.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKey::Ed25519(HashType::PublicKeyEd25519.b58check_to_hash(&key)?)
-                }
-                "secp256k1" => {
-                    let key = HashType::PublicKeySecp256k1.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKey::Secp256k1(
-                        HashType::PublicKeySecp256k1.b58check_to_hash(&key)?,
-                    )
-                }
-                "p256" => {
-                    let key = HashType::PublicKeyP256.hash_to_b58check(&hex::decode(&hash)?);
-                    SignaturePublicKey::P256(HashType::PublicKeyP256.b58check_to_hash(&key)?)
-                }
+                "ed25519" => SignaturePublicKey::Ed25519(hash.try_into()?),
+                "secp256k1" => SignaturePublicKey::Secp256k1(hash.try_into()?),
+                "p256" => SignaturePublicKey::P256(hash.try_into()?),
                 _ => {
                     return Err(ConversionError::InvalidCurveTag {
                         curve_tag: curve.to_string(),
@@ -115,6 +101,8 @@ impl SignaturePublicKey {
 
 #[cfg(test)]
 mod tests {
+    use crypto::hash::{PublicKeyEd25519, PublicKeyP256, PublicKeySecp256k1};
+
     use crate::base::signature_public_key::SignaturePublicKey;
 
     //tz1TEZtYnuLiZLdA6c7JysAUJcHMrogu4Cpr - edpkv2CiwuithtFAYEvH3QKfrJkq4JZuL4YS7i9W1vaKFfHZHLP2JP
@@ -193,11 +181,10 @@ mod tests {
 
     fn decode_pk(pk: &str) -> Option<Vec<u8>> {
         let decoded = SignaturePublicKey::from_b58_hash(pk).unwrap();
-        let decoded = match decoded {
-            SignaturePublicKey::Ed25519(hash) => Some(hash),
-            SignaturePublicKey::P256(hash) => Some(hash),
-            SignaturePublicKey::Secp256k1(hash) => Some(hash),
-        };
-        decoded
+        Some(match decoded {
+            SignaturePublicKey::Ed25519(PublicKeyEd25519(hash))
+            | SignaturePublicKey::P256(PublicKeyP256(hash))
+            | SignaturePublicKey::Secp256k1(PublicKeySecp256k1(hash)) => hash,
+        })
     }
 }

@@ -4,7 +4,6 @@
 //! Tezos binary data reader.
 
 use bit_vec::BitVec;
-use bytes::buf::ext::BufExt;
 use bytes::Buf;
 use failure::Fail;
 use serde::de::Error as SerdeError;
@@ -30,6 +29,15 @@ pub enum BinaryReaderError {
     /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag { tag: u16 },
+    /// Enclosing level for recursive type value is too big
+    #[fail(
+        display = "Recursive data depth is too big for {}, max is {}",
+        name, max
+    )]
+    RecursiveDataOverflow {
+        name: String,
+        max: crate::types::RecursiveDataSize,
+    },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -46,7 +54,16 @@ impl From<std::string::FromUtf8Error> for BinaryReaderError {
     }
 }
 
+impl From<crate::bit_utils::BitsError> for BinaryReaderError {
+    fn from(source: crate::bit_utils::BitsError) -> Self {
+        Self::DeserializationError {
+            error: crate::de::Error::custom(format!("Bits operation error: {:?}", source)),
+        }
+    }
+}
+
 /// Safely read from input buffer. If input buffer does not contain enough bytes to construct desired error is returned.
+#[macro_export]
 macro_rules! safe {
     ($buf:ident, $foo:ident, $sz:ident) => {{
         use std::mem::size_of;
@@ -241,11 +258,11 @@ impl BinaryReader {
 
                 Ok(Value::List(values))
             }
-            Encoding::Option(_) => {
+            Encoding::Option(inner_encoding) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
                 match is_present_byte {
                     types::BYTE_VAL_SOME => {
-                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        let v = self.decode_value(buf, inner_encoding)?;
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_VAL_NONE => Ok(Value::Option(None)),
@@ -256,11 +273,11 @@ impl BinaryReader {
                     .into()),
                 }
             }
-            Encoding::OptionalField(_) => {
+            Encoding::OptionalField(inner_encoding) => {
                 let is_present_byte = safe!(buf, get_u8, u8);
                 match is_present_byte {
                     types::BYTE_FIELD_SOME => {
-                        let v = self.decode_value(buf, encoding.try_unwrap_option_encoding())?;
+                        let v = self.decode_value(buf, inner_encoding)?;
                         Ok(Value::Option(Some(Box::new(v))))
                     }
                     types::BYTE_FIELD_NONE => Ok(Value::Option(None)),
@@ -276,7 +293,7 @@ impl BinaryReader {
             Encoding::Z => {
                 // read first byte
                 let byte = safe!(buf, get_u8, u8);
-                let negative = byte.get(6);
+                let negative = byte.get(6)?;
                 if byte <= 0x3F {
                     let mut num = i32::from(byte);
                     if negative {
@@ -286,17 +303,17 @@ impl BinaryReader {
                 } else {
                     let mut bits = BitVec::new();
                     for bit_idx in 0..6 {
-                        bits.push(byte.get(bit_idx));
+                        bits.push(byte.get(bit_idx)?);
                     }
 
                     let mut has_next_byte = true;
                     while has_next_byte {
                         let byte = safe!(buf, get_u8, u8);
                         for bit_idx in 0..7 {
-                            bits.push(byte.get(bit_idx))
+                            bits.push(byte.get(bit_idx)?)
                         }
 
-                        has_next_byte = byte.get(7);
+                        has_next_byte = byte.get(7)?;
                     }
 
                     let bytes = bits.reverse().trim_left().to_byte_vec();
@@ -326,10 +343,10 @@ impl BinaryReader {
                 while has_next_byte {
                     let byte = safe!(buf, get_u8, u8);
                     for bit_idx in 0..7 {
-                        bits.push(byte.get(bit_idx))
+                        bits.push(byte.get(bit_idx)?)
                     }
 
-                    has_next_byte = byte.get(7);
+                    has_next_byte = byte.get(7)?;
                 }
 
                 let bytes = bits.reverse().trim_left().to_byte_vec();
@@ -380,6 +397,7 @@ impl BinaryReader {
                 let inner_encoding = fn_encoding();
                 self.decode_value(buf, &inner_encoding)
             }
+            Encoding::Custom(codec) => codec.decode(buf, encoding),
             Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => {
                 Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
             }

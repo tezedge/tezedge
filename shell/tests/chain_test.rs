@@ -16,6 +16,7 @@ use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
+use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
@@ -25,25 +26,24 @@ use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
 use tezos_messages::p2p::encoding::prelude::Mempool;
-use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 mod common;
 mod samples;
 
 lazy_static! {
-    pub static ref NETWORK_VERSION: NetworkVersion = NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0);
+    pub static ref SHELL_COMPATIBILITY_VERSION: ShellCompatibilityVersion = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![0], vec![0]);
     pub static ref NODE_P2P_PORT: u16 = 1234; // TODO: maybe some logic to verify and get free port
-    pub static ref NODE_P2P_CFG: (P2p, NetworkVersion) = (
+    pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
-            listener_port: NODE_P2P_PORT.clone(),
+            listener_port: *NODE_P2P_PORT,
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
             private_node: false,
             bootstrap_peers: vec![],
-            peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
+            peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
         },
-        NETWORK_VERSION.clone(),
+        SHELL_COMPATIBILITY_VERSION.clone(),
     );
     pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64);
 }
@@ -138,8 +138,8 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -200,8 +200,6 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         (Duration::from_secs(30), Duration::from_millis(750)),
     )?;
     println!("\nProcessed [branch1-3] in {:?}!\n", clocks.elapsed());
-
-    drop(mocked_peer_node_branch_1);
 
     // connect mocked node peer with data for branch_2
     let clocks = Instant::now();
@@ -286,9 +284,9 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(4)?));
 
     // stop nodes
-    drop(node);
-    // drop(mocked_peer_node_branch_1);
     drop(mocked_peer_node_branch_2);
+    drop(mocked_peer_node_branch_1);
+    drop(node);
 
     Ok(())
 }
@@ -393,8 +391,8 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -529,8 +527,8 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     test_actor::NetworkChannelListener::verify_blacklisted(&mocked_peer_node, peers_mirror)?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -634,7 +632,10 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         .get_operations(&db.block_hash(1325)?)?
         .iter()
         .flatten()
-        .map(|a| a.message_hash().expect("Failed to decode operation has"))
+        .map(|a| {
+            a.message_typed_hash()
+                .expect("Failed to decode operation has")
+        })
         .collect();
     mocked_peer_node.clear_mempool();
     mocked_peer_node.send_msg(CurrentHeadMessage::new(
@@ -693,8 +694,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     }
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -754,7 +755,7 @@ mod test_data {
 
                 let block = request
                     .block_header
-                    .message_hash()
+                    .message_typed_hash()
                     .expect("Failed to decode message_hash");
                 let context_hash: ContextHash = request.block_header.context().clone();
                 headers.insert(block, (level, context_hash));
@@ -762,7 +763,8 @@ mod test_data {
                 for ops in request.operations {
                     for op in ops {
                         operation_hashes.insert(
-                            op.message_hash().expect("Failed to compute message hash"),
+                            op.message_typed_hash()
+                                .expect("Failed to compute message hash"),
                             level,
                         );
                     }
@@ -794,7 +796,7 @@ mod test_data {
                     let mut found = None;
                     for ops in self.captured_requests(*level)?.operations {
                         for op in ops {
-                            if op.message_hash()?.eq(operation_hash) {
+                            if op.message_typed_hash::<OperationHash>()?.eq(operation_hash) {
                                 found = Some(op);
                                 break;
                             }
@@ -1177,7 +1179,7 @@ mod test_cases_data {
 /// Test node peer, which simulates p2p remote peer, communicates through real p2p socket
 mod test_node_peer {
     use std::collections::HashSet;
-    use std::net::{Shutdown, SocketAddr};
+    use std::net::SocketAddr;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, RwLock};
     use std::thread;
@@ -1185,17 +1187,18 @@ mod test_node_peer {
 
     use futures::lock::Mutex;
     use slog::{crit, debug, error, info, trace, warn, Logger};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
     use tokio::runtime::{Handle, Runtime};
     use tokio::time::timeout;
 
     use crypto::hash::OperationHash;
     use networking::p2p::peer;
-    use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
+    use networking::p2p::peer::{Bootstrap, BootstrapOutput};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
+    use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
-    use tezos_messages::p2p::encoding::version::NetworkVersion;
 
     const CONNECT_TIMEOUT: Duration = Duration::from_secs(8);
     const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
@@ -1218,7 +1221,7 @@ mod test_node_peer {
         pub fn connect(
             name: &'static str,
             connect_to_node_port: u16,
-            network_version: NetworkVersion,
+            shell_compatibility_version: ShellCompatibilityVersion,
             identity: Identity,
             log: Logger,
             tokio_runtime: &Runtime,
@@ -1246,10 +1249,10 @@ mod test_node_peer {
                     match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
                         Ok(Ok(stream)) => {
                             // authenticate
-                            let local = Arc::new(Local::new(
+                            let local = Arc::new(LocalPeerInfo::new(
                                 1235,
                                 identity,
-                                Arc::new(network_version),
+                                Arc::new(shell_compatibility_version),
                             ));
                             let bootstrap = Bootstrap::outgoing(
                                 stream,
@@ -1262,11 +1265,11 @@ mod test_node_peer {
                                 Ok(BootstrapOutput(rx, txw, ..)) => {
                                     info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
-                                    *tx.lock().await = Some(txw);
+                                    *tx.lock().await = txw.lock().await.take();
                                     connected.store(true, Ordering::Release);
 
                                     // process messages
-                                    Self::begin_process_incoming(name, rx, tx, connected, log, server_address, test_mempool, handle_message_callback).await;
+                                    Self::begin_process_incoming(name, rx, tx.clone(), connected, log, server_address, test_mempool, handle_message_callback).await;
                                 }
                                 Err(e) => {
                                     error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
@@ -1297,7 +1300,7 @@ mod test_node_peer {
         /// Start to process incoming data
         async fn begin_process_incoming(
             name: &str,
-            mut rx: EncryptedMessageReader,
+            rx: Arc<Mutex<Option<EncryptedMessageReader>>>,
             tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
             connected: Arc<AtomicBool>,
             log: Logger,
@@ -1310,6 +1313,8 @@ mod test_node_peer {
         ) {
             info!(log, "[{}] Starting to accept messages", name; "ip" => format!("{:?}", &peer_address));
 
+            let mut rx = rx.lock().await;
+            let mut rx = rx.take().unwrap();
             while connected.load(Ordering::Acquire) {
                 match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
                     Ok(res) => match res {
@@ -1374,8 +1379,8 @@ mod test_node_peer {
 
             debug!(log, "[{}] Shutting down peer connection", name; "ip" => format!("{:?}", &peer_address));
             if let Some(tx) = tx.lock().await.take() {
-                let socket = rx.unsplit(tx);
-                match socket.shutdown(Shutdown::Both) {
+                let mut socket = rx.unsplit(tx);
+                match socket.shutdown().await {
                     Ok(()) => {
                         debug!(log, "[{}] Connection shutdown successful", name; "socket" => format!("{:?}", socket))
                     }
@@ -1424,7 +1429,7 @@ mod test_node_peer {
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
 
-            let result = loop {
+            loop {
                 if self.connected.load(Ordering::Acquire) {
                     break Ok(());
                 }
@@ -1435,8 +1440,7 @@ mod test_node_peer {
                 } else {
                     break Err(failure::format_err!("[{}] wait_for_connection - something is wrong - timeout (timeout: {:?}, delay: {:?}) exceeded!", self.name, timeout, delay));
                 }
-            };
-            result
+            }
         }
 
         // TODO: refactor with async/condvar, not to block main thread
@@ -1533,7 +1537,7 @@ mod test_actor {
 
     use riker::actors::*;
 
-    use crypto::hash::{CryptoboxPublicKeyHash, HashType};
+    use crypto::hash::CryptoboxPublicKeyHash;
     use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
     use shell::subscription::subscribe_to_network_events;
 
@@ -1614,8 +1618,7 @@ mod test_actor {
         ) {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
-                NetworkChannelMsg::PeerCreated(_) => {}
-                NetworkChannelMsg::PeerBootstrapped(peer_id, _) => {
+                NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
                         peer_id.peer_public_key_hash.clone(),
                         "CONNECTED".to_string(),
@@ -1681,7 +1684,7 @@ mod test_actor {
                     break Err(
                         failure::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, HashType::CryptoboxPublicKeyHash.hash_to_b58check(peer_public_key_hash), expected_state, timeout, delay
+                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
                         )
                     );
                 }

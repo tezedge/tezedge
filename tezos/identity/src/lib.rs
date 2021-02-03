@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::{collections::HashMap, convert::TryFrom};
 use std::{fs, io};
 
 use failure::Fail;
@@ -13,7 +13,6 @@ use serde_json::Value;
 use crypto::hash::CryptoboxPublicKeyHash;
 use crypto::{
     crypto_box::{random_keypair, PublicKey, SecretKey},
-    hash::HashType,
     proof_of_work::ProofOfWork,
 };
 
@@ -82,11 +81,11 @@ impl Identity {
             .ok_or(IdentityError::IdentityFieldError {
                 reason: "Missing valid 'peer_id'".to_string(),
             })?;
-        let peer_id = HashType::CryptoboxPublicKeyHash
-            .b58check_to_hash(peer_id_str)
-            .map_err(|e| IdentityError::IdentityFieldError {
+        let peer_id = CryptoboxPublicKeyHash::try_from(peer_id_str).map_err(|e| {
+            IdentityError::IdentityFieldError {
                 reason: format!("Missing valid 'peer_id': {}", e),
-            })?;
+            }
+        })?;
 
         let public_key_str = identity
             .get("public_key")
@@ -141,10 +140,7 @@ impl Identity {
 
     pub fn as_json(&self) -> Result<String, IdentityError> {
         let mut identity: HashMap<&'static str, String> = Default::default();
-        identity.insert(
-            "peer_id",
-            HashType::CryptoboxPublicKeyHash.hash_to_b58check(&self.peer_id),
-        );
+        identity.insert("peer_id", self.peer_id.to_base58_check());
         identity.insert("public_key", hex::encode(self.public_key.as_ref()));
         identity.insert("secret_key", hex::encode(self.secret_key.as_ref()));
         identity.insert(
@@ -186,7 +182,6 @@ mod tests {
         let identity = Identity::generate(16f64);
 
         // check
-        assert!(!identity.peer_id.is_empty());
         assert!(identity.check_peer_id().is_ok());
 
         // convert json and back

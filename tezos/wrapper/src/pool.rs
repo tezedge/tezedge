@@ -50,6 +50,9 @@ pub struct ProtocolRunnerConnection<Runner: ProtocolRunner> {
     subprocess: Runner::Subprocess,
     log: Logger,
     pub name: String,
+
+    /// Indicates that we want to release this connection on return to pool (used for gracefull shutdown)
+    release_on_return_to_pool: bool,
 }
 
 impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
@@ -59,6 +62,9 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
     }
 
     fn has_broken(&mut self) -> bool {
+        if self.release_on_return_to_pool {
+            return true;
+        }
         let is_subprocess_running = Runner::is_running(&mut self.subprocess);
         !is_subprocess_running
     }
@@ -76,6 +82,11 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
         ) {
             warn!(self.log, "Failed to terminate/kill protocol runner"; "reason" => e);
         }
+    }
+
+    /// Mark connection as "destroy" when return back to pool
+    pub fn set_release_on_return_to_pool(&mut self) {
+        self.release_on_return_to_pool = true;
     }
 }
 
@@ -172,6 +183,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             subprocess,
             log: self.log.new(o!("endpoint" => endpoint_name.clone())),
             name: endpoint_name,
+            release_on_return_to_pool: false,
         })
     }
 }
@@ -236,7 +248,11 @@ impl<Runner: ProtocolRunner + 'static>
     CustomizeConnection<ProtocolRunnerConnection<Runner>, PoolError>
     for NoopProtocolRunnerConnectionCustomizer
 {
-    fn on_acquire(&self, _: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
+    fn on_acquire(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> Result<(), PoolError> {
+        info!(
+            conn.log,
+            "Connection for protocol runner was successfully initialized"
+        );
         Ok(())
     }
 

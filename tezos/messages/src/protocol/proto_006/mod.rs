@@ -3,5 +3,6 @@
 pub mod constants;
 pub mod contract;
 pub mod rights;
+pub mod votes;
 
 pub const PROTOCOL_HASH: &str = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb";

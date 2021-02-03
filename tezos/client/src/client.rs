@@ -6,12 +6,12 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyError,
-    HelpersPreapplyResponse, InitProtocolContextResult, PatchContext, PrevalidatorWrapper,
-    ProtocolDataError, ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest,
-    ProtocolRpcResponse, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
-    TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
-    ValidateOperationResponse,
+    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
+    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
+    PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
+    ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
+    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
+    ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_interop::ffi;
 
@@ -55,9 +55,9 @@ pub fn genesis_result_data(
     genesis_max_operations_ttl: u16,
 ) -> Result<CommitGenesisResult, GetDataError> {
     match ffi::genesis_result_data(
-        context_hash.clone(),
-        chain_id.clone(),
-        protocol_hash.clone(),
+        context_hash.as_ref().clone(),
+        chain_id.as_ref().clone(),
+        protocol_hash.as_ref().clone(),
         genesis_max_operations_ttl,
     ) {
         Ok(result) => Ok(result?),
@@ -163,7 +163,7 @@ pub fn helpers_preapply_operations(
 
 /// Call helpers_preapply_block shell service
 pub fn helpers_preapply_block(
-    request: ProtocolRpcRequest,
+    request: HelpersPreapplyBlockRequest,
 ) -> Result<HelpersPreapplyResponse, HelpersPreapplyError> {
     match ffi::helpers_preapply_block(request) {
         Ok(result) => result.map_err(HelpersPreapplyError::from),
@@ -179,7 +179,7 @@ pub fn decode_context_data(
     key: Vec<String>,
     data: Vec<u8>,
 ) -> Result<Option<String>, ContextDataError> {
-    match ffi::decode_context_data(protocol_hash, key, data) {
+    match ffi::decode_context_data(protocol_hash.into(), key, data) {
         Ok(result) => Ok(result?),
         Err(e) => Err(ContextDataError::DecodeError {
             message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e),
@@ -192,7 +192,7 @@ pub fn assert_encoding_for_protocol_data(
     protocol_hash: ProtocolHash,
     protocol_data: Vec<u8>,
 ) -> Result<(), ProtocolDataError> {
-    match ffi::assert_encoding_for_protocol_data(protocol_hash, protocol_data) {
+    match ffi::assert_encoding_for_protocol_data(protocol_hash.into(), protocol_data) {
         Ok(result) => Ok(result?),
         Err(e) => Err(ProtocolDataError::DecodeError {
             message: format!(

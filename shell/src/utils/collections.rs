@@ -12,47 +12,54 @@ pub(crate) struct UniqueBlockData<T> {
 }
 
 impl<T: BlockData + Ord> UniqueBlockData<T> {
-    pub(crate) fn new() -> Self {
+    // TODO: TE-386 - remove not needed
+    // #[inline]
+    // pub(crate) fn push(&mut self, item: T) {
+    //     if self.hash_set.insert(item.block_hash().clone()) {
+    //         self.binary_heap.push(item)
+    //     }
+    // }
+
+    // TODO: TE-386 - remove not needed
+    // #[inline]
+    // pub(crate) fn pop(&mut self) -> Option<T> {
+    //     let item = self.binary_heap.pop();
+    //     if let Some(item) = item.as_ref() {
+    //         assert!(
+    //             self.hash_set.remove(item.block_hash()),
+    //             "Relationship between the binary heap and teh hash set is corrupted"
+    //         );
+    //     }
+    //     item
+    // }
+
+    // TODO: TE-386 - remove not needed
+    // #[inline]
+    // pub(crate) fn peek(&self) -> Option<&T> {
+    //     self.binary_heap.peek()
+    // }
+}
+
+impl<T> UniqueBlockData<T> {
+    // TODO: TE-386 - remove not needed
+    // #[inline]
+    // pub(crate) fn len(&self) -> usize {
+    //     self.hash_set.len()
+    // }
+
+    // TODO: TE-386 - remove not needed
+    // #[inline]
+    // pub(crate) fn is_empty(&self) -> bool {
+    //     self.hash_set.is_empty()
+    // }
+}
+
+impl<T: BlockData + Ord> Default for UniqueBlockData<T> {
+    fn default() -> Self {
         UniqueBlockData {
             binary_heap: BinaryHeap::new(),
             hash_set: HashSet::new(),
         }
-    }
-
-    #[inline]
-    pub(crate) fn push(&mut self, item: T) {
-        if self.hash_set.insert(item.block_hash().clone()) {
-            self.binary_heap.push(item)
-        }
-    }
-
-    #[inline]
-    pub(crate) fn pop(&mut self) -> Option<T> {
-        let item = self.binary_heap.pop();
-        if let Some(item) = item.as_ref() {
-            assert!(
-                self.hash_set.remove(item.block_hash()),
-                "Relationship between the binary heap and teh hash set is corrupted"
-            );
-        }
-        item
-    }
-
-    #[inline]
-    pub(crate) fn peek(&self) -> Option<&T> {
-        self.binary_heap.peek()
-    }
-}
-
-impl<T> UniqueBlockData<T> {
-    #[inline]
-    pub(crate) fn len(&self) -> usize {
-        self.hash_set.len()
-    }
-
-    #[inline]
-    pub(crate) fn is_empty(&self) -> bool {
-        self.hash_set.is_empty()
     }
 }
 

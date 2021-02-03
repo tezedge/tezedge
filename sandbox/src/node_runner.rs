@@ -54,12 +54,6 @@ pub enum LightNodeRunnerError {
     ConfigurationMissingValidRpcPort { value: Option<String> },
 }
 
-impl From<LightNodeRunnerError> for reject::Rejection {
-    fn from(err: LightNodeRunnerError) -> reject::Rejection {
-        reject::custom(err)
-    }
-}
-
 impl reject::Reject for LightNodeRunnerError {}
 
 /// Thread safe reference to a shared Runner

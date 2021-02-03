@@ -12,7 +12,7 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType};
 use tezos_api::environment::{
     TezosEnvironmentConfiguration, TezosEnvironmentError, OPERATION_LIST_LIST_HASH_EMPTY,
 };
@@ -67,7 +67,7 @@ impl BlockHeaderWithHash {
     /// Create block header extensions from plain block header
     pub fn new(block_header: BlockHeader) -> Result<Self, MessageHashError> {
         Ok(BlockHeaderWithHash {
-            hash: block_header.message_hash()?,
+            hash: block_header.message_hash()?.try_into()?,
             header: Arc::new(block_header),
         })
     }
@@ -85,7 +85,7 @@ impl Encoder for BlockHeaderWithHash {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = vec![];
-        result.extend(&self.hash);
+        result.extend(self.hash.as_ref());
         result.extend(
             self.header
                 .as_bytes()
@@ -98,11 +98,14 @@ impl Encoder for BlockHeaderWithHash {
 impl Decoder for BlockHeaderWithHash {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
+        if bytes.len() < HashType::BlockHash.size() {
+            return Err(SchemaError::DecodeError);
+        }
         let hash = bytes[0..HashType::BlockHash.size()].to_vec();
         let header = BlockHeader::from_bytes(&bytes[HashType::BlockHash.size()..])
             .map_err(|_| SchemaError::DecodeError)?;
         Ok(BlockHeaderWithHash {
-            hash,
+            hash: hash.try_into()?,
             header: Arc::new(header),
         })
     }
@@ -127,6 +130,8 @@ pub enum StorageError {
     MessageHashError { error: MessageHashError },
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
+    #[fail(display = "Error constructing hash: {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<DBError> for StorageError {
@@ -167,6 +172,12 @@ impl From<TezosEnvironmentError> for StorageError {
     }
 }
 
+impl From<FromBytesError> for StorageError {
+    fn from(error: FromBytesError) -> Self {
+        StorageError::HashError { error }
+    }
+}
+
 impl slog::Value for StorageError {
     fn serialize(
         &self,
@@ -204,8 +215,8 @@ pub fn resolve_storage_init_chain_data(
         log,
         "Storage based on data";
         "chain_name" => &tezos_env.version,
-        "init_data.chain_id" => format!("{:?}", HashType::ChainId.hash_to_b58check(&init_data.chain_id)),
-        "init_data.genesis_header" => format!("{:?}", HashType::BlockHash.hash_to_b58check(&init_data.genesis_block_header_hash)),
+        "init_data.chain_id" => format!("{:?}", init_data.chain_id.to_base58_check()),
+        "init_data.genesis_header" => format!("{:?}", init_data.genesis_block_header_hash.to_base58_check()),
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_db_path" => format!("{:?}", context_db_path),
         "patch_context" => match patch_context {
@@ -237,6 +248,23 @@ pub fn store_applied_block_result(
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(block_result.max_operations_ttl.try_into().unwrap())
         .last_allowed_fork_level(block_result.last_allowed_fork_level)
+        .block_metadata_hash(block_result.block_metadata_hash)
+        .ops_metadata_hash({
+            // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
+            //       So, we need to add the same handling, because this attributes contributes to context_hash
+            //       They, store it, only if [`validation_passes > 0`], this measn that we have some operations
+            match &block_result.ops_metadata_hashes {
+                Some(hashes) => {
+                    if hashes.is_empty() {
+                        None
+                    } else {
+                        block_result.ops_metadata_hash
+                    }
+                }
+                None => None,
+            }
+        })
+        .ops_metadata_hashes(block_result.ops_metadata_hashes)
         .build()
         .unwrap();
     block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;
@@ -341,6 +369,9 @@ pub fn initialize_storage_with_genesis_block(
     let block_additional_data = BlockAdditionalDataBuilder::default()
         .max_operations_ttl(genesis_additional_data.max_operations_ttl)
         .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
+        .block_metadata_hash(None)
+        .ops_metadata_hash(None)
+        .ops_metadata_hashes(None)
         .build()
         .unwrap();
     block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data)?;
@@ -350,8 +381,8 @@ pub fn initialize_storage_with_genesis_block(
 
     info!(log,
         "Storage initialized with genesis block";
-        "genesis" => HashType::BlockHash.hash_to_b58check(&genesis_with_hash.hash),
-        "context_hash" => HashType::ContextHash.hash_to_b58check(&context_hash),
+        "genesis" => genesis_with_hash.hash.to_base58_check(),
+        "context_hash" => context_hash.to_base58_check(),
     );
     Ok(genesis_with_hash)
 }
@@ -462,7 +493,7 @@ pub mod tests_common {
             let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
             let kv = open_kv(
-                &path,
+                path.join("db"),
                 vec![
                     block_storage::BlockPrimaryIndex::descriptor(&cache),
                     block_storage::BlockByLevelIndex::descriptor(&cache),
@@ -470,26 +501,43 @@ pub mod tests_common {
                     BlockMetaStorage::descriptor(&cache),
                     OperationsStorage::descriptor(&cache),
                     OperationsMetaStorage::descriptor(&cache),
-                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-                    MerkleStorage::descriptor(&cache),
                     SystemStorage::descriptor(&cache),
                     Sequences::descriptor(&cache),
                     DatabaseBackedSkipList::descriptor(&cache),
                     Lane::descriptor(&cache),
                     ListValue::descriptor(&cache),
                     MempoolStorage::descriptor(&cache),
-                    ContextActionStorage::descriptor(&cache),
                     ChainMetaStorage::descriptor(&cache),
                     PredecessorStorage::descriptor(&cache),
+                ],
+                &cfg,
+            )?;
+
+            let kv_context = open_kv(
+                path.join("context"),
+                vec![MerkleStorage::descriptor(&cache)],
+                &cfg,
+            )?;
+
+            let kv_context_action = open_kv(
+                path.join("context_actions"),
+                vec![
+                    ContextActionStorage::descriptor(&cache),
+                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
                 ],
                 &cfg,
             )?;
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(
+                    Arc::new(kv),
+                    Arc::new(kv_context),
+                    Arc::new(kv_context_action),
+                    Arc::new(clog),
+                ),
                 path,
                 remove_on_destroy,
             })

@@ -134,7 +134,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             &context_db_path,
             &protocol_runner,
             log_level,
-            false,
+            None,
         ),
         log.new(o!("endpoint" => endpoint_name.clone())),
     )?;
@@ -218,7 +218,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         &context_db_path,
         &protocol_runner,
         log_level,
-        false,
+        None,
     );
 
     // create pool

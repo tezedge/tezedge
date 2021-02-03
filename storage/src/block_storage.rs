@@ -7,11 +7,13 @@ use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, ContextHash};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
+};
 
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location, PersistentStorage,
+    Location, PersistentStorage, StorageType,
 };
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 
@@ -40,12 +42,59 @@ pub struct BlockJsonData {
     operations_proto_metadata_json: String,
 }
 
-#[derive(Clone, Builder, CopyGetters, Serialize, Deserialize, Debug)]
+#[derive(Clone, Builder, CopyGetters, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockAdditionalData {
     #[get_copy = "pub"]
     max_operations_ttl: u16,
     #[get_copy = "pub"]
     last_allowed_fork_level: i32,
+    #[get = "pub"]
+    block_metadata_hash: Option<BlockMetadataHash>,
+    // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
+    // TODO: TE-207 - not needed, can be calculated from ops_metadata_hashes
+    #[get = "pub"]
+    ops_metadata_hash: Option<OperationMetadataListListHash>,
+    /// Note: This is calculated from ops_metadata_hashes - we need this in request
+    ///       This is calculated as merkle tree hash, like operation paths
+    ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
+}
+
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    ) {
+        (self.block_metadata_hash, self.ops_metadata_hash)
+    }
+}
+
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    ) {
+        (
+            self.block_metadata_hash,
+            self.ops_metadata_hash,
+            self.max_operations_ttl,
+        )
+    }
 }
 
 pub trait BlockStorageReader: Sync + Send {
@@ -90,17 +139,17 @@ pub trait BlockStorageReader: Sync + Send {
         context_hash: &ContextHash,
     ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
-
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.kv()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.kv()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.kv()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.kv(StorageType::Database)),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.kv(StorageType::Database)),
+            by_context_hash_index: BlockByContextHashIndex::new(
+                persistent_storage.kv(StorageType::Database),
+            ),
             clog: persistent_storage.clog(),
         }
     }
@@ -393,11 +442,6 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.by_context_hash_index.contains(context_hash)
-    }
-
-    #[inline]
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.primary_index.contains(block_hash)
     }
 }
 

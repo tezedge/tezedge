@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::ops::Neg;
 use std::{collections::HashMap, convert::TryFrom};
+use std::{convert::TryInto, ops::Neg};
 
 use failure::{bail, format_err};
 use hyper::{Body, Request};
@@ -10,7 +10,7 @@ use riker::actor::ActorReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context_action_storage::ContextActionType;
@@ -128,13 +128,12 @@ impl FullBlockInfo {
         chain_id: &ChainId,
     ) -> Self {
         let header: &BlockHeader = &block.header;
-        let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
+        let predecessor = header.predecessor().to_base58_check();
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash =
-            HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
+        let operations_hash = header.operations_hash().to_base58_check();
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashType::ContextHash.hash_to_b58check(header.context());
-        let hash = HashType::BlockHash.hash_to_b58check(&block.hash);
+        let context = header.context().to_base58_check();
+        let hash = block.hash.to_base58_check();
 
         Self {
             hash,
@@ -166,13 +165,12 @@ impl BlockHeaderInfo {
         chain_id: &ChainId,
     ) -> Self {
         let header: &BlockHeader = &block.header;
-        let predecessor = HashType::BlockHash.hash_to_b58check(header.predecessor());
+        let predecessor = header.predecessor().to_base58_check();
         let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash =
-            HashType::OperationListListHash.hash_to_b58check(header.operations_hash());
+        let operations_hash = header.operations_hash().to_base58_check();
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = HashType::ContextHash.hash_to_b58check(header.context());
-        let hash = HashType::BlockHash.hash_to_b58check(&block.hash);
+        let context = header.context().to_base58_check();
+        let hash = block.hash.to_base58_check();
 
         let header_data: HashMap<String, Value> =
             serde_json::from_str(block_json_data.block_header_proto_json()).unwrap_or_default();
@@ -369,24 +367,24 @@ pub(crate) fn parse_chain_id(
                 Some(test_chain_id) => test_chain_id,
                 None => bail!(
                     "No test chain activated for main_chain_id: {}",
-                    HashType::ChainId.hash_to_b58check(env.main_chain_id())
+                    env.main_chain_id().to_base58_check()
                 ),
             };
 
             bail!(
                 "Test chains are not supported yet! main_chain_id: {}, test_chain_id: {}",
-                HashType::ChainId.hash_to_b58check(env.main_chain_id()),
-                HashType::ChainId.hash_to_b58check(&test_chain)
+                env.main_chain_id().to_base58_check(),
+                test_chain.to_base58_check()
             )
         }
         chain_id_hash => {
-            let chain_id = HashType::ChainId.b58check_to_hash(chain_id_hash)?;
+            let chain_id: ChainId = chain_id_hash.try_into()?;
             if chain_id.eq(env.main_chain_id()) {
                 chain_id
             } else {
                 bail!("Multiple chains are not supported yet! requested_chain_id: {} only main_chain_id: {}",
-                        HashType::ChainId.hash_to_b58check(&chain_id),
-                        HashType::ChainId.hash_to_b58check(env.main_chain_id()))
+                        chain_id.to_base58_check(),
+                        env.main_chain_id().to_base58_check())
             }
         }
     })
@@ -483,7 +481,7 @@ pub(crate) fn parse_block_hash(
                 }
                 None => bail!(
                     "No genesis found for chain_id: {}",
-                    HashType::ChainId.hash_to_b58check(chain_id)
+                    chain_id.to_base58_check()
                 ),
             }
         }
@@ -506,7 +504,7 @@ pub(crate) fn parse_block_hash(
                 }
                 Err(_) => {
                     // block hash as base58 string was passed as parameter to block_id
-                    match HashType::BlockHash.b58check_to_hash(level_or_hash) {
+                    match BlockHash::from_base58_check(level_or_hash) {
                         Ok(block_hash) => (block_hash, offset_param),
                         Err(e) => {
                             bail!("Invalid block_id_param: {}, reason: {}", block_id_param, e)
@@ -551,7 +549,7 @@ pub(crate) fn get_context_hash(
         Some(header) => Ok(header.header.context().clone()),
         None => bail!(
             "Block not found for block_hash: {}",
-            HashType::BlockHash.hash_to_b58check(block_hash)
+            block_hash.to_base58_check()
         ),
     }
 }

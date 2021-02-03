@@ -6,8 +6,8 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::ffi::{
-    ApplyBlockRequest, ComputePathRequest, ComputePathResponse, InitProtocolContextResult,
-    ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
+    ApplyBlockRequest, ComputePathRequest, ComputePathResponse, HelpersPreapplyBlockRequest,
+    InitProtocolContextResult, ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
 };
 use tezos_api::{
     environment::{TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV},
@@ -209,7 +209,7 @@ fn test_context_contract() -> Result<(), failure::Error> {
     let request = ProtocolRpcRequest {
         block_header: last_block,
         chain_arg: "main".to_string(),
-        chain_id: chain_id.clone(),
+        chain_id,
         request: RpcRequest {
             context_path:
                 "/chains/main/blocks/head/context/contracts/tz1PirboZKFVqkfE45hVLpkpXaZtLk3mqC17"
@@ -361,7 +361,7 @@ fn test_compute_path() -> Result<(), failure::Error> {
             .map(|validation_pass| {
                 validation_pass
                     .iter()
-                    .map(|op| op.message_hash().unwrap())
+                    .map(|op| op.message_typed_hash().unwrap())
                     .collect()
             })
             .collect(),
@@ -403,6 +403,13 @@ fn test_preapply_block() -> Result<(), failure::Error> {
             accept: None,
         },
     };
+
+    let request = HelpersPreapplyBlockRequest {
+        protocol_rpc_request: request,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
+    };
+
     let response = client::helpers_preapply_block(request)?;
 
     // assert result json
@@ -427,6 +434,8 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
             test_data::block_header_level1_operations(),
         )),
         max_operations_ttl: 0,
+        predecessor_block_metadata_hash: None,
+        predecessor_ops_metadata_hash: None,
     })
     .unwrap();
     assert_eq!(
@@ -439,7 +448,9 @@ fn apply_blocks_1(chain_id: &ChainId, genesis_block_header: BlockHeader) -> Bloc
 }
 
 mod test_data {
-    use crypto::hash::{ContextHash, HashType};
+    use std::convert::TryInto;
+
+    use crypto::hash::ContextHash;
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::PatchContext;
     use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -448,7 +459,7 @@ mod test_data {
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Sandbox;
 
     pub fn context_hash(hash: &str) -> ContextHash {
-        HashType::ContextHash.b58check_to_hash(hash).unwrap()
+        ContextHash::from_base58_check(hash).unwrap()
     }
 
     // BMPtRJqFGQJRTfn8bXQR2grLE1M97XnUmG5vgjHMW7St1Wub7Cd
@@ -612,7 +623,10 @@ mod test_data {
                     .map(|op| Operation::from_bytes(hex::decode(op).unwrap()).unwrap())
                     .collect();
                 OperationsForBlocksMessage::new(
-                    OperationsForBlock::new(hex::decode(block_hash).unwrap(), 4),
+                    OperationsForBlock::new(
+                        hex::decode(block_hash).unwrap().try_into().unwrap(),
+                        4,
+                    ),
                     Path::Op,
                     ops,
                 )

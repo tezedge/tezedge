@@ -1,9 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
+use std::{
+    convert::TryFrom,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
+use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{
     ocaml_call, ocaml_frame, to_ocaml, FromOCaml, OCaml, OCamlFn1, ToOCaml, ToRust,
 };
@@ -20,9 +24,9 @@ mod tezos_ffi {
     use tezos_api::{
         ffi::{
             ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
-            BeginApplicationResponse, BeginConstructionRequest, HelpersPreapplyResponse,
-            PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
-            ValidateOperationRequest, ValidateOperationResponse,
+            BeginApplicationResponse, BeginConstructionRequest, HelpersPreapplyBlockRequest,
+            HelpersPreapplyResponse, PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcRequest,
+            ProtocolRpcResponse, ValidateOperationRequest, ValidateOperationResponse,
         },
         ocaml_conv::{OCamlOperationHash, OCamlProtocolHash},
     };
@@ -35,7 +39,7 @@ mod tezos_ffi {
         pub fn validate_operation(validate_operation_request: ValidateOperationRequest) -> ValidateOperationResponse;
         pub fn call_protocol_rpc(request: ProtocolRpcRequest) -> Result<ProtocolRpcResponse, ProtocolRpcError>;
         pub fn helpers_preapply_operations(request: ProtocolRpcRequest) -> HelpersPreapplyResponse;
-        pub fn helpers_preapply_block(request: ProtocolRpcRequest) -> HelpersPreapplyResponse;
+        pub fn helpers_preapply_block(request: HelpersPreapplyBlockRequest) -> HelpersPreapplyResponse;
         pub fn change_runtime_configuration(
             log_enabled: bool,
             no_of_ffi_calls_treshold_for_gc: OCamlInt,
@@ -174,7 +178,13 @@ pub fn init_protocol_context(
                             Vec<RustBytes>,
                             Option<RustBytes>,
                         ) = result.to_rust();
-
+                        let supported_protocol_hashes = supported_protocol_hashes
+                            .into_iter()
+                            .map(|h| ProtocolHash::try_from(h))
+                            .collect::<Result<_, _>>()?;
+                        let genesis_commit_hash = genesis_commit_hash
+                            .map(|bytes| ContextHash::try_from(bytes.to_vec()))
+                            .map_or(Ok(None), |r| r.map(Some))?;
                         Ok(InitProtocolContextResult {
                             supported_protocol_hashes,
                             genesis_commit_hash,
@@ -298,7 +308,7 @@ pub fn helpers_preapply_operations(
 
 /// Call helpers_preapply_block shell service
 pub fn helpers_preapply_block(
-    request: ProtocolRpcRequest,
+    request: HelpersPreapplyBlockRequest,
 ) -> Result<Result<HelpersPreapplyResponse, CallError>, OcamlError> {
     call(tezos_ffi::helpers_preapply_block, request)
 }
@@ -363,6 +373,7 @@ pub fn assert_encoding_for_protocol_data(
 ) -> Result<Result<(), ProtocolDataError>, OcamlError> {
     runtime::execute(move || {
         ocaml_frame!(gc(protocol_hash_ref), {
+            let protocol_hash = ProtocolHash::try_from(protocol_hash)?;
             let protocol_hash = to_ocaml!(gc, protocol_hash, protocol_hash_ref);
             let data = to_ocaml!(gc, protocol_data);
 

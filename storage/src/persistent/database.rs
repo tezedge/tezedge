@@ -27,6 +27,8 @@ pub enum DBError {
     RocksDBError { error: Error },
     #[fail(display = "Column family {} is missing", name)]
     MissingColumnFamily { name: &'static str },
+    #[fail(display = "Database incompatibility {}", name)]
+    DatabaseIncompatibility { name: String },
 }
 
 impl From<SchemaError> for DBError {

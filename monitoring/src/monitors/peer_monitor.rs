@@ -3,29 +3,26 @@
 
 use std::{net::SocketAddr, time::Instant};
 
-use riker::actor::ActorUri;
-
-use crate::handlers::handler_messages::PeerMetrics;
+use crate::websocket::handler_messages::PeerMetrics;
 
 /// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
-    pub identifier: ActorUri,
+    peer_address: SocketAddr,
+    public_key: String,
+
     total_transferred: usize,
-    pub addr: Option<SocketAddr>,
-    pub public_key: Option<String>,
     current_transferred: usize,
     last_update: Instant,
     first_update: Instant,
 }
 
 impl PeerMonitor {
-    pub fn new(identifier: ActorUri) -> Self {
+    pub fn new(peer_addr: SocketAddr, public_key: String) -> Self {
         let now = Instant::now();
         Self {
-            identifier,
+            peer_address: peer_addr,
+            public_key,
             total_transferred: 0,
-            addr: None,
-            public_key: None,
             current_transferred: 0,
             last_update: now,
             first_update: now,
@@ -48,9 +45,7 @@ impl PeerMonitor {
     pub fn snapshot(&mut self) -> PeerMetrics {
         let ret = PeerMetrics::new(
             self.public_key.clone(),
-            self.addr
-                .unwrap_or(SocketAddr::new([0, 0, 0, 0].into(), 0))
-                .to_string(),
+            self.peer_address(),
             self.total_transferred,
             self.avg_speed(),
             self.current_speed(),
@@ -59,5 +54,9 @@ impl PeerMonitor {
         self.current_transferred = 0;
         self.last_update = Instant::now();
         ret
+    }
+
+    pub fn peer_address(&self) -> String {
+        self.peer_address.to_string()
     }
 }

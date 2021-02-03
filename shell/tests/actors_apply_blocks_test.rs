@@ -13,7 +13,8 @@ use std::time::{Duration, Instant, SystemTime};
 use riker::actors::*;
 use slog::{info, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, OperationHash};
+use shell::chain_feeder::ApplyCompletedBlock;
 use shell::shell_channel::{MempoolOperationReceived, ShellChannelRef, ShellChannelTopic};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
@@ -100,6 +101,19 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
 
     let clocks = Instant::now();
 
+    // just ping chain_feeder, becausae we dont have p2p layer
+    node.block_applier.tell(
+        ApplyCompletedBlock::new(
+            tezos_env.genesis_header_hash()?,
+            Arc::new(chain_id.clone()),
+            None,
+            Arc::new(node.chain_manager.clone()),
+            None,
+            Instant::now(),
+        ),
+        None,
+    );
+
     // 1. test - apply and context - prepare data for apply blocks and wait for current head, and check context
     assert!(
         test_scenario_for_apply_blocks_with_chain_feeder_and_check_context(
@@ -142,7 +156,7 @@ fn check_context(
     {
         assert_eq!(
             "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS",
-            HashType::ProtocolHash.hash_to_b58check(&data)
+            crypto::hash::HashType::ProtocolHash.hash_to_b58check(&data)?
         );
     } else {
         panic!(format!("Protocol not found in context for level: {}", 2));
@@ -155,7 +169,10 @@ fn check_context(
     let merkle_last_hash = merkle.get_last_commit_hash();
 
     // compare with context hash of last applied expected_context_hash
-    assert_eq!(*expected_context_hash, merkle_last_hash.unwrap());
+    assert_eq!(
+        expected_context_hash.as_ref(),
+        &merkle_last_hash.unwrap().to_vec()
+    );
 
     // print stats
     let stats = merkle.get_merkle_stats().unwrap();
@@ -237,7 +254,7 @@ fn init_storage_data(
     operations: &HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     apply_to_level: i32,
     persistent_storage: &PersistentStorage,
-    chain_id: &Vec<u8>,
+    chain_id: &ChainId,
 ) -> Result<(), failure::Error> {
     println!("\n[Insert] Initialize storage data started...");
 
@@ -256,7 +273,7 @@ fn init_storage_data(
 
         // store header to db
         let block = BlockHeaderWithHash {
-            hash: header.message_hash()?,
+            hash: header.message_typed_hash()?,
             header: Arc::new(header),
         };
         block_storage.put_block_header(&block)?;
@@ -301,7 +318,7 @@ fn test_scenario_for_add_operations_to_mempool_and_check_state(
     // wait mempool for last_applied_block
     let last_applied_block: BlockHash = samples::from_captured_bytes(last_applied_request_1324)?
         .block_header
-        .message_hash()?;
+        .message_typed_hash()?;
     node.wait_for_mempool_on_head(
         "mempool_head_1324",
         last_applied_block.clone(),
@@ -410,7 +427,7 @@ fn add_operations_to_mempool(
         for operation in operations {
             // this is done by chain_manager when received new operations
 
-            let operation_hash = operation.message_hash()?;
+            let operation_hash: OperationHash = operation.message_typed_hash()?;
 
             // add to mempool storage
             mempool_storage.put(

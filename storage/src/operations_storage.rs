@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
@@ -11,7 +12,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage, SchemaError,
+    PersistentStorage, SchemaError, StorageType,
 };
 use crate::StorageError;
 
@@ -34,7 +35,7 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 
@@ -137,10 +138,14 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
 impl Decoder for OperationKey {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        Ok(OperationKey {
-            block_hash: bytes[0..HashType::BlockHash.size()].to_vec(),
-            validation_pass: bytes[HashType::BlockHash.size()],
-        })
+        if bytes.len() < HashType::BlockHash.size() + 1 {
+            Err(SchemaError::DecodeError)
+        } else {
+            Ok(OperationKey {
+                block_hash: BlockHash::try_from(&bytes[0..HashType::BlockHash.size()])?,
+                validation_pass: bytes[HashType::BlockHash.size()],
+            })
+        }
     }
 }
 
@@ -148,7 +153,7 @@ impl Encoder for OperationKey {
     #[inline]
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut value = Vec::with_capacity(HashType::BlockHash.size() + 1);
-        value.extend(&self.block_hash);
+        value.extend(self.block_hash.as_ref());
         value.push(self.validation_pass);
         Ok(value)
     }
@@ -170,22 +175,32 @@ impl Encoder for OperationsForBlocksMessage {
 
 #[cfg(test)]
 mod tests {
-    use failure::Error;
+    use std::convert::TryInto;
 
-    use crypto::hash::HashType;
+    use failure::Error;
 
     use super::*;
 
     #[test]
     fn operations_key_encoded_equals_decoded() -> Result<(), Error> {
         let expected = OperationKey {
-            block_hash: HashType::BlockHash
-                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            block_hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()?,
             validation_pass: 4,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
         assert_eq!(expected, decoded);
+        Ok(())
+    }
+
+    #[test]
+    fn operation_key_decode_underflow() -> Result<(), Error> {
+        let result = OperationKey::decode(&[0; 0]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
+        let result = OperationKey::decode(&[0; 1]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
+        let result = OperationKey::decode(&[0; HashType::BlockHash.size()]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
         Ok(())
     }
 }

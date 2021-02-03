@@ -11,7 +11,8 @@ use std::time::Duration;
 use chrono::TimeZone;
 use failure::Fail;
 
-use crypto::hash::{ChainId, HashType, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
+use storage::block_meta_storage::Meta;
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
@@ -56,7 +57,7 @@ pub fn is_fitness_increases_or_same(head: &Head, new_fitness: &Fitness) -> bool 
 
 /// Returns true only if we recieve the same head as is our current_head
 pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, failure::Error> {
-    let mut is_same = head.block_hash() == &incoming_header.message_hash()?;
+    let mut is_same = head.block_hash().as_ref() == &incoming_header.message_hash()?;
     is_same &= head.fitness() == incoming_header.fitness();
     is_same &= head.level() == &incoming_header.level();
     Ok(is_same)
@@ -130,6 +131,43 @@ pub fn can_accept_operation_from_p2p(
     false
 }
 
+/// Returns true, if [block] can be applied
+pub fn can_apply_block<'b, OP, PA>(
+    (block, block_metadata): (&'b BlockHash, &'b Meta),
+    operations_complete: OP,
+    predecessor_applied: PA,
+) -> Result<bool, StorageError>
+where
+    OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
+    PA: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if predecessor is applied */
+{
+    let block_predecessor = block_metadata.predecessor();
+
+    // check if block is already applied, dont need to apply second time
+    if block_metadata.is_applied() {
+        return Ok(false);
+    }
+
+    // we need to have predecessor (every block has)
+    if block_predecessor.is_none() {
+        return Ok(false);
+    }
+
+    // if operations are not complete, we cannot apply block
+    if !operations_complete(block)? {
+        return Ok(false);
+    }
+
+    // check if predecesor is applied
+    if let Some(predecessor) = block_predecessor {
+        if predecessor_applied(predecessor)? {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 /// Error produced by a [prevalidate_operation].
 #[derive(Debug, Fail)]
 pub enum PrevalidateOperationError {
@@ -176,24 +214,20 @@ pub fn prevalidate_operation(
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
     // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
-    match block_storage.contains(operation_branch)? {
-        true => {
-            let is_applied = match block_meta_storage.get(operation_branch)? {
-                Some(metadata) => metadata.is_applied(),
-                None => false,
-            };
 
-            if !is_applied {
-                return Err(PrevalidateOperationError::BranchNotAppliedYet {
-                    branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
-                });
-            }
-        }
-        false => {
+    let is_applied = match block_meta_storage.get(operation_branch)? {
+        Some(metadata) => metadata.is_applied(),
+        None => {
             return Err(PrevalidateOperationError::UnknownBranch {
-                branch: HashType::BlockHash.hash_to_b58check(&operation_branch),
+                branch: operation_branch.to_base58_check(),
             })
         }
+    };
+
+    if !is_applied {
+        return Err(PrevalidateOperationError::BranchNotAppliedYet {
+            branch: operation_branch.to_base58_check(),
+        });
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
@@ -203,8 +237,8 @@ pub fn prevalidate_operation(
             Some(head) => head,
             None => {
                 return Err(PrevalidateOperationError::UnknownBranch {
-                    branch: HashType::BlockHash.hash_to_b58check(&head),
-                })
+                    branch: head.to_base58_check(),
+                });
             }
         },
         None => {
@@ -225,7 +259,7 @@ pub fn prevalidate_operation(
             protocol_data: None,
         })
         .map_err(|e| PrevalidateOperationError::ValidationError {
-            operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
+            operation_hash: operation_hash.to_base58_check(),
             reason: e,
         })?;
 
@@ -236,7 +270,7 @@ pub fn prevalidate_operation(
     })
     .map(|r| r.result)
     .map_err(|e| PrevalidateOperationError::ValidationError {
-        operation_hash: HashType::OperationHash.hash_to_b58check(operation_hash),
+        operation_hash: operation_hash.to_base58_check(),
         reason: e,
     })
 }
@@ -348,9 +382,8 @@ pub mod fitness_comparator {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{convert::TryInto, sync::Arc};
 
-    use crypto::hash::HashType;
     use tezos_messages::p2p::encoding::block_header::Fitness;
     use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
@@ -450,28 +483,19 @@ mod tests {
 
     fn new_head(fitness: Fitness) -> Result<BlockHeaderWithHash, failure::Error> {
         Ok(BlockHeaderWithHash {
-            hash: HashType::BlockHash
-                .b58check_to_hash("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET")?,
+            hash: "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()?,
             header: Arc::new(
                 BlockHeaderBuilder::default()
                     .level(34)
                     .proto(1)
-                    .predecessor(
-                        HashType::BlockHash.b58check_to_hash(
-                            "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET",
-                        )?,
-                    )
+                    .predecessor("BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET".try_into()?)
                     .timestamp(5_635_634)
                     .validation_pass(4)
-                    .operations_hash(HashType::OperationListListHash.b58check_to_hash(
-                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                    )?)
-                    .fitness(fitness)
-                    .context(
-                        HashType::ContextHash.b58check_to_hash(
-                            "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd",
-                        )?,
+                    .operations_hash(
+                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc".try_into()?,
                     )
+                    .fitness(fitness)
+                    .context("CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd".try_into()?)
                     .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
                     .build()
                     .unwrap(),
@@ -481,8 +505,7 @@ mod tests {
 
     fn current_head(fitness: Fitness) -> Result<Head, failure::Error> {
         Ok(Head::new(
-            HashType::BlockHash
-                .b58check_to_hash("BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy")?,
+            "BKzyxvaMgoY5M3BUD7UaUCPivAku2NRiYRA1z1LQUzB7CX6e8yy".try_into()?,
             5,
             fitness,
         ))
