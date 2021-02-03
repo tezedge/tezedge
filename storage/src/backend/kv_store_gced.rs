@@ -171,7 +171,8 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
-    /// Not needed/implemented. Maybe this method should go into separate trait?
+    /// Not needed/implemented.
+    // TODO: Maybe this method should go into separate trait?
     fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
