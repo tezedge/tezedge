@@ -8,12 +8,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Nothing.
+
+### Changed
+
+- Nothing.
+
+### Deprecated
+
+- Nothing.
+
+### Removed
+
+- Nothing.
+
+### Fixed
+
+- Nothing.
+
+### Security
+
+- Nothing.
+
+## [0.9.2] - 2021-02-03
+
+### Added
+
 - Support for 008 protocol Edo + network support - p2p, rpc, fii
 
 ### Changed
 
 - Migrated Tokio dependency from 0.2.x to 1.1.x
 - RocksDB kv store splitted to three instances (db, context, context_actions)
+- Reworked websocket implementation, now uses warp::ws instead of default ws
+- Various changes around p2p layer and bootstrapping 
 
 ### Deprecated
 
@@ -224,7 +252,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/simplestaking/tezedge/releases/v0.9.2
 [0.9.1]: https://github.com/simplestaking/tezedge/releases/v0.9.1
 [0.9.0]: https://github.com/simplestaking/tezedge/releases/v0.9.0
 [0.8.0]: https://github.com/simplestaking/tezedge/releases/v0.8.0
