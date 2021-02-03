@@ -1,8 +1,9 @@
 name: audit
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
+  push:
+    branches: [ master, develop ]
+  pull_request:
 
 jobs:
   audit:
