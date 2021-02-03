@@ -173,7 +173,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Not needed/implemented.
     // TODO: Maybe this method should go into separate trait?
-    fn retain(&mut self, pred: Vec<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
 
