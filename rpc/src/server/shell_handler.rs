@@ -398,6 +398,21 @@ pub async fn get_block_operation_hashes(
     )
 }
 
+pub async fn get_block_operations(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    result_to_json_response(
+        base_services::get_block_operations(&chain_id, &block_hash, env.persistent_storage()),
+        env.log(),
+    )
+}
+
 pub async fn live_blocks(
     _: Request<Body>,
     params: Params,

@@ -15,12 +15,12 @@ use storage::{
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
-    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, FullBlockInfo,
-    NodeVersion, Protocols,
+    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, BlockOperations,
+    FullBlockInfo, NodeVersion, Protocols,
 };
 use crate::server::RpcServiceEnvironment;
 
-pub type BlockOperations = Vec<String>;
+pub type BlockOperationsHashes = Vec<String>;
 
 /// Retrieve blocks from database.
 pub(crate) fn get_blocks<T>(
@@ -160,12 +160,12 @@ pub(crate) fn get_block_protocols(
     }
 }
 
-/// Returns the chain id for the requested chain
+/// Returns the hashes of all the operations included in the block.
 pub(crate) fn get_block_operation_hashes(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<BlockOperations>, failure::Error> {
+) -> Result<Vec<BlockOperationsHashes>, failure::Error> {
     if let Some(block_info) = get_block(chain_id, block_hash, persistent_storage)? {
         let operations = block_info
             .operations
@@ -181,6 +181,22 @@ pub(crate) fn get_block_operation_hashes(
     } else {
         bail!(
             "Cannot retrieve operation hashes from block, block_hash {} not found!",
+            block_hash.to_base58_check()
+        )
+    }
+}
+
+/// Extract all the operations included in the block.
+pub(crate) fn get_block_operations(
+    chain_id: &ChainId,
+    block_hash: &BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<BlockOperations, failure::Error> {
+    if let Some(block_info) = get_block(chain_id, &block_hash, persistent_storage)? {
+        Ok(block_info.operations)
+    } else {
+        bail!(
+            "Cannot retrieve operations, block_hash {} not found!",
             block_hash.to_base58_check()
         )
     }
