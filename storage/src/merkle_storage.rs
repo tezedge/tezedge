@@ -1324,6 +1324,19 @@ impl MerkleStorage {
 
     fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
         let entry_hash = hash_entry(entry)?;
+
+        // TODO: measure performance/memory usage with implementation which checks if entry
+        // exists in previous cycles, to avoid creating a duplicate.
+
+        // when used with `KVStoreGCed` with multi-cycle setup, this put happens in just
+        // `current` (newest) cycle. So even if that entry already existed in previous
+        // cycles, it will still be added to the `current` store. Meaning we may have
+        // duplicates. Eventually GC will collect those.
+
+        // staging area also should be carefully implemented so that it is as small as possible.
+        // TODO: check how staging works now. It's possible immutable (Get, Mem, etc...) actions
+        // are extending staging tree and forcing us to create more duplicates. If thats the case
+        // it should be changed so staging tree is as small as possible!
         self.db.put(
             entry_hash.clone(),
             bincode::serialize(entry)?,
