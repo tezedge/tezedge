@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use crate::handlers::handler_messages::BlockMetrics;
+use crate::websocket::handler_messages::BlockMetrics;
 
 #[derive(Debug, Clone)]
 pub struct BlocksMonitor {
