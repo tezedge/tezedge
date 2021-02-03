@@ -13,7 +13,7 @@ use crypto::hash::{
 
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location, PersistentStorage,
+    Location, PersistentStorage, StorageType,
 };
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 
@@ -75,6 +75,28 @@ impl
     }
 }
 
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    ) {
+        (
+            self.block_metadata_hash,
+            self.ops_metadata_hash,
+            self.max_operations_ttl,
+        )
+    }
+}
+
 pub trait BlockStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
@@ -117,17 +139,17 @@ pub trait BlockStorageReader: Sync + Send {
         context_hash: &ContextHash,
     ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
-
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.kv()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.kv()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.kv()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.kv(StorageType::Database)),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.kv(StorageType::Database)),
+            by_context_hash_index: BlockByContextHashIndex::new(
+                persistent_storage.kv(StorageType::Database),
+            ),
             clog: persistent_storage.clog(),
         }
     }
@@ -420,11 +442,6 @@ impl BlockStorageReader for BlockStorage {
     #[inline]
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.by_context_hash_index.contains(context_hash)
-    }
-
-    #[inline]
-    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
-        self.primary_index.contains(block_hash)
     }
 }
 

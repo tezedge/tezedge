@@ -10,12 +10,12 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::num_from_slice;
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
     PersistentStorage, SchemaError,
 };
+use crate::{num_from_slice, persistent::StorageType};
 use crate::{BlockHeaderWithHash, StorageError};
 
 /// Convenience type for operation meta storage database
@@ -30,17 +30,23 @@ pub struct OperationsMetaStorage {
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
         }
     }
 
     /// Initialize stored validation_passes metadata for block and check if is_complete
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         is_complete,
+    ///         missing_validation_passes,
+    ///     )
     #[inline]
     pub fn put_block_header(
         &self,
         block_header: &BlockHeaderWithHash,
         chain_id: &ChainId,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         let meta = Meta {
             validation_passes: block_header.header.validation_pass(),
             is_validation_pass_present: vec![
@@ -52,15 +58,21 @@ impl OperationsMetaStorage {
             chain_id: chain_id.clone(),
         };
         self.put(&block_header.hash, &meta)
-            .and(Ok(meta.is_complete))
+            .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
     }
 
     /// Stores operation validation_passes metadata and check if is_complete
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         is_complete,
+    ///         missing_validation_passes,
+    ///     )
     pub fn put_operations(
         &self,
         message: &OperationsForBlocksMessage,
-    ) -> Result<bool, StorageError> {
-        let block_hash = message.operations_for_block().hash().clone();
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
+        let block_hash = message.operations_for_block().hash();
 
         match self.get(&block_hash)? {
             Some(mut meta) => {
@@ -72,7 +84,9 @@ impl OperationsMetaStorage {
                     .is_validation_pass_present
                     .iter()
                     .all(|v| *v == (true as u8));
-                self.put(&block_hash, &meta).and(Ok(meta.is_complete))
+
+                self.put(&block_hash, &meta)
+                    .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
             None => Err(StorageError::MissingKey),
         }
@@ -188,16 +202,18 @@ impl Meta {
         }
     }
 
-    pub fn get_missing_validation_passes(&self) -> HashSet<i8> {
+    pub fn get_missing_validation_passes(&self) -> Option<HashSet<u8>> {
         if self.is_complete {
-            HashSet::new()
+            None
         } else {
-            self.is_validation_pass_present
-                .iter()
-                .enumerate()
-                .filter(|(_, is_present)| **is_present == (false as u8))
-                .map(|(idx, _)| idx as i8)
-                .collect()
+            Some(
+                self.is_validation_pass_present
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, is_present)| **is_present == (false as u8))
+                    .map(|(idx, _)| idx as u8)
+                    .collect(),
+            )
         }
     }
 

@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::not_found;
 use hyper::{Body, Request};
 use slog::warn;
 
@@ -158,6 +159,15 @@ pub async fn votes_listings(
 
     // try to call our implementation
     let result = services::protocol::get_votes_listings(&block_hash, &env);
+
+    // if our implementation returns None, it means that the protocol does not support
+    if let Err(VotesError::UnsupportedProtocolRpc { protocol }) = result {
+        warn!(
+            env.log(),
+            "This rpc is not supported in protocol {}", protocol
+        );
+        return not_found();
+    }
 
     // fallback, if protocol is not supported, we trigger rpc protocol router
     if let Err(VotesError::UnsupportedProtocolError { .. }) = result {

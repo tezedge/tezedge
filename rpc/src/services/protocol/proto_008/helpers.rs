@@ -376,7 +376,13 @@ impl RightsParams {
         // set max_priority from param value or default
         let max_priority = match param_max_priority {
             Some(val) => val.parse()?,
-            None => 64,
+            None => {
+                if requested_cycle.is_some() {
+                    8
+                } else {
+                    64
+                }
+            }
         };
 
         Ok(Self::new(

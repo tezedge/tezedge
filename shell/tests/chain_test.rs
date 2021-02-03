@@ -41,7 +41,7 @@ lazy_static! {
             disable_mempool: false,
             private_node: false,
             bootstrap_peers: vec![],
-            peer_threshold: PeerConnectionThreshold::new(0, 10, Some(0)),
+            peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
@@ -138,8 +138,8 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -200,8 +200,6 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         (Duration::from_secs(30), Duration::from_millis(750)),
     )?;
     println!("\nProcessed [branch1-3] in {:?}!\n", clocks.elapsed());
-
-    drop(mocked_peer_node_branch_1);
 
     // connect mocked node peer with data for branch_2
     let clocks = Instant::now();
@@ -286,9 +284,9 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     assert!(live_blocks_branch_2.contains(&db_branch_2.block_hash(4)?));
 
     // stop nodes
-    drop(node);
-    // drop(mocked_peer_node_branch_1);
     drop(mocked_peer_node_branch_2);
+    drop(mocked_peer_node_branch_1);
+    drop(node);
 
     Ok(())
 }
@@ -393,8 +391,8 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     )?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -529,8 +527,8 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     test_actor::NetworkChannelListener::verify_blacklisted(&mocked_peer_node, peers_mirror)?;
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -696,8 +694,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     }
 
     // stop nodes
-    drop(node);
     drop(mocked_peer_node);
+    drop(node);
 
     Ok(())
 }
@@ -1196,9 +1194,9 @@ mod test_node_peer {
 
     use crypto::hash::OperationHash;
     use networking::p2p::peer;
-    use networking::p2p::peer::{Bootstrap, BootstrapOutput, Local};
+    use networking::p2p::peer::{Bootstrap, BootstrapOutput};
     use networking::p2p::stream::{EncryptedMessageReader, EncryptedMessageWriter};
-    use networking::ShellCompatibilityVersion;
+    use networking::{LocalPeerInfo, ShellCompatibilityVersion};
     use tezos_identity::Identity;
     use tezos_messages::p2p::encoding::prelude::{Mempool, PeerMessage, PeerMessageResponse};
 
@@ -1251,7 +1249,7 @@ mod test_node_peer {
                     match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
                         Ok(Ok(stream)) => {
                             // authenticate
-                            let local = Arc::new(Local::new(
+                            let local = Arc::new(LocalPeerInfo::new(
                                 1235,
                                 identity,
                                 Arc::new(shell_compatibility_version),
@@ -1267,11 +1265,11 @@ mod test_node_peer {
                                 Ok(BootstrapOutput(rx, txw, ..)) => {
                                     info!(log, "[{}] Connection successful", name; "ip" => server_address);
 
-                                    *tx.lock().await = Some(txw);
+                                    *tx.lock().await = txw.lock().await.take();
                                     connected.store(true, Ordering::Release);
 
                                     // process messages
-                                    Self::begin_process_incoming(name, rx, tx, connected, log, server_address, test_mempool, handle_message_callback).await;
+                                    Self::begin_process_incoming(name, rx, tx.clone(), connected, log, server_address, test_mempool, handle_message_callback).await;
                                 }
                                 Err(e) => {
                                     error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
@@ -1302,7 +1300,7 @@ mod test_node_peer {
         /// Start to process incoming data
         async fn begin_process_incoming(
             name: &str,
-            mut rx: EncryptedMessageReader,
+            rx: Arc<Mutex<Option<EncryptedMessageReader>>>,
             tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
             connected: Arc<AtomicBool>,
             log: Logger,
@@ -1315,6 +1313,8 @@ mod test_node_peer {
         ) {
             info!(log, "[{}] Starting to accept messages", name; "ip" => format!("{:?}", &peer_address));
 
+            let mut rx = rx.lock().await;
+            let mut rx = rx.take().unwrap();
             while connected.load(Ordering::Acquire) {
                 match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
                     Ok(res) => match res {
@@ -1618,7 +1618,6 @@ mod test_actor {
         ) {
             match msg {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
-                NetworkChannelMsg::PeerCreated(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
                         peer_id.peer_public_key_hash.clone(),

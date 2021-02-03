@@ -4,12 +4,15 @@
 
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
+use failure::Fail;
+
 mod state;
 
 pub mod chain_feeder;
 pub mod chain_manager;
 pub mod context_listener;
 pub mod mempool;
+pub mod peer_branch_bootstrapper;
 pub mod peer_manager;
 pub mod shell_channel;
 pub mod stats;
@@ -21,6 +24,10 @@ pub const SUPPORTED_P2P_VERSION: &[u16] = &[0, 1];
 
 /// Constant tells about distributed_db feature versions, which this shell is compatible with
 pub const SUPPORTED_DISTRIBUTED_DB_VERSION: &[u16] = &[0];
+
+#[derive(Debug, Clone, Fail)]
+#[fail(display = "InvalidRange - {}", _0)]
+pub struct InvalidRangeError(String);
 
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
@@ -38,13 +45,23 @@ impl PeerConnectionThreshold {
     /// * `higher` - Upper threshold bound
     ///
     /// `low` cannot be bigger than `high`, otherwise function will panic
-    pub fn new(low: usize, high: usize, peers_for_bootstrap_threshold: Option<usize>) -> Self {
-        assert!(low <= high, "low must be less than or equal to high");
-        PeerConnectionThreshold {
+    pub fn try_new(
+        low: usize,
+        high: usize,
+        peers_for_bootstrap_threshold: Option<usize>,
+    ) -> Result<Self, InvalidRangeError> {
+        if low > high {
+            return Err(InvalidRangeError(format!(
+                "low: {} must be less than or equal to high: {}",
+                low, high
+            )));
+        }
+
+        Ok(PeerConnectionThreshold {
             low,
             high,
             peers_for_bootstrap_threshold,
-        }
+        })
     }
 
     /// Threshold for minimal count of bootstrapped peers
@@ -139,6 +156,40 @@ pub mod subscription {
     }
 
     #[inline]
+    pub fn subscribe_to_shell_new_current_head<M, E>(
+        shell_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        shell_channel.tell(
+            Subscribe {
+                actor: Box::new(myself),
+                topic: ShellChannelTopic::ShellNewCurrentHead.into(),
+            },
+            None,
+        );
+    }
+
+    #[inline]
+    pub fn subscribe_to_shell_block_applied<M, E>(
+        shell_channel: &ChannelRef<E>,
+        myself: ActorRef<M>,
+    ) where
+        M: Message,
+        E: Message + Into<M>,
+    {
+        shell_channel.tell(
+            Subscribe {
+                actor: Box::new(myself),
+                topic: ShellChannelTopic::ShellBlockApplied.into(),
+            },
+            None,
+        );
+    }
+
+    #[inline]
     pub(crate) fn subscribe_to_shell_commands<M, E>(
         shell_channel: &ChannelRef<E>,
         myself: ActorRef<M>,
@@ -210,18 +261,27 @@ pub mod tests {
     #[test]
     fn test_num_of_peers_for_bootstrap_threshold() {
         // fixed threshold
-        let peer_threshold = PeerConnectionThreshold::new(0, 10, Some(5));
+        let peer_threshold =
+            PeerConnectionThreshold::try_new(0, 10, Some(5)).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 5);
 
         // clasic scenario
-        let peer_threshold = PeerConnectionThreshold::new(5, 500, None);
+        let peer_threshold = PeerConnectionThreshold::try_new(5, 500, None).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 83);
 
         // calculated threshold too low (0), use minimal value of 1
-        let peer_threshold = PeerConnectionThreshold::new(1, 4, None);
+        let peer_threshold = PeerConnectionThreshold::try_new(1, 4, None).expect("Invalid range");
         let sync_threshold = peer_threshold.num_of_peers_for_bootstrap_threshold();
         assert_eq!(sync_threshold, 1);
+    }
+
+    #[test]
+    fn test_invalid_range_threshold() {
+        assert!(PeerConnectionThreshold::try_new(9, 10, Some(5)).is_ok());
+        assert!(PeerConnectionThreshold::try_new(10, 10, Some(5)).is_ok());
+        assert!(PeerConnectionThreshold::try_new(11, 10, Some(5)).is_err());
+        assert!(PeerConnectionThreshold::try_new(12, 10, Some(5)).is_err());
     }
 }

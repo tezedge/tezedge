@@ -11,7 +11,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use storage::persistent::BincodeEncoded;
+use storage::persistent::{BincodeEncoded, StorageType};
 use storage::skip_list::{DatabaseBackedSkipList, TypedSkipList};
 use storage::tests_common::TmpStorage;
 
@@ -41,7 +41,7 @@ fn list_new() {
     let list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             1,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -58,7 +58,7 @@ fn list_push() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             2,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -88,7 +88,7 @@ fn list_check_first() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             3,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -114,7 +114,7 @@ fn list_check_second() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             4,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -143,7 +143,7 @@ fn list_check_bottom_lane() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             5,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -173,7 +173,7 @@ pub fn list_check_faster_lane() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             6,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -203,7 +203,7 @@ pub fn list_check_lane_traversal() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             7,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -233,7 +233,7 @@ pub fn list_get_value_by_key() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             8,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -265,7 +265,7 @@ pub fn list_get_values_by_prefix() -> Result<(), failure::Error> {
     let mut list: Box<dyn TypedSkipList<String, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             9,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -323,7 +323,7 @@ pub fn list_check_lane_order_traversal() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             8,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -358,7 +358,7 @@ pub fn list_check_get_key() {
     let mut list: Box<dyn TypedSkipList<i32, i32>> = Box::new(
         DatabaseBackedSkipList::new(
             8,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()
@@ -386,7 +386,7 @@ pub fn skip_list_simulate_ledger() {
     let list: Box<dyn TypedSkipList<u64, Operation>> = Box::new(
         DatabaseBackedSkipList::new(
             8,
-            tmp_storage.storage().kv(),
+            tmp_storage.storage().kv(StorageType::Database),
             tmp_storage
                 .storage()
                 .seq()

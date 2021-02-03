@@ -11,7 +11,8 @@ use std::time::Duration;
 use chrono::TimeZone;
 use failure::Fail;
 
-use crypto::hash::{ChainId, OperationHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, OperationHash, ProtocolHash};
+use storage::block_meta_storage::Meta;
 use storage::{BlockHeaderWithHash, BlockMetaStorageReader, BlockStorageReader, StorageError};
 use tezos_api::ffi::{
     BeginApplicationRequest, BeginConstructionRequest, ValidateOperationRequest,
@@ -130,6 +131,43 @@ pub fn can_accept_operation_from_p2p(
     false
 }
 
+/// Returns true, if [block] can be applied
+pub fn can_apply_block<'b, OP, PA>(
+    (block, block_metadata): (&'b BlockHash, &'b Meta),
+    operations_complete: OP,
+    predecessor_applied: PA,
+) -> Result<bool, StorageError>
+where
+    OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
+    PA: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if predecessor is applied */
+{
+    let block_predecessor = block_metadata.predecessor();
+
+    // check if block is already applied, dont need to apply second time
+    if block_metadata.is_applied() {
+        return Ok(false);
+    }
+
+    // we need to have predecessor (every block has)
+    if block_predecessor.is_none() {
+        return Ok(false);
+    }
+
+    // if operations are not complete, we cannot apply block
+    if !operations_complete(block)? {
+        return Ok(false);
+    }
+
+    // check if predecesor is applied
+    if let Some(predecessor) = block_predecessor {
+        if predecessor_applied(predecessor)? {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 /// Error produced by a [prevalidate_operation].
 #[derive(Debug, Fail)]
 pub enum PrevalidateOperationError {
@@ -176,24 +214,20 @@ pub fn prevalidate_operation(
 ) -> Result<ValidateOperationResult, PrevalidateOperationError> {
     // just check if we know block from operation (and is applied)
     let operation_branch = operation.branch();
-    match block_storage.contains(operation_branch)? {
-        true => {
-            let is_applied = match block_meta_storage.get(operation_branch)? {
-                Some(metadata) => metadata.is_applied(),
-                None => false,
-            };
 
-            if !is_applied {
-                return Err(PrevalidateOperationError::BranchNotAppliedYet {
-                    branch: operation_branch.to_base58_check(),
-                });
-            }
-        }
-        false => {
+    let is_applied = match block_meta_storage.get(operation_branch)? {
+        Some(metadata) => metadata.is_applied(),
+        None => {
             return Err(PrevalidateOperationError::UnknownBranch {
                 branch: operation_branch.to_base58_check(),
             })
         }
+    };
+
+    if !is_applied {
+        return Err(PrevalidateOperationError::BranchNotAppliedYet {
+            branch: operation_branch.to_base58_check(),
+        });
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
@@ -204,7 +238,7 @@ pub fn prevalidate_operation(
             None => {
                 return Err(PrevalidateOperationError::UnknownBranch {
                     branch: head.to_base58_check(),
-                })
+                });
             }
         },
         None => {

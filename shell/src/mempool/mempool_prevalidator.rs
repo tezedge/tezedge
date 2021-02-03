@@ -38,7 +38,9 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::subscription::{subscribe_to_shell_events, subscribe_to_shell_shutdown};
+use crate::subscription::{
+    subscribe_to_shell_events, subscribe_to_shell_new_current_head, subscribe_to_shell_shutdown,
+};
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -92,7 +94,7 @@ impl MempoolPrevalidator {
 
                 while validator_run.load(Ordering::Acquire) {
                     match tezos_readonly_api.pool.get() {
-                        Ok(protocol_controller) => match process_prevalidation(
+                        Ok(mut protocol_controller) => match process_prevalidation(
                             &block_storage,
                             &chain_meta_storage,
                             &mempool_storage,
@@ -104,8 +106,12 @@ impl MempoolPrevalidator {
                             &mut validator_event_receiver,
                             &log,
                         ) {
-                            Ok(()) => info!(log, "Mempool - prevalidation process finished"),
+                            Ok(()) => {
+                                protocol_controller.set_release_on_return_to_pool();
+                                info!(log, "Mempool - prevalidation process finished")
+                            }
                             Err(err) => {
+                                protocol_controller.set_release_on_return_to_pool();
                                 if validator_run.load(Ordering::Acquire) {
                                     warn!(log, "Mempool - error while process prevalidation"; "reason" => format!("{:?}", err));
                                 }
@@ -210,6 +216,7 @@ impl Actor for MempoolPrevalidator {
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
     }
 
     fn post_stop(&mut self) {

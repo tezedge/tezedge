@@ -81,7 +81,7 @@ impl IncomingTransferMetrics {
 #[serde(rename_all = "camelCase")]
 pub struct PeerMetrics {
     #[serde(rename = "id")]
-    public_key: Option<String>,
+    public_key: String,
     ip_address: String,
     transferred_bytes: usize,
     average_transfer_speed: f32,
@@ -90,7 +90,7 @@ pub struct PeerMetrics {
 
 impl PeerMetrics {
     pub fn new(
-        public_key: Option<String>,
+        public_key: String,
         ip_address: String,
         transferred_bytes: usize,
         average_transfer_speed: f32,
@@ -115,12 +115,12 @@ pub enum PeerConnectionStatus {
 }
 
 impl PeerConnectionStatus {
-    pub fn connected(peer: String) -> Self {
-        Self::Connected(peer)
+    pub fn connected(peer_address: String) -> Self {
+        Self::Connected(peer_address)
     }
 
-    pub fn disconnected(peer: String) -> Self {
-        Self::Disconnected(peer)
+    pub fn disconnected(peer_address: String) -> Self {
+        Self::Disconnected(peer_address)
     }
 }
 

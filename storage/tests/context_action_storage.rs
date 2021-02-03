@@ -71,6 +71,10 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     storage.put_action(&block_hash_2, value_2_0)?;
     storage.put_action(&block_hash_1, value_1_1)?;
     storage.put_action(&block_hash_2, value_2_1)?;
+    tmp_storage
+        .storage()
+        .kv(persistent::StorageType::ContextAction)
+        .flush()?;
 
     // block hash 1
     let values = storage.get_by_block_hash(&block_hash_1)?;

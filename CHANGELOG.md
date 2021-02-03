@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing.
+- Migrated Tokio dependency from 0.2.x to 1.1.x
+- RocksDB kv store splitted to three instances (db, context, context_actions)
 
 ### Deprecated
 

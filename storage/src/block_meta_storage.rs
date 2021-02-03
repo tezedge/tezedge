@@ -12,19 +12,23 @@ use slog::{warn, Logger};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::num_from_slice;
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
 use crate::persistent::{
     default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
     PersistentStorage, SchemaError,
 };
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
+use crate::{num_from_slice, persistent::StorageType};
 use crate::{BlockHeaderWithHash, StorageError};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
+
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
+
+    fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError>;
 
     /// Returns n-th predecessor for block_hash
     fn find_block_at_distance(
@@ -52,7 +56,7 @@ impl BlockMetaStorage {
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
-            kv: persistent_storage.kv(),
+            kv: persistent_storage.kv(StorageType::Database),
             predecessors_index: PredecessorStorage::new(persistent_storage),
         }
     }
@@ -189,6 +193,18 @@ impl BlockMetaStorage {
 impl BlockMetaStorageReader for BlockMetaStorage {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.kv.get(block_hash).map_err(StorageError::from)
+    }
+
+    fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+        self.kv.contains(block_hash).map_err(StorageError::from)
+    }
+
+    fn is_applied(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
+        match self.get(block_hash) {
+            Ok(Some(meta)) => Ok(meta.is_applied),
+            Ok(None) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     // NOTE: implemented in a way to mirro the ocaml code, should be refactored to me more rusty
@@ -386,6 +402,15 @@ impl Meta {
             level,
             chain_id,
         }
+    }
+
+    pub fn is_downloaded(&self) -> bool {
+        // if we updated predecessor, we can get this information just from block_header, so it measn it should be downloaded
+        self.predecessor.is_some()
+    }
+
+    pub fn take_successors(self) -> Vec<BlockHash> {
+        self.successors
     }
 }
 

@@ -256,7 +256,6 @@ pub async fn handle_rejection(err: Rejection, log: Logger) -> Result<impl Reply,
             match tcre {
                 TezosClientRunnerError::ProtocolParameterError { .. }
                 | TezosClientRunnerError::NonexistantWallet { .. }
-                | TezosClientRunnerError::WalletAlreadyExistsError { .. }
                 | TezosClientRunnerError::UnavailableSandboxNodeError
                 | TezosClientRunnerError::IOError { .. }
                 | TezosClientRunnerError::SandboxDataDirNotInitialized { .. }

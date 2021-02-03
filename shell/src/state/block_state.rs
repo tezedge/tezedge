@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::convert::TryFrom;
 use std::fmt;
-use std::{cmp, convert::TryFrom};
+use std::sync::Arc;
+use std::time::Instant;
 
-use rand::prelude::ThreadRng;
-use rand::Rng;
+use riker::actors::*;
 use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
@@ -17,16 +17,24 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::persistent::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ChainMetaStorage, IteratorMode, StorageError,
+    BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,
 };
-use tezos_messages::p2p::encoding::block_header::{BlockHeader, Level};
+use tezos_messages::p2p::encoding::block_header::BlockHeader;
 use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
-use tezos_messages::p2p::encoding::prelude::CurrentHeadMessage;
+use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
+use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
+use crate::chain_manager::ChainManagerRef;
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::utils::collections::{BlockData, UniqueBlockData};
+use crate::peer_branch_bootstrapper::{
+    PeerBranchBootstrapper, StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
+};
+use crate::shell_channel::ShellChannelRef;
+use crate::state::bootstrap_state::InnerBlockState;
+use crate::state::peer_state::PeerState;
+use crate::state::StateError;
 use crate::validation;
 
 pub enum BlockAcceptanceResult {
@@ -44,24 +52,29 @@ pub struct BlockchainState {
     block_meta_storage: BlockMetaStorage,
     ///persistent chain metadata storage
     chain_meta_storage: ChainMetaStorage,
-    /// Current missing blocks.
-    /// This represents a set of missing block we will try to retrieve in the future.
-    /// Before we try to fetch missing block it is removed from this queue.
-    /// Block is then sent to [`chain_manager`](crate::chain_manager::ChainManager) actor whose responsibility is to
-    /// retrieve the block data. If the block data cannot be fetched it's the responsibility
-    /// of the [`chain_manager`](crate::chain_manager::ChainManager) to return the block to this queue.
-    missing_blocks: UniqueBlockData<MissingBlock>,
-    chain_id: ChainId,
+    // Operations storage
+    operations_storage: OperationsStorage,
+    /// Operations metadata storage
+    operations_meta_storage: OperationsMetaStorage,
+
+    chain_id: Arc<ChainId>,
+    chain_genesis_block_hash: Arc<BlockHash>,
 }
 
 impl BlockchainState {
-    pub fn new(persistent_storage: &PersistentStorage, chain_id: ChainId) -> Self {
+    pub fn new(
+        persistent_storage: &PersistentStorage,
+        chain_id: Arc<ChainId>,
+        chain_genesis_block_hash: Arc<BlockHash>,
+    ) -> Self {
         BlockchainState {
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
-            missing_blocks: UniqueBlockData::new(),
+            operations_storage: OperationsStorage::new(persistent_storage),
+            operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
             chain_id,
+            chain_genesis_block_hash,
         }
     }
 
@@ -72,8 +85,7 @@ impl BlockchainState {
         current_head: &Option<Head>,
     ) -> bool {
         // validate chain which we operate on
-        if self.get_chain_id() != branch.chain_id() {
-            // return Ok(BlockAcceptanceResult::IgnoreBlock);
+        if self.chain_id.as_ref() != branch.chain_id() {
             return false;
         }
         if branch.current_branch().current_head().level() <= 0 {
@@ -103,7 +115,7 @@ impl BlockchainState {
         api: &ProtocolController,
     ) -> Result<BlockAcceptanceResult, failure::Error> {
         // validate chain which we operate on
-        if self.get_chain_id() != head.chain_id() {
+        if self.chain_id.as_ref() != head.chain_id() {
             return Ok(BlockAcceptanceResult::IgnoreBlock);
         }
 
@@ -152,8 +164,10 @@ impl BlockchainState {
                     None => Ok(BlockAcceptanceResult::AcceptBlock),
                 }
             } else {
-                // if not, we cannot trigger validation, so we just ignore head
-                Ok(BlockAcceptanceResult::IgnoreBlock)
+                // if we came here, we dont know protocol to trigger validation
+                // so probably we dont have predecessor procesed yet
+                // so we trigger current branch request from peer
+                Ok(BlockAcceptanceResult::UnknownBranch)
             }
         } else {
             Ok(BlockAcceptanceResult::IgnoreBlock)
@@ -271,64 +285,125 @@ impl BlockchainState {
         }
     }
 
-    /// Returns true, if [block] can be applied
-    pub fn can_apply_block<'b, OP>(
-        &self,
-        (block, block_metadata): (&'b BlockHash, &'b Meta),
-        operations_complete: OP,
-    ) -> Result<bool, StorageError>
-    where
-        OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
-    {
-        let block_predecessor = block_metadata.predecessor();
+    /// Resolves missing blocks and schedules them for download from network
+    pub fn schedule_history_bootstrap(
+        &mut self,
+        sys: &ActorSystem,
+        peer: &mut PeerState,
+        block_header: &BlockHeaderWithHash,
+        mut history: Vec<BlockHash>,
+        // TODO: TE-369 as struct member
+        shell_channel: ShellChannelRef,
+        block_applier: &ChainFeederRef,
+        chain_manager: Arc<ChainManagerRef>,
+    ) -> Result<(), StateError> {
+        // add predecessor (if not present in history)
+        if !history.contains(block_header.header.predecessor()) {
+            history.insert(0, block_header.header.predecessor().clone());
+        };
+        // add block itself (if not present in history)
+        if !history.contains(&block_header.hash) {
+            history.insert(0, block_header.hash.clone());
+        };
 
-        // check if block is already applied, dont need to apply second time
-        if block_metadata.is_applied() {
-            return Ok(false);
-        }
+        // prepare bootstrap pipeline for this peer and rehydrate to prevent stuck of applying blocks
+        // schedule download missing blocks - download history
+        // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
 
-        // we need to have predecessor (every block has)
-        if block_predecessor.is_none() {
-            return Ok(false);
-        }
+        // collect for every block if it is applied and get the "last applied" = highest block index
+        let mut last_applied_idx: Option<usize> = None;
+        let branch_history_locator_lowest_level_first: Vec<(Arc<BlockHash>, bool)> = history
+            .into_iter()
+            .rev()
+            .enumerate()
+            .map(|(idx, history_block_hash)| {
+                match self.block_meta_storage.get(&history_block_hash) {
+                    Ok(Some(metadata)) => {
+                        if metadata.is_applied() {
+                            last_applied_idx = Some(idx);
+                        }
+                        (Arc::new(history_block_hash), metadata.is_applied())
+                    }
+                    _ => (Arc::new(history_block_hash), false),
+                }
+            })
+            .collect();
 
-        // if operations are not complete, we cannot apply block
-        if !operations_complete(block)? {
-            return Ok(false);
-        }
+        // prepare bootstrap pipeline for this history according to last known applied block (if None, then use genesis)
+        // and we are just interested in history after last applied block
+        let (last_applied_block, missing_history): (Arc<BlockHash>, Vec<Arc<BlockHash>>) =
+            match last_applied_idx {
+                Some(last_applied_idx) => {
+                    // we split history
+                    // all before index we throw away
+                    if let Some((last_applied, _)) =
+                        branch_history_locator_lowest_level_first.get(last_applied_idx)
+                    {
+                        (
+                            last_applied.clone(),
+                            branch_history_locator_lowest_level_first
+                                .iter()
+                                .enumerate()
+                                .filter(|(index, (_, _))| index > &last_applied_idx)
+                                .map(|(_, (b, _))| b.clone())
+                                .collect(),
+                        )
+                    } else {
+                        // fall back to start from genesis
+                        (
+                            self.chain_genesis_block_hash.clone(),
+                            branch_history_locator_lowest_level_first
+                                .into_iter()
+                                .map(|(b, _)| b)
+                                .collect(),
+                        )
+                    }
+                }
+                None => {
+                    // fall back to start from genesis
+                    (
+                        self.chain_genesis_block_hash.clone(),
+                        branch_history_locator_lowest_level_first
+                            .into_iter()
+                            .map(|(b, _)| b)
+                            .collect(),
+                    )
+                }
+            };
 
-        // check if predecesor is applied
-        if let Some(predecessor) = block_predecessor {
-            if let Some(predecessor_meta) = self.block_meta_storage.get(predecessor)? {
-                return Ok(predecessor_meta.is_applied());
+        // if we miss something, we will run "peer branch bootstrapper"
+        if !missing_history.is_empty() {
+            if peer.peer_branch_bootstrapper.is_none() {
+                peer.peer_branch_bootstrapper = Some(
+                    PeerBranchBootstrapper::actor(
+                        sys,
+                        peer.peer_id.clone(),
+                        peer.queued_block_headers2.clone(),
+                        peer.queued_block_operations2.clone(),
+                        shell_channel,
+                        block_applier.clone(),
+                        chain_manager,
+                        self.block_meta_storage.clone(),
+                        self.operations_meta_storage.clone(),
+                    )
+                    .map_err(|e| StateError::ProcessingError {
+                        reason: format!("{}", e),
+                    })?,
+                );
+            };
+
+            // start bootstrapping
+            if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+                peer_branch_bootstrapper.tell(
+                    StartBranchBootstraping::new(
+                        self.chain_id.clone(),
+                        last_applied_block,
+                        missing_history,
+                    ),
+                    None,
+                );
             }
         }
-
-        Ok(false)
-    }
-
-    /// Resolves missing blocks and schedules them for download from network
-    pub fn schedule_branch_bootstrap(
-        &mut self,
-        block_header: &BlockHeaderWithHash,
-        history: &Vec<BlockHash>,
-    ) -> Result<(), StorageError> {
-        let block_level = block_header.header.level();
-        let block_hash = block_header.hash.clone();
-
-        // at first schedule history - we try to prioritize download from the beginning, so the history is reversed here
-        self.push_missing_history(history.iter().cloned().rev().collect(), block_level)?;
-
-        // schedule predecessor (if not present in history)
-        if !history.contains(block_header.header.predecessor()) {
-            self.push_missing_block(MissingBlock::with_level_guess(
-                block_header.header.predecessor().clone(),
-                std::cmp::max(1, block_level - 1),
-            ))?;
-        }
-
-        // schedule also current_head
-        self.push_missing_block(MissingBlock::with_level(block_hash, block_level))?;
 
         Ok(())
     }
@@ -381,7 +456,18 @@ impl BlockchainState {
                     HeadResult::BranchSwitch
                 }
             }
-            None => HeadResult::HeadIncrement,
+            None => {
+                // we check, if new head is genesis
+                if self
+                    .chain_genesis_block_hash
+                    .as_ref()
+                    .eq(&potential_new_head.hash)
+                {
+                    HeadResult::GenesisInitialized
+                } else {
+                    HeadResult::HeadIncrement
+                }
+            }
         };
 
         // this will be new head
@@ -398,104 +484,207 @@ impl BlockchainState {
         Ok(Some((head, head_result)))
     }
 
-    pub fn process_block_header(
+    /// Process block_header, stores/updates storages,
+    /// schedules missing stuff to peer
+    ///
+    /// Returns bool - true, if it is a new block or false for previosly stored
+    pub fn process_block_header_from_peer(
+        &mut self,
+        peer: &mut PeerState,
+        received_block: &BlockHeaderWithHash,
+        block_applier: &ChainFeederRef,
+        chain_manager: Arc<ChainManagerRef>,
+        log: &Logger,
+    ) -> Result<bool, StorageError> {
+        // store block
+        let is_new_block = self.block_storage.put_block_header(received_block)?;
+
+        // update block metadata
+        let block_metadata =
+            self.block_meta_storage
+                .put_block_header(received_block, &self.chain_id, &log)?;
+
+        // update operations metadata for block
+        let (are_operations_complete, _) = self.process_block_header_operations(received_block)?;
+
+        // check if block can be applied
+        if validation::can_apply_block(
+            (&received_block.hash, &block_metadata),
+            |_| Ok(are_operations_complete),
+            |predecessor| self.block_meta_storage.is_applied(predecessor),
+        )? {
+            block_applier.tell(
+                ApplyCompletedBlock::new(
+                    received_block.hash.clone(),
+                    self.chain_id.clone(),
+                    None,
+                    chain_manager,
+                    None,
+                    Instant::now(),
+                ),
+                None,
+            );
+        }
+
+        // ping branch bootstrapper with received block and actual state
+        if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+            peer_branch_bootstrapper.tell(
+                UpdateBlockState::new(
+                    Arc::new(received_block.hash.clone()),
+                    Arc::new(received_block.header.predecessor().clone()),
+                    InnerBlockState {
+                        block_downloaded: true,
+                        applied: block_metadata.is_applied(),
+                        operations_downloaded: are_operations_complete,
+                    },
+                ),
+                None,
+            );
+        }
+
+        Ok(is_new_block)
+    }
+
+    /// Process block_header, stores/updates storages, schedules missing stuff
+    ///
+    /// Returns:
+    /// [metadata] - block header metadata
+    /// [is_new_block] - if it is a new block or previosly stored
+    /// [are_operations_complete] - if operations are completed
+    ///
+    pub fn process_injected_block_header(
         &mut self,
         block_header: &BlockHeaderWithHash,
         log: &Logger,
-    ) -> Result<(Meta, bool), StorageError> {
-        // check if we already have seen predecessor
-        self.push_missing_block(MissingBlock::with_level_guess(
-            block_header.header.predecessor().clone(),
-            block_header.header.level() - 1,
-        ))?;
-
+    ) -> Result<(Meta, bool, bool), StorageError> {
         // store block
         let is_new_block = self.block_storage.put_block_header(block_header)?;
-        // update meta
+
+        // update block metadata
         let metadata =
             self.block_meta_storage
                 .put_block_header(block_header, &self.chain_id, &log)?;
 
-        Ok((metadata, is_new_block))
+        // update operations metadata
+        let are_operations_complete =
+            self.process_injected_block_header_operations(block_header)?;
+
+        Ok((metadata, is_new_block, are_operations_complete))
     }
 
-    #[inline]
-    pub fn drain_missing_blocks(&mut self, n: usize, level_max: i32) -> Vec<MissingBlock> {
-        (0..cmp::min(self.missing_blocks.len(), n))
-            .filter_map(|_| {
-                if self
-                    .missing_blocks
-                    .peek()
-                    .filter(|block| block.fits_to_max(level_max))
-                    .is_some()
-                {
-                    self.missing_blocks.pop()
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    #[inline]
-    pub fn push_missing_block(&mut self, missing_block: MissingBlock) -> Result<(), StorageError> {
-        if !self.block_storage.contains(&missing_block.block_hash)? {
-            self.missing_blocks.push(missing_block);
-        }
-        Ok(())
-    }
-
-    #[inline]
-    fn push_missing_history(
+    /// Process block header. This will create record in meta storage with
+    /// unseen operations for the block header.
+    ///
+    /// If block header is not already present in storage, return `true`.
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         are_operations_complete,
+    ///         missing_validation_passes
+    ///     )
+    fn process_block_header_operations(
         &mut self,
-        history: Vec<BlockHash>,
-        level: Level,
-    ) -> Result<(), StorageError> {
-        let mut rng = rand::thread_rng();
-        let history_max_parts = if history.len() < usize::from(HISTORY_MAX_SIZE) {
-            history.len() as u8
-        } else {
-            HISTORY_MAX_SIZE
-        };
-
-        history
-            .iter()
-            .enumerate()
-            .map(|(idx, history_block_hash)| {
-                self.push_missing_block(MissingBlock::with_level_guess(
-                    history_block_hash.clone(),
-                    Self::guess_level(&mut rng, level, history_max_parts, idx),
-                ))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(())
+        block_header: &BlockHeaderWithHash,
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
+        match self.operations_meta_storage.get(&block_header.hash)? {
+            Some(meta) => Ok((meta.is_complete(), meta.get_missing_validation_passes())),
+            None => self
+                .operations_meta_storage
+                .put_block_header(block_header, &self.chain_id),
+        }
     }
 
-    #[inline]
-    pub fn has_missing_blocks(&self) -> bool {
-        !self.missing_blocks.is_empty()
+    /// Process injected block header. This will create record in meta storage.
+    /// As the the header is injected via RPC, the operations are as well, so we
+    /// won't mark its operations as missing
+    ///
+    /// Returns true, if validation_passes are completed (can happen, when validation_pass = 0)
+    fn process_injected_block_header_operations(
+        &mut self,
+        block_header: &BlockHeaderWithHash,
+    ) -> Result<bool, StorageError> {
+        match self.operations_meta_storage.get(&block_header.hash)? {
+            Some(meta) => Ok(meta.is_complete()),
+            None => self
+                .operations_meta_storage
+                .put_block_header(block_header, &self.chain_id)
+                .map(|(is_complete, _)| is_complete),
+        }
     }
 
-    #[inline]
-    pub fn missing_blocks_count(&self) -> usize {
-        self.missing_blocks.len()
-    }
+    pub fn process_block_operations_from_peer(
+        &mut self,
+        peer: &mut PeerState,
+        block_hash: &BlockHash,
+        message: &OperationsForBlocksMessage,
+        block_applier: &ChainFeederRef,
+        chain_manager: ChainManagerRef,
+    ) -> Result<bool, StateError> {
+        // update operations metadata for block
+        let (are_operations_complete, _) = self.process_block_operations(message)?;
 
-    pub fn hydrate(&mut self) -> Result<(), StorageError> {
-        for (key, value) in self.block_meta_storage.iter(IteratorMode::Start)? {
-            let (block_hash, meta) = (key?, value?);
-            if meta.predecessor().is_none() && (meta.chain_id() == &self.chain_id) {
-                self.missing_blocks
-                    .push(MissingBlock::with_level(block_hash, meta.level()));
+        if are_operations_complete {
+            // ping branch bootstrapper with received operations
+            if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+                peer_branch_bootstrapper.tell(
+                    UpdateOperationsState::new(Arc::new(block_hash.clone())),
+                    None,
+                );
             }
+
+            // update block metadata
+            if let Some(block_metadata) = self.block_meta_storage.get(block_hash)? {
+                // check if block can be applied
+                if validation::can_apply_block(
+                    (&block_hash, &block_metadata),
+                    |_| Ok(are_operations_complete),
+                    |predecessor| self.block_meta_storage.is_applied(predecessor),
+                )? {
+                    block_applier.tell(
+                        ApplyCompletedBlock::new(
+                            block_hash.clone(),
+                            self.chain_id.clone(),
+                            None,
+                            Arc::new(chain_manager),
+                            None,
+                            Instant::now(),
+                        ),
+                        None,
+                    );
+                }
+            }
+
+            // remove operations from queue
+            peer.queued_block_operations2.write()?.remove(&block_hash);
         }
 
-        Ok(())
+        Ok(are_operations_complete)
+    }
+
+    /// Process block operations. This will mark operations in store for the block as seen.
+    ///
+    /// Returns tuple:
+    ///     (
+    ///         are_operations_complete,
+    ///         missing_validation_passes
+    ///     )
+    pub fn process_block_operations(
+        &mut self,
+        message: &OperationsForBlocksMessage,
+    ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
+        if self
+            .operations_meta_storage
+            .is_complete(message.operations_for_block().hash())?
+        {
+            return Ok((true, None));
+        }
+
+        self.operations_storage.put_operations(message)?;
+        self.operations_meta_storage.put_operations(message)
     }
 
     #[inline]
-    pub fn get_chain_id(&self) -> &ChainId {
+    pub fn get_chain_id(&self) -> &Arc<ChainId> {
         &self.chain_id
     }
 
@@ -538,7 +727,7 @@ impl BlockchainState {
             let distance = step.next();
 
             // need to find predecesor at requested distance
-            match block_meta_storage.find_block_at_distance(current_block_hash, distance)? {
+            match block_meta_storage.find_block_at_distance(current_block_hash.clone(), distance)? {
                 Some(predecessor) => {
                     // add to history
                     history.push(predecessor.clone());
@@ -555,7 +744,10 @@ impl BlockchainState {
                                 history.push(caboose.into());
                             }
                         } else {
-                            history.push(caboose.into());
+                            // this covers genesis case, when we dont want to add genesis to history for genesis block
+                            if !current_block_hash.eq(caboose.block_hash()) {
+                                history.push(caboose.into());
+                            }
                         }
                     }
                     break;
@@ -565,115 +757,12 @@ impl BlockchainState {
 
         Ok(history)
     }
-
-    fn guess_level(rng: &mut ThreadRng, level: Level, parts: u8, index: usize) -> i32 {
-        // e.g. we have: level 100 a 5 record in history, so split is 20, never <= 0
-        let split = level / i32::from(parts);
-        // corner case for 1 level;
-        let split = cmp::max(1, split);
-
-        // we try to guess level, because in history there is no level
-        if index == 0 {
-            // first block in history is always genesis
-            0
-        } else {
-            // e.g. next block: idx * split, e.g. for index in history: 1 and split, we guess level is in range (0 * 20 - 1 * 20) -> (0, 20)
-            let start_level = ((index as i32 - 1) * split) + 1;
-            let end_level = (index as i32) * split;
-
-            // corner case for 1 level
-            let start_level = cmp::min(start_level, level);
-            let end_level = cmp::min(end_level, level);
-
-            if start_level == end_level {
-                start_level
-            } else {
-                rng.gen_range(start_level, end_level)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct MissingBlock {
-    pub block_hash: BlockHash,
-    // if level is known, we use level
-    level: Option<i32>,
-    // if level is unknow, we 'guess' level
-    level_guess: Option<i32>,
-}
-
-impl BlockData for MissingBlock {
-    #[inline]
-    fn block_hash(&self) -> &BlockHash {
-        &self.block_hash
-    }
-}
-
-impl MissingBlock {
-    pub fn with_level(block_hash: BlockHash, level: i32) -> Self {
-        MissingBlock {
-            block_hash,
-            level: Some(level),
-            level_guess: None,
-        }
-    }
-
-    pub fn with_level_guess(block_hash: BlockHash, level_guess: i32) -> Self {
-        MissingBlock {
-            block_hash,
-            level: None,
-            level_guess: Some(level_guess),
-        }
-    }
-
-    fn fits_to_max(&self, level_max: i32) -> bool {
-        if let Some(level) = self.level {
-            return level <= level_max;
-        }
-
-        if let Some(level_guess) = self.level_guess {
-            return level_guess <= level_max;
-        }
-
-        // if both are None
-        true
-    }
-}
-
-impl PartialEq for MissingBlock {
-    fn eq(&self, other: &Self) -> bool {
-        self.block_hash == other.block_hash
-    }
-}
-
-impl Eq for MissingBlock {}
-
-impl PartialOrd for MissingBlock {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for MissingBlock {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let self_potential_level = match self.level {
-            Some(level) => level,
-            None => self.level_guess.unwrap_or(0),
-        };
-        let other_potential_level = match other.level {
-            Some(level) => level,
-            None => other.level_guess.unwrap_or(0),
-        };
-
-        // reverse, because we want lower level at begining
-        self_potential_level.cmp(&other_potential_level).reverse()
-    }
 }
 
 pub enum HeadResult {
     BranchSwitch,
     HeadIncrement,
+    GenesisInitialized,
 }
 
 impl fmt::Display for HeadResult {
@@ -681,133 +770,19 @@ impl fmt::Display for HeadResult {
         match *self {
             HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
             HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
+            HeadResult::GenesisInitialized => write!(f, "GenesisInitialized"),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
-
     use slog::{Drain, Level, Logger};
 
     use crypto::hash::chain_id_from_block_hash;
     use storage::tests_common::TmpStorage;
 
     use super::*;
-
-    fn block(d: u8) -> BlockHash {
-        [d; crypto::hash::HashType::BlockHash.size()]
-            .to_vec()
-            .try_into()
-            .unwrap()
-    }
-
-    #[test]
-    fn test_missing_blocks_has_correct_ordering() {
-        let mut heap = UniqueBlockData::new();
-
-        // simulate header and predecesor
-        heap.push(MissingBlock::with_level(block(1), 10));
-        heap.push(MissingBlock::with_level(block(2), 9));
-
-        // simulate history
-        heap.push(MissingBlock::with_level_guess(block(3), 4));
-        heap.push(MissingBlock::with_level_guess(block(7), 0));
-        heap.push(MissingBlock::with_level_guess(block(5), 2));
-        heap.push(MissingBlock::with_level_guess(block(6), 1));
-        heap.push(MissingBlock::with_level_guess(block(4), 3));
-
-        // pop all from heap
-        let ordered_hashes = (0..heap.len())
-            .map(|_| heap.pop().unwrap())
-            .map(|i| i.block_hash)
-            .collect::<Vec<BlockHash>>();
-
-        // from level: 0, 1, 2, 3, 4, 9, 10
-        let expected_order: Vec<BlockHash> = vec![
-            block(7),
-            block(6),
-            block(5),
-            block(4),
-            block(3),
-            block(2),
-            block(1),
-        ];
-
-        assert_eq!(expected_order, ordered_hashes)
-    }
-
-    #[test]
-    fn test_guess_level() {
-        let mut rng = rand::thread_rng();
-
-        // for block 0 in history (always 0)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 0);
-            assert_eq!(level, 0);
-        }
-
-        // for block 1 in history [1, 20)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 1);
-            assert!((1..20).contains(&level));
-        }
-
-        // for block 2 in history [20, 40)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 2);
-            assert!((20..40).contains(&level));
-        }
-
-        // for block 3 in history [40, 60)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 3);
-            assert!((40..60).contains(&level));
-        }
-
-        // for block 4 in history [60, 80)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 4);
-            assert!((60..80).contains(&level));
-        }
-
-        // for block 5 in history [80, 100)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 100, 5, 5);
-            assert!((80..100).contains(&level));
-        }
-
-        // for block 0 in history [0, 1)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 1, 1, 0);
-            assert!((0..1).contains(&level));
-        }
-
-        // corner case (for level 1 if there are two elements)
-        // for block 0 in history [0, 1)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 1, 2, 0);
-            assert!((0..1).contains(&level));
-        }
-
-        // corner case (for level 1 if there are two elements)
-        // for block 1 in history [1, 2)
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 1, 2, 1);
-            assert!((1..2).contains(&level));
-        }
-
-        // corner cases
-        for _ in 0..100 {
-            let level = BlockchainState::guess_level(&mut rng, 1, 3, 0);
-            assert!((0..1).contains(&level));
-            let level = BlockchainState::guess_level(&mut rng, 1, 3, 1);
-            assert!((1..2).contains(&level));
-            let level = BlockchainState::guess_level(&mut rng, 1, 3, 2);
-            assert!((1..2).contains(&level));
-        }
-    }
 
     /// This test is rewritten according to [test_state.ml -> test_locator]
     #[test]
@@ -972,9 +947,24 @@ mod tests {
             &blocksdb,
             BlockchainState::compute_history(
                 &block_meta_storage,
-                caboose,
+                caboose.clone(),
                 &blocksdb.block_hash("C62"),
                 29,
+                &Seed::new(
+                    &data::generate_key_string('s'),
+                    &data::generate_key_string('r'),
+                ),
+            )?,
+        );
+
+        data::assert_history(
+            &[],
+            &blocksdb,
+            BlockchainState::compute_history(
+                &block_meta_storage,
+                caboose,
+                &blocksdb.block_hash("Genesis"),
+                5,
                 &Seed::new(
                     &data::generate_key_string('s'),
                     &data::generate_key_string('r'),
@@ -1005,7 +995,9 @@ mod tests {
         use slog::Logger;
 
         use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, HashType};
-        use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockStorage, BlockStorageReader};
+        use storage::{
+            BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+        };
         use tezos_messages::p2p::binary_message::BinaryMessage;
         use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
@@ -1247,7 +1239,7 @@ mod tests {
             // check stored correctly (multi successors)
             branch.iter().fold1(|predecessor, successor| {
                 let predecessor_hash = blocks.block_hash(predecessor);
-                assert!(block_storage
+                assert!(block_meta_storage
                     .contains(&predecessor_hash)
                     .expect("block not stored"));
 

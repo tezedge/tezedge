@@ -36,10 +36,6 @@ pub enum TezosClientRunnerError {
     #[fail(display = "Alias ({}) does not exists among the known wallets", alias)]
     NonexistantWallet { alias: String },
 
-    /// Wallet already exists error
-    #[fail(display = "Alias ({}) already exists among the known wallets", alias)]
-    WalletAlreadyExistsError { alias: String },
-
     /// Serde Error.
     #[fail(display = "Error in serde, reason: {}", reason)]
     SerdeError { reason: serde_json::Error },
@@ -68,12 +64,6 @@ impl From<std::io::Error> for TezosClientRunnerError {
 impl From<serde_json::Error> for TezosClientRunnerError {
     fn from(err: serde_json::Error) -> TezosClientRunnerError {
         TezosClientRunnerError::SerdeError { reason: err }
-    }
-}
-
-impl From<TezosClientRunnerError> for reject::Rejection {
-    fn from(err: TezosClientRunnerError) -> reject::Rejection {
-        reject::custom(err)
     }
 }
 

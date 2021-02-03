@@ -493,7 +493,7 @@ pub mod tests_common {
             let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
             let kv = open_kv(
-                &path,
+                path.join("db"),
                 vec![
                     block_storage::BlockPrimaryIndex::descriptor(&cache),
                     block_storage::BlockByLevelIndex::descriptor(&cache),
@@ -501,26 +501,43 @@ pub mod tests_common {
                     BlockMetaStorage::descriptor(&cache),
                     OperationsStorage::descriptor(&cache),
                     OperationsMetaStorage::descriptor(&cache),
-                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-                    MerkleStorage::descriptor(&cache),
                     SystemStorage::descriptor(&cache),
                     Sequences::descriptor(&cache),
                     DatabaseBackedSkipList::descriptor(&cache),
                     Lane::descriptor(&cache),
                     ListValue::descriptor(&cache),
                     MempoolStorage::descriptor(&cache),
-                    ContextActionStorage::descriptor(&cache),
                     ChainMetaStorage::descriptor(&cache),
                     PredecessorStorage::descriptor(&cache),
+                ],
+                &cfg,
+            )?;
+
+            let kv_context = open_kv(
+                path.join("context"),
+                vec![MerkleStorage::descriptor(&cache)],
+                &cfg,
+            )?;
+
+            let kv_context_action = open_kv(
+                path.join("context_actions"),
+                vec![
+                    ContextActionStorage::descriptor(&cache),
+                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
                 ],
                 &cfg,
             )?;
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(
+                    Arc::new(kv),
+                    Arc::new(kv_context),
+                    Arc::new(kv_context_action),
+                    Arc::new(clog),
+                ),
                 path,
                 remove_on_destroy,
             })
