@@ -138,10 +138,14 @@ impl<'a> From<&'a OperationsForBlock> for OperationKey {
 impl Decoder for OperationKey {
     #[inline]
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        Ok(OperationKey {
-            block_hash: BlockHash::try_from(&bytes[0..HashType::BlockHash.size()])?,
-            validation_pass: bytes[HashType::BlockHash.size()],
-        })
+        if bytes.len() < HashType::BlockHash.size() + 1 {
+            Err(SchemaError::DecodeError)
+        } else {
+            Ok(OperationKey {
+                block_hash: BlockHash::try_from(&bytes[0..HashType::BlockHash.size()])?,
+                validation_pass: bytes[HashType::BlockHash.size()],
+            })
+        }
     }
 }
 
@@ -186,6 +190,17 @@ mod tests {
         let encoded_bytes = expected.encode()?;
         let decoded = OperationKey::decode(&encoded_bytes)?;
         assert_eq!(expected, decoded);
+        Ok(())
+    }
+
+    #[test]
+    fn operation_key_decode_underflow() -> Result<(), Error> {
+        let result = OperationKey::decode(&[0; 0]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
+        let result = OperationKey::decode(&[0; 1]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
+        let result = OperationKey::decode(&[0; HashType::BlockHash.size()]);
+        assert!(matches!(result, Err(SchemaError::DecodeError)));
         Ok(())
     }
 }
