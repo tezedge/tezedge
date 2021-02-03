@@ -14,7 +14,7 @@ services:
     entrypoint: ./tezedge-debugger
 
   rust-node:
-    image: simplestakingcom/tezedge:v0.9.1
+    image: simplestakingcom/tezedge:latest-release
     network_mode: "service:rust-network"
     depends_on:
       - rust-explorer
@@ -30,11 +30,11 @@ services:
       - "rust-shared-data:/tmp/tezedge"
 
   rust-explorer:
-    image: simplestakingcom/tezedge-explorer:v0.6.0
+    image: simplestakingcom/tezedge-explorer:latest-release
     network_mode: "service:rust-network"
 
   rust-network:
-    image: simplestakingcom/tezedge-debugger:latest
+    image: simplestakingcom/tezedge-debugger:latest-release
     ports:
       # Explorer specific ports
       - "8080:8080"
