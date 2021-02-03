@@ -24,8 +24,8 @@ use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryM
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::{LocalPeerInfo, PeerId};
 use crate::p2p::network_channel::NetworkChannelMsg;
+use crate::{LocalPeerInfo, PeerId};
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -203,11 +203,12 @@ pub struct Peer {
 
 impl Peer {
     /// Create instance of a peer actor.
-    pub fn actor(sys: &impl ActorRefFactory,
-                 network_channel: NetworkChannelRef,
-                 tokio_executor: Handle,
-                 info: BootstrapOutput) -> Result<PeerRef, CreateError>
-    {
+    pub fn actor(
+        sys: &impl ActorRefFactory,
+        network_channel: NetworkChannelRef,
+        tokio_executor: Handle,
+        info: BootstrapOutput,
+    ) -> Result<PeerRef, CreateError> {
         let props = Props::new_args::<Peer, _>((network_channel, tokio_executor, info));
         let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
         sys.actor_of_props(&format!("peer-{}", actor_id), props)
@@ -215,7 +216,9 @@ impl Peer {
 }
 
 impl ActorFactoryArgs<(NetworkChannelRef, Handle, BootstrapOutput)> for Peer {
-    fn create_args((event_channel, tokio_executor, info): (NetworkChannelRef, Handle, BootstrapOutput)) -> Self {
+    fn create_args(
+        (event_channel, tokio_executor, info): (NetworkChannelRef, Handle, BootstrapOutput),
+    ) -> Self {
         Peer {
             network_channel: event_channel,
             net: Network {
@@ -335,7 +338,15 @@ pub struct BootstrapOutput(
 
 impl fmt::Debug for BootstrapOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let BootstrapOutput(_, _, peer_public_key_hash, peer_id_marker, peer_metadata, peer_compatible_network_version, peer_address) = self;
+        let BootstrapOutput(
+            _,
+            _,
+            peer_public_key_hash,
+            peer_id_marker,
+            peer_metadata,
+            peer_compatible_network_version,
+            peer_address,
+        ) = self;
         let peer_public_key_hash: &Hash = peer_public_key_hash.as_ref();
         f.debug_tuple("BootstrapOutput")
             .field(&hex::encode(peer_public_key_hash))
@@ -489,7 +500,15 @@ pub async fn bootstrap(
     match ack_received {
         AckMessage::Ack => {
             debug!(log, "Received ACK");
-            Ok(BootstrapOutput(Arc::new(Mutex::new(Some(msg_rx))), Arc::new(Mutex::new(Some(msg_tx))), peer_public_key_hash, peer_id_marker, metadata_received, compatible_network_version, msg.address))
+            Ok(BootstrapOutput(
+                Arc::new(Mutex::new(Some(msg_rx))),
+                Arc::new(Mutex::new(Some(msg_tx))),
+                peer_public_key_hash,
+                peer_id_marker,
+                metadata_received,
+                compatible_network_version,
+                msg.address,
+            ))
         }
         AckMessage::NackV0 => {
             debug!(log, "Received NACK");
@@ -511,11 +530,18 @@ fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: boo
 }
 
 /// Start to process incoming data
-async fn begin_process_incoming(net: Network, myself: PeerRef, event_channel: NetworkChannelRef, log: Logger) {
+async fn begin_process_incoming(
+    net: Network,
+    myself: PeerRef,
+    event_channel: NetworkChannelRef,
+    log: Logger,
+) {
     info!(log, "Starting to accept messages");
 
     let mut rx = net.rx.lock().await;
-    let mut rx = rx.take().expect("Someone took ownership of the encrypted reader before the Peer");
+    let mut rx = rx
+        .take()
+        .expect("Someone took ownership of the encrypted reader before the Peer");
     while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
