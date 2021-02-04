@@ -13,4 +13,4 @@ num-bigint = { version = "0.3", features = ["serde", "rand"] }
 num-traits = "0.2.8"
 rand = "0.7.3"
 sodiumoxide = "0.2.5"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive", "rc"] }
