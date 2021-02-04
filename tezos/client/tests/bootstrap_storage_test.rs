@@ -697,7 +697,7 @@ mod test_data {
                         BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
                         4,
                     ),
-                    Path::Op,
+                    Path::op(),
                     ops,
                 )
             })

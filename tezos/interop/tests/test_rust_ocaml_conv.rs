@@ -135,7 +135,7 @@ fn block_operations_from_hex(
                     BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
                     4,
                 ),
-                Path::Op,
+                Path::op(),
                 ops,
             )
         })

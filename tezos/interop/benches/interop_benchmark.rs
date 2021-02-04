@@ -59,7 +59,7 @@ fn block_operations_from_hex(
                 .collect();
             OperationsForBlocksMessage::new(
                 OperationsForBlock::new(hex::decode(block_hash).unwrap().try_into().unwrap(), 4),
-                Path::Op,
+                Path::op(),
                 ops,
             )
         })

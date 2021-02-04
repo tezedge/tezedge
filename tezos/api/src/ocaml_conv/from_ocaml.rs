@@ -4,9 +4,9 @@
 use std::convert::TryFrom;
 
 use super::{
-    FfiPath, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId, OCamlContextHash, OCamlHash,
-    OCamlOperationHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
-    OCamlProtocolHash,
+    FfiPath, FfiPathLeft, FfiPathRight, OCamlBlockHash, OCamlBlockMetadataHash, OCamlChainId,
+    OCamlContextHash, OCamlHash, OCamlOperationHash, OCamlOperationMetadataHash,
+    OCamlOperationMetadataListListHash, OCamlProtocolHash,
 };
 use crate::ffi::{
     Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
@@ -22,7 +22,6 @@ use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
     OCamlInt32, OCamlList, ToRust,
 };
-use tezos_messages::p2p::encoding::operations_for_blocks::{Path, PathLeft, PathRight};
 
 macro_rules! from_ocaml_hash {
     ($ocaml_name:ident, $rust_name:ident) => {
@@ -197,27 +196,25 @@ impl_from_ocaml_variant! {
 
 // TODO: remove this after TE-207 has been solved
 impl_from_ocaml_variant! {
-    Path => FfiPath {
-        Left(path: Path, right: OCamlHash) => {
+    FfiPath => FfiPath {
+        Left(path: FfiPath, right: OCamlHash) => {
             let path: FfiPath = path;
-            FfiPath(
-                Path::Left(
-                    Box::new(
-                        PathLeft::new(
-                            path.0,
-                            right,
-                            Default::default()))))
+            FfiPath::Left(
+                Box::new(
+                    FfiPathLeft {
+                        path,
+                        right,
+                    }))
         },
-        Right(left: OCamlHash, path: Path) => {
+        Right(left: OCamlHash, path: FfiPath) => {
             let path: FfiPath = path;
-            FfiPath(
-                Path::Right(
-                    Box::new(
-                        PathRight::new(
-                            left,
-                            path.0,
-                            Default::default()))))
+            FfiPath::Right(
+                Box::new(
+                    FfiPathRight {
+                        left,
+                        path,
+                    }))
         },
-        Op => FfiPath(Path::Op),
+        Op => FfiPath::Op,
     }
 }

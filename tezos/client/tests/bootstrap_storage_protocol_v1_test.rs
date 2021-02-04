@@ -998,7 +998,7 @@ mod test_data_protocol_v1 {
                         hex::decode(block_hash).unwrap().try_into().unwrap(),
                         4,
                     ),
-                    Path::Op,
+                    Path::op(),
                     ops,
                 )
             })

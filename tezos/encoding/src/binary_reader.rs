@@ -29,15 +29,12 @@ pub enum BinaryReaderError {
     /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag { tag: u16 },
-    /// Enclosing level for recursive type value is too big
+    /// Encoding boundary constraint violation
     #[fail(
-        display = "Recursive data depth is too big for {}, max is {}",
-        name, max
+        display = "Encoded data {} exceeded its size boundary: {}",
+        name, boundary
     )]
-    RecursiveDataOverflow {
-        name: String,
-        max: crate::types::RecursiveDataSize,
-    },
+    EncodingBoundaryExceeded { name: String, boundary: usize },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {

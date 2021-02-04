@@ -234,7 +234,7 @@ mod test_data_protocol_v1 {
                         BlockHash::try_from(hex::decode(block_hash).unwrap()).unwrap(),
                         4,
                     ),
-                    Path::Op,
+                    Path::op(),
                     ops,
                 )
             })
