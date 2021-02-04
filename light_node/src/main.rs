@@ -36,10 +36,7 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
-use tezos_wrapper::{
-    runner::{ExecutableProtocolRunner, ProtocolRunner},
-    TezosApiConnectionPoolError,
-};
+use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
@@ -234,55 +231,49 @@ fn block_on_actors(
     info!(log, "Initializing protocol runners... (3/4)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api_pool = match create_tezos_readonly_api_pool(
-        "tezos_readonly_api_pool",
-        env.ffi.tezos_readonly_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ) {
-        Ok(pool) => Arc::new(pool),
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to initialize API pool"; "name" => "create_tezos_readonly_api_pool", "reason" => format!("{:?}", e)),
-            actor_system
-        ),
-    };
-    let tezos_readonly_prevalidation_api_pool = match create_tezos_readonly_api_pool(
-        "tezos_readonly_prevalidation_api",
-        env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ) {
-        Ok(pool) => Arc::new(pool),
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to initialize API pool"; "name" => "tezos_readonly_prevalidation_api_pool", "reason" => format!("{:?}", e)),
-            actor_system
-        ),
-    };
-    let tezos_without_context_api_pool = match create_tezos_without_context_api_pool(
-        "tezos_without_context_api_pool",
-        env.ffi.tezos_without_context_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ) {
-        Ok(pool) => Arc::new(pool),
-        Err(e) => shutdown_and_exit!(
-            error!(log, "Failed to initialize API pool"; "name" => "tezos_without_context_api_pool", "reason" => format!("{:?}", e)),
-            actor_system
-        ),
-    };
+    let tezos_readonly_api_pool = Arc::new(
+        create_tezos_readonly_api_pool(
+            "tezos_readonly_api_pool",
+            env.ffi.tezos_readonly_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize read-only API pool"),
+    );
+    let tezos_readonly_prevalidation_api_pool = Arc::new(
+        create_tezos_readonly_api_pool(
+            "tezos_readonly_prevalidation_api",
+            env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize read-only prevalidation API pool"),
+    );
+    let tezos_without_context_api_pool = Arc::new(
+        create_tezos_without_context_api_pool(
+            "tezos_without_context_api_pool",
+            env.ffi.tezos_without_context_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize API pool without context"),
+    );
 
     // pool and event server dedicated for applying blocks to chain
     let context_actions_event_server =
         IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
-    let tezos_writeable_api_pool = Arc::new(create_tezos_writeable_api_pool(
-        context_actions_event_server.server_path(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ));
+    let tezos_writeable_api_pool = Arc::new(
+        create_tezos_writeable_api_pool(
+            context_actions_event_server.server_path(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize writable API pool"),
+    );
     info!(log, "Protocol runners initialized");
 
     info!(log, "Initializing actors... (4/4)");
