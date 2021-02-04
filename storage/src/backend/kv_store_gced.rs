@@ -406,12 +406,12 @@ mod tests {
 
         put(store, &[1], blob(vec![1]));
         put(store, &[2], blob(vec![2]));
-        store.start_new_cycle();
+        store.start_new_cycle(None);
         put(store, &[3], blob(vec![3]));
-        store.start_new_cycle();
+        store.start_new_cycle(None);
         put(store, &[4], blob(vec![4]));
         mark_reused(store, &[1]);
-        store.start_new_cycle();
+        store.start_new_cycle(None);
 
         store.wait_for_gc_finish();
 
@@ -432,9 +432,9 @@ mod tests {
 
         store.put(kv1.0.clone(), kv1.1.clone()).unwrap();
         store.put(kv2.0.clone(), kv2.1.clone()).unwrap();
-        store.start_new_cycle();
+        store.start_new_cycle(None);
         store.put(kv3.0.clone(), kv3.1.clone()).unwrap();
-        store.start_new_cycle();
+        store.start_new_cycle(None);
         store.put(kv4.0.clone(), kv4.1.clone()).unwrap();
         store.mark_reused(kv1.0.clone());
 
@@ -462,7 +462,7 @@ mod tests {
             size_of_vec(&kv4.1),
         ].iter().sum::<usize>());
 
-        store.start_new_cycle();
+        store.start_new_cycle(None);
         store.wait_for_gc_finish();
 
         let stats = store.get_stats();

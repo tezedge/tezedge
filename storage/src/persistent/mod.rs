@@ -1,8 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
+use failure::Fail;
 
 use derive_builder::Builder;
 use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
@@ -15,6 +16,9 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
 use crate::backend::RocksDBBackend;
+use crate::StorageError;
+use tezos_context::channel::{ContextActionMessage};
+use crate::action_file::ActionFileError;
 
 pub mod codec;
 pub mod commit_log;
@@ -142,7 +146,10 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(kv: Arc<DB>, clog: Arc<CommitLogs>) -> Self {
+    pub fn new(
+        kv: Arc<DB>,
+        clog: Arc<CommitLogs>,
+    ) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
         let merkle = MerkleStorage::new(
             Box::new(RocksDBBackend::new(kv.clone(), MerkleStorage::name()))
@@ -190,5 +197,31 @@ impl PersistentStorage {
 impl Drop for PersistentStorage {
     fn drop(&mut self) {
         self.flush_dbs();
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum ActionRecordError {
+    #[fail(display = "ActionFileError Error: {}", error)]
+    ActionFileError { error: ActionFileError},
+    #[fail(display = "Missing actions for block {:?}.", hash)]
+    MissingActions { hash: String },
+}
+
+impl From<ActionFileError> for ActionRecordError {
+    fn from(error: ActionFileError) -> Self {
+        ActionRecordError::ActionFileError { error }
+    }
+}
+
+pub trait ActionRecorder{
+    fn record(&mut self, action: &ContextActionMessage) -> Result<(), StorageError>;
+}
+
+pub struct NoRecorder{}
+
+impl ActionRecorder for NoRecorder{
+    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError>{
+        Ok(())
     }
 }

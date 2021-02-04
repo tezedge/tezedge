@@ -12,7 +12,6 @@ use crypto::hash::{HashType, BlockHash};
 use rocksdb::{DB, Cache, Options};
 
 use storage::*;
-use in_memory::KVStore;
 use context_action_storage::ContextAction;
 use merkle_storage::{MerkleStorage, MerkleError, Entry, EntryHash, check_commit_hashes};
 use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};

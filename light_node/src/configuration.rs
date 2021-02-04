@@ -34,12 +34,19 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum ContextActionStoreBackend{
+    RocksDB,
+    FileStorage,
+    NoneBackend,
+}
+
 #[derive(Debug, Clone)]
 pub struct Storage {
     pub db_cfg: DbConfiguration,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
-    pub store_context_actions: bool,
+    pub action_store_backend: ContextActionStoreBackend,
     pub patch_context: Option<PatchContext>,
 }
 
@@ -386,10 +393,10 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("store-context-actions")
-            .long("store-context-actions")
+        .arg(Arg::with_name("actions-store-backend")
+            .long("actions-store-backend")
             .takes_value(true)
-            .value_name("BOOL")
+            .value_name("STRING")
             .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
@@ -711,11 +718,21 @@ impl Environment {
                         .expect("Provided value cannot be converted to path");
                     get_final_path(&data_dir, db_path)
                 },
-                store_context_actions: args
-                    .value_of("store-context-actions")
-                    .unwrap_or("true")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool"),
+                action_store_backend: {
+                    let backend = args
+                         .value_of("actions-store-backend")
+                         .unwrap_or("none")
+                         .parse::<String>()
+                         .expect("Provided value cannot is not a string");
+                    match &backend[..] {
+                             "none" => ContextActionStoreBackend::NoneBackend,
+                             "rocksdb" => ContextActionStoreBackend::RocksDB,
+                             "file" => ContextActionStoreBackend::FileStorage,
+                             _ => {
+                                 panic!(format!("unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']", &backend))
+                             }
+                    }
+                },
                 patch_context: {
                     match args.value_of("sandbox-patch-context-json-file") {
                         Some(path) => {
