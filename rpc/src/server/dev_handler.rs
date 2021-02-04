@@ -157,6 +157,21 @@ pub async fn dev_stats_memory(
     }
 }
 
+pub async fn dev_stats_memory_protocol_runners(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    match dev_services::get_stats_memory_protocol_runners() {
+        Ok(resp) => make_json_response(&resp),
+        Err(e) => {
+            warn!(env.log(), "GetStatsMemory: {}", e);
+            empty()
+        }
+    }
+}
+
 pub async fn context_stats(
     _: Request<Body>,
     _: Params,
