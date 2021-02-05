@@ -26,10 +26,12 @@ pub use crate::block_storage::{
     BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
     BlockStorage, BlockStorageReader,
 };
+pub use crate::persistent::{ActionRecorder, ActionRecordError};
 pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{
-    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
+    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage
 };
+pub use crate::action_file_storage::ActionFileStorage;
 pub use crate::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
@@ -42,6 +44,8 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
+pub mod action_file;
+pub mod action_file_storage;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -129,6 +133,8 @@ pub enum StorageError {
     MessageHashError { error: MessageHashError },
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
+    #[fail(display = "Action record error: {}", error)]
+    ActionRecordError{ error: ActionRecordError },
 }
 
 impl From<DBError> for StorageError {
@@ -166,6 +172,12 @@ impl From<SequenceError> for StorageError {
 impl From<TezosEnvironmentError> for StorageError {
     fn from(error: TezosEnvironmentError) -> Self {
         StorageError::TezosEnvironmentError { error }
+    }
+}
+
+impl From<ActionRecordError> for StorageError {
+    fn from(error: ActionRecordError) -> Self {
+        StorageError::ActionRecordError { error }
     }
 }
 
@@ -436,7 +448,7 @@ pub fn check_database_compatibility(
 
 pub mod tests_common {
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
     use std::{env, fs};
 
     use failure::Error;
@@ -449,6 +461,7 @@ pub mod tests_common {
     use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;
+    use std::collections::HashMap;
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -512,7 +525,10 @@ pub mod tests_common {
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
-                persistent_storage: PersistentStorage::new(Arc::new(kv), Arc::new(clog)),
+                persistent_storage: PersistentStorage::new(
+                    Arc::new(kv),
+                    Arc::new(clog),
+                ),
                 path,
                 remove_on_destroy,
             })

@@ -8,15 +8,17 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::borrow::BorrowMut;
 
 use failure::Error;
 use riker::actors::*;
 use slog::{crit, debug, info, warn, Logger};
 
 use crypto::hash::HashType;
+use storage::action_file_storage::ActionFileStorage;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, ContextActionStorage};
+use storage::{BlockStorage, ContextActionStorage, ActionRecorder};
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -45,9 +47,9 @@ impl ContextListener {
     pub fn actor(
         sys: &impl ActorRefFactory,
         persistent_storage: &PersistentStorage,
+        action_store_backend: Box<dyn ActionRecorder + Send>,
         mut event_server: IpcEvtServer,
         log: Logger,
-        store_context_action: bool,
     ) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -59,16 +61,17 @@ impl ContextListener {
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
                 ));
-                let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
+
+                let mut action_store_backend = action_store_backend;
+
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut context_action_storage,
+                        &mut *action_store_backend ,
                         &mut context,
                         &log,
-                        store_context_action,
                     ) {
                         Ok(()) => info!(log, "Context listener finished"),
                         Err(err) => {
@@ -132,66 +135,13 @@ impl Actor for ContextListener {
     }
 }
 
-fn store_context_action(
-    storage: &mut ContextActionStorage,
-    should_store: bool,
-    action: ContextAction,
-) -> Result<(), Error> {
-    if !should_store {
-        return Ok(());
-    }
-    match &action {
-        ContextAction::Set {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Copy {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Delete {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::RemoveRecursively {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Mem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::DirMem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Commit {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Get {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Fold {
-            block_hash: Some(block_hash),
-            ..
-        } => {
-            storage.put_action(&block_hash.clone(), action)?;
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    context_action_storage: &mut ContextActionStorage,
+    action_store_backend: &mut dyn ActionRecorder,
     context: &mut Box<dyn ContextApi>,
-    log: &Logger,
-    store_context_actions: bool,
+    log: &Logger
 ) -> Result<(), Error> {
     info!(log, "Waiting for connection from protocol runner");
     let mut rx = event_server.try_accept(event_server_accept_timeout)?;
@@ -229,16 +179,10 @@ fn listen_protocol_events(
                     event_count + 1
                 };
 
+                action_store_backend.record(&msg)?;
+
                 if msg.perform {
                     perform_context_action(&msg.action, context)?;
-                }
-
-                if msg.record {
-                    store_context_action(
-                        context_action_storage,
-                        store_context_actions,
-                        msg.action,
-                    )?;
                 }
             }
             Err(err) => {
