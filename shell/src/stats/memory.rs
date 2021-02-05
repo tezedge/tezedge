@@ -5,6 +5,7 @@ use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
+use std::string::FromUtf8Error;
 
 use failure::Fail;
 use merge::Merge;
@@ -70,6 +71,14 @@ pub enum MemoryStatsError {
     ParsingData,
     #[fail(display = "not supported OS")]
     NotSupportedOs,
+    #[fail(display = "Utf8 error: {}", _0)]
+    Uft8Error(FromUtf8Error),
+}
+
+impl From<FromUtf8Error> for MemoryStatsError {
+    fn from(source: FromUtf8Error) -> Self {
+        Self::Uft8Error(source)
+    }
 }
 
 lazy_static! {
@@ -117,8 +126,10 @@ impl Memory {
         let output = Command::new("ps")
             .args(&["-o", "%mem,rss", "-p", &self.pid.to_string()])
             .output()
-            .expect("failed to execute sh command");
-        let out_str = String::from_utf8(output.stdout).unwrap();
+            .map_err(|e| {
+                MemoryStatsError::IOError(format!("failed to execute ps command: {}", e))
+            })?;
+        let out_str = String::from_utf8(output.stdout)?;
         self.parse_mac_data(out_str)
     }
 
@@ -126,7 +137,9 @@ impl Memory {
         if let Some(captures) = MAC_DATA.captures(&out) {
             let data = DarwinOsData {
                 page_size: self.page_size,
-                mem: captures["mem"].parse().unwrap(),
+                mem: captures["mem"]
+                    .parse()
+                    .map_err(|_| MemoryStatsError::ParsingData)?,
                 resident: captures["resident"].to_string(),
             };
             Ok(MemoryData::from(data))
