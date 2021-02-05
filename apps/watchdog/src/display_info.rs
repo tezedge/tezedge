@@ -34,7 +34,7 @@ impl fmt::Display for ImagesInfo {
     }
 }
 
-#[derive(Serialize, Debug, Default)]
+#[derive(Serialize, Debug)]
 pub struct DiskSpaceData {
     total_disk_space: u64,
     free_disk_space: u64,
@@ -47,8 +47,8 @@ impl DiskSpaceData {
         Self::new(
             self.total_disk_space / 1024 / 1024,
             self.free_disk_space / 1024 / 1024,
-            self.tezedge.to_megabytes(),
-            self.ocaml.to_megabytes(),
+            self.tezedge.clone(),
+            self.ocaml.clone(),
         )
     }
 
@@ -70,13 +70,11 @@ impl DiskSpaceData {
 impl fmt::Display for DiskSpaceData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f,
-            "\nFile system: \n\t Total space: {} MB\n\t Free space: {} MB\n\nTezedge node:\n\t Debugger: {} MB\n\t Node: {} MB\n\nOcaml node:\n\t Debugger: {} MB\n\t Node: {} MB",
+            "\nFile system: \n\t Total space: {} MB\n\t Free space: {} MB\n\n{}{}",
             self.total_disk_space,
             self.free_disk_space,
-            self.tezedge.debugger_disk_usage,
-            self.tezedge.node_disk_usage,
-            self.ocaml.debugger_disk_usage,
-            self.ocaml.node_disk_usage,
+            self.tezedge,
+            self.ocaml,
         )
     }
 }
@@ -177,23 +175,24 @@ impl MemoryData {
     }
 }
 
-#[derive(Serialize, Debug, Default)]
-pub struct DiskData {
+#[derive(Serialize, PartialEq, Clone, Debug, Default)]
+pub struct OcamlDiskData {
     debugger_disk_usage: u64,
     node_disk_usage: u64,
 }
 
-impl fmt::Display for DiskData {
+impl fmt::Display for OcamlDiskData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
+        let total = self.debugger_disk_usage + self.node_disk_usage;
+        write!(
             f,
-            "\nDebugger: {}\nNode: {}",
-            self.debugger_disk_usage, self.node_disk_usage,
+            "{} MB (total)\n\tDebugger: {} MB\n\tNode: {} MB",
+            total, self.debugger_disk_usage, self.node_disk_usage,
         )
     }
 }
 
-impl DiskData {
+impl OcamlDiskData {
     pub fn new(debugger_disk_usage: u64, node_disk_usage: u64) -> Self {
         Self {
             debugger_disk_usage,
@@ -205,6 +204,106 @@ impl DiskData {
         Self {
             debugger_disk_usage: self.debugger_disk_usage / 1024 / 1024,
             node_disk_usage: self.node_disk_usage / 1024 / 1024,
+        }
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug)]
+#[serde(untagged)]
+pub enum DiskData {
+    Ocaml(OcamlDiskData),
+    Tezedge(TezedgeDiskData),
+}
+
+impl From<OcamlDiskData> for DiskData {
+    fn from(data: OcamlDiskData) -> Self {
+        DiskData::Ocaml(data)
+    }
+}
+
+impl From<TezedgeDiskData> for DiskData {
+    fn from(data: TezedgeDiskData) -> Self {
+        DiskData::Tezedge(data)
+    }
+}
+
+impl fmt::Display for DiskData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DiskData::Tezedge(tezedge) => {
+                write!(
+                    f,
+                    "Tezedge node: {}",
+                    tezedge.to_megabytes(),
+                )
+            }
+            DiskData::Ocaml(ocaml) => {
+                write!(
+                    f,
+                    "\nOcaml node: {}",
+                    ocaml.to_megabytes(),
+                )
+            }
+        }
+    }
+}
+
+#[derive(Serialize, PartialEq, Clone, Debug, Default)]
+pub struct TezedgeDiskData {
+    debugger_disk_usage: u64,
+    context_irmin: u64,
+    context_merkle_rocksdb: u64,
+    block_storage: u64,
+    context_actions: u64,
+    main_db: u64,
+}
+
+impl fmt::Display for TezedgeDiskData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let TezedgeDiskData {
+            debugger_disk_usage,
+            context_actions,
+            context_irmin,
+            context_merkle_rocksdb,
+            block_storage,
+            main_db
+        } = self;
+
+        let total = debugger_disk_usage + context_actions + context_irmin + context_merkle_rocksdb + block_storage + main_db;
+        writeln!(
+            f,
+            "{} MB (total)\n\tMain database: {} MB\n\tContex - irmin: {} MB\n\tContext - rust_merkel_tree: {} MB\n\tContext actions: {} MB\n\tBlock storage (commit log): {} MB\n\tDebugger: {} MB",
+            total,
+            main_db,
+            context_irmin,
+            context_merkle_rocksdb,
+            context_actions,
+            block_storage,
+            debugger_disk_usage,
+        )
+    }
+}
+
+impl TezedgeDiskData {
+    pub fn new(debugger_disk_usage: u64, context_irmin: u64, context_merkle_rocksdb: u64, block_storage: u64, context_actions: u64, main_db: u64) -> Self {
+        Self {
+            debugger_disk_usage,
+            context_irmin,
+            context_merkle_rocksdb,
+            block_storage,
+            context_actions,
+            main_db,
+        }
+    }
+
+    pub fn to_megabytes(&self) -> Self {
+        Self {
+            debugger_disk_usage: self.debugger_disk_usage / 1024 / 1024,
+            context_irmin: self.context_irmin / 1024 / 1024,
+            context_merkle_rocksdb: self.context_merkle_rocksdb / 1024 / 1024,
+            block_storage: self.block_storage / 1024 / 1024,
+            context_actions: self.context_actions / 1024 / 1024,
+            main_db: self.main_db / 1024 / 1024,
         }
     }
 }

@@ -12,7 +12,7 @@ use merge::Merge;
 
 use shell::stats::memory::{LinuxData, ProcessMemoryStats};
 
-use crate::display_info::DiskData;
+use crate::display_info::{DiskData, TezedgeDiskData, OcamlDiskData};
 use crate::display_info::NodeInfo;
 use crate::image::Image;
 use crate::monitors::OCAML_VOLUME_PATH;
@@ -23,15 +23,16 @@ pub struct TezedgeNode {}
 #[async_trait]
 impl Node for TezedgeNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
-        let tezedge_node_disk_usage_context =
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?;
-        let tezedge_node_disk_usage_light_node =
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db"))?;
-
-        Ok(DiskData::new(
+        let disk_data = TezedgeDiskData::new(
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "debugger_db"))?,
-            tezedge_node_disk_usage_context + tezedge_node_disk_usage_light_node)
-        )
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/context"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
+        );
+
+        Ok(disk_data.into())
     }
 }
 
@@ -65,10 +66,10 @@ pub struct OcamlNode {}
 #[async_trait]
 impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
-        Ok(DiskData::new(
+        Ok(OcamlDiskData::new(
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data"))?
-        )
+        ).into()
         )
     }
 
