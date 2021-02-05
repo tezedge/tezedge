@@ -3,7 +3,7 @@
 // #![forbid(unsafe_code)]
 
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc};
 use std::time::Duration;
 
 use riker::actors::*;
@@ -25,10 +25,10 @@ use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use storage::context::TezedgeContext;
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, open_kv, CommitLogSchema, KeyValueSchema, PersistentStorage};
+use storage::persistent::{open_cl, open_kv, CommitLogSchema, KeyValueSchema, PersistentStorage, NoRecorder};
 use storage::{
-    block_storage, check_database_compatibility, context_action_storage,
-    resolve_storage_init_chain_data, BlockMetaStorage, BlockStorage, ChainMetaStorage,
+    block_storage, check_database_compatibility, context_action_storage, ActionFileStorage,
+    ActionRecorder, resolve_storage_init_chain_data, BlockMetaStorage, BlockStorage, ChainMetaStorage,
     ContextActionStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
     PredecessorStorage, StorageInitInfo, SystemStorage, MerkleStorage,
 };
@@ -42,6 +42,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
+
 
 mod configuration;
 mod identity;
@@ -206,7 +207,7 @@ fn create_tezos_writeable_api_pool(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
                 no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.store_context_actions,
+                debug_mode: env.storage.action_store_backend != configuration::ContextActionStoreBackend::NoneBackend,
             },
             tezos_env,
             env.enable_testchain,
@@ -270,7 +271,7 @@ fn block_on_actors(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
                 no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.store_context_actions,
+                debug_mode: env.storage.action_store_backend != configuration::ContextActionStoreBackend::NoneBackend,
             },
             tezos_env.clone(),
             env.enable_testchain,
@@ -318,13 +319,27 @@ fn block_on_actors(
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
+    let store_backend: Box<dyn ActionRecorder + Send> = match env.storage.action_store_backend{
+        configuration::ContextActionStoreBackend::RocksDB => {
+            Box::new(ContextActionStorage::new(&persistent_storage))
+        }
+        configuration::ContextActionStoreBackend::FileStorage => {
+            let action_file_path = env.storage.db_path.join("actionfile.bin");
+            info!(log, "RecordingActions to file storage '{}'", action_file_path.clone().to_str().unwrap());
+            Box::new(ActionFileStorage::new(action_file_path, &persistent_storage))
+        }
+        configuration::ContextActionStoreBackend::NoneBackend => {
+            Box::new(NoRecorder{})
+        }
+    };
+
+
     let _ = ContextListener::actor(
         &actor_system,
         &persistent_storage,
+        store_backend,
         apply_block_protocol_events.expect("Context listener needs event server"),
         log.clone(),
-        env.storage.store_context_actions,
     )
     .expect("Failed to create context event listener");
     let block_applier = ChainFeeder::actor(
@@ -568,7 +583,8 @@ fn main() {
             ),
         };
 
-        let persistent_storage = PersistentStorage::new(rocks_db, commit_logs);
+        let persistent_storage =
+            PersistentStorage::new(rocks_db, commit_logs);
         // restore merkle tree from persistant store if it isn't persisted.
         {
             let merkle_lock = persistent_storage.merkle();
@@ -583,7 +599,6 @@ fn main() {
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),
-            true
         );
         match resolve_storage_init_chain_data(
             &tezos_env,

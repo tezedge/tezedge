@@ -247,9 +247,9 @@ pub mod infra {
             let _ = ContextListener::actor(
                 &actor_system,
                 &persistent_storage,
+                Box::new(storage::persistent::NoRecorder{}),
                 apply_protocol_events.expect("Context listener needs event server"),
                 log.clone(),
-                false,
             )
             .expect("Failed to create context event listener");
             let block_applier = ChainFeeder::actor(

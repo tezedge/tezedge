@@ -153,6 +153,7 @@ impl BlockStorage {
                     block_json_data: None,
                     block_additional_data: None,
                 };
+                println!("storing block hash {:?}",hex::encode(&block_header.hash));
                 self.primary_index
                     .put(&block_header.hash, &location)
                     .and(

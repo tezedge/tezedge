@@ -1,7 +1,7 @@
 use std::thread;
 use std::mem;
-use std::collections::{HashSet};
-use std::time::{Duration};
+use std::collections::HashSet;
+use std::time::Duration;
 use std::sync::{mpsc, Arc, RwLock, Mutex};
 use std::ops::{Deref, DerefMut};
 
@@ -19,6 +19,7 @@ use crate::storage_backend::{
 
 // TODO: add assertions for EntryHash to make sure it is stack allocated.
 
+/// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where T: KVStore,
       S: Deref<Target = Vec<T>>,
@@ -27,6 +28,7 @@ where T: KVStore,
         .find_map(|store| store.get(key).unwrap_or(None))
 }
 
+/// Returns store index containing the entry with hash `key`  (trying from newest to oldest)
 fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
 where T: KVStore,
       S: Deref<Target = Vec<T>>,
@@ -37,6 +39,7 @@ where T: KVStore,
         // .map(|(rev_offset, _)| stores.len() - rev_offset - 1)
 }
 
+/// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
 fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
 where T: KVStore,
       S: Deref<Target = Vec<T>>,
@@ -46,7 +49,9 @@ where T: KVStore,
         .is_some()
 }
 
-/// finds in which store key is stored and deletes it
+/// Searches the stores for an entry with hash `key`, and if found, the value is deleted.
+///
+/// The return value is `None` if the value was not found, or Some((store_idx, value)) otherwise.
 fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
 where T: KVStore,
       S: DerefMut<Target = Vec<T>>,
@@ -59,7 +64,7 @@ where T: KVStore,
         })
 }
 
-/// Commands used by KVStoreGCed to interact with thread.
+/// Commands used by KVStoreGCed to interact with GC thread.
 pub enum CmdMsg {
     StartNewCycle,
     Exit,
@@ -68,26 +73,37 @@ pub enum CmdMsg {
 
 /// Garbage Collected Key Value Store
 pub struct KVStoreGCed<T: KVStore> {
+    /// Amount of cycles we keep
     cycle_count: usize,
+    /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
+    /// Stats for each store in archived stores
     stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
+    /// Current in-process cycle store
     current: T,
+    /// Current in-process cycle store stats
     current_stats: KVStoreStats,
+    /// GC thread
     thread: thread::JoinHandle<()>,
     // TODO: Mutex because it's required to be Sync. Better way?
+    /// Channel to communicate with GC thread from main thread
     msg: Mutex<mpsc::Sender<CmdMsg>>,
 }
 
 impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
-        assert!(cycle_count > 1, "cycle_count less than 2 for KVStoreGCed not supported");
+        // size < 2 wouldn't make sense because there would be nowhere to move things
+        assert!(
+            cycle_count > 1,
+            "cycle_count less than 2 for KVStoreGCed not supported"
+        );
 
         let (tx, rx) = mpsc::channel();
         let stores = Arc::new(RwLock::new(
-            (0..(cycle_count - 1)).map(|_| Default::default()).collect()
+            (0..(cycle_count - 1)).map(|_| Default::default()).collect(),
         ));
         let stores_stats = Arc::new(Mutex::new(
-            vec![Default::default(); cycle_count - 1]
+            vec![Default::default(); cycle_count - 1],
         ));
 
         Self {
@@ -101,10 +117,12 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         }
     }
 
+    /// Finds an entry with hash `key` in one of the archived cycle stores (trying from newest to oldest)
     fn stores_get(&self, key: &EntryHash) -> Option<ContextValue> {
         stores_get(&self.stores.read().unwrap(), key)
     }
 
+    /// Returns `true` if any of the archived cycle stores contains a value with hash `key`, and `false` otherwise
     fn stores_contains(&self, key: &EntryHash) -> bool {
         stores_contains(&self.stores.read().unwrap(), key)
     }
@@ -115,20 +133,18 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         self.current.is_persisted()
     }
 
+    /// Get an entry with hash `key` from the current in-progress cycle store,
+    /// otherwise find and get from archived cycle stores
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
-        Ok(self.current.get(key)?
-            .or_else(|| self.stores_get(key)))
+        Ok(self.current.get(key)?.or_else(|| self.stores_get(key)))
     }
 
+    /// Checks if an entry with hash `key` exists in any of the cycle stores
     fn contains(&self, key: &EntryHash) -> Result<bool, KVStoreError> {
         Ok(self.current.contains(key)? || self.stores_contains(key))
     }
 
-    fn put(
-        &mut self,
-        key: EntryHash,
-        value: ContextValue,
-    ) -> Result<bool, KVStoreError> {
+    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
         let measurement = KVStoreStats::from((&key, &value));
         let was_added = self.current.put(key, value)?;
 
@@ -147,14 +163,23 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         self.current.delete(key)
     }
 
+    /// Marks an entry as "reused" in the current cycle.
+    /// 
+    /// Entries that are reused/referenced in current cycle
+    /// will be preserved after garbage collection.
     fn mark_reused(&mut self, key: EntryHash) {
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
+    /// Not needed/implemented.
+    // TODO: Maybe this method should go into separate trait?
     fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
 
+    /// Starts a new cycle.
+    ///
+    /// Garbage collector will start collecting the oldest cycle.
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {
         self.stores_stats.lock().unwrap().push(
             mem::take(&mut self.current_stats)
@@ -165,7 +190,9 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         let _ = self.msg.lock().unwrap().send(CmdMsg::StartNewCycle);
     }
 
+    /// Waits for garbage collector to finish collecting the oldest cycle.
     fn wait_for_gc_finish(&self) {
+        // If there are more stores than self.cycle_count, that means the oldest one still hasn't been collected
         while self.stores.read().unwrap().len() >= self.cycle_count {
             thread::sleep(Duration::from_millis(2));
         }
@@ -179,17 +206,24 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     }
 }
 
+/// Garbage collector main function
 fn kvstore_gc_thread_fn<T: KVStore>(
     stores: Arc<RwLock<Vec<T>>>,
     stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
 ) {
+    // number of preserved archived cycles
     let len = stores.read().unwrap().len();
+    // maintains incoming references (hashes) for each archived cycle store.
     let mut reused_keys = vec![HashSet::new(); len];
+    // this is filled when garbage collection starts and it contains keys
+    // that are reused from the oldest store and needs to be moved to newer
+    // stores so that after destroying oldest store they are preserved.
     let mut todo_keys: Vec<EntryHash> = vec![];
     let mut received_exit_msg = false;
 
     loop {
+        // wait (block) for main thread events if there are no items to garbage collect 
         let wait_for_events = reused_keys.len() == len && !received_exit_msg;
 
         let msg = if wait_for_events {
@@ -198,7 +232,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 Err(_) => {
                     // println!("MerkleStorage GC thread shut down! reason: mpsc::Sender dropped.");
                     return;
-                },
+                }
             }
         } else {
             match rx.try_recv() {
@@ -207,17 +241,23 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
         };
 
+        // process messages received from the main thread
         match msg {
             Some(CmdMsg::StartNewCycle) => {
+                // new cycle started, we add a new reused/referenced keys HashSet for it
                 reused_keys.push(Default::default());
             }
             Some(CmdMsg::Exit) => {
                 received_exit_msg = true;
             }
             Some(CmdMsg::MarkReused(key)) => {
-                // TODO: refactor so that `mark_reused` isn't called
-                // unless key was in MerkleStorage::db
                 if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
+                    // only way index can be greater than reused_keys.len() is if GC thread
+                    // lags behind (gc has pending 1-2 cycles to collect). When we still haven't
+                    // received event from main thread that new cycle has started, yet it has.
+                    // So we might receive `key` that was only in `current` store (when this event
+                    // was sent by main thread). So if gc had't lagged behind, we wouldn't have found
+                    // entry with that `key`. So this entry shouldn't be marked as reused.
                     if index < reused_keys.len() {
                         let keys = &mut reused_keys[index];
                         if keys.insert(key) {
@@ -227,6 +267,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 }
             }
             None => {
+                // we exit only if there are no remaining keys to be processed
                 if received_exit_msg && todo_keys.len() == 0 && reused_keys.len() == len {
                     // println!("MerkleStorage GC thread shut down! reason: received exit message.");
                     return;
@@ -234,6 +275,8 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
         }
 
+        // if reused_keys.len() > len  that means that we need to start garbage collecting oldest cycle, 
+        // reused_keys[0].len() > 0  If no keys are reused we can just drop the cycle.
         if reused_keys.len() > len && reused_keys[0].len() > 0 {
             todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
         }
@@ -242,6 +285,14 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
 
+            // it will block if new cycle begins and we still haven't garbage collected prev cycle.
+            // Higher the max_iter (2048) will be, longer gc will block the main thread, but GC will
+            // finish faster and will lag behind less.
+            // Smaller the max_iter (2048) will be, longer it will take for gc to finish and it will
+            // lag behind more (which will increase memory usage), but it will slow down main thread less
+            // as the lock will be released on more frequent intervals.
+            // TODO: it would be more optimized if this number can change dynamically based on 
+            // how much gc lags behind and such different parameters.
             let max_iter = if stores.len() - len <= 1 { 2048 } else { usize::MAX };
 
             for _ in 0..max_iter {
@@ -252,6 +303,8 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
                 let (store_index, entry_bytes) = match stores_delete(&mut stores, &key) {
                     Some(result) => result,
+                    // it's possible entry was deleted already when iterating on some other root during gc.
+                    // So it's perfectly normal if referenced entry isn't found.
                     None => continue,
                 };
 
@@ -266,9 +319,18 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                     }
                 };
 
+                // move the entry to the latest store
+
+                // TODO: it would be better if we would move entries to the newest store
+                // they were referenced in. This way entries won't live longer then they
+                // have to (unlike how its now). This can be achieved if we keep cycle
+                // information with `reused_keys`. So if it is Map instead of Set and
+                // and we store maximum cycle in which it was referenced in as a value.
+                // Then we can move each entry to a given store based on that value.
                 if let Err(err) = stores.last_mut().unwrap().put(key.clone(), entry_bytes) {
                     eprintln!("MerkleStorage GC: error while adding entry to store: {:?}", err);
                 } else {
+                    // and update the stats for that store
                     *stats.last_mut().unwrap() += &stat;
                 }
 
@@ -295,8 +357,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
     // println!("MerkleStorage GC thread shut down!");
 }
-
-// when key is reused
 
 #[cfg(test)]
 mod tests {

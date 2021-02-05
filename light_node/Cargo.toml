@@ -29,9 +29,9 @@ storage = { path = "../storage" }
 shell = { path = "../shell" }
 monitoring = { path = "../monitoring" }
 sled = "0.34.6"
+hex = "0.4"
+
 # backtracking test dependencies - consider moving test to storage ?
 ipc = { path = "../ipc" }
 tezos_context = { path = "../tezos/context" }
 rpc = { path = "../rpc" }
-io = { path = "../../actions_tool/io" }
-

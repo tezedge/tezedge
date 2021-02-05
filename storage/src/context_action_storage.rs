@@ -12,7 +12,7 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, HashType};
-pub use tezos_context::channel::ContextAction;
+pub use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::num_from_slice;
@@ -20,7 +20,7 @@ use crate::persistent::codec::{range_from_idx_len, vec_from_slice};
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
     default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
-    KeyValueStoreWithSchema, PersistentStorage, SchemaError,
+    KeyValueStoreWithSchema, PersistentStorage, SchemaError, ActionRecorder
 };
 use crate::StorageError;
 
@@ -208,6 +208,34 @@ impl ContextActionStorage {
         Ok(indexes
             .filter_map(|id| self.kv.get(&id).ok().flatten())
             .collect())
+    }
+}
+
+impl ActionRecorder for ContextActionStorage{
+    #[inline]
+    fn record(
+        &mut self,
+        message: &ContextActionMessage,
+    ) -> Result<(), StorageError> {
+        if ! message.record {
+            return Ok(())
+        }
+
+        match &message.action {
+            ContextAction::Set { block_hash: Some(block_hash), ..}
+            | ContextAction::Copy { block_hash: Some(block_hash), ..  }
+            | ContextAction::Delete { block_hash: Some(block_hash), ..  }
+            | ContextAction::RemoveRecursively { block_hash: Some(block_hash), ..  }
+            | ContextAction::Mem { block_hash: Some(block_hash), ..  }
+            | ContextAction::DirMem { block_hash: Some(block_hash), ..  }
+            | ContextAction::Get { block_hash: Some(block_hash), ..  }
+            | ContextAction::Fold { block_hash: Some(block_hash), ..  }
+            | ContextAction::Commit { block_hash: Some(block_hash), .. } => {
+                self.put_action(block_hash, message.action.clone())
+            }
+            _ => {Ok(())}
+        }
+
     }
 }
 
