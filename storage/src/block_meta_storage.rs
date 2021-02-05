@@ -426,13 +426,6 @@ impl Decoder for Meta {
             // predecessor
             let predecessor = if has_predecessor!(mask) {
                 let block_hash = bytes[IDX_PREDECESSOR..IDX_LEVEL].to_vec();
-                assert_eq!(
-                    LEN_BLOCK_HASH,
-                    block_hash.len(),
-                    "Predecessor expected length is {} but found {}",
-                    LEN_BLOCK_HASH,
-                    block_hash.len()
-                );
                 Some(block_hash.try_into()?)
             } else {
                 None
@@ -452,26 +445,12 @@ impl Decoder for Meta {
                         let block_hash = bytes
                             [next_successor_index..(next_successor_index + LEN_BLOCK_HASH)]
                             .to_vec();
-                        assert_eq!(
-                            LEN_BLOCK_HASH,
-                            block_hash.len(),
-                            "Successor expected length is {} but found {}",
-                            LEN_BLOCK_HASH,
-                            block_hash.len()
-                        );
                         successors.push(BlockHash::try_from(block_hash)?);
                     }
                 }
                 successors
             };
 
-            assert_eq!(
-                LEN_CHAIN_ID,
-                chain_id.len(),
-                "Chain ID expected length is {} but found {}",
-                LEN_CHAIN_ID,
-                chain_id.len()
-            );
             Ok(Meta {
                 predecessor,
                 successors,
@@ -514,7 +493,7 @@ impl Encoder for Meta {
                 value.extend(successor.as_ref());
             });
         }
-        assert_eq!(
+        debug_assert_eq!(
             total_len,
             value.len(),
             "Invalid size. mask={:?}, predecessor={:?}, successors={:?}, level={:?}, data={:?}",
@@ -550,17 +529,20 @@ fn merge_meta_value(
     existing_val: Option<&[u8]>,
     operands: &mut MergeOperands,
 ) -> Option<Vec<u8>> {
+    if let Some(val) = existing_val {
+        if val.len() < LEN_FIXED_META {
+            return None;
+        }
+    }
+
     let mut result = existing_val.map(|v| v.to_vec());
 
     for op in operands {
         match result {
             Some(ref mut val) => {
-                assert!(
-                    LEN_FIXED_META <= val.len(),
-                    "Value length is incorrect. Was expecting at least {} but instead found {}",
-                    LEN_FIXED_META,
-                    val.len()
-                );
+                if op.len() < LEN_FIXED_META {
+                    return None;
+                }
 
                 let mask_val = val[IDX_MASK];
                 let mask_op = op[IDX_MASK];
@@ -590,7 +572,7 @@ fn merge_meta_value(
                 }
 
                 let total_len = total_len(op_successors_count);
-                assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
+                debug_assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
             }
             None => result = Some(op.to_vec()),
         }
