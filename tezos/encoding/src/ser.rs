@@ -33,6 +33,12 @@ impl Error {
             ),
         }
     }
+
+    pub fn unimplemented(method: &str) -> Self {
+        Error {
+            message: format!("Serialization method {} unimplemented", method),
+        }
+    }
 }
 
 impl ser::Error for Error {
@@ -272,11 +278,11 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         _: &'static str,
         _: usize,
     ) -> Result<Self::SerializeTupleVariant, Self::Error> {
-        unimplemented!() // TODO ?
+        Err(Error::unimplemented("Serializer::serialize_tuple_variant"))
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
-        unimplemented!() // TODO ?
+        Err(Error::unimplemented("Serializer::serialize_map"))
     }
 
     fn serialize_struct(
@@ -294,7 +300,7 @@ impl<'b> ser::Serializer for &'b mut Serializer {
         _: &'static str,
         _: usize,
     ) -> Result<Self::SerializeStructVariant, Self::Error> {
-        unimplemented!() // TODO ?
+        Err(Error::unimplemented("Serializer::serialize_struct_variant"))
     }
 }
 
@@ -360,11 +366,13 @@ impl ser::SerializeTupleVariant for SeqSerializer {
     where
         T: Serialize,
     {
-        unimplemented!()
+        Err(Error::unimplemented(
+            "SerializeTupleVariant::serialize_field",
+        ))
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        unimplemented!()
+        Err(Error::unimplemented("SerializeTupleVariant::end"))
     }
 }
 
@@ -376,18 +384,18 @@ impl ser::SerializeMap for MapSerializer {
     where
         T: Serialize,
     {
-        unimplemented!()
+        Err(Error::unimplemented("SerializeMap::serialize_key"))
     }
 
     fn serialize_value<T: ?Sized>(&mut self, _value: &T) -> Result<(), Self::Error>
     where
         T: Serialize,
     {
-        unimplemented!()
+        Err(Error::unimplemented("SerializeMap::serialize_value"))
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        unimplemented!()
+        Err(Error::unimplemented("SerializeMap::end"))
     }
 }
 
@@ -421,11 +429,13 @@ impl ser::SerializeStructVariant for StructSerializer {
     where
         T: Serialize,
     {
-        unimplemented!()
+        Err(Error::unimplemented(
+            "SerializeStructVariant::serialize_field",
+        ))
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        unimplemented!()
+        Err(Error::unimplemented("SerializeStructVariant::end"))
     }
 }
 
