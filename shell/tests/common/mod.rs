@@ -229,6 +229,7 @@ pub mod infra {
                 NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
             let _ = ContextListener::actor(
                 &actor_system,
+                shell_channel.clone(),
                 &persistent_storage,
                 apply_protocol_events,
                 log.clone(),

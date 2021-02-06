@@ -182,6 +182,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
             ProtocolMessage::ShutdownCall => {
+                // send shutdown event to context listener, that we dont need it anymore
                 if let Err(e) = context_send(ContextAction::Shutdown) {
                     warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
                 }

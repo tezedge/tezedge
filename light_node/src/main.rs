@@ -281,6 +281,7 @@ fn block_on_actors(
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
+        shell_channel.clone(),
         &persistent_storage,
         context_actions_event_server,
         log.clone(),
