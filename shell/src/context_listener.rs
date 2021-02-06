@@ -154,14 +154,25 @@ fn listen_protocol_events(
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
+
+
             Ok(ContextActionMessage {
                 action: ContextAction::Shutdown,
                 ..
             }) => {
+                info!(
+                    log,
+                    "!!!!!!!!!!!!!! SHUTDOWN .!!!!!!!!!!!!!!!!!"
+                );
+
                 apply_block_run.store(false, Ordering::Release);
             }
             Ok(msg) => {
-                if event_count % 100 == 0 {
+                info!(
+                    log,
+                    "!!!!!!!!!!!!!! MESSAGE RECEIVED.!!!!!!!!!!!!!!!!!"
+                );
+                if event_count % 1 == 0 {
                     debug!(
                         log,
                         "Received protocol event";
@@ -173,17 +184,21 @@ fn listen_protocol_events(
                     );
                 }
 
+                info!(log,"!!!!!!!!!!!!!! HELLO1.!!!!!!!!!!!!!!!!!");
                 event_count = if let ContextAction::Shutdown = &msg.action {
                     0
                 } else {
                     event_count + 1
                 };
 
+                info!(log,"!!!!!!!!!!!!!! HELLO2.!!!!!!!!!!!!!!!!!");
                 action_store_backend.record(&msg)?;
 
+                info!(log,"!!!!!!!!!!!!!! HELLO3.!!!!!!!!!!!!!!!!!");
                 if msg.perform {
                     perform_context_action(&msg.action, context)?;
                 }
+                info!(log,"!!!!!!!!!!!!!! HELLO4.!!!!!!!!!!!!!!!!!");
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
