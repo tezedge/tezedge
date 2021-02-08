@@ -2044,7 +2044,7 @@ pub mod tests {
                 None,
             ),
             log.clone(),
-        ));
+        )?);
 
         let init_storage_data = StorageInitInfo {
             chain_id: chain_id.clone(),

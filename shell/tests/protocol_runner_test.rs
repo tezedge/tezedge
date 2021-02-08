@@ -228,7 +228,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         pool_cfg,
         endpoint_cfg,
         log,
-    ));
+    )?);
 
     // create readonly pool pool
     let pool = &pool_wrapper.pool;

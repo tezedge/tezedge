@@ -186,7 +186,7 @@ pub mod infra {
                     None,
                 ),
                 log.clone(),
-            ));
+            )?);
 
             // create pool for ffi protocol runner connections (used just for readonly context)
             let apply_protocol_events = IpcEvtServer::try_bind_new()?;
@@ -213,7 +213,7 @@ pub mod infra {
                     Some(apply_protocol_events.server_path()),
                 ),
                 log.clone(),
-            ));
+            )?);
 
             let tokio_runtime = create_tokio_runtime();
 
