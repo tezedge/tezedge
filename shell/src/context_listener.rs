@@ -9,10 +9,14 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::borrow::BorrowMut;
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::collections::HashSet;
+use bytes::{Buf, BufMut, BytesMut};
+use hex;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
+use slog::{crit, debug, info, error, warn, Logger};
 
 use crypto::hash::HashType;
 use storage::action_file_storage::ActionFileStorage;
@@ -151,6 +155,8 @@ fn listen_protocol_events(
     );
 
     let mut event_count = 0;
+    // let mut entries = HashSet::new();
+    // entries.insert("81e47a19e6b29b0a65b9591762ce5143ed30d0261e5d24a3201752506b20f15c".to_string());
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
@@ -160,19 +166,10 @@ fn listen_protocol_events(
                 action: ContextAction::Shutdown,
                 ..
             }) => {
-                info!(
-                    log,
-                    "!!!!!!!!!!!!!! SHUTDOWN .!!!!!!!!!!!!!!!!!"
-                );
-
                 apply_block_run.store(false, Ordering::Release);
             }
             Ok(msg) => {
-                info!(
-                    log,
-                    "!!!!!!!!!!!!!! MESSAGE RECEIVED.!!!!!!!!!!!!!!!!!"
-                );
-                if event_count % 1 == 0 {
+                if event_count % 100 == 0 {
                     debug!(
                         log,
                         "Received protocol event";
@@ -184,21 +181,55 @@ fn listen_protocol_events(
                     );
                 }
 
-                info!(log,"!!!!!!!!!!!!!! HELLO1.!!!!!!!!!!!!!!!!!");
-                event_count = if let ContextAction::Shutdown = &msg.action {
-                    0
-                } else {
-                    event_count + 1
-                };
+                // info!(log, "!!!!!!!!!!!!!! MESSAGE RECEIVED .!!!!!!!!!!!!!!!!!");
+                // info!(log, "TREE_HASH: {}", hex::encode(get_tree_hash(&msg.action).or(Some([0_u8;32])).unwrap()));
+                // info!(log, "NEW_TREE_HASH: {}", hex::encode(get_new_tree_hash(&msg.action).or(Some([0_u8;32])).unwrap()));
+                // info!(log, "RECORD: {:?}", msg.record);
+                // info!(log, "MSG: {:?}", msg);
 
-                info!(log,"!!!!!!!!!!!!!! HELLO2.!!!!!!!!!!!!!!!!!");
-                action_store_backend.record(&msg)?;
 
-                info!(log,"!!!!!!!!!!!!!! HELLO3.!!!!!!!!!!!!!!!!!");
-                if msg.perform {
-                    perform_context_action(&msg.action, context)?;
+                if ! msg.record{
+                    // currently some of the messages are send twice due to
+                    // replay feature - we dont wont to process those duplicates
+                    continue;
                 }
-                info!(log,"!!!!!!!!!!!!!! HELLO4.!!!!!!!!!!!!!!!!!");
+
+                event_count += 1;
+
+                if let Err(error) = action_store_backend.record(&msg){
+                    error!(log,"action: {:?} ,error: {} ",&msg.action , error);
+                    break;
+                }
+
+                // if let Some(hash) = get_tree_hash(&msg.action){
+                //     if let None = entries.get(&hex::encode(&hash)){
+                //         panic!(format!("action {:?} requires to be executed on merkle tree that does not exists {}",&msg.action ,hex::encode(&hash)));
+                //         // error!(log, "action {:?} requires to be executed on merkle tree that does not exists {}",&msg.action ,hex::encode(&hash));
+                //         // continue;
+                //     }
+                // }
+
+                // let exptected_initial_tree_hash = get_tree_hash(&msg.action);
+                // let exptected_final_tree_hash = get_new_tree_hash(&msg.action);
+                // let actual_initial_tree_hash = context.get_merkle_hash();
+                //
+                // if let Some(hash) = exptected_initial_tree_hash{
+                //     if hash != actual_initial_tree_hash{
+                //         context.store_merkle_hash(hash);
+                //         //error!(log, "PRECONDITION FAILED current: {} expected: {}", actual_initial_tree_hash, hash);
+                //     }
+                // }
+
+
+                if let Err(e) = perform_context_action(&msg.action, context){
+                    error!(log, "error while processing action: {:?} reason  '{}'", &msg.action, e);
+                    panic!("error while executing action");
+                }
+
+                // if let Some(hash) = get_new_tree_hash(&msg.action){
+                //     assert_eq!(context.get_merkle_hash() , hash);
+                //     // entries.insert(hex::encode(&hash));
+                // }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
@@ -212,33 +243,37 @@ fn listen_protocol_events(
 
 // returns hash of the merkle tree that action needs to be
 // applied on
-fn get_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
-    let result = match &action{
-        ContextAction::Get {tree_hash, .. } => {Some(tree_hash.clone())}
-        ContextAction::Mem {tree_hash, .. } => {Some(tree_hash.clone())}
-        ContextAction::DirMem {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::Set {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::Copy {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::Delete {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::RemoveRecursively {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::Commit {tree_hash, ..} => {Some(tree_hash.clone())}
-        ContextAction::Fold {tree_hash, ..} => {Some(tree_hash.clone())}
-        _ => {None}
-    };
-    match result {
-        Some(v) => {
-            if v.len() != 32 {
-                None
-            }else{
-                let mut hash:[u8;32] = [0;32];
-                // TODO: probably there is a more clever way to do that
-                for (h,d) in hash.iter_mut().zip(v){
-                    *h = d;
-                }
-                Some(hash)
-            }
+pub fn get_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
+    match &action
+    {
+        ContextAction::Get {tree_hash, .. }
+        | ContextAction::Mem {tree_hash, .. }
+        | ContextAction::DirMem {tree_hash, ..}
+        | ContextAction::Set {tree_hash, ..}
+        | ContextAction::Copy {tree_hash, ..}
+        | ContextAction::Delete {tree_hash, ..}
+        | ContextAction::RemoveRecursively {tree_hash, ..}
+        | ContextAction::Commit {tree_hash, ..}
+        | ContextAction::Fold {tree_hash, ..} => {
+            let mut hash:[u8;32] = [0;32];
+            tree_hash.clone().reader().read_exact(& mut hash).unwrap();
+            Some(hash)
         }
-        None => {None}
+        _ => {None}
+    }
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
+    match &action{
+        ContextAction::Set {new_tree_hash, ..}
+        | ContextAction::Copy {new_tree_hash, ..}
+        | ContextAction::Delete {new_tree_hash, ..}
+        | ContextAction::RemoveRecursively {new_tree_hash, ..} => {
+            let mut hash:[u8;32] = [0;32];
+            new_tree_hash.clone().reader().read_exact(& mut hash).unwrap();
+            Some(hash)
+        }
+        _ => {None}
     }
 }
 
@@ -247,15 +282,11 @@ pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
-    
-    match get_tree_hash(action){
-        Some(hash) => {
-            context.store_merkle_hash(hash);
-        }
-        None => {}
+
+    if let Some(pre_hash) = get_tree_hash(&action){
+        context.set_merkle_root(pre_hash)?;
     }
-
-
+    
     match action {
         ContextAction::Get { key,tree_hash, .. } => {
             context.get_key(key)?;
@@ -329,6 +360,10 @@ pub fn perform_context_action(
 
         ContextAction::Shutdown => (), // Ignored
     };
+
+    if let Some(post_hash) = get_new_tree_hash(&action){
+        assert_eq!(context.get_merkle_root(), post_hash);
+    }
 
     Ok(())
 }

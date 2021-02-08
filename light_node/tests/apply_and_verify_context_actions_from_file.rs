@@ -4,10 +4,12 @@ use failure::Error;
 use std::io::{self, Write};
 use riker::actors::SystemBuilder;
 use rocksdb::Cache;
+use std::collections::HashSet;
 use shell::context_listener::{ContextListener, perform_context_action};
 use slog::{Drain, Level, Logger, crit, debug, error, info};
 use storage::{BlockStorage, context::{ContextApi, TezedgeContext}, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
 use storage::action_file::ActionsFileReader;
+use shell::context_listener::{get_tree_hash, get_new_tree_hash};
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::{IpcEvtServer, NoopMessage};
 use ipc::IpcClient;
@@ -60,31 +62,6 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB>{
         .unwrap()
 }
 
-fn get_new_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
-    let result = match &action{
-        ContextAction::Set {new_tree_hash, ..} => {Some(new_tree_hash.clone())}
-        ContextAction::Copy {new_tree_hash, ..} => {Some(new_tree_hash.clone())}
-        ContextAction::Delete {new_tree_hash, ..} => {Some(new_tree_hash.clone())}
-        ContextAction::RemoveRecursively {new_tree_hash, ..} => {Some(new_tree_hash.clone())}
-        _ => {None}
-    };
-    match result {
-        Some(v) => {
-            if v.len() != 32 {
-                panic!("hash should be 32 char long");
-            }else{
-                let mut hash:[u8;32] = [0;32];
-                // TODO: probably there is a more clever way to do that
-                for (h,d) in hash.iter_mut().zip(v){
-                    *h = d;
-                }
-                Some(hash)
-            }
-        }
-        None => {None}
-    }
-}
-
 fn get_action_symbol(action: &ContextAction) -> String {
     match action{
         ContextAction::Set {..} => {String::from("Set")},
@@ -102,12 +79,13 @@ fn get_action_symbol(action: &ContextAction) -> String {
 }
 
 #[test]
+#[ignore]
 fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
     let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
     let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
-    let actions_storage_path = PathBuf::from("/mnt/hdd/actionfilenew.bin");
+    let actions_storage_path = PathBuf::from("/mnt/hdd/node-data/actionfile.bin");
 
     let _ = fs::remove_dir_all(&commit_log_db_path);
     let _ = fs::remove_dir_all(&key_value_db_path);
@@ -121,6 +99,8 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
         BlockStorage::new(&storage),
         storage.merkle(),
     ));
+
+    let mut entries = HashSet::new();
 
     let block_storage = BlockStorage::new(&storage);
 
@@ -139,11 +119,31 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 block_storage.put_block_header(&b).unwrap();
             }
 
+            if let Some(hash) = get_tree_hash(&action){
+                if let None = entries.get(&hash){
+                    panic!(format!("action requires to be executed on merkle tree that does not exists {}", hex::encode(&hash)));
+                }
+            }
+
+            // if let Some(hash) = get_tree_hash(&action){
+            //     let actual_hash = merkle.read().unwrap().get_staged_root_hash();
+            //     if hash !=  actual_hash{
+            //         if let None = entries.get(&hash){
+            //             panic!(format!("action requires to be executed on merkle tree that does not exists {}", hex::encode(&hash)));
+            //         }
+            //         // merkle.write().unwrap().stage_checkout(&hash).unwrap();
+            //     }
+            // }
+
             if let Err(e) = perform_context_action(&action, & mut context){
                 panic!("cannot perform action {:?} error: '{}'", &action, e);
             }
+
+            // entries.insert(
+
             if let Some(hash) = get_new_tree_hash(&action){
                 assert_eq!(merkle.read().unwrap().get_staged_root_hash(), hash);
+                entries.insert(hash.clone());
             }
         }
 

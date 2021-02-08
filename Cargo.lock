@@ -2889,6 +2889,7 @@ dependencies = [
 name = "shell"
 version = "0.10.0"
 dependencies = [
+ "bytes 1.0.1",
  "chrono",
  "crypto",
  "dns-lookup",
