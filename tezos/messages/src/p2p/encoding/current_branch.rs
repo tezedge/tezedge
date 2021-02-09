@@ -14,7 +14,9 @@ use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::block_header::BlockHeader;
 
-pub const HISTORY_MAX_SIZE: u8 = 200;
+use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
+
+pub const HISTORY_MAX_SIZE: u8 = CURRENT_BRANCH_HISTORY_MAX_LENGTH as u8; // 200
 
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {
@@ -71,13 +73,19 @@ has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
     Encoding::Obj(vec![
         Field::new(
             "current_head",
-            Encoding::dynamic(BlockHeader::encoding().clone()),
+            Encoding::bounded_dynamic(
+                super::limits::BLOCK_HEADER_MAX_SIZE,
+                BlockHeader::encoding().clone(),
+            ),
         ),
         Field::new(
             "history",
             Encoding::Split(Arc::new(|schema_type| match schema_type {
                 SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
-                SchemaType::Binary => Encoding::list(Encoding::Hash(HashType::BlockHash)),
+                SchemaType::Binary => Encoding::bounded_list(
+                    CURRENT_BRANCH_HISTORY_MAX_LENGTH,
+                    Encoding::Hash(HashType::BlockHash),
+                ),
             })),
         ),
     ])

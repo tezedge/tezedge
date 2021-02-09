@@ -190,10 +190,12 @@ impl JsonWriter {
                 Value::Bool(v) => Ok(self.push_bool(*v)),
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
-            Encoding::String | Encoding::Z | Encoding::Mutez => match value {
-                Value::String(v) => Ok(self.push_str(v)),
-                _ => Err(Error::encoding_mismatch(encoding, value)),
-            },
+            Encoding::String | Encoding::BoundedString(_) | Encoding::Z | Encoding::Mutez => {
+                match value {
+                    Value::String(v) => Ok(self.push_str(v)),
+                    _ => Err(Error::encoding_mismatch(encoding, value)),
+                }
+            }
             Encoding::Enum => match value {
                 Value::Enum(name, _) => {
                     let variant_name = name
@@ -203,19 +205,21 @@ impl JsonWriter {
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
-            Encoding::List(list_inner_encoding) => match value {
-                Value::List(ref values) => {
-                    self.open_array();
-                    for (idx, value) in values.iter().enumerate() {
-                        if idx > 0 {
-                            self.push_delimiter();
+            Encoding::List(list_inner_encoding) | Encoding::BoundedList(_, list_inner_encoding) => {
+                match value {
+                    Value::List(ref values) => {
+                        self.open_array();
+                        for (idx, value) in values.iter().enumerate() {
+                            if idx > 0 {
+                                self.push_delimiter();
+                            }
+                            self.encode_value(value, list_inner_encoding)?;
                         }
-                        self.encode_value(value, list_inner_encoding)?;
+                        Ok(self.close_array())
                     }
-                    Ok(self.close_array())
+                    _ => Err(Error::encoding_mismatch(encoding, value)),
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value)),
-            },
+            }
             Encoding::Bytes => match value {
                 Value::List(values) => {
                     let mut bytes = vec![];
@@ -261,8 +265,12 @@ impl JsonWriter {
             }
             Encoding::Obj(obj_schema) => self.encode_record(value, obj_schema),
             Encoding::Tup(tup_encodings) => self.encode_tuple(value, tup_encodings),
-            Encoding::Dynamic(dynamic_encoding) => self.encode_value(value, dynamic_encoding),
-            Encoding::Sized(_, sized_encoding) => self.encode_value(value, sized_encoding),
+            Encoding::Dynamic(dynamic_encoding) | Encoding::BoundedDynamic(_, dynamic_encoding) => {
+                self.encode_value(value, dynamic_encoding)
+            }
+            Encoding::Sized(_, inner_encoding) | Encoding::Bounded(_, inner_encoding) => {
+                self.encode_value(value, inner_encoding)
+            }
             Encoding::Greedy(un_sized_encoding) => self.encode_value(value, un_sized_encoding),
             Encoding::Tags(_, _) => Err(Error::custom(
                 "Encoding::Tags encoding is not supported for JSON format",
