@@ -326,7 +326,7 @@ fn block_on_actors(
         configuration::ContextActionStoreBackend::FileStorage => {
             let action_file_path = env.storage.db_path.join("actionfile.bin");
             info!(log, "RecordingActions to file storage '{}'", action_file_path.clone().to_str().unwrap());
-            Box::new(ActionFileStorage::new(action_file_path, &persistent_storage))
+            Box::new(ActionFileStorage::new(action_file_path))
         }
         configuration::ContextActionStoreBackend::NoneBackend => {
             Box::new(NoRecorder{})

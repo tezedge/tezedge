@@ -135,7 +135,7 @@ impl ActionsFileReader {
 }
 
 impl Iterator for ActionsFileReader {
-    type Item = (BlockHeaderWithHash, Vec<ContextActionMessage>);
+    type Item = Vec<ContextActionMessage>;
 
     /// Return a tuple of a block and list action in the block
     fn next(&mut self) -> Option<Self::Item> {
@@ -159,7 +159,7 @@ impl Iterator for ActionsFileReader {
 
         let reader = snap::read::FrameDecoder::new(b.reader());
 
-        let item = match bincode::deserialize_from::<_, (BlockHeaderWithHash, Vec<ContextActionMessage>)>(reader)
+        let item = match bincode::deserialize_from::<_, Self::Item>(reader)
         {
             Ok(item) => item,
             Err(_) => {
@@ -207,21 +207,17 @@ impl ActionsFileWriter {
 impl ActionsFileWriter {
     pub fn update(
         &mut self,
-        block: BlockHeaderWithHash,
+        block_hash: &Vec<u8>,
+        block_level: u32,
         actions: Vec<ContextActionMessage>,
     ) -> Result<u32, ActionFileError> {
-        let block_level = block.header.level() as u32;
         let actions_count = actions.len() as u32;
-        let block_hash = copy_hash_to_slice(&block.hash);
+        let block_hash = copy_hash_to_slice(block_hash);
         self._fetch_header()?;
-        // Check if currently saved block precedes the incoming block
-        if copy_hash_to_slice(&block.header.predecessor()) != self.header.current_block_hash && self.header.block_count > 0 {
-            return Err(ActionFileError::BlocksOutOfSequence);
-        }
 
         let mut out = Vec::new();
         let writer = snap::write::FrameEncoder::new(&mut out);
-        bincode::serialize_into(writer, &(block, actions))?;
+        bincode::serialize_into(writer, &actions)?;
 
         // Writes the header if its not already set
         if self.header.block_count <= 0 {

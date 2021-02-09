@@ -1,19 +1,15 @@
-use std::{fs, path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{fs, path::PathBuf, sync::Arc};
 
-use failure::Error;
-use std::io::{self, Write};
-use riker::actors::SystemBuilder;
 use rocksdb::Cache;
-use std::collections::HashSet;
-use shell::context_listener::{ContextListener, perform_context_action};
-use slog::{Drain, Level, Logger, crit, debug, error, info};
+use failure::Error;
+use shell::context_listener::perform_context_action;
+use storage::BlockHeaderWithHash;
+use tezos_messages::p2p::encoding::prelude::{BlockHeaderBuilder};
+use slog::{Drain, Level, Logger, debug, info};
 use storage::{BlockStorage, context::{ContextApi, TezedgeContext}, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
 use storage::action_file::ActionsFileReader;
-use shell::context_listener::{get_tree_hash, get_new_tree_hash};
+use shell::context_listener::get_new_tree_hash;
 use tezos_context::channel::ContextAction;
-use tezos_wrapper::service::{IpcEvtServer, NoopMessage};
-use ipc::IpcClient;
-
 
 fn create_logger() -> Logger{
     let drain = slog_async::Async::new(
@@ -79,75 +75,84 @@ fn get_action_symbol(action: &ContextAction) -> String {
 }
 
 #[test]
-#[ignore]
 fn feed_tezedge_context_with_actions() -> Result<(), Error> {
+
+    let block_header_stub = BlockHeaderBuilder::default()
+        .level(0)
+        .proto(0)
+        .predecessor(vec![0;32])
+        .timestamp(0)
+        .validation_pass(0)
+        .operations_hash(vec![0;32])
+        .fitness(vec![])
+        .context(vec![0;32])
+        .protocol_data(vec![])
+        .build()
+        .unwrap();
+    let header_stub = BlockHeaderWithHash::new(block_header_stub).unwrap();
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
     let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
     let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
+    // let actions_storage_path = PathBuf::from("/mnt/hdd/milion.bin");
     let actions_storage_path = PathBuf::from("/mnt/hdd/node-data/actionfile.bin");
 
     let _ = fs::remove_dir_all(&commit_log_db_path);
     let _ = fs::remove_dir_all(&key_value_db_path);
-
     let logger = create_logger();
+
     let commit_log = create_commit_log(&commit_log_db_path);
     let key_value_store = create_key_value_store(&key_value_db_path, &cache);
     let storage = PersistentStorage::new(key_value_store.clone(), commit_log.clone());
-    let merkle = storage.merkle();
     let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
         BlockStorage::new(&storage),
         storage.merkle(),
     ));
-
-    let mut entries = HashSet::new();
 
     let block_storage = BlockStorage::new(&storage);
 
     let actions_reader = ActionsFileReader::new(&actions_storage_path).unwrap();
     info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
     info!(logger, "{}", actions_reader.header());
-    for (block,actions) in actions_reader{
-        debug!(logger, "processing block hash:{} with {} actions", hex::encode(&block.hash), actions.len());
-        for (_, action) in actions.iter().enumerate(){
-            let action = action.action.clone();
 
-            // ContextCommit checks if block
-            if let ContextAction::Commit{block_hash: Some(block_hash), ..} = &action{
-                let mut b = block.clone();
-                b.hash = block_hash.clone();
-                block_storage.put_block_header(&b).unwrap();
-            }
-
-            if let Some(hash) = get_tree_hash(&action){
-                if let None = entries.get(&hash){
-                    panic!(format!("action requires to be executed on merkle tree that does not exists {}", hex::encode(&hash)));
+    for messages in actions_reader{
+        info!(logger, "HELLO");
+        match messages.iter().last() {
+            Some(msg) => {
+                match &msg.action {
+                    ContextAction::Commit{block_hash: Some(block_hash), ..} => {
+                        debug!(logger, "processing block {} with {} messages", hex::encode(&block_hash), messages.len());
+                    }
+                    _ => {panic!("missing commit action")}
                 }
             }
+            None => {panic!("missing commit action")}
+        };
 
-            // if let Some(hash) = get_tree_hash(&action){
-            //     let actual_hash = merkle.read().unwrap().get_staged_root_hash();
-            //     if hash !=  actual_hash{
-            //         if let None = entries.get(&hash){
-            //             panic!(format!("action requires to be executed on merkle tree that does not exists {}", hex::encode(&hash)));
-            //         }
-            //         // merkle.write().unwrap().stage_checkout(&hash).unwrap();
-            //     }
-            // }
 
-            if let Err(e) = perform_context_action(&action, & mut context){
-                panic!("cannot perform action {:?} error: '{}'", &action, e);
+        for msg in messages.iter(){
+
+            if let ContextAction::Commit{block_hash: Some(block_hash), ..} = &msg.action{
+                // there is extra validation in ContextApi::commit that verifies that 
+                // applied action comes from known block - for testing purposes
+                // block_storage needs to be fed with stub value in order to pass validation
+               
+                info!(logger, "commiting - this may take while");
+                let mut b = header_stub.clone();
+                b.hash = block_hash.clone();
+                block_storage.put_block_header(&b).unwrap();
+
             }
 
-            // entries.insert(
+            if let Err(e) = perform_context_action(&msg.action, & mut context){
+                panic!("cannot perform action {:?} error: '{}'", &msg, e);
+            }
 
-            if let Some(hash) = get_new_tree_hash(&action){
-                assert_eq!(merkle.read().unwrap().get_staged_root_hash(), hash);
-                entries.insert(hash.clone());
+            if let Some(expected_hash) = get_new_tree_hash(&msg.action){
+                assert_eq!(context.get_merkle_root(), expected_hash);
             }
         }
-
     }
-    
     Ok(())
 }
+    

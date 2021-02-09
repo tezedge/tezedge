@@ -155,13 +155,9 @@ fn listen_protocol_events(
     );
 
     let mut event_count = 0;
-    // let mut entries = HashSet::new();
-    // entries.insert("81e47a19e6b29b0a65b9591762ce5143ed30d0261e5d24a3201752506b20f15c".to_string());
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
-
-
             Ok(ContextActionMessage {
                 action: ContextAction::Shutdown,
                 ..
@@ -181,13 +177,6 @@ fn listen_protocol_events(
                     );
                 }
 
-                // info!(log, "!!!!!!!!!!!!!! MESSAGE RECEIVED .!!!!!!!!!!!!!!!!!");
-                // info!(log, "TREE_HASH: {}", hex::encode(get_tree_hash(&msg.action).or(Some([0_u8;32])).unwrap()));
-                // info!(log, "NEW_TREE_HASH: {}", hex::encode(get_new_tree_hash(&msg.action).or(Some([0_u8;32])).unwrap()));
-                // info!(log, "RECORD: {:?}", msg.record);
-                // info!(log, "MSG: {:?}", msg);
-
-
                 if ! msg.record{
                     // currently some of the messages are send twice due to
                     // replay feature - we dont wont to process those duplicates
@@ -200,36 +189,11 @@ fn listen_protocol_events(
                     error!(log,"action: {:?} ,error: {} ",&msg.action , error);
                     break;
                 }
-
-                // if let Some(hash) = get_tree_hash(&msg.action){
-                //     if let None = entries.get(&hex::encode(&hash)){
-                //         panic!(format!("action {:?} requires to be executed on merkle tree that does not exists {}",&msg.action ,hex::encode(&hash)));
-                //         // error!(log, "action {:?} requires to be executed on merkle tree that does not exists {}",&msg.action ,hex::encode(&hash));
-                //         // continue;
-                //     }
-                // }
-
-                // let exptected_initial_tree_hash = get_tree_hash(&msg.action);
-                // let exptected_final_tree_hash = get_new_tree_hash(&msg.action);
-                // let actual_initial_tree_hash = context.get_merkle_hash();
-                //
-                // if let Some(hash) = exptected_initial_tree_hash{
-                //     if hash != actual_initial_tree_hash{
-                //         context.store_merkle_hash(hash);
-                //         //error!(log, "PRECONDITION FAILED current: {} expected: {}", actual_initial_tree_hash, hash);
-                //     }
-                // }
-
-
+                
                 if let Err(e) = perform_context_action(&msg.action, context){
                     error!(log, "error while processing action: {:?} reason  '{}'", &msg.action, e);
                     panic!("error while executing action");
                 }
-
-                // if let Some(hash) = get_new_tree_hash(&msg.action){
-                //     assert_eq!(context.get_merkle_hash() , hash);
-                //     // entries.insert(hex::encode(&hash));
-                // }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
