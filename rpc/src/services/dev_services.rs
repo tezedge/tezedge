@@ -142,3 +142,9 @@ pub(crate) fn get_cycle_length_for_block(
         Ok(4096)
     }
 }
+
+pub(crate) fn get_dev_version() -> Result<String, failure::Error> {
+    let version_env: &'static str = env!("CARGO_PKG_VERSION");
+
+    Ok(format!("v{}", version_env.to_string()))
+}

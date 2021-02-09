@@ -183,3 +183,19 @@ pub async fn context_stats(
         env.log(),
     )
 }
+
+/// Get the version string
+pub async fn dev_version(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    match dev_services::get_dev_version() {
+        Ok(resp) => make_json_response(&resp),
+        Err(e) => {
+            warn!(env.log(), "GetStatsMemory: {}", e);
+            empty()
+        }
+    }
+}
