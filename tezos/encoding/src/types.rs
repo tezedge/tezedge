@@ -125,7 +125,3 @@ pub enum Value {
     /// Tuple is heterogeneous collection of values, it should have fixed amount of elements
     Tuple(Vec<Value>),
 }
-
-/// Type for representing recursive data depth
-/// Currently u16 for compatibility with [Uint8](tezos_encoding::types::Value::Uint16)
-pub type RecursiveDataSize = u16;

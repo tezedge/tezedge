@@ -36,7 +36,7 @@ pub mod prelude {
     pub use super::operation_hashes_for_blocks::{
         GetOperationHashesForBlocksMessage, OperationHashesForBlocksMessage,
     };
-    pub use super::operations_for_blocks::PATH_MAX_DEPTH;
+    pub use super::operations_for_blocks::MAX_PASS_MERKLE_DEPTH;
     pub use super::operations_for_blocks::{
         GetOperationsForBlocksMessage, OperationsForBlock, OperationsForBlocksMessage, Path,
         PathLeft, PathRight,

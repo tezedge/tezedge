@@ -21,37 +21,37 @@ fn test_get_operations() -> Result<(), Error> {
     let storage = OperationsStorage::new(tmp_storage.storage());
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_1.clone(), 3),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_1.clone(), 1),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_1.clone(), 0),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_2.clone(), 1),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_1.clone(), 2),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;
     let message = OperationsForBlocksMessage::new(
         OperationsForBlock::new(block_hash_3.clone(), 3),
-        Path::Op,
+        Path::op(),
         vec![],
     );
     storage.put_operations(&message)?;

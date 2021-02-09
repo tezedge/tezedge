@@ -213,7 +213,7 @@ mod test_data {
                         hex::decode(block_hash).unwrap().try_into().unwrap(),
                         4,
                     ),
-                    Path::Op,
+                    Path::op(),
                     ops,
                 )
             })

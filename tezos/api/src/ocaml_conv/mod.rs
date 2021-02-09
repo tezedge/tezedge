@@ -2,17 +2,29 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::Hash;
-use tezos_messages::p2p::encoding::{
-    block_header::{Fitness, Level},
-    operations_for_blocks::Path,
-};
+use tezos_messages::p2p::encoding::block_header::{Fitness, Level};
 
 // FFI Wrappers:
 // Defined to be able to implement ToOCaml/FromOCaml traits for
 // structs that are defined in another crate and/or do not map directly
 // to the matching OCaml struct.
 
-pub struct FfiPath(pub Path);
+pub struct FfiPathRight {
+    pub left: Hash,
+    pub path: FfiPath,
+}
+
+pub struct FfiPathLeft {
+    pub path: FfiPath,
+    pub right: Hash,
+}
+
+pub enum FfiPath {
+    Right(Box<FfiPathRight>),
+    Left(Box<FfiPathLeft>),
+    Op,
+}
+
 pub struct FfiBlockHeader<'a> {
     shell: FfiBlockHeaderShellHeader<'a>,
     protocol_data: &'a Vec<u8>,

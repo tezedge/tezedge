@@ -21,6 +21,7 @@ use crate::runtime::OcamlError;
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
 
+    use tezos_api::ocaml_conv::FfiPath;
     use tezos_api::{
         ffi::{
             ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
@@ -30,7 +31,6 @@ mod tezos_ffi {
         },
         ocaml_conv::{OCamlOperationHash, OCamlProtocolHash},
     };
-    use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 
     ocaml! {
         pub fn apply_block(apply_block_request: ApplyBlockRequest) -> ApplyBlockResponse;
@@ -64,7 +64,7 @@ mod tezos_ffi {
             key: OCamlList<OCamlBytes>,
             data: OCamlBytes
         ) -> Option<OCamlBytes>;
-        pub fn compute_path(request: OCamlList<OCamlList<OCamlOperationHash>>) -> OCamlList<Path>;
+        pub fn compute_path(request: OCamlList<OCamlList<OCamlOperationHash>>) -> OCamlList<FfiPath>;
         pub fn assert_encoding_for_protocol_data(protocol_hash: OCamlProtocolHash, protocol_data: OCamlBytes);
     }
 }
@@ -326,7 +326,28 @@ pub fn compute_path(
                     let operations_hashes_path: Vec<FfiPath> = response.to_rust();
                     let operations_hashes_path = operations_hashes_path
                         .into_iter()
-                        .map(|path| path.0)
+                        .map(|path| {
+                            let mut res = Vec::new();
+                            let mut path = path;
+                            loop {
+                                use tezos_messages::p2p::encoding::operations_for_blocks::{
+                                    Path, PathItem,
+                                };
+                                match path {
+                                    FfiPath::Right(right) => {
+                                        res.push(PathItem::right(right.left));
+                                        path = right.path;
+                                    }
+                                    FfiPath::Left(left) => {
+                                        res.push(PathItem::left(left.right));
+                                        path = left.path;
+                                    }
+                                    FfiPath::Op => {
+                                        return Path(res);
+                                    }
+                                }
+                            }
+                        })
                         .collect();
                     Ok(ComputePathResponse {
                         operations_hashes_path,
