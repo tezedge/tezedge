@@ -2736,6 +2736,7 @@ dependencies = [
  "dns-lookup",
  "failure",
  "futures",
+ "getset",
  "hex",
  "itertools 0.10.0",
  "lazy_static",

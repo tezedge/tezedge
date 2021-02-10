@@ -3,7 +3,7 @@
 
 use std::cmp;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use riker::actors::*;
@@ -19,6 +19,7 @@ use tezos_messages::p2p::encoding::prelude::{
 };
 
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::MissingOperations;
 
 // TODO: TE-386 - remove not needed
@@ -45,15 +46,16 @@ pub struct PeerState {
 
     // TODO: TE-386 - rename
     /// Queued blocks shared with peer_branch_bootstrapper
-    pub(crate) queued_block_headers2: Arc<RwLock<HashSet<Arc<BlockHash>>>>,
+    pub(crate) queued_block_headers2: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
     /// Queued block operations
-    pub(crate) queued_block_operations2: Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+    pub(crate) queued_block_operations2: Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
 
     // TODO: TE-386 - remove not needed
     // /// Missing blocks
     // pub(crate) missing_blocks: MissingBlockData<MissingBlock>,
-    // /// Missing operations
-    // pub(crate) missing_operations_for_blocks: MissingBlockData<MissingOperations>,
+    // TODO: TE-386 - global queue for requested operations
+    /// Missing operations - we use this map for lazy/gracefull receiving
+    pub(crate) missing_operations_for_blocks: HashMap<BlockHash, HashSet<i8>>,
 
     // TODO: TE-386 - remove not needed
     /// Queued blocks
@@ -102,10 +104,10 @@ impl PeerState {
             mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
             peer_branch_bootstrapper: None,
-            queued_block_headers2: Arc::new(RwLock::new(HashSet::default())),
-            queued_block_operations2: Arc::new(RwLock::new(HashMap::default())),
+            queued_block_headers2: Arc::new(Mutex::new(HashSet::default())),
+            queued_block_operations2: Arc::new(Mutex::new(HashMap::default())),
             // missing_blocks: MissingBlockData::default(),
-            // missing_operations_for_blocks: MissingBlockData::default(),
+            missing_operations_for_blocks: HashMap::default(),
             // queued_block_headers: HashMap::new(),
             // queued_block_operations: HashMap::new(),
             missing_mempool_operations: Vec::new(),
@@ -310,6 +312,16 @@ impl PeerState {
                 peer.mempool_operations_request_last = Instant::now();
                 tell_peer(GetOperationsMessage::new(ops_to_get).into(), peer);
             });
+    }
+}
+
+impl UpdateIsBootstrapped for PeerState {
+    fn set_is_bootstrapped(&mut self, new_status: bool) {
+        self.is_bootstrapped = new_status;
+    }
+
+    fn is_bootstrapped(&self) -> bool {
+        self.is_bootstrapped
     }
 }
 

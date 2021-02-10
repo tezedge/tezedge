@@ -107,7 +107,6 @@ fn test_actors_apply_blocks_and_check_context_and_mempool() -> Result<(), failur
             tezos_env.genesis_header_hash()?,
             Arc::new(chain_id.clone()),
             None,
-            Arc::new(node.chain_manager.clone()),
             None,
             Instant::now(),
         ),

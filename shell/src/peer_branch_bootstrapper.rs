@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use riker::actors::*;
@@ -12,16 +12,20 @@ use crypto::hash::{BlockHash, ChainId};
 use networking::p2p::peer::SendMessage;
 use networking::PeerId;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, OperationsForBlock, PeerMessageResponse,
 };
 
 use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
-use crate::chain_manager::ChainManagerRef;
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use crate::chain_feeder_channel::{
+    subscribe_to_chain_feeder_block_applied_channel, ChainFeederChannelMsg, ChainFeederChannelRef,
+};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::bootstrap_state::{BootstrapState, InnerBlockState};
+use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::{MissingOperations, StateError};
-use crate::subscription::{subscribe_to_actor_terminated, subscribe_to_shell_block_applied};
+use crate::subscription::subscribe_to_actor_terminated;
 
 const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
 const MAX_QUEUED_ITEMS: usize = 10;
@@ -51,6 +55,7 @@ pub struct StartBranchBootstraping {
     chain_id: Arc<ChainId>,
     last_applied_block: Arc<BlockHash>,
     missing_history: Vec<Arc<BlockHash>>,
+    to_level: Arc<Level>,
 }
 
 impl StartBranchBootstraping {
@@ -58,15 +63,18 @@ impl StartBranchBootstraping {
         chain_id: Arc<ChainId>,
         last_applied_block: Arc<BlockHash>,
         missing_history: Vec<Arc<BlockHash>>,
+        to_level: Arc<Level>,
     ) -> Self {
         Self {
             chain_id,
             last_applied_block,
             missing_history,
+            to_level,
         }
     }
 }
 
+/// This message should be trriggered, when all operations for the block are downloaded
 #[derive(Clone, Debug)]
 pub struct UpdateOperationsState {
     block_hash: Arc<BlockHash>,
@@ -106,7 +114,7 @@ pub struct PingProcessDataDownload;
 pub struct PingProcessBlockApply;
 
 #[derive(Clone, Debug)]
-pub struct BlockApplied {
+pub struct BlockAlreadyApplied {
     pub block_hash: Arc<BlockHash>,
 }
 
@@ -115,25 +123,25 @@ pub struct BlockApplied {
     UpdateBlockState,
     UpdateOperationsState,
     DisconnectStalledBootstraps,
-    BlockApplied,
+    BlockAlreadyApplied,
     PingProcessDataDownload,
     PingProcessBlockApply,
     SystemEvent,
-    ShellChannelMsg
+    ChainFeederChannelMsg
 )]
 pub struct PeerBranchBootstrapper {
     peer: Arc<PeerId>,
 
     shell_channel: ShellChannelRef,
+    chain_feeder_channel: ChainFeederChannelRef,
     block_meta_storage: BlockMetaStorage,
     operations_meta_storage: OperationsMetaStorage,
 
     block_applier: ChainFeederRef,
-    chain_manager: Arc<ChainManagerRef>,
 
     bootstrap_state: Vec<BootstrapState>,
-    queued_block_headers: Arc<RwLock<HashSet<Arc<BlockHash>>>>,
-    queued_block_operations: Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+    queued_block_headers: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+    queued_block_operations: Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
     queued_block_headers_for_apply: HashMap<Arc<BlockHash>, Instant>,
 
     empty_bootstrap_state: Option<Instant>,
@@ -151,11 +159,11 @@ impl PeerBranchBootstrapper {
     pub fn actor(
         sys: &ActorSystem,
         peer: Arc<PeerId>,
-        queued_block_headers: Arc<RwLock<HashSet<Arc<BlockHash>>>>,
-        queued_block_operations: Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+        queued_block_headers: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+        queued_block_operations: Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
         shell_channel: ShellChannelRef,
+        chain_feeder_channel: ChainFeederChannelRef,
         block_applier: ChainFeederRef,
-        chain_manager: Arc<ChainManagerRef>,
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
     ) -> Result<PeerBranchBootstrapperRef, CreateError> {
@@ -166,8 +174,8 @@ impl PeerBranchBootstrapper {
                 queued_block_headers,
                 queued_block_operations,
                 shell_channel,
+                chain_feeder_channel,
                 block_applier,
-                chain_manager,
                 block_meta_storage,
                 operations_meta_storage,
             )),
@@ -229,7 +237,7 @@ impl PeerBranchBootstrapper {
             );
         }
 
-        self.handle_empty_bootstrap();
+        self.handle_resolved_bootstraps();
     }
 
     fn process_block_apply(
@@ -243,7 +251,6 @@ impl PeerBranchBootstrapper {
             block_meta_storage,
             queued_block_headers_for_apply,
             block_applier,
-            chain_manager,
             ..
         } = self;
 
@@ -255,16 +262,38 @@ impl PeerBranchBootstrapper {
                 block_meta_storage,
                 myself.clone(),
                 block_applier,
-                chain_manager.clone(),
                 log,
             );
         });
 
-        self.handle_empty_bootstrap();
+        self.handle_resolved_bootstraps();
     }
 
-    fn handle_empty_bootstrap(&mut self) {
-        self.bootstrap_state.retain(|b| !b.is_done());
+    fn handle_resolved_bootstraps(&mut self) {
+        let PeerBranchBootstrapper {
+            bootstrap_state,
+            peer,
+            shell_channel,
+            ..
+        } = self;
+
+        bootstrap_state.retain(|b| {
+            if b.is_done() {
+                shell_channel.tell(
+                    Publish {
+                        msg: ShellChannelMsg::PeerBranchSynchronizationDone(
+                            PeerBranchSynchronizationDone::new(peer.clone(), b.to_level().clone()),
+                        ),
+                        topic: ShellChannelTopic::ShellCommands.into(),
+                    },
+                    None,
+                );
+
+                false
+            } else {
+                true
+            }
+        });
 
         if self.bootstrap_state.is_empty() {
             if self.empty_bootstrap_state.is_none() {
@@ -277,11 +306,11 @@ impl PeerBranchBootstrapper {
 impl
     ActorFactoryArgs<(
         Arc<PeerId>,
-        Arc<RwLock<HashSet<Arc<BlockHash>>>>,
-        Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+        Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+        Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
         ShellChannelRef,
+        ChainFeederChannelRef,
         ChainFeederRef,
-        Arc<ChainManagerRef>,
         BlockMetaStorage,
         OperationsMetaStorage,
     )> for PeerBranchBootstrapper
@@ -292,17 +321,17 @@ impl
             queued_block_headers,
             queued_block_operations,
             shell_channel,
+            chain_feeder_channel,
             block_applier,
-            chain_manager,
             block_meta_storage,
             operations_meta_storage,
         ): (
             Arc<PeerId>,
-            Arc<RwLock<HashSet<Arc<BlockHash>>>>,
-            Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+            Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+            Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
             ShellChannelRef,
+            ChainFeederChannelRef,
             ChainFeederRef,
-            Arc<ChainManagerRef>,
             BlockMetaStorage,
             OperationsMetaStorage,
         ),
@@ -314,8 +343,8 @@ impl
             queued_block_headers_for_apply: Default::default(),
             bootstrap_state: Default::default(),
             shell_channel,
+            chain_feeder_channel,
             block_applier,
-            chain_manager,
             block_meta_storage,
             operations_meta_storage,
             empty_bootstrap_state: None,
@@ -328,7 +357,8 @@ impl Actor for PeerBranchBootstrapper {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
-        subscribe_to_shell_block_applied(&self.shell_channel, ctx.myself());
+        // from this channel we receive just applied blocks
+        subscribe_to_chain_feeder_block_applied_channel(&self.chain_feeder_channel, ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
             STALE_BOOTSTRAP_TIMEOUT,
@@ -365,23 +395,22 @@ impl Actor for PeerBranchBootstrapper {
     }
 }
 
-impl Receive<ShellChannelMsg> for PeerBranchBootstrapper {
+impl Receive<ChainFeederChannelMsg> for PeerBranchBootstrapper {
     type Msg = PeerBranchBootstrapperMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _: Sender) {
-        if let ShellChannelMsg::BlockApplied(block_hash) = msg {
-            let PeerBranchBootstrapper {
-                bootstrap_state, ..
-            } = self;
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ChainFeederChannelMsg, _: Sender) {
+        let ChainFeederChannelMsg::BlockApplied(block_hash) = msg;
+        let PeerBranchBootstrapper {
+            bootstrap_state, ..
+        } = self;
 
-            bootstrap_state.iter_mut().for_each(|bootstrap| {
-                bootstrap.block_applied(&block_hash);
-            });
+        bootstrap_state.iter_mut().for_each(|bootstrap| {
+            bootstrap.block_applied(&block_hash);
+        });
 
-            // process blocks, just without sending to feeder, we want to take some time to feeder to process successors
-            self.process_data_download(ctx, ctx.myself(), &ctx.system.log());
-            self.process_block_apply(ctx, ctx.myself(), &ctx.system.log());
-        }
+        // process blocks, just without sending to feeder, we want to take some time to feeder to process successors
+        self.process_data_download(ctx, ctx.myself(), &ctx.system.log());
+        self.process_block_apply(ctx, ctx.myself(), &ctx.system.log());
     }
 }
 
@@ -420,11 +449,15 @@ impl Receive<StartBranchBootstraping> for PeerBranchBootstrapper {
                 .map(|b| b.to_base58_check())
                 .collect::<Vec<String>>()
                 .join(", "),
+            "to_level" => &msg.to_level,
             "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
         );
-        self.handle_empty_bootstrap();
+
+        // check closed pipelines
+        self.handle_resolved_bootstraps();
+
         if self.bootstrap_state.len() >= MAX_BOOTSTRAP_BRANCHES_PER_PEER {
-            warn!(ctx.system.log(), "Peer has started already maximum ({}) pipeline, so we dont start new one", MAX_BOOTSTRAP_BRANCHES_PER_PEER;
+            debug!(ctx.system.log(), "Peer has started already maximum ({}) pipeline, so we dont start new one", MAX_BOOTSTRAP_BRANCHES_PER_PEER;
                                     "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string());
             return;
         }
@@ -434,6 +467,7 @@ impl Receive<StartBranchBootstraping> for PeerBranchBootstrapper {
             msg.chain_id,
             msg.last_applied_block,
             msg.missing_history,
+            msg.to_level,
         ));
         self.empty_bootstrap_state = None;
 
@@ -513,22 +547,41 @@ impl Receive<UpdateOperationsState> for PeerBranchBootstrapper {
         _: Option<BasicActorRef>,
     ) {
         let PeerBranchBootstrapper {
-            bootstrap_state, ..
+            bootstrap_state,
+            queued_block_operations,
+            ..
         } = self;
 
+        // check pipelines
         bootstrap_state.iter_mut().for_each(|bootstrap| {
             bootstrap.block_operations_downloaded(&msg.block_hash);
         });
 
+        // now remove from queue
+        match queued_block_operations.lock() {
+            Ok(mut queued_block_operations) => {
+                let _ = queued_block_operations.remove(&msg.block_hash);
+            }
+            Err(e) => {
+                error!(ctx.system.log(), "Failed to lock queued_block_operations"; "reason" => format!("{}", e))
+            }
+        };
+
+        // kick another processing
         self.process_data_download(ctx, ctx.myself(), &ctx.system.log());
         self.process_block_apply(ctx, ctx.myself(), &ctx.system.log());
     }
 }
 
-impl Receive<BlockApplied> for PeerBranchBootstrapper {
+impl Receive<BlockAlreadyApplied> for PeerBranchBootstrapper {
     type Msg = PeerBranchBootstrapperMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: BlockApplied, _: Option<BasicActorRef>) {
+    fn receive(
+        &mut self,
+        ctx: &Context<Self::Msg>,
+        msg: BlockAlreadyApplied,
+        _: Option<BasicActorRef>,
+    ) {
         let PeerBranchBootstrapper {
             bootstrap_state, ..
         } = self;
@@ -551,7 +604,7 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         msg: DisconnectStalledBootstraps,
         _: Option<BasicActorRef>,
     ) {
-        self.handle_empty_bootstrap();
+        self.handle_resolved_bootstraps();
 
         // check for any stalled bootstrap
         let mut is_stalled = self
@@ -573,12 +626,12 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
             // TODO: TE-369 - peers stats
             let queued_block_headers = self
                 .queued_block_headers
-                .read()
+                .lock()
                 .expect("Failed to lock")
                 .len();
             let queued_block_operations = self
                 .queued_block_operations
-                .read()
+                .lock()
                 .expect("Failed to lock")
                 .len();
 
@@ -622,7 +675,7 @@ fn update_block_state(
 fn schedule_block_downloading(
     peer: &mut Arc<PeerId>,
     bootstrap: &mut BootstrapState,
-    queued_block_headers: &mut Arc<RwLock<HashSet<Arc<BlockHash>>>>,
+    queued_block_headers: &mut Arc<Mutex<HashSet<Arc<BlockHash>>>>,
     block_meta_storage: &mut BlockMetaStorage,
     operations_meta_storage: &mut OperationsMetaStorage,
     log: &Logger,
@@ -694,7 +747,7 @@ fn schedule_block_downloading(
 
     if let Some(block) = next_block_to_download {
         let can_be_scheduled = {
-            match queued_block_headers.write() {
+            match queued_block_headers.lock() {
                 Ok(mut queued_block_headers) => {
                     if queued_block_headers.len() < MAX_QUEUED_ITEMS {
                         queued_block_headers.insert(block.clone())
@@ -721,7 +774,7 @@ fn schedule_block_downloading(
 fn schedule_operations_downloading(
     peer: &mut Arc<PeerId>,
     bootstrap: &mut BootstrapState,
-    queued_block_operations: &mut Arc<RwLock<HashMap<BlockHash, MissingOperations>>>,
+    queued_block_operations: &mut Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
     operations_meta_storage: &mut OperationsMetaStorage,
     log: &Logger,
 ) -> bool {
@@ -771,23 +824,28 @@ fn schedule_operations_downloading(
 
     if let Some((block, missing_validation_passes)) = next_block_to_download {
         let can_be_scheduled = {
-            match queued_block_operations.write() {
+            match queued_block_operations.lock() {
                 Ok(mut queued_block_operations) => {
                     if queued_block_operations.len() < MAX_QUEUED_ITEMS {
-                        queued_block_operations
-                            .insert(
-                                block.as_ref().clone(),
-                                MissingOperations {
-                                    block_hash: block.as_ref().clone(),
-                                    history_order_priority: 0,
-                                    retries: 0,
-                                    validation_passes: missing_validation_passes
-                                        .iter()
-                                        .map(|vp| *vp as i8)
-                                        .collect(),
-                                },
-                            )
-                            .is_none()
+                        // we dont want to reschedule the same
+                        if !queued_block_operations.contains_key(block.as_ref()) {
+                            queued_block_operations
+                                .insert(
+                                    block.as_ref().clone(),
+                                    MissingOperations {
+                                        block_hash: block.as_ref().clone(),
+                                        history_order_priority: 0,
+                                        retries: 0,
+                                        validation_passes: missing_validation_passes
+                                            .iter()
+                                            .map(|vp| *vp as i8)
+                                            .collect(),
+                                    },
+                                )
+                                .is_none()
+                        } else {
+                            false
+                        }
                     } else {
                         false
                     }
@@ -820,7 +878,6 @@ fn schedule_block_applying(
     block_meta_storage: &mut BlockMetaStorage,
     myself: PeerBranchBootstrapperRef,
     block_applier: &ChainFeederRef,
-    chain_manager: Arc<ChainManagerRef>,
     log: &Logger,
 ) {
     let mut max_tries = 0;
@@ -887,7 +944,6 @@ fn schedule_block_applying(
                     block.as_ref().clone(),
                     bootstrap.chain_id().clone(),
                     None,
-                    chain_manager,
                     Some(myself),
                     Instant::now(),
                 ),

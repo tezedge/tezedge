@@ -3,7 +3,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use std::fmt;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -26,13 +25,13 @@ use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
-use crate::chain_manager::ChainManagerRef;
-use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::chain_feeder_channel::ChainFeederChannelRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
 use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
+use crate::state::head_state::CurrentHeadRef;
 use crate::state::peer_state::PeerState;
 use crate::state::StateError;
 use crate::validation;
@@ -57,6 +56,13 @@ pub struct BlockchainState {
     /// Operations metadata storage
     operations_meta_storage: OperationsMetaStorage,
 
+    /// Chain feeder - actor, which is responsible to apply_block to context
+    block_applier: ChainFeederRef,
+
+    /// Common shell channel
+    shell_channel: ShellChannelRef,
+    chain_feeder_channel: ChainFeederChannelRef,
+
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
 }
@@ -64,6 +70,9 @@ pub struct BlockchainState {
 impl BlockchainState {
     pub fn new(
         persistent_storage: &PersistentStorage,
+        block_applier: ChainFeederRef,
+        shell_channel: ShellChannelRef,
+        chain_feeder_channel: ChainFeederChannelRef,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
     ) -> Self {
@@ -73,6 +82,9 @@ impl BlockchainState {
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
+            block_applier,
+            shell_channel,
+            chain_feeder_channel,
             chain_id,
             chain_genesis_block_hash,
         }
@@ -82,28 +94,28 @@ impl BlockchainState {
     pub fn can_accept_branch(
         &self,
         branch: &CurrentBranchMessage,
-        current_head: &Option<Head>,
-    ) -> bool {
+        current_head: &CurrentHeadRef,
+    ) -> Result<bool, StateError> {
         // validate chain which we operate on
         if self.chain_id.as_ref() != branch.chain_id() {
-            return false;
+            return Ok(false);
         }
         if branch.current_branch().current_head().level() <= 0 {
-            return false;
+            return Ok(false);
         }
 
-        if let Some(current_head) = current_head.as_ref() {
+        if let Some(current_head) = current_head.read()?.as_ref() {
             // (only_if_fitness_increases) we can accept branch if increases fitness
             if validation::is_fitness_increases(
                 current_head,
                 branch.current_branch().current_head().fitness(),
             ) {
-                return true;
+                return Ok(true);
             }
 
-            false
+            Ok(false)
         } else {
-            true
+            Ok(true)
         }
     }
 
@@ -111,9 +123,9 @@ impl BlockchainState {
     pub fn can_accept_head(
         &self,
         head: &CurrentHeadMessage,
-        current_head: &Option<Head>,
+        current_head: &CurrentHeadRef,
         api: &ProtocolController,
-    ) -> Result<BlockAcceptanceResult, failure::Error> {
+    ) -> Result<BlockAcceptanceResult, StateError> {
         // validate chain which we operate on
         if self.chain_id.as_ref() != head.chain_id() {
             return Ok(BlockAcceptanceResult::IgnoreBlock);
@@ -125,7 +137,7 @@ impl BlockchainState {
         }
 
         // we need our current head at first
-        if let Some(current_head) = current_head.as_ref() {
+        if let Some(current_head) = current_head.read()?.as_ref() {
             // same header means only mempool operations were changed
             if validation::is_same_head(current_head, validated_header)? {
                 return Ok(BlockAcceptanceResult::AcceptBlock);
@@ -182,7 +194,7 @@ impl BlockchainState {
         &self,
         validated_header: &BlockHeader,
         current_head: &Head,
-    ) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), failure::Error> {
+    ) -> Result<(Option<ProtocolHash>, Option<BlockHeaderWithHash>, bool), StateError> {
         // TODO: TE-238 - store proto_level and protocol_hash and map - optimization - detect change protocol event
 
         let (protocol_hash, predecessor_header, missing_predecessor) = match self
@@ -202,30 +214,44 @@ impl BlockchainState {
                                 let metadata: HashMap<String, serde_json::Value> =
                                     serde_json::from_str(
                                         &predecessor_data.block_header_proto_metadata_json(),
-                                    )?;
+                                    )
+                                    .map_err(|e| {
+                                        StateError::ProcessingError {
+                                            reason: format!("{}", e),
+                                        }
+                                    })?;
                                 let protocol_hash =
                                     metadata.get("next_protocol").map(|value| value.as_str());
                                 if let Some(Some(protocol_hash)) = protocol_hash {
                                     // return next_protocol and header
                                     (
-                                        Some(ProtocolHash::from_base58_check(protocol_hash)?),
+                                        Some(
+                                            ProtocolHash::from_base58_check(protocol_hash)
+                                                .map_err(|e| StateError::ProcessingError {
+                                                    reason: format!("{:?}", e),
+                                                })?,
+                                        ),
                                         Some(predecessor_header),
                                         false,
                                     )
                                 } else {
                                     return Err(
-                                        failure::format_err!(
-                                            "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                            validated_header.predecessor().to_base58_check()
-                                        )
+                                        StateError::ProcessingError {
+                                            reason: format!(
+                                                "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                                validated_header.predecessor().to_base58_check()
+                                            )
+                                        }
                                     );
                                 }
                             }
                             None => {
-                                return Err(failure::format_err!(
-                                    "Missing data for applied predecessor: {}!",
-                                    validated_header.predecessor().to_base58_check()
-                                ));
+                                return Err(StateError::ProcessingError {
+                                    reason: format!(
+                                        "Missing data for applied predecessor: {}!",
+                                        validated_header.predecessor().to_base58_check()
+                                    ),
+                                });
                             }
                         }
                     }
@@ -256,30 +282,41 @@ impl BlockchainState {
                         // get protocol from predecessor
                         let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(
                             &current_head_header_data.block_header_proto_metadata_json(),
-                        )?;
+                        )
+                        .map_err(|e| StateError::ProcessingError {
+                            reason: format!("{}", e),
+                        })?;
                         let protocol_hash = metadata.get("protocol").map(|value| value.as_str());
                         if let Some(Some(protocol_hash)) = protocol_hash {
                             // return protocol
                             Ok((
-                                Some(ProtocolHash::try_from(protocol_hash)?),
+                                Some(ProtocolHash::try_from(protocol_hash).map_err(|e| {
+                                    StateError::ProcessingError {
+                                        reason: format!("{:?}", e),
+                                    }
+                                })?),
                                 predecessor_header,
                                 missing_predecessor,
                             ))
                         } else {
-                            return Err(failure::format_err!(
-                                "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                validated_header.predecessor().to_base58_check()
-                            ));
+                            return Err(StateError::ProcessingError {
+                                reason: format!(
+                                    "Missing `next_protocol` attribute for applied predecessor: {}!",
+                                    validated_header.predecessor().to_base58_check()
+                                ),
+                            });
                         }
                     } else {
                         Ok((None, predecessor_header, missing_predecessor))
                     }
                 }
                 None => {
-                    return Err(failure::format_err!(
-                        "Missing data for applied current_head: {}!",
-                        current_head.block_hash().to_base58_check()
-                    ));
+                    return Err(StateError::ProcessingError {
+                        reason: format!(
+                            "Missing data for applied current_head: {}!",
+                            current_head.block_hash().to_base58_check()
+                        ),
+                    });
                 }
             }
         }
@@ -292,10 +329,6 @@ impl BlockchainState {
         peer: &mut PeerState,
         block_header: &BlockHeaderWithHash,
         mut history: Vec<BlockHash>,
-        // TODO: TE-369 as struct member
-        shell_channel: ShellChannelRef,
-        block_applier: &ChainFeederRef,
-        chain_manager: Arc<ChainManagerRef>,
     ) -> Result<(), StateError> {
         // add predecessor (if not present in history)
         if !history.contains(block_header.header.predecessor()) {
@@ -380,9 +413,9 @@ impl BlockchainState {
                         peer.peer_id.clone(),
                         peer.queued_block_headers2.clone(),
                         peer.queued_block_operations2.clone(),
-                        shell_channel,
-                        block_applier.clone(),
-                        chain_manager,
+                        self.shell_channel.clone(),
+                        self.chain_feeder_channel.clone(),
+                        self.block_applier.clone(),
                         self.block_meta_storage.clone(),
                         self.operations_meta_storage.clone(),
                     )
@@ -399,6 +432,7 @@ impl BlockchainState {
                         self.chain_id.clone(),
                         last_applied_block,
                         missing_history,
+                        Arc::new(block_header.header.level()),
                     ),
                     None,
                 );
@@ -406,82 +440,6 @@ impl BlockchainState {
         }
 
         Ok(())
-    }
-
-    /// Resolve if new applied block can be set as new current head.
-    /// Original algorithm is in [chain_validator][on_request], where just fitness is checked.
-    /// Returns:
-    /// - None, if head was not updated, means was ignored
-    /// - Some(new_head, head_result)
-    pub fn try_update_new_current_head(
-        &self,
-        potential_new_head: &BlockHeaderWithHash,
-        current_head: &Option<Head>,
-        current_mempool_state: CurrentMempoolStateStorageRef,
-    ) -> Result<Option<(Head, HeadResult)>, StorageError> {
-        if let Some(current_head) = current_head {
-            // get fitness from mempool, if not, than use current_head.fitness
-            let mempool_state = current_mempool_state.read().unwrap();
-            let current_context_fitness = {
-                if let Some(Some(fitness)) = mempool_state
-                    .prevalidator()
-                    .map(|p| p.context_fitness.as_ref())
-                {
-                    fitness
-                } else {
-                    current_head.fitness()
-                }
-            };
-            // need to check against current_head, if not accepted, just ignore potential head
-            if !validation::can_update_current_head(
-                potential_new_head,
-                &current_head,
-                &current_context_fitness,
-            ) {
-                // just ignore
-                return Ok(None);
-            }
-        }
-
-        // we need to check, if previous head is predecessor of new_head (for later use)
-        let head_result = match &current_head {
-            Some(previos_head) => {
-                if previos_head
-                    .block_hash()
-                    .eq(potential_new_head.header.predecessor())
-                {
-                    HeadResult::HeadIncrement
-                } else {
-                    // if previous head is not predecesor of new head, means it could be new branch
-                    HeadResult::BranchSwitch
-                }
-            }
-            None => {
-                // we check, if new head is genesis
-                if self
-                    .chain_genesis_block_hash
-                    .as_ref()
-                    .eq(&potential_new_head.hash)
-                {
-                    HeadResult::GenesisInitialized
-                } else {
-                    HeadResult::HeadIncrement
-                }
-            }
-        };
-
-        // this will be new head
-        let head = Head::new(
-            potential_new_head.hash.clone(),
-            potential_new_head.header.level(),
-            potential_new_head.header.fitness().clone(),
-        );
-
-        // set new head to db
-        self.chain_meta_storage
-            .set_current_head(&self.chain_id, head.clone())?;
-
-        Ok(Some((head, head_result)))
     }
 
     /// Process block_header, stores/updates storages,
@@ -492,8 +450,6 @@ impl BlockchainState {
         &mut self,
         peer: &mut PeerState,
         received_block: &BlockHeaderWithHash,
-        block_applier: &ChainFeederRef,
-        chain_manager: Arc<ChainManagerRef>,
         log: &Logger,
     ) -> Result<bool, StorageError> {
         // store block
@@ -513,12 +469,11 @@ impl BlockchainState {
             |_| Ok(are_operations_complete),
             |predecessor| self.block_meta_storage.is_applied(predecessor),
         )? {
-            block_applier.tell(
+            self.block_applier.tell(
                 ApplyCompletedBlock::new(
                     received_block.hash.clone(),
                     self.chain_id.clone(),
                     None,
-                    chain_manager,
                     None,
                     Instant::now(),
                 ),
@@ -554,6 +509,7 @@ impl BlockchainState {
     ///
     pub fn process_injected_block_header(
         &mut self,
+        chain_id: &ChainId,
         block_header: &BlockHeaderWithHash,
         log: &Logger,
     ) -> Result<(Meta, bool, bool), StorageError> {
@@ -561,9 +517,9 @@ impl BlockchainState {
         let is_new_block = self.block_storage.put_block_header(block_header)?;
 
         // update block metadata
-        let metadata =
-            self.block_meta_storage
-                .put_block_header(block_header, &self.chain_id, &log)?;
+        let metadata = self
+            .block_meta_storage
+            .put_block_header(block_header, chain_id, &log)?;
 
         // update operations metadata
         let are_operations_complete =
@@ -617,8 +573,6 @@ impl BlockchainState {
         peer: &mut PeerState,
         block_hash: &BlockHash,
         message: &OperationsForBlocksMessage,
-        block_applier: &ChainFeederRef,
-        chain_manager: ChainManagerRef,
     ) -> Result<bool, StateError> {
         // update operations metadata for block
         let (are_operations_complete, _) = self.process_block_operations(message)?;
@@ -640,12 +594,11 @@ impl BlockchainState {
                     |_| Ok(are_operations_complete),
                     |predecessor| self.block_meta_storage.is_applied(predecessor),
                 )? {
-                    block_applier.tell(
+                    self.block_applier.tell(
                         ApplyCompletedBlock::new(
                             block_hash.clone(),
                             self.chain_id.clone(),
                             None,
-                            Arc::new(chain_manager),
                             None,
                             Instant::now(),
                         ),
@@ -653,9 +606,6 @@ impl BlockchainState {
                     );
                 }
             }
-
-            // remove operations from queue
-            peer.queued_block_operations2.write()?.remove(&block_hash);
         }
 
         Ok(are_operations_complete)
@@ -756,22 +706,6 @@ impl BlockchainState {
         }
 
         Ok(history)
-    }
-}
-
-pub enum HeadResult {
-    BranchSwitch,
-    HeadIncrement,
-    GenesisInitialized,
-}
-
-impl fmt::Display for HeadResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            HeadResult::BranchSwitch => write!(f, "BranchSwitch"),
-            HeadResult::HeadIncrement => write!(f, "HeadIncrement"),
-            HeadResult::GenesisInitialized => write!(f, "GenesisInitialized"),
-        }
     }
 }
 
@@ -1202,7 +1136,7 @@ mod tests {
         }
 
         pub(crate) fn store_branch(
-            branch: &Vec<&str>,
+            branch: &[&str],
             chain_id: &ChainId,
             blocks: &BlocksDb,
             block_storage: &BlockStorage,

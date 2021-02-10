@@ -13,7 +13,9 @@ use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
 pub mod block_state;
 pub mod bootstrap_state;
+pub mod head_state;
 pub mod peer_state;
+pub mod synchronization_state;
 
 /// Possible errors for state processing
 #[derive(Debug, Fail)]
@@ -37,6 +39,14 @@ impl<T> From<PoisonError<T>> for StateError {
 impl From<StorageError> for StateError {
     fn from(error: StorageError) -> Self {
         StateError::StorageError { error }
+    }
+}
+
+impl From<failure::Error> for StateError {
+    fn from(error: failure::Error) -> Self {
+        StateError::ProcessingError {
+            reason: format!("{}", error),
+        }
     }
 }
 

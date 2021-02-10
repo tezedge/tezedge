@@ -17,13 +17,18 @@ use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
+use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::ChainFeeder;
+use shell::chain_feeder_channel::ChainFeederChannel;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::state::head_state::init_current_head_state;
+use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use storage::persistent::DbConfiguration;
 use storage::persistent::{open_cl, open_kv, CommitLogSchema, PersistentStorage};
 use storage::{
@@ -277,7 +282,19 @@ fn block_on_actors(
     info!(log, "Protocol runners initialized");
 
     info!(log, "Initializing actors... (4/4)");
+
+    // create partial (global) states for sharing between threads/actors
+    let local_current_head_state = init_current_head_state();
+    let remote_current_head_state = init_current_head_state();
     let current_mempool_state_storage = init_mempool_state_storage();
+    let bootstrap_state = init_synchronization_bootstrap_state_storage(
+        env.p2p
+            .peer_threshold
+            .num_of_peers_for_bootstrap_threshold(),
+    );
+    let apply_block_stats = init_empty_apply_block_stats();
+
+    // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
     // create riker's actor system
@@ -290,6 +307,8 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let chain_feeder_channel =
+        ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
     let _ = ContextListener::actor(
@@ -301,9 +320,23 @@ fn block_on_actors(
         env.storage.store_context_actions,
     )
     .expect("Failed to create context event listener");
-    let block_applier = ChainFeeder::actor(
+    let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
+        persistent_storage.clone(),
+        init_storage_data.clone(),
+        local_current_head_state.clone(),
+        remote_current_head_state.clone(),
+        current_mempool_state_storage.clone(),
+        bootstrap_state.clone(),
+        apply_block_stats.clone(),
+    )
+    .expect("Failed to create chain current head manager");
+    let block_applier = ChainFeeder::actor(
+        &actor_system,
+        chain_current_head_manager,
+        shell_channel.clone(),
+        chain_feeder_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
@@ -316,13 +349,17 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
+        chain_feeder_channel,
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
         is_sandbox,
+        local_current_head_state,
+        remote_current_head_state,
         current_mempool_state_storage.clone(),
+        bootstrap_state,
+        apply_block_stats,
         env.p2p.disable_mempool,
-        &env.p2p.peer_threshold,
         identity.clone(),
     )
     .expect("Failed to create chain manager");
