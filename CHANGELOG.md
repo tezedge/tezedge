@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.0.0] - 2021-02-10
+
+### Added
+
+- Rpc for protocol runner memory stats
+
+### Changed
+
+- Tokio update to 1.2.x version.
+- Shell and bootstrap refactored to use kind of bootstrap pipeline to prevent stucking
+
+### Security
+
+- Error handling - changed expect/unwrap to errors
+- Encodings - replaced recursive linked list with vector
+- Encodings - introduced limits for p2p messages encoding
+- Properly handle connection pool timeout
+- Github Actions CI runs `cargo audit` (required)
+
 ## [0.9.2] - 2021-02-03
 
 ### Added
@@ -252,7 +271,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/simplestaking/tezedge/releases/v1.0.0
 [0.9.2]: https://github.com/simplestaking/tezedge/releases/v0.9.2
 [0.9.1]: https://github.com/simplestaking/tezedge/releases/v0.9.1
 [0.9.0]: https://github.com/simplestaking/tezedge/releases/v0.9.0

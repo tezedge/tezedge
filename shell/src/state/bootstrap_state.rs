@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crypto::hash::{BlockHash, ChainId};
+use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::state::StateError;
 
@@ -18,6 +19,8 @@ pub struct BootstrapState {
     /// We can identify stalled pipelines by this atribute and take action like disconnect peer
     last_updated: Instant,
 
+    /// Level of the highest block from all intervals
+    to_level: Arc<Level>,
     chain_id: Arc<ChainId>,
 
     /// Partitions are expected to be ordered from the lowest_level/oldest block
@@ -31,16 +34,22 @@ impl BootstrapState {
         chain_id: Arc<ChainId>,
         first_applied_block: Arc<BlockHash>,
         blocks: Vec<Arc<BlockHash>>,
+        to_level: Arc<Level>,
     ) -> BootstrapState {
         BootstrapState {
             chain_id,
             last_updated: Instant::now(),
             intervals: BootstrapInterval::split(first_applied_block, blocks),
+            to_level,
         }
     }
 
     pub fn chain_id(&self) -> &Arc<ChainId> {
         &self.chain_id
+    }
+
+    pub fn to_level(&self) -> &Arc<Level> {
+        &self.to_level
     }
 
     /// This finds block, which should be downloaded first.
@@ -640,7 +649,7 @@ mod tests {
         );
 
         // create
-        let pipeline = BootstrapState::new(chain_id, last_applied.clone(), history);
+        let pipeline = BootstrapState::new(chain_id, last_applied.clone(), history, Arc::new(20));
         assert_eq!(pipeline.intervals.len(), 7);
         assert_interval(&pipeline.intervals[0], (block(0), block(2)));
         assert_interval(&pipeline.intervals[1], (block(2), block(5)));
@@ -688,7 +697,7 @@ mod tests {
         );
 
         // create
-        let mut pipeline = BootstrapState::new(chain_id, last_applied, history);
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
         assert_eq!(pipeline.intervals.len(), 7);
         assert_interval(&pipeline.intervals[0], (block(0), block(2)));
         assert_interval(&pipeline.intervals[1], (block(2), block(5)));
@@ -727,7 +736,7 @@ mod tests {
                         applied: false,
                         operations_downloaded: false,
                     }))
-                }
+                },
             )
             .is_ok());
         // interval not closed
@@ -800,7 +809,7 @@ mod tests {
                         applied: false,
                         operations_downloaded: false,
                     }))
-                }
+                },
             )
             .is_ok());
         assert!(!pipeline.intervals[0].all_blocks_downloaded);
@@ -834,7 +843,7 @@ mod tests {
                         applied: false,
                         operations_downloaded: false,
                     }))
-                }
+                },
             )
             .is_ok());
         // download 3 without operations
@@ -854,7 +863,7 @@ mod tests {
                         applied: false,
                         operations_downloaded: false,
                     }))
-                }
+                },
             )
             .is_ok());
         // now is closed
@@ -887,7 +896,7 @@ mod tests {
         );
 
         // create
-        let mut pipeline = BootstrapState::new(chain_id, last_applied, history);
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
         assert_eq!(pipeline.intervals.len(), 7);
         assert_interval(&pipeline.intervals[0], (block(0), block(2)));
         assert_interval(&pipeline.intervals[1], (block(2), block(5)));
@@ -928,7 +937,7 @@ mod tests {
                         applied: true,
                         operations_downloaded: true,
                     }))
-                }
+                },
             )
             .is_ok());
         // interval 0 was removed

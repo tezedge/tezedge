@@ -13,7 +13,7 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
 
-use crate::chain_manager::ProcessValidatedBlock;
+use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::utils::CondvarResult;
 
 /// Notify actors that system is about to shut down
@@ -48,6 +48,7 @@ pub struct MempoolOperationReceived {
 
 #[derive(Clone, Debug)]
 pub struct InjectBlock {
+    pub chain_id: Arc<ChainId>,
     pub block_header: Arc<BlockHeaderWithHash>,
     pub operations: Option<Vec<Vec<Operation>>>,
     pub operation_paths: Option<Vec<Path>>,
@@ -65,11 +66,12 @@ pub enum ShellChannelMsg {
     MempoolOperationReceived(MempoolOperationReceived),
 
     /// Commands
+    AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
+    AdvertiseToP2pNewCurrentHead(Arc<ChainId>, Arc<BlockHash>),
     AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
     InjectBlock(InjectBlock, Option<CondvarResult<(), failure::Error>>),
     RequestCurrentHead(RequestCurrentHead),
-    // TODO: remove just for genesis
-    ProcessValidatedGenesisBlock(ProcessValidatedBlock),
+    PeerBranchSynchronizationDone(PeerBranchSynchronizationDone),
     ShuttingDown(ShuttingDown),
 }
 

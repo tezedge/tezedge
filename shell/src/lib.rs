@@ -6,15 +6,16 @@
 
 use failure::Fail;
 
-mod state;
-
+pub mod chain_current_head_manager;
 pub mod chain_feeder;
+pub mod chain_feeder_channel;
 pub mod chain_manager;
 pub mod context_listener;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;
 pub mod peer_manager;
 pub mod shell_channel;
+pub mod state;
 pub mod stats;
 pub mod utils;
 pub mod validation;
@@ -167,23 +168,6 @@ pub mod subscription {
             Subscribe {
                 actor: Box::new(myself),
                 topic: ShellChannelTopic::ShellNewCurrentHead.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub fn subscribe_to_shell_block_applied<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellBlockApplied.into(),
             },
             None,
         );

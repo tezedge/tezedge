@@ -1,6 +1,6 @@
 [package]
 name = "rpc"
-version = "0.9.3"
+version = "1.0.0"
 authors = ["Martin Lacko <martin.lacko@simplestaking.com>"]
 edition = "2018"
 build = "build.rs"
