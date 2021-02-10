@@ -234,6 +234,17 @@ fn can_deserialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
     );
     let result = PeerMessageResponse::from_bytes(message_bytes);
     assert!(result.is_err());
+
+    Ok(())
+}
+
+#[test]
+fn can_deserialize_operations_for_blocks_no_stack_overflow() -> Result<(), Error> {
+    // encoding for 512 step path, causing stack overflow previously
+    let message_bytes = create_operations_for_blocks_encoded(512);
+    let result = PeerMessageResponse::from_bytes(message_bytes);
+    assert!(result.is_err());
+
     Ok(())
 }
 
