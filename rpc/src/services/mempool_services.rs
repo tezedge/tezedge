@@ -289,12 +289,13 @@ pub fn inject_operation(
 
 pub fn inject_block(
     is_async: bool,
-    _chain_id: ChainId,
+    chain_id: ChainId,
     injection_data: &str,
     env: &RpcServiceEnvironment,
     shell_channel: &ShellChannelRef,
 ) -> Result<String, failure::Error> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
+    let chain_id = Arc::new(chain_id);
 
     let start_request = SystemTime::now();
 
@@ -304,6 +305,7 @@ pub fn inject_block(
     info!(env.log(),
           "Block injection requested";
           "block_hash" => block_hash_b58check_string.clone(),
+          "chain_id" => chain_id.to_base58_check(),
           "is_async" => is_async,
     );
 
@@ -364,6 +366,7 @@ pub fn inject_block(
         Publish {
             msg: ShellChannelMsg::InjectBlock(
                 InjectBlock {
+                    chain_id: chain_id.clone(),
                     block_header: Arc::new(header),
                     operations: validation_passes,
                     operation_paths: paths,
@@ -390,6 +393,7 @@ pub fn inject_block(
                 info!(env.log(),
                       "Block injected";
                       "block_hash" => block_hash_b58check_string.clone(),
+                      "chain_id" => chain_id.to_base58_check(),
                       "elapsed" => format!("{:?}", start_request.elapsed()?),
                       "elapsed_async" => format!("{:?}", start_async.elapsed()?),
                 );

@@ -225,8 +225,18 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/version",
+        dev_handler::dev_version,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/stats/memory",
         dev_handler::dev_stats_memory,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/stats/memory/protocol_runners",
+        dev_handler::dev_stats_memory_protocol_runners,
     );
     routes.handle(
         hash_set![Method::GET],

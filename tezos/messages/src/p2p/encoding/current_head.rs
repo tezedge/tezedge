@@ -12,6 +12,7 @@ use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::block_header::BlockHeader;
+use super::limits::BLOCK_HEADER_MAX_SIZE;
 use super::mempool::Mempool;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
@@ -47,7 +48,7 @@ has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
         Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
         Field::new(
             "current_block_header",
-            Encoding::dynamic(BlockHeader::encoding().clone()),
+            Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding().clone()),
         ),
         Field::new("current_mempool", Mempool::encoding().clone()),
     ])

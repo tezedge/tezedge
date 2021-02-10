@@ -1,6 +1,6 @@
 [package]
 name = "sandbox"
-version = "0.9.2"
+version = "1.0.0"
 authors = ["Adrian Nagy <adrian.nagy@simplestaking.com>"]
 edition = "2018"
 default-run = "sandbox"
@@ -16,7 +16,7 @@ serde_json = "1.0"
 slog = { version = "2.7", features = ["nested-values"] }
 slog-async = "2.6"
 slog-term = "2.6"
-tokio = { version = "1.1", features = ["full"] }
+tokio = { version = "1.2", features = ["full"] }
 warp = "0.3"
 wait-timeout = "0.2"
 

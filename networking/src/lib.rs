@@ -29,7 +29,12 @@ pub struct PeerId {
 }
 
 impl PeerId {
-    pub fn new(peer_ref: PeerRef, peer_public_key_hash: CryptoboxPublicKeyHash, peer_id_marker: String, peer_address: SocketAddr) -> Self {
+    pub fn new(
+        peer_ref: PeerRef,
+        peer_public_key_hash: CryptoboxPublicKeyHash,
+        peer_id_marker: String,
+        peer_address: SocketAddr,
+    ) -> Self {
         Self {
             peer_ref,
             peer_public_key_hash,
@@ -50,7 +55,11 @@ pub struct LocalPeerInfo {
 }
 
 impl LocalPeerInfo {
-    pub fn new(listener_port: u16, identity: Arc<Identity>, version: Arc<ShellCompatibilityVersion>) -> Self {
+    pub fn new(
+        listener_port: u16,
+        identity: Arc<Identity>,
+        version: Arc<ShellCompatibilityVersion>,
+    ) -> Self {
         LocalPeerInfo {
             listener_port,
             identity,
@@ -82,11 +91,18 @@ pub struct ShellCompatibilityVersion {
 impl ShellCompatibilityVersion {
     const DEFAULT_VERSION: u16 = 0u16;
 
-    pub fn new(chain_name: String, distributed_db_versions: Vec<u16>, p2p_versions: Vec<u16>) -> Self {
+    pub fn new(
+        chain_name: String,
+        distributed_db_versions: Vec<u16>,
+        p2p_versions: Vec<u16>,
+    ) -> Self {
         Self {
             version: NetworkVersion::new(
                 chain_name,
-                *distributed_db_versions.iter().max().unwrap_or(&Self::DEFAULT_VERSION),
+                *distributed_db_versions
+                    .iter()
+                    .max()
+                    .unwrap_or(&Self::DEFAULT_VERSION),
                 *p2p_versions.iter().max().unwrap_or(&Self::DEFAULT_VERSION),
             ),
             distributed_db_versions,
@@ -96,26 +112,42 @@ impl ShellCompatibilityVersion {
 
     /// Returns Ok(version), if version is compatible, returns calculated compatible version for later use (NetworkVersion can contains feature support).
     /// Return Err(NackMotive), if something is wrong
-    pub fn choose_compatible_version(&self, requested: &NetworkVersion) -> Result<NetworkVersion, NackMotive> {
+    pub fn choose_compatible_version(
+        &self,
+        requested: &NetworkVersion,
+    ) -> Result<NetworkVersion, NackMotive> {
         if !self.version.chain_name().eq(requested.chain_name()) {
             return Err(NackMotive::UnknownChainName);
         }
 
-        Ok(
-            NetworkVersion::new(
-                self.version.chain_name().clone(),
-                Self::select_compatible_version(&self.distributed_db_versions, requested.distributed_db_version(), NackMotive::DeprecatedDistributedDbVersion)?,
-                Self::select_compatible_version(&self.p2p_versions, requested.p2p_version(), NackMotive::DeprecatedP2pVersion)?,
-            )
-        )
+        Ok(NetworkVersion::new(
+            self.version.chain_name().clone(),
+            Self::select_compatible_version(
+                &self.distributed_db_versions,
+                requested.distributed_db_version(),
+                NackMotive::DeprecatedDistributedDbVersion,
+            )?,
+            Self::select_compatible_version(
+                &self.p2p_versions,
+                requested.p2p_version(),
+                NackMotive::DeprecatedP2pVersion,
+            )?,
+        ))
     }
 
     pub fn to_network_version(&self) -> NetworkVersion {
         self.version.clone()
     }
 
-    fn select_compatible_version(supported_versions: &Vec<u16>, requested_version: &u16, nack_motive: NackMotive) -> Result<u16, NackMotive> {
-        let best_supported_version = supported_versions.iter().max().unwrap_or(&Self::DEFAULT_VERSION);
+    fn select_compatible_version(
+        supported_versions: &Vec<u16>,
+        requested_version: &u16,
+        nack_motive: NackMotive,
+    ) -> Result<u16, NackMotive> {
+        let best_supported_version = supported_versions
+            .iter()
+            .max()
+            .unwrap_or(&Self::DEFAULT_VERSION);
         if best_supported_version <= requested_version {
             return Ok(*best_supported_version);
         }
@@ -137,15 +169,37 @@ mod tests {
 
     #[test]
     fn test_shell_version() {
-        let tested = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![3, 4], vec![1, 2]);
+        let tested =
+            ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![3, 4], vec![1, 2]);
 
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_XYZ".to_string(), 0, 0)), Err(NackMotive::UnknownChainName)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0)), Err(NackMotive::DeprecatedDistributedDbVersion)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 1, 0)), Err(NackMotive::DeprecatedDistributedDbVersion)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 2, 0)), Err(NackMotive::DeprecatedDistributedDbVersion)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 3, 0)), Err(NackMotive::DeprecatedP2pVersion)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 4, 0)), Err(NackMotive::DeprecatedP2pVersion)));
-        assert!(matches!(tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 5, 0)), Err(NackMotive::DeprecatedP2pVersion)));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_XYZ".to_string(), 0, 0)),
+            Err(NackMotive::UnknownChainName)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 0, 0)),
+            Err(NackMotive::DeprecatedDistributedDbVersion)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 1, 0)),
+            Err(NackMotive::DeprecatedDistributedDbVersion)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 2, 0)),
+            Err(NackMotive::DeprecatedDistributedDbVersion)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 3, 0)),
+            Err(NackMotive::DeprecatedP2pVersion)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 4, 0)),
+            Err(NackMotive::DeprecatedP2pVersion)
+        ));
+        assert!(matches!(
+            tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 5, 0)),
+            Err(NackMotive::DeprecatedP2pVersion)
+        ));
 
         assert_eq!(
             tested.choose_compatible_version(&NetworkVersion::new("TEST_CHAIN".to_string(), 3, 1)),
@@ -185,6 +239,9 @@ mod tests {
             Ok(NetworkVersion::new("TEST_CHAIN".to_string(), 4, 2))
         );
 
-        assert_eq!(tested.to_network_version(), NetworkVersion::new("TEST_CHAIN".to_string(), 4, 2));
+        assert_eq!(
+            tested.to_network_version(),
+            NetworkVersion::new("TEST_CHAIN".to_string(), 4, 2)
+        );
     }
 }

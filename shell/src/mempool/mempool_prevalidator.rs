@@ -158,14 +158,14 @@ impl MempoolPrevalidator {
                 // add NewHead to queue
                 self.validator_event_sender
                     .lock()
-                    .unwrap()
+                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
                     .send(Event::NewHead(head.into(), block.header.clone()))?;
             }
             ShellChannelMsg::MempoolOperationReceived(operation) => {
                 // add operation to queue for validation
                 self.validator_event_sender
                     .lock()
-                    .unwrap()
+                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
                     .send(Event::ValidateOperation(
                         operation.operation_hash.clone(),
                         operation.operation_type,
@@ -175,7 +175,7 @@ impl MempoolPrevalidator {
             ShellChannelMsg::ShuttingDown(_) => {
                 self.validator_event_sender
                     .lock()
-                    .unwrap()
+                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
                     .send(Event::ShuttingDown)?;
             }
             _ => (),

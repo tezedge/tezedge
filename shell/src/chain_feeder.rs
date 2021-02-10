@@ -33,10 +33,13 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::chain_manager::{ChainManagerRef, ProcessValidatedBlock};
-use crate::peer_branch_bootstrapper::{BlockApplied, PeerBranchBootstrapperRef};
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::stats::BlockValidationTimer;
+use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValidatedBlock};
+use crate::chain_feeder_channel::{
+    ChainFeederChannelMsg, ChainFeederChannelRef, ChainFeederChannelTopic,
+};
+use crate::peer_branch_bootstrapper::{BlockAlreadyApplied, PeerBranchBootstrapperRef};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use crate::stats::apply_block_stats::BlockValidationTimer;
 use crate::subscription::subscribe_to_shell_shutdown;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 use crate::validation;
@@ -50,7 +53,6 @@ pub struct ApplyCompletedBlock {
     block_hash: BlockHash,
     chain_id: Arc<ChainId>,
     roundtrip_timer: Arc<Instant>,
-    chain_manager: Arc<ChainManagerRef>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
@@ -61,7 +63,6 @@ impl ApplyCompletedBlock {
         block_hash: BlockHash,
         chain_id: Arc<ChainId>,
         result_callback: Option<CondvarResult<(), failure::Error>>,
-        chain_manager: Arc<ChainManagerRef>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
         roundtrip_timer: Instant,
     ) -> Self {
@@ -69,7 +70,6 @@ impl ApplyCompletedBlock {
             block_hash,
             chain_id,
             result_callback,
-            chain_manager,
             bootstrapper,
             roundtrip_timer: Arc::new(roundtrip_timer),
         }
@@ -81,7 +81,6 @@ impl ApplyCompletedBlock {
 pub struct CheckBlocksForApply {
     blocks: Vec<BlockHash>,
     chain_id: Arc<ChainId>,
-    chain_manager: Arc<ChainManagerRef>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
 
     on_non_notify_with: Option<Arc<BlockHash>>,
@@ -92,7 +91,6 @@ impl CheckBlocksForApply {
     pub fn new(
         blocks: Vec<BlockHash>,
         chain_id: Arc<ChainId>,
-        chain_manager: Arc<ChainManagerRef>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
         on_non_notify_with: Option<Arc<BlockHash>>,
         roundtrip_timer: Instant,
@@ -100,7 +98,6 @@ impl CheckBlocksForApply {
         Self {
             chain_id,
             blocks,
-            chain_manager,
             roundtrip_timer,
             bootstrapper,
             on_non_notify_with,
@@ -140,6 +137,7 @@ enum Event {
 pub struct ChainFeeder {
     /// Just for subscribing to shell shutdown channel
     shell_channel: ShellChannelRef,
+    chain_feeder_channel: ChainFeederChannelRef,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -172,7 +170,9 @@ impl ChainFeeder {
     /// If the block can be applied, it is sent via IPC to the `protocol_runner`, where it is then applied by calling a tezos ffi.
     pub fn actor(
         sys: &impl ActorRefFactory,
+        chain_current_head_manager: ChainCurrentHeadManagerRef,
         shell_channel: ShellChannelRef,
+        chain_feeder_channel: ChainFeederChannelRef,
         persistent_storage: PersistentStorage,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
@@ -182,7 +182,8 @@ impl ChainFeeder {
         // spawn inner thread
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
-                shell_channel.clone(),
+                chain_current_head_manager,
+                chain_feeder_channel.clone(),
                 persistent_storage.clone(),
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
@@ -195,6 +196,7 @@ impl ChainFeeder {
             ChainFeeder::name(),
             Props::new_args((
                 shell_channel,
+                chain_feeder_channel,
                 persistent_storage,
                 Arc::new(Mutex::new(block_applier_event_sender)),
                 block_applier_run,
@@ -238,7 +240,6 @@ impl ChainFeeder {
                             CheckBlocksForApply::new(
                                 successors,
                                 msg.chain_id,
-                                msg.chain_manager,
                                 msg.bootstrapper,
                                 Some(Arc::new(msg.block_hash.clone())),
                                 Instant::now(),
@@ -249,16 +250,8 @@ impl ChainFeeder {
                         // TODO: TE-369 - refactor pinging bootstrapper
                         if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
                             bootstrapper.tell(
-                                BlockApplied {
+                                BlockAlreadyApplied {
                                     block_hash: Arc::new(msg.block_hash),
-                                },
-                                None,
-                            );
-                        } else {
-                            self.shell_channel.tell(
-                                Publish {
-                                    msg: ShellChannelMsg::BlockApplied(Arc::new(msg.block_hash)),
-                                    topic: ShellChannelTopic::ShellBlockApplied.into(),
                                 },
                                 None,
                             );
@@ -363,7 +356,6 @@ impl ChainFeeder {
                             CheckBlocksForApply::new(
                                 successors,
                                 msg.chain_id.clone(),
-                                msg.chain_manager.clone(),
                                 msg.bootstrapper.clone(),
                                 Some(Arc::new(block.clone())),
                                 Instant::now(),
@@ -376,16 +368,8 @@ impl ChainFeeder {
                         // if we have sender, we send him direct info
                         if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
                             bootstrapper.tell(
-                                BlockApplied {
+                                BlockAlreadyApplied {
                                     block_hash: Arc::new(block.clone()),
-                                },
-                                None,
-                            );
-                        } else {
-                            self.shell_channel.tell(
-                                Publish {
-                                    msg: ShellChannelMsg::BlockApplied(Arc::new(block.clone())),
-                                    topic: ShellChannelTopic::ShellBlockApplied.into(),
                                 },
                                 None,
                             );
@@ -406,7 +390,6 @@ impl ChainFeeder {
                             block.clone(),
                             msg.chain_id.clone(),
                             None,
-                            msg.chain_manager.clone(),
                             msg.bootstrapper.clone(),
                             Instant::now(),
                         ),
@@ -420,18 +403,13 @@ impl ChainFeeder {
         if notify_on_non_processed {
             if let Some(block) = msg.on_non_notify_with {
                 // TODO: TE-369 - refactor pinging bootstrapper
-                // if we have sender, we send him direct info
-                if let Some(bootstrapper) = msg.bootstrapper.as_ref() {
-                    bootstrapper.tell(BlockApplied { block_hash: block }, None);
-                } else {
-                    self.shell_channel.tell(
-                        Publish {
-                            msg: ShellChannelMsg::BlockApplied(block),
-                            topic: ShellChannelTopic::ShellBlockApplied.into(),
-                        },
-                        None,
-                    );
-                }
+                self.chain_feeder_channel.tell(
+                    Publish {
+                        msg: ChainFeederChannelMsg::BlockApplied(block),
+                        topic: ChainFeederChannelTopic::BlockApplied.into(),
+                    },
+                    None,
+                );
             }
         }
 
@@ -442,6 +420,7 @@ impl ChainFeeder {
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
+        ChainFeederChannelRef,
         PersistentStorage,
         Arc<Mutex<QueueSender<Event>>>,
         Arc<AtomicBool>,
@@ -451,12 +430,14 @@ impl
     fn create_args(
         (
             shell_channel,
+            chain_feeder_channel,
             persistent_storage,
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
         ): (
             ShellChannelRef,
+            ChainFeederChannelRef,
             PersistentStorage,
             Arc<Mutex<QueueSender<Event>>>,
             Arc<AtomicBool>,
@@ -465,6 +446,7 @@ impl
     ) -> Self {
         ChainFeeder {
             shell_channel,
+            chain_feeder_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
@@ -512,7 +494,7 @@ impl Receive<ApplyCompletedBlock> for ChainFeeder {
         if !self.block_applier_run.load(Ordering::Acquire) {
             return;
         }
-        match self.apply_completed_block(msg, ctx.myself().clone(), &ctx.system.log()) {
+        match self.apply_completed_block(msg, ctx.myself(), &ctx.system.log()) {
             Ok(_) => (),
             Err(e) => {
                 warn!(ctx.system.log(), "Failed to apply completed block"; "reason" => format!("{:?}", e))
@@ -529,7 +511,7 @@ impl Receive<CheckBlocksForApply> for ChainFeeder {
             return;
         }
 
-        match self.check_blocks_for_apply(msg, ctx.myself().clone(), &ctx.system.log()) {
+        match self.check_blocks_for_apply(msg, ctx.myself(), &ctx.system.log()) {
             Ok(_) => (),
             Err(e) => {
                 warn!(ctx.system.log(), "Failed to check blocks for apply"; "reason" => format!("{:?}", e))
@@ -579,7 +561,9 @@ impl From<ProtocolServiceError> for FeedChainError {
 
 #[derive(Clone)]
 pub(crate) struct BlockApplierThreadSpawner {
-    shell_channel: ShellChannelRef,
+    /// actor for managing current head
+    chain_current_head_manager: ChainCurrentHeadManagerRef,
+    chain_feeder_channel: ChainFeederChannelRef,
     persistent_storage: PersistentStorage,
     init_storage_data: Arc<StorageInitInfo>,
     tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -589,7 +573,8 @@ pub(crate) struct BlockApplierThreadSpawner {
 
 impl BlockApplierThreadSpawner {
     pub(crate) fn new(
-        shell_channel: ShellChannelRef,
+        chain_current_head_manager: ChainCurrentHeadManagerRef,
+        chain_feeder_channel: ChainFeederChannelRef,
         persistent_storage: PersistentStorage,
         init_storage_data: Arc<StorageInitInfo>,
         tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -597,7 +582,8 @@ impl BlockApplierThreadSpawner {
         log: Logger,
     ) -> Self {
         Self {
-            shell_channel,
+            chain_current_head_manager,
+            chain_feeder_channel,
             persistent_storage,
             tezos_writeable_api,
             init_storage_data,
@@ -619,7 +605,8 @@ impl BlockApplierThreadSpawner {
         let block_applier_run = Arc::new(AtomicBool::new(false));
 
         let block_applier_thread = {
-            let shell_channel = self.shell_channel.clone();
+            let chain_feeder_channel = self.chain_feeder_channel.clone();
+            let chain_current_head_manager = self.chain_current_head_manager.clone();
             let persistent_storage = self.persistent_storage.clone();
             let tezos_writeable_api = self.tezos_writeable_api.clone();
             let init_storage_data = self.init_storage_data.clone();
@@ -627,7 +614,6 @@ impl BlockApplierThreadSpawner {
             let log = self.log.clone();
             let block_applier_run = block_applier_run.clone();
 
-            // TOOD: meno
             thread::spawn(move || -> Result<(), Error> {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
@@ -647,7 +633,8 @@ impl BlockApplierThreadSpawner {
                             &tezos_env,
                             &init_storage_data,
                             &block_applier_run,
-                            &shell_channel,
+                            &chain_feeder_channel,
+                            &chain_current_head_manager,
                             &block_storage,
                             &block_meta_storage,
                             &chain_meta_storage,
@@ -690,7 +677,8 @@ fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
     apply_block_run: &AtomicBool,
-    shell_channel: &ShellChannelRef,
+    chain_feeder_channel: &ChainFeederChannelRef,
+    chain_current_head_manager: &ChainCurrentHeadManagerRef,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
@@ -703,7 +691,7 @@ fn feed_chain_to_protocol(
     // at first we initialize protocol runtime and ffi context
     initialize_protocol_context(
         &apply_block_run,
-        &shell_channel,
+        chain_current_head_manager,
         block_storage,
         block_meta_storage,
         chain_meta_storage,
@@ -734,7 +722,6 @@ fn feed_chain_to_protocol(
                         ApplyCompletedBlock {
                             block_hash,
                             result_callback,
-                            chain_manager,
                             bootstrapper,
                             roundtrip_timer,
                             chain_id,
@@ -744,7 +731,7 @@ fn feed_chain_to_protocol(
                 }) => {
                     let block_hash = Arc::new(block_hash);
                     let validated_at_timer = Instant::now();
-                    debug!(log, "Applying block"; "block_header_hash" => block_hash.to_base58_check());
+                    debug!(log, "Applying block"; "block_header_hash" => block_hash.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
 
                     // check if block is already applied (not necessery here)
                     let load_metadata_timer = Instant::now();
@@ -752,7 +739,7 @@ fn feed_chain_to_protocol(
                         Some(meta) => {
                             if meta.is_applied() {
                                 // block already applied - ok, doing nothing
-                                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
                                 if let Err(e) = dispatch_condvar_result(
                                     result_callback,
                                     || Err(format_err!("Block is already applied")),
@@ -765,16 +752,8 @@ fn feed_chain_to_protocol(
                                 // if we have sender, we send him direct info
                                 if let Some(bootstrapper) = bootstrapper.as_ref() {
                                     bootstrapper.tell(
-                                        BlockApplied {
+                                        BlockAlreadyApplied {
                                             block_hash: block_hash.clone(),
-                                        },
-                                        None,
-                                    );
-                                } else {
-                                    shell_channel.tell(
-                                        Publish {
-                                            msg: ShellChannelMsg::BlockApplied(block_hash.clone()),
-                                            topic: ShellChannelTopic::ShellBlockApplied.into(),
                                         },
                                         None,
                                     );
@@ -785,7 +764,7 @@ fn feed_chain_to_protocol(
                             meta
                         }
                         None => {
-                            warn!(log, "Block metadata not found (feeder)"; "block" => block_hash.to_base58_check());
+                            warn!(log, "Block metadata not found (feeder)"; "block" => block_hash.to_base58_check(), "chain_id" => chain_id.to_base58_check(),);
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || Err(format_err!("Block metadata not found")),
@@ -805,6 +784,7 @@ fn feed_chain_to_protocol(
                             let protocol_call_elapsed = protocol_call_timer.elapsed();
                             debug!(log, "Block was applied";
                                 "block_header_hash" => block_hash.to_base58_check(),
+                                "chain_id" => chain_id.to_base58_check(),
                                 "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                 "validation_result_message" => &apply_block_result.validation_result_message,
                                 "sender" => sender_to_string(&bootstrapper));
@@ -817,6 +797,7 @@ fn feed_chain_to_protocol(
                                 error!(log,
                                       "Failed to wait for context";
                                       "block" => block_hash.to_base58_check(),
+                                      "chain_id" => chain_id.to_base58_check(),
                                       "context" => apply_block_result.context_hash.to_base58_check(),
                                       "reason" => format!("{}", e)
                                 );
@@ -838,6 +819,7 @@ fn feed_chain_to_protocol(
                             if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
                                 info!(log, "Block was applied with long context processing";
                                            "block_header_hash" => block_hash.to_base58_check(),
+                                           "chain_id" => chain_id.to_base58_check(),
                                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
                                            "sender" => sender_to_string(&bootstrapper));
@@ -881,7 +863,7 @@ fn feed_chain_to_protocol(
                             };
                             let store_result_elapsed = store_result_timer.elapsed();
 
-                            // notify chain_manager, which sent request
+                            // notify others
                             if apply_block_run.load(Ordering::Acquire) {
                                 // now we want to parallelize and speed-up
 
@@ -891,8 +873,7 @@ fn feed_chain_to_protocol(
                                     chain_feeder.tell(
                                         CheckBlocksForApply::new(
                                             successors,
-                                            chain_id,
-                                            chain_manager.clone(),
+                                            chain_id.clone(),
                                             bootstrapper.clone(),
                                             Some(block_hash.clone()),
                                             Instant::now(),
@@ -901,31 +882,22 @@ fn feed_chain_to_protocol(
                                     );
                                 } else {
                                     // TODO: TE-369 - refactor pinging bootstrapper
-                                    // if we have sender, we send him direct info
-                                    if let Some(bootstrapper) = bootstrapper.as_ref() {
-                                        bootstrapper.tell(
-                                            BlockApplied {
-                                                block_hash: block_hash.clone(),
-                                            },
-                                            None,
-                                        );
-                                    } else {
-                                        shell_channel.tell(
-                                            Publish {
-                                                msg: ShellChannelMsg::BlockApplied(
-                                                    block_hash.clone(),
-                                                ),
-                                                topic: ShellChannelTopic::ShellBlockApplied.into(),
-                                            },
-                                            None,
-                                        );
-                                    }
+                                    chain_feeder_channel.tell(
+                                        Publish {
+                                            msg: ChainFeederChannelMsg::BlockApplied(
+                                                block_hash.clone(),
+                                            ),
+                                            topic: ChainFeederChannelTopic::BlockApplied.into(),
+                                        },
+                                        None,
+                                    );
                                 }
 
-                                // 2. ping chain_managers
-                                chain_manager.tell(
+                                // 2. ping chain current head manager
+                                chain_current_head_manager.tell(
                                     ProcessValidatedBlock::new(
                                         block_hash,
+                                        chain_id,
                                         roundtrip_timer,
                                         Arc::new(BlockValidationTimer::new(
                                             validated_at_timer.elapsed(),
@@ -969,7 +941,7 @@ fn feed_chain_to_protocol(
 /// it ensures correct initialization of storage with genesis and his data.
 pub(crate) fn initialize_protocol_context(
     apply_block_run: &AtomicBool,
-    shell_channel: &ShellChannelRef,
+    chain_current_head_manager: &ChainCurrentHeadManagerRef,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
@@ -998,7 +970,7 @@ pub(crate) fn initialize_protocol_context(
     let context_init_info = protocol_controller
         .init_protocol_for_write(need_commit_genesis, &init_storage_data.patch_context)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
-    info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info));
+    info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info), "need_commit_genesis" => need_commit_genesis);
 
     if need_commit_genesis {
         // if we needed commit_genesis, it means, that it is apply of 0 block,
@@ -1046,23 +1018,19 @@ pub(crate) fn initialize_protocol_context(
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {
                 // notify others that the block successfully applied
-                shell_channel.tell(
-                    Publish {
-                        msg: ShellChannelMsg::ProcessValidatedGenesisBlock(
-                            ProcessValidatedBlock::new(
-                                Arc::new(genesis_with_hash.hash),
-                                Arc::new(roundtrip_timer),
-                                Arc::new(BlockValidationTimer::new(
-                                    validated_at_timer.elapsed(),
-                                    load_metadata_elapsed,
-                                    protocol_call_elapsed,
-                                    context_wait_elapsed,
-                                    store_result_elapsed,
-                                )),
-                            ),
-                        ),
-                        topic: ShellChannelTopic::ShellCommands.into(),
-                    },
+                chain_current_head_manager.tell(
+                    ProcessValidatedBlock::new(
+                        Arc::new(genesis_with_hash.hash),
+                        Arc::new(init_storage_data.chain_id.clone()),
+                        Arc::new(roundtrip_timer),
+                        Arc::new(BlockValidationTimer::new(
+                            validated_at_timer.elapsed(),
+                            load_metadata_elapsed,
+                            protocol_call_elapsed,
+                            context_wait_elapsed,
+                            store_result_elapsed,
+                        )),
+                    ),
                     None,
                 );
             }

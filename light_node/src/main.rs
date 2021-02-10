@@ -17,13 +17,18 @@ use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
+use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::ChainFeeder;
+use shell::chain_feeder_channel::ChainFeederChannel;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::state::head_state::init_current_head_state;
+use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use storage::persistent::DbConfiguration;
 use storage::persistent::{open_cl, open_kv, CommitLogSchema, PersistentStorage};
 use storage::{
@@ -36,6 +41,7 @@ use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
+use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
@@ -123,7 +129,7 @@ fn create_tezos_readonly_api_pool(
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
-) -> TezosApiConnectionPool {
+) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_with_readonly_context(
         String::from(pool_name),
         pool_cfg,
@@ -152,7 +158,7 @@ fn create_tezos_without_context_api_pool(
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
-) -> TezosApiConnectionPool {
+) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
         String::from(pool_name),
         pool_cfg,
@@ -180,7 +186,7 @@ fn create_tezos_writeable_api_pool(
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
-) -> TezosApiConnectionPool {
+) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
         String::from("tezos_writeable_api_pool"),
         TezosApiConnectionPoolConfiguration {
@@ -230,41 +236,65 @@ fn block_on_actors(
     info!(log, "Initializing protocol runners... (3/4)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
-    let tezos_readonly_api_pool = Arc::new(create_tezos_readonly_api_pool(
-        "tezos_readonly_api_pool",
-        env.ffi.tezos_readonly_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ));
-    let tezos_readonly_prevalidation_api_pool = Arc::new(create_tezos_readonly_api_pool(
-        "tezos_readonly_prevalidation_api",
-        env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ));
-    let tezos_without_context_api_pool = Arc::new(create_tezos_without_context_api_pool(
-        "tezos_without_context_api_pool",
-        env.ffi.tezos_without_context_api_pool.clone(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ));
+    let tezos_readonly_api_pool = Arc::new(
+        create_tezos_readonly_api_pool(
+            "tezos_readonly_api_pool",
+            env.ffi.tezos_readonly_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize read-only API pool"),
+    );
+    let tezos_readonly_prevalidation_api_pool = Arc::new(
+        create_tezos_readonly_api_pool(
+            "tezos_readonly_prevalidation_api",
+            env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize read-only prevalidation API pool"),
+    );
+    let tezos_without_context_api_pool = Arc::new(
+        create_tezos_without_context_api_pool(
+            "tezos_without_context_api_pool",
+            env.ffi.tezos_without_context_api_pool.clone(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize API pool without context"),
+    );
 
     // pool and event server dedicated for applying blocks to chain
     let context_actions_event_server =
         IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
-    let tezos_writeable_api_pool = Arc::new(create_tezos_writeable_api_pool(
-        context_actions_event_server.server_path(),
-        &env,
-        tezos_env.clone(),
-        log.clone(),
-    ));
+    let tezos_writeable_api_pool = Arc::new(
+        create_tezos_writeable_api_pool(
+            context_actions_event_server.server_path(),
+            &env,
+            tezos_env.clone(),
+            log.clone(),
+        )
+        .expect("Failed to initialize writable API pool"),
+    );
     info!(log, "Protocol runners initialized");
 
     info!(log, "Initializing actors... (4/4)");
+
+    // create partial (global) states for sharing between threads/actors
+    let local_current_head_state = init_current_head_state();
+    let remote_current_head_state = init_current_head_state();
     let current_mempool_state_storage = init_mempool_state_storage();
+    let bootstrap_state = init_synchronization_bootstrap_state_storage(
+        env.p2p
+            .peer_threshold
+            .num_of_peers_for_bootstrap_threshold(),
+    );
+    let apply_block_stats = init_empty_apply_block_stats();
+
+    // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
     // create riker's actor system
@@ -277,19 +307,36 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let chain_feeder_channel =
+        ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextAction, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
+        shell_channel.clone(),
         &persistent_storage,
         context_actions_event_server,
         log.clone(),
         env.storage.store_context_actions,
     )
     .expect("Failed to create context event listener");
-    let block_applier = ChainFeeder::actor(
+    let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
+        persistent_storage.clone(),
+        init_storage_data.clone(),
+        local_current_head_state.clone(),
+        remote_current_head_state.clone(),
+        current_mempool_state_storage.clone(),
+        bootstrap_state.clone(),
+        apply_block_stats.clone(),
+    )
+    .expect("Failed to create chain current head manager");
+    let block_applier = ChainFeeder::actor(
+        &actor_system,
+        chain_current_head_manager,
+        shell_channel.clone(),
+        chain_feeder_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
@@ -302,13 +349,17 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
+        chain_feeder_channel,
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
         is_sandbox,
+        local_current_head_state,
+        remote_current_head_state,
         current_mempool_state_storage.clone(),
+        bootstrap_state,
+        apply_block_stats,
         env.p2p.disable_mempool,
-        &env.p2p.peer_threshold,
         identity.clone(),
     )
     .expect("Failed to create chain manager");

@@ -1,20 +1,22 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fs::File;
+use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
+use std::string::FromUtf8Error;
 
 use failure::Fail;
+use merge::Merge;
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use lazy_static::lazy_static;
 
 pub type MemoryStatsResult<T> = std::result::Result<T, MemoryStatsError>;
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug, Default)]
 pub struct LinuxData {
     page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
     size: String,     // total program size
@@ -31,6 +33,15 @@ pub struct DarwinOsData {
     page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
     mem: f64,         // percentage of real memory being used by the process in KB
     resident: String, // resident set size
+}
+
+#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq)]
+pub struct ProcessMemoryStats {
+    #[merge(strategy = merge::num::saturating_add)]
+    virtual_mem: usize,
+
+    #[merge(strategy = merge::num::saturating_add)]
+    resident_mem: usize,
 }
 
 #[derive(Serialize, PartialEq, Clone, Debug)]
@@ -60,6 +71,14 @@ pub enum MemoryStatsError {
     ParsingData,
     #[fail(display = "not supported OS")]
     NotSupportedOs,
+    #[fail(display = "Utf8 error: {}", _0)]
+    Uft8Error(FromUtf8Error),
+}
+
+impl From<FromUtf8Error> for MemoryStatsError {
+    fn from(source: FromUtf8Error) -> Self {
+        Self::Uft8Error(source)
+    }
 }
 
 lazy_static! {
@@ -67,6 +86,7 @@ lazy_static! {
     static ref MAC_DATA: Regex = Regex::new(r"(?P<mem>[0-9.]+)\s+(?P<resident>\d+)").expect("Invalid regex");
 }
 
+#[derive(Default)]
 pub struct Memory {
     pub pid: i32,
     pub page_size: usize,
@@ -82,10 +102,20 @@ impl Memory {
 
     pub fn get_memory_stats(&self) -> MemoryStatsResult<MemoryData> {
         if cfg!(target_os = "linux") {
-            self.get_linux_data(format!("/proc/{}/statm", self.pid))
+            //self.get_linux_data(format!("/proc/{}/statm", self.pid))
+            self.parse_linux_statm(self.read_linux_file(format!("/proc/{}/statm", self.pid))?)
         } else if cfg!(target_os = "macos") || cfg!(target_os = "ios") {
             self.get_mac_data()
         } else {
+            Err(MemoryStatsError::NotSupportedOs)
+        }
+    }
+
+    pub fn get_memory_stats_protocol_runners(&self) -> MemoryStatsResult<Vec<MemoryData>> {
+        if cfg!(target_os = "linux") {
+            self.get_linux_protocol_runner_stats()
+        } else {
+            // TODO: TE-394 implement for macOS
             Err(MemoryStatsError::NotSupportedOs)
         }
     }
@@ -96,8 +126,10 @@ impl Memory {
         let output = Command::new("ps")
             .args(&["-o", "%mem,rss", "-p", &self.pid.to_string()])
             .output()
-            .expect("failed to execute sh command");
-        let out_str = String::from_utf8(output.stdout).unwrap();
+            .map_err(|e| {
+                MemoryStatsError::IOError(format!("failed to execute ps command: {}", e))
+            })?;
+        let out_str = String::from_utf8(output.stdout)?;
         self.parse_mac_data(out_str)
     }
 
@@ -105,12 +137,58 @@ impl Memory {
         if let Some(captures) = MAC_DATA.captures(&out) {
             let data = DarwinOsData {
                 page_size: self.page_size,
-                mem: captures["mem"].parse().unwrap(),
+                mem: captures["mem"]
+                    .parse()
+                    .map_err(|_| MemoryStatsError::ParsingData)?,
                 resident: captures["resident"].to_string(),
             };
             Ok(MemoryData::from(data))
         } else {
             Err(MemoryStatsError::ParsingData)
+        }
+    }
+
+    fn get_protocol_runner_pids(&self) -> MemoryStatsResult<Vec<i32>> {
+        let paths = match read_dir(format!("/proc/{}/task/", self.pid)) {
+            Ok(paths) => paths,
+            Err(e) => return Err(MemoryStatsError::IOError(format!("{}", e))),
+        };
+
+        let mut ret = Vec::new();
+
+        for path in paths {
+            match path {
+                Ok(path) => {
+                    if let Some(path) = path.path().to_str() {
+                        let file_str = self.read_linux_file(format!("{}/children", path))?;
+                        if !file_str.is_empty() {
+                            file_str
+                                .split(' ')
+                                .filter(|s| !s.is_empty())
+                                .for_each(|s| ret.push(s.parse::<i32>().unwrap()))
+                        }
+                    }
+                }
+                Err(e) => return Err(MemoryStatsError::IOError(format!("{}", e))),
+            }
+        }
+        Ok(ret)
+    }
+
+    fn get_linux_protocol_runner_stats(&self) -> MemoryStatsResult<Vec<MemoryData>> {
+        if cfg!(target_os = "linux") {
+            self.get_protocol_runner_pids()?
+                .iter()
+                .map(|pid| {
+                    self.parse_linux_statm(
+                        self.read_linux_file(format!("/proc/{}/statm", pid))
+                            .unwrap(),
+                    )
+                })
+                .collect()
+        } else {
+            // TODO: TE-394 implement for macOS
+            Err(MemoryStatsError::NotSupportedOs)
         }
     }
 
@@ -136,7 +214,7 @@ impl Memory {
     }
 
     /// read lines of given file path and parse linux memory data
-    fn get_linux_data(&self, filepath: String) -> MemoryStatsResult<MemoryData> {
+    fn read_linux_file(&self, filepath: String) -> Result<String, MemoryStatsError> {
         let path = Path::new(&filepath);
         let display = path.display();
 
@@ -158,7 +236,7 @@ impl Memory {
                 "couldn't read {}: {}",
                 display, e
             ))),
-            Ok(_) => self.parse_linux_statm(s),
+            Ok(_) => Ok(s),
         }
     }
 }

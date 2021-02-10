@@ -29,15 +29,15 @@ pub enum BinaryReaderError {
     /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag { tag: u16 },
-    /// Enclosing level for recursive type value is too big
+    /// Encoding boundary constraint violation
     #[fail(
-        display = "Recursive data depth is too big for {}, max is {}",
-        name, max
+        display = "Encoded data {} exceeded its size boundary: {}",
+        name, boundary
     )]
-    RecursiveDataOverflow {
-        name: String,
-        max: crate::types::RecursiveDataSize,
-    },
+    EncodingBoundaryExceeded { name: String, boundary: usize },
+    /// Arithmetic overflow
+    #[fail(display = "Arithmetic overflow while encoding {:?}", encoding)]
+    ArithmeticOverflow { encoding: &'static str },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -210,15 +210,55 @@ impl BinaryReader {
                 let str_buf = str_buf.into_vec();
                 Ok(Value::String(String::from_utf8(str_buf)?))
             }
+            Encoding::BoundedString(bytes_max) => {
+                let bytes_sz = safe!(buf, get_u32, u32) as usize;
+                if bytes_sz > *bytes_max {
+                    Err(BinaryReaderError::EncodingBoundaryExceeded {
+                        name: "Encoding::BoundedString".to_string(),
+                        boundary: *bytes_max,
+                    })
+                } else {
+                    let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
+                    safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
+                    let str_buf = str_buf.into_vec();
+                    Ok(Value::String(String::from_utf8(str_buf)?))
+                }
+            }
             Encoding::Enum => Ok(Value::Enum(None, Some(u32::from(safe!(buf, get_u8, u8))))),
             Encoding::Dynamic(dynamic_encoding) => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
                 let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                 self.decode_value(&mut buf_slice, dynamic_encoding)
             }
+            Encoding::BoundedDynamic(max, dynamic_encoding) => {
+                let bytes_sz = safe!(buf, get_u32, u32) as usize;
+                if bytes_sz > *max {
+                    Err(BinaryReaderError::EncodingBoundaryExceeded {
+                        name: "Encoding::BoundedDynamic".to_string(),
+                        boundary: *max,
+                    })
+                } else {
+                    let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                    self.decode_value(&mut buf_slice, dynamic_encoding)
+                }
+            }
             Encoding::Sized(sized_size, sized_encoding) => {
                 let mut buf_slice = safe!(buf, *sized_size, buf.take(*sized_size));
                 self.decode_value(&mut buf_slice, sized_encoding)
+            }
+            Encoding::Bounded(max, inner_encoding) => {
+                let upper = std::cmp::min(*max, buf.remaining());
+                let mut buf_slice = safe!(buf, upper, buf.take(upper));
+                let res = self.decode_value(&mut buf_slice, inner_encoding);
+                match res {
+                    Err(BinaryReaderError::Underflow { bytes: _ }) => {
+                        Err(BinaryReaderError::EncodingBoundaryExceeded {
+                            name: "Encoding::Bounded".to_string(),
+                            boundary: *max,
+                        })
+                    }
+                    r => r,
+                }
             }
             Encoding::Greedy(un_sized_encoding) => {
                 let bytes_sz = buf.remaining();
@@ -253,6 +293,24 @@ impl BinaryReader {
 
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
+                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                }
+
+                Ok(Value::List(values))
+            }
+            Encoding::BoundedList(max, encoding_inner) => {
+                let bytes_sz = buf.remaining();
+
+                let mut buf_slice = buf.take(bytes_sz);
+
+                let mut values = vec![];
+                while buf_slice.remaining() > 0 {
+                    if values.len() >= *max {
+                        return Err(BinaryReaderError::EncodingBoundaryExceeded {
+                            name: "Encoding::List".to_string(),
+                            boundary: *max,
+                        });
+                    }
                     values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
                 }
 

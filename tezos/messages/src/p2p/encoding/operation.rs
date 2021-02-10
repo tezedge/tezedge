@@ -13,6 +13,8 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
+
 #[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
 pub struct OperationMessage {
     #[get = "pub"]
@@ -80,7 +82,7 @@ has_encoding!(Operation, OPERATION_ENCODING, {
             "data",
             Encoding::Split(Arc::new(|schema_type| match schema_type {
                 SchemaType::Json => Encoding::Bytes,
-                SchemaType::Binary => Encoding::list(Encoding::Uint8),
+                SchemaType::Binary => Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8),
             })),
         ),
     ])
@@ -125,6 +127,9 @@ cached_data!(GetOperationsMessage, body);
 has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
     Encoding::Obj(vec![Field::new(
         "get_operations",
-        Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))),
+        Encoding::dynamic(Encoding::bounded_list(
+            GET_OPERATIONS_MAX_LENGTH,
+            Encoding::Hash(HashType::OperationHash),
+        )),
     )])
 });

@@ -7,6 +7,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use failure::Fail;
 use getset::{CopyGetters, Getters};
 use r2d2::{CustomizeConnection, Pool};
 use slog::{Level, Logger};
@@ -52,6 +53,20 @@ pub struct TezosApiConnectionPool {
     pub pool_name: String,
 }
 
+/// Errors for connection pool
+#[derive(Debug, Fail)]
+pub enum TezosApiConnectionPoolError {
+    /// Initialization error
+    #[fail(display = "Initialization error: {:?}", source)]
+    InitializationError { source: r2d2::Error },
+}
+
+impl From<r2d2::Error> for TezosApiConnectionPoolError {
+    fn from(source: r2d2::Error) -> Self {
+        Self::InitializationError { source }
+    }
+}
+
 impl TezosApiConnectionPool {
     /// Pool with ffi initialized context for readonly - see description AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
     pub fn new_with_readonly_context(
@@ -59,7 +74,7 @@ impl TezosApiConnectionPool {
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
         log: Logger,
-    ) -> TezosApiConnectionPool {
+    ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         Self::new(
             pool_name,
             pool_cfg,
@@ -76,7 +91,7 @@ impl TezosApiConnectionPool {
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
         log: Logger,
-    ) -> TezosApiConnectionPool {
+    ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         Self::new(
             pool_name,
             pool_cfg,
@@ -92,7 +107,7 @@ impl TezosApiConnectionPool {
         endpoint_cfg: ProtocolEndpointConfiguration,
         log: Logger,
         initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>,
-    ) -> TezosApiConnectionPool {
+    ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         // create manager
         let manager = ProtocolRunnerManager::<RunnerType>::new(
             pool_name.clone(),
@@ -110,10 +125,9 @@ impl TezosApiConnectionPool {
             .idle_timeout(Some(pool_cfg.idle_timeout))
             .connection_customizer(initializer)
             .error_handler(Box::new(SlogErrorHandler::new(log, pool_name.clone())))
-            .build(manager)
-            .unwrap();
+            .build(manager)?;
 
-        TezosApiConnectionPool { pool, pool_name }
+        Ok(TezosApiConnectionPool { pool, pool_name })
     }
 }
 

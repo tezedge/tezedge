@@ -14,9 +14,12 @@ use tezos_api::{
     ffi::{ProtocolRpcResponse, RpcMethod},
 };
 use tezos_client::client;
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::{
+    binary_message::{BinaryMessage, MessageHash},
+    encoding::operations_for_blocks::PathItem,
+};
 
 mod common;
 
@@ -369,8 +372,42 @@ fn test_compute_path() -> Result<(), failure::Error> {
 
     let response = client::compute_path(request)?;
 
-    let expected_response: ComputePathResponse =
-        serde_json::from_str(test_data::COMPUTE_PATHS_RESPONSE)?;
+    let expected_response = ComputePathResponse {
+        operations_hashes_path: vec![
+            Path(vec![
+                PathItem::left(hex::decode(
+                    "6d8bb7307b2fdf6180deaffa2b9bd9395f88b071a7de690252c20ef034fbb1f4",
+                )?),
+                PathItem::left(hex::decode(
+                    "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3",
+                )?),
+            ]),
+            Path(vec![
+                PathItem::left(hex::decode(
+                    "6d8bb7307b2fdf6180deaffa2b9bd9395f88b071a7de690252c20ef034fbb1f4",
+                )?),
+                PathItem::right(hex::decode(
+                    "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3",
+                )?),
+            ]),
+            Path(vec![
+                PathItem::right(hex::decode(
+                    "0a37f18e2562ae14388716247be0d4e451d72ce38d1d4a30f92d2f6ef95b4919",
+                )?),
+                PathItem::left(hex::decode(
+                    "50922f3a8a9ad3ea4ccfd85dba91cc552c11d8c37b6ec0aca628af083d9fbb1a",
+                )?),
+            ]),
+            Path(vec![
+                PathItem::right(hex::decode(
+                    "0a37f18e2562ae14388716247be0d4e451d72ce38d1d4a30f92d2f6ef95b4919",
+                )?),
+                PathItem::right(hex::decode(
+                    "7c09f7c4d76ace86e1a7e1c7dc0a0c7edcaa8b284949320081131976a87760c3",
+                )?),
+            ]),
+        ],
+    };
 
     assert_eq!(expected_response, response);
     Ok(())
@@ -607,10 +644,6 @@ mod test_data {
     ]
     "#;
 
-    pub const COMPUTE_PATHS_RESPONSE: &str = r#"
-    {"operations_hashes_path":[{"Left":{"path":{"Left":{"path":"Op","right":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195]}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Left":{"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}},"right":[109,139,183,48,123,47,223,97,128,222,175,250,43,155,217,57,95,136,176,113,167,222,105,2,82,194,14,240,52,251,177,244]}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Left":{"path":"Op","right":[80,146,47,58,138,154,211,234,76,207,216,93,186,145,204,85,44,17,216,195,123,110,192,172,166,40,175,8,61,159,187,26]}}}},{"Right":{"left":[10,55,241,142,37,98,174,20,56,135,22,36,123,224,212,228,81,215,44,227,141,29,74,48,249,45,47,110,249,91,73,25],"path":{"Right":{"left":[124,9,247,196,215,106,206,134,225,167,225,199,220,10,12,126,220,170,139,40,73,73,50,0,129,19,25,118,168,119,96,195],"path":"Op"}}}}]}
-    "#;
-
     pub fn block_operations_from_hex(
         block_hash: &str,
         hex_operations: Vec<Vec<String>>,
@@ -627,7 +660,7 @@ mod test_data {
                         hex::decode(block_hash).unwrap().try_into().unwrap(),
                         4,
                     ),
-                    Path::Op,
+                    Path::op(),
                     ops,
                 )
             })

@@ -88,6 +88,7 @@ pub mod infra {
     use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
     use networking::ShellCompatibilityVersion;
+    use shell::chain_current_head_manager::ChainCurrentHeadManager;
     use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
     use shell::chain_manager::{ChainManager, ChainManagerRef};
     use shell::context_listener::ContextListener;
@@ -95,6 +96,9 @@ pub mod infra {
     use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
     use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
     use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
+    use shell::state::head_state::init_current_head_state;
+    use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+    use shell::stats::apply_block_stats::init_empty_apply_block_stats;
     use shell::PeerConnectionThreshold;
     use storage::chain_meta_storage::ChainMetaStorageReader;
     use storage::context::{ContextApi, TezedgeContext};
@@ -109,6 +113,7 @@ pub mod infra {
 
     use crate::common;
     use crate::common::contains_all_keys;
+    use shell::chain_feeder_channel::ChainFeederChannel;
 
     pub struct NodeInfrastructure {
         name: String,
@@ -150,7 +155,6 @@ pub mod infra {
             } else {
                 context_db_path.to_string()
             };
-            let current_mempool_state_storage = init_mempool_state_storage();
 
             let context_db_path = PathBuf::from(context_db_path);
             let init_storage_data = resolve_storage_init_chain_data(
@@ -186,7 +190,7 @@ pub mod infra {
                     None,
                 ),
                 log.clone(),
-            ));
+            )?);
 
             // create pool for ffi protocol runner connections (used just for readonly context)
             let apply_protocol_events = IpcEvtServer::try_bind_new()?;
@@ -213,7 +217,15 @@ pub mod infra {
                     Some(apply_protocol_events.server_path()),
                 ),
                 log.clone(),
-            ));
+            )?);
+
+            let local_current_head_state = init_current_head_state();
+            let remote_current_head_state = init_current_head_state();
+            let current_mempool_state_storage = init_mempool_state_storage();
+            let bootstrap_state = init_synchronization_bootstrap_state_storage(
+                p2p_threshold.num_of_peers_for_bootstrap_threshold(),
+            );
+            let apply_block_stats = init_empty_apply_block_stats();
 
             let tokio_runtime = create_tokio_runtime();
 
@@ -227,17 +239,35 @@ pub mod infra {
                 ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
             let network_channel =
                 NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+            let chain_feeder_channel = ChainFeederChannel::actor(&actor_system)
+                .expect("Failed to create chain feeder channel");
+
             let _ = ContextListener::actor(
                 &actor_system,
+                shell_channel.clone(),
                 &persistent_storage,
                 apply_protocol_events,
                 log.clone(),
                 false,
             )
             .expect("Failed to create context event listener");
-            let block_applier = ChainFeeder::actor(
+            let chain_current_head_manager = ChainCurrentHeadManager::actor(
                 &actor_system,
                 shell_channel.clone(),
+                persistent_storage.clone(),
+                init_storage_data.clone(),
+                local_current_head_state.clone(),
+                remote_current_head_state.clone(),
+                current_mempool_state_storage.clone(),
+                bootstrap_state.clone(),
+                apply_block_stats.clone(),
+            )
+            .expect("Failed to create chain current head manager");
+            let block_applier = ChainFeeder::actor(
+                &actor_system,
+                chain_current_head_manager,
+                shell_channel.clone(),
+                chain_feeder_channel.clone(),
                 persistent_storage.clone(),
                 tezos_writeable_api,
                 init_storage_data.clone(),
@@ -250,13 +280,17 @@ pub mod infra {
                 block_applier.clone(),
                 network_channel.clone(),
                 shell_channel.clone(),
+                chain_feeder_channel,
                 persistent_storage.clone(),
                 tezos_readonly_api.clone(),
                 init_storage_data.clone(),
                 is_sandbox,
+                local_current_head_state,
+                remote_current_head_state,
                 current_mempool_state_storage.clone(),
+                bootstrap_state,
+                apply_block_stats,
                 false,
-                &p2p_threshold,
                 identity.clone(),
             )
             .expect("Failed to create chain manager");

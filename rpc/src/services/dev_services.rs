@@ -107,6 +107,11 @@ pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
     memory.get_memory_stats()
 }
 
+pub(crate) fn get_stats_memory_protocol_runners() -> MemoryStatsResult<Vec<MemoryData>> {
+    let memory = Memory::new();
+    memory.get_memory_stats_protocol_runners()
+}
+
 pub(crate) fn get_context_stats(
     context: &TezedgeContext,
 ) -> Result<MerkleStorageStats, failure::Error> {
@@ -136,4 +141,10 @@ pub(crate) fn get_cycle_length_for_block(
         slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
         Ok(4096)
     }
+}
+
+pub(crate) fn get_dev_version() -> Result<String, failure::Error> {
+    let version_env: &'static str = env!("CARGO_PKG_VERSION");
+
+    Ok(format!("v{}", version_env.to_string()))
 }

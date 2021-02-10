@@ -5,8 +5,11 @@ use std::convert::TryInto;
 
 use crypto::hash::HashType;
 use failure::Error;
-use tezos_messages::p2p::binary_message::{BinaryMessage, JsonMessage};
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::{
+    binary_message::{BinaryMessage, JsonMessage},
+    encoding::operations_for_blocks::PathItem,
+};
 
 #[test]
 fn can_deserialize_get_operations_for_blocks() -> Result<(), Error> {
@@ -43,35 +46,37 @@ fn can_deserialize_operations_for_blocks_right() -> Result<(), Error> {
                 message.operations_for_block().hash().to_base58_check()
             );
 
-            match message.operation_hashes_path() {
-                Path::Right(path) => {
+            let Path(path_items) = message.operation_hashes_path();
+            assert_eq!(path_items.len(), 2);
+            match path_items[0] {
+                PathItem::Right(ref path) => {
                     assert_eq!(
                         "LLobFmsoFEGPP3q9ZxpE84rH1vPC1uKqEV8L1x8zUjGwanEYuHBVB",
                         HashType::OperationListListHash
                             .hash_to_b58check(path.left())
                             .unwrap()
                     );
-                    match path.path() {
-                        Path::Right(path) => {
-                            assert_eq!(
-                                "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash
-                                    .hash_to_b58check(path.left())
-                                    .unwrap()
-                            );
-                            match path.path() {
-                                Path::Op => Ok(()),
-                                _ => panic!("Unexpected path: {:?}. Was expecting Path::Op.", path),
-                            }
-                        }
-                        _ => panic!("Unexpected path: {:?}. Was expecting Path::Right.", path),
-                    }
                 }
                 _ => panic!(
-                    "Unexpected path: {:?}. Was expecting Path::Right.",
+                    "Unexpected path: {:?}. Was expecting Path::Left.",
                     message.operation_hashes_path()
                 ),
             }
+            match path_items[1] {
+                PathItem::Right(ref path) => {
+                    assert_eq!(
+                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
+                        HashType::OperationListListHash
+                            .hash_to_b58check(path.left())
+                            .unwrap()
+                    );
+                }
+                _ => panic!(
+                    "Unexpected path: {:?}. Was expecting Path::Left.",
+                    message.operation_hashes_path()
+                ),
+            }
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }
@@ -96,35 +101,37 @@ fn can_deserialize_operations_for_blocks_left() -> Result<(), Error> {
                 "Was expecting 5 operations but found {}",
                 message.operations().len()
             );
-            match message.operation_hashes_path() {
-                Path::Left(path) => {
+            let Path(path_items) = message.operation_hashes_path();
+            assert_eq!(path_items.len(), 2);
+            match path_items[0] {
+                PathItem::Left(ref path) => {
                     assert_eq!(
                         "LLoZQD2o1hNgoUhg6ha9dCVyRUY25GX1KN2TttXW2PZsyS8itbfpK",
                         HashType::OperationListListHash
                             .hash_to_b58check(path.right())
                             .unwrap()
                     );
-                    match path.path() {
-                        Path::Left(path) => {
-                            assert_eq!(
-                                "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
-                                HashType::OperationListListHash
-                                    .hash_to_b58check(path.right())
-                                    .unwrap()
-                            );
-                            match path.path() {
-                                Path::Op => Ok(()),
-                                _ => panic!("Unexpected path: {:?}. Was expecting Path::Op.", path),
-                            }
-                        }
-                        _ => panic!("Unexpected path: {:?}. Was expecting Path::Right.", path),
-                    }
                 }
                 _ => panic!(
-                    "Unexpected path: {:?}. Was expecting Path::Right.",
+                    "Unexpected path: {:?}. Was expecting Path::Left.",
                     message.operation_hashes_path()
                 ),
             }
+            match path_items[1] {
+                PathItem::Left(ref path) => {
+                    assert_eq!(
+                        "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc",
+                        HashType::OperationListListHash
+                            .hash_to_b58check(path.right())
+                            .unwrap()
+                    );
+                }
+                _ => panic!(
+                    "Unexpected path: {:?}. Was expecting Path::Left.",
+                    message.operation_hashes_path()
+                ),
+            }
+            Ok(())
         }
         _ => panic!("Unsupported encoding: {:?}", message),
     }
@@ -185,18 +192,13 @@ fn create_operations_for_blocks_encoded(depth: usize) -> Vec<u8> {
 }
 
 fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
-    let mut path = Path::Op;
-    for i in 0..depth {
-        path = Path::Left(Box::new(PathLeft::new(
-            path,
-            get_hash((depth - i - 1) as u64, 32),
-            Default::default(),
-        )));
-    }
-
+    let path = (0..depth)
+        .map(|i| get_hash(i as u64, 32))
+        .map(|h| PathItem::Left(PathLeft::new(h, Default::default())))
+        .collect();
     let message = PeerMessage::OperationsForBlocks(OperationsForBlocksMessage::new(
         OperationsForBlock::new(get_hash(0xffffffff_u64, 32).try_into().unwrap(), 0x01),
-        path,
+        Path(path),
         Vec::new(),
     ));
 
@@ -205,17 +207,16 @@ fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
 
 #[test]
 fn can_deserialize_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = PATH_MAX_DEPTH;
+    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
     let message_bytes = create_operations_for_blocks_encoded(depth as usize);
     let messages = PeerMessageResponse::from_bytes(message_bytes)?;
     assert_eq!(1, messages.messages().len());
 
     let message = messages.messages().get(0).unwrap();
     if let PeerMessage::OperationsForBlocks(message) = message {
-        let mut path = message.operation_hashes_path();
-        for _ in 0..depth {
-            if let Path::Left(b) = path {
-                path = b.path();
+        let Path(path) = message.operation_hashes_path();
+        for item in path {
+            if let PathItem::Left(_) = item {
             } else {
                 panic!("Unexpected path kind");
             }
@@ -228,25 +229,28 @@ fn can_deserialize_operations_for_blocks_left_deep() -> Result<(), Error> {
 
 #[test]
 fn can_deserialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
-    let message_bytes = create_operations_for_blocks_encoded(PATH_MAX_DEPTH as usize + 1);
+    let message_bytes = create_operations_for_blocks_encoded(
+        MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected") as usize + 1,
+    );
     let result = PeerMessageResponse::from_bytes(message_bytes);
     assert!(result.is_err());
+
     Ok(())
 }
 
 #[test]
-fn can_deserialize_operations_for_blocks_left_depth_overflow() -> Result<(), Error> {
-    let message_bytes = create_operations_for_blocks_encoded(
-        tezos_encoding::types::RecursiveDataSize::max_value() as usize + 1,
-    );
+fn can_deserialize_operations_for_blocks_no_stack_overflow() -> Result<(), Error> {
+    // encoding for 512 step path, causing stack overflow previously
+    let message_bytes = create_operations_for_blocks_encoded(512);
     let result = PeerMessageResponse::from_bytes(message_bytes);
     assert!(result.is_err());
+
     Ok(())
 }
 
 #[test]
 fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = PATH_MAX_DEPTH as usize;
+    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
     let message = create_operations_for_blocks(depth);
     let encoded = PeerMessageResponse::from(message).as_bytes()?;
     let expected = create_operations_for_blocks_encoded(depth);
@@ -256,10 +260,9 @@ fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
 }
 
 #[test]
-#[ignore]
-// Ignored until JSON serialization is implemented for operations for blocks
+#[ignore = "JSON serialization is not implemented for operations for blocks"]
 fn can_serialize_to_json_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = PATH_MAX_DEPTH as usize;
+    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
     let message = create_operations_for_blocks(depth);
     let _encoded = PeerMessageResponse::from(message).as_json()?;
 
@@ -268,23 +271,8 @@ fn can_serialize_to_json_operations_for_blocks_left_deep() -> Result<(), Error> 
 
 #[test]
 fn can_serialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
-    let message = create_operations_for_blocks(PATH_MAX_DEPTH as usize + 1);
-    let result = PeerMessageResponse::from(message).as_bytes();
-    assert!(result.is_err());
-
-    Ok(())
-}
-
-#[test]
-#[ignore]
-// this test should be run with caution since it allocates a linked list
-// containing 65536 elements and basing on stack size setting it might fail
-// deallocating that structure
-// TODO: TE-354
-fn can_serialize_operations_for_blocks_left_depth_overflow() -> Result<(), Error> {
-    let message = create_operations_for_blocks(
-        tezos_encoding::types::RecursiveDataSize::max_value() as usize + 1,
-    );
+    let message =
+        create_operations_for_blocks(MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected") + 1);
     let result = PeerMessageResponse::from(message).as_bytes();
     assert!(result.is_err());
 
