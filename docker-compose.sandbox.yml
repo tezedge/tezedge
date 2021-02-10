@@ -13,7 +13,7 @@ services:
     entrypoint: ./tezedge-debugger
 
   rust-sandbox:
-    image: simplestakingcom/tezedge:sandbox-v0.9.2
+    image: simplestakingcom/tezedge:sandbox-latest-release
     network_mode: "service:rust-network"
     depends_on:
       - rust-debugger

@@ -1,6 +1,6 @@
 [package]
 name = "tezos_identity"
-version = "0.9.3"
+version = "1.0.0"
 authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
