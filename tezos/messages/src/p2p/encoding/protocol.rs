@@ -10,6 +10,8 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+use super::limits::{GET_PROTOCOLS_MAX_LENGTH, PROTOCOL_COMPONENT_MAX_SIZE};
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolMessage {
     protocol: Protocol,
@@ -69,7 +71,10 @@ has_encoding!(Protocol, PROTOCOL_ENCODING, {
         Field::new("expected_env_version", Encoding::Int16),
         Field::new(
             "components",
-            Encoding::dynamic(Encoding::list(Component::encoding().clone())),
+            Encoding::bounded_dynamic(
+                PROTOCOL_COMPONENT_MAX_SIZE,
+                Encoding::list(Component::encoding().clone()),
+            ),
         ),
     ])
 });
@@ -87,6 +92,9 @@ cached_data!(GetProtocolsMessage, body);
 has_encoding!(GetProtocolsMessage, GET_PROTOCOLS_MESSAGE_ENCODING, {
     Encoding::Obj(vec![Field::new(
         "get_protocols",
-        Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::ProtocolHash))),
+        Encoding::dynamic(Encoding::bounded_list(
+            GET_PROTOCOLS_MAX_LENGTH,
+            Encoding::Hash(HashType::ProtocolHash),
+        )),
     )])
 });

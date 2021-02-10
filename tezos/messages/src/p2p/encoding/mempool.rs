@@ -11,6 +11,8 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+use super::limits::MEMPOOL_MAX_SIZE;
+
 #[derive(Clone, Serialize, Deserialize, Debug, Default, Getters)]
 pub struct Mempool {
     #[get = "pub"]
@@ -37,16 +39,19 @@ impl Mempool {
 
 cached_data!(Mempool, body);
 has_encoding!(Mempool, MEMPOOL_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new(
-            "known_valid",
-            Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))),
-        ),
-        Field::new(
-            "pending",
-            Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(
-                HashType::OperationHash,
-            )))),
-        ),
-    ])
+    Encoding::bounded(
+        MEMPOOL_MAX_SIZE,
+        Encoding::Obj(vec![
+            Field::new(
+                "known_valid",
+                Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::OperationHash))),
+            ),
+            Field::new(
+                "pending",
+                Encoding::dynamic(Encoding::dynamic(Encoding::list(Encoding::Hash(
+                    HashType::OperationHash,
+                )))),
+            ),
+        ]),
+    )
 });

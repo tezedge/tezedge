@@ -21,6 +21,8 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::operation::Operation;
 use tezos_encoding::json_writer::JsonWriter;
 
+use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZE};
+
 /// Maximal length for path in a Merkle tree for list of lists of operations.
 /// This is calculated from Tezos limit on that Operation_list_list size:
 ///
@@ -108,7 +110,10 @@ has_encoding!(
             Field::new("operation_hashes_path", PathCodec::get_encoding()),
             Field::new(
                 "operations",
-                Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+                Encoding::bounded(
+                    OPERATION_LIST_MAX_SIZE,
+                    Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+                ),
             ),
         ])
     }
@@ -232,7 +237,10 @@ has_encoding!(
     {
         Encoding::Obj(vec![Field::new(
             "get_operations_for_blocks",
-            Encoding::dynamic(Encoding::list(OperationsForBlock::encoding().clone())),
+            Encoding::dynamic(Encoding::bounded_list(
+                GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH,
+                OperationsForBlock::encoding().clone(),
+            )),
         )])
     }
 );

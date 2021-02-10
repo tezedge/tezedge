@@ -14,6 +14,8 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+use super::limits::{BLOCK_HEADER_MAX_SIZE, GET_BLOCK_HEADERS_MAX_LENGTH};
+
 pub type Fitness = Vec<Vec<u8>>;
 pub type Level = i32;
 
@@ -92,7 +94,10 @@ has_encoding!(
     {
         Encoding::Obj(vec![Field::new(
             "get_block_headers",
-            Encoding::dynamic(Encoding::list(Encoding::Hash(HashType::BlockHash))),
+            Encoding::dynamic(Encoding::bounded_list(
+                GET_BLOCK_HEADERS_MAX_LENGTH,
+                Encoding::Hash(HashType::BlockHash),
+            )),
         )])
     }
 );
@@ -127,24 +132,27 @@ pub struct BlockHeader {
 
 cached_data!(BlockHeader, body);
 has_encoding!(BlockHeader, BLOCK_HEADER_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("level", Encoding::Int32),
-        Field::new("proto", Encoding::Uint8),
-        Field::new("predecessor", Encoding::Hash(HashType::BlockHash)),
-        Field::new("timestamp", Encoding::Timestamp),
-        Field::new("validation_pass", Encoding::Uint8),
-        Field::new(
-            "operations_hash",
-            Encoding::Hash(HashType::OperationListListHash),
-        ),
-        Field::new("fitness", fitness_encoding()),
-        Field::new("context", Encoding::Hash(HashType::ContextHash)),
-        Field::new(
-            "protocol_data",
-            Encoding::Split(Arc::new(|schema_type| match schema_type {
-                SchemaType::Json => Encoding::Bytes,
-                SchemaType::Binary => Encoding::list(Encoding::Uint8),
-            })),
-        ),
-    ])
+    Encoding::bounded(
+        BLOCK_HEADER_MAX_SIZE,
+        Encoding::Obj(vec![
+            Field::new("level", Encoding::Int32),
+            Field::new("proto", Encoding::Uint8),
+            Field::new("predecessor", Encoding::Hash(HashType::BlockHash)),
+            Field::new("timestamp", Encoding::Timestamp),
+            Field::new("validation_pass", Encoding::Uint8),
+            Field::new(
+                "operations_hash",
+                Encoding::Hash(HashType::OperationListListHash),
+            ),
+            Field::new("fitness", fitness_encoding()),
+            Field::new("context", Encoding::Hash(HashType::ContextHash)),
+            Field::new(
+                "protocol_data",
+                Encoding::Split(Arc::new(|schema_type| match schema_type {
+                    SchemaType::Json => Encoding::Bytes,
+                    SchemaType::Binary => Encoding::list(Encoding::Uint8),
+                })),
+            ),
+        ]),
+    )
 });

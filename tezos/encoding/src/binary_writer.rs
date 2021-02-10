@@ -3,8 +3,8 @@
 
 //! Tezos binary data writer.
 
-use std::mem::size_of;
 use std::{cmp, convert::TryFrom};
+use std::{convert::TryInto, mem::size_of};
 
 use bit_vec::BitVec;
 use byteorder::{BigEndian, WriteBytesExt};
@@ -121,6 +121,13 @@ fn encode_tuple(data: &mut Vec<u8>, value: &Value, encodings: &[Encoding]) -> Re
     }
 }
 
+fn bound_error(encoding: &Encoding, max: usize, act: usize) -> Error {
+    Error::custom(format!(
+        "{:?} maximum size {} exceeded: {}",
+        encoding, max, act
+    ))
+}
+
 fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Result<usize, Error> {
     match encoding {
         Encoding::Unit => Ok(0),
@@ -222,6 +229,19 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         },
+        Encoding::BoundedString(max) => match value {
+            Value::String(v) => {
+                if v.len() > *max {
+                    return Err(bound_error(encoding, *max, v.len()));
+                }
+                data.put_u32(v.len() as u32);
+                data.put_slice(v.as_bytes());
+                size_of::<u32>().checked_add(v.len()).ok_or_else(|| {
+                    Error::custom("Encoded message size overflow while encoding a string")
+                })
+            }
+            _ => Err(Error::encoding_mismatch(encoding, value)),
+        },
         Encoding::Enum => match value {
             Value::Enum(_, ordinal) => match ordinal {
                 Some(ordinal) => {
@@ -241,6 +261,26 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
         Encoding::List(list_inner_encoding) => {
             match value {
                 Value::List(values) => {
+                    let data_len_before_write = data.len();
+                    // write data
+                    for value in values {
+                        encode_value(data, value, list_inner_encoding)?;
+                    }
+                    data.len()
+                        .checked_sub(data_len_before_write)
+                        .ok_or_else(|| {
+                            Error::custom("Encoded message size overflow while encoding a list")
+                        })
+                }
+                _ => Err(Error::encoding_mismatch(encoding, value)),
+            }
+        }
+        Encoding::BoundedList(max, list_inner_encoding) => {
+            match value {
+                Value::List(values) => {
+                    if values.len() > *max {
+                        return Err(bound_error(encoding, *max, values.len()));
+                    }
                     let data_len_before_write = data.len();
                     // write data
                     for value in values {
@@ -359,7 +399,36 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
             let mut bytes_sz_slice =
                 &mut data[data_len_before_write..data_len_after_size_placeholder];
             // update size
-            bytes_sz_slice.write_u32::<BigEndian>(bytes_sz as u32)?;
+            bytes_sz_slice.write_u32::<BigEndian>(bytes_sz.try_into().map_err(|_| {
+                Error::custom("Encoded message size overflow while encoding a dynamic value")
+            })?)?;
+
+            data.len()
+                .checked_sub(data_len_before_write)
+                .ok_or_else(|| {
+                    Error::custom("Encoded message size overflow while encoding a dynamic value")
+                })
+        }
+        Encoding::BoundedDynamic(max, dynamic_encoding) => {
+            let data_len_before_write = data.len();
+            // put 0 as a placeholder
+            data.put_u32(0);
+            // we will use this info to create slice of buffer where inner record size will be stored
+            let data_len_after_size_placeholder = data.len();
+
+            // write data
+            let bytes_sz = encode_value(data, value, dynamic_encoding)?;
+            if bytes_sz > *max {
+                return Err(bound_error(encoding, *max, bytes_sz));
+            }
+
+            // capture slice of buffer where List length was stored
+            let mut bytes_sz_slice =
+                &mut data[data_len_before_write..data_len_after_size_placeholder];
+            // update size
+            bytes_sz_slice.write_u32::<BigEndian>(bytes_sz.try_into().map_err(|_| {
+                Error::custom("Encoded message size overflow while encoding a dynamic value")
+            })?)?;
 
             data.len()
                 .checked_sub(data_len_before_write)
@@ -378,6 +447,16 @@ fn encode_value(data: &mut Vec<u8>, value: &Value, encoding: &Encoding) -> Resul
                     "Was expecting {} bytes but got {}",
                     bytes_sz, sized_size
                 )))
+            }
+        }
+        Encoding::Bounded(max, sized_encoding) => {
+            // write data
+            let bytes_sz = encode_value(data, value, sized_encoding)?;
+
+            if bytes_sz <= *max {
+                Ok(bytes_sz)
+            } else {
+                Err(bound_error(encoding, *max, bytes_sz))
             }
         }
         Encoding::Greedy(un_sized_encoding) => encode_value(data, value, un_sized_encoding),
