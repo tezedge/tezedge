@@ -207,6 +207,11 @@ pub enum Encoding {
     /// of the string
     /// - encoded as a string in JSON.
     String,
+    /// Encoding of a string
+    /// - encoded as a byte sequence in binary prefixed by the length
+    /// of the string
+    /// - encoded as a string in JSON.
+    BoundedString(usize),
     /// Encoding of arbitrary sized bytes (encoded via hex in JSON and directly as a sequence byte in binary).
     Bytes,
     /// Tag is prefixed by tag id and followed by encoded bytes
@@ -217,6 +222,10 @@ pub enum Encoding {
     /// - encoded as an array in JSON
     /// - encoded as the concatenation of all the element in binary
     List(Box<Encoding>),
+    /// Encode enumeration via association list
+    ///  - represented as a string in JSON and
+    ///  - represented as an integer representing the element's position in the list in binary. The integer size depends on the list size.
+    BoundedList(usize, Box<Encoding>),
     /// Encode enumeration via association list
     ///  - represented as a string in JSON and
     ///  - represented as an integer representing the element's position in the list in binary. The integer size depends on the list size.
@@ -242,8 +251,14 @@ pub enum Encoding {
     /// Is the collection of fields.
     /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
     Dynamic(Box<Encoding>),
+    /// Is the collection of fields.
+    /// prefixed its length in bytes (4 Bytes), encoded as the concatenation of all the element in binary
+    BoundedDynamic(usize, Box<Encoding>),
     /// Represents fixed size block in binary encoding.
     Sized(usize, Box<Encoding>),
+    /// Represents bounded block in binary encoding
+    /// (one with a length that cannot exceed the upper value).
+    Bounded(usize, Box<Encoding>),
     /// Almost same as [Encoding::Dynamic] but without bytes size information prefix.
     /// It assumes that encoding passed as argument will process rest of the available data.
     Greedy(Box<Encoding>),
@@ -273,11 +288,25 @@ impl Encoding {
         Encoding::List(Box::new(encoding))
     }
 
+    /// Utility function to construct [Encoding::List] without the need
+    /// to manually create new [Box].
+    #[inline]
+    pub fn bounded_list(max: usize, encoding: Encoding) -> Encoding {
+        Encoding::BoundedList(max, Box::new(encoding))
+    }
+
     /// Utility function to construct [Encoding::Sized] without the need
     /// to manually create new [Box].
     #[inline]
     pub fn sized(bytes_sz: usize, encoding: Encoding) -> Encoding {
         Encoding::Sized(bytes_sz, Box::new(encoding))
+    }
+
+    /// Utility function to construct [Encoding::Sized] without the need
+    /// to manually create new [Box].
+    #[inline]
+    pub fn bounded(max: usize, encoding: Encoding) -> Encoding {
+        Encoding::Bounded(max, Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Greedy] without the need
@@ -292,6 +321,13 @@ impl Encoding {
     #[inline]
     pub fn dynamic(encoding: Encoding) -> Encoding {
         Encoding::Dynamic(Box::new(encoding))
+    }
+
+    /// Utility function to construct [Encoding::Dynamic] without the need
+    /// to manually create new [Box].
+    #[inline]
+    pub fn bounded_dynamic(max: usize, encoding: Encoding) -> Encoding {
+        Encoding::BoundedDynamic(max, Box::new(encoding))
     }
 
     /// Utility function to construct [Encoding::Option] without the need
