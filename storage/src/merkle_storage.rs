@@ -1352,7 +1352,7 @@ mod tests {
     }
 
     fn get_mem_storage(db : Arc<RwLock<HashMap<EntryHash, ContextValue>>>) -> MerkleStorage {
-        MerkleStorage::new(Box::new(InMemoryBackend::new(db)))
+        MerkleStorage::new(Box::new(InMemoryBackend::new()))
     }
 
     fn get_sled_storage(db : sled::Tree) -> MerkleStorage {
@@ -1366,6 +1366,16 @@ mod tests {
 
     fn empty_mem_storage() -> MerkleStorage {
         get_mem_storage(Arc::new(RwLock::new(HashMap::new())))
+    }
+
+    #[test]
+    fn test_mat_set() {
+        let mut storage = empty_mem_storage();
+        let key_one: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()];
+        let key_two: &ContextKey = &vec!["a".to_string(), "x".to_string(), "y".to_string(), "z".to_string()];
+        storage.set(key_one, &vec![1]);
+        storage.set(key_two, &vec![1]);
+        storage.set(key_two, &vec![1]);
     }
 
     #[test]

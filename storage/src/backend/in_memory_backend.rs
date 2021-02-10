@@ -12,9 +12,9 @@ pub struct InMemoryBackend {
 }
 
 impl InMemoryBackend {
-    pub fn new(db : Arc<RwLock<HashMap<EntryHash, ContextValue>>>) -> Self {
+    pub fn new() -> Self {
         InMemoryBackend {
-            inner: db,
+            inner: Arc::new(RwLock::new(HashMap::new())),
             stats: Default::default(),
         }
     }

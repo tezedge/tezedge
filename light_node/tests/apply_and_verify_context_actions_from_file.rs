@@ -112,16 +112,21 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     let block_storage = BlockStorage::new(&storage);
 
     let actions_reader = ActionsFileReader::new(&actions_storage_path).unwrap();
+    let header = actions_reader.header();
     info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
-    info!(logger, "{}", actions_reader.header());
+    info!(logger, "{}", header);
+    let blocks_count = header.block_count;
+    let mut counter = 0;
 
     for messages in actions_reader{
-        info!(logger, "HELLO");
+        counter += 1;
+        let progress = counter as f64 / blocks_count as f64 * 100.0;
+
         match messages.iter().last() {
             Some(msg) => {
                 match &msg.action {
                     ContextAction::Commit{block_hash: Some(block_hash), ..} => {
-                        debug!(logger, "processing block {} with {} messages", hex::encode(&block_hash), messages.len());
+                        debug!(logger, "progress {:.7}% - processing block {} with {} messages", progress, hex::encode(&block_hash), messages.len());
                     }
                     _ => {panic!("missing commit action")}
                 }
@@ -131,22 +136,29 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
 
         for msg in messages.iter(){
-
             if let ContextAction::Commit{block_hash: Some(block_hash), ..} = &msg.action{
                 // there is extra validation in ContextApi::commit that verifies that 
                 // applied action comes from known block - for testing purposes
                 // block_storage needs to be fed with stub value in order to pass validation
-               
-                info!(logger, "commiting - this may take while");
                 let mut b = header_stub.clone();
                 b.hash = block_hash.clone();
                 block_storage.put_block_header(&b).unwrap();
-
             }
 
-            if let Err(e) = perform_context_action(&msg.action, & mut context){
-                panic!("cannot perform action {:?} error: '{}'", &msg, e);
-            }
+            match &msg.action{
+                // actions that does not mutate staging area can be ommited here
+                ContextAction::Set {..}
+                | ContextAction::Copy {..}
+                | ContextAction::Delete {..}
+                | ContextAction::RemoveRecursively {..}
+                | ContextAction::Commit{..}
+                | ContextAction::Checkout{..} => {
+                    if let Err(e) = perform_context_action(&msg.action, & mut context){
+                        panic!("cannot perform action {:?} error: '{}'", &msg, e);
+                    }
+                }
+                _ => {}
+            };
 
             if let Some(expected_hash) = get_new_tree_hash(&msg.action){
                 assert_eq!(context.get_merkle_root(), expected_hash);

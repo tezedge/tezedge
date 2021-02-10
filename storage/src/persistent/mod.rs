@@ -15,7 +15,7 @@ pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use crate::backend::RocksDBBackend;
+use crate::backend::{RocksDBBackend, InMemoryBackend};
 use crate::StorageError;
 use tezos_context::channel::{ContextActionMessage};
 use crate::action_file::ActionFileError;
@@ -147,12 +147,13 @@ pub struct PersistentStorage {
 
 impl PersistentStorage {
     pub fn new(
-        kv: Arc<DB>,
+        kv: Arc<DB>, 
         clog: Arc<CommitLogs>,
     ) -> Self {
         let seq = Arc::new(Sequences::new(kv.clone(), 1000));
+        // TODO: pass as the argument
         let merkle = MerkleStorage::new(
-            Box::new(RocksDBBackend::new(kv.clone(), MerkleStorage::name()))
+            Box::new(InMemoryBackend::new())
         );
         Self {
             clog,
