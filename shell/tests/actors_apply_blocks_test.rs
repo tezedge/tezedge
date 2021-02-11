@@ -158,7 +158,7 @@ fn check_context(
     assert_eq!(*expected_context_hash, merkle_last_hash.unwrap());
 
     // print stats
-    let stats = merkle.get_merkle_stats().unwrap();
+    let stats = merkle.get_merkle_stats();
     println!("Context storage global latency statistics:");
     println!();
     for (op, v) in stats.perf_stats.global.iter() {

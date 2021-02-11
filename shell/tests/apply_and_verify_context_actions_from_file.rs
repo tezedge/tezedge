@@ -89,6 +89,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
         .protocol_data(vec![])
         .build()
         .unwrap();
+
     let header_stub = BlockHeaderWithHash::new(block_header_stub).unwrap();
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
@@ -118,7 +119,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     let blocks_count = header.block_count;
     let mut counter = 0;
 
-    for messages in actions_reader{
+    for messages in actions_reader.take(10){
         counter += 1;
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
@@ -165,6 +166,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             }
         }
     }
+    println!("{:#?}", storage.merkle().read().unwrap().get_merkle_stats());
     Ok(())
 }
     

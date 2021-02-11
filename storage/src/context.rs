@@ -11,9 +11,9 @@ use failure::Fail;
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::merkle_storage::{
-    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats,
-    StringTreeEntry,
+    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, StringTreeEntry,
 };
+use crate::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
 /// Abstraction on context manipulation
@@ -83,7 +83,7 @@ pub trait ContextApi {
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
+    fn get_merkle_stats(&self) -> MerkleStoragePerfReport;
 
     /// TODO: TE-203 - remove when context_listener will not be used
     // check if context_hash is committed
@@ -255,11 +255,9 @@ impl ContextApi for TezedgeContext {
         merkle.get_last_commit_hash().map(|x| x.to_vec())
     }
 
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError> {
+    fn get_merkle_stats(&self) -> MerkleStoragePerfReport{
         let merkle = self.merkle.read().expect("lock poisoning");
-        let stats = merkle.get_merkle_stats()?;
-
-        Ok(stats)
+        return merkle.get_merkle_stats();
     }
 
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {

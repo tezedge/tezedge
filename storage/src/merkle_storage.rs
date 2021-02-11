@@ -51,6 +51,7 @@ use std::time::Instant;
 use std::sync::Arc;
 use std::iter::FromIterator;
 use crypto::hash::HashType;
+use crate::merkle_storage_stats::{MerkleStorageAction, StatUpdater, MerkleStorageStatistics, MerkleStoragePerfReport};
 use hex;
 
 use blake2::digest::{Update, VariableOutput};
@@ -112,15 +113,6 @@ impl Entry {
     }
 }
 
-// impl serde::Serialize for OrdMap<String,Node>{
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer {
-//         let x = self.as_ref();
-//         x.serialize(serializer)
-//     }
-// }
-
 pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 impl KeyValueSchema for MerkleStorage {
@@ -140,8 +132,6 @@ impl KeyValueSchema for MerkleStorage {
     }
 }
 
-pub type RefCnt = usize;
-
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: (Tree, EntryHash),
@@ -151,8 +141,7 @@ pub struct MerkleStorage {
     /// HashMap for looking up entry index in self.staged by hash
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
-    perf_stats: MerklePerfStats,
-    block_latencies: BlockLatencies,
+    stats: MerkleStorageStatistics,
 }
 
 #[derive(Debug, Fail)]
@@ -207,7 +196,6 @@ impl From<StorageBackendError> for MerkleError {
     }
 }
 
-
 impl From<bincode::Error> for MerkleError {
     fn from(error: bincode::Error) -> Self {
         MerkleError::SerializationError { error }
@@ -218,78 +206,6 @@ impl From<TryFromSliceError> for MerkleError {
     fn from(error: TryFromSliceError) -> Self {
         MerkleError::HashConversionError { error }
     }
-}
-
-/// Latency statistics for each action (in nanoseconds)
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct OperationLatencies {
-    /// divide this by the next field to get avg (mean) time spent in operation
-    cumul_op_exec_time: f64,
-    pub op_exec_times: u64,
-    pub avg_exec_time: f64,
-    /// lowest time spent in operation
-    pub op_exec_time_min: f64,
-    /// highest time spent in operation
-    pub op_exec_time_max: f64,
-}
-
-impl Default for OperationLatencies {
-    fn default() -> Self {
-        OperationLatencies {
-            cumul_op_exec_time: 0.0,
-            op_exec_times: 0,
-            avg_exec_time: 0.0,
-            op_exec_time_min: f64::MAX,
-            op_exec_time_max: f64::MIN,
-        }
-    }
-}
-
-/// Block application latencies
-#[derive(Serialize, Default, Debug, Clone)]
-pub struct BlockLatencies {
-    latencies: Vec<u64>,
-    current: u64,
-}
-
-impl BlockLatencies {
-    fn new() -> Self {
-        Default::default()
-    }
-
-    fn update(&mut self, latency: u64) {
-        self.current += latency;
-    }
-
-    fn end_block(&mut self) {
-        self.latencies.push(self.current);
-        self.current = 0;
-    }
-
-    pub fn get(&self, offset_from_last_applied: usize) -> Option<u64> {
-        self.latencies.len()
-            .checked_sub(offset_from_last_applied + 1)
-            .and_then(|index| self.latencies.get(index))
-            .map(|x| *x)
-    }
-}
-
-// Latency statistics indexed by operation name (e.g. "Set")
-pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
-
-// Latency statistics per path indexed by first chunk of path (under /data/)
-pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerklePerfStats {
-    pub global: OperationLatencyStats,
-    pub perpath: PerPathOperationStats,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerkleStorageStats {
-    pub perf_stats: MerklePerfStats,
-    pub kv_store_stats: StorageBackendStats,
 }
 
 impl BincodeEncoded for EntryHash {}
@@ -454,11 +370,7 @@ impl MerkleStorage {
             staged: map,
             current_stage_tree: (tree, tree_hash),
             last_commit_hash: None,
-            perf_stats: MerklePerfStats {
-                global: HashMap::new(),
-                perpath: HashMap::new(),
-            },
-            block_latencies: Default::default(),
+            stats: MerkleStorageStatistics::default(),
         }
     }
 
@@ -528,14 +440,14 @@ impl MerkleStorage {
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Delete, Some(key));
+
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root);
 
         let rv = self.get_from_tree(&root_hash, key);
-        self.update_execution_stats("Get".to_string(), Some(&key), &instant);
         if rv.is_err() {
             Ok(Vec::new())
         } else {
@@ -545,7 +457,7 @@ impl MerkleStorage {
 
     /// Check if value exists in current staged root
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Mem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
 
@@ -553,12 +465,12 @@ impl MerkleStorage {
         let root_hash = hash_tree(&root);
 
         let rv = self.value_exists(&root_hash, key);
-        self.update_execution_stats("Mem".to_string(), Some(&key), &instant);
         rv
     }
 
     /// Check if directory exists in current staged root
     pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::DirMem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
 
@@ -566,7 +478,6 @@ impl MerkleStorage {
         let root_hash = hash_tree(&root);
 
         let rv = self.directory_exists(&root_hash, key);
-        // self.update_execution_stats("DirMem".to_string(), Some(&key), &instant);
         rv
     }
 
@@ -575,6 +486,7 @@ impl MerkleStorage {
         &mut self,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::GetByPrefix, Some(prefix));
         let root = self.get_staged_root();
         self._get_key_values_by_prefix(root.clone(), prefix)
     }
@@ -585,11 +497,11 @@ impl MerkleStorage {
         commit_hash: &EntryHash,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::GetHistory, Some(key));
         let instant = Instant::now();
         let commit = self.get_commit(commit_hash)?;
 
         let rv = self.get_from_tree(&commit.root_hash, key);
-        self.update_execution_stats("GetKeyFromHistory".to_string(), Some(&key), &instant);
         rv
     }
 
@@ -743,7 +655,8 @@ impl MerkleStorage {
             return Ok(StringTreeEntry::Null);
         }
 
-        let instant = Instant::now();
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
+
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -767,11 +680,6 @@ impl MerkleStorage {
             );
         }
 
-        self.update_execution_stats(
-            "GetContextTreeByPrefix".to_string(),
-            Some(&prefix),
-            &instant,
-        );
         Ok(StringTreeEntry::Tree(out))
     }
 
@@ -781,11 +689,10 @@ impl MerkleStorage {
         context_hash: &EntryHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::GetKeyValuesByPrefix, None);
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
         let rv = self._get_key_values_by_prefix(root_tree, prefix);
-        self.update_execution_stats("GetKeyValuesByPrefix".to_string(), Some(&prefix), &instant);
         rv
     }
 
@@ -819,6 +726,7 @@ impl MerkleStorage {
 
     /// Flush the staging area and and move to work on a certain commit from history.
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Checkout, None);
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
         self.set_stage_root(&tree);
@@ -836,6 +744,7 @@ impl MerkleStorage {
         author: String,
         message: String,
     ) -> Result<EntryHash, MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Commit, None);
         let staged_root = self.get_staged_root();
         let staged_root_hash = hash_tree(&staged_root);
         let parent_commit_hash = self.last_commit_hash;
@@ -858,13 +767,12 @@ impl MerkleStorage {
 
     /// Set key/val to the staging area.
     fn set_stage_root(&mut self, tree: &Tree) {
-        // println!("new merkle root hash {}", hex::encode(hash_tree(&tree)));
         self.current_stage_tree = (tree.clone(), hash_tree(&tree));
     }
 
     /// Set key/val to the staging area.
     pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
-        // panic!("{:?} {:?}",  key, value);
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Set, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._set(&root, key, value)?;
         self.set_stage_root(&self.get_tree(new_root_hash)?);
@@ -890,6 +798,7 @@ impl MerkleStorage {
     /// Delete an item from the staging area.
     //TODO: pelight
     pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Delete, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._delete(&root, key)?;
         let tree = self.get_tree(new_root_hash)?;
@@ -1016,9 +925,9 @@ impl MerkleStorage {
     }
 
     pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::GarbageCollector, None);
         let instant = Instant::now();
         self.db.start_new_cycle(self.last_commit_hash.clone());
-        self.update_execution_stats("GC".to_string(), None, &instant);
         Ok(())
     }
         
@@ -1209,98 +1118,12 @@ impl MerkleStorage {
     }
 
     /// Get various merkle storage statistics
-    pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        // calculate average values for global stats
-        let mut perf = self.perf_stats.clone();
-        for (_, stat) in perf.global.iter_mut() {
-            if stat.op_exec_times > 0 {
-                stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-            } else {
-                stat.avg_exec_time = 0.0;
-            }
-        }
-        // calculate average values for per-path stats
-        for (_node, stat) in perf.perpath.iter_mut() {
-            for (_op, stat) in stat.iter_mut() {
-                if stat.op_exec_times > 0 {
-                    stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-                } else {
-                    stat.avg_exec_time = 0.0;
-                }
-            }
-        }
-        Ok(MerkleStorageStats {
-            perf_stats: perf,
-            kv_store_stats: self.db.get_total_stats(),
-        })
+    pub fn get_merkle_stats(&self) -> MerkleStoragePerfReport{
+        MerkleStoragePerfReport::new(self.stats.perf_stats.clone(), self.db.get_total_stats())
     }
 
     pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
-        self.block_latencies.get(offset_from_last_applied)
-    }
-
-    /// Update global and per-path execution stats. Pass Instant with operation execution time
-    pub fn update_execution_stats(
-        &mut self,
-        op: String,
-        path: Option<&ContextKey>,
-        instant: &Instant,
-    ) {
-        // stop timer and get duration
-        let exec_time_nanos = instant.elapsed().as_nanos();
-        let exec_time: f64 = exec_time_nanos as f64;
-
-        self.block_latencies.update(exec_time_nanos as u64);
-        // commit signifies end of the block
-        if &op == "Commit" {
-            self.block_latencies.end_block();
-        }
-
-        // collect global stats
-        let entry = self
-            .perf_stats
-            .global
-            .entry(op.to_owned())
-            .or_insert_with(OperationLatencies::default);
-        // add to cumulative execution time
-        entry.cumul_op_exec_time += exec_time;
-        entry.op_exec_times += 1;
-
-        // update min/max times for op
-        if exec_time < entry.op_exec_time_min {
-            entry.op_exec_time_min = exec_time;
-        }
-        if exec_time > entry.op_exec_time_max {
-            entry.op_exec_time_max = exec_time;
-        }
-
-        // collect per-path stats
-        if let Some(path) = path {
-            // we are only interested in nodes under /data
-            if path.len() > 1 && path[0] == "data" {
-                let node = path[1].to_string();
-                let perpath = self
-                    .perf_stats
-                    .perpath
-                    .entry(node)
-                    .or_insert_with(HashMap::new);
-                let entry = perpath
-                    .entry(op)
-                    .or_insert_with(OperationLatencies::default);
-
-                // add to cumulative execution time
-                entry.cumul_op_exec_time += exec_time;
-                entry.op_exec_times += 1;
-
-                // update min/max times for op
-                if exec_time < entry.op_exec_time_min {
-                    entry.op_exec_time_min = exec_time;
-                }
-                if exec_time > entry.op_exec_time_max {
-                    entry.op_exec_time_max = exec_time;
-                }
-            }
-        }
+        self.stats.block_latencies.get(offset_from_last_applied)
     }
 
     /// Blocks until gc finishes. Useful for testing.
@@ -1366,16 +1189,6 @@ mod tests {
 
     fn empty_mem_storage() -> MerkleStorage {
         get_mem_storage(Arc::new(RwLock::new(HashMap::new())))
-    }
-
-    #[test]
-    fn test_mat_set() {
-        let mut storage = empty_mem_storage();
-        let key_one: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string(), "d".to_string()];
-        let key_two: &ContextKey = &vec!["a".to_string(), "x".to_string(), "y".to_string(), "z".to_string()];
-        storage.set(key_one, &vec![1]);
-        storage.set(key_two, &vec![1]);
-        storage.set(key_two, &vec![1]);
     }
 
     #[test]
@@ -1748,7 +1561,7 @@ mod tests {
 
         let db = Arc::new(RwLock::new(HashMap::new()));
         let sled  = sled::Config::new().temporary(true).open().unwrap();
-        let backend = env::var("BACKEND").unwrap_or("mem".to_string());
+        let mut storage = get_mem_storage(db.clone());
 
 
         let commit1;
@@ -1759,40 +1572,26 @@ mod tests {
         let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
         let key_d: &ContextKey = &vec!["d".to_string()];
 
-        {
-            let mut storage = match backend.as_str() {
-                "mem" => get_mem_storage(db.clone()),
-                "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
-            };
+        let res = storage.get(&vec![]);
+        assert_eq!(res.unwrap().is_empty(), true);
+        let res = storage.get(&vec!["a".to_string()]);
+        assert_eq!(res.unwrap().is_empty(), true);
 
-            let res = storage.get(&vec![]);
-            assert_eq!(res.unwrap().is_empty(), true);
-            let res = storage.get(&vec!["a".to_string()]);
-            assert_eq!(res.unwrap().is_empty(), true);
+        storage.set(key_abc, &vec![1u8, 2u8]);
+        storage.set(key_abx, &vec![3u8]);
+        assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
+        assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
+        commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_abc, &vec![1u8, 2u8]);
-            storage.set(key_abx, &vec![3u8]);
-            assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
-            assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-
-            storage.set(key_az, &vec![4u8]);
-            storage.set(key_abx, &vec![5u8]);
-            storage.set(key_d, &vec![6u8]);
-            storage.set(key_eab, &vec![7u8]);
-            assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
-            assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
-            assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
-            assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
-
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
-        };
+        storage.set(key_az, &vec![4u8]);
+        storage.set(key_abx, &vec![5u8]);
+        storage.set(key_d, &vec![6u8]);
+        storage.set(key_eab, &vec![7u8]);
+        assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
+        assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
+        assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
+        assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
+        commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -2038,35 +1837,26 @@ mod tests {
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        {
-            let backend = env::var("BACKEND").unwrap_or("mem".to_string());
-            let mut storage = match backend.as_str() {
-                "mem" => get_mem_storage(db.clone()),
-                "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
-            };
-            storage.set(key_abc, &vec![1u8]).unwrap();
-            storage.set(key_abx, &vec![2u8]).unwrap();
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-
-            storage.set(key_abc, &vec![3u8]).unwrap();
-            storage.set(key_abx, &vec![4u8]).unwrap();
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
-
-
         let backend = env::var("BACKEND").unwrap_or("mem".to_string());
         let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db),
+            "mem" => get_mem_storage(db.clone()),
             "sled" => get_sled_storage(sled.deref().clone()),
             _ => {panic!()}
         };
+
+        storage.set(key_abc, &vec![1u8]).unwrap();
+        storage.set(key_abx, &vec![2u8]).unwrap();
+        commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        storage.set(key_abc, &vec![3u8]).unwrap();
+        storage.set(key_abx, &vec![4u8]).unwrap();
+        commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+
+
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
         // this set be wiped by checkout
         storage.set(key_abc, &vec![8u8]).unwrap();
-
         storage.checkout(&commit2);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
@@ -2074,50 +1864,22 @@ mod tests {
 
     #[test]
     fn test_persistence_over_reopens() {
-        let db = Arc::new(RwLock::new(HashMap::new()));
         let sled  = sled::Config::new().temporary(true).open().unwrap();
         let backend = env::var("BACKEND").unwrap_or("mem".to_string());
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let commit1;
         {
-            let mut storage = match backend.as_str() {
-                "mem" => get_mem_storage(db.clone()),
-                "sled" => get_sled_storage(sled.deref().clone()),
-                _ => {panic!()}
-            };
+            let mut storage = get_sled_storage(sled.deref().clone());
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
             storage.set(key_abc, &vec![2_u8]).unwrap();
             storage.set(key_abx, &vec![3_u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
-        let mut storage = match backend.as_str() {
-            "mem" => get_mem_storage(db.clone()),
-            "sled" => get_sled_storage(sled.deref().clone()),
-            _ => {panic!()}
-        };
+        let mut storage =  get_sled_storage(sled.deref().clone());
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    /*Test a DB error by writing into a read-only database.
-    #[test]
-    fn test_db_error() {
-        let db_name = "ms_test_db_error";
-        {
-            clean_db(db_name);
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache);
-        }
-
-        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(RocksDBBackend::new(Arc::new(db),MerkleStorage::name())));
-        storage.set(&vec!["a".to_string()], &vec![1u8]);
-        let res = storage.commit(0, "".to_string(), "".to_string());
-
-        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
-    }*/
-
-    // Test getting entire tree in string format for JSON RPC
     #[test]
     fn test_get_context_tree_by_prefix() {
         let backend = env::var("BACKEND").unwrap_or("mem".to_string());
@@ -2366,4 +2128,12 @@ mod tests {
         assert_eq!(storage.staged.is_empty(), true);
         assert_eq!(storage.stage_checkout(&outdated_stage_hash).is_err(), true);
     }
+
+    pub trait MerkleActions{
+        fn set(&self, key: Vec<String>, value: String);
+        fn get(&self, key: Vec<String>);
+    }
+
+    pub struct FooMerkle{}
+
 }
