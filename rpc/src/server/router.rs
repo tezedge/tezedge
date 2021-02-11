@@ -184,17 +184,16 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
         "/chains/:chain_id/blocks/:block_id/context/constants",
         protocol_handler::context_constants,
     );
-    // TODO: fix - does not compile ...
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
-    //     protocol_handler::baking_rights,
-    // );
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
-    //     protocol_handler::endorsing_rights,
-    // );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
+        protocol_handler::baking_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
+        protocol_handler::endorsing_rights,
+    );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/votes/listings",
