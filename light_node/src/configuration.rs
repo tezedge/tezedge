@@ -11,8 +11,8 @@ use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
-
 use rocksdb::ColumnFamilyDescriptor;
+
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::persistent::KeyValueSchema;
@@ -207,10 +207,10 @@ pub fn tezos_app() -> App<'static, 'static> {
     //
     // In case some args are required=true and user provides only config-file,
     // first round of parsing would always fail then
-    let app = App::new("Tezos Light Node")
-        .version("0.3.1")
-        .author("SimpleStaking and the project contributors")
-        .about("Rust implementation of the tezos node")
+    let app = App::new("TezEdge Light Node")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
+        .about("Rust implementation of the Tezos node")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(Arg::with_name("validate-cfg-identity-and-stop")
             .long("validate-cfg-identity-and-stop")
@@ -326,8 +326,9 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("network")
             .long("network")
             .takes_value(true)
-            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "delphinet", "delphi", "edonet", "edo", "sandbox"])
-            .help("Choose the Tezos environment"))
+            .possible_values(&TezosEnvironment::possible_values())
+            .help("Choose the Tezos environment")
+        )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
             .takes_value(true)
@@ -555,28 +556,34 @@ fn pool_cfg(
 // In case some args are required=true and user provides only config-file,
 // first round of parsing would always fail then
 fn validate_required_args(args: &clap::ArgMatches) {
-    validate_required_arg(args, "tezos-data-dir");
-    validate_required_arg(args, "network");
-    validate_required_arg(args, "bootstrap-db-path");
-    validate_required_arg(args, "log-format");
-    validate_required_arg(args, "ocaml-log-enabled");
-    validate_required_arg(args, "p2p-port");
-    validate_required_arg(args, "protocol-runner");
-    validate_required_arg(args, "rpc-port");
-    validate_required_arg(args, "websocket-address");
-    validate_required_arg(args, "peer-thresh-low");
-    validate_required_arg(args, "peer-thresh-high");
-    validate_required_arg(args, "tokio-threads");
-    validate_required_arg(args, "identity-file");
-    validate_required_arg(args, "identity-expected-pow");
-
-    // "bootstrap-lookup-address", "log-file" and "peers" are not required
+    validate_required_arg(args, "tezos-data-dir", None);
+    validate_required_arg(
+        args,
+        "network",
+        Some(format!(
+            "possible_values: {:?}",
+            TezosEnvironment::possible_values()
+        )),
+    );
+    validate_required_arg(args, "bootstrap-db-path", None);
+    validate_required_arg(args, "p2p-port", None);
+    validate_required_arg(args, "protocol-runner", None);
+    validate_required_arg(args, "rpc-port", None);
+    validate_required_arg(args, "websocket-address", None);
+    validate_required_arg(args, "peer-thresh-low", None);
+    validate_required_arg(args, "peer-thresh-high", None);
+    validate_required_arg(args, "tokio-threads", None);
+    validate_required_arg(args, "identity-file", None);
+    validate_required_arg(args, "identity-expected-pow", None);
 }
 
 // Validates single required arg. If missing, exit whole process
-pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
+pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str, help: Option<String>) {
     if !args.is_present(arg_name) {
-        panic!("required \"{}\" arg is missing !!!", arg_name);
+        match help {
+            Some(help) => panic!("Required \"{}\" arg is missing, {} !!!", arg_name, help),
+            None => panic!("Required \"{}\" arg is missing !!!", arg_name),
+        }
     }
 }
 
@@ -673,7 +680,7 @@ impl Environment {
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")
-            .unwrap_or("")
+            .expect("Network is required")
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 

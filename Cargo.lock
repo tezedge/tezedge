@@ -785,26 +785,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
-name = "enum-iterator"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c79a6321a1197d7730510c7e3f6cb80432dfefecb32426de8cea0aa19b4bb8d7"
-dependencies = [
- "enum-iterator-derive",
-]
-
-[[package]]
-name = "enum-iterator-derive"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e94aa31f7c0dc764f57896dc615ddd76fc13b0d5dca7eb6cc5e018a5a09ec06"
-dependencies = [
- "proc-macro2 1.0.24",
- "quote 1.0.8",
- "syn 1.0.60",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2469,7 +2449,6 @@ dependencies = [
  "assert-json-diff",
  "chrono",
  "crypto",
- "enum-iterator",
  "failure",
  "futures",
  "getset",
@@ -2486,6 +2465,8 @@ dependencies = [
  "shell",
  "slog",
  "storage",
+ "strum",
+ "strum_macros",
  "tezos_api",
  "tezos_context",
  "tezos_messages",
@@ -3146,13 +3127,14 @@ dependencies = [
  "chrono",
  "crypto",
  "derive_builder",
- "enum-iterator",
  "failure",
  "hex",
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.123",
  "serde_json",
+ "strum",
+ "strum_macros",
  "tezos_messages",
 ]
 
@@ -3162,11 +3144,11 @@ version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "crypto",
- "enum-iterator",
  "failure",
  "hex",
  "serde_json",
  "serial_test",
+ "strum",
  "tezos_api",
  "tezos_interop",
  "tezos_messages",

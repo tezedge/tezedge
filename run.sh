@@ -94,8 +94,6 @@ run_node() {
   BOOTSTRAP_DIR=/tmp/tezedge/light-node
   # -i | --identity
   IDENTITY_FILE=./light_node/etc/tezedge/identity.json
-  # -n | --network
-  NETWORK=delphi
   # rest of the commandline arguments will end up here
   args=()
 
@@ -133,15 +131,6 @@ run_node() {
         BOOTSTRAP_DIR="$1"
         shift
         ;;
-      --network=*)
-        NETWORK="${1#*=}"
-        shift
-        ;;
-      --network)
-        shift
-        NETWORK="$1"
-        shift
-        ;;
       *)
         args+=("$1")
         shift
@@ -170,7 +159,6 @@ run_node() {
             --tezos-data-dir "$TEZOS_DIR" \
             --identity-file "$IDENTITY_FILE" \
             --bootstrap-db-path "$BOOTSTRAP_DIR" \
-            --network "$NETWORK" \
             --protocol-runner $PROTOCOL_RUNNER_BINARY "${args[@]}"
 }
 
