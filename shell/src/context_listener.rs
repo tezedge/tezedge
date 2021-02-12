@@ -3,16 +3,20 @@
 
 //! Listens for events from the `protocol_runner`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::{hash::Hash, sync::atomic::{AtomicBool, Ordering}};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::borrow::BorrowMut;
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::collections::HashSet;
+use bytes::{Buf, BufMut, BytesMut};
+use hex;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
+use slog::{crit, debug, info, error, warn, Logger};
 
 use crypto::hash::HashType;
 use storage::action_file_storage::ActionFileStorage;
@@ -173,16 +177,22 @@ fn listen_protocol_events(
                     );
                 }
 
-                event_count = if let ContextAction::Shutdown = &msg.action {
-                    0
-                } else {
-                    event_count + 1
-                };
+                if ! msg.record{
+                    // currently some of the messages are send twice due to
+                    // replay feature - we dont wont to process those duplicates
+                    continue;
+                }
 
-                action_store_backend.record(&msg)?;
+                event_count += 1;
 
-                if msg.perform {
-                    perform_context_action(&msg.action, context)?;
+                if let Err(error) = action_store_backend.record(&msg){
+                    error!(log,"action: {:?} ,error: {} ",&msg.action , error);
+                    break;
+                }
+                
+                if let Err(e) = perform_context_action(&msg.action, context){
+                    error!(log, "error while processing action: {:?} reason  '{}'", &msg.action, e);
+                    panic!("error while executing action");
                 }
             }
             Err(err) => {
@@ -195,10 +205,59 @@ fn listen_protocol_events(
     Ok(())
 }
 
-fn perform_context_action(
+// returns hash of the merkle tree that action needs to be
+// applied on
+pub fn get_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
+    match &action
+    {
+        ContextAction::Get {tree_hash, .. }
+        | ContextAction::Mem {tree_hash, .. }
+        | ContextAction::DirMem {tree_hash, ..}
+        | ContextAction::Set {tree_hash, ..}
+        | ContextAction::Copy {tree_hash, ..}
+        | ContextAction::Delete {tree_hash, ..}
+        | ContextAction::RemoveRecursively {tree_hash, ..}
+        | ContextAction::Commit {tree_hash, ..}
+        | ContextAction::Fold {tree_hash, ..} => {
+            let mut hash:[u8;32] = [0;32];
+            tree_hash.clone().reader().read_exact(& mut hash).unwrap();
+            Some(hash)
+        },
+        ContextAction::Checkout{..}
+        | ContextAction::Shutdown => {None},
+    }
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
+    match &action{
+        ContextAction::Set {new_tree_hash, ..}
+        | ContextAction::Copy {new_tree_hash, ..}
+        | ContextAction::Delete {new_tree_hash, ..}
+        | ContextAction::RemoveRecursively {new_tree_hash, ..} => {
+            let mut hash:[u8;32] = [0;32];
+            new_tree_hash.clone().reader().read_exact(& mut hash).unwrap();
+            Some(hash)
+        }
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { ..}
+        | ContextAction::Commit {..}
+        | ContextAction::Fold {..}
+        | ContextAction::Checkout{..}
+        | ContextAction::Shutdown => {None},
+    }
+}
+
+
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
+
+    if let Some(pre_hash) = get_tree_hash(&action){
+        context.set_merkle_root(pre_hash)?;
+    }
+    
     match action {
         ContextAction::Get { key, .. } => {
             context.get_key(key)?;
@@ -244,13 +303,14 @@ fn perform_context_action(
             date,
             ..
         } => {
-            let hash = context.commit(
+            let hash_result = context.commit(
                 block_hash,
                 parent_context_hash,
                 author.to_string(),
                 message.to_string(),
                 *date,
-            )?;
+            );
+            let hash = hash_result?;
             assert_eq!(
                 &hash,
                 new_context_hash,
@@ -271,6 +331,10 @@ fn perform_context_action(
 
         ContextAction::Shutdown => (), // Ignored
     };
+
+    if let Some(post_hash) = get_new_tree_hash(&action){
+        assert_eq!(context.get_merkle_root(), post_hash);
+    }
 
     Ok(())
 }

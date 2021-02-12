@@ -185,7 +185,7 @@ fn gen_stats(args: Args) {
         }
 
         if !args.test_integrity {
-            let stats = merkle.get_merkle_stats().unwrap();
+            let stats = merkle.get_merkle_stats();
             println!("{}, {}, {}, {}, {}, {}, {}",
                  block.block_level,
                  stats.kv_store_stats.key_bytes,

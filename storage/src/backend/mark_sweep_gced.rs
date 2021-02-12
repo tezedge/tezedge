@@ -51,27 +51,26 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     }
 
     fn mark_entries_recursively(&self, entry: &Entry, todo: &mut HashSet<EntryHash>)  {
-        if let Ok(hash) = hash_entry(entry) {
-            match entry {
-                Entry::Blob(_) => {
-                    todo.insert(hash);
-                }
-                Entry::Tree(tree) => {
-                    todo.insert(hash);
-                    tree.iter().for_each(|(key, child_node)| {
-                        match self.get_entry(&child_node.entry_hash) {
-                            Ok(Some(entry)) => self.mark_entries_recursively(&entry, todo),
-                            _ => {}
-                        };
-                    });
-                }
-                Entry::Commit(commit) => {
-                    todo.insert(hash);
-                    match self.get_entry(&commit.root_hash) {
+        let hash = hash_entry(entry);
+        match entry {
+            Entry::Blob(_) => {
+                todo.insert(hash);
+            }
+            Entry::Tree(tree) => {
+                todo.insert(hash);
+                tree.iter().for_each(|(key, child_node)| {
+                    match self.get_entry(&child_node.entry_hash) {
                         Ok(Some(entry)) => self.mark_entries_recursively(&entry, todo),
                         _ => {}
-                        Err(_) => {}
-                    }
+                    };
+                });
+            }
+            Entry::Commit(commit) => {
+                todo.insert(hash);
+                match self.get_entry(&commit.root_hash) {
+                    Ok(Some(entry)) => self.mark_entries_recursively(&entry, todo),
+                    _ => {}
+                    Err(_) => {}
                 }
             }
         }

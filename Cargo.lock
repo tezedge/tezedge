@@ -1689,7 +1689,6 @@ dependencies = [
  "rpc",
  "serde_json",
  "shell",
- "sled",
  "slog",
  "slog-async",
  "slog-json",
@@ -2886,6 +2885,7 @@ dependencies = [
 name = "shell"
 version = "0.10.0"
 dependencies = [
+ "bytes 1.0.1",
  "chrono",
  "crypto",
  "dns-lookup",
@@ -2901,6 +2901,7 @@ dependencies = [
  "rand 0.7.3",
  "regex",
  "riker",
+ "rocksdb",
  "serde 1.0.119",
  "serde_json",
  "serial_test",

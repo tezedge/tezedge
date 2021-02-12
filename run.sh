@@ -148,6 +148,7 @@ run_node() {
   # start node
   cargo run $CARGO_PROFILE_ARG --bin light-node -- \
                                 --config-file "$CONFIG_FILE" \
+                                --log-level "debug" \
                                 --tezos-data-dir "$TEZOS_DIR" \
                                 --identity-file "$IDENTITY_FILE" \
                                 --bootstrap-db-path "$BOOTSTRAP_DIR" \

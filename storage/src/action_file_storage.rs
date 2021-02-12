@@ -9,19 +9,19 @@ use crate::StorageError;
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 
 pub struct ActionFileStorage {
-    block_storage: BlockStorage,
     file: PathBuf,
     staging: HashMap<Vec<u8>, Vec<ContextActionMessage>>,
+    level: u32,
 }
 
 use slog::{error,warn,Logger};
 
 impl ActionFileStorage {
-    pub fn new(path: PathBuf, persistent_storage: &PersistentStorage) -> Self {
+    pub fn new(path: PathBuf) -> Self {
         ActionFileStorage {
             file: path,
             staging: HashMap::new(),
-            block_storage: BlockStorage::new(persistent_storage),
+            level: 0,
         }
     }
 
@@ -31,11 +31,12 @@ impl ActionFileStorage {
     }
 
     fn store_commit_message(&mut self, block_hash: &BlockHash, msg: &ContextActionMessage) -> Result<(), StorageError>{
+        self.level += 1;
         self.store_single_message(block_hash, msg);
-        return self.flush_entries_to_file(block_hash);
+        return self.flush_entries_to_file(block_hash, self.level);
     }
 
-    fn flush_entries_to_file(&mut self, block_hash: &BlockHash) -> Result<(), StorageError>{
+    fn flush_entries_to_file(&mut self, block_hash: &BlockHash, block_level: u32) -> Result<(), StorageError>{
         let mut action_file_writer = ActionsFileWriter::new(&self.file)
             .or_else(|e| 
                 Err(
@@ -43,31 +44,15 @@ impl ActionFileStorage {
                         error: ActionRecordError::ActionFileError{error: e}
                     }))?;
 
-        // Get block level from Block storage
-        match self.block_storage.get(block_hash)?{
-            Some(block_header) => {
-                let block = 
-                    Block::new(
-                        block_header.header.level() as u32,
-                        block_header.hash,
-                        block_header.header.predecessor().to_vec(),
-                    );    
+        let actions = self.staging.remove(block_hash).ok_or(
+            ActionRecordError::MissingActions{hash : hex::encode(&block_hash)}
+        )?;
 
-                // remove block actions from staging and save it to action file
-                let actions = self.staging.remove(block_hash).ok_or(
-                    ActionRecordError::MissingActions{hash : hex::encode(&block_hash)}
-                )?;
-
-                action_file_writer.update(block, actions).or_else(
-                    |e| Err(ActionRecordError::from(e))
-                )?;
-                Ok(())
-            }
-            None => {Ok(())}
-        }
-
+        action_file_writer.update(block_hash, block_level, actions).or_else(
+            |e| Err(ActionRecordError::from(e))
+        )?;
+        Ok(())
     }
-
 }
 
 impl ActionRecorder for ActionFileStorage {

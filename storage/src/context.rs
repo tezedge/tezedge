@@ -1,19 +1,19 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::array::TryFromSliceError;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
 use std::sync::{Arc, RwLock};
+use std::{array::TryFromSliceError, cell::RefCell};
 
 use failure::Fail;
 
 use crypto::hash::{BlockHash, ContextHash, HashType};
 
 use crate::merkle_storage::{
-    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats,
-    StringTreeEntry,
+    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, StringTreeEntry,
 };
+use crate::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
 /// Abstraction on context manipulation
@@ -83,11 +83,16 @@ pub trait ContextApi {
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
+    fn get_merkle_stats(&self) -> MerkleStoragePerfReport;
 
     /// TODO: TE-203 - remove when context_listener will not be used
     // check if context_hash is committed
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
+
+    fn set_merkle_root(& mut self, hash: EntryHash) -> Result<(), MerkleError>;
+
+    fn get_merkle_root(& mut self) -> EntryHash;
+
 }
 
 impl ContextApi for TezedgeContext {
@@ -99,7 +104,6 @@ impl ContextApi for TezedgeContext {
     ) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.set(key, value)?;
-
         Ok(())
     }
 
@@ -107,7 +111,6 @@ impl ContextApi for TezedgeContext {
         let context_hash_arr: EntryHash = context_hash.as_slice().try_into()?;
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.checkout(&context_hash_arr)?;
-
         Ok(())
     }
 
@@ -125,7 +128,6 @@ impl ContextApi for TezedgeContext {
         let commit_hash = merkle.commit(date, author, message)?;
         let commit_hash = &commit_hash[..].to_vec();
 
-        // associate block and context_hash
         if let Err(e) = self
             .block_storage
             .assign_to_context(block_hash, &commit_hash)
@@ -154,7 +156,6 @@ impl ContextApi for TezedgeContext {
                 }
             };
         }
-
         Ok(commit_hash.to_vec())
     }
 
@@ -252,17 +253,25 @@ impl ContextApi for TezedgeContext {
         merkle.get_last_commit_hash().map(|x| x.to_vec())
     }
 
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError> {
+    fn get_merkle_stats(&self) -> MerkleStoragePerfReport{
         let merkle = self.merkle.read().expect("lock poisoning");
-        let stats = merkle.get_merkle_stats()?;
-
-        Ok(stats)
+        return merkle.get_merkle_stats();
     }
 
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
         self.block_storage
             .contains_context_hash(context_hash)
             .map_err(|e| ContextError::StorageError { error: e })
+    }
+
+    fn set_merkle_root(& mut self, hash: EntryHash) -> Result<(), MerkleError>{
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        merkle.stage_checkout(&hash)
+    }
+
+    fn get_merkle_root(& mut self) -> EntryHash{
+        let merkle = self.merkle.read().expect("lock poisoning");
+        merkle.get_staged_root_hash()
     }
 }
 
@@ -277,9 +286,10 @@ impl TezedgeContext {
     pub fn new(block_storage: BlockStorage, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
         TezedgeContext {
             block_storage,
-            merkle,
+            merkle: merkle.clone(),
         }
     }
+
 }
 
 /// Possible errors for context

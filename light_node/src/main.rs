@@ -3,7 +3,7 @@
 // #![forbid(unsafe_code)]
 
 use std::sync::atomic::Ordering;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use std::time::Duration;
 
 use riker::actors::*;
@@ -42,7 +42,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::LogFormat;
-use std::collections::HashMap;
+
 
 mod configuration;
 mod identity;
@@ -326,7 +326,7 @@ fn block_on_actors(
         configuration::ContextActionStoreBackend::FileStorage => {
             let action_file_path = env.storage.db_path.join("actionfile.bin");
             info!(log, "RecordingActions to file storage '{}'", action_file_path.clone().to_str().unwrap());
-            Box::new(ActionFileStorage::new(action_file_path, &persistent_storage))
+            Box::new(ActionFileStorage::new(action_file_path))
         }
         configuration::ContextActionStoreBackend::NoneBackend => {
             Box::new(NoRecorder{})
