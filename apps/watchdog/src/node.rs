@@ -7,13 +7,15 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use failure::{bail, format_err};
 use fs_extra::dir;
-use slog::{info, Logger};
 use merge::Merge;
+use slog::{info, Logger};
 
-use shell::stats::memory::{LinuxData, ProcessMemoryStats};
+use sysinfo::{ProcessExt, System, SystemExt};
 
-use crate::display_info::{DiskData, TezedgeDiskData, OcamlDiskData};
+use shell::stats::memory::{MemoryData, ProcessMemoryStats};
+
 use crate::display_info::NodeInfo;
+use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
 use crate::image::Image;
 use crate::monitors::OCAML_VOLUME_PATH;
 use crate::monitors::TEZEDGE_VOLUME_PATH;
@@ -26,9 +28,18 @@ impl Node for TezedgeNode {
         let disk_data = TezedgeDiskData::new(
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "debugger_db"))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/context"))?,
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"))?,
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"))?,
+            dir::get_size(&format!(
+                "{}/{}",
+                TEZEDGE_VOLUME_PATH, "bootstrap_db/context"
+            ))?,
+            dir::get_size(&format!(
+                "{}/{}",
+                TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"
+            ))?,
+            dir::get_size(&format!(
+                "{}/{}",
+                TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"
+            ))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
         );
 
@@ -42,8 +53,10 @@ impl Image for TezedgeNode {
 }
 
 impl TezedgeNode {
-    pub async fn collect_protocol_runners_memory_stats(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
-        let protocol_runners: Vec<LinuxData> = match reqwest::get(&format!(
+    pub async fn collect_protocol_runners_memory_stats(
+        port: u16,
+    ) -> Result<ProcessMemoryStats, failure::Error> {
+        let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
             "http://localhost:{}/stats/memory/protocol_runners",
             port
         ))
@@ -53,12 +66,33 @@ impl TezedgeNode {
             Err(e) => bail!("GET memory error: {}", e),
         };
 
-        let memory_stats: ProcessMemoryStats = protocol_runners.into_iter()
+        let memory_stats: ProcessMemoryStats = protocol_runners
+            .into_iter()
             .map(|v| v.try_into().unwrap())
-            .fold(ProcessMemoryStats::default(), |mut acc, mem: ProcessMemoryStats| {acc.merge(mem); acc});
+            .fold(
+                ProcessMemoryStats::default(),
+                |mut acc, mem: ProcessMemoryStats| {
+                    acc.merge(mem);
+                    acc
+                },
+            );
 
         Ok(memory_stats)
     }
+
+    // // TODO move to trait
+    // pub fn collect_cpu_data() -> Result<f32, failure::Error> {
+    //     let mut system = System::new_all();
+    //     system.refresh_all();
+
+    //     // get tezos-node process
+    //     Ok(system.get_processes()
+    //         .into_iter()
+    //         .map(|(_, process)| process.clone())
+    //         .filter(|process| process.name().contains("light-node"))
+    //         .map(|process| process.cpu_usage())
+    //         .sum())
+    // }
 }
 
 pub struct OcamlNode {}
@@ -68,17 +102,19 @@ impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         Ok(OcamlDiskData::new(
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data"))?
-        ).into()
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
         )
+        .into())
     }
-
 }
 
 impl Image for OcamlNode {
     const TAG_ENV_KEY: &'static str = "OCAML_IMAGE_TAG";
     const IMAGE_NAME: &'static str = "tezos/tezos";
 }
+
+impl OcamlNode {}
 
 #[async_trait]
 pub trait Node {
@@ -115,35 +151,42 @@ pub trait Node {
 
     async fn collect_memory_data(
         log: &Logger,
-        port: u16
+        port: u16,
     ) -> Result<ProcessMemoryStats, failure::Error> {
-        let tezedge_raw_memory_info: LinuxData =
+        let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,
                 Err(e) => bail!("GET memory error: {}", e),
             };
-        info!(
-            log,
-            "raw_memory_info: {:?}", tezedge_raw_memory_info
-        );
+        info!(log, "raw_memory_info: {:?}", tezedge_raw_memory_info);
         let memory_stats: ProcessMemoryStats = tezedge_raw_memory_info.try_into()?;
 
         Ok(memory_stats)
     }
 
     async fn collect_commit_hash(log: &Logger, port: u16) -> Result<String, failure::Error> {
-        let commit_hash = match reqwest::get(&format!(
-            "http://localhost:{}/monitor/commit_hash",
-            port
-        ))
-        .await
-        {
-            Ok(result) => result.text().await?,
-            Err(e) => bail!("GET commit_hash error: {}", e),
-        };
+        let commit_hash =
+            match reqwest::get(&format!("http://localhost:{}/monitor/commit_hash", port)).await {
+                Ok(result) => result.text().await?,
+                Err(e) => bail!("GET commit_hash error: {}", e),
+            };
         info!(log, "commit_hash: {}", commit_hash);
 
         Ok(commit_hash.trim_matches('"').trim_matches('\n').to_string())
+    }
+
+    fn collect_cpu_data(process_name: &str) -> Result<i32, failure::Error> {
+        let mut system = System::new_all();
+        system.refresh_all();
+
+        // get tezos-node process
+        Ok(system
+            .get_processes()
+            .iter()
+            .map(|(_, process)| process.clone())
+            .filter(|process| process.name().contains(process_name))
+            .map(|process| process.cpu_usage())
+            .sum::<f32>() as i32)
     }
 
     fn collect_disk_data() -> Result<DiskData, failure::Error>;
