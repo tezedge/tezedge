@@ -17,9 +17,10 @@ Note that the debugger container needs root privilages.
 
 ```
 sudo TEZEDGE_IMAGE_TAG=latest TEZEDGE_DEBUGGER_IMAGE_TAG=latest TEZEDGE_EXPLORER_IMAGE_TAG=latest HOSTNAME=$(hostname) ./target/release/watchdog \
---monitor-interval 60 \ 
---info-interval 21600 
---slack-url https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX 
+--image-monitor-interval 60 \ 
+--info-interval 21600 \
+--resource-monitor-interval 15 \
+--slack-url https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX \
 --slack-token "Bearer xoxb-xxxxxxxxxxxx-xxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx" \
 --slack-channel-name monitoring
 ```

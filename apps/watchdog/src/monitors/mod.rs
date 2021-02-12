@@ -13,10 +13,12 @@ use tokio::time::{sleep, Duration};
 use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose};
 use crate::monitors::deploy::DeployMonitor;
 use crate::monitors::info::InfoMonitor;
+use crate::monitors::resource::{ResourceMonitor, ResourceUtilizationStorage};
 use crate::slack::SlackServer;
 
 pub mod deploy;
 pub mod info;
+pub mod resource;
 
 // TODO: get this info from docker (shiplift needs to implement docker volume inspect)
 // path to the volumes
@@ -54,6 +56,24 @@ pub fn start_info_monitoring(
         while running.load(Ordering::Acquire) {
             if let Err(e) = info_monitor.send_monitoring_info().await {
                 error!(log, "Info monitoring error: {}", e);
+            }
+            sleep(Duration::from_secs(interval)).await;
+        }
+    })
+}
+
+pub fn start_resource_monitoring(
+    interval: u64,
+    log: Logger,
+    running: Arc<AtomicBool>,
+    ocaml_resource_utilization: ResourceUtilizationStorage,
+    tezedge_resource_utilization: ResourceUtilizationStorage,
+) -> JoinHandle<()> {
+    let resource_monitor = ResourceMonitor::new(ocaml_resource_utilization, tezedge_resource_utilization, log.clone());
+    tokio::spawn(async move {
+        while running.load(Ordering::Acquire) {
+            if let Err(e) = resource_monitor.take_measurement().await {
+                error!(log, "Resource monitoring error: {}", e);
             }
             sleep(Duration::from_secs(interval)).await;
         }

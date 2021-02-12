@@ -10,7 +10,9 @@ use fs_extra::dir;
 use slog::{info, Logger};
 use merge::Merge;
 
-use shell::stats::memory::{LinuxData, ProcessMemoryStats};
+use sysinfo::{ProcessExt, SystemExt, System};
+
+use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::display_info::{DiskData, TezedgeDiskData, OcamlDiskData};
 use crate::display_info::NodeInfo;
@@ -43,7 +45,7 @@ impl Image for TezedgeNode {
 
 impl TezedgeNode {
     pub async fn collect_protocol_runners_memory_stats(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
-        let protocol_runners: Vec<LinuxData> = match reqwest::get(&format!(
+        let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
             "http://localhost:{}/stats/memory/protocol_runners",
             port
         ))
@@ -59,6 +61,20 @@ impl TezedgeNode {
 
         Ok(memory_stats)
     }
+
+    // // TODO move to trait
+    // pub fn collect_cpu_data() -> Result<f32, failure::Error> {
+    //     let mut system = System::new_all();
+    //     system.refresh_all();
+
+    //     // get tezos-node process
+    //     Ok(system.get_processes()
+    //         .into_iter()
+    //         .map(|(_, process)| process.clone())
+    //         .filter(|process| process.name().contains("light-node"))
+    //         .map(|process| process.cpu_usage())
+    //         .sum())
+    // }
 }
 
 pub struct OcamlNode {}
@@ -68,16 +84,20 @@ impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         Ok(OcamlDiskData::new(
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data"))?
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
         ).into()
         )
     }
-
 }
 
 impl Image for OcamlNode {
     const TAG_ENV_KEY: &'static str = "OCAML_IMAGE_TAG";
     const IMAGE_NAME: &'static str = "tezos/tezos";
+}
+
+impl OcamlNode {
+    
 }
 
 #[async_trait]
@@ -117,7 +137,7 @@ pub trait Node {
         log: &Logger,
         port: u16
     ) -> Result<ProcessMemoryStats, failure::Error> {
-        let tezedge_raw_memory_info: LinuxData =
+        let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,
                 Err(e) => bail!("GET memory error: {}", e),
@@ -144,6 +164,19 @@ pub trait Node {
         info!(log, "commit_hash: {}", commit_hash);
 
         Ok(commit_hash.trim_matches('"').trim_matches('\n').to_string())
+    }
+
+    fn collect_cpu_data(process_name: &str) -> Result<i32, failure::Error> {
+        let mut system = System::new_all();
+        system.refresh_all();
+
+        // get tezos-node process
+        Ok(system.get_processes()
+            .into_iter()
+            .map(|(_, process)| process.clone())
+            .filter(|process| process.name().contains(process_name))
+            .map(|process| process.cpu_usage())
+            .sum::<f32>() as i32)
     }
 
     fn collect_disk_data() -> Result<DiskData, failure::Error>;

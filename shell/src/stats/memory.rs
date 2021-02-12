@@ -30,7 +30,7 @@ pub struct LinuxData {
     dt: String,       // dirty pages (unused in Linux 2.6)
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct DarwinOsData {
     page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
     mem: f64,         // percentage of real memory being used by the process in KB
@@ -46,7 +46,7 @@ pub struct ProcessMemoryStats {
     resident_mem: usize,
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum MemoryData {
     Linux(LinuxData),
@@ -65,30 +65,49 @@ impl From<DarwinOsData> for MemoryData {
     }
 }
 
-// TODO: implement for DarwinOsData, too
-impl TryFrom<LinuxData> for ProcessMemoryStats {
+impl TryFrom<MemoryData> for ProcessMemoryStats {
     type Error = failure::Error;
 
-    fn try_from(data: LinuxData) -> Result<Self, Self::Error> {
-        let LinuxData {
-            size,
-            resident,
-            page_size,
-            ..
-        } = data;
+    fn try_from(data: MemoryData) -> Result<Self, Self::Error> {
+        match data {
+            MemoryData::Linux(stats) => {
+                let LinuxData {
+                    size,
+                    resident,
+                    page_size,
+                    ..
+                } = stats;
+        
+                let size = size.parse::<usize>()?;
+                let resident = resident.parse::<usize>()?;
+        
+                let virtual_mem = size * page_size;
+                let resident_mem = resident * page_size;
+        
+                Ok(ProcessMemoryStats {
+                    virtual_mem,
+                    resident_mem,
+                })
+            }
+            MemoryData::DarwinOs(stats) => {
+                let DarwinOsData {
+                    mem,
+                    resident,
+                    page_size,
+                    ..
+                } = stats;
 
-        let size = size.parse::<usize>()?;
-        let resident = resident.parse::<usize>()?;
+                let resident = resident.parse::<usize>()?;
 
-        // the size and page size are in Bytes, so we conwert it to Mega Bytes in a readable 
-        // fashion (divide by 1024 to get Kilo Bytes and another to get Mega Bytes)
-        let virtual_mem = size * page_size / 1024 / 1024;
-        let resident_mem = resident * page_size / 1024 / 1024;
+                let virtual_mem = 0;
+                let resident_mem = resident * page_size;
 
-        Ok(ProcessMemoryStats {
-            virtual_mem,
-            resident_mem,
-        })
+                Ok(ProcessMemoryStats {
+                    virtual_mem,
+                    resident_mem,
+                })
+            }
+        }
     }
 }
 
@@ -99,6 +118,15 @@ impl fmt::Display for ProcessMemoryStats {
             self.virtual_mem,
             self.resident_mem,
         )
+    }
+}
+
+impl ProcessMemoryStats {
+    pub fn to_megabytes(&self) -> Self {
+        Self {
+            resident_mem: self.resident_mem / 1024 / 1024,
+            virtual_mem: self.virtual_mem / 1024 / 1024,
+        }
     }
 }
 
