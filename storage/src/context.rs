@@ -128,8 +128,6 @@ impl ContextApi for TezedgeContext {
         let commit_hash = merkle.commit(date, author, message)?;
         let commit_hash = &commit_hash[..].to_vec();
 
-        // associate block and context_hash
-        // TODO uncomment
         if let Err(e) = self
             .block_storage
             .assign_to_context(block_hash, &commit_hash)

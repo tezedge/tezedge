@@ -442,8 +442,6 @@ impl MerkleStorage {
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Delete, Some(key));
 
-        // build staging tree from saved list of actions (set/copy/delete)
-        // note: this can be slow if there are a lot of actions
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root);
 
@@ -458,8 +456,6 @@ impl MerkleStorage {
     /// Check if value exists in current staged root
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
         let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Mem, Some(key));
-        // build staging tree from saved list of actions (set/copy/delete)
-        // note: this can be slow if there are a lot of actions
 
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root);
@@ -796,7 +792,6 @@ impl MerkleStorage {
     }
 
     /// Delete an item from the staging area.
-    //TODO: pelight
     pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
         let _ = StatUpdater::new(& mut self.stats, MerkleStorageAction::Delete, Some(key));
         let root = self.get_staged_root();
@@ -861,11 +856,18 @@ impl MerkleStorage {
         new_node: Option<Node>,
     ) -> Result<EntryHash, MerkleError> {
         if key.is_empty() {
+            // recurstion stop condition
             match new_node {
                 Some(n) => {
+                    // if there is a value we want to assigin - just
+                    // assigin it
                     return Ok(n.entry_hash);
                 }
                 None => {
+                    // if key is empty and there is new_node == None
+                    // that means that we just removed whole tree
+                    // so set merkle storage root to empty dir and place
+                    // it in staging area
                     let tree = Tree::new();
                     let new_tree_hash = hash_tree(&tree);
                     self.put_to_staging_area(&new_tree_hash, Entry::Tree(tree));

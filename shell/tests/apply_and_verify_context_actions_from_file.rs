@@ -75,6 +75,7 @@ fn get_action_symbol(action: &ContextAction) -> String {
 }
 
 #[test]
+#[ignore]
 fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let block_header_stub = BlockHeaderBuilder::default()
@@ -95,7 +96,6 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
     let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
     let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
-    // let actions_storage_path = PathBuf::from("/mnt/hdd/milion.bin");
     let actions_storage_path = PathBuf::from("/mnt/hdd/node-data/actionfile.bin");
 
     let _ = fs::remove_dir_all(&commit_log_db_path);

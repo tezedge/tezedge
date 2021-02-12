@@ -222,8 +222,9 @@ pub fn get_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
             let mut hash:[u8;32] = [0;32];
             tree_hash.clone().reader().read_exact(& mut hash).unwrap();
             Some(hash)
-        }
-        _ => {None}
+        },
+        ContextAction::Checkout{..}
+        | ContextAction::Shutdown => {None},
     }
 }
 
@@ -237,7 +238,13 @@ pub fn get_new_tree_hash(action: &ContextAction) -> Option<[u8;32]> {
             new_tree_hash.clone().reader().read_exact(& mut hash).unwrap();
             Some(hash)
         }
-        _ => {None}
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { ..}
+        | ContextAction::Commit {..}
+        | ContextAction::Fold {..}
+        | ContextAction::Checkout{..}
+        | ContextAction::Shutdown => {None},
     }
 }
 
@@ -252,7 +259,7 @@ pub fn perform_context_action(
     }
     
     match action {
-        ContextAction::Get { key,tree_hash, .. } => {
+        ContextAction::Get { key, .. } => {
             context.get_key(key)?;
         }
         ContextAction::Mem { key, .. } => {
