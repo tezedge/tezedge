@@ -38,15 +38,19 @@ configure_env_variables() {
     case $1 in
       --debug)
         export PROFILE="debug"
+        export CARGO_PROFILE_ARG=""
         shift
         ;;
       --release)
         export PROFILE="release"
+        export CARGO_PROFILE_ARG="--release"
         shift
         ;;
       --addrsanitizer)
         export RUSTFLAGS="-Z sanitizer=address"
         export CARGO_BUILD_TARGET="x86_64-unknown-linux-gnu"
+        export PROFILE="debug"
+        export CARGO_PROFILE_ARG=""
         shift
         ;;
       --)
@@ -75,7 +79,7 @@ print_configuration() {
 
 build_all() {
   export SODIUM_USE_PKG_CONFIG=1
-  cargo build
+  cargo build $CARGO_PROFILE_ARG
 }
 
 run_node() {
@@ -161,7 +165,7 @@ run_node() {
     PROTOCOL_RUNNER_BINARY=./target/$CARGO_BUILD_TARGET/$PROFILE/protocol-runner
   fi
 
-  cargo run --bin light-node -- \
+  cargo run $CARGO_PROFILE_ARG --bin light-node -- \
             --config-file "$CONFIG_FILE" \
             --tezos-data-dir "$TEZOS_DIR" \
             --identity-file "$IDENTITY_FILE" \
@@ -194,7 +198,7 @@ run_sandbox() {
 
   export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
 
-  cargo run --bin sandbox -- \
+  cargo run $CARGO_PROFILE_ARG --bin sandbox -- \
             --log-level "info" \
             --sandbox-rpc-port "3030" \
             --light-node-path "./target/$PROFILE/light-node" \
