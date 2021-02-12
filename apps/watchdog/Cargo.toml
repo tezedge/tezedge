@@ -8,6 +8,7 @@ default-run = "watchdog"
 [dependencies]
 async-trait = "0.1"
 clap = "2.33"
+chrono = "0.4"
 failure = "0.1"
 fs2 = "0.4"
 fs_extra = "1.2"
@@ -21,6 +22,8 @@ slack-hook = ""
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.6"
+sysinfo = "0.16"
 tokio = { version = "1.1", features = ["full"] }
 wait-timeout = "0.2"
+warp = "0.3"
 shell = { path = "../../shell" }

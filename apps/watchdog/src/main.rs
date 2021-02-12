@@ -3,7 +3,8 @@
 #![forbid(unsafe_code)]
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::collections::VecDeque;
 
 use slog::{info, Drain, Level, Logger};
 use tokio::signal;
@@ -15,11 +16,14 @@ mod image;
 mod monitors;
 mod node;
 mod slack;
+mod rpc;
 
 use crate::image::{Debugger, Explorer, Image};
 use crate::monitors::{
-    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring, start_stack,
+    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring, start_stack, start_resource_monitoring
 };
+use crate::monitors::resource::{ResourceUtilization, MEASUREMENTS_MAX_CAPACITY};
+
 use crate::node::TezedgeNode;
 
 #[tokio::main]
@@ -51,19 +55,37 @@ async fn main() {
 
     let running = Arc::new(AtomicBool::new(true));
 
+    info!(log, "Creating docker image monitor");
     let deploy_handle = start_deploy_monitoring(
         slack_server.clone(),
-        env.monitor_interval,
+        env.image_monitor_interval,
         log.clone(),
         running.clone(),
     );
 
+    info!(log, "Creating slack info monitor");
     let monitor_handle = start_info_monitoring(
         slack_server.clone(),
         env.info_interval,
         log.clone(),
         running.clone(),
     );
+
+    // create a thread safe VecDeque for each node's resource utilization data
+    let ocaml_resource_utilization_storage = Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(MEASUREMENTS_MAX_CAPACITY)));
+    let tezedge_resource_utilization_storage = Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(MEASUREMENTS_MAX_CAPACITY)));
+
+    info!(log, "Creating reosurces monitor");
+    let resources_handle = start_resource_monitoring(
+        env.resource_monitor_interval,
+        log.clone(),
+        running.clone(),
+        ocaml_resource_utilization_storage.clone(),
+        tezedge_resource_utilization_storage.clone(),
+    );
+
+    info!(log, "Starting rpc server on port {}", &env.rpc_port);
+    let rpc_server_handle = rpc::spawn_rpc_server(env.rpc_port, log.clone(), ocaml_resource_utilization_storage.clone(), tezedge_resource_utilization_storage.clone());
 
     // wait for SIGINT
     signal::ctrl_c()
@@ -77,6 +99,8 @@ async fn main() {
     // drop the looping thread handles (forces exit)
     drop(monitor_handle);
     drop(deploy_handle);
+    drop(resources_handle);
+    drop(rpc_server_handle);
 
     // cleanup
     info!(log, "Cleaning up containers");

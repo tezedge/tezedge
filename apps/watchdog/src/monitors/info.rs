@@ -5,7 +5,7 @@
 use serde::Serialize;
 use slog::Logger;
 
-use crate::display_info::{DiskSpaceData, HeadData, ImagesInfo, MemoryData, CommitHashes, TezedgeSpecificMemoryData};
+use crate::display_info::{DiskSpaceData, HeadData, ImagesInfo, MemoryData, CommitHashes, TezedgeSpecificMemoryData, CpuData};
 use crate::image::{Debugger, Explorer, Image};
 use crate::node::{TezedgeNode, OcamlNode, Node};
 use crate::slack::SlackServer;
@@ -21,6 +21,7 @@ pub struct SlackMonitorInfo {
     head_info: HeadData,
     disk_info: DiskSpaceData,
     commit_hashes: CommitHashes,
+    cpu_data: CpuData,
 }
 
 pub struct InfoMonitor {
@@ -70,11 +71,18 @@ impl InfoMonitor {
             Explorer::collect_commit_hash().await?,
         );
 
+        let cpu_data = CpuData::new(
+            OcamlNode::collect_cpu_data("tezos-node")?,
+            TezedgeNode::collect_cpu_data("light-node")?,
+            TezedgeNode::collect_cpu_data("protocol-runner")?,
+        );
+
         Ok(SlackMonitorInfo {
             memory_info,
             head_info,
             disk_info: disk_info.to_megabytes(),
             commit_hashes,
+            cpu_data
         })
     }
 
@@ -86,10 +94,11 @@ impl InfoMonitor {
 
         slack
             .send_message(&format!(
-                "*Stack info:*\n\n{}\n*Docker images:*```{}```\n*Latest heads:*```{}```\n*Memory stats:*```{}```\n*Disk usage:*```{}```",
+                "*Stack info:*\n\n{}\n*Docker images:*```{}```\n*Latest heads:*```{}```\n*Cpu utilization:*```{}```\n*Memory stats:*```{}```\n*Disk usage:*```{}```",
                 info.commit_hashes,
                 images_info,
                 info.head_info,
+                info.cpu_data,
                 info.memory_info,
                 info.disk_info,
             ))
