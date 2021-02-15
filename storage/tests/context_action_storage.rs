@@ -3,6 +3,7 @@
 
 use std::convert::TryInto;
 
+use crypto::hash::BlockHash;
 use failure::Error;
 
 use storage::tests_common::TmpStorage;
@@ -14,9 +15,9 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_block_hash")?;
 
     let str_block_hash_1 = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash_1 = str_block_hash_1.try_into()?;
+    let block_hash_1: BlockHash = str_block_hash_1.try_into()?;
     let str_block_hash_2 = "BLaf78njreWdt2WigJjM9e3ecEdVKm5ehahUfYBKvcWvZ8vfTcJ";
-    let block_hash_2 = str_block_hash_2.try_into()?;
+    let block_hash_2: BlockHash = str_block_hash_2.try_into()?;
     let value_1_0 = ContextAction::Set {
         key: vec![
             "hello".to_string(),
@@ -71,17 +72,17 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     };
 
     let mut storage = ContextActionStorage::new(tmp_storage.storage());
-    storage.put_action(&block_hash_1, value_1_0)?;
-    storage.put_action(&block_hash_2, value_2_0)?;
-    storage.put_action(&block_hash_1, value_1_1)?;
-    storage.put_action(&block_hash_2, value_2_1)?;
+    storage.put_action(block_hash_1.clone(), value_1_0)?;
+    storage.put_action(block_hash_2.clone(), value_2_0)?;
+    storage.put_action(block_hash_1.clone(), value_1_1)?;
+    storage.put_action(block_hash_2.clone(), value_2_1)?;
     tmp_storage
         .storage()
         .kv(persistent::StorageType::ContextAction)
         .flush()?;
 
     // block hash 1
-    let values = storage.get_by_block_hash(&block_hash_1)?;
+    let values = storage.get_by_block_hash(block_hash_1)?;
     assert_eq!(
         2,
         values.len(),
@@ -100,7 +101,7 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         panic!("Was expecting ContextAction::Set");
     }
     // block hash 2
-    let values = storage.get_by_block_hash(&block_hash_2)?;
+    let values = storage.get_by_block_hash(block_hash_2)?;
     assert_eq!(
         2,
         values.len(),
@@ -154,7 +155,7 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
     };
 
     let mut storage = ContextActionStorage::new(tmp_storage.storage());
-    storage.put_action(&block_hash, value)?;
+    storage.put_action(block_hash, value)?;
 
     // block hash 1
     let values = storage.get_by_contract_address(
