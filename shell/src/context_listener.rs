@@ -3,21 +3,31 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use bytes::{Buf, BufMut, BytesMut};
+use crypto::hash::MerkleHash;
+use hex;
+use std::borrow::BorrowMut;
+use std::collections::HashSet;
 use std::convert::TryFrom;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
+use std::{
+    hash::Hash,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
+use slog::{crit, debug, error, info, warn, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
+use storage::action_file_storage::ActionFileStorage;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, ContextActionStorage};
+use storage::{ActionRecorder, BlockStorage, ContextActionStorage};
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -53,9 +63,9 @@ impl ContextListener {
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
+        action_store_backend: Box<dyn ActionRecorder + Send>,
         mut event_server: IpcEvtServer,
         log: Logger,
-        store_context_action: bool,
     ) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -67,16 +77,17 @@ impl ContextListener {
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
                 ));
-                let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
+
+                let mut action_store_backend = action_store_backend;
+
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut context_action_storage,
+                        &mut *action_store_backend,
                         &mut context,
                         &log,
-                        store_context_action,
                     ) {
                         Ok(()) => info!(log, "Context listener finished"),
                         Err(err) => {
@@ -162,66 +173,13 @@ impl Receive<ShellChannelMsg> for ContextListener {
     }
 }
 
-fn store_context_action(
-    storage: &mut ContextActionStorage,
-    should_store: bool,
-    action: ContextAction,
-) -> Result<(), Error> {
-    if !should_store {
-        return Ok(());
-    }
-    match &action {
-        ContextAction::Set {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Copy {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Delete {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::RemoveRecursively {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Mem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::DirMem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Commit {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Get {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Fold {
-            block_hash: Some(block_hash),
-            ..
-        } => {
-            storage.put_action(&BlockHash::try_from(block_hash.clone())?, action)?;
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    context_action_storage: &mut ContextActionStorage,
+    action_store_backend: &mut dyn ActionRecorder,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
-    store_context_actions: bool,
 ) -> Result<(), Error> {
     info!(
         log,
@@ -255,27 +213,30 @@ fn listen_protocol_events(
                         "count" => event_count,
                         "context_hash" => match &context.get_last_commit_hash() {
                             None => "-none-".to_string(),
-                            Some(c) => HashType::ContextHash.hash_to_b58check(c)?
+                            Some(c) => c.to_base58_check()
                         }
                     );
                 }
 
-                event_count = if let ContextAction::Shutdown = &msg.action {
-                    0
-                } else {
-                    event_count + 1
-                };
-
-                if msg.perform {
-                    perform_context_action(&msg.action, context)?;
+                if !msg.record {
+                    // currently some of the messages are send twice due to
+                    // replay feature - we dont wont to process those duplicates
+                    continue;
                 }
 
-                if msg.record {
-                    store_context_action(
-                        context_action_storage,
-                        store_context_actions,
-                        msg.action,
-                    )?;
+                event_count += 1;
+
+                if let Err(error) = action_store_backend.record(&msg) {
+                    error!(log, "action: {:?} ,error: {} ", &msg.action, error);
+                    break;
+                }
+
+                if let Err(e) = perform_context_action(&msg.action, context) {
+                    error!(
+                        log,
+                        "error while processing action: {:?} reason  '{}'", &msg.action, e
+                    );
+                    panic!("error while executing action");
                 }
             }
             Err(err) => {
@@ -288,6 +249,45 @@ fn listen_protocol_events(
     Ok(())
 }
 
+// returns hash of the merkle tree that action needs to be
+// applied on
+pub fn get_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
+    match &action {
+        ContextAction::Get { tree_hash, .. }
+        | ContextAction::Mem { tree_hash, .. }
+        | ContextAction::DirMem { tree_hash, .. }
+        | ContextAction::Set { tree_hash, .. }
+        | ContextAction::Copy { tree_hash, .. }
+        | ContextAction::Delete { tree_hash, .. }
+        | ContextAction::RemoveRecursively { tree_hash, .. }
+        | ContextAction::Commit { tree_hash, .. }
+        | ContextAction::Fold { tree_hash, .. } => {
+            Some(MerkleHash::try_from(tree_hash.as_slice()).unwrap())
+        }
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
+    }
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
+    match &action {
+        ContextAction::Set { new_tree_hash, .. }
+        | ContextAction::Copy { new_tree_hash, .. }
+        | ContextAction::Delete { new_tree_hash, .. }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
+            Some(MerkleHash::try_from(new_tree_hash.as_slice()).unwrap())
+        }
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { .. }
+        | ContextAction::Commit { .. }
+        | ContextAction::Fold { .. }
+        | ContextAction::Checkout { .. }
+        | ContextAction::Shutdown => None,
+    }
+}
+
+
+
 fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
 where
     H: TryFrom<Vec<u8>, Error = FromBytesError>,
@@ -296,11 +296,14 @@ where
         .map(|h| H::try_from(h.clone()))
         .map_or(Ok(None), |r| r.map(Some))
 }
-
-fn perform_context_action(
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
+    if let Some(pre_hash) = get_tree_hash(&action) {
+        context.set_merkle_root(pre_hash)?;
+    }
+
     match action {
         ContextAction::Get { key, .. } => {
             context.get_key(key)?;
@@ -353,16 +356,18 @@ fn perform_context_action(
             let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
             let block_hash = BlockHash::try_from(block_hash.clone())?;
             let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
-            let hash = context.commit(
+
+            let hash_result = context.commit(
                 &block_hash,
                 &parent_context_hash,
                 author.to_string(),
                 message.to_string(),
                 *date,
-            )?;
+            );
+            let hash = hash_result?;
             assert_eq!(
-                &hash,
-                &new_context_hash,
+                hash,
+                new_context_hash,
                 "Invalid context_hash for block: {}, expected: {}, but was: {}",
                 block_hash.to_base58_check(),
                 new_context_hash.to_base58_check(),
@@ -380,6 +385,10 @@ fn perform_context_action(
 
         ContextAction::Shutdown => (), // Ignored
     };
+
+    if let Some(post_hash) = get_new_tree_hash(&action) {
+        assert_eq!(context.get_merkle_root(), post_hash);
+    }
 
     Ok(())
 }

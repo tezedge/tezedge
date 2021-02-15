@@ -24,6 +24,7 @@ mod prefix_bytes {
     pub const PUBLIC_KEY_ED25519: [u8; 4] = [13, 15, 37, 217];
     pub const PUBLIC_KEY_SECP256K1: [u8; 4] = [3, 254, 226, 86];
     pub const PUBLIC_KEY_P256: [u8; 4] = [3, 178, 139, 127];
+    pub const MERKLE_HASH: [u8; 3] = [1, 12, 15];
 }
 
 pub type Hash = Vec<u8>;
@@ -53,6 +54,9 @@ macro_rules! define_hash {
             std::cmp::Ord,
             std::hash::Hash,
         )]
+        // TODO: Hash -> Array, in current shape it doesnt seem to be
+        // super effective object is still allocated on heap and clone is
+        // costful, even
         pub struct $name(pub Hash);
 
         impl $name {
@@ -66,6 +70,10 @@ macro_rules! define_hash {
                 } else {
                     Err(FromBytesError::InvalidSize)
                 }
+            }
+
+            pub fn to_bytes(&self) -> &[u8] {
+                &self.0[..]
             }
 
             fn from_vec(hash: Vec<u8>) -> Result<Self, FromBytesError> {
@@ -144,6 +152,7 @@ define_hash!(CryptoboxPublicKeyHash);
 define_hash!(PublicKeyEd25519);
 define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
+define_hash!(MerkleHash);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
 #[derive(Debug, Copy, Clone)]
@@ -182,6 +191,8 @@ pub enum HashType {
     PublicKeySecp256k1,
     // "\003\178\139\127" (* p2pk(55) *)
     PublicKeyP256,
+    // "Mrk"
+    MerkleHash,
 }
 
 impl HashType {
@@ -206,6 +217,7 @@ impl HashType {
             HashType::PublicKeyEd25519 => &PUBLIC_KEY_ED25519,
             HashType::PublicKeySecp256k1 => &PUBLIC_KEY_SECP256K1,
             HashType::PublicKeyP256 => &PUBLIC_KEY_P256,
+            HashType::MerkleHash => &MERKLE_HASH,
         }
     }
 
@@ -221,6 +233,7 @@ impl HashType {
             | HashType::OperationListListHash
             | HashType::OperationMetadataHash
             | HashType::OperationMetadataListListHash
+            | HashType::MerkleHash
             | HashType::PublicKeyEd25519 => 32,
             HashType::CryptoboxPublicKeyHash => 16,
             HashType::ContractKt1Hash

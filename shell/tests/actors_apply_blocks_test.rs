@@ -170,11 +170,11 @@ fn check_context(
     // compare with context hash of last applied expected_context_hash
     assert_eq!(
         expected_context_hash.as_ref(),
-        &merkle_last_hash.unwrap().to_vec()
+        &merkle_last_hash.unwrap().to_bytes()
     );
 
     // print stats
-    let stats = merkle.get_merkle_stats().unwrap();
+    let stats = merkle.get_merkle_stats();
     println!("Context storage global latency statistics:");
     println!();
     for (op, v) in stats.perf_stats.global.iter() {
