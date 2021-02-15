@@ -24,8 +24,11 @@ use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
-    /// alternative to ocaml Operation_list_list_hash.empty
-    pub static ref OPERATION_LIST_LIST_HASH_EMPTY: OperationListListHash = OperationListListHash::try_from("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp").unwrap_or_else(|_| unreachable!("Incorrect hardcoded hash"));
+}
+
+/// alternative to ocaml Operation_list_list_hash.empty
+pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, FromBase58CheckError> {
+    OperationListListHash::try_from("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp")
 }
 
 /// Enum representing different Tezos environment.
