@@ -34,9 +34,9 @@ impl From<bincode::Error> for ActionFileError {
     }
 }
 
-fn copy_hash_to_slice(from: &Vec<u8>) -> [u8; BLOCK_HASH_HEADER_LEN]{
+fn copy_hash_to_slice(from: &Vec<u8>) -> [u8; BLOCK_HASH_HEADER_LEN] {
     let mut array = [0u8; BLOCK_HASH_HEADER_LEN];
-    from.reader().read_exact(& mut array).unwrap();
+    from.reader().read_exact(&mut array).unwrap();
     return array;
 }
 
@@ -156,8 +156,7 @@ impl Iterator for ActionsFileReader {
 
         let reader = snap::read::FrameDecoder::new(b.reader());
 
-        let item = match bincode::deserialize_from::<_, Self::Item>(reader)
-        {
+        let item = match bincode::deserialize_from::<_, Self::Item>(reader) {
             Ok(item) => item,
             Err(_) => {
                 return None;

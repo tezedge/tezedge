@@ -246,7 +246,7 @@ pub mod infra {
                 &actor_system,
                 shell_channel.clone(),
                 &persistent_storage,
-                Box::new(storage::persistent::NoRecorder{}),
+                Box::new(storage::persistent::NoRecorder {}),
                 apply_protocol_events,
                 log.clone(),
             )

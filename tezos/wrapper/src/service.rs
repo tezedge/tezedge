@@ -4,9 +4,9 @@
 use std::cell::RefCell;
 use std::convert::AsRef;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-use std::path::PathBuf;
 
 use failure::Fail;
 use lazy_static::lazy_static;

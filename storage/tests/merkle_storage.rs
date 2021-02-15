@@ -1,21 +1,23 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crypto::hash::{BlockHash, HashType};
+use rocksdb::{Cache, Options, DB};
+use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::error::Error;
-use std::time::Instant;
-use std::collections::VecDeque;
 use std::sync::{mpsc, Arc};
 use std::thread;
-use serde::{Serialize, Deserialize};
-use crypto::hash::{HashType, BlockHash};
-use rocksdb::{DB, Cache, Options};
+use std::time::Instant;
 
-use storage::*;
 use context_action_storage::ContextAction;
-use merkle_storage::{MerkleStorage, MerkleError, Entry, EntryHash, check_commit_hashes};
-use persistent::{PersistentStorage, CommitLogSchema, DbConfiguration, KeyValueSchema, open_cl, open_kv};
+use merkle_storage::{check_commit_hashes, Entry, EntryHash, MerkleError, MerkleStorage};
 use persistent::sequence::Sequences;
+use persistent::{
+    open_cl, open_kv, CommitLogSchema, DbConfiguration, KeyValueSchema, PersistentStorage,
+};
+use storage::*;
 
 const OPEN_FILES_LIMIT: u64 = 64 * 1024; //64k open files limit for process
 
@@ -60,7 +62,9 @@ unsafe fn set_file_desc_limit(num: u64) {
 }
 
 fn init_persistent_storage() -> PersistentStorage {
-    unsafe { set_file_desc_limit(OPEN_FILES_LIMIT); };
+    unsafe {
+        set_file_desc_limit(OPEN_FILES_LIMIT);
+    };
     // Parses config + cli args
     // let env = crate::configuration::Environment::from_args();
     let db_path = "/tmp/tezedge/light-node";
@@ -95,7 +99,12 @@ fn init_persistent_storage() -> PersistentStorage {
         Err(e) => panic!(e),
     };
 
-    PersistentStorage::new(rocks_db.clone(), rocks_db.clone(), rocks_db.clone(), commit_logs)
+    PersistentStorage::new(
+        rocks_db.clone(),
+        rocks_db.clone(),
+        rocks_db.clone(),
+        commit_logs,
+    )
 }
 
 struct BlocksIterator {
@@ -107,18 +116,20 @@ struct BlocksIterator {
 
 impl BlocksIterator {
     pub fn new(block_storage: BlockStorage, start_block_hash: &BlockHash, limit: usize) -> Self {
-        let mut this = Self { block_storage, limit, next_block_chunk_hash: None, blocks: vec![].into_iter() };
+        let mut this = Self {
+            block_storage,
+            limit,
+            next_block_chunk_hash: None,
+            blocks: vec![].into_iter(),
+        };
 
         this.get_and_set_blocks(start_block_hash);
         this
     }
 
     fn get_and_set_blocks(&mut self, from_block_hash: &BlockHash) -> Result<(), ()> {
-        let mut new_blocks = Self::get_blocks_after_block(
-            &self.block_storage,
-            from_block_hash,
-            self.limit,
-        );
+        let mut new_blocks =
+            Self::get_blocks_after_block(&self.block_storage, from_block_hash, self.limit);
 
         if new_blocks.len() == 0 {
             return Err(());
@@ -134,9 +145,11 @@ impl BlocksIterator {
     fn get_blocks_after_block(
         block_storage: &BlockStorage,
         block_hash: &BlockHash,
-        limit: usize
+        limit: usize,
     ) -> Vec<BlockHeaderWithHash> {
-        block_storage.get_multiple_without_json(block_hash, limit).unwrap_or(vec![])
+        block_storage
+            .get_multiple_without_json(block_hash, limit)
+            .unwrap_or(vec![])
     }
 }
 
@@ -153,7 +166,7 @@ impl Iterator for BlocksIterator {
                     }
                 }
                 None
-            },
+            }
         }
     }
 }
@@ -164,14 +177,18 @@ fn recv_blocks(
     block_storage: BlockStorage,
     ctx_action_storage: ContextActionStorage,
 ) -> impl Iterator<Item = BlockAndActions> {
-    let genesis_block_hash = HashType::BlockHash.b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv").unwrap();
-    let genesis_block_hash : BlockHash = genesis_block_hash.as_slice().try_into().unwrap();
+    let genesis_block_hash = HashType::BlockHash
+        .b58check_to_hash("BLockGenesisGenesisGenesisGenesisGenesis355e8bjkYPv")
+        .unwrap();
+    let genesis_block_hash: BlockHash = genesis_block_hash.as_slice().try_into().unwrap();
 
     let (tx, rx) = mpsc::sync_channel(128);
 
     thread::spawn(move || {
         for block in BlocksIterator::new(block_storage, &genesis_block_hash, 8) {
-            let mut actions = ctx_action_storage.get_by_block_hash(block.hash.clone()).unwrap();
+            let mut actions = ctx_action_storage
+                .get_by_block_hash(block.hash.clone())
+                .unwrap();
             actions.sort_by_key(|x| x.id);
             let actions = actions.into_iter().map(|x| x.action).collect();
             if let Err(_) = tx.send((block, actions)) {
@@ -189,7 +206,8 @@ fn test_merkle_storage_gc() {
     let persistent_storage = init_persistent_storage();
 
     let preserved_cycles = 5usize;
-    let mut cycle_commit_hashes:Vec<Vec<EntryHash>> = vec![Default::default(); preserved_cycles - 1];
+    let mut cycle_commit_hashes: Vec<Vec<EntryHash>> =
+        vec![Default::default(); preserved_cycles - 1];
 
     let block_storage = BlockStorage::new(&persistent_storage);
     let ctx_action_storage = ContextActionStorage::new(&persistent_storage);
@@ -203,15 +221,24 @@ fn test_merkle_storage_gc() {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
-            if let ContextAction::Commit { new_context_hash, .. } = &action {
-                cycle_commit_hashes.last_mut().unwrap().push(
-                    new_context_hash[..].try_into().unwrap()
-                );
+            if let ContextAction::Commit {
+                new_context_hash, ..
+            } = &action
+            {
+                cycle_commit_hashes
+                    .last_mut()
+                    .unwrap()
+                    .push(new_context_hash[..].try_into().unwrap());
             }
             merkle.apply_context_action(&action).unwrap();
         }
 
-        println!("applied actions of block: {}, actions: {}, duration: {}ms", block.header.level(), actions_len, t.elapsed().as_millis());
+        println!(
+            "applied actions of block: {}, actions: {}, duration: {}ms",
+            block.header.level(),
+            actions_len,
+            t.elapsed().as_millis()
+        );
 
         let (level, context_hash) = (block.header.level(), block.header.context());
         // let cycles = get_cycles_for_block(&persistent_storage, &context_hash);
@@ -225,13 +252,15 @@ fn test_merkle_storage_gc() {
             merkle.wait_for_gc_finish();
             println!("waited for GC: {}ms", t.elapsed().as_millis());
             let t = Instant::now();
-            let commits_iter = cycle_commit_hashes.iter()
-                .flatten()
-                .cloned();
+            let commits_iter = cycle_commit_hashes.iter().flatten().cloned();
             check_commit_hashes(&merkle, commits_iter).unwrap();
-            println!("Block integrity intact! duration: {}ms", t.elapsed().as_millis());
+            println!(
+                "Block integrity intact! duration: {}ms",
+                t.elapsed().as_millis()
+            );
 
-            cycle_commit_hashes = cycle_commit_hashes.into_iter()
+            cycle_commit_hashes = cycle_commit_hashes
+                .into_iter()
                 .skip(1)
                 .chain(vec![vec![]])
                 .collect();

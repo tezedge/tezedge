@@ -54,8 +54,8 @@ macro_rules! define_hash {
             std::cmp::Ord,
             std::hash::Hash,
         )]
-        // TODO: Hash -> Array, in current shape it doesnt seem to be 
-        // super effective object is still allocated on heap and clone is 
+        // TODO: Hash -> Array, in current shape it doesnt seem to be
+        // super effective object is still allocated on heap and clone is
         // costful, even
         pub struct $name(pub Hash);
 

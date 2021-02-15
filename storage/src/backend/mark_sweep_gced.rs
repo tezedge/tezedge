@@ -1,21 +1,20 @@
-use std::collections::{HashSet};
+use std::collections::HashSet;
 
-use crate::merkle_storage::{Entry, EntryHash, ContextValue, hash_entry};
+use crate::merkle_storage::{hash_entry, ContextValue, Entry, EntryHash};
 use crate::storage_backend::{
-    StorageBackend as KVStore,
-    StorageBackendError as KVStoreError,
+    StorageBackend as KVStore, StorageBackendError as KVStoreError,
     StorageBackendStats as KVStoreStats,
 };
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: KVStore> {
-    store: T
+    store: T,
 }
 
 impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     pub fn new(_cycle_count: usize) -> Self {
         Self {
-          store: Default::default(),
+            store: Default::default(),
         }
     }
 
@@ -26,7 +25,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
         }
     }
 
-    pub fn gc(&mut self, last_commit_hash: Option<EntryHash>) -> Result<(), KVStoreError>{
+    pub fn gc(&mut self, last_commit_hash: Option<EntryHash>) -> Result<(), KVStoreError> {
         if let Some(_) = &last_commit_hash {
             let mut todo = HashSet::new();
             self.mark_entries(&mut todo, last_commit_hash);
@@ -35,7 +34,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
         Ok(())
     }
 
-    fn mark_entries(&self, todo : &mut HashSet<EntryHash>, last_commit_hash: Option<EntryHash>) {
+    fn mark_entries(&self, todo: &mut HashSet<EntryHash>, last_commit_hash: Option<EntryHash>) {
         if let Some(entry_hash) = &last_commit_hash {
             if let Ok(Some(entry)) = self.get_entry(entry_hash) {
                 self.mark_entries_recursively(&entry, todo);
@@ -43,12 +42,12 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
         }
     }
 
-    fn sweep_entries(&mut self, todo: HashSet<EntryHash>)  -> Result<(), KVStoreError> {
+    fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         self.retain(todo);
         Ok(())
     }
 
-    fn mark_entries_recursively(&self, entry: &Entry, todo: &mut HashSet<EntryHash>)  {
+    fn mark_entries_recursively(&self, entry: &Entry, todo: &mut HashSet<EntryHash>) {
         let hash = hash_entry(entry);
         match entry {
             Entry::Blob(_) => {
@@ -75,7 +74,6 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     }
 }
 
-
 impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
     fn is_persisted(&self) -> bool {
         self.store.is_persisted()
@@ -89,11 +87,7 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
         self.store.contains(key)
     }
 
-    fn put(
-        &mut self,
-        key: EntryHash,
-        value: ContextValue,
-    ) -> Result<bool, KVStoreError> {
+    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
         self.store.put(key, value)
     }
 
@@ -109,19 +103,18 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
         self.store.retain(pred)
     }
 
-    fn mark_reused(&mut self, _key: EntryHash) { }
+    fn mark_reused(&mut self, _key: EntryHash) {}
 
     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>) {
         self.gc(last_commit_hash);
     }
 
-    fn wait_for_gc_finish(&self) { }
+    fn wait_for_gc_finish(&self) {}
 
     fn get_stats(&self) -> Vec<KVStoreStats> {
         self.store.get_stats()
     }
 }
-
 
 // #[cfg(test)]
 // mod tests {

@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use failure::Fail;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
-use failure::Fail;
 
 use derive_builder::Builder;
 use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
@@ -13,12 +13,12 @@ pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLo
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
+use crate::action_file::ActionFileError;
+use crate::backend::InMemoryBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use crate::backend::InMemoryBackend;
 use crate::StorageError;
 use tezos_context::channel::ContextActionMessage;
-use crate::action_file::ActionFileError;
 
 pub mod codec;
 pub mod commit_log;
@@ -46,9 +46,9 @@ impl Default for DbConfiguration {
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=ColumnFamilyDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = ColumnFamilyDescriptor>,
 {
     DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
 }
@@ -59,13 +59,12 @@ pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBErr
 /// * `path` - Path to open RocksDB
 /// * `cfs` - Iterator of Column Family descriptors
 pub fn open_kv_readonly<P, I, N>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=N>,
-        N: AsRef<str>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = N>,
+    N: AsRef<str>,
 {
-    DB::open_cf_for_read_only(&default_kv_options(cfg), path, cfs, false)
-        .map_err(DBError::from)
+    DB::open_cf_for_read_only(&default_kv_options(cfg), path, cfs, false).map_err(DBError::from)
 }
 
 /// Create default database configuration options,
@@ -125,9 +124,9 @@ pub fn default_table_options(cache: &Cache) -> Options {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=CommitLogDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
@@ -163,9 +162,7 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
     ) -> Self {
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
-       let merkle = MerkleStorage::new(
-            Box::new(InMemoryBackend::new())
-        );
+        let merkle = MerkleStorage::new(Box::new(InMemoryBackend::new()));
         Self {
             clog,
             db,
@@ -224,7 +221,7 @@ impl Drop for PersistentStorage {
 #[derive(Debug, Fail)]
 pub enum ActionRecordError {
     #[fail(display = "ActionFileError Error: {}", error)]
-    ActionFileError { error: ActionFileError},
+    ActionFileError { error: ActionFileError },
     #[fail(display = "Missing actions for block {:?}.", hash)]
     MissingActions { hash: String },
 }
@@ -235,14 +232,14 @@ impl From<ActionFileError> for ActionRecordError {
     }
 }
 
-pub trait ActionRecorder{
+pub trait ActionRecorder {
     fn record(&mut self, action: &ContextActionMessage) -> Result<(), StorageError>;
 }
 
-pub struct NoRecorder{}
+pub struct NoRecorder {}
 
-impl ActionRecorder for NoRecorder{
-    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError>{
+impl ActionRecorder for NoRecorder {
+    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError> {
         Ok(())
     }
 }

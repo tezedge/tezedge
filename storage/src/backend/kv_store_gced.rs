@@ -1,47 +1,54 @@
-use std::thread;
-use std::mem;
 use std::collections::HashSet;
 use std::convert::TryFrom;
-use std::time::Duration;
-use std::sync::{mpsc, Arc, RwLock, Mutex};
+use std::mem;
 use std::ops::{Deref, DerefMut};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::thread;
+use std::time::Duration;
 
-use crate::merkle_storage::{Entry, EntryHash, ContextValue};
+use crate::merkle_storage::{ContextValue, Entry, EntryHash};
 use crate::storage_backend::{
-    StorageBackend as KVStore,
-    StorageBackendError as KVStoreError,
+    StorageBackend as KVStore, StorageBackendError as KVStoreError,
     StorageBackendStats as KVStoreStats,
 };
-
 
 // TODO: add assertions for EntryHash to make sure it is stack allocated.
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
+where
+    T: KVStore,
+    S: Deref<Target = Vec<T>>,
 {
-    stores.iter().rev()
+    stores
+        .iter()
+        .rev()
         .find_map(|store| store.get(key).unwrap_or(None))
 }
 
 /// Returns store index containing the entry with hash `key`  (trying from newest to oldest)
 fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
+where
+    T: KVStore,
+    S: Deref<Target = Vec<T>>,
 {
-    stores.iter().enumerate()
+    stores
+        .iter()
+        .enumerate()
         .find(|(_, store)| store.contains(key).unwrap_or(false))
         .map(|(index, _)| index)
-        // .map(|(rev_offset, _)| stores.len() - rev_offset - 1)
+    // .map(|(rev_offset, _)| stores.len() - rev_offset - 1)
 }
 
 /// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
 fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
-where T: KVStore,
-      S: Deref<Target = Vec<T>>,
+where
+    T: KVStore,
+    S: Deref<Target = Vec<T>>,
 {
-    stores.iter().rev()
+    stores
+        .iter()
+        .rev()
         .find(|store| store.contains(key).unwrap_or(false))
         .is_some()
 }
@@ -50,12 +57,17 @@ where T: KVStore,
 ///
 /// The return value is `None` if the value was not found, or Some((store_idx, value)) otherwise.
 fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
-where T: KVStore,
-      S: DerefMut<Target = Vec<T>>,
+where
+    T: KVStore,
+    S: DerefMut<Target = Vec<T>>,
 {
-    stores.iter_mut().enumerate().rev()
+    stores
+        .iter_mut()
+        .enumerate()
+        .rev()
         .find_map(|(index, store)| {
-            store.delete(key)
+            store
+                .delete(key)
                 .unwrap_or(None)
                 .map(|value| (index, value))
         })
@@ -99,9 +111,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         let stores = Arc::new(RwLock::new(
             (0..(cycle_count - 1)).map(|_| Default::default()).collect(),
         ));
-        let stores_stats = Arc::new(Mutex::new(
-            vec![Default::default(); cycle_count - 1],
-        ));
+        let stores_stats = Arc::new(Mutex::new(vec![Default::default(); cycle_count - 1]));
 
         Self {
             cycle_count,
@@ -161,7 +171,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     }
 
     /// Marks an entry as "reused" in the current cycle.
-    /// 
+    ///
     /// Entries that are reused/referenced in current cycle
     /// will be preserved after garbage collection.
     fn mark_reused(&mut self, key: EntryHash) {
@@ -178,12 +188,14 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     ///
     /// Garbage collector will start collecting the oldest cycle.
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {
-        self.stores_stats.lock().unwrap().push(
-            mem::take(&mut self.current_stats)
-        );
-        self.stores.write().unwrap().push(
-            mem::take(&mut self.current)
-        );
+        self.stores_stats
+            .lock()
+            .unwrap()
+            .push(mem::take(&mut self.current_stats));
+        self.stores
+            .write()
+            .unwrap()
+            .push(mem::take(&mut self.current));
         let _ = self.msg.lock().unwrap().send(CmdMsg::StartNewCycle);
     }
 
@@ -196,7 +208,10 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     }
 
     fn get_stats(&self) -> Vec<KVStoreStats> {
-        self.stores_stats.lock().unwrap().iter()
+        self.stores_stats
+            .lock()
+            .unwrap()
+            .iter()
             .chain(vec![&self.current_stats])
             .cloned()
             .collect()
@@ -220,7 +235,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
     let mut received_exit_msg = false;
 
     loop {
-        // wait (block) for main thread events if there are no items to garbage collect 
+        // wait (block) for main thread events if there are no items to garbage collect
         let wait_for_events = reused_keys.len() == len && !received_exit_msg;
 
         let msg = if wait_for_events {
@@ -272,7 +287,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
         }
 
-        // if reused_keys.len() > len  that means that we need to start garbage collecting oldest cycle, 
+        // if reused_keys.len() > len  that means that we need to start garbage collecting oldest cycle,
         // reused_keys[0].len() > 0  If no keys are reused we can just drop the cycle.
         if reused_keys.len() > len && reused_keys[0].len() > 0 {
             todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
@@ -288,9 +303,13 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             // Smaller the max_iter (2048) will be, longer it will take for gc to finish and it will
             // lag behind more (which will increase memory usage), but it will slow down main thread less
             // as the lock will be released on more frequent intervals.
-            // TODO: it would be more optimized if this number can change dynamically based on 
+            // TODO: it would be more optimized if this number can change dynamically based on
             // how much gc lags behind and such different parameters.
-            let max_iter = if stores.len() - len <= 1 { 2048 } else { usize::MAX };
+            let max_iter = if stores.len() - len <= 1 {
+                2048
+            } else {
+                usize::MAX
+            };
 
             for _ in 0..max_iter {
                 let key = match todo_keys.pop() {
@@ -311,7 +330,10 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 let entry: Entry = match bincode::deserialize(&entry_bytes) {
                     Ok(value) => value,
                     Err(err) => {
-                        eprintln!("MerkleStorage GC: error while decerializing entry: {:?}", err);
+                        eprintln!(
+                            "MerkleStorage GC: error while decerializing entry: {:?}",
+                            err
+                        );
                         continue;
                     }
                 };
@@ -325,7 +347,10 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 // and we store maximum cycle in which it was referenced in as a value.
                 // Then we can move each entry to a given store based on that value.
                 if let Err(err) = stores.last_mut().unwrap().put(key.clone(), entry_bytes) {
-                    eprintln!("MerkleStorage GC: error while adding entry to store: {:?}", err);
+                    eprintln!(
+                        "MerkleStorage GC: error while adding entry to store: {:?}",
+                        err
+                    );
                 } else {
                     // and update the stats for that store
                     *stats.last_mut().unwrap() += &stat;
@@ -334,8 +359,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 match entry {
                     Entry::Blob(_) => {}
                     Entry::Tree(tree) => {
-                        let children = tree.into_iter()
-                            .map(|(_, node)| node.entry_hash);
+                        let children = tree.into_iter().map(|(_, node)| node.entry_hash);
                         todo_keys.extend(children);
                     }
                     Entry::Commit(commit) => {
@@ -358,9 +382,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::mem;
     use crate::backend::BTreeMapBackend;
     use crate::storage_backend::size_of_vec;
+    use std::mem;
 
     fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<BTreeMapBackend> {
         KVStoreGCed::new(cycle_count)
@@ -387,12 +411,16 @@ mod tests {
     }
 
     fn get<T: 'static + KVStore + Default>(store: &KVStoreGCed<T>, key: &[u8]) -> Option<Entry> {
-        store.get(&entry_hash(key)).unwrap()
+        store
+            .get(&entry_hash(key))
+            .unwrap()
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
     fn put<T: 'static + KVStore + Default>(store: &mut KVStoreGCed<T>, key: &[u8], value: Entry) {
-        store.put(entry_hash(key), bincode::serialize(&value).unwrap()).unwrap();
+        store
+            .put(entry_hash(key), bincode::serialize(&value).unwrap())
+            .unwrap();
     }
 
     fn mark_reused<T: 'static + KVStore + Default>(store: &mut KVStoreGCed<T>, key: &[u8]) {
@@ -441,7 +469,10 @@ mod tests {
 
         let stats: Vec<_> = store.get_stats().into_iter().rev().take(3).rev().collect();
         assert_eq!(stats[0].key_bytes, 64);
-        assert_eq!(stats[0].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv2.1));
+        assert_eq!(
+            stats[0].value_bytes,
+            size_of_vec(&kv1.1) + size_of_vec(&kv2.1)
+        );
         assert_eq!(stats[0].reused_keys_bytes, 96);
 
         assert_eq!(stats[1].key_bytes, 32);
@@ -452,18 +483,23 @@ mod tests {
         assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
-        assert_eq!(store.total_mem_usage_as_bytes(), vec![
-            // TODO: bring back when MerklHash aka EntryHash will be allocated
-            // on stack
-            // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-            // 4 * mem::size_of::<EntryHash>(),
-            4 * 32,
-            96, // reused keys
-            size_of_vec(&kv1.1),
-            size_of_vec(&kv2.1),
-            size_of_vec(&kv3.1),
-            size_of_vec(&kv4.1),
-        ].iter().sum::<usize>());
+        assert_eq!(
+            store.total_mem_usage_as_bytes(),
+            vec![
+                // TODO: bring back when MerklHash aka EntryHash will be allocated
+                // on stack
+                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+                // 4 * mem::size_of::<EntryHash>(),
+                4 * 32,
+                96, // reused keys
+                size_of_vec(&kv1.1),
+                size_of_vec(&kv2.1),
+                size_of_vec(&kv3.1),
+                size_of_vec(&kv4.1),
+            ]
+            .iter()
+            .sum::<usize>()
+        );
 
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
@@ -474,22 +510,30 @@ mod tests {
         assert_eq!(stats[0].reused_keys_bytes, 0);
 
         assert_eq!(stats[1].key_bytes, 64);
-        assert_eq!(stats[1].value_bytes, size_of_vec(&kv1.1) + size_of_vec(&kv4.1));
+        assert_eq!(
+            stats[1].value_bytes,
+            size_of_vec(&kv1.1) + size_of_vec(&kv4.1)
+        );
         assert_eq!(stats[1].reused_keys_bytes, 0);
 
         assert_eq!(stats[2].key_bytes, 0);
         assert_eq!(stats[2].value_bytes, 0);
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
-        assert_eq!(store.total_mem_usage_as_bytes(), vec![
-            // TODO: bring back when MerklHash aka EntryHash will be allocated
-            // on stack
-            // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-            // 3 * mem::size_of::<EntryHash>(),
-            3 * 32,
-            size_of_vec(&kv1.1),
-            size_of_vec(&kv3.1),
-            size_of_vec(&kv4.1),
-        ].iter().sum::<usize>());
+        assert_eq!(
+            store.total_mem_usage_as_bytes(),
+            vec![
+                // TODO: bring back when MerklHash aka EntryHash will be allocated
+                // on stack
+                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+                // 3 * mem::size_of::<EntryHash>(),
+                3 * 32,
+                size_of_vec(&kv1.1),
+                size_of_vec(&kv3.1),
+                size_of_vec(&kv4.1),
+            ]
+            .iter()
+            .sum::<usize>()
+        );
     }
 }

@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::array::TryFromSliceError;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
 use std::sync::{Arc, RwLock};
-use std::array::TryFromSliceError;
 
 use failure::Fail;
 
@@ -90,9 +90,9 @@ pub trait ContextApi {
     // check if context_hash is committed
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
 
-    fn set_merkle_root(& mut self, hash: EntryHash) -> Result<(), MerkleError>;
+    fn set_merkle_root(&mut self, hash: EntryHash) -> Result<(), MerkleError>;
 
-    fn get_merkle_root(& mut self) -> EntryHash;
+    fn get_merkle_root(&mut self) -> EntryHash;
 }
 
 impl ContextApi for TezedgeContext {
@@ -257,7 +257,7 @@ impl ContextApi for TezedgeContext {
         merkle.get_last_commit_hash()
     }
 
-    fn get_merkle_stats(&self) -> MerkleStoragePerfReport{
+    fn get_merkle_stats(&self) -> MerkleStoragePerfReport {
         let merkle = self.merkle.read().expect("lock poisoning");
         return merkle.get_merkle_stats();
     }
@@ -268,12 +268,12 @@ impl ContextApi for TezedgeContext {
             .map_err(|e| ContextError::StorageError { error: e })
     }
 
-    fn set_merkle_root(& mut self, hash: EntryHash) -> Result<(), MerkleError>{
+    fn set_merkle_root(&mut self, hash: EntryHash) -> Result<(), MerkleError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         merkle.stage_checkout(&hash)
     }
 
-    fn get_merkle_root(& mut self) -> EntryHash{
+    fn get_merkle_root(&mut self) -> EntryHash {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_staged_root_hash()
     }

@@ -1,13 +1,11 @@
-use std::collections::{BTreeMap, btree_map::Entry, HashSet};
 use rayon::prelude::*;
+use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 
+use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::storage_backend::{
-    StorageBackend as KVStoreTrait,
+    StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError,
     StorageBackendStats as KVStoreStats,
-    StorageBackendError as KVStoreError,
 };
-use crate::merkle_storage::{EntryHash, ContextValue};
-
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
@@ -23,12 +21,16 @@ impl<K: Ord, V> Default for KVStore<K, V> {
 
 impl<K: Ord, V> KVStore<K, V> {
     fn new() -> Self {
-        Self { kv_map: BTreeMap::new() }
+        Self {
+            kv_map: BTreeMap::new(),
+        }
     }
 }
 
 impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
-    fn is_persisted(&self) -> bool { false }
+    fn is_persisted(&self) -> bool {
+        false
+    }
 
     /// put kv in map if key doesn't exist. If it does then return false.
     fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
@@ -36,9 +38,9 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
             Entry::Vacant(entry) => {
                 entry.insert(value);
                 Ok(true)
-            },
+            }
             // _ => Err(KVStoreError::EntryOccupied),
-            _ => Ok(false)
+            _ => Ok(false),
         }
     }
 
@@ -60,13 +62,17 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
     }
 
     fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
-        let garbage_keys: Vec<_> = self.kv_map.par_iter().filter_map(|(k, v)| {
-            if !pred.contains(k) {
-                Some(k.clone())
-            } else {
-                None
-            }
-        }).collect();
+        let garbage_keys: Vec<_> = self
+            .kv_map
+            .par_iter()
+            .filter_map(|(k, v)| {
+                if !pred.contains(k) {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         for k in garbage_keys {
             self.delete(&k)?;
@@ -74,11 +80,11 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         Ok(())
     }
 
-    fn mark_reused(&mut self, key: EntryHash) { }
-    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) { }
-    fn wait_for_gc_finish(&self) { }
+    fn mark_reused(&mut self, key: EntryHash) {}
+    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
+    fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<KVStoreStats> {
-      unimplemented!()
+        unimplemented!()
     }
 }
 

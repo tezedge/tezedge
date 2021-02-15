@@ -1,17 +1,19 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use clap::{App, Arg};
+use crypto::hash::{BlockHash, HashType, MerkleHash};
 use std::convert::TryInto;
-use std::io::Read;
 use std::fs::File;
-use crypto::hash::{HashType, BlockHash, MerkleHash};
-use clap::{Arg, App};
+use std::io::Read;
 
 use storage::*;
 // use context_action_storage::ContextAction;
-use merkle_storage::{MerkleStorage, Entry, EntryHash, check_commit_hashes};
+use backend::{
+    BTreeMapBackend, InMemoryBackend, KVStoreGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
+};
+use merkle_storage::{check_commit_hashes, Entry, EntryHash, MerkleStorage};
 use storage_backend::StorageBackend;
-use backend::{RocksDBBackend, SledBackend, InMemoryBackend, BTreeMapBackend, MarkSweepGCed, KVStoreGCed};
 
 mod actions_tool;
 use actions_tool::{ActionsFileReader, ContextAction};
@@ -26,7 +28,7 @@ fn parse_mem_value(value: &str) -> usize {
     }
 }
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 fn mem_usage() -> usize {
     let mut text_buf = Default::default();
 
@@ -50,7 +52,7 @@ fn mem_usage() -> usize {
     res
 }
 
-#[cfg(not(target_os="linux"))]
+#[cfg(not(target_os = "linux"))]
 fn mem_usage() -> usize {
     0
 }
@@ -94,19 +96,23 @@ impl Args {
         let matches = app.get_matches();
 
         Self {
-            backend: matches.value_of("backend")
+            backend: matches
+                .value_of("backend")
                 .unwrap_or("in-memory-gced")
                 .to_string(),
             test_integrity: matches.is_present("test_integrity"),
-            preserved_cycles: matches.value_of("preserved_cycles")
+            preserved_cycles: matches
+                .value_of("preserved_cycles")
                 .unwrap_or("7")
                 .parse()
                 .unwrap(),
-            cycle_block_count: matches.value_of("cycle_block_count")
+            cycle_block_count: matches
+                .value_of("cycle_block_count")
                 .unwrap_or("2048")
                 .parse()
                 .unwrap(),
-            actions_file: matches.value_of("actions_file")
+            actions_file: matches
+                .value_of("actions_file")
                 .expect("actions_file is required argument")
                 .to_string(),
         }
@@ -122,16 +128,14 @@ fn gen_stats(args: Args) {
         vec![Default::default(); args.preserved_cycles - 1];
 
     let backend: Box<dyn StorageBackend + Send + Sync> = match args.backend.as_str() {
-        "in-memory-gced" => Box::new(
-            KVStoreGCed::<BTreeMapBackend>::new(args.preserved_cycles)
-        ),
-        "in-memory-mark-sweep-gced" => Box::new(
-            MarkSweepGCed::<InMemoryBackend>::new(args.preserved_cycles)
-        ),
+        "in-memory-gced" => Box::new(KVStoreGCed::<BTreeMapBackend>::new(args.preserved_cycles)),
+        "in-memory-mark-sweep-gced" => {
+            Box::new(MarkSweepGCed::<InMemoryBackend>::new(args.preserved_cycles))
+        }
         _ => {
             eprintln!("unsupported backend supplied: {}", args.backend);
             return;
-        },
+        }
     };
 
     let mut merkle = MerkleStorage::new(backend);
@@ -140,25 +144,42 @@ fn gen_stats(args: Args) {
         println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
     }
 
-    for (block, actions) in ActionsFileReader::new(&args.actions_file).unwrap().into_iter() {
+    for (block, actions) in ActionsFileReader::new(&args.actions_file)
+        .unwrap()
+        .into_iter()
+    {
         let actions_len = actions.len();
 
         for action in actions.into_iter() {
             if args.test_integrity {
-                if let ContextAction::Commit { new_context_hash, .. } = &action {
-                    cycle_commit_hashes.last_mut().unwrap().push(
-                        new_context_hash[..].try_into().unwrap()
-                    );
+                if let ContextAction::Commit {
+                    new_context_hash, ..
+                } = &action
+                {
+                    cycle_commit_hashes
+                        .last_mut()
+                        .unwrap()
+                        .push(new_context_hash[..].try_into().unwrap());
                 }
             }
 
             match &action {
-                ContextAction::Set { key, value, ignored, .. } => {
+                ContextAction::Set {
+                    key,
+                    value,
+                    ignored,
+                    ..
+                } => {
                     if !ignored {
                         merkle.set(&key, &value).unwrap();
                     }
                 }
-                ContextAction::Copy { to_key, from_key, ignored, .. } => {
+                ContextAction::Copy {
+                    to_key,
+                    from_key,
+                    ignored,
+                    ..
+                } => {
                     if !ignored {
                         merkle.copy(&from_key, &to_key).unwrap();
                     }
@@ -173,11 +194,21 @@ fn gen_stats(args: Args) {
                         merkle.delete(&key).unwrap();
                     }
                 }
-                ContextAction::Commit { author, message, date, new_context_hash, .. } => {
-                    merkle.commit(*date as u64, author.to_string(), message.to_string()).unwrap();
+                ContextAction::Commit {
+                    author,
+                    message,
+                    date,
+                    new_context_hash,
+                    ..
+                } => {
+                    merkle
+                        .commit(*date as u64, author.to_string(), message.to_string())
+                        .unwrap();
                 }
                 ContextAction::Checkout { context_hash, .. } => {
-                    merkle.checkout(&context_hash[..].try_into().unwrap()).unwrap();
+                    merkle
+                        .checkout(&context_hash[..].try_into().unwrap())
+                        .unwrap();
                 }
                 _ => {}
             };
@@ -186,15 +217,16 @@ fn gen_stats(args: Args) {
 
         if !args.test_integrity {
             let stats = merkle.get_merkle_stats();
-            println!("{}, {}, {}, {}, {}, {}, {}",
-                 block.block_level,
-                 stats.kv_store_stats.key_bytes,
-                 stats.kv_store_stats.value_bytes,
-                 stats.kv_store_stats.reused_keys_bytes,
-                 stats.kv_store_stats.total_as_bytes(),
-                 mem_usage(),
-                 merkle.get_block_latency(0).unwrap(),
-             );
+            println!(
+                "{}, {}, {}, {}, {}, {}, {}",
+                block.block_level,
+                stats.kv_store_stats.key_bytes,
+                stats.kv_store_stats.value_bytes,
+                stats.kv_store_stats.reused_keys_bytes,
+                stats.kv_store_stats.total_as_bytes(),
+                mem_usage(),
+                merkle.get_block_latency(0).unwrap(),
+            );
         }
 
         let level = block.block_level;
@@ -204,12 +236,11 @@ fn gen_stats(args: Args) {
             merkle.start_new_cycle().unwrap();
 
             if args.test_integrity {
-                let commits_iter = cycle_commit_hashes.iter()
-                    .flatten()
-                    .cloned();
+                let commits_iter = cycle_commit_hashes.iter().flatten().cloned();
                 check_commit_hashes(&merkle, commits_iter).unwrap();
 
-                cycle_commit_hashes = cycle_commit_hashes.into_iter()
+                cycle_commit_hashes = cycle_commit_hashes
+                    .into_iter()
                     .skip(1)
                     .chain(vec![vec![]])
                     .collect();

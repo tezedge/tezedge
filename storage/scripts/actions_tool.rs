@@ -1,20 +1,20 @@
-use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::fs::{File, OpenOptions};
+use bytes::{Buf, BufMut, BytesMut};
 use std::error::Error;
-use std::path::{Path};
-use bytes::{BytesMut, Buf, BufMut};
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::path::Path;
 // use bytes::buf::BufExt;
 use std::fmt::Formatter;
 // use crate::context_action_storage::ContextAction;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 const HEADER_LEN: usize = 12;
 type Hash = Vec<u8>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Block {
-    pub block_level : u32,
-    pub block_hash : String
+    pub block_level: u32,
+    pub block_hash: String,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -131,7 +131,6 @@ impl std::fmt::Display for ActionsFileHeader {
     }
 }
 
-
 impl From<[u8; HEADER_LEN]> for ActionsFileHeader {
     fn from(v: [u8; 12]) -> Self {
         let mut bytes = BytesMut::with_capacity(v.len());
@@ -181,10 +180,13 @@ pub struct ActionsFileReader {
     reader: BufReader<File>,
 }
 
-
 impl ActionsFileReader {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn Error>> {
-        let mut file = OpenOptions::new().write(false).create(false).read(true).open(path)?;
+        let mut file = OpenOptions::new()
+            .write(false)
+            .create(false)
+            .read(true)
+            .open(path)?;
         let mut reader = BufReader::new(file);
         reader.seek(SeekFrom::Start(0)).unwrap();
         let mut h = [0_u8; HEADER_LEN];
@@ -217,9 +219,7 @@ impl Iterator for ActionsFileReader {
     /// Return a tuple of a block and list action in the block
     fn next(&mut self) -> Option<Self::Item> {
         self.cursor = match self.reader.seek(SeekFrom::Start(self.cursor)) {
-            Ok(c) => {
-                c
-            }
+            Ok(c) => c,
             Err(_) => {
                 return None;
             }
@@ -228,9 +228,7 @@ impl Iterator for ActionsFileReader {
         //stops iteration when content length size cannot be read correctly
         match self.reader.read_exact(&mut h) {
             Ok(_) => {}
-            Err(_) => {
-                return None
-            }
+            Err(_) => return None,
         };
         let content_len = u32::from_be_bytes(h);
         if content_len <= 0 {
@@ -238,22 +236,17 @@ impl Iterator for ActionsFileReader {
         }
         let mut b = BytesMut::with_capacity(content_len as usize);
         unsafe { b.set_len(content_len as usize) }
-        
+
         //stops iteration when content length doesnt match exactly
-        match self.reader.read_exact(&mut b){
+        match self.reader.read_exact(&mut b) {
             Ok(_) => {}
-            Err(_) => {
-                return None
-            }
+            Err(_) => return None,
         };
-        
 
         let mut reader = snap::read::FrameDecoder::new(b.reader());
 
         let item = match bincode::deserialize_from::<_, (Block, Vec<ContextAction>)>(reader) {
-            Ok(item) => {
-                item
-            }
+            Ok(item) => item,
             Err(_) => {
                 return None;
             }

@@ -36,7 +36,7 @@ pub struct Logging {
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum ContextActionStoreBackend{
+pub enum ContextActionStoreBackend {
     RocksDB,
     FileStorage,
     NoneBackend,
@@ -859,19 +859,19 @@ impl Environment {
                     db_context_actions,
                     db_path,
                     action_store_backend: {
-                    let backend = args
-                         .value_of("actions-store-backend")
-                         .unwrap_or("none")
-                         .parse::<String>()
-                         .expect("Provided value cannot is not a string");
-                    match &backend[..] {
-                             "none" => ContextActionStoreBackend::NoneBackend,
-                             "rocksdb" => ContextActionStoreBackend::RocksDB,
-                             "file" => ContextActionStoreBackend::FileStorage,
-                             _ => {
-                                 panic!(format!("unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']", &backend))
-                             }
-                    }
+                        let backend = args
+                            .value_of("actions-store-backend")
+                            .unwrap_or("none")
+                            .parse::<String>()
+                            .expect("Provided value cannot is not a string");
+                        match &backend[..] {
+                            "none" => ContextActionStoreBackend::NoneBackend,
+                            "rocksdb" => ContextActionStoreBackend::RocksDB,
+                            "file" => ContextActionStoreBackend::FileStorage,
+                            _ => {
+                                panic!(format!("unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']", &backend))
+                            }
+                        }
                     },
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {

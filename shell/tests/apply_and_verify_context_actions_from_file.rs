@@ -1,19 +1,23 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
-use rocksdb::Cache;
+use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use failure::Error;
-use shell::context_listener::perform_context_action;
-use storage::BlockHeaderWithHash;
-use crypto::hash::{BlockHash,OperationListListHash, ContextHash};
-use std::convert::TryFrom;
-use tezos_messages::p2p::encoding::prelude::{BlockHeaderBuilder};
-use slog::{Drain, Level, Logger, debug, info};
-use storage::{BlockStorage, context::{ContextApi, TezedgeContext}, persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage}};
-use storage::action_file::ActionsFileReader;
+use rocksdb::Cache;
 use shell::context_listener::get_new_tree_hash;
+use shell::context_listener::perform_context_action;
+use slog::{debug, info, Drain, Level, Logger};
+use std::convert::TryFrom;
+use storage::action_file::ActionsFileReader;
+use storage::BlockHeaderWithHash;
+use storage::{
+    context::{ContextApi, TezedgeContext},
+    persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage},
+    BlockStorage,
+};
 use tezos_context::channel::ContextAction;
+use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
-fn create_logger() -> Logger{
+fn create_logger() -> Logger {
     let drain = slog_async::Async::new(
         slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
             .build()
@@ -24,17 +28,17 @@ fn create_logger() -> Logger{
     .build()
     .filter_level(Level::Debug)
     .fuse();
-        
+
     Logger::root(drain, slog::o!())
 }
 
-fn create_commit_log(path: &PathBuf) -> Arc<CommitLogs>{
+fn create_commit_log(path: &PathBuf) -> Arc<CommitLogs> {
     storage::persistent::open_cl(&path, vec![BlockStorage::descriptor()])
         .map(Arc::new)
         .unwrap()
 }
 
-fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB>{
+fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
     let schemas = vec![
         storage::block_storage::BlockPrimaryIndex::descriptor(&cache),
         storage::block_storage::BlockByLevelIndex::descriptor(&cache),
@@ -61,34 +65,33 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB>{
 }
 
 fn get_action_symbol(action: &ContextAction) -> String {
-    match action{
-        ContextAction::Set {..} => {String::from("Set")},
-        ContextAction::Delete {..} => {String::from("Delete")},
-        ContextAction::RemoveRecursively {..} => {String::from("RemoveRecursively")},
-        ContextAction::Copy {..} => {String::from("Copy")},
-        ContextAction::Checkout {..} => {String::from("Checkout")},
-        ContextAction::Commit {..} => {String::from("Commit")},
-        ContextAction::Mem {..} => {String::from("Mem")},
-        ContextAction::DirMem {..} => {String::from("DirMem")},
-        ContextAction::Get {..} => {String::from("Get")},
-        ContextAction::Fold {..} => {String::from("Fold")},
-        ContextAction::Shutdown {..} => {String::from("Shutdown")},
+    match action {
+        ContextAction::Set { .. } => String::from("Set"),
+        ContextAction::Delete { .. } => String::from("Delete"),
+        ContextAction::RemoveRecursively { .. } => String::from("RemoveRecursively"),
+        ContextAction::Copy { .. } => String::from("Copy"),
+        ContextAction::Checkout { .. } => String::from("Checkout"),
+        ContextAction::Commit { .. } => String::from("Commit"),
+        ContextAction::Mem { .. } => String::from("Mem"),
+        ContextAction::DirMem { .. } => String::from("DirMem"),
+        ContextAction::Get { .. } => String::from("Get"),
+        ContextAction::Fold { .. } => String::from("Fold"),
+        ContextAction::Shutdown { .. } => String::from("Shutdown"),
     }
 }
 
 #[test]
 #[ignore]
 fn feed_tezedge_context_with_actions() -> Result<(), Error> {
-
     let block_header_stub = BlockHeaderBuilder::default()
         .level(0)
         .proto(0)
-        .predecessor(BlockHash::try_from(vec![0;32])?)
+        .predecessor(BlockHash::try_from(vec![0; 32])?)
         .timestamp(0)
         .validation_pass(0)
-        .operations_hash(OperationListListHash::try_from(vec![0;32])?)
+        .operations_hash(OperationListListHash::try_from(vec![0; 32])?)
         .fitness(vec![])
-        .context(ContextHash::try_from(vec![0;32])?)
+        .context(ContextHash::try_from(vec![0; 32])?)
         .protocol_data(vec![])
         .build()
         .unwrap();
@@ -106,7 +109,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let commit_log = create_commit_log(&commit_log_db_path);
     let kv = create_key_value_store(&key_value_db_path, &cache);
-    let storage = PersistentStorage::new(kv.clone(),kv.clone(),kv.clone(), commit_log.clone());
+    let storage = PersistentStorage::new(kv.clone(), kv.clone(), kv.clone(), commit_log.clone());
     let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
         BlockStorage::new(&storage),
         storage.merkle(),
@@ -116,31 +119,49 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let actions_reader = ActionsFileReader::new(&actions_storage_path).unwrap();
     let header = actions_reader.header();
-    info!(logger, "Reading info from file {}", actions_storage_path.to_str().unwrap());
+    info!(
+        logger,
+        "Reading info from file {}",
+        actions_storage_path.to_str().unwrap()
+    );
     info!(logger, "{}", header);
     let blocks_count = header.block_count;
     let mut counter = 0;
 
-    for messages in actions_reader.take(10){
+    for messages in actions_reader.take(10) {
         counter += 1;
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
         match messages.iter().last() {
-            Some(msg) => {
-                match &msg.action {
-                    ContextAction::Commit{block_hash: Some(block_hash), ..} => {
-                        debug!(logger, "progress {:.7}% - processing block {} with {} messages", progress, hex::encode(&block_hash), messages.len());
-                    }
-                    _ => {panic!("missing commit action")}
+            Some(msg) => match &msg.action {
+                ContextAction::Commit {
+                    block_hash: Some(block_hash),
+                    ..
+                } => {
+                    debug!(
+                        logger,
+                        "progress {:.7}% - processing block {} with {} messages",
+                        progress,
+                        hex::encode(&block_hash),
+                        messages.len()
+                    );
                 }
+                _ => {
+                    panic!("missing commit action")
+                }
+            },
+            None => {
+                panic!("missing commit action")
             }
-            None => {panic!("missing commit action")}
         };
 
-
-        for msg in messages.iter(){
-            if let ContextAction::Commit{block_hash: Some(block_hash), ..} = &msg.action{
-                // there is extra validation in ContextApi::commit that verifies that 
+        for msg in messages.iter() {
+            if let ContextAction::Commit {
+                block_hash: Some(block_hash),
+                ..
+            } = &msg.action
+            {
+                // there is extra validation in ContextApi::commit that verifies that
                 // applied action comes from known block - for testing purposes
                 // block_storage needs to be fed with stub value in order to pass validation
                 let mut b = header_stub.clone();
@@ -148,22 +169,22 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 block_storage.put_block_header(&b).unwrap();
             }
 
-            match &msg.action{
+            match &msg.action {
                 // actions that does not mutate staging area can be ommited here
-                ContextAction::Set {..}
-                | ContextAction::Copy {..}
-                | ContextAction::Delete {..}
-                | ContextAction::RemoveRecursively {..}
-                | ContextAction::Commit{..}
-                | ContextAction::Checkout{..} => {
-                    if let Err(e) = perform_context_action(&msg.action, & mut context){
+                ContextAction::Set { .. }
+                | ContextAction::Copy { .. }
+                | ContextAction::Delete { .. }
+                | ContextAction::RemoveRecursively { .. }
+                | ContextAction::Commit { .. }
+                | ContextAction::Checkout { .. } => {
+                    if let Err(e) = perform_context_action(&msg.action, &mut context) {
                         panic!("cannot perform action {:?} error: '{}'", &msg, e);
                     }
                 }
                 _ => {}
             };
 
-            if let Some(expected_hash) = get_new_tree_hash(&msg.action){
+            if let Some(expected_hash) = get_new_tree_hash(&msg.action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
             }
         }
@@ -171,4 +192,3 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     println!("{:#?}", storage.merkle().read().unwrap().get_merkle_stats());
     Ok(())
 }
-    

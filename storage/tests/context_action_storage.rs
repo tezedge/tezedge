@@ -3,8 +3,8 @@
 
 use std::convert::TryInto;
 
-use failure::Error;
 use crypto::hash::BlockHash;
+use failure::Error;
 
 use storage::tests_common::TmpStorage;
 use storage::*;

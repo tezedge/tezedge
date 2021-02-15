@@ -3,28 +3,31 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use bytes::{Buf, BufMut, BytesMut};
+use crypto::hash::MerkleHash;
+use hex;
+use std::borrow::BorrowMut;
+use std::collections::HashSet;
 use std::convert::TryFrom;
-use std::{hash::Hash, sync::atomic::{AtomicBool, Ordering}};
+use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use crypto::hash::MerkleHash;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::borrow::BorrowMut;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
-use std::collections::HashSet;
-use bytes::{Buf, BufMut, BytesMut};
-use hex;
+use std::{
+    hash::Hash,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, error, warn, Logger};
+use slog::{crit, debug, error, info, warn, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::action_file_storage::ActionFileStorage;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, ContextActionStorage, ActionRecorder};
+use storage::{ActionRecorder, BlockStorage, ContextActionStorage};
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -82,7 +85,7 @@ impl ContextListener {
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut *action_store_backend ,
+                        &mut *action_store_backend,
                         &mut context,
                         &log,
                     ) {
@@ -176,7 +179,7 @@ fn listen_protocol_events(
     event_server_accept_timeout: Duration,
     action_store_backend: &mut dyn ActionRecorder,
     context: &mut Box<dyn ContextApi>,
-    log: &Logger
+    log: &Logger,
 ) -> Result<(), Error> {
     info!(
         log,
@@ -215,7 +218,7 @@ fn listen_protocol_events(
                     );
                 }
 
-                if ! msg.record{
+                if !msg.record {
                     // currently some of the messages are send twice due to
                     // replay feature - we dont wont to process those duplicates
                     continue;
@@ -223,13 +226,16 @@ fn listen_protocol_events(
 
                 event_count += 1;
 
-                if let Err(error) = action_store_backend.record(&msg){
-                    error!(log,"action: {:?} ,error: {} ",&msg.action , error);
+                if let Err(error) = action_store_backend.record(&msg) {
+                    error!(log, "action: {:?} ,error: {} ", &msg.action, error);
                     break;
                 }
-                
-                if let Err(e) = perform_context_action(&msg.action, context){
-                    error!(log, "error while processing action: {:?} reason  '{}'", &msg.action, e);
+
+                if let Err(e) = perform_context_action(&msg.action, context) {
+                    error!(
+                        log,
+                        "error while processing action: {:?} reason  '{}'", &msg.action, e
+                    );
                     panic!("error while executing action");
                 }
             }
@@ -246,52 +252,48 @@ fn listen_protocol_events(
 // returns hash of the merkle tree that action needs to be
 // applied on
 pub fn get_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
-    match &action
-    {
-        ContextAction::Get {tree_hash, .. }
-        | ContextAction::Mem {tree_hash, .. }
-        | ContextAction::DirMem {tree_hash, ..}
-        | ContextAction::Set {tree_hash, ..}
-        | ContextAction::Copy {tree_hash, ..}
-        | ContextAction::Delete {tree_hash, ..}
-        | ContextAction::RemoveRecursively {tree_hash, ..}
-        | ContextAction::Commit {tree_hash, ..}
-        | ContextAction::Fold {tree_hash, ..} => {
+    match &action {
+        ContextAction::Get { tree_hash, .. }
+        | ContextAction::Mem { tree_hash, .. }
+        | ContextAction::DirMem { tree_hash, .. }
+        | ContextAction::Set { tree_hash, .. }
+        | ContextAction::Copy { tree_hash, .. }
+        | ContextAction::Delete { tree_hash, .. }
+        | ContextAction::RemoveRecursively { tree_hash, .. }
+        | ContextAction::Commit { tree_hash, .. }
+        | ContextAction::Fold { tree_hash, .. } => {
             Some(MerkleHash::try_from(tree_hash.as_slice()).unwrap())
-        },
-        ContextAction::Checkout{..}
-        | ContextAction::Shutdown => {None},
+        }
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
     }
 }
 
 pub fn get_new_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
-    match &action{
-        ContextAction::Set {new_tree_hash, ..}
-        | ContextAction::Copy {new_tree_hash, ..}
-        | ContextAction::Delete {new_tree_hash, ..}
-        | ContextAction::RemoveRecursively {new_tree_hash, ..} => {
+    match &action {
+        ContextAction::Set { new_tree_hash, .. }
+        | ContextAction::Copy { new_tree_hash, .. }
+        | ContextAction::Delete { new_tree_hash, .. }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
             Some(MerkleHash::try_from(new_tree_hash.as_slice()).unwrap())
         }
         ContextAction::Get { .. }
         | ContextAction::Mem { .. }
-        | ContextAction::DirMem { ..}
-        | ContextAction::Commit {..}
-        | ContextAction::Fold {..}
-        | ContextAction::Checkout{..}
-        | ContextAction::Shutdown => {None},
+        | ContextAction::DirMem { .. }
+        | ContextAction::Commit { .. }
+        | ContextAction::Fold { .. }
+        | ContextAction::Checkout { .. }
+        | ContextAction::Shutdown => None,
     }
 }
-
 
 pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
-
-    if let Some(pre_hash) = get_tree_hash(&action){
+    if let Some(pre_hash) = get_tree_hash(&action) {
         context.set_merkle_root(pre_hash)?;
     }
-    
+
     match action {
         ContextAction::Get { key, .. } => {
             context.get_key(key)?;
@@ -308,8 +310,8 @@ pub fn perform_context_action(
             context_hash,
             ..
         } => {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.set(&context_hash, key, value)?;
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.set(&context_hash, key, value)?;
         }
         ContextAction::Copy {
             to_key: key,
@@ -317,20 +319,20 @@ pub fn perform_context_action(
             context_hash,
             ..
         } => {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.copy_to_diff(&context_hash, from_key, key)?;
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.copy_to_diff(&context_hash, from_key, key)?;
         }
         ContextAction::Delete {
             key, context_hash, ..
         } => {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.delete_to_diff(&context_hash, key)?;
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.delete_to_diff(&context_hash, key)?;
         }
         ContextAction::RemoveRecursively {
             key, context_hash, ..
         } => {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.remove_recursively_to_diff(&context_hash, key)?;
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.remove_recursively_to_diff(&context_hash, key)?;
         }
         ContextAction::Commit {
             parent_context_hash,
@@ -341,30 +343,30 @@ pub fn perform_context_action(
             date,
             ..
         } => {
-                        let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
-                        let block_hash = BlockHash::try_from(block_hash.clone())?;
-                        let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
+            let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
+            let block_hash = BlockHash::try_from(block_hash.clone())?;
+            let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
 
             let hash_result = context.commit(
-                            &block_hash,
-                            &parent_context_hash,
+                &block_hash,
+                &parent_context_hash,
                 author.to_string(),
                 message.to_string(),
                 *date,
             );
             let hash = hash_result?;
             assert_eq!(
-                            hash,
+                hash,
                 new_context_hash,
                 "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                            block_hash.to_base58_check(),
-                            new_context_hash.to_base58_check(),
-                            hash.to_base58_check(),
+                block_hash.to_base58_check(),
+                new_context_hash.to_base58_check(),
+                hash.to_base58_check(),
             );
         }
 
         ContextAction::Checkout { context_hash, .. } => {
-                        context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
+            context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
         }
 
         ContextAction::Commit { .. } => (), // Ignored (no block_hash)
@@ -374,7 +376,7 @@ pub fn perform_context_action(
         ContextAction::Shutdown => (), // Ignored
     };
 
-    if let Some(post_hash) = get_new_tree_hash(&action){
+    if let Some(post_hash) = get_new_tree_hash(&action) {
         assert_eq!(context.get_merkle_root(), post_hash);
     }
 

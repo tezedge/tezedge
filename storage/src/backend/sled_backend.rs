@@ -1,24 +1,27 @@
-use crate::storage_backend::{StorageBackend, StorageBackendStats, StorageBackendError};
-use crate::merkle_storage::{EntryHash, ContextValue};
+use crate::merkle_storage::{ContextValue, EntryHash};
+use crate::storage_backend::{StorageBackend, StorageBackendError, StorageBackendStats};
 use std::collections::HashSet;
 
 pub struct SledBackend {
-    inner: sled::Tree
+    inner: sled::Tree,
 }
 
 impl SledBackend {
-    pub fn new(db : sled::Tree) -> Self{
-        SledBackend {
-            inner: db
-        }
+    pub fn new(db: sled::Tree) -> Self {
+        SledBackend { inner: db }
     }
 }
 
 impl StorageBackend for SledBackend {
-    fn is_persisted(&self) -> bool { true }
+    fn is_persisted(&self) -> bool {
+        true
+    }
 
     fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-        Ok(self.inner.insert(&key.as_ref()[..], value).map(|v| v.is_none())?)
+        Ok(self
+            .inner
+            .insert(&key.as_ref()[..], value)
+            .map(|v| v.is_none())?)
     }
 
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
@@ -34,12 +37,8 @@ impl StorageBackend for SledBackend {
         let r = self.inner.get(&key.as_ref()[..])?;
 
         match r {
-            None => {
-                Err(StorageBackendError::BackendError)
-            }
-            Some(v) => {
-                Ok(Some(v.to_vec()))
-            }
+            None => Err(StorageBackendError::BackendError),
+            Some(v) => Ok(Some(v.to_vec())),
         }
     }
 
@@ -51,10 +50,10 @@ impl StorageBackend for SledBackend {
         unimplemented!()
     }
 
-    fn mark_reused(&mut self, key: EntryHash) { }
-    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) { }
-    fn wait_for_gc_finish(&self) { }
+    fn mark_reused(&mut self, key: EntryHash) {}
+    fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
+    fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<StorageBackendStats> {
-      unimplemented!()
+        unimplemented!()
     }
 }

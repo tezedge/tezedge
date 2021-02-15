@@ -1,9 +1,9 @@
-use std::collections::HashSet;
-use std::mem;
 use failure::Fail;
 use serde::Serialize;
+use std::collections::HashSet;
+use std::mem;
 
-use crate::merkle_storage::{EntryHash, ContextValue};
+use crate::merkle_storage::{ContextValue, EntryHash};
 
 pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
@@ -163,9 +163,7 @@ impl std::ops::SubAssign for StorageBackendStats {
 
 impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
     fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
-        iter.fold(StorageBackendStats::default(), |acc, cur| {
-            acc + cur
-        })
+        iter.fold(StorageBackendStats::default(), |acc, cur| acc + cur)
     }
 }
 

@@ -1,9 +1,9 @@
-use std::time::Instant;
-use std::collections::HashMap;
-use serde::Serialize;
 use crate::storage_backend::StorageBackendStats;
-use std::fmt;
+use serde::Serialize;
 use std::cmp;
+use std::collections::HashMap;
+use std::fmt;
+use std::time::Instant;
 
 /// Latency statistics for each action (in nanoseconds)
 #[derive(Serialize, Debug, Clone, Copy)]
@@ -30,8 +30,6 @@ impl Default for OperationLatencies {
     }
 }
 
-
-
 /// Block application latencies
 #[derive(Serialize, Default, Debug, Clone)]
 pub struct BlockLatencies {
@@ -39,13 +37,11 @@ pub struct BlockLatencies {
     current: u64,
 }
 
-
 // Latency statistics indexed by operation name (e.g. "Set")
 pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
 
 // Latency statistics per path indexed by first chunk of path (under /data/)
 pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
-
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStoragePerfReport {
@@ -53,8 +49,8 @@ pub struct MerkleStoragePerfReport {
     pub kv_store_stats: StorageBackendStats,
 }
 
-impl MerkleStoragePerfReport{
-    pub fn new(perf_stats: MerklePerfStats, kv_store_stats: StorageBackendStats)-> Self{
+impl MerkleStoragePerfReport {
+    pub fn new(perf_stats: MerklePerfStats, kv_store_stats: StorageBackendStats) -> Self {
         let mut perf = perf_stats.clone();
         for (_, stat) in perf.global.iter_mut() {
             if stat.op_exec_times > 0 {
@@ -75,7 +71,7 @@ impl MerkleStoragePerfReport{
         }
         MerkleStoragePerfReport {
             perf_stats: perf,
-            kv_store_stats: kv_store_stats.clone()
+            kv_store_stats: kv_store_stats.clone(),
         }
     }
 }
@@ -87,7 +83,7 @@ pub struct MerklePerfStats {
 }
 
 #[derive(Serialize, Default, Debug, Clone)]
-pub struct MerkleStorageStatistics{
+pub struct MerkleStorageStatistics {
     pub perf_stats: MerklePerfStats,
     pub block_latencies: BlockLatencies,
 }
@@ -107,15 +103,15 @@ impl BlockLatencies {
     }
 
     pub fn get(&self, offset_from_last_applied: usize) -> Option<u64> {
-        self.latencies.len()
+        self.latencies
+            .len()
             .checked_sub(offset_from_last_applied + 1)
             .and_then(|index| self.latencies.get(index))
             .map(|x| *x)
     }
 }
 
-
-pub enum MerkleStorageAction{
+pub enum MerkleStorageAction {
     Set,
     Get,
     GetByPrefix,
@@ -135,64 +131,92 @@ pub enum MerkleStorageAction{
 impl fmt::Display for MerkleStorageAction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            MerkleStorageAction::Set => {write!(f,"Set").unwrap();},
-            MerkleStorageAction::Get => {write!(f,"Get").unwrap();},
-            MerkleStorageAction::GetByPrefix => {write!(f,"GetByPrefix").unwrap();},
-            MerkleStorageAction::GetKeyValuesByPrefix => {write!(f,"GetKeyValuesByPrefix").unwrap();},
-            MerkleStorageAction::GetContextTreeByPrefix => {write!(f,"GetContextTreeByPrefix").unwrap();},
-            MerkleStorageAction::GetHistory => {write!(f,"GetHistory").unwrap();},
-            MerkleStorageAction::Mem => {write!(f,"Mem").unwrap();},
-            MerkleStorageAction::DirMem => {write!(f,"DirMem").unwrap();},
-            MerkleStorageAction::Copy => {write!(f,"Copy").unwrap();},
-            MerkleStorageAction::Delete => {write!(f,"Delete").unwrap();},
-            MerkleStorageAction::DeleteRecursively => {write!(f,"DeleteRecursively").unwrap();},
-            MerkleStorageAction::Commit => {write!(f,"Commit").unwrap();},
-            MerkleStorageAction::Checkout => {write!(f,"Checkout").unwrap();},
-            MerkleStorageAction::GarbageCollector => {write!(f,"GarbageCollector").unwrap();},
+            MerkleStorageAction::Set => {
+                write!(f, "Set").unwrap();
+            }
+            MerkleStorageAction::Get => {
+                write!(f, "Get").unwrap();
+            }
+            MerkleStorageAction::GetByPrefix => {
+                write!(f, "GetByPrefix").unwrap();
+            }
+            MerkleStorageAction::GetKeyValuesByPrefix => {
+                write!(f, "GetKeyValuesByPrefix").unwrap();
+            }
+            MerkleStorageAction::GetContextTreeByPrefix => {
+                write!(f, "GetContextTreeByPrefix").unwrap();
+            }
+            MerkleStorageAction::GetHistory => {
+                write!(f, "GetHistory").unwrap();
+            }
+            MerkleStorageAction::Mem => {
+                write!(f, "Mem").unwrap();
+            }
+            MerkleStorageAction::DirMem => {
+                write!(f, "DirMem").unwrap();
+            }
+            MerkleStorageAction::Copy => {
+                write!(f, "Copy").unwrap();
+            }
+            MerkleStorageAction::Delete => {
+                write!(f, "Delete").unwrap();
+            }
+            MerkleStorageAction::DeleteRecursively => {
+                write!(f, "DeleteRecursively").unwrap();
+            }
+            MerkleStorageAction::Commit => {
+                write!(f, "Commit").unwrap();
+            }
+            MerkleStorageAction::Checkout => {
+                write!(f, "Checkout").unwrap();
+            }
+            MerkleStorageAction::GarbageCollector => {
+                write!(f, "GarbageCollector").unwrap();
+            }
         };
         Ok(())
     }
 }
 
-
-pub struct StatUpdater<'a>{
+pub struct StatUpdater<'a> {
     stats: &'a mut MerkleStorageStatistics,
     timer: Instant,
     action: MerkleStorageAction,
-    key: Option<String>
+    key: Option<String>,
 }
 
-impl<'a> Drop for StatUpdater<'a>{
-    fn drop(&mut self){
+impl<'a> Drop for StatUpdater<'a> {
+    fn drop(&mut self) {
         self.update_execution_stats()
     }
 }
 
-impl<'a> StatUpdater<'a>{
-    pub fn new(stats: &'a mut MerkleStorageStatistics, action: MerkleStorageAction, action_key: Option<&Vec<String>>) -> Self{
-
-        let key = match action_key{
+impl<'a> StatUpdater<'a> {
+    pub fn new(
+        stats: &'a mut MerkleStorageStatistics,
+        action: MerkleStorageAction,
+        action_key: Option<&Vec<String>>,
+    ) -> Self {
+        let key = match action_key {
             Some(path) => {
-                if path.len() > 1 && path[0] == "data"{
+                if path.len() > 1 && path[0] == "data" {
                     Some(path[1].to_string())
-                }else{
+                } else {
                     None
                 }
-            },
-            None => {None},
+            }
+            None => None,
         };
 
-        StatUpdater{
+        StatUpdater {
             stats,
             timer: Instant::now(),
             action,
-            key
+            key,
         }
     }
 
-    pub fn update_execution_stats(
-        &mut self,
-    ) {
+    pub fn update_execution_stats(&mut self) {
         // stop timer and get duration
         let exec_time_nanos = self.timer.elapsed().as_nanos();
 

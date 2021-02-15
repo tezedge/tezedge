@@ -24,31 +24,32 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 
+pub use crate::action_file_storage::ActionFileStorage;
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{
     BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
     BlockStorage, BlockStorageReader,
-}; 
-pub use crate::persistent::{ActionRecorder, ActionRecordError};
+};
 pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{
-    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage
+    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
 };
-pub use crate::action_file_storage::ActionFileStorage;
-pub use crate::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
+pub use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
+pub use crate::persistent::{ActionRecordError, ActionRecorder};
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
 pub mod action_file;
 pub mod action_file_storage;
+pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -62,9 +63,8 @@ pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
-pub mod system_storage;
 pub mod storage_backend;
-pub mod backend;
+pub mod system_storage;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -141,7 +141,7 @@ pub enum StorageError {
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
     #[fail(display = "Action record error: {}", error)]
-    ActionRecordError{ error: ActionRecordError },
+    ActionRecordError { error: ActionRecordError },
     #[fail(display = "Error constructing hash: {}", error)]
     HashError { error: FromBytesError },
     #[fail(display = "Error decoding hash: {}", error)]
