@@ -246,9 +246,9 @@ pub mod infra {
                 &actor_system,
                 shell_channel.clone(),
                 &persistent_storage,
+                Box::new(storage::persistent::NoRecorder {}),
                 apply_protocol_events,
                 log.clone(),
-                false,
             )
             .expect("Failed to create context event listener");
             let chain_current_head_manager = ChainCurrentHeadManager::actor(

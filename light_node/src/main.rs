@@ -30,10 +30,12 @@ use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use storage::persistent::DbConfiguration;
-use storage::persistent::{open_cl, open_kv, CommitLogSchema, PersistentStorage};
+use storage::persistent::{open_cl, open_kv, CommitLogSchema, NoRecorder, PersistentStorage};
+use storage::ActionFileStorage;
+use storage::ContextActionStorage;
 use storage::{
     check_database_compatibility, context::TezedgeContext, persistent::DBError,
-    resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,
+    resolve_storage_init_chain_data, ActionRecorder, BlockStorage, StorageInitInfo,
 };
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -202,7 +204,8 @@ fn create_tezos_writeable_api_pool(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
                 no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.store_context_actions,
+                debug_mode: env.storage.action_store_backend
+                    == configuration::ContextActionStoreBackend::NoneBackend,
             },
             tezos_env,
             env.enable_testchain,
@@ -310,14 +313,30 @@ fn block_on_actors(
     let chain_feeder_channel =
         ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
+    let store_backend: Box<dyn ActionRecorder + Send> = match env.storage.action_store_backend {
+        configuration::ContextActionStoreBackend::RocksDB => {
+            Box::new(ContextActionStorage::new(&persistent_storage))
+        }
+        configuration::ContextActionStoreBackend::FileStorage => {
+            let action_file_path = env.storage.db_path.join("actionfile.bin");
+            info!(
+                log,
+                "RecordingActions to file storage '{}'",
+                action_file_path.clone().to_str().unwrap()
+            );
+            Box::new(ActionFileStorage::new(action_file_path))
+        }
+        configuration::ContextActionStoreBackend::NoneBackend => Box::new(NoRecorder {}),
+    };
+
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
+        store_backend,
         context_actions_event_server,
         log.clone(),
-        env.storage.store_context_actions,
     )
     .expect("Failed to create context event listener");
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
@@ -568,6 +587,18 @@ fn main() {
 
     {
         let persistent_storage = PersistentStorage::new(kv, kv_context, kv_actions, commit_logs);
+        // restore merkle tree from persistant store if it isn't persisted.
+        {
+            let merkle_lock = persistent_storage.merkle();
+            let mut merkle = merkle_lock.write().unwrap();
+            if !merkle.is_persisted() {
+                merkle
+                    .apply_context_actions_from_store(&ContextActionStorage::new(
+                        &persistent_storage,
+                    ))
+                    .expect("Failed to restore merkle from context action storage");
+            }
+        }
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),
