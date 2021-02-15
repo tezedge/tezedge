@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use failure::format_err;
 use hyper::{Body, Request};
 use slog::warn;
 
@@ -119,7 +120,9 @@ pub async fn dev_action_cursor(
                 env.persistent_storage(),
             )
         } else {
-            unreachable!()
+            Err(format_err!(
+                "Invalid parameter: should be either `block_hash` or `contract_address`"
+            ))
         },
         env.log(),
     )
