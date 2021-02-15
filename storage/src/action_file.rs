@@ -148,7 +148,7 @@ impl Iterator for ActionsFileReader {
             Err(_) => return None,
         }
         let content_len = u32::from_be_bytes(h);
-        if content_len <= 0 {
+        if content_len == 0 {
             return None;
         }
         let mut b = vec![0; content_len as usize];
@@ -215,10 +215,10 @@ impl ActionsFileWriter {
         bincode::serialize_into(writer, &actions)?;
 
         // Writes the header if its not already set
-        if self.header.block_count <= 0 {
+        if self.header.block_count == 0 {
             let header_bytes = self.header.to_vec();
             self.file.seek(SeekFrom::Start(0))?;
-            self.file.write(&header_bytes)?;
+            self.file.write_all(&header_bytes)?;
         }
         self._update(&out)?;
         self._update_header(block_level, actions_count, block_hash)?;
@@ -238,7 +238,7 @@ impl ActionsFileWriter {
 
         let header_bytes = self.header.to_vec();
         self.file.seek(SeekFrom::Start(0))?;
-        self.file.write(&header_bytes)?;
+        self.file.write_all(&header_bytes)?;
         Ok(())
     }
 
@@ -260,7 +260,7 @@ impl ActionsFileWriter {
         let mut dt = vec![];
         dt.extend_from_slice(&header);
         dt.extend_from_slice(data);
-        self.file.write(dt.as_slice())?;
+        self.file.write_all(dt.as_slice())?;
         Ok(())
     }
 }

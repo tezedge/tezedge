@@ -231,7 +231,7 @@ impl Iterator for ActionsFileReader {
             Err(_) => return None,
         };
         let content_len = u32::from_be_bytes(h);
-        if content_len <= 0 {
+        if content_len == 0 {
             return None;
         }
         let mut b = BytesMut::with_capacity(content_len as usize);
