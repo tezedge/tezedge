@@ -1,9 +1,9 @@
 # TezEdge [![Docs Status]][docs Link] [![Changelog][changelog-badge]][changelog] [![release-badge]][release-link] [![docker-badge]][docker-link] [![MIT licensed]][MIT link]
 
 ---
-The purpose of this project is to implement a secure, trustworthy, open-source Tezos node in Rust.
+The purpose of this project is to implement a secure, trustworthy and open-source Tezos node in Rust.
 
-In addition to implementing a new node, the project seeks to maintain and improve the Tezos node wherever possible.
+In addition to implementing a new node, the project seeks to maintain and improve the Tezos ecosystem wherever possible.
 
 ## Table of Contents
 * [Build status](#build-status)
@@ -65,18 +65,18 @@ In addition to implementing a new node, the project seeks to maintain and improv
 
 ---
 
-This demo runs two thing things:
-- **TezEdge node** (p2p application), which connects to the **Tezos Mainnet network**.
-- **TezEdge explorer** (web application), which connects to the TezEdge node, can be accessed from browser to see what is going on inside TezEdge node
+This demo launches two items:
+- The **TezEdge node** (p2p application), which connects to the **Tezos Mainnet network**.
+- The **TezEdge explorer** (web application), which connects to the TezEdge node and can be accessed from a browser to see what is going on inside the TezEdge node
 
 ### Prerequisites
-If you want to run this demo, you need to install this before:
+If you want to run this demo, you need to first install the following:
 * Git (client)
 * Docker
 
 ### Run demo
 
-1. **Download TezEdge source code**
+1. **Download the TezEdge source code**
     ```
    # Open shell and type this code into the command line and then press Enter:
    git clone https://github.com/simplestaking/tezedge
@@ -95,8 +95,8 @@ If you want to run this demo, you need to install this before:
 
 _**Docker for Windows**_
 
-The images use hostname `localhost` to access running services.
-When using docker for windows, check, please:
+The images use the hostname `localhost` to access running services.
+When using docker for windows, please check:
 ```
 docker-machine ip
 ```
@@ -114,8 +114,8 @@ _Detailed project's documentation can be found here [Documentation][Docs Link]_
 
 ### Supported OS distributions
 
-We are linking rust code with pre-compiled Tezos shared library. For your convenience we have created pre-compiled binary files
-for most of the popular linux distributions:
+We are linking Rust code with a pre-compiled Tezos shared library. For your convenience, we have created pre-compiled binary files
+for most of the more popular Linux distributions:
 
 
 |  OS  |      Versions      |
@@ -126,7 +126,7 @@ for most of the popular linux distributions:
 | CentOS |  8 |
 | MacOS |  *experimental* - newer or equal to 10.13 should work |
 
-If you are missing support for your favorite linux distribution on a poll request at [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
+If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
 
 ### Prerequisites installation
 If you want to build from source code, you need to install this before:
@@ -163,7 +163,7 @@ If you want to build from source code, you need to install this before:
 
 1. **Download TezEdge source code**
     ```
-    # Open shell and type this code into the command line and then press Enter:
+    # Open shell, type this code into the command line and then press Enter:
     git clone https://github.com/simplestaking/tezedge
     cd tezedge
     ```
@@ -196,14 +196,14 @@ If you want to build from source code, you need to install this before:
 
 ### Running node with `cargo run`
 
-To run node manually, you need to build it from source code at first. Path to the Tezos lib must be provided as environment variable `LD_LIBRARY_PATH`. It is required
-by `protocol-runner`. Put together, node can be run, for example, like this:
+To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH`. It is required
+by the `protocol-runner`. When put together, the node can be run, for example, like this:
 ```
 LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --network=mainnet
 ```
 
-All parameters can be provided also as command line arguments in the same format as in config file, in which case
-they have higher priority than the ones in config file. For example we can use the default config and change the log file path:
+All parameters can also be provided as command line arguments in the same format as in the config file, in which case
+they have a higher priority than the ones in the config file. For example, we can use the default config and change the log file path:
 ```
 LD_LIBRARY_PATH=./tezos/interop/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --network=mainnet
 ```
@@ -211,28 +211,28 @@ _Full description of all arguments is in the light_node [README](light_node/READ
 
 ### Running node with `run.sh` script
 
-On linux systems, we prepared convenience script to run the node. It will automatically set all necessary environmnent variables, build and run tezedge node.
+For Linux systems, we have prepared a convenience script to run the node. It will automatically set all the necessary environmnent variables and then build and run the TezEdge node.
 All arguments can be provided to the `run.sh` script in the same manner as described in the previous section.
 
-To run node in release mode execute the following:
+To run the node in release mode, execute the following:
 
 ```
 ./run.sh release --network=mainnet
 ```
 
-The following command will execute node in debug node:
+The following command will execute the node in debug node:
 
 ```
 ./run.sh node --network=mainnet
 ```
 
-To run node in debug mode with address sanitizer execute the following:
+To run the node in debug mode with an address sanitizer, execute the following:
 
 ```
 ./run.sh node-saddr --network=mainnet
 ```
 
-If you are running OSX you can use docker version:
+If you are running OSX, you can use the docker version:
 
 ```
 ./run.sh docker --network=mainnet
@@ -248,8 +248,8 @@ _Full description of all arguments is in the light_node [README](light_node/READ
 
 ### Running node from docker images
 
-We provide automatically build images, that can be downloaded from our [Docker hub][docker-link].
-This can be useful, if you want to run e.g. TezEdge node in your test CI pipelines.
+We provide automatically built images that can be downloaded from our [Docker hub][docker-link].
+For instance, this can be useful when you want to run the TezEdge node in your test CI pipelines.
 
 #### Images (distroless)
 - `simplestakingcom/tezedge:latest-release` - last stable released version
@@ -264,13 +264,13 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 ```
 docker run -i -t simplestakingcom/tezedge:latest --network=mainnet --p2p-port=9732
 ```
-_Full description of all arguments is in the light_node [README](light_node/README.md) file._
+_A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
 ### Shutdown running node gracefully
 
 Just press `Ctrl-c`, works for e.g. `cargo run` or `run.sh` script.
 
-Or you can send `signal` to running process, dedicated signal is `SIGINT`, e.g.:
+Or you can send a `signal` to a running process, the dedicated signal is `SIGINT`, e.g.:
 ```
 kill -s SIGINT <PID-of-running-process-with-light-node>
 ```
@@ -281,13 +281,13 @@ kill -s SIGINT <PID-of-running-process-with-light-node>
 
 ### Example of how to call the RPC
 
-Open shell and type this code into the command line and then press Enter:
+Open shell, type this code into the command line and then press Enter:
 
 ```
 curl localhost:18732/chains/main/blocks/head
 ```
 
-For a more detailed description of RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
+For a more detailed description of the RPCs, see the [shell](https://docs.tezedge.com/endpoints/shell) and the [protocol](https://docs.tezedge.com/endpoints/protocol) endpoints.
 
 ### Prearranged docker-compose files
 
