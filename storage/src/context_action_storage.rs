@@ -15,14 +15,14 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{
     BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
 };
-use tezos_context::channel::ContextAction;
+pub use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::persistent::codec::range_from_idx_len;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
     default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
-    KeyValueStoreWithSchema, PersistentStorage, SchemaError,
+    KeyValueStoreWithSchema, PersistentStorage, SchemaError, ActionRecorder
 };
 use crate::StorageError;
 use crate::{num_from_slice, persistent::StorageType};
@@ -89,7 +89,7 @@ impl ContextActionStorage {
     #[inline]
     pub fn put_action(
         &mut self,
-        block_hash: &BlockHash,
+        block_hash: BlockHash,
         action: ContextAction,
     ) -> Result<(), StorageError> {
         // generate ID
@@ -126,7 +126,7 @@ impl ContextActionStorage {
         if let ContextHashType::Block = addr_type {
             let base_iterator = self
                 .context_by_block_index
-                .get_by_block_hash_iterator(&BlockHash::try_from(hash)?, cursor_id)?;
+                .get_by_block_hash_iterator(BlockHash::try_from(hash)?, cursor_id)?;
             if let Some(action_type) = cursor_filters.action_type {
                 let type_iterator = self
                     .context_by_type_index
@@ -175,7 +175,7 @@ impl ContextActionStorage {
     #[inline]
     pub fn get_by_block_hash(
         &self,
-        block_hash: &BlockHash,
+        block_hash: BlockHash,
     ) -> Result<Vec<ContextActionRecordValue>, StorageError> {
         self.context_by_block_index
             .get_by_block_hash(block_hash)
@@ -194,6 +194,17 @@ impl ContextActionStorage {
             .and_then(|idx| self.load_indexes(idx.into_iter()))
     }
 
+    #[inline]
+    pub fn get_by_action_types(&self, action_types: &[ContextActionType]) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        self.context_by_type_index.get_by_action_types_iterator(action_types, None)
+            .and_then(|idx| self.load_indexes(idx.into_iter()))
+    }
+
+    #[inline]
+    pub fn get_by_mut_action_types(&self) -> Result<Vec<ContextActionRecordValue>, StorageError> {
+        self.get_by_action_types(&CONTEXT_MUT_ACTION_TYPES)
+    }
+
     fn load_indexes<'a, Idx: Iterator<Item = u64> + 'a>(
         &'a self,
         indexes: Idx,
@@ -201,6 +212,34 @@ impl ContextActionStorage {
         Ok(indexes
             .filter_map(|id| self.kv.get(&id).ok().flatten())
             .collect())
+    }
+}
+
+impl ActionRecorder for ContextActionStorage{
+    #[inline]
+    fn record(
+        &mut self,
+        message: &ContextActionMessage,
+    ) -> Result<(), StorageError> {
+        if ! message.record {
+            return Ok(())
+        }
+
+        match &message.action {
+            ContextAction::Set { block_hash: Some(block_hash), ..}
+            | ContextAction::Copy { block_hash: Some(block_hash), ..  }
+            | ContextAction::Delete { block_hash: Some(block_hash), ..  }
+            | ContextAction::RemoveRecursively { block_hash: Some(block_hash), ..  }
+            | ContextAction::Mem { block_hash: Some(block_hash), ..  }
+            | ContextAction::DirMem { block_hash: Some(block_hash), ..  }
+            | ContextAction::Get { block_hash: Some(block_hash), ..  }
+            | ContextAction::Fold { block_hash: Some(block_hash), ..  }
+            | ContextAction::Commit { block_hash: Some(block_hash), .. } => {
+                self.put_action(BlockHash::try_from(&block_hash[..])?, message.action.clone())
+            }
+            _ => {Ok(())}
+        }
+
     }
 }
 
@@ -344,7 +383,7 @@ impl ContextActionByBlockHashIndex {
     #[inline]
     fn get_by_block_hash(
         &self,
-        block_hash: &BlockHash,
+        block_hash: BlockHash,
     ) -> Result<Vec<SequenceNumber>, StorageError> {
         Ok(self.get_by_block_hash_iterator(block_hash, None)?.collect())
     }
@@ -352,12 +391,12 @@ impl ContextActionByBlockHashIndex {
     #[inline]
     fn get_by_block_hash_iterator<'a>(
         &'a self,
-        block_hash: &BlockHash,
+        block_hash: BlockHash,
         cursor_id: Option<SequenceNumber>,
     ) -> Result<impl Iterator<Item = SequenceNumber> + 'a, StorageError> {
         let key = cursor_id.map_or_else(
-            || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash),
-            |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
+            || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash.clone()),
+            |cursor_id| ContextActionByBlockHashKey::new(block_hash.clone(), cursor_id),
         );
         Ok(self
             .kv
@@ -399,18 +438,18 @@ impl ContextActionByBlockHashKey {
     const IDX_BLOCK_HASH: usize = 0;
     const IDX_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
 
-    pub fn new(block_hash: &BlockHash, id: SequenceNumber) -> Self {
+    pub fn new(block_hash: BlockHash, id: SequenceNumber) -> Self {
         Self {
-            block_hash: block_hash.clone(),
+            block_hash,
             id,
         }
     }
 
     /// This is useful only when using prefix iterator to retrieve
     /// actions belonging to the same block.
-    fn from_block_hash_prefix(block_hash: &BlockHash) -> Self {
+    fn from_block_hash_prefix(block_hash: BlockHash) -> Self {
         Self {
-            block_hash: block_hash.clone(),
+            block_hash,
             id: 0,
         }
     }
@@ -828,6 +867,16 @@ impl Encoder for ContextActionByTypeIndexKey {
     }
 }
 
+/// action types which mutate the state
+const CONTEXT_MUT_ACTION_TYPES: [ContextActionType; 6] = [
+    ContextActionType::Set,
+    ContextActionType::Copy,
+    ContextActionType::Delete,
+    ContextActionType::RemoveRecursively,
+    ContextActionType::Commit,
+    ContextActionType::Checkout,
+];
+
 #[repr(u16)]
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum ContextActionType {
@@ -1211,6 +1260,7 @@ mod tests {
             context_hash: None,
             block_hash: None,
             operation_hash: None,
+            tree_hash: vec![],
             key: to_key(key),
             value: Vec::new(),
             value_as_json: None,

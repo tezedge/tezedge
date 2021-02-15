@@ -3,9 +3,10 @@
 
 use std::cell::RefCell;
 use std::convert::AsRef;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
+use std::path::PathBuf;
 
 use failure::Fail;
 use lazy_static::lazy_static;
@@ -17,7 +18,7 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_context::channel::{context_receive, context_send, ContextAction};
+use tezos_context::channel::{context_receive, context_send, ContextAction, ContextActionMessage};
 
 use crate::protocol::*;
 use crate::runner::{ProtocolRunner, ProtocolRunnerError};
@@ -94,14 +95,14 @@ enum NodeMessage {
 
 /// Empty message
 #[derive(Serialize, Deserialize, Debug)]
-struct NoopMessage;
+pub struct NoopMessage;
 
 pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
+    let ipc_client: IpcClient<NoopMessage, ContextActionMessage> = IpcClient::new(socket_path);
     let (_, mut tx) = ipc_client.connect()?;
-    while let Ok(action) = context_receive() {
-        tx.send(&action)?;
-        if let ContextAction::Shutdown = action {
+    while let Ok(msg) = context_receive() {
+        tx.send(&msg)?;
+        if let ContextAction::Shutdown = &msg.action {
             break;
         }
     }
@@ -183,7 +184,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             }
             ProtocolMessage::ShutdownCall => {
                 // send shutdown event to context listener, that we dont need it anymore
-                if let Err(e) = context_send(ContextAction::Shutdown) {
+                if let Err(e) = context_send(ContextActionMessage {
+                    action: ContextAction::Shutdown,
+                    record: false,
+                    perform: false,
+                }) {
                     warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
                 }
 
@@ -347,7 +352,7 @@ impl IpcCmdServer {
 }
 
 /// IPC event server is listening for incoming IPC connections.
-pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
+pub struct IpcEvtServer(IpcServer<ContextActionMessage, NoopMessage>);
 
 /// Difference between `IpcCmdServer` and `IpcEvtServer` is:
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
@@ -361,7 +366,7 @@ impl IpcEvtServer {
     pub fn try_accept(
         &mut self,
         timeout: Duration,
-    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
+    ) -> Result<IpcReceiver<ContextActionMessage>, IpcError> {
         let (rx, _) = self.0.try_accept(timeout)?;
         Ok(rx)
     }

@@ -28,13 +28,15 @@ pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockM
 pub use crate::block_storage::{
     BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
     BlockStorage, BlockStorageReader,
-};
+}; 
+pub use crate::persistent::{ActionRecorder, ActionRecordError};
 pub use crate::chain_meta_storage::ChainMetaStorage;
 pub use crate::context_action_storage::{
-    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
+    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage
 };
+pub use crate::action_file_storage::ActionFileStorage;
+pub use crate::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
-use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
@@ -45,6 +47,8 @@ use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
+pub mod action_file;
+pub mod action_file_storage;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -52,12 +56,15 @@ pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
 pub mod merkle_storage;
+pub mod merkle_storage_stats;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
 pub mod system_storage;
+pub mod storage_backend;
+pub mod backend;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -133,6 +140,8 @@ pub enum StorageError {
     MessageHashError { error: MessageHashError },
     #[fail(display = "Predecessor lookup failed")]
     PredecessorLookupError,
+    #[fail(display = "Action record error: {}", error)]
+    ActionRecordError{ error: ActionRecordError },
     #[fail(display = "Error constructing hash: {}", error)]
     HashError { error: FromBytesError },
     #[fail(display = "Error decoding hash: {}", error)]
@@ -174,6 +183,12 @@ impl From<SequenceError> for StorageError {
 impl From<TezosEnvironmentError> for StorageError {
     fn from(error: TezosEnvironmentError) -> Self {
         StorageError::TezosEnvironmentError { error }
+    }
+}
+
+impl From<ActionRecordError> for StorageError {
+    fn from(error: ActionRecordError) -> Self {
+        StorageError::ActionRecordError { error }
     }
 }
 
@@ -523,7 +538,7 @@ pub mod tests_common {
                 ],
                 &cfg,
             )?;
-
+            // let sled_db = sled::open(&path).unwrap();
             let kv_context = open_kv(
                 path.join("context"),
                 vec![MerkleStorage::descriptor(&cache)],
