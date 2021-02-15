@@ -1,12 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
+use failure::Fail;
 use getset::Getters;
+use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{BlockHash, HashType, OperationHash};
+use crypto::{
+    base58::FromBase58CheckError,
+    hash::{BlockHash, HashType, OperationHash},
+};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::has_encoding;
 
@@ -64,13 +69,34 @@ impl Operation {
     }
 }
 
-impl From<DecodedOperation> for Operation {
-    fn from(dop: DecodedOperation) -> Operation {
-        Operation {
-            branch: BlockHash::from_base58_check(&dop.branch).unwrap(),
-            data: hex::decode(&dop.data).unwrap(),
+#[derive(Fail, Debug)]
+pub enum FromDecodedOperationError {
+    #[fail(display = "Failed to decode from base58 string: {}", _0)]
+    Base58(FromBase58CheckError),
+    #[fail(display = "Failed to decode from hex string: {}", _0)]
+    Hex(FromHexError),
+}
+
+impl From<FromBase58CheckError> for FromDecodedOperationError {
+    fn from(source: FromBase58CheckError) -> Self {
+        Self::Base58(source)
+    }
+}
+
+impl From<FromHexError> for FromDecodedOperationError {
+    fn from(source: FromHexError) -> Self {
+        Self::Hex(source)
+    }
+}
+
+impl TryFrom<DecodedOperation> for Operation {
+    type Error = FromDecodedOperationError;
+    fn try_from(dop: DecodedOperation) -> Result<Operation, FromDecodedOperationError> {
+        Ok(Operation {
+            branch: BlockHash::from_base58_check(&dop.branch)?,
+            data: hex::decode(&dop.data)?,
             body: Default::default(),
-        }
+        })
     }
 }
 

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryInto;
+
 use assert_json_diff::assert_json_eq;
 use serial_test::serial;
 
@@ -358,8 +360,13 @@ fn test_compute_path() -> Result<(), failure::Error> {
     let validation_passes: Vec<Vec<Operation>> =
         serde_json::from_str::<ValidationPasses>(test_data::VALIDATION_PASSES_WITH_OPERATIONS)?
             .into_iter()
-            .map(|validation_pass| validation_pass.into_iter().map(|op| op.into()).collect())
-            .collect();
+            .map(|validation_pass| {
+                validation_pass
+                    .into_iter()
+                    .map(|op| op.try_into())
+                    .collect::<Result<_, _>>()
+            })
+            .collect::<Result<_, _>>()?;
 
     let request = ComputePathRequest {
         operations: validation_passes
