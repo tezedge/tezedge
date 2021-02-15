@@ -86,7 +86,10 @@ pub struct StorageBackendStats {
 impl StorageBackendStats {
     /// increases `reused_keys_bytes` based on `key`
     pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+        // TODO: bring back when MerklHash aka EntryHash will be allocated
+        // on stack
+        // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+        self.reused_keys_bytes = list.capacity() * 32;
     }
 
     pub fn total_as_bytes(&self) -> usize {
@@ -167,9 +170,12 @@ impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
 }
 
 impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
-    fn from((_entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
+    fn from((entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
         StorageBackendStats {
-            key_bytes: mem::size_of::<EntryHash>(),
+            // TODO: bring back when MerklHash aka EntryHash will be allocated
+            // on stack
+            // key_bytes: mem::size_of::<EntryHash>(),
+            key_bytes: entry_hash.as_ref().len(),
             value_bytes: size_of_vec(&value),
             reused_keys_bytes: 0,
         }

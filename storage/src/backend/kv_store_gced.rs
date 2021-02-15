@@ -368,8 +368,6 @@ mod tests {
 
     fn entry_hash(key: &[u8]) -> EntryHash {
         assert!(key.len() < 32);
-        let len = key.len();
-
         let bytes: Vec<u8> = key
             .iter()
             .chain(std::iter::repeat(&0u8))
@@ -423,7 +421,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_stats() {
         let store = &mut empty_kvstore_gced(3);
 
@@ -456,7 +453,11 @@ mod tests {
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(store.total_mem_usage_as_bytes(), vec![
-            4 * mem::size_of::<EntryHash>(),
+            // TODO: bring back when MerklHash aka EntryHash will be allocated
+            // on stack
+            // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+            // 4 * mem::size_of::<EntryHash>(),
+            4 * 32,
             96, // reused keys
             size_of_vec(&kv1.1),
             size_of_vec(&kv2.1),
@@ -481,7 +482,11 @@ mod tests {
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(store.total_mem_usage_as_bytes(), vec![
-            3 * mem::size_of::<EntryHash>(),
+            // TODO: bring back when MerklHash aka EntryHash will be allocated
+            // on stack
+            // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+            // 3 * mem::size_of::<EntryHash>(),
+            3 * 32,
             size_of_vec(&kv1.1),
             size_of_vec(&kv3.1),
             size_of_vec(&kv4.1),
