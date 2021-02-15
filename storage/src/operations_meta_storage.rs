@@ -151,15 +151,19 @@ fn merge_meta_value(
     for op in operands {
         match result {
             Some(ref mut val) => {
-                assert_eq!(
+                debug_assert_eq!(
                     val.len(),
                     op.len(),
                     "Value length is fixed. expected={}, found={}",
                     val.len(),
                     op.len()
                 );
-                assert_ne!(0, val.len(), "Value cannot have zero size");
-                assert_eq!(val[0], op[0], "Value of validation passes cannot change");
+                debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+                debug_assert_eq!(val[0], op[0], "Value of validation passes cannot change");
+                // in case of inconsistency, return `None`
+                if val.len() == 0 || val.len() != op.len() || val[0] != op[0] {
+                    return None;
+                }
 
                 let validation_passes = val[0] as usize;
                 // merge `is_validation_pass_present`
@@ -235,19 +239,27 @@ impl Decoder for Meta {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if !bytes.is_empty() {
             let validation_passes = bytes[0];
-            assert_eq!(expected_data_length(validation_passes), bytes.len(),
-                       "Was expecting the length of a block with validation_passes={} to be {} but instead it was {}", validation_passes, expected_data_length(validation_passes), bytes.len());
+            if expected_data_length(validation_passes) != bytes.len() {
+                return Err(SchemaError::DecodeValidationError(format!(
+                    "Meta: data length mismatches for validation pass count {}: expected {}, got {}",
+                    validation_passes,
+                    expected_data_length(validation_passes),
+                    bytes.len()
+                )));
+            }
             let is_complete_pos = validation_passes as usize + 1;
             let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
             let is_complete = bytes[is_complete_pos] != 0;
             // level
             let level_pos = is_complete_pos + std::mem::size_of::<u8>();
             let level = num_from_slice!(bytes, level_pos, i32);
-            assert!(
-                level >= 0,
-                "Level must be positive number, but instead it is: {}",
-                level
-            );
+
+            if level < 0 {
+                return Err(SchemaError::DecodeValidationError(format!(
+                    "Meta: level must be positive number, but instead it is: {}",
+                    level
+                )));
+            }
             // chain_id
             let chain_id_pos = level_pos + std::mem::size_of::<i32>();
             let chain_id =
@@ -260,7 +272,9 @@ impl Decoder for Meta {
                 chain_id,
             })
         } else {
-            Err(SchemaError::DecodeError)
+            Err(SchemaError::DecodeValidationError(
+                "Meta: non-empty input expected".to_string(),
+            ))
         }
     }
 }
@@ -274,7 +288,7 @@ impl Encoder for Meta {
             value.push(self.is_complete as u8);
             value.extend(&self.level.to_be_bytes());
             value.extend(self.chain_id.as_ref());
-            assert_eq!(
+            debug_assert_eq!(
                 expected_data_length(self.validation_passes),
                 value.len(),
                 "Was expecting value to have length {} but instead found {}",

@@ -16,6 +16,8 @@ pub enum SchemaError {
     EncodeError,
     #[fail(display = "Failed to decode value")]
     DecodeError,
+    #[fail(display = "Failed to decode value: {}", 0)]
+    DecodeValidationError(String),
 }
 
 impl From<crypto::hash::FromBytesError> for SchemaError {
