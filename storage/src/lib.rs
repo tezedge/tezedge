@@ -12,9 +12,12 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType};
+use crypto::{
+    base58::FromBase58CheckError,
+    hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
+};
 use tezos_api::environment::{
-    TezosEnvironmentConfiguration, TezosEnvironmentError, OPERATION_LIST_LIST_HASH_EMPTY,
+    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
@@ -132,6 +135,8 @@ pub enum StorageError {
     PredecessorLookupError,
     #[fail(display = "Error constructing hash: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Error decoding hash: {}", error)]
+    HashDecodeError { error: FromBase58CheckError },
 }
 
 impl From<DBError> for StorageError {
@@ -175,6 +180,12 @@ impl From<TezosEnvironmentError> for StorageError {
 impl From<FromBytesError> for StorageError {
     fn from(error: FromBytesError) -> Self {
         StorageError::HashError { error }
+    }
+}
+
+impl From<FromBase58CheckError> for StorageError {
+    fn from(error: FromBase58CheckError) -> Self {
+        StorageError::HashDecodeError { error }
     }
 }
 
@@ -359,7 +370,7 @@ pub fn initialize_storage_with_genesis_block(
         hash: init_storage_data.genesis_block_header_hash.clone(),
         header: Arc::new(
             tezos_env
-                .genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?,
+                .genesis_header(context_hash.clone(), get_empty_operation_list_list_hash()?)?,
         ),
     };
     let _ = block_storage.put_block_header(&genesis_with_hash)?;

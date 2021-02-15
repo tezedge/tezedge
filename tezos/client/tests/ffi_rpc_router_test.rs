@@ -10,7 +10,7 @@ use tezos_api::ffi::{
     InitProtocolContextResult, ProtocolRpcRequest, RpcRequest, TezosRuntimeConfiguration,
 };
 use tezos_api::{
-    environment::{TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV},
+    environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV},
     ffi::{ProtocolRpcResponse, RpcMethod},
 };
 use tezos_client::client;
@@ -64,7 +64,10 @@ fn init_test_protocol_context(
     (
         tezos_env.main_chain_id().expect("invalid chain id"),
         tezos_env
-            .genesis_header(genesis_commit_hash, OPERATION_LIST_LIST_HASH_EMPTY.clone())
+            .genesis_header(
+                genesis_commit_hash,
+                get_empty_operation_list_list_hash().unwrap(),
+            )
             .expect("genesis header error"),
         tezos_env.genesis_protocol().expect("protocol_hash error"),
         result,
