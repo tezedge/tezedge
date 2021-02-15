@@ -11,6 +11,7 @@ use rocksdb::{Cache, DB};
 use slog::{debug, error, info, Drain, Logger};
 
 use configuration::{ColumnFactory, RocksDBConfig};
+use configuration::ContextActionStoreBackend::NoneBackend;
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
@@ -204,8 +205,7 @@ fn create_tezos_writeable_api_pool(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
                 no_of_ffi_calls_treshold_for_gc: env.ffi.no_of_ffi_calls_threshold_for_gc,
-                debug_mode: env.storage.action_store_backend
-                    == configuration::ContextActionStoreBackend::NoneBackend,
+                debug_mode: env.storage.action_store_backend != NoneBackend,
             },
             tezos_env,
             env.enable_testchain,
