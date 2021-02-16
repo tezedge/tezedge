@@ -20,10 +20,10 @@ use slog::{debug, info, Logger};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use crypto::base58::FromBase58CheckError;
 use crypto::hash::{
     chain_id_from_block_hash, BlockHash, ChainId, ContextHash, OperationListListHash, ProtocolHash,
 };
+use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
 use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
@@ -347,6 +347,14 @@ pub enum TezosEnvironmentError {
     },
     #[fail(display = "Invalid time: {}, reason: {:?}", time, error)]
     InvalidTime { time: String, error: ParseError },
+    #[fail(display = "Blake2b digest error")]
+    Blake2bError,
+}
+
+impl From<Blake2bError> for TezosEnvironmentError {
+    fn from(_: Blake2bError) -> Self {
+        TezosEnvironmentError::Blake2bError
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -386,7 +394,7 @@ impl TezosEnvironmentConfiguration {
 
     /// Resolves main chain_id, which is computed from genesis header
     pub fn main_chain_id(&self) -> Result<ChainId, TezosEnvironmentError> {
-        Ok(chain_id_from_block_hash(&self.genesis_header_hash()?))
+        chain_id_from_block_hash(&self.genesis_header_hash()?).map_err(|e| e.into())
     }
 
     /// Resolves genesis protocol

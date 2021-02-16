@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 use num_bigint::{BigUint, RandBigInt};
 
-use crate::CryptoError;
+use crate::{blake2b::Blake2bError, CryptoError};
 
 use super::blake2b;
 
@@ -102,7 +102,11 @@ pub struct NoncePair {
 ///
 /// If incoming is set, `recv_msg` is handled as request and `sent_msg` as response
 /// and vice versa if incoming is not set.
-pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> NoncePair {
+pub fn generate_nonces(
+    sent_msg: &[u8],
+    recv_msg: &[u8],
+    incoming: bool,
+) -> Result<NoncePair, Blake2bError> {
     let (init_msg, resp_msg) = if incoming {
         (recv_msg, sent_msg)
     } else {
@@ -110,13 +114,13 @@ pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> Nonc
     };
 
     let nonce_init_to_resp =
-        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))[0..NONCE_SIZE]
+        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, INIT_TO_RESP_SEED))?[0..NONCE_SIZE]
             .to_vec();
     let nonce_resp_to_init =
-        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))[0..NONCE_SIZE]
+        blake2b::digest_256(&merge_slices!(init_msg, resp_msg, RESP_TO_INIT_SEED))?[0..NONCE_SIZE]
             .to_vec();
 
-    if incoming {
+    Ok(if incoming {
         NoncePair {
             local: Nonce::new(&nonce_init_to_resp),
             remote: Nonce::new(&nonce_resp_to_init),
@@ -126,7 +130,7 @@ pub fn generate_nonces(sent_msg: &[u8], recv_msg: &[u8], incoming: bool) -> Nonc
             local: Nonce::new(&nonce_resp_to_init),
             remote: Nonce::new(&nonce_init_to_resp),
         }
-    }
+    })
 }
 
 #[cfg(test)]
@@ -154,7 +158,7 @@ mod tests {
         let NoncePair {
             local: local_nonce,
             remote: remote_nonce,
-        } = generate_nonces(&sent_msg, &recv_msg, false);
+        } = generate_nonces(&sent_msg, &recv_msg, false)?;
         let expected_local_nonce = "8dde158c55cff52f4be9352787d333e616a67853640d72c5";
         let expected_remote_nonce = "e67481a23cf9b404626a12bd405066e161b32dc53f469153";
         assert_eq!(
@@ -174,7 +178,7 @@ mod tests {
         let NoncePair {
             local: local_nonce,
             remote: remote_nonce,
-        } = generate_nonces(&sent_msg, &recv_msg, true);
+        } = generate_nonces(&sent_msg, &recv_msg, true)?;
         let expected_local_nonce = "ff0451d94af9f75a46d74a2a9f685cff20222a15829f121d";
         let expected_remote_nonce = "8a09a2c43a61aa6eccee084aa66da9bc94b441b17615be58";
         assert_eq!(
