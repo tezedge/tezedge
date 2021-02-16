@@ -170,7 +170,7 @@ fn check_context(
     // compare with context hash of last applied expected_context_hash
     assert_eq!(
         expected_context_hash.as_ref(),
-        &merkle_last_hash.unwrap().to_bytes()
+        &merkle_last_hash.unwrap().as_bytes()
     );
 
     // print stats

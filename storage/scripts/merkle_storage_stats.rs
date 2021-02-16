@@ -11,8 +11,27 @@ use merkle_storage::{check_commit_hashes, EntryHash, MerkleStorage};
 use storage::*;
 use storage_backend::StorageBackend;
 
-mod actions_tool;
-use actions_tool::{ActionsFileReader, ContextAction};
+use crypto::hash::MerkleHash;
+use std::convert::TryFrom;
+use storage::action_file::ActionsFileReader;
+use tezos_context::channel::ContextAction;
+
+pub fn get_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
+    match &action {
+        ContextAction::Get { tree_hash, .. }
+        | ContextAction::Mem { tree_hash, .. }
+        | ContextAction::DirMem { tree_hash, .. }
+        | ContextAction::Set { tree_hash, .. }
+        | ContextAction::Copy { tree_hash, .. }
+        | ContextAction::Delete { tree_hash, .. }
+        | ContextAction::RemoveRecursively { tree_hash, .. }
+        | ContextAction::Commit { tree_hash, .. }
+        | ContextAction::Fold { tree_hash, .. } => {
+            Some(MerkleHash::try_from(tree_hash.as_slice()).unwrap())
+        }
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
+    }
+}
 
 fn parse_mem_value(value: &str) -> usize {
     let mut pair = value.split_whitespace();
@@ -139,16 +158,17 @@ fn gen_stats(args: Args) {
     if !args.test_integrity {
         println!("block level, key bytes, value bytes, reused keys bytes, total mem, process mem, total latency");
     }
-
-    for (block, actions) in ActionsFileReader::new(&args.actions_file)
+    let mut level = 0;
+    for actions in ActionsFileReader::new(&args.actions_file)
         .unwrap()
         .into_iter()
     {
+        level += 1;
         for action in actions.into_iter() {
             if args.test_integrity {
                 if let ContextAction::Commit {
                     new_context_hash, ..
-                } = &action
+                } = &action.action
                 {
                     cycle_commit_hashes
                         .last_mut()
@@ -157,7 +177,11 @@ fn gen_stats(args: Args) {
                 }
             }
 
-            match &action {
+            if let Some(hash) = &get_tree_hash(&action.action) {
+                merkle.stage_checkout(hash).unwrap();
+            }
+
+            match &action.action {
                 ContextAction::Set { key, value, .. } => {
                     merkle.set(&key, &value).unwrap();
                 }
@@ -195,7 +219,7 @@ fn gen_stats(args: Args) {
             let stats = merkle.get_merkle_stats();
             println!(
                 "{}, {}, {}, {}, {}, {}, {}",
-                block.block_level,
+                level,
                 stats.kv_store_stats.key_bytes,
                 stats.kv_store_stats.value_bytes,
                 stats.kv_store_stats.reused_keys_bytes,
@@ -205,7 +229,6 @@ fn gen_stats(args: Args) {
             );
         }
 
-        let level = block.block_level;
         let cycle = level / args.cycle_block_count;
 
         if level % args.cycle_block_count == 0 && level > 0 {
