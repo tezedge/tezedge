@@ -732,7 +732,7 @@ mod tests {
         // init with genesis
         let (genesis_hash, genesis_header) =
             (blocksdb.block_hash("Genesis"), blocksdb.header("Genesis"));
-        let chain_id = chain_id_from_block_hash(&genesis_hash);
+        let chain_id = chain_id_from_block_hash(&genesis_hash)?;
         block_storage.put_block_header(&genesis_header)?;
         block_meta_storage.put(
             &genesis_hash,

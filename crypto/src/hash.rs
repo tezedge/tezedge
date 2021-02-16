@@ -3,7 +3,10 @@
 
 use std::convert::TryFrom;
 
-use crate::base58::{FromBase58Check, FromBase58CheckError, ToBase58Check};
+use crate::{
+    base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
+    blake2b::Blake2bError,
+};
 use serde::{Deserialize, Serialize};
 
 mod prefix_bytes {
@@ -33,7 +36,7 @@ pub trait HashTrait: Into<Hash> + AsRef<Hash> {
 }
 
 /// Error creating hash from bytes
-#[derive(Debug, failure::Fail)]
+#[derive(Debug, failure::Fail, PartialEq)]
 pub enum FromBytesError {
     /// Invalid data size
     #[fail(display = "invalid hash size")]
@@ -271,10 +274,10 @@ pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
 
 /// Implementation of chain_id.ml -> of_block_hash
 #[inline]
-pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> ChainId {
-    let result = crate::blake2b::digest_256(&block_hash.0);
-    ChainId::from_bytes(&result[0..HashType::ChainId.size()])
-        .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size"))
+pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake2bError> {
+    let result = crate::blake2b::digest_256(&block_hash.0)?;
+    Ok(ChainId::from_bytes(&result[0..HashType::ChainId.size()])
+        .unwrap_or_else(|_| unreachable!("ChainId is created from slice of correct size")))
 }
 
 #[cfg(test)]
@@ -314,14 +317,14 @@ mod tests {
     fn test_chain_id_from_block_hash() -> Result<(), failure::Error> {
         let decoded_chain_id: ChainId = chain_id_from_block_hash(&BlockHash::from_base58_check(
             "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe",
-        )?);
+        )?)?;
         let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
         let expected_chain_id = "NetXgtSLGNJvNye";
         assert_eq!(expected_chain_id, decoded_chain_id);
 
         let decoded_chain_id: ChainId = chain_id_from_block_hash(&BlockHash::from_base58_check(
             "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7",
-        )?);
+        )?)?;
         let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
         let expected_chain_id = "NetXjD3HPJJjmcd";
         assert_eq!(expected_chain_id, decoded_chain_id);
@@ -426,7 +429,7 @@ mod tests {
         let pk = PublicKey::from_hex(
             "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
         )?;
-        let pk_hash = pk.public_key_hash();
+        let pk_hash = pk.public_key_hash()?;
         let decoded = HashType::CryptoboxPublicKeyHash.hash_to_b58check(pk_hash.as_ref())?;
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);
@@ -439,7 +442,7 @@ mod tests {
         let pk = PublicKey::from_hex(
             "2cc1b580f4b8b1f6dbd0aa1d9cde2655c2081c07d7e61249aad8b11d954fb01a",
         )?;
-        let pk_hash = pk.public_key_hash();
+        let pk_hash = pk.public_key_hash()?;
         let decoded = CryptoboxPublicKeyHash::from_bytes(pk_hash.as_ref())?.to_base58_check();
         let expected = "idsg2wkkDDv2cbEMK4zH49fjgyn7XT";
         assert_eq!(expected, decoded);

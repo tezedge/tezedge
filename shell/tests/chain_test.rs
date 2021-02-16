@@ -45,7 +45,7 @@ lazy_static! {
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
-    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64);
+    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64).unwrap();
 }
 
 #[ignore]
@@ -86,7 +86,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::current_branch_on_level_3::serve_data,
@@ -187,7 +187,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         "TEST_PEER_NODE_BRANCH_1",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::sandbox_branch_1_level3::serve_data,
@@ -208,7 +208,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         "TEST_PEER_NODE_BRANCH_2",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::sandbox_branch_2_level4::serve_data,
@@ -328,7 +328,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::dont_serve_current_branch_messages::serve_data,
@@ -439,7 +439,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     )?;
 
     // connect mocked node peer with test data set
-    let test_node_identity = tezos_identity::Identity::generate(0f64);
+    let test_node_identity = tezos_identity::Identity::generate(0f64)?;
     let mut mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE-1",
         NODE_P2P_CFG.0.listener_port,
@@ -576,7 +576,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::current_branch_on_level_1324::serve_data,
@@ -1700,7 +1700,7 @@ mod test_actor {
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let peer_public_key_hash = &peer.identity.public_key.public_key_hash();
+            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();

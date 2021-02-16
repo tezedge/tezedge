@@ -17,15 +17,37 @@ use std::convert::TryFrom;
 use hex::{FromHex, FromHexError};
 use sodiumoxide::crypto::box_;
 
-use crate::CryptoError;
+use crate::{blake2b::Blake2bError, hash::FromBytesError, CryptoError};
 
 use super::{hash::CryptoboxPublicKeyHash, nonce::Nonce};
+
+use failure::Fail;
 
 pub const BOX_ZERO_BYTES: usize = 32;
 pub const CRYPTO_KEY_SIZE: usize = 32;
 
 pub trait CryptoKey: Sized {
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, CryptoError>;
+}
+
+#[derive(Debug, Fail, PartialEq)]
+pub enum PublicKeyError {
+    #[fail(display = "Error constructing hash: {}", _0)]
+    HashError(FromBytesError),
+    #[fail(display = "Blake2b digest error: {}", _0)]
+    Blake2bError(Blake2bError),
+}
+
+impl From<FromBytesError> for PublicKeyError {
+    fn from(source: FromBytesError) -> Self {
+        PublicKeyError::HashError(source)
+    }
+}
+
+impl From<Blake2bError> for PublicKeyError {
+    fn from(source: Blake2bError) -> Self {
+        PublicKeyError::Blake2bError(source)
+    }
 }
 
 fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZE], CryptoError> {
@@ -51,11 +73,9 @@ pub struct PublicKey(box_::PublicKey);
 
 impl PublicKey {
     /// Generates public key hash for public key
-    pub fn public_key_hash(&self) -> CryptoboxPublicKeyHash {
-        CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref()))
-            .unwrap_or_else(|_| {
-                unreachable!("digest_128 result lenght should match CryptoboxPublicKeyHash")
-            })
+    pub fn public_key_hash(&self) -> Result<CryptoboxPublicKeyHash, PublicKeyError> {
+        CryptoboxPublicKeyHash::try_from(crate::blake2b::digest_128(self.0.as_ref())?)
+            .map_err(PublicKeyError::from)
     }
 }
 
@@ -106,7 +126,7 @@ impl FromHex for SecretKey {
 /// Generates random keypair: [`PublicKey, SecretKey`] + [`CryptoboxPublicKeyHash`]
 ///
 /// Note: Strange why it is called pair, bud returns triplet :)
-pub fn random_keypair() -> (SecretKey, PublicKey, CryptoboxPublicKeyHash) {
+pub fn random_keypair() -> Result<(SecretKey, PublicKey, CryptoboxPublicKeyHash), PublicKeyError> {
     // generate
     let (pk, sk) = box_::gen_keypair();
 
@@ -115,10 +135,10 @@ pub fn random_keypair() -> (SecretKey, PublicKey, CryptoboxPublicKeyHash) {
     let pk = PublicKey(pk);
 
     // generate public key hash
-    let pkh = pk.public_key_hash();
+    let pkh = pk.public_key_hash()?;
 
     // return
-    (sk, pk, pkh)
+    Ok((sk, pk, pkh))
 }
 
 #[derive(Clone, PartialEq)]

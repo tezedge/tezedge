@@ -7,7 +7,7 @@ use failure::_core::convert::TryFrom;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crypto::blake2b;
+use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
 use tezos_encoding::binary_writer;
 use tezos_encoding::de::from_value as deserialize_from_value;
@@ -327,6 +327,8 @@ pub enum MessageHashError {
     SerializationError { error: BinaryWriterError },
     #[fail(display = "Error constructing hash")]
     FromBytesError { error: crypto::hash::FromBytesError },
+    #[fail(display = "Blake2b digest error")]
+    Blake2bError,
 }
 
 impl From<BinaryWriterError> for MessageHashError {
@@ -338,6 +340,12 @@ impl From<BinaryWriterError> for MessageHashError {
 impl From<crypto::hash::FromBytesError> for MessageHashError {
     fn from(error: crypto::hash::FromBytesError) -> Self {
         MessageHashError::FromBytesError { error }
+    }
+}
+
+impl From<Blake2bError> for MessageHashError {
+    fn from(_: Blake2bError) -> Self {
+        MessageHashError::Blake2bError
     }
 }
 
@@ -353,7 +361,7 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
     #[inline]
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
-        Ok(blake2b::digest_256(&bytes))
+        Ok(blake2b::digest_256(&bytes)?)
     }
 
     #[inline]
@@ -362,7 +370,7 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
         H: crypto::hash::HashTrait,
     {
         let bytes = self.as_bytes()?;
-        let digest = blake2b::digest_256(&bytes);
+        let digest = blake2b::digest_256(&bytes)?;
         H::try_from_bytes(&digest).map_err(|e| e.into())
     }
 }
