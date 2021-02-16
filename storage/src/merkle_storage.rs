@@ -48,7 +48,7 @@ use std::convert::TryInto;
 use std::hash::Hash;
 use std::time::Instant;
 
-use blake2::digest::{Update, VariableOutput};
+use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
@@ -188,6 +188,12 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
     #[fail(display = "Failed to encode hash: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Invalid output size")]
+    InvalidOutputSize,
+    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    ValueExpected(&'static str),
+    #[fail(display = "Invalid state: {}", _0)]
+    InvalidState(&'static str),
 }
 
 impl From<StorageBackendError> for MerkleError {
@@ -211,6 +217,12 @@ impl From<TryFromSliceError> for MerkleError {
 impl From<FromBytesError> for MerkleError {
     fn from(error: FromBytesError) -> Self {
         MerkleError::HashError { error }
+    }
+}
+
+impl From<InvalidOutputSize> for MerkleError {
+    fn from(_: InvalidOutputSize) -> Self {
+        MerkleError::InvalidOutputSize
     }
 }
 
@@ -302,7 +314,7 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
 fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+    let mut hasher = VarBlake2b::new(HASH_LEN)?;
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
     tree.iter().for_each(|(k, v)| {
@@ -320,7 +332,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
 fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+    let mut hasher = VarBlake2b::new(HASH_LEN)?;
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
 
@@ -336,16 +348,19 @@ fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
 fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+    let mut hasher = VarBlake2b::new(HASH_LEN)?;
     hasher.update(&(HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
 
     if commit.parent_commit_hash.is_none() {
         hasher.update(&(0_u64).to_be_bytes());
     } else {
+        let parent_commit_hash = commit
+            .parent_commit_hash
+            .ok_or_else(|| MerkleError::ValueExpected("parent_commit_hash"))?;
         hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
-        hasher.update(&(commit.parent_commit_hash.unwrap().len() as u64).to_be_bytes());
-        hasher.update(&commit.parent_commit_hash.unwrap());
+        hasher.update(&(parent_commit_hash.len() as u64).to_be_bytes());
+        hasher.update(&parent_commit_hash);
     }
     hasher.update(&(commit.time as u64).to_be_bytes());
     hasher.update(&(commit.author.len() as u64).to_be_bytes());
@@ -837,9 +852,9 @@ impl MerkleStorage {
         key: &[String],
         new_node: Option<Node>,
     ) -> Result<EntryHash, MerkleError> {
-        if key.is_empty() {
-            // recurstion stop condition
-            match new_node {
+        let last = match key.last() {
+            Some(last) => last,
+            None => match new_node {
                 Some(n) => {
                     // if there is a value we want to assigin - just
                     // assigin it
@@ -855,10 +870,9 @@ impl MerkleStorage {
                     self.put_to_staging_area(&new_tree_hash, Entry::Tree(tree));
                     return Ok(new_tree_hash);
                 }
-            }
-        }
+            },
+        };
 
-        let last = key.last().unwrap();
         let path = &key[..key.len() - 1];
         let mut tree = self.find_tree(root, path)?;
 
@@ -884,13 +898,16 @@ impl MerkleStorage {
     /// * `root` - reference to a tree in which we search
     /// * `key` - sought path
     fn find_tree(&self, root: &Tree, key: &[String]) -> Result<Tree, MerkleError> {
-        // terminate recursion if end of path was reached
-        if key.is_empty() {
-            return Ok(root.clone());
-        }
+        let first = match key.first() {
+            Some(first) => first,
+            None => {
+                // terminate recursion if end of path was reached
+                return Ok(root.clone());
+            }
+        };
 
         // first get node at key
-        let child_node = match root.get(key.first().unwrap()) {
+        let child_node = match root.get(first) {
             Some(hash) => hash,
             None => {
                 return Ok(Tree::new());
@@ -1049,7 +1066,7 @@ impl MerkleStorage {
         self.last_commit_hash
     }
 
-    pub fn get_staged_entries(&self) -> std::string::String {
+    pub fn get_staged_entries(&self) -> Result<std::string::String, MerkleError> {
         let mut result = String::new();
         for (hash, entry) in &self.staged {
             match entry {
@@ -1061,7 +1078,7 @@ impl MerkleStorage {
                     if tree.is_empty() {
                         continue;
                     }
-                    let tree_hash = &hash_tree(tree).unwrap()[0..3];
+                    let tree_hash = &hash_tree(tree)?[0..3];
                     result += &format!("{}: Tree {{", hex::encode(tree_hash));
 
                     for (path, val) in tree {
@@ -1081,11 +1098,13 @@ impl MerkleStorage {
                 }
 
                 Entry::Commit(_) => {
-                    panic!("commits must not occur in staged area");
+                    return Err(MerkleError::InvalidState(
+                        "commits must not occur in staged area",
+                    ));
                 }
             }
         }
-        result
+        Ok(result)
     }
 
     /// Get various merkle storage statistics
@@ -1524,28 +1543,28 @@ mod tests {
         storage.set(1, &vec!["a".to_string()], &vec![1]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("SET [a] = 1\nROOT: {}", root);
-        println!("CONTENT {}", storage.get_staged_entries());
+        println!("CONTENT {}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "d49a53".to_string());
 
         storage.set(2, &vec!["b".to_string(), "c".to_string()], &vec![1]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,c] = 1\nROOT: {}", root);
-        print!("{}", storage.get_staged_entries());
+        print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "ed8adf".to_string());
 
         storage.set(3, &vec!["b".to_string(), "d".to_string()], &vec![2]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,d] = 2\nROOT: {}", root);
-        print!("{}", storage.get_staged_entries());
+        print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "437186".to_string());
 
         storage.set(4, &vec!["a".to_string()], &vec![2]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [a] = 2\nROOT: {}", root);
-        print!("{}", storage.get_staged_entries());
+        print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "0d78b3".to_string());
 
-        let entries = storage.get_staged_entries();
+        let entries = storage.get_staged_entries().unwrap();
         let commit_hash = storage
             .commit(0, "Tezedge".to_string(), "persist changes".to_string())
             .unwrap();
