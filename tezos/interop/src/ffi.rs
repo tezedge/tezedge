@@ -43,7 +43,8 @@ mod tezos_ffi {
         pub fn change_runtime_configuration(
             log_enabled: bool,
             no_of_ffi_calls_treshold_for_gc: OCamlInt,
-            debug_mode: bool
+            debug_mode: bool,
+            compute_context_action_tree_hashes: bool,
         );
         pub fn init_protocol_context(
             data_dir: String,
@@ -103,7 +104,8 @@ pub fn change_runtime_configuration(
                 gc,
                 OCaml::of_bool(settings.log_enabled),
                 OCaml::of_i32(settings.no_of_ffi_calls_treshold_for_gc),
-                OCaml::of_bool(settings.debug_mode)
+                OCaml::of_bool(settings.debug_mode),
+                OCaml::of_bool(settings.compute_context_action_tree_hashes),
             ));
             match result {
                 Ok(_) => Ok(()),

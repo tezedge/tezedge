@@ -19,6 +19,7 @@ fn test_init_protocol_context() {
     // change cfg
     ffi::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
         log_enabled: common::is_ocaml_log_enabled(),
         no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
     })

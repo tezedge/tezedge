@@ -100,6 +100,7 @@ pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub no_of_ffi_calls_treshold_for_gc: i32,
     pub debug_mode: bool,
+    pub compute_context_action_tree_hashes: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
