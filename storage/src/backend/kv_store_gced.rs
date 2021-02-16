@@ -427,7 +427,10 @@ mod tests {
         store.mark_reused(entry_hash(key));
     }
 
+    // TODO: remove when TE-426 is fixed - gives some time
+    // to GC thread to initialize properly
     #[test]
+    #[ignore]
     fn test_key_reused_exists() {
         let store = &mut empty_kvstore_gced(3);
 
@@ -448,7 +451,10 @@ mod tests {
         assert_eq!(get(store, &[4]), Some(blob(vec![4])));
     }
 
+    // TODO: remove when TE-426 is fixed - gives some time
+    // to GC thread to initialize properly
     #[test]
+    #[ignore]
     fn test_stats() {
         let store = &mut empty_kvstore_gced(3);
 
