@@ -3,31 +3,24 @@
 
 //! Listens for events from the `protocol_runner`.
 
-use bytes::{Buf, BufMut, BytesMut};
 use crypto::hash::MerkleHash;
-use hex;
-use std::borrow::BorrowMut;
-use std::collections::HashSet;
+
 use std::convert::TryFrom;
-use std::io::{BufReader, Read, Seek, SeekFrom, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
-use std::{
-    hash::Hash,
-    sync::atomic::{AtomicBool, Ordering},
-};
 
 use failure::Error;
 use riker::actors::*;
 use slog::{crit, debug, error, info, warn, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
-use storage::action_file_storage::ActionFileStorage;
+use crypto::hash::{BlockHash, ContextHash, FromBytesError};
+
 use storage::context::{ContextApi, TezedgeContext};
 use storage::persistent::PersistentStorage;
-use storage::{ActionRecorder, BlockStorage, ContextActionStorage};
+use storage::{ActionRecorder, BlockStorage};
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -285,8 +278,6 @@ pub fn get_new_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
         | ContextAction::Shutdown => None,
     }
 }
-
-
 
 fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
 where

@@ -1,12 +1,10 @@
 use bytes::{Buf, BufMut, BytesMut};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
+use std::fmt::Formatter;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
-// use bytes::buf::BufExt;
-use std::fmt::Formatter;
-// use crate::context_action_storage::ContextAction;
-use serde::{Deserialize, Serialize};
 
 const HEADER_LEN: usize = 12;
 type Hash = Vec<u8>;
@@ -147,23 +145,6 @@ impl From<[u8; HEADER_LEN]> for ActionsFileHeader {
     }
 }
 
-impl ActionsFileHeader {
-    fn to_vec(&self) -> Vec<u8> {
-        let mut bytes = BytesMut::with_capacity(HEADER_LEN);
-        bytes.put_u32(self.block_height);
-        bytes.put_u32(self.actions_count);
-        bytes.put_u32(self.block_count);
-        bytes.to_vec()
-    }
-    fn new() -> Self {
-        ActionsFileHeader {
-            block_height: 0,
-            actions_count: 0,
-            block_count: 0,
-        }
-    }
-}
-
 /// # ActionFileReader
 /// Reads actions binary file in `path`
 /// ## Examples
@@ -182,7 +163,7 @@ pub struct ActionsFileReader {
 
 impl ActionsFileReader {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn Error>> {
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .write(false)
             .create(false)
             .read(true)

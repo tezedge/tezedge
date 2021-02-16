@@ -89,7 +89,7 @@ impl ContextActionStorage {
     #[inline]
     pub fn put_action(
         &mut self,
-        block_hash: BlockHash,
+        block_hash: &BlockHash,
         action: ContextAction,
     ) -> Result<(), StorageError> {
         // generate ID
@@ -99,7 +99,7 @@ impl ContextActionStorage {
         self.kv.put(&id, &action)?;
         // Populate indexes
         self.context_by_block_index
-            .put(&ContextActionByBlockHashKey::new(block_hash, id))?;
+            .put(&ContextActionByBlockHashKey::new(block_hash.clone(), id))?;
 
         if let Some(action_type) = ContextActionType::extract_type(action.action()) {
             self.context_by_type_index
@@ -263,7 +263,7 @@ impl ActionRecorder for ContextActionStorage {
                 block_hash: Some(block_hash),
                 ..
             } => self.put_action(
-                BlockHash::try_from(&block_hash[..])?,
+                &BlockHash::try_from(&block_hash[..])?,
                 message.action.clone(),
             ),
             _ => Ok(()),
@@ -417,11 +417,11 @@ impl ContextActionByBlockHashIndex {
     }
 
     #[inline]
-    fn get_by_block_hash_iterator<'a>(
-        &'a self,
+    fn get_by_block_hash_iterator(
+        &'_ self,
         block_hash: BlockHash,
         cursor_id: Option<SequenceNumber>,
-    ) -> Result<impl Iterator<Item = SequenceNumber> + 'a, StorageError> {
+    ) -> Result<impl Iterator<Item = SequenceNumber> + '_, StorageError> {
         let key = cursor_id.map_or_else(
             || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash.clone()),
             |cursor_id| ContextActionByBlockHashKey::new(block_hash.clone(), cursor_id),
@@ -1289,6 +1289,6 @@ mod tests {
             start_time: 0 as f64,
             end_time: 0 as f64,
         };
-        ContextActionRecordValue::new(action, 123 as u64)
+        ContextActionRecordValue::new(action, 123)
     }
 }

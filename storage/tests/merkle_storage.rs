@@ -2,17 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 use crypto::hash::{BlockHash, HashType};
-use rocksdb::{Cache, Options, DB};
-use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use rocksdb::Cache;
 use std::convert::TryInto;
-use std::error::Error;
+
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Instant;
 
 use context_action_storage::ContextAction;
-use merkle_storage::{check_commit_hashes, Entry, EntryHash, MerkleError, MerkleStorage};
+use merkle_storage::{check_commit_hashes, EntryHash, MerkleStorage};
 use persistent::sequence::Sequences;
 use persistent::{
     open_cl, open_kv, CommitLogSchema, DbConfiguration, KeyValueSchema, PersistentStorage,
@@ -20,22 +18,6 @@ use persistent::{
 use storage::*;
 
 const OPEN_FILES_LIMIT: u64 = 64 * 1024; //64k open files limit for process
-
-// fn get_cycles_for_block(persistent_storage: &PersistentStorage, context_hash: &ContextHash) -> i32 {
-//     let tezedge_context = TezedgeContext::new(
-//         // BlockStorage::new(&persistent_storage),
-//         BlockStorage::new(persistent_storage),
-//         persistent_storage.merkle(),
-//     );
-//     let protocol_hash = tezedge_context.get_key_from_history(&context_hash, &context_key!("protocol")).unwrap();
-//     let constants_data = tezedge_context.get_key_from_history(&context_hash, &context_key!("data/v1/constants")).unwrap();
-//     let constants = tezos_messages::protocol::get_constants_for_rpc(&constants_data, protocol_hash).unwrap().unwrap();
-
-//     match constants.get("blocks_per_cycle") {
-//         Some(UniversalValue::Number(value)) => *value,
-//         _ => panic!(4096),
-//     }
-// }
 
 // Sets the limit of open file descriptors for the process
 // If user set a higher limit before, it will be left as is
@@ -123,7 +105,7 @@ impl BlocksIterator {
             blocks: vec![].into_iter(),
         };
 
-        this.get_and_set_blocks(start_block_hash);
+        let _ = this.get_and_set_blocks(start_block_hash);
         this
     }
 
@@ -240,8 +222,7 @@ fn test_merkle_storage_gc() {
             t.elapsed().as_millis()
         );
 
-        let (level, context_hash) = (block.header.level(), block.header.context());
-        // let cycles = get_cycles_for_block(&persistent_storage, &context_hash);
+        let level = block.header.level();
         let cycles = 2048;
 
         if level % cycles == 0 && level > 0 {

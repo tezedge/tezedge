@@ -2,17 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 use clap::{App, Arg};
-use crypto::hash::{BlockHash, HashType, MerkleHash};
 use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
 
+use backend::{BTreeMapBackend, InMemoryBackend, KVStoreGCed, MarkSweepGCed};
+use merkle_storage::{check_commit_hashes, EntryHash, MerkleStorage};
 use storage::*;
-// use context_action_storage::ContextAction;
-use backend::{
-    BTreeMapBackend, InMemoryBackend, KVStoreGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
-};
-use merkle_storage::{check_commit_hashes, Entry, EntryHash, MerkleStorage};
 use storage_backend::StorageBackend;
 
 mod actions_tool;
@@ -90,7 +86,7 @@ impl Args {
                  .long("backend")
                  .default_value("in-memory-gced")
                  .help("backend to use for storing merkle storage. Possible values: in-memory-gced, in-memory-mark-sweep-gced")
-                       // + "rocksdb, sled, in-memory-gced, in-memory-mark-sweep-gced")
+                 // TODO add support and test with other backends ("rocksdb, sled, in-memory-gced, in-memory-mark-sweep-gced")
                  );
 
         let matches = app.get_matches();
@@ -148,8 +144,6 @@ fn gen_stats(args: Args) {
         .unwrap()
         .into_iter()
     {
-        let actions_len = actions.len();
-
         for action in actions.into_iter() {
             if args.test_integrity {
                 if let ContextAction::Commit {
@@ -164,41 +158,24 @@ fn gen_stats(args: Args) {
             }
 
             match &action {
-                ContextAction::Set {
-                    key,
-                    value,
-                    ignored,
-                    ..
-                } => {
-                    if !ignored {
-                        merkle.set(&key, &value).unwrap();
-                    }
+                ContextAction::Set { key, value, .. } => {
+                    merkle.set(&key, &value).unwrap();
                 }
                 ContextAction::Copy {
-                    to_key,
-                    from_key,
-                    ignored,
-                    ..
+                    to_key, from_key, ..
                 } => {
-                    if !ignored {
-                        merkle.copy(&from_key, &to_key).unwrap();
-                    }
+                    merkle.copy(&from_key, &to_key).unwrap();
                 }
-                ContextAction::Delete { key, ignored, .. } => {
-                    if !ignored {
-                        merkle.delete(&key).unwrap();
-                    }
+                ContextAction::Delete { key, .. } => {
+                    merkle.delete(&key).unwrap();
                 }
-                ContextAction::RemoveRecursively { key, ignored, .. } => {
-                    if !ignored {
-                        merkle.delete(&key).unwrap();
-                    }
+                ContextAction::RemoveRecursively { key, .. } => {
+                    merkle.delete(&key).unwrap();
                 }
                 ContextAction::Commit {
                     author,
                     message,
                     date,
-                    new_context_hash,
                     ..
                 } => {
                     merkle
@@ -212,7 +189,6 @@ fn gen_stats(args: Args) {
                 }
                 _ => {}
             };
-            // merkle.apply_context_action(&action).unwrap();
         }
 
         if !args.test_integrity {

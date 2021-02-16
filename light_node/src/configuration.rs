@@ -868,7 +868,7 @@ impl Environment {
                             .unwrap_or("rocksdb")
                             .parse::<String>()
                             .expect("Provided value cannot is not a string");
-                        match &backend[..] {
+                        match backend.as_str() {
                             "none" => ContextActionStoreBackend::NoneBackend,
                             "rocksdb" => ContextActionStoreBackend::RocksDB,
                             "file" => ContextActionStoreBackend::FileStorage,

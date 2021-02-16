@@ -9,7 +9,6 @@ use std::path::Path;
 use tezos_context::channel::ContextActionMessage;
 
 const HEADER_LEN: usize = 44;
-const BLOCK_HASH_HEADER_LEN: usize = 32;
 
 /// Possible errors for storage
 #[derive(Debug, Fail)]
@@ -32,12 +31,6 @@ impl From<bincode::Error> for ActionFileError {
     fn from(error: bincode::Error) -> Self {
         ActionFileError::SerializeError { error }
     }
-}
-
-fn copy_hash_to_slice(from: &Vec<u8>) -> [u8; BLOCK_HASH_HEADER_LEN] {
-    let mut array = [0u8; BLOCK_HASH_HEADER_LEN];
-    from.reader().read_exact(&mut array).unwrap();
-    return array;
 }
 
 #[derive(Clone, Debug)]

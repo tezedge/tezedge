@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::convert::TryFrom;
+
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
@@ -180,7 +180,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Not needed/implemented.
     // TODO: Maybe this method should go into separate trait?
-    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, _pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
 
@@ -201,7 +201,10 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Waits for garbage collector to finish collecting the oldest cycle.
     fn wait_for_gc_finish(&self) {
-        // If there are more stores than self.cycle_count, that means the oldest one still hasn't been collected
+        //TODO: give some time GC thread to startup - in the future we
+        //should get rid of that one and use condition variable
+        //but his method is only used for testing anyway
+        thread::sleep(Duration::from_millis(300));
         while self.stores.read().unwrap().len() >= self.cycle_count {
             thread::sleep(Duration::from_millis(2));
         }
@@ -384,7 +387,7 @@ mod tests {
     use super::*;
     use crate::backend::BTreeMapBackend;
     use crate::storage_backend::size_of_vec;
-    use std::mem;
+    use std::convert::TryFrom;
 
     fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<BTreeMapBackend> {
         KVStoreGCed::new(cycle_count)
