@@ -27,13 +27,12 @@ impl StorageBackend for InMemoryBackend {
 
     fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
         let measurement = StorageBackendStats::from((&key, &value));
-        let mut w =
-            self.inner
-                .write()
-                .map(|w| w)
-                .map_err(|e| StorageBackendError::GuardPoison {
-                    error: format!("{}", e),
-                })?;
+        let mut w = self
+            .inner
+            .write()
+            .map_err(|e| StorageBackendError::GuardPoison {
+                error: format!("{}", e),
+            })?;
 
         let was_added = w.insert(key, value).is_none();
 
@@ -45,33 +44,31 @@ impl StorageBackend for InMemoryBackend {
     }
 
     fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
-        let mut w =
-            self.inner
-                .write()
-                .map(|w| w)
-                .map_err(|e| StorageBackendError::GuardPoison {
-                    error: format!("{}", e),
-                })?;
+        let mut w = self
+            .inner
+            .write()
+            .map_err(|e| StorageBackendError::GuardPoison {
+                error: format!("{}", e),
+            })?;
 
         w.insert(key, value);
         Ok(())
     }
 
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-        let mut w =
-            self.inner
-                .write()
-                .map(|w| w)
-                .map_err(|e| StorageBackendError::GuardPoison {
-                    error: format!("{}", e),
-                })?;
+        let mut w = self
+            .inner
+            .write()
+            .map_err(|e| StorageBackendError::GuardPoison {
+                error: format!("{}", e),
+            })?;
 
         Ok(w.remove(key))
     }
 
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
         let db = self.inner.clone();
-        let mut r = db.read().map_err(|e| StorageBackendError::GuardPoison {
+        let r = db.read().map_err(|e| StorageBackendError::GuardPoison {
             error: format!("{}", e),
         })?;
 
@@ -83,7 +80,7 @@ impl StorageBackend for InMemoryBackend {
 
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
         let db = self.inner.clone();
-        let mut r = db.read().map_err(|e| StorageBackendError::GuardPoison {
+        let r = db.read().map_err(|e| StorageBackendError::GuardPoison {
             error: format!("{}", e),
         })?;
         Ok(r.contains_key(key))
@@ -95,7 +92,7 @@ impl StorageBackend for InMemoryBackend {
             .read()
             .unwrap()
             .par_iter()
-            .filter_map(|(k, v)| {
+            .filter_map(|(k, _)| {
                 if !pred.contains(k) {
                     Some(k.clone())
                 } else {
@@ -106,15 +103,14 @@ impl StorageBackend for InMemoryBackend {
 
         let mut writer = self.inner.write().unwrap();
         for k in garbage_keys {
-            match writer.remove(&k) {
-                Some(v) => self.stats -= StorageBackendStats::from((&k, &v)),
-                None => (),
+            if let Some(v) = writer.remove(&k) {
+                self.stats -= StorageBackendStats::from((&k, &v))
             }
         }
         Ok(())
     }
 
-    fn mark_reused(&mut self, key: EntryHash) {}
+    fn mark_reused(&mut self, _key: EntryHash) {}
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
     fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<StorageBackendStats> {

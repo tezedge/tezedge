@@ -51,7 +51,7 @@ pub struct MerkleStoragePerfReport {
 
 impl MerkleStoragePerfReport {
     pub fn new(perf_stats: MerklePerfStats, kv_store_stats: StorageBackendStats) -> Self {
-        let mut perf = perf_stats.clone();
+        let mut perf = perf_stats;
         for (_, stat) in perf.global.iter_mut() {
             if stat.op_exec_times > 0 {
                 stat.avg_exec_time = stat.cumul_op_exec_time as f64 / stat.op_exec_times as f64;
@@ -71,7 +71,7 @@ impl MerkleStoragePerfReport {
         }
         MerkleStoragePerfReport {
             perf_stats: perf,
-            kv_store_stats: kv_store_stats.clone(),
+            kv_store_stats,
         }
     }
 }
@@ -89,10 +89,6 @@ pub struct MerkleStorageStatistics {
 }
 
 impl BlockLatencies {
-    fn new() -> Self {
-        Default::default()
-    }
-
     fn update(&mut self, latency: u64) {
         self.current += latency;
     }
@@ -107,7 +103,7 @@ impl BlockLatencies {
             .len()
             .checked_sub(offset_from_last_applied + 1)
             .and_then(|index| self.latencies.get(index))
-            .map(|x| *x)
+            .copied()
     }
 }
 

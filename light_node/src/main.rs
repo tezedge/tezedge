@@ -10,8 +10,8 @@ use riker::actors::*;
 use rocksdb::{Cache, DB};
 use slog::{debug, error, info, Drain, Logger};
 
-use configuration::{ColumnFactory, RocksDBConfig};
 use configuration::ContextActionStoreBackend::NoneBackend;
+use configuration::{ColumnFactory, RocksDBConfig};
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
@@ -322,7 +322,7 @@ fn block_on_actors(
             info!(
                 log,
                 "RecordingActions to file storage '{}'",
-                action_file_path.clone().to_str().unwrap()
+                action_file_path.to_str().unwrap()
             );
             Box::new(ActionFileStorage::new(action_file_path))
         }

@@ -65,7 +65,7 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         let garbage_keys: Vec<_> = self
             .kv_map
             .par_iter()
-            .filter_map(|(k, v)| {
+            .filter_map(|(k, _)| {
                 if !pred.contains(k) {
                     Some(k.clone())
                 } else {
@@ -80,7 +80,7 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         Ok(())
     }
 
-    fn mark_reused(&mut self, key: EntryHash) {}
+    fn mark_reused(&mut self, _key: EntryHash) {}
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
     fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<KVStoreStats> {

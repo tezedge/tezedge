@@ -72,10 +72,10 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     };
 
     let mut storage = ContextActionStorage::new(tmp_storage.storage());
-    storage.put_action(block_hash_1.clone(), value_1_0)?;
-    storage.put_action(block_hash_2.clone(), value_2_0)?;
-    storage.put_action(block_hash_1.clone(), value_1_1)?;
-    storage.put_action(block_hash_2.clone(), value_2_1)?;
+    storage.put_action(&block_hash_1.clone(), value_1_0)?;
+    storage.put_action(&block_hash_2.clone(), value_2_0)?;
+    storage.put_action(&block_hash_1.clone(), value_1_1)?;
+    storage.put_action(&block_hash_2.clone(), value_2_1)?;
     tmp_storage
         .storage()
         .kv(persistent::StorageType::ContextAction)
@@ -128,7 +128,7 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
     let tmp_storage = TmpStorage::create("__ctx_storage_get_by_contract_address")?;
 
     let str_block_hash = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
-    let block_hash = str_block_hash.try_into()?;
+    let block_hash = &str_block_hash.try_into()?;
     let value = ContextAction::Set {
         key: vec![
             "data".to_string(),

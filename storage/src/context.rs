@@ -128,7 +128,7 @@ impl ContextApi for TezedgeContext {
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
-        let commit_hash = ContextHash::try_from(commit_hash.to_bytes())?;
+        let commit_hash = ContextHash::try_from(commit_hash.as_bytes())?;
 
         // associate block and context_hash
         if let Err(e) = self
@@ -290,7 +290,7 @@ impl TezedgeContext {
     pub fn new(block_storage: BlockStorage, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
         TezedgeContext {
             block_storage,
-            merkle: merkle.clone(),
+            merkle: merkle,
         }
     }
 }

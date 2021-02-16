@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::convert::TryFrom;
+
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
@@ -180,7 +180,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Not needed/implemented.
     // TODO: Maybe this method should go into separate trait?
-    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, _pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
         unimplemented!()
     }
 
@@ -384,7 +384,7 @@ mod tests {
     use super::*;
     use crate::backend::BTreeMapBackend;
     use crate::storage_backend::size_of_vec;
-    use std::mem;
+    use std::convert::TryFrom;
 
     fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<BTreeMapBackend> {
         KVStoreGCed::new(cycle_count)

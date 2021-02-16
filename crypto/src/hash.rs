@@ -72,7 +72,7 @@ macro_rules! define_hash {
                 }
             }
 
-            pub fn to_bytes(&self) -> &[u8] {
+            pub fn as_bytes(&self) -> &[u8] {
                 &self.0[..]
             }
 

@@ -64,22 +64,6 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
         .unwrap()
 }
 
-fn get_action_symbol(action: &ContextAction) -> String {
-    match action {
-        ContextAction::Set { .. } => String::from("Set"),
-        ContextAction::Delete { .. } => String::from("Delete"),
-        ContextAction::RemoveRecursively { .. } => String::from("RemoveRecursively"),
-        ContextAction::Copy { .. } => String::from("Copy"),
-        ContextAction::Checkout { .. } => String::from("Checkout"),
-        ContextAction::Commit { .. } => String::from("Commit"),
-        ContextAction::Mem { .. } => String::from("Mem"),
-        ContextAction::DirMem { .. } => String::from("DirMem"),
-        ContextAction::Get { .. } => String::from("Get"),
-        ContextAction::Fold { .. } => String::from("Fold"),
-        ContextAction::Shutdown { .. } => String::from("Shutdown"),
-    }
-}
-
 #[test]
 #[ignore]
 fn feed_tezedge_context_with_actions() -> Result<(), Error> {
@@ -181,7 +165,11 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                         panic!("cannot perform action {:?} error: '{}'", &msg, e);
                     }
                 }
-                _ => {}
+                ContextAction::Get { .. }
+                | ContextAction::Mem { .. }
+                | ContextAction::DirMem { .. }
+                | ContextAction::Fold { .. }
+                | ContextAction::Shutdown { .. } => {}
             };
 
             if let Some(expected_hash) = get_new_tree_hash(&msg.action) {

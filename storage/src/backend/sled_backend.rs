@@ -46,11 +46,11 @@ impl StorageBackend for SledBackend {
         Ok(self.inner.contains_key(&key.as_ref()[..])?)
     }
 
-    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+    fn retain(&mut self, _pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         unimplemented!()
     }
 
-    fn mark_reused(&mut self, key: EntryHash) {}
+    fn mark_reused(&mut self, _key: EntryHash) {}
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
     fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<StorageBackendStats> {

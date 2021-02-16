@@ -29,7 +29,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
         if let Some(_) = &last_commit_hash {
             let mut todo = HashSet::new();
             self.mark_entries(&mut todo, last_commit_hash);
-            self.sweep_entries(todo);
+            self.sweep_entries(todo)?;
         }
         Ok(())
     }
@@ -43,8 +43,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
     }
 
     fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), KVStoreError> {
-        self.retain(todo);
-        Ok(())
+        self.retain(todo)
     }
 
     fn mark_entries_recursively(&self, entry: &Entry, todo: &mut HashSet<EntryHash>) {
@@ -55,7 +54,7 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
             }
             Entry::Tree(tree) => {
                 todo.insert(hash);
-                tree.iter().for_each(|(key, child_node)| {
+                tree.iter().for_each(|(_, child_node)| {
                     match self.get_entry(&child_node.entry_hash) {
                         Ok(Some(entry)) => self.mark_entries_recursively(&entry, todo),
                         _ => {}
@@ -67,7 +66,6 @@ impl<T: 'static + KVStore + Default> MarkSweepGCed<T> {
                 match self.get_entry(&commit.root_hash) {
                     Ok(Some(entry)) => self.mark_entries_recursively(&entry, todo),
                     _ => {}
-                    Err(_) => {}
                 }
             }
         }
@@ -106,7 +104,7 @@ impl<T: 'static + KVStore + Default> KVStore for MarkSweepGCed<T> {
     fn mark_reused(&mut self, _key: EntryHash) {}
 
     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>) {
-        self.gc(last_commit_hash);
+        let _ = self.gc(last_commit_hash);
     }
 
     fn wait_for_gc_finish(&self) {}
