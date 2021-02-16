@@ -25,6 +25,7 @@ fn bench_apply_first_three_block(_: &mut Bencher) {
         log_enabled: common::is_ocaml_log_enabled(),
         no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
     })
     .unwrap()
     .unwrap();

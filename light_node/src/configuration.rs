@@ -103,6 +103,7 @@ pub struct Storage {
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub store_context_actions: bool,
+    pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
 }
 
@@ -479,6 +480,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate recording of context storage actions"))
+        .arg(Arg::with_name("compute-context-action-tree-hashes")
+            .long("compute-context-action-tree-hashes")
+            .takes_value(true)
+            .value_name("BOOL")
+            .help("Activate the computation of tree hashes when applying context actions"))
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
             .takes_value(true)
@@ -844,17 +850,24 @@ impl Environment {
                     columns: ContextActionsTableInitializer {},
                     threads: db_context_actions_threads_count,
                 };
+                let store_context_actions = args
+                    .value_of("store-context-actions")
+                    .unwrap_or("true")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool");
+                let compute_context_action_tree_hashes = args
+                    .value_of("compute-context-action-tree-hashes")
+                    .unwrap_or("false")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool");
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
                     db_context,
                     db_context_actions,
                     db_path,
-                    store_context_actions: args
-                        .value_of("store-context-actions")
-                        .unwrap_or("true")
-                        .parse::<bool>()
-                        .expect("Provided value cannot be converted to bool"),
+                    store_context_actions,
+                    compute_context_action_tree_hashes,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
