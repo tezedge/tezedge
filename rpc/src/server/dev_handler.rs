@@ -5,7 +5,7 @@ use failure::format_err;
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::helpers::{parse_block_hash, parse_chain_id, MAIN_CHAIN_ID};
+use crate::helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
@@ -43,7 +43,7 @@ pub async fn dev_blocks(
     let limit = query.get_usize("limit").unwrap_or(50);
 
     result_to_json_response(
-        base_services::get_blocks(
+        base_services::get_blocks::<SlimBlockData>(
             chain_id,
             from_block_id,
             every_nth_level,
