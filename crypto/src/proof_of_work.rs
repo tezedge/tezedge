@@ -1,8 +1,10 @@
 use std::convert::TryFrom;
 
-use hex::{FromHex, FromHexError};
+use hex::FromHex;
 use num_bigint::BigUint;
 use sodiumoxide::randombytes::randombytes;
+
+use crate::CryptoError;
 
 use super::{
     blake2b,
@@ -24,10 +26,18 @@ impl AsRef<[u8]> for ProofOfWork {
 }
 
 impl FromHex for ProofOfWork {
-    type Error = FromHexError;
+    type Error = CryptoError;
 
     fn from_hex<T: AsRef<[u8]>>(hex: T) -> Result<Self, Self::Error> {
         let bytes = hex::decode(hex)?;
+
+        if bytes.len() != POW_SIZE {
+            return Err(CryptoError::InvalidKeySize {
+                expected: POW_SIZE,
+                actual: bytes.len(),
+            });
+        }
+
         let mut arr = [0u8; POW_SIZE];
         arr.copy_from_slice(&bytes);
         Ok(ProofOfWork(arr))
