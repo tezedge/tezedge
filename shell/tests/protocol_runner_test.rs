@@ -126,8 +126,8 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: common::is_ocaml_log_enabled(),
-                no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
                 debug_mode: false,
+                compute_context_action_tree_hashes: false,
             },
             tezos_env.clone(),
             false,
@@ -210,8 +210,8 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let endpoint_cfg = ProtocolEndpointConfiguration::new(
         TezosRuntimeConfiguration {
             log_enabled: common::is_ocaml_log_enabled(),
-            no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
             debug_mode: false,
+            compute_context_action_tree_hashes: false,
         },
         tezos_env.clone(),
         false,

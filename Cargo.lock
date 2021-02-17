@@ -1872,18 +1872,19 @@ checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.4.5"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90d094d3c6bfbefc8ea5a0e4b3ba542105cbf1262fc44478e12cb23eee4391c1"
+checksum = "0badad57a5788d0a7be367be6e378ed52dbc8020c4f3672b59212b5de7f35a72"
 dependencies = [
  "ocaml-sys",
+ "static_assertions",
 ]
 
 [[package]]
 name = "ocaml-sys"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69b089ec551535569cbcf41bf8ada032ce80cee4cfaf6fab95da0b01e83aab31"
+checksum = "3ebcb40980dce73b49d0dcf5b3a2844a9a28cbe5fa17115fa09f0f7706463d1a"
 dependencies = [
  "cty",
 ]
@@ -3087,6 +3088,7 @@ version = "1.1.0"
 dependencies = [
  "crossbeam",
  "lazy_static",
+ "ocaml-interop",
  "serde 1.0.123",
 ]
 

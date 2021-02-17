@@ -17,22 +17,13 @@ pub fn prepare_empty_dir(dir_name: &str) -> String {
 
 pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    let path = Path::new(out_dir.as_str())
-        .join(Path::new(dir_name))
-        .to_path_buf();
+    let path = Path::new(out_dir.as_str()).join(Path::new(dir_name));
     path
 }
 
 pub fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
-        .unwrap()
-}
-
-pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
-    env::var("OCAML_CALLS_GC")
-        .unwrap_or("2000".to_string())
-        .parse::<i32>()
         .unwrap()
 }

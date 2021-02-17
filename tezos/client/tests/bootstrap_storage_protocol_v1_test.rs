@@ -25,8 +25,8 @@ fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
     })
     .unwrap();
 }
@@ -558,7 +558,7 @@ fn test_bootstrap_empty_storage_with_second_block_with_first_predecessor_should_
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id: chain_id.clone(),
+        chain_id: chain_id,
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_2).unwrap(),
         )
@@ -775,7 +775,7 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
 
     // begin application for second block - level 2 - now it should work on first level
     let result = client::begin_application(BeginApplicationRequest {
-        chain_id: chain_id.clone(),
+        chain_id: chain_id,
         pred_header: BlockHeader::from_bytes(
             hex::decode(test_data_protocol_v1::BLOCK_HEADER_LEVEL_1).unwrap(),
         )
@@ -837,7 +837,7 @@ fn assert_operation_metadata_hashes(
         panic!("assert_operation_metadata_hashes: Expected Some, but has None")
     }
 
-    let expected_base58_strings = expected_base58_strings.unwrap_or_else(|| vec![]);
+    let expected_base58_strings = expected_base58_strings.unwrap_or(vec![]);
     let tested = match tested.as_ref() {
         Some(hashes) => hashes.clone(),
         None => vec![],

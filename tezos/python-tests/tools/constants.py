@@ -203,14 +203,15 @@ A high-number of connections helps triggering the maintenance process
  some spurious deadlocks (e.g. a node not broadcasting its head).
 """
 # NODE_PARAMS = ['--connections', '500', '--synchronisation-threshold', '0']
-NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-patch-context.json', 
+NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-patch-context.json',
                '--bootstrap-db-path', 'light-node', '--log-format', 'simple',
                '--ocaml-log-enabled', 'false', '--protocol-runner',
                paths.TEZOS_HOME + 'protocol-runner',
                '--peer-thresh-low', '0', '--peer-thresh-high', '500',
-               '--ffi-calls-gc-threshold=50', '--ffi-pool-max-connections=10', 
-               '--ffi-pool-connection-timeout-in-secs=60', 
-               '--ffi-pool-max-lifetime-in-secs=21600', 
+               '--ffi-pool-max-connections=10',
+               '--ffi-pool-connection-timeout-in-secs=60',
+               '--ffi-pool-max-lifetime-in-secs=21600',
                '--ffi-pool-idle-timeout-in-secs=1800', '--store-context-actions=false',
+               '--compute-context-action-tree-hashes=false',
                '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
                '--synchronization-thresh', '0']
