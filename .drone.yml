@@ -649,6 +649,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -940,6 +941,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -1169,6 +1171,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -1304,6 +1307,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -1603,6 +1607,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -1810,6 +1815,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -2018,6 +2024,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -2230,6 +2237,7 @@ trigger:
   branch:
     - master
     - develop
+    - new-context-action-recording-develop
 
 depends_on:
   - build-and-tests
@@ -2274,7 +2282,9 @@ image_pull_secrets:
   - docker_pull_secret
 
 trigger:
-  branch: develop
+  branch:
+    - develop
+    - new-context-action-recording-develop
   event: push
 
 depends_on:
