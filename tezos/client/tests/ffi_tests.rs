@@ -80,7 +80,7 @@ fn test_assert_encoding_for_protocol_data() {
     )
     .is_ok());
     assert!(client::assert_encoding_for_protocol_data(
-        protocol_hash_1.clone(),
+        protocol_hash_1,
         block_header_2.protocol_data().clone(),
     )
     .is_err());
@@ -90,7 +90,7 @@ fn test_assert_encoding_for_protocol_data() {
     )
     .is_err());
     assert!(client::assert_encoding_for_protocol_data(
-        protocol_hash_2.clone(),
+        protocol_hash_2,
         block_header_2.protocol_data().clone(),
     )
     .is_ok());
@@ -108,8 +108,8 @@ fn prepare_protocol_context(
 
     // init empty storage for test
     let storage_data_dir_path = common::prepare_empty_dir(dir_name);
-    let storage_init_info = ffi::init_protocol_context(
-        storage_data_dir_path.to_string(),
+    ffi::init_protocol_context(
+        storage_data_dir_path,
         cfg.genesis.clone(),
         cfg.protocol_overrides.clone(),
         commit_genesis,
@@ -117,7 +117,5 @@ fn prepare_protocol_context(
         false,
         None,
     )
-    .unwrap();
-
-    storage_init_info
+    .unwrap()
 }

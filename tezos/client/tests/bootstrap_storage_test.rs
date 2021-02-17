@@ -610,7 +610,7 @@ fn test_begin_application_on_empty_storage_with_first_blocks() {
 
     // begin application for second block - level 2 - now it should work on first level
     let result = client::begin_application(BeginApplicationRequest {
-        chain_id: chain_id.clone(),
+        chain_id: chain_id,
         pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_1).unwrap())
             .unwrap(),
         block_header: BlockHeader::from_bytes(

@@ -615,7 +615,7 @@ fn test_fn_decode_context_data_big_maps() {
 
 fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
         .unwrap()
 }
