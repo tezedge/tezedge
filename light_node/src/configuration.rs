@@ -857,7 +857,7 @@ impl Environment {
                     .expect("Provided value cannot be converted to bool");
                 let compute_context_action_tree_hashes = args
                     .value_of("compute-context-action-tree-hashes")
-                    .unwrap_or("true")
+                    .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
                 crate::configuration::Storage {
