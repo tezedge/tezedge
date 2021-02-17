@@ -6,8 +6,8 @@ use failure::bail;
 use shiplift::Docker;
 use slog::{info, warn, Logger};
 
-use crate::deploy_with_compose::{restart_stack, shutdown_and_update, NODE_CONTAINER_NAME};
-use crate::image::{local_hash, remote_hash, Debugger, Explorer, Image};
+use crate::deploy_with_compose::{restart_stack, shutdown_and_update, NODE_CONTAINER_NAME, SANDBOX_CONTAINER_NAME, shutdown_and_update_sandbox, restart_sandbox};
+use crate::image::{local_hash, remote_hash, Debugger, Explorer, Image, Sandbox};
 use crate::monitors::info::InfoMonitor;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
@@ -64,11 +64,42 @@ impl DeployMonitor {
 
         Ok(())
     }
+    
+    pub async fn monitor_sandbox_launcher(&self) -> Result<(), failure::Error> {
+        let DeployMonitor { slack, log, .. } = self;
+
+        if self.is_sandbox_container_running().await {
+            if self.changed::<Sandbox>().await? {
+                shutdown_and_update_sandbox(log.clone()).await;
+
+            } else {
+                // Do nothing, No update occurred
+                info!(self.log, "No image change detected");
+            }
+        } else {
+            warn!(self.log, "Sandbox launcher not running. Restarting");
+            slack
+                .send_message("Sandbox launcher not running. Restarting")
+                .await?;
+            restart_sandbox(log.clone()).await;
+        }
+
+        Ok(())
+    }
 
     async fn is_node_container_running(&self) -> bool {
         let DeployMonitor { docker, .. } = self;
 
         match docker.containers().get(NODE_CONTAINER_NAME).inspect().await {
+            Ok(container_data) => container_data.state.running,
+            _ => false,
+        }
+    }
+
+    async fn is_sandbox_container_running(&self) -> bool {
+        let DeployMonitor { docker, .. } = self;
+
+        match docker.containers().get(SANDBOX_CONTAINER_NAME).inspect().await {
             Ok(container_data) => container_data.state.running,
             _ => false,
         }

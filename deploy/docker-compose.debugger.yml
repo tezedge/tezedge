@@ -51,6 +51,26 @@ services:
       - "18732:18732"     # node RPC port
       - "3030:3030"       # sandbox launcher port
 
+  rust-sandbox:
+    image: simplestakingcom/tezedge:${TEZEDGE_SANDBOX_IMAGE_TAG}
+    depends_on:
+      - explorer
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:10001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "rust-shared-data:/tmp/tezedge"
+    ports:
+      - "4927:4927"       # node WS port (required only for tezedge)
+      - "9732:9732"       # node P2P port
+      - "18732:18732"     # node RPC port
+      - "3030:3030"       # sandbox launcher port
+
   ocaml-node:
     image: tezos/tezos:v8.1
     entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --history-mode archive --network delphinet"
