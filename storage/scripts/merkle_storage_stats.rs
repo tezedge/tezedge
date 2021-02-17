@@ -26,9 +26,9 @@ pub fn get_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
         | ContextAction::Delete { tree_hash, .. }
         | ContextAction::RemoveRecursively { tree_hash, .. }
         | ContextAction::Commit { tree_hash, .. }
-        | ContextAction::Fold { tree_hash, .. } => {
-            Some(MerkleHash::try_from(tree_hash.as_slice()).unwrap())
-        }
+        | ContextAction::Fold { tree_hash, .. } => tree_hash
+            .as_deref()
+            .map(|hash| MerkleHash::try_from(hash).unwrap()),
         ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
     }
 }

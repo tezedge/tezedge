@@ -254,9 +254,9 @@ pub fn get_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
         | ContextAction::Delete { tree_hash, .. }
         | ContextAction::RemoveRecursively { tree_hash, .. }
         | ContextAction::Commit { tree_hash, .. }
-        | ContextAction::Fold { tree_hash, .. } => {
-            Some(MerkleHash::try_from(tree_hash.as_slice()).unwrap())
-        }
+        | ContextAction::Fold { tree_hash, .. } => tree_hash
+            .as_deref()
+            .map(|hash| MerkleHash::try_from(hash).unwrap()),
         ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
     }
 }
@@ -266,9 +266,9 @@ pub fn get_new_tree_hash(action: &ContextAction) -> Option<MerkleHash> {
         ContextAction::Set { new_tree_hash, .. }
         | ContextAction::Copy { new_tree_hash, .. }
         | ContextAction::Delete { new_tree_hash, .. }
-        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
-            Some(MerkleHash::try_from(new_tree_hash.as_slice()).unwrap())
-        }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => new_tree_hash
+            .as_deref()
+            .map(|hash| MerkleHash::try_from(hash).unwrap()),
         ContextAction::Get { .. }
         | ContextAction::Mem { .. }
         | ContextAction::DirMem { .. }
