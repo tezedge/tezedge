@@ -117,6 +117,6 @@ impl StorageBackend for RocksDBBackend {
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {}
     fn wait_for_gc_finish(&self) {}
     fn get_stats(&self) -> Vec<StorageBackendStats> {
-        unimplemented!()
+        vec![]
     }
 }
