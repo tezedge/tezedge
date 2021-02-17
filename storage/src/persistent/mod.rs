@@ -14,7 +14,7 @@ pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::action_file::ActionFileError;
-use crate::backend::InMemoryBackend;
+use crate::backend::{InMemoryBackend, RocksDBBackend};
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
 use crate::StorageError;
@@ -162,7 +162,10 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
     ) -> Self {
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
-        let merkle = MerkleStorage::new(Box::new(InMemoryBackend::new()));
+        let merkle = MerkleStorage::new(Box::new(RocksDBBackend::new(
+            db_context.clone(),
+            MerkleStorage::name(),
+        )));
         Self {
             clog,
             db,
