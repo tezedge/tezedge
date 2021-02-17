@@ -56,11 +56,11 @@ use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::{StorageBackend, StorageBackendError};
+use crate::{context::TreeId, persistent};
 
 const HASH_LEN: usize = 32;
 
@@ -128,10 +128,12 @@ pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
-    current_stage_tree: (Tree, EntryHash),
+    current_stage_tree: (Tree, TreeId),
     db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
+    /// all different versions of the staging tree
+    trees: HashMap<TreeId, Tree>,
     /// HashMap for looking up entry index in self.staged by hash
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
@@ -174,8 +176,8 @@ pub enum MerkleError {
     FoundUnexpectedStructure { sought: String, found: String },
     #[fail(display = "Entry not found! Hash={}", hash)]
     EntryNotFound { hash: String },
-    #[fail(display = "Entry not in staging area! Hash={}", hash)]
-    EntryNotFoundInStaging { hash: String },
+    #[fail(display = "Tree not in staging area! TreeId={}", tree_id)]
+    TreeNotFoundInStaging { tree_id: TreeId },
 
     /// Wrong user input errors
     #[fail(display = "No value under key {:?}.", key)]
@@ -381,12 +383,18 @@ impl MerkleStorage {
     pub fn new(db: Box<MerkleStorageKV>) -> Self {
         let tree = Tree::new();
         let tree_hash = hash_tree(&tree).unwrap();
-        let mut map: HashMap<EntryHash, Entry> = HashMap::new();
-        map.insert(tree_hash, Entry::Tree(tree.clone()));
+        let tree_id = 0;
+        let mut entries_map: HashMap<EntryHash, Entry> = HashMap::new();
+        let mut trees_map: HashMap<TreeId, Tree> = HashMap::new();
+
+        entries_map.insert(tree_hash, Entry::Tree(tree.clone()));
+        trees_map.insert(tree_id, tree.clone());
+
         MerkleStorage {
             db,
-            staged: map,
-            current_stage_tree: (tree, tree_hash),
+            staged: entries_map,
+            trees: trees_map,
+            current_stage_tree: (tree, tree_id),
             last_commit_hash: None,
             perf_stats: MerklePerfStats {
                 global: HashMap::new(),
@@ -692,7 +700,8 @@ impl MerkleStorage {
         let instant = Instant::now();
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
-        self.set_stage_root(&tree)?;
+        self.trees.clear();
+        self.set_stage_root(&tree, 0);
         self.last_commit_hash = Some(hash_commit(&commit)?);
         self.staged.clear();
         self.update_execution_stats("Checkout".to_string(), None, &instant);
@@ -724,24 +733,28 @@ impl MerkleStorage {
         self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
 
-        self.staged.clear();
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
         self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(hash_commit(&new_commit)?)
     }
 
     /// Set key/val to the staging area.
-    fn set_stage_root(&mut self, tree: &Tree) -> Result<(), MerkleError> {
-        self.current_stage_tree = (tree.clone(), hash_tree(&tree)?);
-        Ok(())
+    fn set_stage_root(&mut self, tree: &Tree, tree_id: TreeId) {
+        self.current_stage_tree = (tree.clone(), tree_id);
+        self.trees.insert(tree_id, tree.clone());
     }
 
     /// Set key/val to the staging area.
-    pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
+    pub fn set(
+        &mut self,
+        new_tree_id: TreeId,
+        key: &ContextKey,
+        value: &ContextValue,
+    ) -> Result<(), MerkleError> {
         let instant = Instant::now();
         let root = self.get_staged_root();
         let new_root_hash = &self._set(&root, key, value)?;
-        self.set_stage_root(&self.get_tree(new_root_hash)?)?;
+        self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
         self.update_execution_stats("Set".to_string(), Some(&key), &instant);
         Ok(())
     }
@@ -762,12 +775,11 @@ impl MerkleStorage {
     }
 
     /// Delete an item from the staging area.
-    pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
+    pub fn delete(&mut self, new_tree_id: TreeId, key: &ContextKey) -> Result<(), MerkleError> {
         let instant = Instant::now();
         let root = self.get_staged_root();
         let new_root_hash = &self._delete(&root, key)?;
-        let tree = self.get_tree(new_root_hash)?;
-        self.set_stage_root(&tree)?;
+        self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
         self.update_execution_stats("Delete".to_string(), Some(&key), &instant);
 
         Ok(())
@@ -781,12 +793,16 @@ impl MerkleStorage {
     }
 
     /// Copy subtree under a new path.
-    /// TODO Consider copying values!
-    pub fn copy(&mut self, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), MerkleError> {
+    pub fn copy(
+        &mut self,
+        new_tree_id: TreeId,
+        from_key: &ContextKey,
+        to_key: &ContextKey,
+    ) -> Result<(), MerkleError> {
         let instant = Instant::now();
         let root = self.get_staged_root();
         let new_root_hash = self._copy(&root, from_key, to_key)?;
-        self.set_stage_root(&self.get_tree(&new_root_hash)?)?;
+        self.set_stage_root(&self.get_tree(&new_root_hash)?, new_tree_id);
         self.update_execution_stats("CopyToDiff".to_string(), Some(&to_key), &instant);
         Ok(())
     }
@@ -812,16 +828,9 @@ impl MerkleStorage {
     ///
     /// # Arguments
     ///
-    /// * `root_hash` - hash of Tree to modify
-    /// * `key` - path under which the changes takes place
-    /// * `new_node` - None for deletion, Some for inserting a hash under the key.
-    /// Get a new tree with `new_entry_hash` put under given `key`.
-    ///
-    /// # Arguments
-    ///
     /// * `root` - Tree to modify
     /// * `key` - path under which the changes takes place
-    /// * `new_entry_hash` - None for deletion, Some for inserting a hash under the key.
+    /// * `new_node` - None for deletion, Some for inserting a hash under the key.
     fn compute_new_root_with_change(
         &mut self,
         root: &Tree,
@@ -905,29 +914,21 @@ impl MerkleStorage {
     }
 
     pub fn get_staged_root_hash(&self) -> EntryHash {
-        self.current_stage_tree.1
+        hash_tree(&self.current_stage_tree.0).unwrap()
     }
 
-    pub fn stage_checkout(&mut self, hash: &EntryHash) -> Result<(), MerkleError> {
-        if *hash == self.current_stage_tree.1 {
+    pub fn stage_checkout(&mut self, tree_id: TreeId) -> Result<(), MerkleError> {
+        if tree_id == self.current_stage_tree.1 {
             return Ok(());
         }
 
-        let entry = self
-            .staged
-            .get(hash)
-            .ok_or(MerkleError::EntryNotFoundInStaging {
-                hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            })?;
-        match &entry.clone() {
-            Entry::Tree(tree) => {
-                self.set_stage_root(tree)?;
-                Ok(())
-            }
-            _ => Err(MerkleError::ValueIsNotATree {
-                key: HashType::ContextHash.hash_to_b58check(hash)?,
-            }),
-        }
+        let tree = self
+            .trees
+            .get(&tree_id)
+            .ok_or(MerkleError::TreeNotFoundInStaging { tree_id })?
+            .clone();
+        self.set_stage_root(&tree, tree_id);
+        Ok(())
     }
 
     /// Put entry in staging area
@@ -1180,9 +1181,9 @@ mod tests {
     use crate::backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend};
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
-    use std::ops::Deref;
     use std::path::{Path, PathBuf};
     use std::{env, fs};
+    use std::{ops::Deref, sync::Arc};
 
     use super::*;
 
@@ -1215,7 +1216,10 @@ mod tests {
                 MerkleStorage::name(),
             ))),
             "sled" => {
-                let sled = sled::Config::new().path(db_name).open().unwrap();
+                let sled = sled::Config::new()
+                    .path(get_db_name(db_name))
+                    .open()
+                    .unwrap();
                 MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
             }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
@@ -1236,13 +1240,13 @@ mod tests {
         let mut storage = get_storage(backend, "ms_test_duplicate_entry", &cache);
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
-        storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
-        storage.set(&vec!["c".to_string(), "zoo".to_string()], &vec![1, 2]);
-        storage.set(&vec!["c".to_string(), "foo".to_string()], &vec![97, 98]);
-        storage.delete(&vec!["c".to_string(), "zoo".to_string()]);
+        storage.set(1, &vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
+        storage.set(2, &vec!["c".to_string(), "zoo".to_string()], &vec![1, 2]);
+        storage.set(3, &vec!["c".to_string(), "foo".to_string()], &vec![97, 98]);
+        storage.delete(4, &vec!["c".to_string(), "zoo".to_string()]);
         // now c/ is the same tree as a/ - which means there are two references to single entry in staging area
         // modify the tree and check that the other one was kept intact
-        storage.set(&vec!["c".to_string(), "foo".to_string()], &vec![3, 4]);
+        storage.set(5, &vec!["c".to_string(), "foo".to_string()], &vec![3, 4]);
         let commit = storage
             .commit(0, "Tezos".to_string(), "Genesis".to_string())
             .unwrap();
@@ -1459,14 +1463,20 @@ mod tests {
     fn test_tree_hash(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, "ms_test_tree_hash", &cache);
-        storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
-        storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
+            1,
+            &vec!["a".to_string(), "foo".to_string()],
+            &vec![97, 98, 99],
+        ); // abc
+        storage.set(2, &vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
+        storage.set(
+            3,
             &vec!["a".to_string(), "aaa".to_string()],
             &vec![97, 98, 99, 100],
         );
-        storage.set(&vec!["x".to_string()], &vec![97]);
+        storage.set(4, &vec!["x".to_string()], &vec![97]);
         storage.set(
+            5,
             &vec!["one".to_string(), "two".to_string(), "three".to_string()],
             &vec![97],
         );
@@ -1482,13 +1492,13 @@ mod tests {
     fn test_commit_hash(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, "ms_test_commit_hash", &cache);
-        storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
+        storage.set(1, &vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
 
-        storage.set(&vec!["data".to_string(), "x".to_string()], &vec![97]);
+        storage.set(1, &vec!["data".to_string(), "x".to_string()], &vec![97]);
         let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
 
         assert_eq!([0xCA, 0x7B, 0xC7, 0x02], commit.unwrap()[0..4]);
@@ -1511,25 +1521,25 @@ mod tests {
         clean_db(db_name);
         let mut storage = get_storage(backend, db_name, &cache);
 
-        storage.set(&vec!["a".to_string()], &vec![1]);
+        storage.set(1, &vec!["a".to_string()], &vec![1]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("SET [a] = 1\nROOT: {}", root);
         println!("CONTENT {}", storage.get_staged_entries());
         assert_eq!(root, "d49a53".to_string());
 
-        storage.set(&vec!["b".to_string(), "c".to_string()], &vec![1]);
+        storage.set(2, &vec!["b".to_string(), "c".to_string()], &vec![1]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,c] = 1\nROOT: {}", root);
         print!("{}", storage.get_staged_entries());
         assert_eq!(root, "ed8adf".to_string());
 
-        storage.set(&vec!["b".to_string(), "d".to_string()], &vec![2]);
+        storage.set(3, &vec!["b".to_string(), "d".to_string()], &vec![2]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,d] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries());
         assert_eq!(root, "437186".to_string());
 
-        storage.set(&vec!["a".to_string()], &vec![2]);
+        storage.set(4, &vec!["a".to_string()], &vec![2]);
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [a] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries());
@@ -1554,14 +1564,19 @@ mod tests {
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
+            1,
             &vec!["data".to_string(), "a".to_string(), "x".to_string()],
             &vec![97],
         );
         storage.copy(
+            2,
             &vec!["data".to_string(), "a".to_string()],
             &vec!["data".to_string(), "b".to_string()],
         );
-        storage.delete(&vec!["data".to_string(), "b".to_string(), "x".to_string()]);
+        storage.delete(
+            3,
+            &vec!["data".to_string(), "b".to_string(), "x".to_string()],
+        );
         let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
 
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
@@ -1588,16 +1603,16 @@ mod tests {
             let res = storage.get(&vec!["a".to_string()]);
             assert_eq!(res.unwrap().is_empty(), true);
 
-            storage.set(key_abc, &vec![1u8, 2u8]);
-            storage.set(key_abx, &vec![3u8]);
+            storage.set(1, key_abc, &vec![1u8, 2u8]);
+            storage.set(2, key_abx, &vec![3u8]);
             assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
             assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_az, &vec![4u8]);
-            storage.set(key_abx, &vec![5u8]);
-            storage.set(key_d, &vec![6u8]);
-            storage.set(key_eab, &vec![7u8]);
+            storage.set(3, key_az, &vec![4u8]);
+            storage.set(4, key_abx, &vec![5u8]);
+            storage.set(5, key_d, &vec![6u8]);
+            storage.set(6, key_eab, &vec![7u8]);
             assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
             assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
             assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
@@ -1633,13 +1648,13 @@ mod tests {
         let mut storage = get_storage(backend, db_name, &cache);
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(key_abc, &vec![1u8, 2u8]);
+        storage.set(1, key_abc, &vec![1u8, 2u8]);
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(key_abx, &vec![3u8]);
+        storage.set(2, key_abx, &vec![3u8]);
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), true);
-        storage.delete(key_abx);
+        storage.delete(3, key_abx);
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
     }
@@ -1657,11 +1672,11 @@ mod tests {
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        storage.set(key_abc, &vec![1u8, 2u8]);
+        storage.set(1, key_abc, &vec![1u8, 2u8]);
         assert_eq!(storage.dirmem(&key_a).unwrap(), true);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), true);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        storage.delete(key_abc);
+        storage.delete(2, key_abc);
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -1674,8 +1689,8 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc, &vec![1_u8]);
-        storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
+        storage.set(1, key_abc, &vec![1_u8]);
+        storage.copy(2, &vec!["a".to_string()], &vec!["z".to_string()]);
 
         assert_eq!(
             vec![1_u8],
@@ -1694,9 +1709,9 @@ mod tests {
         let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc, &vec![2_u8]);
-        storage.set(key_abx, &vec![3_u8]);
-        storage.delete(key_abx);
+        storage.set(1, key_abc, &vec![2_u8]);
+        storage.set(2, key_abx, &vec![3_u8]);
+        storage.delete(3, key_abx);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert!(storage.get_history(&commit1, &key_abx).is_err());
@@ -1709,9 +1724,9 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(key_abc, &vec![2_u8]);
+        storage.set(1, key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        storage.delete(key_abc);
+        storage.delete(2, key_abc);
         let _commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
@@ -1725,11 +1740,11 @@ mod tests {
         let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(key_abc, &vec![2_u8]).unwrap();
-        storage.set(key_abx, &vec![3_u8]).unwrap();
+        storage.set(1, key_abc, &vec![2_u8]).unwrap();
+        storage.set(2, key_abx, &vec![3_u8]).unwrap();
         storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        storage.delete(key_abx);
+        storage.delete(1, key_abx);
         let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert!(storage.get_history(&commit2, &key_abx).is_err());
@@ -1747,12 +1762,12 @@ mod tests {
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(backend, db_name, &cache);
-            storage.set(key_abc, &vec![1u8]).unwrap();
-            storage.set(key_abx, &vec![2u8]).unwrap();
+            storage.set(1, key_abc, &vec![1u8]).unwrap();
+            storage.set(2, key_abx, &vec![2u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(key_abc, &vec![3u8]).unwrap();
-            storage.set(key_abx, &vec![4u8]).unwrap();
+            storage.set(1, key_abc, &vec![3u8]).unwrap();
+            storage.set(2, key_abx, &vec![4u8]).unwrap();
             commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
@@ -1765,7 +1780,7 @@ mod tests {
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
         // this set be wiped by checkout
-        storage.set(key_abc, &vec![8u8]).unwrap();
+        storage.set(1, key_abc, &vec![8u8]).unwrap();
 
         storage.checkout(&commit2);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
@@ -1784,8 +1799,8 @@ mod tests {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             let mut storage = get_storage(backend, db_name, &cache);
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(key_abc, &vec![2_u8]).unwrap();
-            storage.set(key_abx, &vec![3_u8]).unwrap();
+            storage.set(1, key_abc, &vec![2_u8]).unwrap();
+            storage.set(2, key_abx, &vec![3_u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         }
 
@@ -1815,7 +1830,7 @@ mod tests {
             Arc::new(db),
             MerkleStorage::name(),
         )));
-        storage.set(&vec!["a".to_string()], &vec![1u8]);
+        storage.set(1, &vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
         println!("{:?}", res);
 
@@ -1877,11 +1892,13 @@ mod tests {
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
+            1,
             &vec!["data".to_string(), "a".to_string(), "x".to_string()],
             &vec![3, 4],
         );
-        storage.set(&vec!["data".to_string(), "a".to_string()], &vec![1, 2]);
+        storage.set(2, &vec!["data".to_string(), "a".to_string()], &vec![1, 2]);
         storage.set(
+            3,
             &vec![
                 "data".to_string(),
                 "a".to_string(),
@@ -1891,6 +1908,7 @@ mod tests {
             &vec![5, 6],
         );
         storage.set(
+            4,
             &vec![
                 "data".to_string(),
                 "b".to_string(),
@@ -1899,8 +1917,9 @@ mod tests {
             ],
             &vec![7, 8],
         );
-        storage.set(&vec!["data".to_string(), "c".to_string()], &vec![1, 2]);
+        storage.set(5, &vec!["data".to_string(), "c".to_string()], &vec![1, 2]);
         storage.set(
+            6,
             &vec![
                 "adata".to_string(),
                 "b".to_string(),
@@ -2005,21 +2024,19 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, db_name, &cache);
 
-        storage.set(dummy_key, &vec![1u8]);
-        let hash_first = storage.get_staged_root_hash();
+        storage.set(1, dummy_key, &vec![1u8]);
 
-        storage.set(dummy_key, &vec![2u8]);
-        let hash_second = storage.get_staged_root_hash();
+        storage.set(2, dummy_key, &vec![2u8]);
 
         // get recent value
         assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
 
         // checkout previous stage state
-        storage.stage_checkout(&hash_first);
+        storage.stage_checkout(1);
         assert_eq!(storage.get(dummy_key).unwrap(), vec![1u8]);
 
         // checkout newest stage state
-        storage.stage_checkout(&hash_second);
+        storage.stage_checkout(2);
         assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
     }
 
@@ -2033,40 +2050,39 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, db_name, &cache);
 
-        storage.set(key, &value);
-        let hash_befeore_delete = storage.get_staged_root_hash();
+        storage.set(1, key, &value);
 
-        storage.delete(key);
-        let hash_after_delete = storage.get_staged_root_hash();
+        storage.delete(2, key);
 
         assert_eq!(storage.get(key).unwrap(), empty_response);
 
         // // checkout previous stage state
-        storage.stage_checkout(&hash_befeore_delete);
+        storage.stage_checkout(1);
         assert_eq!(storage.get(key).unwrap(), value);
 
         // checkout latest stage state
-        storage.stage_checkout(&hash_after_delete);
+        storage.stage_checkout(2);
         assert_eq!(storage.get(key).unwrap(), empty_response);
     }
 
-    fn test_fail_to_checkout_stage_from_before_commit(backend: &str) {
-        let db_name = &format!("test_fail_to_checkout_stage_from_before_commit_{}", backend);
+    // Currently we don't perform a cleanup after each COMMIT
+    // That will happen during the next CHECKOUT, this test is to ensure that
+    fn test_checkout_stage_from_before_commit(backend: &str) {
+        let db_name = &format!("test_checkout_stage_from_before_commit_{}", backend);
         let key = &vec!["a".to_string()];
 
         clean_db(db_name);
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(backend, db_name, &cache);
 
-        storage.set(key, &vec![1u8]);
-        let outdated_stage_hash = storage.get_staged_root_hash();
-        storage.set(key, &vec![2u8]);
+        storage.set(1, key, &vec![1u8]);
+        storage.set(2, key, &vec![2u8]);
         storage
             .commit(0, "author".to_string(), "message".to_string())
             .unwrap();
 
-        assert_eq!(storage.staged.is_empty(), true);
-        assert_eq!(storage.stage_checkout(&outdated_stage_hash).is_err(), true);
+        assert_eq!(storage.staged.is_empty(), false);
+        assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
 
     macro_rules! tests_with_storage {
@@ -2142,7 +2158,7 @@ mod tests {
                 }
                 #[test]
                 fn test_fail_to_checkout_stage_from_before_commit() {
-                    super::test_fail_to_checkout_stage_from_before_commit($name_str)
+                    super::test_checkout_stage_from_before_commit($name_str)
                 }
             }
         };

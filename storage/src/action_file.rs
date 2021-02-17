@@ -7,7 +7,7 @@ use failure::Fail;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use tezos_context::channel::ContextActionMessage;
+use tezos_context::channel::ContextAction;
 
 /// Possible errors for storage
 #[derive(Debug, Fail)]
@@ -59,7 +59,7 @@ impl ActionsFileReader {
 }
 
 impl Iterator for ActionsFileReader {
-    type Item = Vec<ContextActionMessage>;
+    type Item = Vec<ContextAction>;
 
     /// Return a tuple of a block and list action in the block
     fn next(&mut self) -> Option<Self::Item> {
@@ -114,7 +114,7 @@ impl ActionsFileWriter {
 }
 
 impl ActionsFileWriter {
-    pub fn update(&mut self, actions: Vec<ContextActionMessage>) -> Result<(), ActionFileError> {
+    pub fn update(&mut self, actions: Vec<ContextAction>) -> Result<(), ActionFileError> {
         let mut out = Vec::new();
         let writer = snap::write::FrameEncoder::new(&mut out);
         bincode::serialize_into(writer, &actions)?;

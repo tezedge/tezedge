@@ -1,7 +1,9 @@
 // Copyright {c} SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use ocaml_interop::{impl_from_ocaml_variant, OCamlBytes, OCamlFloat, OCamlInt64, OCamlList};
+use ocaml_interop::{
+    impl_from_ocaml_variant, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt64, OCamlList,
+};
 
 use crate::channel::ContextAction;
 
@@ -13,6 +15,8 @@ impl_from_ocaml_variant! {
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
             new_tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
+            new_tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -25,6 +29,8 @@ impl_from_ocaml_variant! {
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
             new_tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
+            new_tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -35,6 +41,8 @@ impl_from_ocaml_variant! {
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
             new_tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
+            new_tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -45,6 +53,8 @@ impl_from_ocaml_variant! {
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
             new_tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
+            new_tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             from_key: OCamlList<OCamlBytes>,
@@ -60,6 +70,7 @@ impl_from_ocaml_variant! {
             block_hash: Option<OCamlBytes>,
             new_context_hash: OCamlBytes,
             tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             author: OCamlBytes,
@@ -72,6 +83,7 @@ impl_from_ocaml_variant! {
             block_hash: Option<OCamlBytes>,
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -82,6 +94,7 @@ impl_from_ocaml_variant! {
             block_hash: Option<OCamlBytes>,
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -92,6 +105,7 @@ impl_from_ocaml_variant! {
             block_hash: Option<OCamlBytes>,
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
@@ -103,6 +117,7 @@ impl_from_ocaml_variant! {
             block_hash: Option<OCamlBytes>,
             operation_hash: Option<OCamlBytes>,
             tree_hash: Option<OCamlBytes>,
+            tree_id: OCamlInt,
             start_time: OCamlFloat,
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,

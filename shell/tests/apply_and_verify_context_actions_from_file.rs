@@ -130,7 +130,13 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let commit_log = create_commit_log(&commit_log_db_path);
     let kv = create_key_value_store(&key_value_db_path, &cache);
-    let storage = PersistentStorage::new(kv.clone(), kv.clone(), kv, commit_log.clone());
+    let storage = PersistentStorage::new(
+        kv.clone(),
+        kv.clone(),
+        kv,
+        commit_log,
+        storage::KeyValueStoreBackend::RocksDB, // TODO: test others too?
+    );
     let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
         BlockStorage::new(&storage),
         storage.merkle(),
@@ -156,7 +162,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
         match messages.iter().last() {
-            Some(msg) => match &msg.action {
+            Some(action) => match action {
                 ContextAction::Commit {
                     block_hash: Some(block_hash),
                     ..
@@ -178,11 +184,11 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             }
         };
 
-        for msg in messages.iter() {
+        for action in messages.iter() {
             if let ContextAction::Commit {
                 block_hash: Some(block_hash),
                 ..
-            } = &msg.action
+            } = action
             {
                 // there is extra validation in ContextApi::commit that verifies that
                 // applied action comes from known block - for testing purposes
@@ -192,7 +198,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 block_storage.put_block_header(&b).unwrap();
             }
 
-            match &msg.action {
+            match action {
                 // actions that does not mutate staging area can be ommited here
                 ContextAction::Set { .. }
                 | ContextAction::Copy { .. }
@@ -200,8 +206,8 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::RemoveRecursively { .. }
                 | ContextAction::Commit { .. }
                 | ContextAction::Checkout { .. } => {
-                    if let Err(e) = perform_context_action(&msg.action, &mut context) {
-                        panic!("cannot perform action {:?} error: '{}'", &msg, e);
+                    if let Err(e) = perform_context_action(&action, &mut context) {
+                        panic!("cannot perform action {:?} error: '{}'", &action, e);
                     }
                 }
                 ContextAction::Get { .. }
@@ -211,7 +217,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::Shutdown { .. } => {}
             };
 
-            if let Some(expected_hash) = get_new_tree_hash(&msg.action) {
+            if let Some(expected_hash) = get_new_tree_hash(&action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
             }
         }
