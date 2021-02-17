@@ -23,7 +23,7 @@ use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use tezos_context::channel::ContextActionMessage;
+use tezos_context::channel::ContextAction;
 
 pub mod codec;
 pub mod commit_log;
@@ -237,13 +237,13 @@ impl From<ActionFileError> for ActionRecordError {
 }
 
 pub trait ActionRecorder {
-    fn record(&mut self, action: &ContextActionMessage) -> Result<(), StorageError>;
+    fn record(&mut self, action: &ContextAction) -> Result<(), StorageError>;
 }
 
 pub struct NoRecorder {}
 
 impl ActionRecorder for NoRecorder {
-    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError> {
+    fn record(&mut self, _action: &ContextAction) -> Result<(), StorageError> {
         Ok(())
     }
 }

@@ -17,7 +17,7 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_context::channel::{context_receive, context_send, ContextAction, ContextActionMessage};
+use tezos_context::channel::{context_receive, context_send, ContextAction};
 
 use crate::protocol::*;
 use crate::runner::{ProtocolRunner, ProtocolRunnerError};
@@ -97,11 +97,11 @@ enum NodeMessage {
 struct NoopMessage;
 
 pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextActionMessage> = IpcClient::new(socket_path);
+    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
     let (_, mut tx) = ipc_client.connect()?;
-    while let Ok(msg) = context_receive() {
-        tx.send(&msg)?;
-        if let ContextAction::Shutdown = &msg.action {
+    while let Ok(action) = context_receive() {
+        tx.send(&action)?;
+        if let ContextAction::Shutdown = action {
             break;
         }
     }
@@ -183,11 +183,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             }
             ProtocolMessage::ShutdownCall => {
                 // send shutdown event to context listener, that we dont need it anymore
-                if let Err(e) = context_send(ContextActionMessage {
-                    action: ContextAction::Shutdown,
-                    record: false,
-                    perform: false,
-                }) {
+                if let Err(e) = context_send(ContextAction::Shutdown) {
                     warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
                 }
 
@@ -351,7 +347,7 @@ impl IpcCmdServer {
 }
 
 /// IPC event server is listening for incoming IPC connections.
-pub struct IpcEvtServer(IpcServer<ContextActionMessage, NoopMessage>);
+pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
 
 /// Difference between `IpcCmdServer` and `IpcEvtServer` is:
 /// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
@@ -365,7 +361,7 @@ impl IpcEvtServer {
     pub fn try_accept(
         &mut self,
         timeout: Duration,
-    ) -> Result<IpcReceiver<ContextActionMessage>, IpcError> {
+    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
         let (rx, _) = self.0.try_accept(timeout)?;
         Ok(rx)
     }

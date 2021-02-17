@@ -14,11 +14,11 @@ const CHANNEL_BUFFER_LEN: usize = 1_048_576;
 
 lazy_static! {
     /// This channel is shared by both OCaml and Rust
-    static ref CHANNEL: (Sender<ContextActionMessage>, Receiver<ContextActionMessage>) = bounded(CHANNEL_BUFFER_LEN);
+    static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);
 }
 
 /// Send message into the shared channel.
-pub fn context_send(action: ContextActionMessage) -> Result<(), SendError<ContextActionMessage>> {
+pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
     if CHANNEL_ENABLED.load(Ordering::Acquire) {
         CHANNEL.0.send(action)
     } else {
@@ -27,7 +27,7 @@ pub fn context_send(action: ContextActionMessage) -> Result<(), SendError<Contex
 }
 
 /// Receive message from the shared channel.
-pub fn context_receive() -> Result<ContextActionMessage, RecvError> {
+pub fn context_receive() -> Result<ContextAction, RecvError> {
     CHANNEL.1.recv()
 }
 
@@ -39,6 +39,7 @@ pub fn enable_context_channel() {
 }
 
 type Hash = Vec<u8>;
+type TreeId = i32;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ContextAction {
@@ -48,6 +49,8 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
+        new_tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -60,6 +63,8 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
+        new_tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -70,6 +75,8 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
+        new_tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -80,6 +87,8 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
+        new_tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         from_key: Vec<String>,
@@ -95,6 +104,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         new_context_hash: Hash,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         author: String,
@@ -107,6 +117,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -117,6 +128,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -127,6 +139,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -138,19 +151,13 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
     },
     /// This is a control event used to shutdown IPC channel
     Shutdown,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ContextActionMessage {
-    pub action: ContextAction,
-    pub record: bool,
-    pub perform: bool,
 }
 
 fn get_time(action: &ContextAction) -> f64 {

@@ -8,11 +8,11 @@ use crypto::hash::BlockHash;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::path::PathBuf;
-use tezos_context::channel::{ContextAction, ContextActionMessage};
+use tezos_context::channel::ContextAction;
 
 pub struct ActionFileStorage {
     file: PathBuf,
-    staging: HashMap<BlockHash, Vec<ContextActionMessage>>,
+    staging: HashMap<BlockHash, Vec<ContextAction>>,
     level: u32,
 }
 
@@ -25,18 +25,18 @@ impl ActionFileStorage {
         }
     }
 
-    fn store_single_message(&mut self, block_hash: BlockHash, msg: &ContextActionMessage) {
+    fn store_single_action(&mut self, block_hash: BlockHash, action: &ContextAction) {
         let block_actions = self.staging.entry(block_hash).or_default();
-        block_actions.push(msg.clone());
+        block_actions.push(action.clone());
     }
 
-    fn store_commit_message(
+    fn store_commit_action(
         &mut self,
         block_hash: BlockHash,
-        msg: &ContextActionMessage,
+        action: &ContextAction,
     ) -> Result<(), StorageError> {
         self.level += 1;
-        self.store_single_message(block_hash.clone(), msg);
+        self.store_single_action(block_hash.clone(), action);
         self.flush_entries_to_file(block_hash)
     }
 
@@ -61,11 +61,8 @@ impl ActionFileStorage {
 }
 
 impl ActionRecorder for ActionFileStorage {
-    fn record(
-        &mut self,
-        context_action_message: &ContextActionMessage,
-    ) -> std::result::Result<(), StorageError> {
-        match &context_action_message.action {
+    fn record(&mut self, context_action: &ContextAction) -> std::result::Result<(), StorageError> {
+        match context_action {
             ContextAction::Set {
                 block_hash: Some(block_hash),
                 ..
@@ -98,19 +95,13 @@ impl ActionRecorder for ActionFileStorage {
                 block_hash: Some(block_hash),
                 ..
             } => {
-                self.store_single_message(
-                    BlockHash::try_from(block_hash.clone())?,
-                    context_action_message,
-                );
+                self.store_single_action(BlockHash::try_from(block_hash.clone())?, context_action);
                 Ok(())
             }
             ContextAction::Commit {
                 block_hash: Some(block_hash),
                 ..
-            } => self.store_commit_message(
-                BlockHash::try_from(block_hash.clone())?,
-                &context_action_message,
-            ),
+            } => self.store_commit_action(BlockHash::try_from(block_hash.clone())?, context_action),
             _ => Ok(()),
         }
     }

@@ -5,11 +5,11 @@
 
 use ocaml_interop::{ocaml_export, OCaml, OCamlRef, RawOCaml};
 
-use tezos_context::channel::{context_send, ContextAction, ContextActionMessage};
+use tezos_context::channel::{context_send, ContextAction};
 
 extern "C" {
     fn initialize_ml_context_functions(
-        ml_context_send_action: unsafe extern "C" fn(RawOCaml, RawOCaml, RawOCaml) -> RawOCaml,
+        ml_context_send_action: unsafe extern "C" fn(RawOCaml) -> RawOCaml,
     );
 }
 
@@ -21,23 +21,14 @@ ocaml_export! {
     fn real_ml_context_send_action(
         cr,
         context_action: OCamlRef<ContextAction>,
-        record: OCamlRef<bool>,
-        perform: OCamlRef<bool>,
     ) {
         let action: ContextAction = context_action.to_rust(cr);
-        let record = record.to_rust(cr);
-        let perform = perform.to_rust(cr);
-        context_send_action(action, record, perform);
+        context_send_action(action);
         OCaml::unit()
     }
 
 }
 
-fn context_send_action(action: ContextAction, record: bool, perform: bool) {
-    context_send(ContextActionMessage {
-        action,
-        perform,
-        record,
-    })
-    .unwrap()
+fn context_send_action(action: ContextAction) {
+    context_send(action).unwrap()
 }
