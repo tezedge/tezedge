@@ -39,6 +39,7 @@ pub fn enable_context_channel() {
 }
 
 type Hash = Vec<u8>;
+type TreeId = i32;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum ContextAction {
@@ -48,6 +49,7 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -60,6 +62,7 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -70,6 +73,7 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -80,6 +84,7 @@ pub enum ContextAction {
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
         new_tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         from_key: Vec<String>,
@@ -95,6 +100,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         new_context_hash: Hash,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         author: String,
@@ -107,6 +113,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -117,6 +124,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -127,6 +135,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
@@ -138,6 +147,7 @@ pub enum ContextAction {
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
         tree_hash: Option<Hash>,
+        tree_id: TreeId,
         start_time: f64,
         end_time: f64,
         key: Vec<String>,
