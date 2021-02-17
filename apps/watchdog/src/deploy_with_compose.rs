@@ -9,6 +9,8 @@ use tokio::time::{sleep, Duration};
 
 pub const NODE_CONTAINER_NAME: &str = "deploy_rust-node_1";
 pub const DEBUGGER_CONTAINER_NAME: &str = "deploy_rust-debugger_1";
+pub const SANDBOX_CONTAINER_NAME: &str = "deploy_rust-sandbox_1";
+
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
 pub async fn launch_stack(log: Logger) {
@@ -42,6 +44,23 @@ pub async fn launch_stack(log: Logger) {
     info!(log, "Ocaml node is running");
 }
 
+pub async fn launch_sandbox(log: Logger) {
+    start_with_compose(DEBUGGER_CONTAINER_NAME, "rust-debugger");
+    // debugger healthcheck
+    while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
+        sleep(Duration::from_millis(1000)).await;
+    }
+    info!(log, "Debugger for sandboxed tezedge node is running");
+
+    // start sandbox launcher
+    start_with_compose(SANDBOX_CONTAINER_NAME, "rust-sandbox");
+    // sandbox launcher healthcheck
+    while reqwest::get("http://localhost:3030/list_nodes").await.is_err() {
+        sleep(Duration::from_millis(1000)).await;
+    }
+    info!(log, "Debugger for sandboxed tezedge node is running");
+}
+
 pub async fn restart_stack(log: Logger) {
     stop_with_compose();
     cleanup_volumes();
@@ -53,6 +72,19 @@ pub async fn shutdown_and_update(log: Logger) {
     cleanup_docker();
     update_with_compose();
     restart_stack(log).await;
+}
+
+pub async fn restart_sandbox(log: Logger) {
+    stop_with_compose();
+    cleanup_volumes();
+    launch_sandbox(log).await;
+}
+
+pub async fn shutdown_and_update_sandbox(log: Logger) {
+    stop_with_compose();
+    cleanup_docker();
+    update_with_compose();
+    restart_sandbox(log).await;
 }
 
 pub fn cleanup_docker() {

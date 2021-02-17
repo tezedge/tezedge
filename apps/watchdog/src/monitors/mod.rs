@@ -10,7 +10,7 @@ use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose};
+use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose, restart_sandbox};
 use crate::monitors::deploy::DeployMonitor;
 use crate::monitors::info::InfoMonitor;
 use crate::monitors::resource::{ResourceMonitor, ResourceUtilizationStorage};
@@ -39,6 +39,24 @@ pub fn start_deploy_monitoring(
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_stack().await {
                 error!(log, "Deploy monitoring error: {}", e);
+            }
+            sleep(Duration::from_secs(interval)).await;
+        }
+    })
+}
+
+pub fn start_sandbox_monitoring(
+    slack: SlackServer,
+    interval: u64,
+    log: Logger,
+    running: Arc<AtomicBool>,
+) -> JoinHandle<()> {
+    let docker = Docker::new();
+    let deploy_monitor = DeployMonitor::new(docker, slack, log.clone());
+    tokio::spawn(async move {
+        while running.load(Ordering::Acquire) {
+            if let Err(e) = deploy_monitor.monitor_sandbox_launcher().await {
+                error!(log, "Sandbox launcher monitoring error: {}", e);
             }
             sleep(Duration::from_secs(interval)).await;
         }
@@ -96,5 +114,14 @@ pub async fn start_stack(slack: SlackServer, log: Logger) -> Result<(), failure:
     // cleanup possible dangling containers/volumes and start the stack
     restart_stack(log).await;
     slack.send_message("Tezedge stack started").await?;
+    Ok(())
+}
+
+pub async fn start_sandbox(slack: SlackServer, log: Logger) -> Result<(), failure::Error> {
+    info!(log, "Starting tezedge stack");
+
+    // cleanup possible dangling containers/volumes and start the stack
+    restart_sandbox(log).await;
+    slack.send_message("Tezedge sandbox launcher started").await?;
     Ok(())
 }

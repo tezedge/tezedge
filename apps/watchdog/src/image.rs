@@ -85,3 +85,10 @@ impl Explorer {
         }
     }
 }
+
+pub struct Sandbox;
+
+impl Image for Sandbox {
+    const TAG_ENV_KEY: &'static str = "TEZEDGE_SANDBOX_IMAGE_TAG";
+    const IMAGE_NAME: &'static str = "simplestakingcom/tezedge";
+}

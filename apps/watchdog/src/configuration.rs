@@ -27,6 +27,9 @@ pub struct WatchdogEnvironment {
 
     // rpc server port
     pub rpc_port: u16,
+
+    // flag for sandbox mode
+    pub is_sandbox: bool,
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -92,6 +95,11 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Port number to open the watchdog rpc server on"),
         )
         .arg(
+            Arg::with_name("sandbox")
+                .long("sandbox")
+                .help("Watch only the sandbox launcher and a debugger"),
+        )
+        .arg(
             Arg::with_name("info-interval")
                 .long("info-interval")
                 .takes_value(true)
@@ -110,8 +118,8 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 
 fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "image-monitor-interval");
-    validate_required_arg(args, "resource-monitor-interval");
-    validate_required_arg(args, "info-interval");
+    // validate_required_arg(args, "resource-monitor-interval");
+    // validate_required_arg(args, "info-interval");
     validate_required_arg(args, "slack-token");
     validate_required_arg(args, "slack-channel-name");
     validate_required_arg(args, "slack-url");
@@ -138,12 +146,12 @@ impl WatchdogEnvironment {
                 .to_string(),
             image_monitor_interval: args
                 .value_of("image-monitor-interval")
-                .unwrap_or("")
+                .unwrap_or("0")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
             resource_monitor_interval: args
                 .value_of("resource-monitor-interval")
-                .unwrap_or("")
+                .unwrap_or("0")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
             rpc_port: args
@@ -153,9 +161,11 @@ impl WatchdogEnvironment {
                 .expect("Expected u16 value of valid port number"),
             info_interval: args
                 .value_of("info-interval")
-                .unwrap_or("")
+                .unwrap_or("0")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
+            is_sandbox: args
+                .is_present("sandbox"),
         }
     }
 }
