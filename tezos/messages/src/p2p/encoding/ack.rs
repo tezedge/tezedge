@@ -12,6 +12,8 @@ use tezos_encoding::has_encoding;
 
 use crate::non_cached_data;
 
+use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
+
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum AckMessage {
     Ack,
@@ -96,7 +98,10 @@ impl NackInfo {
             ),
             Field::new(
                 "potential_peers_to_connect",
-                Encoding::dynamic(Encoding::list(Encoding::String)),
+                Encoding::dynamic(Encoding::bounded_list(
+                    NACK_PEERS_MAX_LENGTH,
+                    Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
+                )),
             ),
         ])
     }

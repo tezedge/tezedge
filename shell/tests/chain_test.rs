@@ -1117,7 +1117,7 @@ mod test_cases_data {
         desired_current_branch_level: Option<Level>,
         db: &Db,
     ) -> Result<Vec<PeerMessageResponse>, failure::Error> {
-        match message.messages().get(0).unwrap() {
+        match message.message() {
             PeerMessage::GetCurrentBranch(request) => match desired_current_branch_level {
                 Some(level) => {
                     let block_hash = db.block_hash(level)?;
@@ -1361,27 +1361,25 @@ mod test_node_peer {
                             trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
                             // we collect here simple Mempool
-                            for m in msg.messages() {
-                                if let PeerMessage::CurrentHead(current_head) = m {
-                                    let mut test_mempool =
-                                        test_mempool.write().expect("Failed to lock");
-                                    let mut known_valid: Vec<OperationHash> =
-                                        test_mempool.known_valid().clone();
-                                    let mut pending = test_mempool.pending().clone();
+                            if let PeerMessage::CurrentHead(current_head) = msg.message() {
+                                let mut test_mempool =
+                                    test_mempool.write().expect("Failed to lock");
+                                let mut known_valid: Vec<OperationHash> =
+                                    test_mempool.known_valid().clone();
+                                let mut pending = test_mempool.pending().clone();
 
-                                    for op in current_head.current_mempool().known_valid() {
-                                        if !known_valid.contains(op) {
-                                            known_valid.push(op.clone());
-                                        }
+                                for op in current_head.current_mempool().known_valid() {
+                                    if !known_valid.contains(op) {
+                                        known_valid.push(op.clone());
                                     }
-                                    for op in current_head.current_mempool().pending() {
-                                        if !pending.contains(op) {
-                                            pending.push(op.clone());
-                                        }
-                                    }
-
-                                    *test_mempool = Mempool::new(known_valid, pending);
                                 }
+                                for op in current_head.current_mempool().pending() {
+                                    if !pending.contains(op) {
+                                        pending.push(op.clone());
+                                    }
+                                }
+
+                                *test_mempool = Mempool::new(known_valid, pending);
                             }
 
                             // apply callback
@@ -1529,32 +1527,29 @@ mod test_node_peer {
     }
 
     fn msg_type(msg: &PeerMessageResponse) -> String {
-        msg.messages()
-            .iter()
-            .map(|m| match m {
-                PeerMessage::Disconnect => "Disconnect",
-                PeerMessage::Advertise(_) => "Advertise",
-                PeerMessage::SwapRequest(_) => "SwapRequest",
-                PeerMessage::SwapAck(_) => "SwapAck",
-                PeerMessage::Bootstrap => "Bootstrap",
-                PeerMessage::GetCurrentBranch(_) => "GetCurrentBranch",
-                PeerMessage::CurrentBranch(_) => "CurrentBranch",
-                PeerMessage::Deactivate(_) => "Deactivate",
-                PeerMessage::GetCurrentHead(_) => "GetCurrentHead",
-                PeerMessage::CurrentHead(_) => "CurrentHead",
-                PeerMessage::GetBlockHeaders(_) => "GetBlockHeaders",
-                PeerMessage::BlockHeader(_) => "BlockHeader",
-                PeerMessage::GetOperations(_) => "GetOperations",
-                PeerMessage::Operation(_) => "Operation",
-                PeerMessage::GetProtocols(_) => "GetProtocols",
-                PeerMessage::Protocol(_) => "Protocol",
-                PeerMessage::GetOperationHashesForBlocks(_) => "GetOperationHashesForBlocks",
-                PeerMessage::OperationHashesForBlock(_) => "OperationHashesForBlock",
-                PeerMessage::GetOperationsForBlocks(_) => "GetOperationsForBlocks",
-                PeerMessage::OperationsForBlocks(_) => "OperationsForBlocks",
-            })
-            .collect::<Vec<&str>>()
-            .join(",")
+        match msg.message() {
+            PeerMessage::Disconnect => "Disconnect",
+            PeerMessage::Advertise(_) => "Advertise",
+            PeerMessage::SwapRequest(_) => "SwapRequest",
+            PeerMessage::SwapAck(_) => "SwapAck",
+            PeerMessage::Bootstrap => "Bootstrap",
+            PeerMessage::GetCurrentBranch(_) => "GetCurrentBranch",
+            PeerMessage::CurrentBranch(_) => "CurrentBranch",
+            PeerMessage::Deactivate(_) => "Deactivate",
+            PeerMessage::GetCurrentHead(_) => "GetCurrentHead",
+            PeerMessage::CurrentHead(_) => "CurrentHead",
+            PeerMessage::GetBlockHeaders(_) => "GetBlockHeaders",
+            PeerMessage::BlockHeader(_) => "BlockHeader",
+            PeerMessage::GetOperations(_) => "GetOperations",
+            PeerMessage::Operation(_) => "Operation",
+            PeerMessage::GetProtocols(_) => "GetProtocols",
+            PeerMessage::Protocol(_) => "Protocol",
+            PeerMessage::GetOperationHashesForBlocks(_) => "GetOperationHashesForBlocks",
+            PeerMessage::OperationHashesForBlock(_) => "OperationHashesForBlock",
+            PeerMessage::GetOperationsForBlocks(_) => "GetOperationsForBlocks",
+            PeerMessage::OperationsForBlocks(_) => "OperationsForBlocks",
+        }
+        .to_string()
     }
 
     fn contains_all_keys(set: &HashSet<OperationHash>, keys: &HashSet<OperationHash>) -> bool {

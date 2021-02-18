@@ -26,10 +26,7 @@ fn deserialized_equals_serialized_message() {
     let resp: PeerMessageResponse = original_message.into();
     let msg_bytes = resp.as_bytes().unwrap();
     let deserialized = PeerMessageResponse::from_bytes(msg_bytes).expect("expected valid message");
-    let deserialized_message = deserialized
-        .messages()
-        .get(0)
-        .expect("expected message in response");
+    let deserialized_message = deserialized.message();
     let original_message = PeerMessage::Deactivate(DeactivateMessage::new(
         ChainId::try_from(hex::decode("8eceda2f").unwrap()).unwrap(),
     ));
