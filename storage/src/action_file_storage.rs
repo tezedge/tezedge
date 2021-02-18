@@ -34,19 +34,14 @@ impl ActionFileStorage {
     ) -> Result<(), StorageError> {
         self.level += 1;
         self.store_single_message(block_hash.clone(), msg);
-        return self.flush_entries_to_file(block_hash, self.level);
+        self.flush_entries_to_file(block_hash)
     }
 
-    fn flush_entries_to_file(
-        &mut self,
-        block_hash: BlockHash,
-        block_level: u32,
-    ) -> Result<(), StorageError> {
-        let mut action_file_writer = ActionsFileWriter::new(&self.file).or_else(|e| {
-            Err(StorageError::ActionRecordError {
+    fn flush_entries_to_file(&mut self, block_hash: BlockHash) -> Result<(), StorageError> {
+        let mut action_file_writer =
+            ActionsFileWriter::new(&self.file).map_err(|e| StorageError::ActionRecordError {
                 error: ActionRecordError::ActionFileError { error: e },
-            })
-        })?;
+            })?;
 
         let actions =
             self.staging
@@ -56,8 +51,8 @@ impl ActionFileStorage {
                 })?;
 
         action_file_writer
-            .update(block_hash, block_level, actions)
-            .or_else(|e| Err(ActionRecordError::from(e)))?;
+            .update(actions)
+            .map_err(ActionRecordError::from)?;
         Ok(())
     }
 }
