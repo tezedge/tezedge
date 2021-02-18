@@ -106,6 +106,10 @@ impl TagMap {
             .get(variant)
             .and_then(|tag_id| self.id_to_tag.get(tag_id))
     }
+
+    pub fn tags(&self) -> impl Iterator<Item = &Tag> {
+        self.id_to_tag.values()
+    }
 }
 
 pub enum SchemaType {
@@ -370,6 +374,8 @@ macro_rules! has_encoding {
 
 #[cfg(test)]
 mod tests {
+    use crate::binary_reader::BinaryReader;
+
     use super::*;
 
     #[test]
@@ -391,5 +397,45 @@ mod tests {
         } else {
             panic!("Was expecting Encoding::Split");
         }
+    }
+
+    #[test]
+    fn bounded_with_bytes() {
+        let encoding = Encoding::Obj(vec![
+            Field::new("f1", Encoding::bounded(10, Encoding::Uint8)),
+            Field::new("f2", Encoding::bounded(10, Encoding::Uint8)),
+        ]);
+
+        let value = Value::Record(vec![
+            ("f1".to_string(), Value::Uint8(1)),
+            ("f2".to_string(), Value::Uint8(2)),
+        ]);
+
+        let data = [1, 2];
+
+        let res = BinaryReader::new().read(data, &encoding);
+        assert_eq!(res.unwrap(), value);
+    }
+
+    #[test]
+    fn bounded_with_strings() {
+        let encoding = Encoding::Obj(vec![
+            Field::new("f1", Encoding::bounded(10, Encoding::String)),
+            Field::new("f2", Encoding::bounded(10, Encoding::String)),
+        ]);
+
+        let value = Value::Record(vec![
+            ("f1".to_string(), Value::String("A".to_string())),
+            ("f2".to_string(), Value::String("BB".to_string())),
+        ]);
+
+        let data = [
+            0, 0, 0, 1,    // f1.len
+            0x41, // f1
+            0, 0, 0, 2, 0x42, 0x42,
+        ];
+
+        let res = BinaryReader::new().read(data, &encoding);
+        assert_eq!(res.unwrap(), value);
     }
 }

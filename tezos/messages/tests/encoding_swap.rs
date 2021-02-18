@@ -51,9 +51,9 @@ fn can_t_deserialize_swap_point_max_plus() -> Result<(), Error> {
         err.kind(),
         BinaryReaderErrorKind::EncodingBoundaryExceeded {
             name: _,
-            boundary: P2P_POINT_MAX_LENGTH,
+            boundary: P2P_POINT_MAX_SIZE,
             actual: ActualSize::Exact(actual),
-        } if actual == P2P_POINT_MAX_LENGTH + 1
+        } if actual == P2P_POINT_MAX_SIZE + 1
     ));
     Ok(())
 }
