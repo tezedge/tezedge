@@ -277,7 +277,7 @@ fn init_storage_data(
         };
         block_storage.put_block_header(&block)?;
         block_meta_storage.put_block_header(&block, &chain_id, &log)?;
-        operations_meta_storage.put_block_header(&block, &chain_id)?;
+        operations_meta_storage.put_block_header(&block, chain_id.clone())?;
 
         // store operations to db
         let validation_pass: u8 = block.header.validation_pass();

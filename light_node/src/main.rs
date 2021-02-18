@@ -19,7 +19,6 @@ use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::ChainFeeder;
-use shell::chain_feeder_channel::ChainFeederChannel;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
@@ -333,8 +332,6 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let chain_feeder_channel =
-        ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
@@ -362,7 +359,6 @@ fn block_on_actors(
         &actor_system,
         chain_current_head_manager,
         shell_channel.clone(),
-        chain_feeder_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
@@ -375,7 +371,6 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
-        chain_feeder_channel,
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),

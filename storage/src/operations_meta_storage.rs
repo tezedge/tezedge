@@ -8,6 +8,7 @@ use std::sync::Arc;
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
+use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::database::{IteratorMode, IteratorWithSchema};
@@ -45,18 +46,13 @@ impl OperationsMetaStorage {
     pub fn put_block_header(
         &self,
         block_header: &BlockHeaderWithHash,
-        chain_id: &ChainId,
+        chain_id: ChainId,
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
-        let meta = Meta {
-            validation_passes: block_header.header.validation_pass(),
-            is_validation_pass_present: vec![
-                false as u8;
-                block_header.header.validation_pass() as usize
-            ],
-            is_complete: block_header.header.validation_pass() == 0,
-            level: block_header.header.level(),
-            chain_id: chain_id.clone(),
-        };
+        let meta = Meta::new(
+            block_header.header.validation_pass(),
+            block_header.header.level(),
+            chain_id,
+        );
         self.put(&block_header.hash, &meta)
             .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
     }
@@ -192,6 +188,16 @@ pub struct Meta {
 }
 
 impl Meta {
+    pub fn new(validation_pass: u8, level: Level, chain_id: ChainId) -> Meta {
+        Self {
+            validation_passes: validation_pass,
+            is_validation_pass_present: vec![false as u8; validation_pass as usize],
+            is_complete: validation_pass == 0,
+            level,
+            chain_id,
+        }
+    }
+
     pub fn is_complete(&self) -> bool {
         self.is_complete
     }

@@ -299,6 +299,7 @@ impl Receive<SendMessage> for Peer {
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
+        let peer_id_marker = self.peer_id_marker.clone();
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
@@ -310,12 +311,14 @@ impl Receive<SendMessage> for Peer {
                 match write_result {
                     Ok(write_result) => {
                         if let Err(e) = write_result {
-                            warn!(system.log(), "Failed to send message"; "reason" => e);
+                            warn!(system.log(), "Failed to send message"; "reason" => e, "msg" => format!("{:?}", msg.message.as_ref()),
+                                                "peer_id" => peer_id_marker, "peer" => myself.name(), "peer_uri" => myself.uri().to_string());
                             system.stop(myself);
                         }
                     }
                     Err(_) => {
-                        warn!(system.log(), "Failed to send message"; "reason" => "timeout");
+                        warn!(system.log(), "Failed to send message"; "reason" => "timeout", "msg" => format!("{:?}", msg.message.as_ref()),
+                                            "peer_id" => peer_id_marker, "peer" => myself.name(), "peer_uri" => myself.uri().to_string());
                         system.stop(myself);
                     }
                 }
