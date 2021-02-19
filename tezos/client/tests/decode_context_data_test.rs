@@ -27,8 +27,8 @@ fn key(key_as_string: &str) -> Vec<String> {
 fn test_fn_decode_context_data() {
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
         log_enabled: is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: no_of_ffi_calls_treshold_for_gc(),
     })
     .unwrap();
 
@@ -615,14 +615,7 @@ fn test_fn_decode_context_data_big_maps() {
 
 fn is_ocaml_log_enabled() -> bool {
     env::var("OCAML_LOG_ENABLED")
-        .unwrap_or("false".to_string())
+        .unwrap_or_else(|_| "false".to_string())
         .parse::<bool>()
-        .unwrap()
-}
-
-fn no_of_ffi_calls_treshold_for_gc() -> i32 {
-    env::var("OCAML_CALLS_GC")
-        .unwrap_or("2000".to_string())
-        .parse::<i32>()
         .unwrap()
 }

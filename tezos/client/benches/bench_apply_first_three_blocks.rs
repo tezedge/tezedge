@@ -8,7 +8,7 @@ use test::Bencher;
 
 use crypto::hash::ChainId;
 use tezos_api::environment::{
-    TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV,
+    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV,
 };
 use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
@@ -23,10 +23,9 @@ use tezos_messages::p2p::encoding::prelude::BlockHeader;
 fn bench_apply_first_three_block(_: &mut Bencher) {
     ffi::change_runtime_configuration(TezosRuntimeConfiguration {
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
     })
-    .unwrap()
     .unwrap();
 
     let now = Instant::now();
@@ -158,7 +157,10 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
     (
         tezos_env.main_chain_id().expect("invalid chain id"),
         tezos_env
-            .genesis_header(genesis_commit_hash, OPERATION_LIST_LIST_HASH_EMPTY.clone())
+            .genesis_header(
+                genesis_commit_hash,
+                get_empty_operation_list_list_hash().unwrap(),
+            )
             .expect("genesis header error"),
         result,
     )
@@ -262,13 +264,6 @@ mod common {
         env::var("OCAML_LOG_ENABLED")
             .unwrap_or_else(|_| "false".to_string())
             .parse::<bool>()
-            .unwrap()
-    }
-
-    pub fn no_of_ffi_calls_treshold_for_gc() -> i32 {
-        env::var("OCAML_CALLS_GC")
-            .unwrap_or_else(|_| "2000".to_string())
-            .parse::<i32>()
             .unwrap()
     }
 }

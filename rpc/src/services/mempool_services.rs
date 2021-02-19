@@ -315,8 +315,13 @@ pub fn inject_block(
             block_with_op
                 .operations
                 .into_iter()
-                .map(|validation_pass| validation_pass.into_iter().map(|op| op.into()).collect())
-                .collect(),
+                .map(|validation_pass| {
+                    validation_pass
+                        .into_iter()
+                        .map(|op| op.try_into())
+                        .collect::<Result<_, _>>()
+                })
+                .collect::<Result<_, _>>()?,
         )
     } else {
         None

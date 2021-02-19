@@ -630,6 +630,26 @@ pub(crate) fn get_prevalidators(
     Ok(prevalidators)
 }
 
+/// Struct to show in tezedge explorer to lower data flow
+#[derive(Serialize, Debug, Clone)]
+pub struct SlimBlockData {
+    pub level: i32,
+    pub block_hash: String,
+    pub timestamp: String,
+}
+
+impl From<(BlockHeaderWithHash, BlockJsonData)> for SlimBlockData {
+    fn from(
+        (block_header_with_hash, _block_json_data): (BlockHeaderWithHash, BlockJsonData),
+    ) -> Self {
+        Self {
+            level: block_header_with_hash.header.level(),
+            block_hash: block_header_with_hash.hash.to_base58_check(),
+            timestamp: block_header_with_hash.header.timestamp().to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -5,7 +5,7 @@ use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
 use tezos_api::environment::{
-    TezosEnvironment, TezosEnvironmentConfiguration, OPERATION_LIST_LIST_HASH_EMPTY, TEZOS_ENV,
+    get_empty_operation_list_list_hash, TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV,
 };
 use tezos_api::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
@@ -21,8 +21,8 @@ fn init_test_runtime() {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
     })
     .unwrap();
 }
@@ -59,7 +59,10 @@ fn init_test_protocol_context(
     (
         tezos_env.main_chain_id().expect("invalid chain id"),
         tezos_env
-            .genesis_header(genesis_commit_hash, OPERATION_LIST_LIST_HASH_EMPTY.clone())
+            .genesis_header(
+                genesis_commit_hash,
+                get_empty_operation_list_list_hash().unwrap(),
+            )
             .expect("genesis header error"),
         tezos_env.genesis_protocol().expect("protocol_hash error"),
         result,

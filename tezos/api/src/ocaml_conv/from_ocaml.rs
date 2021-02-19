@@ -11,8 +11,8 @@ use super::{
 use crate::ffi::{
     Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
     HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
-    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, ValidateOperationResponse,
-    ValidateOperationResult,
+    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosErrorTrace,
+    ValidateOperationResponse, ValidateOperationResult,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
@@ -20,7 +20,7 @@ use crypto::hash::{
 };
 use ocaml_interop::{
     impl_from_ocaml_record, impl_from_ocaml_variant, FromOCaml, OCaml, OCamlBytes, OCamlInt,
-    OCamlInt32, OCamlList, ToRust,
+    OCamlInt32, OCamlList,
 };
 
 macro_rules! from_ocaml_hash {
@@ -149,6 +149,13 @@ impl_from_ocaml_record! {
 impl_from_ocaml_record! {
     HelpersPreapplyResponse {
         body: OCamlBytes,
+    }
+}
+
+impl_from_ocaml_record! {
+    TezosErrorTrace {
+        head_error_id: String,
+        trace_json: String,
     }
 }
 

@@ -5,8 +5,8 @@ extern crate test;
 
 use std::convert::{TryFrom, TryInto};
 
-use crypto::hash::{BlockHash, ChainId, HashType, OperationHash, ProtocolHash};
-use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, OCaml, ToOCaml, ToRust};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType, OperationHash, ProtocolHash};
+use ocaml_interop::{ocaml_frame, to_ocaml, OCaml, OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
 use tezos_api::{
@@ -17,7 +17,7 @@ use tezos_api::{
     ffi::RpcRequest,
     ffi::RustBytes,
     ffi::ValidateOperationRequest,
-    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder},
+    ffi::{ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData},
     ocaml_conv::FfiBlockHeader,
     ocaml_conv::FfiOperation,
 };
@@ -46,12 +46,16 @@ mod tezos_ffi {
         ffi::ProtocolRpcRequest,
         ffi::RpcMethod,
         ffi::RpcRequest,
-        ffi::ValidateOperationRequest,
+        ffi::{ApplyBlockResponse, ForkingTestchainData, ValidateOperationRequest},
         ocaml_conv::OCamlBlockHash,
+        ocaml_conv::OCamlChainId,
         ocaml_conv::OCamlContextHash,
         ocaml_conv::OCamlOperationHash,
         ocaml_conv::OCamlOperationListListHash,
-        ocaml_conv::{OCamlChainId, OCamlProtocolHash},
+        ocaml_conv::{
+            OCamlBlockMetadataHash, OCamlOperationMetadataHash, OCamlOperationMetadataListListHash,
+            OCamlProtocolHash,
+        },
     };
     use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
@@ -59,12 +63,10 @@ mod tezos_ffi {
         pub fn construct_and_compare_hash(operation_hash: OCamlOperationHash, hash_bytes: OCamlBytes) -> bool;
         pub fn construct_and_compare_block_header(
             block_header: BlockHeader,
-            shell_params1: (
-                /* level: */ OCamlInt32,
-                /* proto_level: */ OCamlInt,
-                /* validation_passes: */ OCamlInt,
-                /* timestamp: */ OCamlInt64,
-            ),
+            level: OCamlInt32,
+            proto_level: OCamlInt,
+            validation_passes: OCamlInt,
+            timestamp: OCamlInt64,
             predecessor:  OCamlBlockHash,
             operations_hash: OCamlOperationListListHash,
             fitness: OCamlList<OCamlBytes>,
@@ -77,7 +79,23 @@ mod tezos_ffi {
             block_header: BlockHeader,
             pred_header: BlockHeader,
             max_operations_ttl: OCamlInt,
-            operations: OCamlList<OCamlList<Operation>>
+            operations: OCamlList<OCamlList<Operation>>,
+        ) -> bool;
+        pub fn construct_and_compare_apply_block_response(
+            apply_block_response: ApplyBlockResponse,
+            validation_result_message: OCamlBytes,
+            context_hash: OCamlContextHash,
+            block_header_proto_json: OCamlBytes,
+            block_header_proto_metadata_json: OCamlBytes,
+            operations_proto_metadata_json: OCamlBytes,
+            max_operations_ttl: OCamlInt,
+            last_allowed_fork_level: OCamlInt32,
+            forking_testchain: bool,
+            forking_testchain_data: Option<ForkingTestchainData>,
+            block_metadata_hash: Option<OCamlBlockMetadataHash>,
+            ops_metadata_hashes: Option<OCamlList<OCamlList<OCamlOperationMetadataHash>>>,
+            ops_metadata_hash: Option<OCamlOperationMetadataListListHash>,
+
         ) -> bool;
         pub fn construct_and_compare_begin_construction_request(
             begin_construction_request: BeginConstructionRequest,
@@ -157,17 +175,11 @@ fn sample_operations_for_request_decoded() -> Vec<Vec<RustBytes>> {
 fn test_hash_conv() {
     let operation_hash = OperationHash::try_from(hex::decode(OPERATION_HASH).unwrap()).unwrap();
 
-    let result: bool = runtime::execute(move || {
-        ocaml_frame!(gc(hash_root), {
-            let hash = to_ocaml!(gc, operation_hash, hash_root);
-            let hash_bytes = to_ocaml!(gc, operation_hash.as_ref());
-            ocaml_call!(tezos_ffi::construct_and_compare_hash(
-                gc,
-                gc.get(&hash),
-                hash_bytes
-            ))
-            .unwrap()
-            .to_rust()
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(rt, (hash_root, hash_bytes_root), {
+            let hash = to_ocaml!(rt, operation_hash, hash_root);
+            let hash_bytes = to_ocaml!(rt, operation_hash.as_ref(), hash_bytes_root);
+            tezos_ffi::construct_and_compare_hash(rt, hash, hash_bytes).to_rust()
         })
     })
     .unwrap();
@@ -180,44 +192,46 @@ fn test_hash_conv() {
 fn test_block_header_conv() {
     let block_header = BlockHeader::from_bytes(hex::decode(HEADER).unwrap()).unwrap();
 
-    let result: bool = runtime::execute(move || {
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         ocaml_frame!(
-            gc(
-                shell_params1_root,
+            rt,
+            (
+                level_root,
+                timestamp_root,
                 predecessor_root,
                 operations_hash_root,
                 fitness_root,
                 context_root,
-                protocol_data_root
+                protocol_data_root,
+                block_header_root,
             ),
             {
-                // Bundle a bunch of the params because of the GC frame keep limit
-                let shell_params1 = (
-                    block_header.level(),
-                    block_header.proto() as i32,
-                    block_header.validation_pass() as i32,
-                    block_header.timestamp(),
-                );
-                let shell_params1 = to_ocaml!(gc, shell_params1, shell_params1_root);
-                let predecessor = to_ocaml!(gc, block_header.predecessor(), predecessor_root);
+                let level = to_ocaml!(rt, block_header.level(), level_root);
+                let proto = OCaml::of_i32(block_header.proto() as i32);
+                let validation_pass = OCaml::of_i32(block_header.validation_pass() as i32);
+                let timestamp = to_ocaml!(rt, block_header.timestamp(), timestamp_root);
+                let predecessor = to_ocaml!(rt, block_header.predecessor(), predecessor_root);
                 let operations_hash =
-                    to_ocaml!(gc, block_header.operations_hash(), operations_hash_root);
-                let fitness = to_ocaml!(gc, block_header.fitness(), fitness_root);
-                let context = to_ocaml!(gc, block_header.context(), context_root);
-                let protocol_data = to_ocaml!(gc, block_header.protocol_data(), protocol_data_root);
-                let block_header = to_ocaml!(gc, FfiBlockHeader::from(&block_header));
+                    to_ocaml!(rt, block_header.operations_hash(), operations_hash_root);
+                let fitness = to_ocaml!(rt, block_header.fitness(), fitness_root);
+                let context = to_ocaml!(rt, block_header.context(), context_root);
+                let protocol_data = to_ocaml!(rt, block_header.protocol_data(), protocol_data_root);
+                let block_header =
+                    to_ocaml!(rt, FfiBlockHeader::from(&block_header), block_header_root);
 
-                ocaml_call!(tezos_ffi::construct_and_compare_block_header(
-                    gc,
+                tezos_ffi::construct_and_compare_block_header(
+                    rt,
                     block_header,
-                    gc.get(&shell_params1),
-                    gc.get(&predecessor),
-                    gc.get(&operations_hash),
-                    gc.get(&fitness),
-                    gc.get(&context),
-                    gc.get(&protocol_data),
-                ))
-                .unwrap()
+                    level,
+                    &proto,
+                    &validation_pass,
+                    timestamp,
+                    predecessor,
+                    operations_hash,
+                    fitness,
+                    context,
+                    protocol_data,
+                )
                 .to_rust()
             }
         )
@@ -243,7 +257,7 @@ fn test_apply_block_request_conv() {
         .build()
         .unwrap();
 
-    let result: bool = runtime::execute(move || {
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         let ffi_operations: Vec<Vec<FfiOperation>> = request
             .operations
             .iter()
@@ -251,38 +265,39 @@ fn test_apply_block_request_conv() {
             .collect();
 
         ocaml_frame!(
-            gc(
+            rt,
+            (
                 apply_block_request_root,
                 chain_id_root,
                 block_header_root,
-                pred_header_root
+                pred_header_root,
+                operations_root,
             ),
             {
-                let apply_block_request = to_ocaml!(gc, request, apply_block_request_root);
-                let chain_id = to_ocaml!(gc, request.chain_id, chain_id_root);
+                let apply_block_request = to_ocaml!(rt, request, apply_block_request_root);
+                let chain_id = to_ocaml!(rt, request.chain_id, chain_id_root);
                 let block_header = to_ocaml!(
-                    gc,
+                    rt,
                     FfiBlockHeader::from(&request.block_header),
                     block_header_root
                 );
                 let pred_header = to_ocaml!(
-                    gc,
+                    rt,
                     FfiBlockHeader::from(&request.pred_header),
                     pred_header_root
                 );
                 let max_operations_ttl = OCaml::of_i32(request.max_operations_ttl);
-                let operations = to_ocaml!(gc, ffi_operations);
+                let operations = to_ocaml!(rt, ffi_operations, operations_root);
 
-                ocaml_call!(tezos_ffi::construct_and_compare_apply_block_request(
-                    gc,
-                    gc.get(&apply_block_request),
-                    gc.get(&chain_id),
-                    gc.get(&block_header),
-                    gc.get(&pred_header),
-                    max_operations_ttl,
+                tezos_ffi::construct_and_compare_apply_block_request(
+                    rt,
+                    apply_block_request,
+                    chain_id,
+                    block_header,
+                    pred_header,
+                    &max_operations_ttl,
                     operations,
-                ))
-                .unwrap()
+                )
                 .to_rust()
             }
         )
@@ -294,6 +309,124 @@ fn test_apply_block_request_conv() {
 
 #[test]
 #[serial]
+fn test_apply_block_response_conv() {
+    let response = ApplyBlockResponse {
+        validation_result_message: "validation_result_message".to_string(),
+        context_hash: ContextHash::try_from("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")
+            .expect("failed to convert"),
+        block_header_proto_json: "block_header_proto_json".to_string(),
+        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
+        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        max_operations_ttl: 6,
+        last_allowed_fork_level: 8,
+        forking_testchain: true,
+        forking_testchain_data: Some(ForkingTestchainData {
+            test_chain_id: ChainId::try_from("NetXgtSLGNJvNye").unwrap(),
+            forking_block_hash: BlockHash::try_from(
+                "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET",
+            )
+            .unwrap(),
+        }),
+        block_metadata_hash: None,
+        ops_metadata_hashes: None,
+        ops_metadata_hash: None,
+    };
+
+    let (into, from): (bool, bool) = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(
+            rt,
+            (
+                apply_block_response_root,
+                validation_result_message_root,
+                context_hash_root,
+                block_header_proto_json_root,
+                block_header_proto_metadata_json_root,
+                operations_proto_metadata_json_root,
+                max_operations_ttl_root,
+                last_allowed_fork_level_root,
+                forking_testchain_root,
+                forking_testchain_data_root,
+                block_metadata_hash_root,
+                ops_metadata_hashes_root,
+                ops_metadata_hash_root,
+            ),
+            {
+                let apply_block_response = to_ocaml!(rt, response, apply_block_response_root);
+                let validation_result_message = to_ocaml!(
+                    rt,
+                    response.validation_result_message,
+                    validation_result_message_root
+                );
+                let context_hash = to_ocaml!(rt, response.context_hash, context_hash_root);
+                let block_header_proto_json = to_ocaml!(
+                    rt,
+                    response.block_header_proto_json,
+                    block_header_proto_json_root
+                );
+                let block_header_proto_metadata_json = to_ocaml!(
+                    rt,
+                    response.block_header_proto_metadata_json,
+                    block_header_proto_metadata_json_root
+                );
+                let operations_proto_metadata_json = to_ocaml!(
+                    rt,
+                    response.operations_proto_metadata_json,
+                    operations_proto_metadata_json_root
+                );
+                let max_operations_ttl = OCaml::of_i32(response.max_operations_ttl);
+                let last_allowed_fork_level = to_ocaml!(
+                    rt,
+                    response.last_allowed_fork_level,
+                    last_allowed_fork_level_root
+                );
+                let forking_testchain =
+                    to_ocaml!(rt, response.forking_testchain, forking_testchain_root);
+                let forking_testchain_data = to_ocaml!(
+                    rt,
+                    response.forking_testchain_data,
+                    forking_testchain_data_root
+                );
+                let block_metadata_hash =
+                    to_ocaml!(rt, response.block_metadata_hash, block_metadata_hash_root);
+                let ops_metadata_hashes =
+                    to_ocaml!(rt, response.ops_metadata_hashes, ops_metadata_hashes_root);
+                let ops_metadata_hash =
+                    to_ocaml!(rt, response.ops_metadata_hash, ops_metadata_hash_root);
+
+                let into_result: bool = tezos_ffi::construct_and_compare_apply_block_response(
+                    rt,
+                    apply_block_response,
+                    validation_result_message,
+                    context_hash,
+                    block_header_proto_json,
+                    block_header_proto_metadata_json,
+                    operations_proto_metadata_json,
+                    &max_operations_ttl,
+                    last_allowed_fork_level,
+                    forking_testchain,
+                    forking_testchain_data,
+                    block_metadata_hash,
+                    ops_metadata_hashes,
+                    ops_metadata_hash,
+                )
+                .to_rust();
+
+                let rust_apply_block_response: ApplyBlockResponse =
+                    apply_block_response.to_rust(rt);
+                let from_result = rust_apply_block_response == response;
+
+                (into_result, from_result)
+            }
+        )
+    })
+    .unwrap();
+
+    assert!(into, "ApplyBlockResponse conversion into OCaml failed");
+    assert!(from, "ApplyBlockResponse conversion from OCaml failed");
+}
+
+#[test]
+#[serial]
 fn test_begin_construction_request_conv() {
     let begin_construction_request = BeginConstructionRequest {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
@@ -301,30 +434,42 @@ fn test_begin_construction_request_conv() {
         protocol_data: Some(vec![1, 2, 3, 4, 5, 6, 7, 8]),
     };
 
-    let result: bool = runtime::execute(move || {
-        ocaml_frame!(gc(chain_id_root, predecesor_root, protocol_data_root), {
-            let chain_id = to_ocaml!(gc, begin_construction_request.chain_id, chain_id_root);
-            let predecesor = to_ocaml!(
-                gc,
-                FfiBlockHeader::from(&begin_construction_request.predecessor),
-                predecesor_root
-            );
-            let protocol_data = to_ocaml!(
-                gc,
-                begin_construction_request.protocol_data,
-                protocol_data_root
-            );
-            let begin_construction_request = to_ocaml!(gc, begin_construction_request);
-            ocaml_call!(tezos_ffi::construct_and_compare_begin_construction_request(
-                gc,
-                begin_construction_request,
-                gc.get(&chain_id),
-                gc.get(&predecesor),
-                gc.get(&protocol_data),
-            ))
-            .unwrap()
-            .to_rust()
-        })
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(
+            rt,
+            (
+                chain_id_root,
+                predecesor_root,
+                protocol_data_root,
+                begin_construction_request_root,
+            ),
+            {
+                let chain_id = to_ocaml!(rt, begin_construction_request.chain_id, chain_id_root);
+                let predecesor = to_ocaml!(
+                    rt,
+                    FfiBlockHeader::from(&begin_construction_request.predecessor),
+                    predecesor_root
+                );
+                let protocol_data = to_ocaml!(
+                    rt,
+                    begin_construction_request.protocol_data,
+                    protocol_data_root
+                );
+                let begin_construction_request = to_ocaml!(
+                    rt,
+                    begin_construction_request,
+                    begin_construction_request_root
+                );
+                tezos_ffi::construct_and_compare_begin_construction_request(
+                    rt,
+                    begin_construction_request,
+                    chain_id,
+                    predecesor,
+                    protocol_data,
+                )
+                .to_rust()
+            }
+        )
     })
     .unwrap();
 
@@ -355,28 +500,39 @@ fn test_validate_operation_request_conv() {
         operation,
     };
 
-    let result: bool = runtime::execute(move || {
-        ocaml_frame!(gc(prevalidator_root, operation_root), {
-            let prevalidator = to_ocaml!(
-                gc,
-                validate_operation_request.prevalidator,
-                prevalidator_root
-            );
-            let operation = to_ocaml!(
-                gc,
-                FfiOperation::from(&validate_operation_request.operation),
-                operation_root
-            );
-            let validate_operation_request = to_ocaml!(gc, validate_operation_request);
-            ocaml_call!(tezos_ffi::construct_and_compare_validate_operation_request(
-                gc,
-                validate_operation_request,
-                gc.get(&prevalidator),
-                gc.get(&operation),
-            ))
-            .unwrap()
-            .to_rust()
-        })
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(
+            rt,
+            (
+                prevalidator_root,
+                operation_root,
+                validate_operation_request_root,
+            ),
+            {
+                let prevalidator = to_ocaml!(
+                    rt,
+                    validate_operation_request.prevalidator,
+                    prevalidator_root
+                );
+                let operation = to_ocaml!(
+                    rt,
+                    FfiOperation::from(&validate_operation_request.operation),
+                    operation_root
+                );
+                let validate_operation_request = to_ocaml!(
+                    rt,
+                    validate_operation_request,
+                    validate_operation_request_root
+                );
+                tezos_ffi::construct_and_compare_validate_operation_request(
+                    rt,
+                    validate_operation_request,
+                    prevalidator,
+                    operation,
+                )
+                .to_rust()
+            }
+        )
     })
     .unwrap();
 
@@ -393,32 +549,33 @@ fn test_validate_rpc_request_conv() {
         content_type: None,
         accept: None,
     };
-    let result: bool = runtime::execute(move || {
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         ocaml_frame!(
-            gc(
+            rt,
+            (
                 body_root,
                 context_path_root,
                 meth_root,
                 content_type_root,
-                accept_root
+                accept_root,
+                rpc_request_root,
             ),
             {
-                let body = to_ocaml!(gc, rpc_request.body, body_root);
-                let context_path = to_ocaml!(gc, rpc_request.context_path, context_path_root);
-                let meth = to_ocaml!(gc, rpc_request.meth, meth_root);
-                let content_type = to_ocaml!(gc, rpc_request.content_type, content_type_root);
-                let accept = to_ocaml!(gc, rpc_request.accept, accept_root);
-                let rpc_request = to_ocaml!(gc, rpc_request);
-                ocaml_call!(tezos_ffi::construct_and_compare_rpc_request(
-                    gc,
+                let body = to_ocaml!(rt, rpc_request.body, body_root);
+                let context_path = to_ocaml!(rt, rpc_request.context_path, context_path_root);
+                let meth = to_ocaml!(rt, rpc_request.meth, meth_root);
+                let content_type = to_ocaml!(rt, rpc_request.content_type, content_type_root);
+                let accept = to_ocaml!(rt, rpc_request.accept, accept_root);
+                let rpc_request = to_ocaml!(rt, rpc_request, rpc_request_root);
+                tezos_ffi::construct_and_compare_rpc_request(
+                    rt,
                     rpc_request,
-                    gc.get(&body),
-                    gc.get(&context_path),
-                    gc.get(&meth),
-                    gc.get(&content_type),
-                    gc.get(&accept),
-                ))
-                .unwrap()
+                    body,
+                    context_path,
+                    meth,
+                    content_type,
+                    accept,
+                )
                 .to_rust()
             }
         )
@@ -444,34 +601,36 @@ fn test_validate_protocol_rpc_request_conv() {
         chain_id: ChainId::try_from(hex::decode(CHAIN_ID).unwrap()).unwrap(),
         request: rpc_request,
     };
-    let result: bool = runtime::execute(move || {
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
         ocaml_frame!(
-            gc(
+            rt,
+            (
                 block_header_root,
                 chain_arg_root,
                 chain_id_root,
                 request_root,
-                ffi_service_root
+                ffi_service_root,
+                protocol_rpc_request_root,
             ),
             {
-                let ref block_header = to_ocaml!(
-                    gc,
+                let block_header = to_ocaml!(
+                    rt,
                     FfiBlockHeader::from(&protocol_rpc_request.block_header),
                     block_header_root
                 );
-                let ref chain_arg = to_ocaml!(gc, protocol_rpc_request.chain_arg, chain_arg_root);
-                let ref chain_id = to_ocaml!(gc, protocol_rpc_request.chain_id, chain_id_root);
-                let ref request = to_ocaml!(gc, protocol_rpc_request.request, request_root);
-                let protocol_rpc_request = to_ocaml!(gc, protocol_rpc_request);
-                ocaml_call!(tezos_ffi::construct_and_compare_protocol_rpc_request(
-                    gc,
+                let chain_arg = to_ocaml!(rt, protocol_rpc_request.chain_arg, chain_arg_root);
+                let chain_id = to_ocaml!(rt, protocol_rpc_request.chain_id, chain_id_root);
+                let request = to_ocaml!(rt, protocol_rpc_request.request, request_root);
+                let protocol_rpc_request =
+                    to_ocaml!(rt, protocol_rpc_request, protocol_rpc_request_root);
+                tezos_ffi::construct_and_compare_protocol_rpc_request(
+                    rt,
                     protocol_rpc_request,
-                    gc.get(&block_header),
-                    gc.get(&chain_id),
-                    gc.get(&chain_arg),
-                    gc.get(&request),
-                ))
-                .unwrap()
+                    block_header,
+                    chain_id,
+                    chain_arg,
+                    request,
+                )
                 .to_rust()
             }
         )
@@ -490,19 +649,12 @@ fn test_validate_operation_conv() {
     ));
     let operation = operations[0][0].clone();
 
-    let result: bool = runtime::execute(move || {
-        ocaml_frame!(gc(branch_root, proto_root), {
-            let branch = to_ocaml!(gc, operation.branch(), branch_root);
-            let proto = to_ocaml!(gc, operation.data(), proto_root);
-            let operation = to_ocaml!(gc, FfiOperation::from(&operation));
-            ocaml_call!(tezos_ffi::construct_and_compare_operation(
-                gc,
-                operation,
-                gc.get(&branch),
-                gc.get(&proto),
-            ))
-            .unwrap()
-            .to_rust()
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(rt, (branch_root, proto_root, operation_root), {
+            let branch = to_ocaml!(rt, operation.branch(), branch_root);
+            let proto = to_ocaml!(rt, operation.data(), proto_root);
+            let operation = to_ocaml!(rt, FfiOperation::from(&operation), operation_root);
+            tezos_ffi::construct_and_compare_operation(rt, operation, branch, proto).to_rust()
         })
     })
     .unwrap();
@@ -519,26 +671,35 @@ fn test_validate_prevalidator_wrapper_conv() {
         context_fitness: Some(vec![vec![0, 0], vec![0, 0, 1, 2, 3, 4, 5]]),
     };
 
-    let result: bool = runtime::execute(move || {
-        ocaml_frame!(gc(chain_id_root, protocol_root, context_fitness_root), {
-            let chain_id = to_ocaml!(gc, prevalidator_wrapper.chain_id, chain_id_root);
-            let protocol = to_ocaml!(gc, prevalidator_wrapper.protocol, protocol_root);
-            let context_fitness = to_ocaml!(
-                gc,
-                prevalidator_wrapper.context_fitness,
-                context_fitness_root
-            );
-            let prevalidator_wrapper = to_ocaml!(gc, prevalidator_wrapper);
-            ocaml_call!(tezos_ffi::construct_and_compare_prevalidator_wrapper(
-                gc,
-                prevalidator_wrapper,
-                gc.get(&chain_id),
-                gc.get(&protocol),
-                gc.get(&context_fitness),
-            ))
-            .unwrap()
-            .to_rust()
-        })
+    let result: bool = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(
+            rt,
+            (
+                chain_id_root,
+                protocol_root,
+                context_fitness_root,
+                prevalidator_wrapper_root,
+            ),
+            {
+                let chain_id = to_ocaml!(rt, prevalidator_wrapper.chain_id, chain_id_root);
+                let protocol = to_ocaml!(rt, prevalidator_wrapper.protocol, protocol_root);
+                let context_fitness = to_ocaml!(
+                    rt,
+                    prevalidator_wrapper.context_fitness,
+                    context_fitness_root
+                );
+                let prevalidator_wrapper =
+                    to_ocaml!(rt, prevalidator_wrapper, prevalidator_wrapper_root);
+                tezos_ffi::construct_and_compare_prevalidator_wrapper(
+                    rt,
+                    prevalidator_wrapper,
+                    chain_id,
+                    protocol,
+                    context_fitness,
+                )
+                .to_rust()
+            }
+        )
     })
     .unwrap();
 

@@ -586,7 +586,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "base58",
  "failure",
@@ -886,6 +886,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fs2"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9564fc758e15025b46aa6643b1b77d047d1a56a1aea6e01002ac0c7026876213"
+dependencies = [
+ "libc",
+ "winapi",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -989,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_ack_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -998,7 +1008,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_advertise_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1007,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_block_header_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1016,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_connection_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1025,7 +1035,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_branch_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1034,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_current_head_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1043,7 +1053,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_encoding"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1053,7 +1063,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_metadata_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1062,7 +1072,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operation_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1071,7 +1081,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_operations_for_blocks_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1080,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "fuzz_peer_response_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
@@ -1089,11 +1099,20 @@ dependencies = [
 
 [[package]]
 name = "fuzz_protocol_message"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "honggfuzz",
  "log",
  "tezos_messages",
+]
+
+[[package]]
+name = "fxhash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]
@@ -1366,7 +1385,7 @@ dependencies = [
 
 [[package]]
 name = "ipc"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bincode",
  "failure",
@@ -1522,7 +1541,7 @@ dependencies = [
 
 [[package]]
 name = "light-node"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "clap",
  "failure",
@@ -1584,7 +1603,7 @@ dependencies = [
 
 [[package]]
 name = "logging"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "libflate",
@@ -1714,7 +1733,7 @@ dependencies = [
 
 [[package]]
 name = "monitoring"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "crypto",
  "erased-serde",
@@ -1754,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "networking"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bytes 1.0.1",
  "crypto",
@@ -1872,18 +1891,19 @@ checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 
 [[package]]
 name = "ocaml-interop"
-version = "0.4.5"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90d094d3c6bfbefc8ea5a0e4b3ba542105cbf1262fc44478e12cb23eee4391c1"
+checksum = "0badad57a5788d0a7be367be6e378ed52dbc8020c4f3672b59212b5de7f35a72"
 dependencies = [
  "ocaml-sys",
+ "static_assertions",
 ]
 
 [[package]]
 name = "ocaml-sys"
-version = "0.18.1"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "69b089ec551535569cbcf41bf8ada032ce80cee4cfaf6fab95da0b01e83aab31"
+checksum = "3ebcb40980dce73b49d0dcf5b3a2844a9a28cbe5fa17115fa09f0f7706463d1a"
 dependencies = [
  "cty",
 ]
@@ -2131,7 +2151,7 @@ dependencies = [
 
 [[package]]
 name = "protocol-runner"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "clap",
  "crypto",
@@ -2411,7 +2431,7 @@ dependencies = [
 
 [[package]]
 name = "rpc"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "chrono",
@@ -2511,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "clap",
  "colored",
@@ -2729,7 +2749,7 @@ dependencies = [
 
 [[package]]
 name = "shell"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "crypto",
@@ -2748,6 +2768,7 @@ dependencies = [
  "rand 0.7.3",
  "regex",
  "riker",
+ "rocksdb",
  "serde 1.0.123",
  "serde_json",
  "serial_test",
@@ -2786,6 +2807,22 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "sled"
+version = "0.34.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d0132f3e393bcb7390c60bb45769498cf4550bcb7a21d7f95c02b69f6362cdc"
+dependencies = [
+ "crc32fast",
+ "crossbeam-epoch",
+ "crossbeam-utils",
+ "fs2",
+ "fxhash",
+ "libc",
+ "log",
+ "parking_lot",
+]
 
 [[package]]
 name = "slog"
@@ -2873,6 +2910,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
+name = "snap"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc725476a1398f0480d56cd0ad381f6f32acf2642704456f8f59a35df464b59a"
+
+[[package]]
 name = "socket2"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2902,11 +2945,12 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "bincode",
  "blake2",
+ "bytes 1.0.1",
  "commitlog",
  "criterion",
  "crypto",
@@ -2921,9 +2965,11 @@ dependencies = [
  "rocksdb",
  "serde 1.0.123",
  "serde_json",
+ "sled",
  "slog",
  "slog-async",
  "slog-term",
+ "snap",
  "tezos_api",
  "tezos_context",
  "tezos_messages",
@@ -3049,7 +3095,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_api"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "chrono",
@@ -3067,7 +3113,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_client"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "crypto",
@@ -3083,16 +3129,17 @@ dependencies = [
 
 [[package]]
 name = "tezos_context"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "crossbeam",
  "lazy_static",
+ "ocaml-interop",
  "serde 1.0.123",
 ]
 
 [[package]]
 name = "tezos_encoding"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "bit-vec",
  "byteorder",
@@ -3108,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_identity"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "crypto",
@@ -3121,7 +3168,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "colored",
  "criterion",
@@ -3145,7 +3192,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_interop_callback"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "ocaml-interop",
  "tezos_context",
@@ -3153,7 +3200,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_messages"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "assert-json-diff",
  "bytes 1.0.1",
@@ -3178,7 +3225,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_wrapper"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "crypto",
  "failure",

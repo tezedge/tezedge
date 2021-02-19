@@ -1,6 +1,6 @@
 # Sandbox launcher
 
-Launcher that enables to start and stop a light node via RPCs. 
+Launcher that enables to start and stop a light node via RPCs.
 
 Quick start (running in sandbox mode)
 -----------
@@ -41,7 +41,6 @@ curl --location --request POST 'http://localhost:3030/start' \
     "p2p_port": 9732,
     "rpc_port": 18732,
     "websocket_address": "0.0.0.0:4927",
-    "ffi_calls_gc_threshold": 50,
     "ffi_pool_max_connections": 10,
     "ffi_pool_connection_timeout_in_secs": 60,
     "ffi_pool_max_lifetime_in_secs": 21600,
@@ -146,7 +145,7 @@ curl --location --request GET 'http://localhost:18732/chains/main/blocks/head/co
 
 ### **5. call the bake RPC**
 
-Bake a block using the provided account. (The account must me initialized in previous call of the /init_client endpoint) 
+Bake a block using the provided account. (The account must me initialized in previous call of the /init_client endpoint)
 
 ```
 curl --location --request POST 'http://localhost:3030/bake' \
@@ -174,7 +173,7 @@ curl --location --request GET 'http://127.0.0.1:3030/list_nodes'
 
 ### **8. call the stop RPC**
 
-Stopping the node. Also cleans the nodes DB and the the tezos-client directory. 
+Stopping the node. Also cleans the nodes DB and the the tezos-client directory.
 
 ```
 curl --location --request GET 'http://127.0.0.1:3030/stop'

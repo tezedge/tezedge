@@ -1,11 +1,10 @@
 # Tezos python test framework
 
-## Introduction 
-TODO
+Tezos python test framework run with the tezedge node
 
 ## Tests
 
-|             Test              |Tezedge compatibility          |local  | drone  |               Description                                               | Modifications                            |       TODO (to be able to run/pass  |
+|             Test              |Tezedge compatibility          |local  | drone  |               Description                                               | Modifications                            |       Comment
 |-------------------------------|-------------------------------|-------|--------|-------------------------------------------------------------------------|------------------------------------------|-------------------------------------------------|
 | test_basic                    |           Partiall            |failing|failing |basic node functionality and interactions with tezos-client              | None                                     |  RPC error handling and returned errors         |
 | test_baker_endorser           |           Full                |passing|passing |baker and endorser daemon interaction, baking blocks, syncing afterwards | None                                     | None  |
@@ -27,7 +26,5 @@ TODO
 | test_contract                 |           266/286             |failing| -      |testing various contract operations (including smart contracts)          | None                                     | More investigation neeed, mostly error handling/message stuff|
 | test_contract_opcodes         |           270/282             |failing| -      |individual opcodes that do not require originations (including smart contracts)| None                                     | More investigation neeed, mostly error handling/message stuff|
 | test_contract_baker           |           Full                |passing|passing |Test a simple contract origination and call                              | None                                     | None          |
-| test_contract_annotations     |           Full                |passing|passing |Tests of Michelson annotations. - mostly client stuff                    | None                                     | None                                           |
+| test_contract_annotations     |           Full                |failing|failing |Tests of Michelson annotations. - mostly client stuff                    | None                                     | RPC error handling and returned errors         |
 | test_baker_endorser_mb        |           Full                |-      | -      |test two separate git branch of binaries                                 | None                                     | Later use                                      |
-
-### TODO - add the rest (mostly tests tezos-client)

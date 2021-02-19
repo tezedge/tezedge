@@ -94,6 +94,7 @@ steps:
     # prepare rust toolchain dir
     - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
     # build and unit-test
+    - cargo clean
     - cargo build --release --workspace
     - cargo test --release --workspace
     # build and run benches
@@ -166,7 +167,7 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/unmodified/tezos/tests_python/launchers/sandbox.py
     - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/constants.py
     - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/unmodified/tezos/sandbox-patch-context.json
-    # copy binaries to the test 
+    # copy binaries to the test
     - cp /artifacts/light-node /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/protocol-runner /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/unmodified/tezos/
@@ -2240,7 +2241,7 @@ kind: pipeline
 name: docker-deploy-develop
 
 steps:
-- name: build-light-node-image  
+- name: build-light-node-image
   image: plugins/docker
   settings:
     repo: simplestakingcom/tezedge

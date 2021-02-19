@@ -14,11 +14,11 @@ const CHANNEL_BUFFER_LEN: usize = 1_048_576;
 
 lazy_static! {
     /// This channel is shared by both OCaml and Rust
-    static ref CHANNEL: (Sender<ContextAction>, Receiver<ContextAction>) = bounded(CHANNEL_BUFFER_LEN);
+    static ref CHANNEL: (Sender<ContextActionMessage>, Receiver<ContextActionMessage>) = bounded(CHANNEL_BUFFER_LEN);
 }
 
 /// Send message into the shared channel.
-pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction>> {
+pub fn context_send(action: ContextActionMessage) -> Result<(), SendError<ContextActionMessage>> {
     if CHANNEL_ENABLED.load(Ordering::Acquire) {
         CHANNEL.0.send(action)
     } else {
@@ -27,7 +27,7 @@ pub fn context_send(action: ContextAction) -> Result<(), SendError<ContextAction
 }
 
 /// Receive message from the shared channel.
-pub fn context_receive() -> Result<ContextAction, RecvError> {
+pub fn context_receive() -> Result<ContextActionMessage, RecvError> {
     CHANNEL.1.recv()
 }
 
@@ -46,40 +46,44 @@ pub enum ContextAction {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
+        tree_hash: Option<Hash>,
+        new_tree_hash: Option<Hash>,
+        start_time: f64,
+        end_time: f64,
         key: Vec<String>,
         value: Vec<u8>,
         value_as_json: Option<String>,
-        ignored: bool,
-        start_time: f64,
-        end_time: f64,
     },
     Delete {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        key: Vec<String>,
-        ignored: bool,
+        tree_hash: Option<Hash>,
+        new_tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        key: Vec<String>,
     },
     RemoveRecursively {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        key: Vec<String>,
-        ignored: bool,
+        tree_hash: Option<Hash>,
+        new_tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        key: Vec<String>,
     },
     Copy {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        from_key: Vec<String>,
-        to_key: Vec<String>,
-        ignored: bool,
+        tree_hash: Option<Hash>,
+        new_tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        from_key: Vec<String>,
+        to_key: Vec<String>,
     },
     Checkout {
         context_hash: Hash,
@@ -90,51 +94,63 @@ pub enum ContextAction {
         parent_context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         new_context_hash: Hash,
+        tree_hash: Option<Hash>,
+        start_time: f64,
+        end_time: f64,
         author: String,
         message: String,
         date: i64,
         parents: Vec<Vec<u8>>,
-        start_time: f64,
-        end_time: f64,
     },
     Mem {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        key: Vec<String>,
-        value: bool,
+        tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        key: Vec<String>,
+        value: bool,
     },
     DirMem {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        key: Vec<String>,
-        value: bool,
+        tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        key: Vec<String>,
+        value: bool,
     },
     Get {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
+        tree_hash: Option<Hash>,
+        start_time: f64,
+        end_time: f64,
         key: Vec<String>,
         value: Vec<u8>,
         value_as_json: Option<String>,
-        start_time: f64,
-        end_time: f64,
     },
     Fold {
         context_hash: Option<Hash>,
         block_hash: Option<Hash>,
         operation_hash: Option<Hash>,
-        key: Vec<String>,
+        tree_hash: Option<Hash>,
         start_time: f64,
         end_time: f64,
+        key: Vec<String>,
     },
     /// This is a control event used to shutdown IPC channel
     Shutdown,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ContextActionMessage {
+    pub action: ContextAction,
+    pub record: bool,
+    pub perform: bool,
 }
 
 fn get_time(action: &ContextAction) -> f64 {
