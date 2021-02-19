@@ -1978,7 +1978,7 @@ mod tests {
     }
 
     fn test_checkout(backend: &str) {
-        let db_name = "ms_test_checkout";
+        let db_name = &format!("ms_test_checkout_{}", backend);
         clean_db(db_name);
 
         let commit1;
