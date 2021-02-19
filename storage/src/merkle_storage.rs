@@ -49,11 +49,12 @@ use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
+use std::ops::Deref;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
 use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -63,6 +64,7 @@ use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::storage_backend::{StorageBackend, StorageBackendError};
 
 const HASH_LEN: usize = 32;
 
@@ -126,7 +128,7 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 pub type RefCnt = usize;
 
@@ -134,7 +136,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: Arc<MerkleStorageKV>,
+    db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -153,8 +155,12 @@ pub enum MerkleError {
     DBError {
         error: persistent::database::DBError,
     },
+    #[fail(display = "KVStore error: {:?}", error)]
+    KVBackendError { error: StorageBackendError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
+    #[fail(display = "Backend error: {:?}", error)]
+    StorageBackendError { error: StorageBackendError },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -187,9 +193,9 @@ pub enum MerkleError {
     HashError { error: FromBytesError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
-        MerkleError::DBError { error }
+impl From<StorageBackendError> for MerkleError {
+    fn from(error: StorageBackendError) -> Self {
+        MerkleError::StorageBackendError { error }
     }
 }
 
@@ -355,7 +361,7 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Arc<MerkleStorageKV>) -> Self {
+    pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
             staged: Vec::new(),
@@ -369,6 +375,10 @@ impl MerkleStorage {
             },
             actions: Arc::new(Vec::new()),
         }
+    }
+
+    pub fn has_persistent_backend(&self) -> bool {
+        self.db.is_persisted()
     }
 
     /// Get value from current staged root
@@ -1147,14 +1157,16 @@ impl MerkleStorage {
     }
 
     /// Persists an entry and its descendants from staged area to database on disk.
-    fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+    fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
+        let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
+        for (k, v) in batch {
+            self.db.put(k, v)?;
+        }
 
         Ok(())
     }
@@ -1163,11 +1175,11 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut Vec<(EntryHash, ContextValue)>,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+        // self.db.put(self.hash_entry(entry)?, bincode::serialize(entry)?)?;
+        batch.push((self.hash_entry(entry)?, bincode::serialize(entry)?));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1407,6 +1419,7 @@ impl MerkleStorage {
 #[allow(unused_must_use)]
 mod tests {
     // use hex;
+    use crate::backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend};
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
     use std::path::{Path, PathBuf};
@@ -1436,8 +1449,23 @@ mod tests {
         open_db(get_db_name(db_name), &cache)
     }
 
-    fn get_storage(dn_name: &str, cache: &Cache) -> MerkleStorage {
-        MerkleStorage::new(Arc::new(get_db(dn_name, &cache)))
+    fn get_storage(db_name: &str, cache: &Cache) -> MerkleStorage {
+        let default_backend = "rocksdb".to_string();
+        let backend = env::var("KVBACKEND").unwrap_or(default_backend);
+        let sled = sled::Config::new().path(db_name).open().unwrap();
+
+        match backend.as_str() {
+            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
+                Arc::new(get_db(db_name, &cache)),
+                MerkleStorage::name(),
+            ))),
+            "sled" => MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone()))),
+            "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+            "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            _ => {
+                panic!("unknown backend set")
+            }
+        }
     }
 
     fn clean_db(db_name: &str) {
@@ -1832,6 +1860,9 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
+        if !storage.has_persistent_backend() {
+            return;
+        }
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -1987,6 +2018,9 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
+        if !storage.has_persistent_backend() {
+            return;
+        }
         storage.checkout(&commit1);
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
@@ -2018,6 +2052,9 @@ mod tests {
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let mut storage = get_storage(db_name, &cache);
+        if !storage.has_persistent_backend() {
+            return;
+        }
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
@@ -2028,15 +2065,25 @@ mod tests {
         {
             clean_db(db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            get_storage(db_name, &cache);
+            MerkleStorage::new(Box::new(RocksDBBackend::new(
+                Arc::new(get_db(db_name, &cache)),
+                MerkleStorage::name(),
+            )));
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Arc::new(db));
+        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(
+            Arc::new(db),
+            MerkleStorage::name(),
+        )));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
+        println!("{:?}", res);
 
-        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
+        assert!(matches!(
+            res.err().unwrap(),
+            MerkleError::StorageBackendError { .. }
+        ));
     }
 
     // Test getting entire tree in string format for JSON RPC

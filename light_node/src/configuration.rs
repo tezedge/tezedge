@@ -16,6 +16,7 @@ use rocksdb::ColumnFamilyDescriptor;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::persistent::KeyValueSchema;
+use storage::KeyValueStoreBackend;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
@@ -111,6 +112,7 @@ pub struct Storage {
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub action_store_backend: Vec<ContextActionStoreBackend>,
+    pub kv_store_backend: KeyValueStoreBackend,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
 }
@@ -865,6 +867,7 @@ impl Environment {
                         h
                     }
                 };
+
                 let action_store_backend = backends
                     .iter()
                     .map(|name| match name.as_str() {
@@ -880,6 +883,14 @@ impl Environment {
                     })
                     .collect();
 
+                let kv_store_backend = match args.value_of("kv-store-backend").unwrap_or("rocksdb")
+                {
+                    "inmem" => KeyValueStoreBackend::InMem,
+                    "sled" => KeyValueStoreBackend::Sled,
+                    "btree" => KeyValueStoreBackend::BTreeMap,
+                    _ => KeyValueStoreBackend::RocksDB,
+                };
+
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
@@ -888,6 +899,7 @@ impl Environment {
                     db_path,
                     compute_context_action_tree_hashes,
                     action_store_backend,
+                    kv_store_backend,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {

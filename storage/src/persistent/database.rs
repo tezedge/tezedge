@@ -12,10 +12,10 @@ use crate::persistent::schema::KeyValueSchema;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RocksDBStats {
-    mem_table_total: u64,
-    mem_table_unflushed: u64,
-    mem_table_readers_total: u64,
-    cache_total: u64,
+    pub mem_table_total: u64,
+    pub mem_table_unflushed: u64,
+    pub mem_table_readers_total: u64,
+    pub cache_total: u64,
 }
 
 /// Possible errors for schema

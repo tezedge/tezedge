@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
+#![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
 use rocksdb::Cache;
@@ -24,6 +25,7 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 
+use crate::backend::RocksDBBackend;
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{
     BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
@@ -49,6 +51,7 @@ pub use action_file_storage::ActionFileStorage;
 
 pub mod action_file;
 pub mod action_file_storage;
+pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -61,6 +64,7 @@ pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
+pub mod storage_backend;
 pub mod system_storage;
 
 /// Extension of block header with block hash
@@ -466,6 +470,14 @@ pub fn check_database_compatibility(
     Ok(db_version_ok && chain_id_ok)
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum KeyValueStoreBackend {
+    RocksDB,
+    InMem,
+    Sled,
+    BTreeMap,
+}
+
 pub mod tests_common {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -560,6 +572,7 @@ pub mod tests_common {
                     Arc::new(kv_context),
                     Arc::new(kv_context_action),
                     Arc::new(clog),
+                    KeyValueStoreBackend::RocksDB,
                 ),
                 path,
                 remove_on_destroy,

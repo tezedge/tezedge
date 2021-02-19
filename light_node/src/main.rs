@@ -35,6 +35,7 @@ use storage::persistent::{
 };
 use storage::ActionFileStorage;
 use storage::ContextActionStorage;
+use storage::KeyValueStoreBackend;
 use storage::{
     check_database_compatibility, context::TezedgeContext, persistent::DBError,
     resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,
@@ -593,7 +594,13 @@ fn main() {
     );
 
     {
-        let persistent_storage = PersistentStorage::new(kv, kv_context, kv_actions, commit_logs);
+        let persistent_storage = PersistentStorage::new(
+            kv,
+            kv_context,
+            kv_actions,
+            commit_logs,
+            env.storage.kv_store_backend.clone(),
+        );
         let tezedge_context = TezedgeContext::new(
             BlockStorage::new(&persistent_storage),
             persistent_storage.merkle(),
