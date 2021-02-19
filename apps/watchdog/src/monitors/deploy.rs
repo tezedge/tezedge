@@ -6,8 +6,10 @@ use failure::bail;
 use shiplift::Docker;
 use slog::{info, warn, Logger};
 
-use crate::deploy_with_compose::{restart_stack, shutdown_and_update, NODE_CONTAINER_NAME, SANDBOX_CONTAINER_NAME, shutdown_and_update_sandbox, restart_sandbox};
-use crate::image::{local_hash, remote_hash, Debugger, Explorer, Image, Sandbox};
+use crate::deploy_with_compose::{
+    restart_sandbox, restart_stack, shutdown_and_update, shutdown_and_update_sandbox,
+};
+use crate::image::{local_hash, remote_hash, Debugger, Explorer, Image, Sandbox, TEZEDGE_NODE_CONTAINER_NAME, SANDBOX_CONTAINER_NAME};
 use crate::monitors::info::InfoMonitor;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
@@ -64,14 +66,13 @@ impl DeployMonitor {
 
         Ok(())
     }
-    
+
     pub async fn monitor_sandbox_launcher(&self) -> Result<(), failure::Error> {
         let DeployMonitor { slack, log, .. } = self;
 
         if self.is_sandbox_container_running().await {
             if self.changed::<Sandbox>().await? {
                 shutdown_and_update_sandbox(log.clone()).await;
-
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");
@@ -90,7 +91,7 @@ impl DeployMonitor {
     async fn is_node_container_running(&self) -> bool {
         let DeployMonitor { docker, .. } = self;
 
-        match docker.containers().get(NODE_CONTAINER_NAME).inspect().await {
+        match docker.containers().get(TEZEDGE_NODE_CONTAINER_NAME).inspect().await {
             Ok(container_data) => container_data.state.running,
             _ => false,
         }
@@ -99,7 +100,12 @@ impl DeployMonitor {
     async fn is_sandbox_container_running(&self) -> bool {
         let DeployMonitor { docker, .. } = self;
 
-        match docker.containers().get(SANDBOX_CONTAINER_NAME).inspect().await {
+        match docker
+            .containers()
+            .get(SANDBOX_CONTAINER_NAME)
+            .inspect()
+            .await
+        {
             Ok(container_data) => container_data.state.running,
             _ => false,
         }

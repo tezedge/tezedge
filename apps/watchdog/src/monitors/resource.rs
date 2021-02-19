@@ -11,8 +11,8 @@ use slog::Logger;
 
 use shell::stats::memory::ProcessMemoryStats;
 
-use crate::node::{TezedgeNode, Node};
 use crate::display_info::DiskData;
+use crate::node::{Node, TezedgeNode};
 
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
 
@@ -61,7 +61,11 @@ pub struct CpuStats {
 }
 
 impl ResourceMonitor {
-    pub fn new(ocaml_resource_utilization: ResourceUtilizationStorage, tezedge_resource_utilization: ResourceUtilizationStorage, log: Logger) -> Self {
+    pub fn new(
+        ocaml_resource_utilization: ResourceUtilizationStorage,
+        tezedge_resource_utilization: ResourceUtilizationStorage,
+        log: Logger,
+    ) -> Self {
         Self {
             ocaml_resource_utilization,
             tezedge_resource_utilization,
@@ -76,7 +80,7 @@ impl ResourceMonitor {
 
         // protocol runner memory rpc
         let protocol_runners = TezedgeNode::collect_protocol_runners_memory_stats(18732).await?;
-    
+
         // collect disk stats
         let tezedge_disk = TezedgeNode::collect_disk_data()?;
         let ocaml_disk = OcamlNode::collect_disk_data()?;
@@ -85,16 +89,18 @@ impl ResourceMonitor {
         let tezedge_cpu = TezedgeNode::collect_cpu_data("light-node")?;
         let protocol_runners_cpu = TezedgeNode::collect_cpu_data("protocol-runner")?;
         let ocaml_cpu = OcamlNode::collect_cpu_data("tezos-node")?;
-    
+
         let ocaml_resources_ref = &mut *self.ocaml_resource_utilization.write().unwrap();
         let tezedge_resources_ref = &mut *self.tezedge_resource_utilization.write().unwrap();
-        
+
         // if we are about to exceed the max capacity, remove the last element in the VecDeque
-        if ocaml_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY && tezedge_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY {
+        if ocaml_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY
+            && tezedge_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY
+        {
             ocaml_resources_ref.pop_back();
             tezedge_resources_ref.pop_back();
         }
-        tezedge_resources_ref.push_front(ResourceUtilization{
+        tezedge_resources_ref.push_front(ResourceUtilization {
             timestamp: chrono::Local::now().timestamp(),
             memory: MemoryStats {
                 node: tezedge_node,
@@ -106,7 +112,7 @@ impl ResourceMonitor {
                 protocol_runners: Some(protocol_runners_cpu),
             },
         });
-        ocaml_resources_ref.push_front(ResourceUtilization{
+        ocaml_resources_ref.push_front(ResourceUtilization {
             timestamp: chrono::Local::now().timestamp(),
             memory: MemoryStats {
                 node: ocaml_node,

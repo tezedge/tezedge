@@ -5,9 +5,12 @@
 use serde::Serialize;
 use slog::Logger;
 
-use crate::display_info::{DiskSpaceData, HeadData, ImagesInfo, MemoryData, CommitHashes, TezedgeSpecificMemoryData, CpuData};
+use crate::display_info::{
+    CommitHashes, CpuData, DiskSpaceData, HeadData, ImagesInfo, MemoryData,
+    TezedgeSpecificMemoryData,
+};
 use crate::image::{Debugger, Explorer, Image};
-use crate::node::{TezedgeNode, OcamlNode, Node};
+use crate::node::{Node, OcamlNode, TezedgeNode};
 use crate::slack::SlackServer;
 
 use crate::monitors::TEZEDGE_VOLUME_PATH;
@@ -34,6 +37,7 @@ impl InfoMonitor {
         Self { slack, log }
     }
 
+    /// Collects information and puts them into structs for easy slack message formating
     async fn collect_info(&self) -> Result<SlackMonitorInfo, failure::Error> {
         let InfoMonitor { log, .. } = self;
 
@@ -42,21 +46,30 @@ impl InfoMonitor {
         let free_disk_space = fs2::free_space(TEZEDGE_VOLUME_PATH)?;
 
         // collect memory data about light node and protocol runners
+        let node_data = TezedgeNode::collect_memory_data(&log, TEZEDGE_PORT).await?;
+        let protocol_runner_data = TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
         let tezedge_memory_info = TezedgeSpecificMemoryData::new(
-            TezedgeNode::collect_memory_data(&log, TEZEDGE_PORT).await?,
-            TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?,
+            node_data,
+            protocol_runner_data,
         );
 
+        // collect memory data about ocaml node
+        let ocaml_memory = OcamlNode::collect_memory_data(&log, OCAML_PORT).await?;
+
         let memory_info = MemoryData::new(
-            OcamlNode::collect_memory_data(&log, OCAML_PORT).await?,
+            ocaml_memory,
             tezedge_memory_info,
         );
 
+        // collect current head info from both nodes
+        let ocaml_head_info = OcamlNode::collect_head_data(&log, OCAML_PORT).await?;
+        let tezedge_head_info = TezedgeNode::collect_head_data(&log, TEZEDGE_PORT).await?;
         let head_info = HeadData::new(
-            OcamlNode::collect_head_data(&log, OCAML_PORT).await?,
-            TezedgeNode::collect_head_data(&log, TEZEDGE_PORT).await?,
+            ocaml_head_info,
+            tezedge_head_info,
         );
 
+        // collect disk usage data
         let disk_info = DiskSpaceData::new(
             total_disk_space,
             free_disk_space,
@@ -64,11 +77,16 @@ impl InfoMonitor {
             OcamlNode::collect_disk_data()?,
         );
 
+        // collect commit hashes of the running apps
+        let ocaml_commit_hash = OcamlNode::collect_commit_hash(&log, OCAML_PORT).await?;
+        let tezedge_commit_hash = TezedgeNode::collect_commit_hash(&log, TEZEDGE_PORT).await?;
+        let debugger_commit_hash = Debugger::collect_commit_hash().await?;
+        let explorer_commit_hash = Explorer::collect_commit_hash().await?;
         let commit_hashes = CommitHashes::new(
-            OcamlNode::collect_commit_hash(&log, OCAML_PORT).await?,
-            TezedgeNode::collect_commit_hash(&log, TEZEDGE_PORT).await?,
-            Debugger::collect_commit_hash().await?,
-            Explorer::collect_commit_hash().await?,
+            ocaml_commit_hash,
+            tezedge_commit_hash,
+            debugger_commit_hash,
+            explorer_commit_hash,
         );
 
         let cpu_data = CpuData::new(
@@ -82,7 +100,7 @@ impl InfoMonitor {
             head_info,
             disk_info: disk_info.to_megabytes(),
             commit_hashes,
-            cpu_data
+            cpu_data,
         })
     }
 
@@ -90,7 +108,7 @@ impl InfoMonitor {
         let InfoMonitor { slack, .. } = self;
 
         let info = self.collect_info().await?;
-        let images_info = ImagesInfo::new(TezedgeNode::name(), Debugger::name(), Explorer::name());        
+        let images_info = ImagesInfo::new(TezedgeNode::name(), Debugger::name(), Explorer::name());
 
         slack
             .send_message(&format!(

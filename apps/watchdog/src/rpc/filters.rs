@@ -19,9 +19,12 @@ pub fn filters(
         .allow_headers(vec!["content-type"])
         .allow_methods(vec!["GET"]);
 
-    get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage.clone())
-    .or(get_tezedge_measurements_filter(log, tezedge_resource_utilization_storage))
-    .with(cors)
+    get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage)
+        .or(get_tezedge_measurements_filter(
+            log,
+            tezedge_resource_utilization_storage,
+        ))
+        .with(cors)
 }
 
 pub fn get_tezedge_measurements_filter(
@@ -32,7 +35,9 @@ pub fn get_tezedge_measurements_filter(
         .and(warp::get())
         .and(warp::query::<MeasurementOptions>())
         .and(with_log(log))
-        .and(with_resource_utilization_storage(tezedge_resource_utilization))
+        .and(with_resource_utilization_storage(
+            tezedge_resource_utilization,
+        ))
         .and_then(get_measurements)
 }
 
@@ -44,7 +49,9 @@ pub fn get_ocaml_measurements_filter(
         .and(warp::get())
         .and(warp::query::<MeasurementOptions>())
         .and(with_log(log))
-        .and(with_resource_utilization_storage(ocaml_resource_utilization))
+        .and(with_resource_utilization_storage(
+            ocaml_resource_utilization,
+        ))
         .and_then(get_measurements)
 }
 
@@ -56,6 +63,7 @@ fn with_log(
 
 fn with_resource_utilization_storage(
     storage: ResourceUtilizationStorage,
-) -> impl Filter<Extract = (ResourceUtilizationStorage,), Error = std::convert::Infallible> + Clone {
+) -> impl Filter<Extract = (ResourceUtilizationStorage,), Error = std::convert::Infallible> + Clone
+{
     warp::any().map(move || storage.clone())
 }

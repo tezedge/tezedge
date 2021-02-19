@@ -1,14 +1,24 @@
-use shiplift::{rep::{ImageDetails, ContainerDetails}, Docker};
+use shiplift::{
+    rep::{ContainerDetails, ImageDetails},
+    Docker,
+};
 use std::env;
 
 use failure::bail;
+
+pub const TEZEDGE_NODE_CONTAINER_NAME: &str = "watchdog-tezedge-node";
+pub const TEZEDGE_DEBUGGER_CONTAINER_NAME: &str = "watchdog-tezedge-debugger";
+pub const SANDBOX_CONTAINER_NAME: &str = "watchdog-tezedge-sandbox-launcher";
+pub const OCAML_NODE_CONTAINER_NAME: &str = "watchdog-ocaml-node";
+pub const OCAML_DEBUGGER_CONTAINER_NAME: &str = "watchdog-ocaml-debugger";
+pub const EXPLORER_CONTAINER_NAME: &str = "watchdog-explorer";
 
 pub trait Image {
     const TAG_ENV_KEY: &'static str;
     const IMAGE_NAME: &'static str;
 
     fn tag() -> String {
-        env::var(Self::TAG_ENV_KEY).unwrap_or("latest".to_string())
+        env::var(Self::TAG_ENV_KEY).unwrap_or_else(|_| "latest".to_string())
     }
 
     fn name() -> String {
@@ -40,7 +50,7 @@ pub async fn local_hash<T: Image>(docker: &Docker) -> Result<String, failure::Er
     let ImageDetails { repo_digests, .. } = docker.images().get(&T::name()).inspect().await?;
     repo_digests
         .and_then(|v| v.first().cloned())
-        .ok_or(failure::err_msg(format!("no such image {}", T::name())))
+        .ok_or_else(|| failure::err_msg(format!("no such image {}", T::name())))
 }
 
 pub struct Debugger;
@@ -52,11 +62,7 @@ impl Image for Debugger {
 
 impl Debugger {
     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let commit_hash = match reqwest::get(&format!(
-            "http://localhost:17732/v2/version",
-        ))
-        .await
-        {
+        let commit_hash = match reqwest::get("http://localhost:17732/v2/version").await {
             Ok(result) => result.text().await?,
             Err(e) => bail!("GET commit_hash error: {}", e),
         };
@@ -75,9 +81,13 @@ impl Image for Explorer {
 impl Explorer {
     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
         let docker = Docker::new();
-        let ContainerDetails { config, .. } = docker.containers().get("deploy_explorer_1").inspect().await?;
+        let ContainerDetails { config, .. } = docker
+            .containers()
+            .get(EXPLORER_CONTAINER_NAME)
+            .inspect()
+            .await?;
         let env = config.env();
-        
+
         if let Some(commit_hash) = env.get("COMMIT") {
             Ok(commit_hash.to_owned())
         } else {

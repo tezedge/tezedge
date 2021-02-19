@@ -10,7 +10,9 @@ use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::deploy_with_compose::{cleanup_docker, restart_stack, stop_with_compose, restart_sandbox};
+use crate::deploy_with_compose::{
+    cleanup_docker, restart_sandbox, restart_stack, stop_with_compose,
+};
 use crate::monitors::deploy::DeployMonitor;
 use crate::monitors::info::InfoMonitor;
 use crate::monitors::resource::{ResourceMonitor, ResourceUtilizationStorage};
@@ -22,10 +24,10 @@ pub mod resource;
 
 // TODO: get this info from docker (shiplift needs to implement docker volume inspect)
 // path to the volumes
-pub const TEZEDGE_VOLUME_PATH: &'static str =
-    "/var/lib/docker/volumes/deploy_rust-shared-data/_data";
-pub const OCAML_VOLUME_PATH: &'static str =
-    "/var/lib/docker/volumes/deploy_ocaml-shared-data/_data";
+pub const TEZEDGE_VOLUME_PATH: &str =
+    "/var/lib/docker/volumes/watchdog_tezedge-shared-data/_data";
+pub const OCAML_VOLUME_PATH: &str =
+    "/var/lib/docker/volumes/watchdog_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
     slack: SlackServer,
@@ -87,7 +89,11 @@ pub fn start_resource_monitoring(
     ocaml_resource_utilization: ResourceUtilizationStorage,
     tezedge_resource_utilization: ResourceUtilizationStorage,
 ) -> JoinHandle<()> {
-    let resource_monitor = ResourceMonitor::new(ocaml_resource_utilization, tezedge_resource_utilization, log.clone());
+    let resource_monitor = ResourceMonitor::new(
+        ocaml_resource_utilization,
+        tezedge_resource_utilization,
+        log.clone(),
+    );
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = resource_monitor.take_measurement().await {
@@ -122,6 +128,8 @@ pub async fn start_sandbox(slack: SlackServer, log: Logger) -> Result<(), failur
 
     // cleanup possible dangling containers/volumes and start the stack
     restart_sandbox(log).await;
-    slack.send_message("Tezedge sandbox launcher started").await?;
+    slack
+        .send_message("Tezedge sandbox launcher started")
+        .await?;
     Ok(())
 }

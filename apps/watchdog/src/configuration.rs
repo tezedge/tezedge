@@ -39,12 +39,20 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
         .version("0.10.0")
         .author("SimpleStaking and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
-        .arg(Arg::with_name("config-file")
-            .long("config-file")
-            .takes_value(true)
-            .value_name("PATH")
-            .help("Configuration file with start-up arguments (same format as cli arguments)")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
+        .arg(
+            Arg::with_name("config-file")
+                .long("config-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Configuration file with start-up arguments (same format as cli arguments)")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Configuration file not found at '{}'", v))
+                    }
+                }),
+        )
         .arg(
             Arg::with_name("log-level")
                 .long("log-level")
@@ -172,8 +180,7 @@ impl WatchdogEnvironment {
                 .unwrap_or("0")
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
-            is_sandbox: args
-                .is_present("sandbox"),
+            is_sandbox: args.is_present("sandbox"),
         }
     }
 }

@@ -3,8 +3,8 @@
 #![forbid(unsafe_code)]
 use std::fmt;
 
-use serde::Serialize;
 use merge::Merge;
+use serde::Serialize;
 
 use shell::stats::memory::ProcessMemoryStats;
 
@@ -69,12 +69,10 @@ impl DiskSpaceData {
 
 impl fmt::Display for DiskSpaceData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f,
+        writeln!(
+            f,
             "\nFile system: \n\t Total space: {} MB\n\t Free space: {} MB\n\n{}{}",
-            self.total_disk_space,
-            self.free_disk_space,
-            self.tezedge,
-            self.ocaml,
+            self.total_disk_space, self.free_disk_space, self.tezedge, self.ocaml,
         )
     }
 }
@@ -142,14 +140,19 @@ impl fmt::Display for TezedgeSpecificMemoryData {
         writeln!(
             f,
             "\n\tLight-node: {}\n\tProtocol runners: {}\n\tTotal: {}",
-            self.light_node.to_megabytes(), self.protocol_runners.to_megabytes(), total.to_megabytes()
+            self.light_node.to_megabytes(),
+            self.protocol_runners.to_megabytes(),
+            total.to_megabytes()
         )
     }
 }
 
 impl TezedgeSpecificMemoryData {
     pub fn new(light_node: ProcessMemoryStats, protocol_runners: ProcessMemoryStats) -> Self {
-        Self { light_node, protocol_runners }
+        Self {
+            light_node,
+            protocol_runners,
+        }
     }
 }
 
@@ -164,7 +167,8 @@ impl fmt::Display for MemoryData {
         writeln!(
             f,
             "\nTezedge node: {}\nOcaml node: {}",
-            self.tezedge, self.ocaml.to_megabytes(),
+            self.tezedge,
+            self.ocaml.to_megabytes(),
         )
     }
 }
@@ -234,18 +238,10 @@ impl fmt::Display for DiskData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DiskData::Tezedge(tezedge) => {
-                write!(
-                    f,
-                    "Tezedge node: {}",
-                    tezedge.to_megabytes(),
-                )
+                write!(f, "Tezedge node: {}", tezedge.to_megabytes(),)
             }
             DiskData::Ocaml(ocaml) => {
-                write!(
-                    f,
-                    "\nOcaml node: {}",
-                    ocaml.to_megabytes(),
-                )
+                write!(f, "\nOcaml node: {}", ocaml.to_megabytes(),)
             }
         }
     }
@@ -269,10 +265,15 @@ impl fmt::Display for TezedgeDiskData {
             context_irmin,
             context_merkle_rocksdb,
             block_storage,
-            main_db
+            main_db,
         } = self;
 
-        let total = debugger + context_actions + context_irmin + context_merkle_rocksdb + block_storage + main_db;
+        let total = debugger
+            + context_actions
+            + context_irmin
+            + context_merkle_rocksdb
+            + block_storage
+            + main_db;
         writeln!(
             f,
             "{} MB (total)\n\tMain database: {} MB\n\tContex - irmin: {} MB\n\tContext - rust_merkel_tree: {} MB\n\tContext actions: {} MB\n\tBlock storage (commit log): {} MB\n\tDebugger: {} MB",
@@ -288,7 +289,14 @@ impl fmt::Display for TezedgeDiskData {
 }
 
 impl TezedgeDiskData {
-    pub fn new(debugger: u64, context_irmin: u64, context_merkle_rocksdb: u64, block_storage: u64, context_actions: u64, main_db: u64) -> Self {
+    pub fn new(
+        debugger: u64,
+        context_irmin: u64,
+        context_merkle_rocksdb: u64,
+        block_storage: u64,
+        context_actions: u64,
+        main_db: u64,
+    ) -> Self {
         Self {
             debugger,
             context_irmin,
@@ -328,7 +336,14 @@ impl fmt::Display for CommitHashes {
         writeln!(
             f,
             "\nOcaml: {}/{}\nTezedge: {}/{}\nDebugger: {}/{}\nExplorer: {}/{}",
-            ocaml_repo, self.ocaml, tezedge_repo, self.tezedge, debugger_repo, self.debugger, exploere_repo, self.explorer
+            ocaml_repo,
+            self.ocaml,
+            tezedge_repo,
+            self.tezedge,
+            debugger_repo,
+            self.debugger,
+            exploere_repo,
+            self.explorer
         )
     }
 }
