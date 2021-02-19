@@ -3,19 +3,21 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use bytes::Buf;
+use failure::Error;
+use riker::actors::*;
+use slog::{crit, debug, info, warn, Logger};
 use std::convert::TryFrom;
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use failure::Error;
-use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
-
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::context::{ContextApi, TezedgeContext};
+use storage::merkle_storage::EntryHash;
 use storage::persistent::{ActionRecorder, PersistentStorage};
 use storage::BlockStorage;
 use tezos_context::channel::{ContextAction, ContextActionMessage};
@@ -237,6 +239,49 @@ fn listen_protocol_events(
     Ok(())
 }
 
+// returns hash of the merkle tree that action needs to be
+// applied on
+pub fn get_tree_hash(action: &ContextAction) -> Option<EntryHash> {
+    match &action {
+        ContextAction::Get { tree_hash, .. }
+        | ContextAction::Mem { tree_hash, .. }
+        | ContextAction::DirMem { tree_hash, .. }
+        | ContextAction::Set { tree_hash, .. }
+        | ContextAction::Copy { tree_hash, .. }
+        | ContextAction::Delete { tree_hash, .. }
+        | ContextAction::RemoveRecursively { tree_hash, .. }
+        | ContextAction::Commit { tree_hash, .. }
+        | ContextAction::Fold { tree_hash, .. } => tree_hash.clone().map(|hash| {
+            let mut buffer: EntryHash = [0; 32];
+            hash.reader().read_exact(&mut buffer).unwrap();
+            Some(buffer)
+        })?,
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
+    }
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Option<EntryHash> {
+    match &action {
+        ContextAction::Set { new_tree_hash, .. }
+        | ContextAction::Copy { new_tree_hash, .. }
+        | ContextAction::Delete { new_tree_hash, .. }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
+            new_tree_hash.clone().map(|hash| {
+                let mut buffer: EntryHash = [0; 32];
+                hash.reader().read_exact(&mut buffer).unwrap();
+                Some(buffer)
+            })?
+        }
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { .. }
+        | ContextAction::Commit { .. }
+        | ContextAction::Fold { .. }
+        | ContextAction::Checkout { .. }
+        | ContextAction::Shutdown => None,
+    }
+}
+
 fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
 where
     H: TryFrom<Vec<u8>, Error = FromBytesError>,
@@ -246,10 +291,14 @@ where
         .map_or(Ok(None), |r| r.map(Some))
 }
 
-fn perform_context_action(
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
+    if let Some(pre_hash) = get_tree_hash(&action) {
+        context.set_merkle_root(pre_hash)?;
+    }
+
     match action {
         ContextAction::Get { key, .. } => {
             context.get_key(key)?;
@@ -329,6 +378,10 @@ fn perform_context_action(
 
         ContextAction::Shutdown => (), // Ignored
     };
+
+    if let Some(post_hash) = get_new_tree_hash(&action) {
+        assert_eq!(context.get_merkle_root(), post_hash);
+    }
 
     Ok(())
 }

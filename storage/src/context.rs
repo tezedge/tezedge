@@ -89,6 +89,10 @@ pub trait ContextApi {
     /// TODO: TE-203 - remove when context_listener will not be used
     // check if context_hash is committed
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
+
+    fn set_merkle_root(&mut self, hash: EntryHash) -> Result<(), MerkleError>;
+
+    fn get_merkle_root(&mut self) -> EntryHash;
 }
 
 impl ContextApi for TezedgeContext {
@@ -264,6 +268,16 @@ impl ContextApi for TezedgeContext {
         self.block_storage
             .contains_context_hash(context_hash)
             .map_err(|e| ContextError::StorageError { error: e })
+    }
+
+    fn set_merkle_root(&mut self, hash: EntryHash) -> Result<(), MerkleError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        merkle.stage_checkout(&hash)
+    }
+
+    fn get_merkle_root(&mut self) -> EntryHash {
+        let merkle = self.merkle.read().expect("lock poisoning");
+        merkle.get_staged_root_hash()
     }
 }
 
