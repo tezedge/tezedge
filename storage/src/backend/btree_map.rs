@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 
 use crate::merkle_storage::{ContextValue, EntryHash};

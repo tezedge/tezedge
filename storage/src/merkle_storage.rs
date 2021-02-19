@@ -49,7 +49,6 @@ use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Instant;
-use std::ops::Deref;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
@@ -1418,10 +1417,10 @@ impl MerkleStorage {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    // use hex;
     use crate::backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend};
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
+    use std::ops::Deref;
     use std::path::{Path, PathBuf};
     use std::{env, fs};
 

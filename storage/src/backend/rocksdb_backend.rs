@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::KeyValueStoreWithSchema;
 use crate::persistent::database::RocksDBStats;

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::persistent::database::{DBError, RocksDBStats};
 use failure::Fail;
 use serde::Serialize;
