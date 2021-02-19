@@ -1445,17 +1445,16 @@ mod tests {
         open_db(get_db_name(db_name), &cache)
     }
 
-    fn get_storage(db_name: &str, cache: &Cache) -> MerkleStorage {
-        let default_backend = "rocksdb".to_string();
-        let backend = env::var("KVBACKEND").unwrap_or(default_backend);
-        let sled = sled::Config::new().path(db_name).open().unwrap();
-
-        match backend.as_str() {
+    fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
+        match backend {
             "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
                 Arc::new(get_db(db_name, &cache)),
                 MerkleStorage::name(),
             ))),
-            "sled" => MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone()))),
+            "sled" => {
+                let sled = sled::Config::new().path(db_name).open().unwrap();
+                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
+            }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
             _ => {
@@ -1469,10 +1468,9 @@ mod tests {
         let _ = fs::remove_dir_all(get_db_name(db_name));
     }
 
-    #[test]
-    fn test_duplicate_entry_in_staging() {
+    fn test_duplicate_entry_in_staging(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_duplicate_entry", &cache);
+        let mut storage = get_storage(backend, "ms_test_duplicate_entry", &cache);
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
@@ -1695,10 +1693,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_tree_hash() {
+    fn test_tree_hash(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_tree_hash", &cache);
+        let mut storage = get_storage(backend, "ms_test_tree_hash", &cache);
         storage.set(&vec!["a".to_string(), "foo".to_string()], &vec![97, 98, 99]); // abc
         storage.set(&vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
         storage.set(
@@ -1719,10 +1716,9 @@ mod tests {
         assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
     }
 
-    #[test]
-    fn test_commit_hash() {
+    fn test_commit_hash(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_commit_hash", &cache);
+        let mut storage = get_storage(backend, "ms_test_commit_hash", &cache);
         storage.set(&vec!["a".to_string()], &vec![97, 98, 99]);
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1746,12 +1742,11 @@ mod tests {
         get_short_hash(&hash)
     }
 
-    #[test]
-    fn test_examples_from_article_about_storage() {
+    fn test_examples_from_article_about_storage(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db_name = "test_examples_from_article_about_storage";
         clean_db(db_name);
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
 
         storage.set(&vec!["a".to_string()], &vec![1]);
         storage.apply_actions_to_staging_area();
@@ -1795,10 +1790,9 @@ mod tests {
         assert_eq!("e6de3f", get_short_hash(&commit_hash))
     }
 
-    #[test]
-    fn test_multiple_commit_hash() {
+    fn test_multiple_commit_hash(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage("ms_test_multiple_commit_hash", &cache);
+        let mut storage = get_storage(backend, "ms_test_multiple_commit_hash", &cache);
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -1815,8 +1809,7 @@ mod tests {
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
     }
 
-    #[test]
-    fn test_get() {
+    fn test_get(backend: &str) {
         let db_name = "ms_get_test";
         clean_db(db_name);
 
@@ -1830,7 +1823,7 @@ mod tests {
 
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let mut storage = get_storage(backend, db_name, &cache);
 
             let res = storage.get(&vec![]);
             assert_eq!(res.unwrap().is_empty(), true);
@@ -1855,7 +1848,7 @@ mod tests {
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         if !storage.has_persistent_backend() {
             return;
         }
@@ -1871,8 +1864,7 @@ mod tests {
         assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
     }
 
-    #[test]
-    fn test_mem() {
+    fn test_mem(backend: &str) {
         let db_name = "ms_test_mem";
         clean_db(db_name);
 
@@ -1880,7 +1872,7 @@ mod tests {
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
         storage.set(key_abc, &vec![1u8, 2u8]);
@@ -1894,8 +1886,7 @@ mod tests {
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
     }
 
-    #[test]
-    fn test_dirmem() {
+    fn test_dirmem(backend: &str) {
         let db_name = "ms_test_dirmem";
         clean_db(db_name);
 
@@ -1904,7 +1895,7 @@ mod tests {
         let key_a: &ContextKey = &vec!["a".to_string()];
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -1918,13 +1909,12 @@ mod tests {
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
     }
 
-    #[test]
-    fn test_copy() {
+    fn test_copy(backend: &str) {
         let db_name = "ms_test_copy";
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![1_u8]);
         storage.copy(&vec!["a".to_string()], &vec!["z".to_string()]);
@@ -1938,13 +1928,12 @@ mod tests {
         // TODO test copy over commits
     }
 
-    #[test]
-    fn test_delete() {
+    fn test_delete(backend: &str) {
         let db_name = "ms_test_delete";
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]);
@@ -1955,13 +1944,12 @@ mod tests {
         assert!(storage.get_history(&commit1, &key_abx).is_err());
     }
 
-    #[test]
-    fn test_deleted_entry_available() {
+    fn test_deleted_entry_available(backend: &str) {
         let db_name = "ms_test_deleted_entry_available";
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         storage.set(key_abc, &vec![2_u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1971,13 +1959,12 @@ mod tests {
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    #[test]
-    fn test_delete_in_separate_commit() {
+    fn test_delete_in_separate_commit(backend: &str) {
         let db_name = "ms_test_delete_in_separate_commit";
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(key_abc, &vec![2_u8]).unwrap();
@@ -1990,8 +1977,7 @@ mod tests {
         assert!(storage.get_history(&commit2, &key_abx).is_err());
     }
 
-    #[test]
-    fn test_checkout() {
+    fn test_checkout(backend: &str) {
         let db_name = "ms_test_checkout";
         clean_db(db_name);
 
@@ -2002,7 +1988,7 @@ mod tests {
 
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let mut storage = get_storage(backend, db_name, &cache);
             storage.set(key_abc, &vec![1u8]).unwrap();
             storage.set(key_abx, &vec![2u8]).unwrap();
             commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -2013,7 +1999,7 @@ mod tests {
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         if !storage.has_persistent_backend() {
             return;
         }
@@ -2028,8 +2014,7 @@ mod tests {
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
     }
 
-    #[test]
-    fn test_persistence_over_reopens() {
+    fn test_persistence_over_reopens(backend: &str) {
         let db_name = "ms_test_persistence_over_reopens";
         {
             clean_db(db_name);
@@ -2039,7 +2024,7 @@ mod tests {
         let commit1;
         {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(db_name, &cache);
+            let mut storage = get_storage(backend, db_name, &cache);
             let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
             storage.set(key_abc, &vec![2_u8]).unwrap();
             storage.set(key_abx, &vec![3_u8]).unwrap();
@@ -2047,7 +2032,7 @@ mod tests {
         }
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         if !storage.has_persistent_backend() {
             return;
         }
@@ -2083,8 +2068,7 @@ mod tests {
     }
 
     // Test getting entire tree in string format for JSON RPC
-    #[test]
-    fn test_get_context_tree_by_prefix() {
+    fn test_get_context_tree_by_prefix(backend: &str) {
         let db_name = "ms_test_get_context_tree_by_prefix";
         {
             clean_db(db_name);
@@ -2131,7 +2115,7 @@ mod tests {
         );
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(db_name, &cache);
+        let mut storage = get_storage(backend, db_name, &cache);
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
         storage.set(
@@ -2234,4 +2218,31 @@ mod tests {
             .unwrap()
         );
     }
+
+    macro_rules! tests_with_storage {
+        ($storage_name:ident, $name_str:expr) => {
+            mod $storage_name {
+                #[test] fn test_tree_hash() { super::test_tree_hash($name_str) }
+                #[test] fn test_duplicate_entry_in_staging() { super::test_duplicate_entry_in_staging($name_str) }
+                #[test] fn test_commit_hash() { super::test_commit_hash($name_str) }
+                #[test] fn test_examples_from_article_about_storage() { super::test_examples_from_article_about_storage($name_str) }
+                #[test] fn test_multiple_commit_hash() { super::test_multiple_commit_hash($name_str) }
+                #[test] fn test_get() { super::test_get($name_str) }
+                #[test] fn test_mem() { super::test_mem($name_str) }
+                #[test] fn test_dirmem() { super::test_dirmem($name_str) }
+                #[test] fn test_copy() { super::test_copy($name_str) }
+                #[test] fn test_delete() { super::test_delete($name_str) }
+                #[test] fn test_deleted_entry_available() { super::test_deleted_entry_available($name_str) }
+                #[test] fn test_delete_in_separate_commit() { super::test_delete_in_separate_commit($name_str) }
+                #[test] fn test_checkout() { super::test_checkout($name_str) }
+                #[test] fn test_persistence_over_reopens() { super::test_persistence_over_reopens($name_str) }
+                #[test] fn test_get_context_tree_by_prefix() { super::test_get_context_tree_by_prefix($name_str) }
+            }
+        };
+    }
+
+    tests_with_storage!(rocksdb_tests, "rocksdb");
+    tests_with_storage!(sled_tests, "sled");
+    tests_with_storage!(btree_tests, "btree");
+    tests_with_storage!(inmem_tests, "inmem");
 }
