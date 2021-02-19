@@ -6,7 +6,7 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use failure::Fail;
 use rocksdb::Cache;
@@ -25,7 +25,6 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 
-use crate::backend::RocksDBBackend;
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{
     BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
