@@ -35,7 +35,6 @@ use storage::persistent::{
 };
 use storage::ActionFileStorage;
 use storage::ContextActionStorage;
-use storage::KeyValueStoreBackend;
 use storage::{
     check_database_compatibility, context::TezedgeContext, persistent::DBError,
     resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,

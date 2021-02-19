@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::merkle_storage::{ContextValue, EntryHash};
+use crate::persistent::database::GetInMemStats;
 use crate::persistent::database::RocksDBStats;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
 use rocksdb::{WriteOptions, DB};
@@ -102,8 +103,7 @@ impl StorageBackend for RocksDBBackend {
         let v = self
             .inner
             .get_cf(cf, &key.as_ref()[..])
-            .map_err(StorageBackendError::from)?
-            .map(|value| value);
+            .map_err(StorageBackendError::from)?;
         Ok(v)
     }
 
@@ -112,14 +112,8 @@ impl StorageBackend for RocksDBBackend {
     }
 
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        // TODO - fix compilation problem
-        //let r = self.inner.get_mem_use_stats();
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
-
+        self.inner
+            .get_stats()
+            .map_err(|_| StorageBackendError::BackendError)
     }
 }

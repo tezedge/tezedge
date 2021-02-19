@@ -5,9 +5,7 @@ use std::collections::{btree_map::Entry, BTreeMap};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::{
-    StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError,
-};
+use crate::storage_backend::{StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]

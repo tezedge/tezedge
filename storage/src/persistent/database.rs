@@ -123,6 +123,22 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError>;
 }
 
+pub trait GetInMemStats {
+    fn get_stats(&self) -> Result<RocksDBStats, DBError>;
+}
+
+impl GetInMemStats for DB {
+    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
+        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
+        Ok(RocksDBStats {
+            mem_table_total: memory_usage_stats.mem_table_total,
+            mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
+            mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
+            cache_total: memory_usage_stats.cache_total,
+        })
+    }
+}
+
 impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
