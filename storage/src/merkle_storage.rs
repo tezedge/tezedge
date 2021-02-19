@@ -2222,21 +2222,66 @@ mod tests {
     macro_rules! tests_with_storage {
         ($storage_name:ident, $name_str:expr) => {
             mod $storage_name {
-                #[test] fn test_tree_hash() { super::test_tree_hash($name_str) }
-                #[test] fn test_duplicate_entry_in_staging() { super::test_duplicate_entry_in_staging($name_str) }
-                #[test] fn test_commit_hash() { super::test_commit_hash($name_str) }
-                #[test] fn test_examples_from_article_about_storage() { super::test_examples_from_article_about_storage($name_str) }
-                #[test] fn test_multiple_commit_hash() { super::test_multiple_commit_hash($name_str) }
-                #[test] fn test_get() { super::test_get($name_str) }
-                #[test] fn test_mem() { super::test_mem($name_str) }
-                #[test] fn test_dirmem() { super::test_dirmem($name_str) }
-                #[test] fn test_copy() { super::test_copy($name_str) }
-                #[test] fn test_delete() { super::test_delete($name_str) }
-                #[test] fn test_deleted_entry_available() { super::test_deleted_entry_available($name_str) }
-                #[test] fn test_delete_in_separate_commit() { super::test_delete_in_separate_commit($name_str) }
-                #[test] fn test_checkout() { super::test_checkout($name_str) }
-                #[test] fn test_persistence_over_reopens() { super::test_persistence_over_reopens($name_str) }
-                #[test] fn test_get_context_tree_by_prefix() { super::test_get_context_tree_by_prefix($name_str) }
+                #[test]
+                fn test_tree_hash() {
+                    super::test_tree_hash($name_str)
+                }
+                #[test]
+                fn test_duplicate_entry_in_staging() {
+                    super::test_duplicate_entry_in_staging($name_str)
+                }
+                #[test]
+                fn test_commit_hash() {
+                    super::test_commit_hash($name_str)
+                }
+                #[test]
+                fn test_examples_from_article_about_storage() {
+                    super::test_examples_from_article_about_storage($name_str)
+                }
+                #[test]
+                fn test_multiple_commit_hash() {
+                    super::test_multiple_commit_hash($name_str)
+                }
+                #[test]
+                fn test_get() {
+                    super::test_get($name_str)
+                }
+                #[test]
+                fn test_mem() {
+                    super::test_mem($name_str)
+                }
+                #[test]
+                fn test_dirmem() {
+                    super::test_dirmem($name_str)
+                }
+                #[test]
+                fn test_copy() {
+                    super::test_copy($name_str)
+                }
+                #[test]
+                fn test_delete() {
+                    super::test_delete($name_str)
+                }
+                #[test]
+                fn test_deleted_entry_available() {
+                    super::test_deleted_entry_available($name_str)
+                }
+                #[test]
+                fn test_delete_in_separate_commit() {
+                    super::test_delete_in_separate_commit($name_str)
+                }
+                #[test]
+                fn test_checkout() {
+                    super::test_checkout($name_str)
+                }
+                #[test]
+                fn test_persistence_over_reopens() {
+                    super::test_persistence_over_reopens($name_str)
+                }
+                #[test]
+                fn test_get_context_tree_by_prefix() {
+                    super::test_get_context_tree_by_prefix($name_str)
+                }
             }
         };
     }
