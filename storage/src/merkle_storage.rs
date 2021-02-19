@@ -1744,7 +1744,7 @@ mod tests {
 
     fn test_examples_from_article_about_storage(backend: &str) {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db_name = "test_examples_from_article_about_storage";
+        let db_name = &format!("test_examples_from_article_about_storage_{}", backend);
         clean_db(db_name);
         let mut storage = get_storage(backend, db_name, &cache);
 
@@ -1810,7 +1810,7 @@ mod tests {
     }
 
     fn test_get(backend: &str) {
-        let db_name = "ms_get_test";
+        let db_name = &format!("ms_get_test_{}", backend);
         clean_db(db_name);
 
         let commit1;
@@ -1865,7 +1865,7 @@ mod tests {
     }
 
     fn test_mem(backend: &str) {
-        let db_name = "ms_test_mem";
+        let db_name = &format!("ms_test_mem_{}", backend);
         clean_db(db_name);
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1887,7 +1887,7 @@ mod tests {
     }
 
     fn test_dirmem(backend: &str) {
-        let db_name = "ms_test_dirmem";
+        let db_name = &format!("ms_test_dirmem_{}", backend);
         clean_db(db_name);
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
@@ -1910,7 +1910,7 @@ mod tests {
     }
 
     fn test_copy(backend: &str) {
-        let db_name = "ms_test_copy";
+        let db_name = &format!("ms_test_copy_{}", backend);
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
@@ -1929,7 +1929,7 @@ mod tests {
     }
 
     fn test_delete(backend: &str) {
-        let db_name = "ms_test_delete";
+        let db_name = &format!("ms_test_delete_", {});
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
@@ -1945,7 +1945,7 @@ mod tests {
     }
 
     fn test_deleted_entry_available(backend: &str) {
-        let db_name = "ms_test_deleted_entry_available";
+        let db_name = &format!("ms_test_deleted_entry_available_{}", backend);
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
@@ -1960,7 +1960,7 @@ mod tests {
     }
 
     fn test_delete_in_separate_commit(backend: &str) {
-        let db_name = "ms_test_delete_in_separate_commit";
+        let db_name = &format!("ms_test_delete_in_separate_commit_{}", backend);
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
@@ -2015,7 +2015,7 @@ mod tests {
     }
 
     fn test_persistence_over_reopens(backend: &str) {
-        let db_name = "ms_test_persistence_over_reopens";
+        let db_name = &format!("ms_test_persistence_over_reopens_{}", backend);
         {
             clean_db(db_name);
         }
@@ -2069,7 +2069,7 @@ mod tests {
 
     // Test getting entire tree in string format for JSON RPC
     fn test_get_context_tree_by_prefix(backend: &str) {
-        let db_name = "ms_test_get_context_tree_by_prefix";
+        let db_name = &format!("ms_test_get_context_tree_by_prefix_{}", backend);
         {
             clean_db(db_name);
         }
