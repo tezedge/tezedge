@@ -81,20 +81,6 @@ impl TezedgeNode {
 
         Ok(memory_stats)
     }
-
-    // // TODO move to trait
-    // pub fn collect_cpu_data() -> Result<f32, failure::Error> {
-    //     let mut system = System::new_all();
-    //     system.refresh_all();
-
-    //     // get tezos-node process
-    //     Ok(system.get_processes()
-    //         .into_iter()
-    //         .map(|(_, process)| process.clone())
-    //         .filter(|process| process.name().contains("light-node"))
-    //         .map(|process| process.cpu_usage())
-    //         .sum())
-    // }
 }
 
 pub struct OcamlNode {}
