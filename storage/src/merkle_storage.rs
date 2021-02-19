@@ -1177,7 +1177,6 @@ impl MerkleStorage {
         batch: &mut Vec<(EntryHash, ContextValue)>,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        // self.db.put(self.hash_entry(entry)?, bincode::serialize(entry)?)?;
         batch.push((self.hash_entry(entry)?, bincode::serialize(entry)?));
 
         match entry {
