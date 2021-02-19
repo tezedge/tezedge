@@ -118,9 +118,6 @@ pub trait KeyValueStoreWithSchema<S: KeyValueSchema> {
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
     fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError>;
-
-    /// Get memory usage statistics from DB
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError>;
 }
 
 pub trait GetInMemStats {
@@ -244,17 +241,6 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
     fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
         self.write_opt(batch, &default_write_options())?;
         Ok(())
-    }
-
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, DBError> {
-        let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
-
-        Ok(RocksDBStats {
-            mem_table_total: memory_usage_stats.mem_table_total,
-            mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
-            mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
-            cache_total: memory_usage_stats.cache_total,
-        })
     }
 }
 
