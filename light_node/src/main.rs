@@ -29,8 +29,12 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
-use storage::persistent::DbConfiguration;
-use storage::persistent::{open_cl, open_kv, CommitLogSchema, PersistentStorage};
+use storage::persistent::{
+    open_cl, open_kv, ActionRecorder, CommitLogSchema, DbConfiguration, NoRecorder,
+    PersistentStorage,
+};
+use storage::ActionFileStorage;
+use storage::ContextActionStorage;
 use storage::{
     check_database_compatibility, context::TezedgeContext, persistent::DBError,
     resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,
@@ -201,8 +205,8 @@ fn create_tezos_writeable_api_pool(
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                debug_mode: env.storage.store_context_actions,
                 compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
+                debug_mode: !env.storage.action_store_backend.is_empty(),
             },
             tezos_env,
             env.enable_testchain,
@@ -213,6 +217,29 @@ fn create_tezos_writeable_api_pool(
         ),
         log,
     )
+}
+
+fn build_recorders(
+    env: &crate::configuration::Environment,
+    storage: &PersistentStorage,
+) -> Vec<Box<dyn ActionRecorder + Send>> {
+    env.storage
+        .action_store_backend
+        .iter()
+        .map(|backend| {
+            let result: Box<dyn ActionRecorder + Send> = match backend {
+                configuration::ContextActionStoreBackend::RocksDB => {
+                    Box::new(ContextActionStorage::new(&storage))
+                }
+                configuration::ContextActionStoreBackend::FileStorage => {
+                    let action_file_path = env.storage.db_path.join("actionfile.bin");
+                    Box::new(ActionFileStorage::new(action_file_path))
+                }
+                configuration::ContextActionStoreBackend::NoneBackend => Box::new(NoRecorder {}),
+            };
+            return result;
+        })
+        .collect::<Vec<_>>()
 }
 
 fn block_on_actors(
@@ -310,14 +337,16 @@ fn block_on_actors(
     let chain_feeder_channel =
         ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
+    let recorders = build_recorders(&env, &persistent_storage);
+
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
+        recorders,
         context_actions_event_server,
         log.clone(),
-        env.storage.store_context_actions,
     )
     .expect("Failed to create context event listener");
     let chain_current_head_manager = ChainCurrentHeadManager::actor(

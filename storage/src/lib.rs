@@ -41,10 +41,14 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
+use crate::persistent::ActionRecordError;
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
+pub use action_file_storage::ActionFileStorage;
 
+pub mod action_file;
+pub mod action_file_storage;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -127,6 +131,8 @@ pub enum StorageError {
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError { error: SequenceError },
+    #[fail(display = "Action record error: {}", error)]
+    ActionRecordError { error: ActionRecordError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
     TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
@@ -186,6 +192,12 @@ impl From<FromBytesError> for StorageError {
 impl From<FromBase58CheckError> for StorageError {
     fn from(error: FromBase58CheckError) -> Self {
         StorageError::HashDecodeError { error }
+    }
+}
+
+impl From<ActionRecordError> for StorageError {
+    fn from(error: ActionRecordError) -> Self {
+        StorageError::ActionRecordError { error }
     }
 }
 

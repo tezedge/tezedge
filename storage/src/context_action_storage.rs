@@ -15,13 +15,13 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{
     BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
 };
-use tezos_context::channel::ContextAction;
+pub use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::persistent::codec::range_from_idx_len;
 use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
 use crate::persistent::{
-    default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
+    default_table_options, ActionRecorder, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
     KeyValueStoreWithSchema, PersistentStorage, SchemaError,
 };
 use crate::StorageError;
@@ -204,6 +204,58 @@ impl ContextActionStorage {
     }
 }
 
+impl ActionRecorder for ContextActionStorage {
+    #[inline]
+    fn record(&mut self, message: &ContextActionMessage) -> Result<(), StorageError> {
+        if !message.record {
+            return Ok(());
+        }
+
+        match &message.action {
+            ContextAction::Set {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Copy {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Delete {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::RemoveRecursively {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Mem {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::DirMem {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Get {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Fold {
+                block_hash: Some(block_hash),
+                ..
+            }
+            | ContextAction::Commit {
+                block_hash: Some(block_hash),
+                ..
+            } => self.put_action(
+                &BlockHash::try_from(&block_hash[..])?,
+                message.action.clone(),
+            ),
+            _ => Ok(()),
+        }
+    }
+}
+
 impl KeyValueSchema for ContextActionStorage {
     type Key = SequenceNumber;
     type Value = ContextActionRecordValue;
@@ -350,11 +402,11 @@ impl ContextActionByBlockHashIndex {
     }
 
     #[inline]
-    fn get_by_block_hash_iterator<'a>(
-        &'a self,
+    fn get_by_block_hash_iterator(
+        &'_ self,
         block_hash: &BlockHash,
         cursor_id: Option<SequenceNumber>,
-    ) -> Result<impl Iterator<Item = SequenceNumber> + 'a, StorageError> {
+    ) -> Result<impl Iterator<Item = SequenceNumber> + '_, StorageError> {
         let key = cursor_id.map_or_else(
             || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash),
             |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),

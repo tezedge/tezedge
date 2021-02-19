@@ -35,9 +35,17 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum ContextActionStoreBackend {
+    NoneBackend,
+    RocksDB,
+    FileStorage,
+}
+
 pub trait ColumnFactory {
     fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor>;
 }
+
 #[derive(Debug, Clone)]
 pub struct DBTableInitializer {}
 
@@ -102,7 +110,7 @@ pub struct Storage {
     pub db_context_actions: RocksDBConfig<ContextActionsTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
-    pub store_context_actions: bool,
+    pub action_store_backend: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
 }
@@ -468,10 +476,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("store-context-actions")
-            .long("store-context-actions")
+        .arg(Arg::with_name("actions-store-backend")
+            .long("actions-store-backend")
             .takes_value(true)
-            .value_name("BOOL")
+            .multiple(true)
+            .value_name("STRING")
             .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
@@ -842,24 +851,42 @@ impl Environment {
                     columns: ContextActionsTableInitializer {},
                     threads: db_context_actions_threads_count,
                 };
-                let store_context_actions = args
-                    .value_of("store-context-actions")
-                    .unwrap_or("true")
-                    .parse::<bool>()
-                    .expect("Provided value cannot be converted to bool");
                 let compute_context_action_tree_hashes = args
                     .value_of("compute-context-action-tree-hashes")
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
+
+                let mut backends = match args.values_of("actions-store-backend") {
+                    Some(v) => v.map(String::from).collect(),
+                    None => {
+                        vec!["rocksdb".to_string()]
+                    }
+                };
+                backends.dedup();
+                let action_store_backend = backends
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "rocksdb" => ContextActionStoreBackend::RocksDB,
+                        "none" => ContextActionStoreBackend::NoneBackend,
+                        "file" => ContextActionStoreBackend::FileStorage,
+                        _ => {
+                            panic!(format!(
+                                "unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']",
+                                &name
+                            ))
+                        }
+                    })
+                    .collect();
+
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
                     db_context,
                     db_context_actions,
                     db_path,
-                    store_context_actions,
                     compute_context_action_tree_hashes,
+                    action_store_backend,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
