@@ -4,12 +4,14 @@
 
 use std::collections::VecDeque;
 
-use slog::{info, Logger};
-use warp::reject;
-use warp::http::StatusCode;
 use serde::Deserialize;
+use slog::{info, Logger};
+use warp::http::StatusCode;
+use warp::reject;
 
-use crate::monitors::resource::{ResourceUtilizationStorage, MEASUREMENTS_MAX_CAPACITY, ResourceUtilization};
+use crate::monitors::resource::{
+    ResourceUtilization, ResourceUtilizationStorage, MEASUREMENTS_MAX_CAPACITY,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct MeasurementOptions {
@@ -20,7 +22,7 @@ pub struct MeasurementOptions {
 pub async fn get_measurements(
     options: MeasurementOptions,
     log: Logger,
-    measurements_storage: ResourceUtilizationStorage
+    measurements_storage: ResourceUtilizationStorage,
 ) -> Result<impl warp::Reply, reject::Rejection> {
     let storage = measurements_storage.read().unwrap();
 

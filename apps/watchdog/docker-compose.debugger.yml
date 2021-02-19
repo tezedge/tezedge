@@ -2,14 +2,14 @@ version: "3"
 
 services:
 
-  rust-debugger:
+  tezedge-debugger:
     image: simplestakingcom/tezedge-debugger:${TEZEDGE_DEBUGGER_IMAGE_TAG}
     privileged: true
     environment:
       - RUST_BACKTRACE=1
       - P2P_PORT=9732
     volumes:
-      - "rust-shared-data:/tmp/volume"
+      - "tezedge-shared-data:/tmp/volume"
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
     entrypoint: ./tezedge-debugger
     ports:
@@ -30,11 +30,9 @@ services:
       - "17733:17732"      # debugger RPC port
       - "11001:13131/udp"  # debugger syslog port
 
-  rust-node:
+  tezedge-node:
     image: simplestakingcom/tezedge:${TEZEDGE_IMAGE_TAG}
     command: "/light-node --config-file /tezedge.config --network delphi"
-    depends_on:
-      - explorer
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -44,17 +42,15 @@ services:
         # Always in same RFC 5424 format (with microseconds precision)
         syslog-format: "rfc5424micro"
     volumes:
-      - "rust-shared-data:/tmp/tezedge"
+      - "tezedge-shared-data:/tmp/tezedge"
     ports:
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
       - "18732:18732"     # node RPC port
       - "3030:3030"       # sandbox launcher port
 
-  rust-sandbox:
+  tezedge-sandbox:
     image: simplestakingcom/tezedge:${TEZEDGE_SANDBOX_IMAGE_TAG}
-    depends_on:
-      - explorer
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -64,7 +60,7 @@ services:
         # Always in same RFC 5424 format (with microseconds precision)
         syslog-format: "rfc5424micro"
     volumes:
-      - "rust-shared-data:/tmp/tezedge"
+      - "tezedge-shared-data:/tmp/tezedge"
     ports:
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
@@ -74,8 +70,6 @@ services:
   ocaml-node:
     image: tezos/tezos:v8.1
     entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --history-mode archive --network delphinet"
-    depends_on:
-      - explorer
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -101,7 +95,7 @@ services:
     ports:
       - "80:80"
 volumes:
-  rust-shared-data:
+  tezedge-shared-data:
     external: false
   ocaml-shared-data:
     external: false

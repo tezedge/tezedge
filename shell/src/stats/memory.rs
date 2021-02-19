@@ -91,7 +91,6 @@ impl TryFrom<MemoryData> for ProcessMemoryStats {
             }
             MemoryData::DarwinOs(stats) => {
                 let DarwinOsData {
-                    mem,
                     resident,
                     page_size,
                     ..
@@ -99,6 +98,7 @@ impl TryFrom<MemoryData> for ProcessMemoryStats {
 
                 let resident = resident.parse::<usize>()?;
 
+                // Note: we cannot get the virstual memory size from the data available 
                 let virtual_mem = 0;
                 let resident_mem = resident * page_size;
 

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use std::collections::VecDeque;
 
 use slog::{info, Drain, Level, Logger};
 use tokio::signal;
@@ -15,14 +15,15 @@ mod display_info;
 mod image;
 mod monitors;
 mod node;
-mod slack;
 mod rpc;
+mod slack;
 
 use crate::image::{Debugger, Explorer, Image};
-use crate::monitors::{
-    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring, start_stack, start_resource_monitoring, start_sandbox, start_sandbox_monitoring
-};
 use crate::monitors::resource::{ResourceUtilization, MEASUREMENTS_MAX_CAPACITY};
+use crate::monitors::{
+    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring,
+    start_resource_monitoring, start_sandbox, start_sandbox_monitoring, start_stack,
+};
 
 use crate::node::TezedgeNode;
 
@@ -56,8 +57,8 @@ async fn main() {
         info!(log, "Starting sandbox launcher monitoring");
 
         start_sandbox(slack_server.clone(), log.clone())
-        .await
-        .expect("Sandbox failed to start");
+            .await
+            .expect("Sandbox failed to start");
 
         info!(log, "Creating docker image monitor");
         let deploy_handle = start_sandbox_monitoring(
@@ -69,8 +70,8 @@ async fn main() {
         thread_handles.push(deploy_handle);
     } else {
         start_stack(slack_server.clone(), log.clone())
-        .await
-        .expect("Stack failed to start");
+            .await
+            .expect("Stack failed to start");
 
         info!(log, "Creating docker image monitor");
         let deploy_handle = start_deploy_monitoring(
@@ -91,8 +92,14 @@ async fn main() {
         thread_handles.push(monitor_handle);
 
         // create a thread safe VecDeque for each node's resource utilization data
-        let ocaml_resource_utilization_storage = Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(MEASUREMENTS_MAX_CAPACITY)));
-        let tezedge_resource_utilization_storage = Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(MEASUREMENTS_MAX_CAPACITY)));
+        let ocaml_resource_utilization_storage =
+            Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(
+                MEASUREMENTS_MAX_CAPACITY,
+            )));
+        let tezedge_resource_utilization_storage =
+            Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(
+                MEASUREMENTS_MAX_CAPACITY,
+            )));
 
         info!(log, "Creating reosurces monitor");
         let resources_handle = start_resource_monitoring(
@@ -105,7 +112,12 @@ async fn main() {
         thread_handles.push(resources_handle);
 
         info!(log, "Starting rpc server on port {}", &env.rpc_port);
-        let rpc_server_handle = rpc::spawn_rpc_server(env.rpc_port, log.clone(), ocaml_resource_utilization_storage.clone(), tezedge_resource_utilization_storage.clone());
+        let rpc_server_handle = rpc::spawn_rpc_server(
+            env.rpc_port,
+            log.clone(),
+            ocaml_resource_utilization_storage,
+            tezedge_resource_utilization_storage,
+        );
         thread_handles.push(rpc_server_handle);
     }
 
