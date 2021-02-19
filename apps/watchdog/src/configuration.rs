@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
@@ -32,6 +32,10 @@ pub struct WatchdogEnvironment {
 
     // flag for sandbox mode
     pub is_sandbox: bool,
+
+    // Path for the compose file needed to manage the deployed containers
+    pub compose_file_path: PathBuf,
+
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -45,6 +49,20 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .takes_value(true)
                 .value_name("PATH")
                 .help("Configuration file with start-up arguments (same format as cli arguments)")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Configuration file not found at '{}'", v))
+                    }
+                }),
+        )
+        .arg(
+            Arg::with_name("compose-file-path")
+                .long("compose-file-path")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path for the compose file needed to manage the deployed containers")
                 .validator(|v| {
                     if Path::new(&v).exists() {
                         Ok(())
@@ -139,6 +157,7 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "slack-token");
     validate_required_arg(args, "slack-channel-name");
     validate_required_arg(args, "slack-url");
+    validate_required_arg(args, "compose-file-path");
 }
 
 impl WatchdogEnvironment {
@@ -160,6 +179,11 @@ impl WatchdogEnvironment {
                 .value_of("slack-channel-name")
                 .unwrap_or("")
                 .to_string(),
+            compose_file_path: args
+                .value_of("compose-file-path")
+                .unwrap_or("")
+                .parse::<PathBuf>()
+                .expect("Expected valid path for the compose file"),
             image_monitor_interval: args
                 .value_of("image-monitor-interval")
                 .unwrap_or("0")

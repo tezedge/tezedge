@@ -2,24 +2,26 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
 use std::process::{Command, Output};
 
 use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
-use crate::image::{EXPLORER_CONTAINER_NAME, TEZEDGE_DEBUGGER_CONTAINER_NAME, TEZEDGE_NODE_CONTAINER_NAME, OCAML_NODE_CONTAINER_NAME, OCAML_DEBUGGER_CONTAINER_NAME, SANDBOX_CONTAINER_NAME};
+use crate::node::{OcamlNode, TezedgeNode};
+use crate::image::{OcamlDebugger, TezedgeDebugger, Explorer, Sandbox, WatchdogContainer};
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
-pub async fn launch_stack(log: Logger) {
-    start_with_compose(EXPLORER_CONTAINER_NAME, "explorer");
-    start_with_compose(TEZEDGE_DEBUGGER_CONTAINER_NAME, "tezedge-debugger");
+pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
+    start_with_compose(compose_file_path, Explorer::NAME, "explorer");
+    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
         sleep(Duration::from_millis(1000)).await;
     }
     info!(log, "Debugger for tezedge node is running");
 
-    start_with_compose(TEZEDGE_NODE_CONTAINER_NAME, "tezedge-node");
+    start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
     // node healthcheck
     while reqwest::get("http://localhost:18732/chains/main/blocks/head/header")
         .await
@@ -29,8 +31,8 @@ pub async fn launch_stack(log: Logger) {
     }
     info!(log, "Tezedge node is running");
 
-    start_with_compose(OCAML_NODE_CONTAINER_NAME, "ocaml-node");
-    start_with_compose(OCAML_DEBUGGER_CONTAINER_NAME, "ocaml-debugger");
+    start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
+    start_with_compose(compose_file_path, OcamlDebugger::NAME, "ocaml-debugger");
     info!(log, "Debugger for ocaml node started");
     // node healthcheck
     while reqwest::get("http://localhost:18733/chains/main/blocks/head/header")
@@ -42,8 +44,8 @@ pub async fn launch_stack(log: Logger) {
     info!(log, "Ocaml node is running");
 }
 
-pub async fn launch_sandbox(log: Logger) {
-    start_with_compose(TEZEDGE_DEBUGGER_CONTAINER_NAME, "tezedge-debugger");
+pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
+    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
         sleep(Duration::from_millis(1000)).await;
@@ -51,7 +53,7 @@ pub async fn launch_sandbox(log: Logger) {
     info!(log, "Debugger for sandboxed tezedge node is running");
 
     // start sandbox launcher
-    start_with_compose(SANDBOX_CONTAINER_NAME, "tezedge-sandbox");
+    start_with_compose(compose_file_path, Sandbox::NAME, "tezedge-sandbox");
     // sandbox launcher healthcheck
     while reqwest::get("http://localhost:3030/list_nodes")
         .await
@@ -62,30 +64,30 @@ pub async fn launch_sandbox(log: Logger) {
     info!(log, "Debugger for sandboxed tezedge node is running");
 }
 
-pub async fn restart_stack(log: Logger) {
-    stop_with_compose();
+pub async fn restart_stack(compose_file_path: &PathBuf, log: &Logger) {
+    stop_with_compose(compose_file_path);
     cleanup_volumes();
-    launch_stack(log).await;
+    launch_stack(compose_file_path, log).await;
 }
 
-pub async fn shutdown_and_update(log: Logger) {
-    stop_with_compose();
+pub async fn shutdown_and_update(compose_file_path: &PathBuf, log: &Logger) {
+    stop_with_compose(compose_file_path);
     cleanup_docker();
-    update_with_compose();
-    restart_stack(log).await;
+    update_with_compose(compose_file_path);
+    restart_stack(compose_file_path, log).await;
 }
 
-pub async fn restart_sandbox(log: Logger) {
-    stop_with_compose();
+pub async fn restart_sandbox(compose_file_path: &PathBuf, log: &Logger) {
+    stop_with_compose(compose_file_path);
     cleanup_volumes();
-    launch_sandbox(log).await;
+    launch_sandbox(compose_file_path, log).await;
 }
 
-pub async fn shutdown_and_update_sandbox(log: Logger) {
-    stop_with_compose();
+pub async fn shutdown_and_update_sandbox(compose_file_path: &PathBuf, log: &Logger) {
+    stop_with_compose(compose_file_path);
     cleanup_docker();
-    update_with_compose();
-    restart_sandbox(log).await;
+    update_with_compose(compose_file_path);
+    restart_sandbox(compose_file_path, log).await;
 }
 
 pub fn cleanup_docker() {
@@ -93,11 +95,11 @@ pub fn cleanup_docker() {
     cleanup_volumes();
 }
 
-pub fn start_with_compose(container_name: &str, service_ports_name: &str) -> Output {
+pub fn start_with_compose(compose_file_path: &PathBuf, container_name: &str, service_ports_name: &str) -> Output {
     Command::new("docker-compose")
         .args(&[
             "-f",
-            "apps/watchdog/docker-compose.debugger.yml",
+            compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"),
             "run",
             "-d",
             "--name",
@@ -109,16 +111,16 @@ pub fn start_with_compose(container_name: &str, service_ports_name: &str) -> Out
         .expect("failed to execute docker-compose command")
 }
 
-pub fn stop_with_compose() -> Output {
+pub fn stop_with_compose(compose_file_path: &PathBuf) -> Output {
     Command::new("docker-compose")
-        .args(&["-f", "apps/watchdog/docker-compose.debugger.yml", "down"])
+        .args(&["-f", compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"), "down"])
         .output()
         .expect("failed to execute docker-compose command")
 }
 
-pub fn update_with_compose() -> Output {
+pub fn update_with_compose(compose_file_path: &PathBuf) -> Output {
     Command::new("docker-compose")
-        .args(&["-f", "apps/watchdog/docker-compose.debugger.yml", "pull"])
+        .args(&["-f", compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"), "pull"])
         .output()
         .expect("failed to execute docker-compose command")
 }
@@ -127,12 +129,12 @@ pub fn cleanup_volumes() -> Output {
     Command::new("docker")
         .args(&["volume", "prune", "-f"])
         .output()
-        .expect("failed to execute docker-compose command")
+        .expect("failed to execute docker command")
 }
 
 pub fn cleanup_docker_system() -> Output {
     Command::new("docker")
         .args(&["system", "prune", "-a", "-f"])
         .output()
-        .expect("failed to execute docker-compose command")
+        .expect("failed to execute docker command")
 }

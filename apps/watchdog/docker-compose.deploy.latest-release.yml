@@ -1,0 +1,101 @@
+version: "3"
+
+services:
+
+  tezedge-debugger:
+    image: simplestakingcom/tezedge-debugger:latest-release
+    privileged: true
+    environment:
+      - RUST_BACKTRACE=1
+      - P2P_PORT=9732
+    volumes:
+      - "tezedge-shared-data:/tmp/volume"
+      - "/sys/kernel/debug:/sys/kernel/debug:rw"
+    entrypoint: ./tezedge-debugger
+    ports:
+      - "17732:17732"      # debugger RPC port
+      - "10001:13131/udp"  # debugger syslog port
+
+  ocaml-debugger:
+    image: simplestakingcom/tezedge-debugger:latest-release
+    privileged: true
+    environment:
+      - RUST_BACKTRACE=1
+      - P2P_PORT=9733
+    volumes:
+      - "ocaml-shared-data:/tmp/volume"
+      - "/sys/kernel/debug:/sys/kernel/debug:rw"
+    entrypoint: ./tezedge-debugger
+    ports:
+      - "17733:17732"      # debugger RPC port
+      - "11001:13131/udp"  # debugger syslog port
+
+  tezedge-node:
+    image: simplestakingcom/tezedge:latest-release
+    command: "/light-node --config-file /tezedge.config --network ${TEZOS_NETWORK}"
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:10001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "tezedge-shared-data:/tmp/tezedge"
+    ports:
+      - "4927:4927"       # node WS port (required only for tezedge)
+      - "9732:9732"       # node P2P port
+      - "18732:18732"     # node RPC port
+      - "3030:3030"       # sandbox launcher port
+
+  tezedge-sandbox:
+    image: simplestakingcom/tezedge:sanbox-latest-release
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:10001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "tezedge-shared-data:/tmp/tezedge"
+    ports:
+      - "4927:4927"       # node WS port (required only for tezedge)
+      - "9732:9732"       # node P2P port
+      - "18732:18732"     # node RPC port
+      - "3030:3030"       # sandbox launcher port
+
+  ocaml-node:
+    image: tezos/tezos:v8.1
+    entrypoint: sh -c "sleep 5 && /usr/local/bin/entrypoint.sh tezos-node --cors-header='content-type' --cors-origin='*' --rpc-addr=[::]:18733 --net-addr=[::]:9733 --history-mode archive --network ${TEZOS_NETWORK}"
+    logging:
+      # Produce syslogs instead of terminal logs
+      driver: "syslog"
+      options:
+        # Send the logs to syslog (UDP only) server (running on debugger)
+        syslog-address: "udp://0.0.0.0:11001"  # Port must match debugger syslog port in 'ports' section
+        # Always in same RFC 5424 format (with microseconds precision)
+        syslog-format: "rfc5424micro"
+    volumes:
+      - "ocaml-shared-data:/var/run/tezos/node"
+    ports:
+      # should be equal inside docker and outside, because the node tells this port in its connection message,
+      # that is how peers can connect to it later
+      - "9733:9733"
+      - "18733:18733"     # node RPC port
+
+  explorer:
+    image: simplestakingcom/tezedge-explorer:latest-release
+    environment:
+      - SANDBOX=http://${HOSTNAME}.dev.tezedge.com:3030
+      # need a better way to provide such information
+      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","debugger":"http://${HOSTNAME}.dev.tezedge.com:17732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","debugger":"http://${HOSTNAME}.dev.tezedge.com:17733","ws":false}]
+    ports:
+      - "80:80"
+volumes:
+  tezedge-shared-data:
+    external: false
+  ocaml-shared-data:
+    external: false

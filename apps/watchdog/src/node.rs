@@ -16,11 +16,14 @@ use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
-use crate::image::Image;
+use crate::image::WatchdogContainer;
 use crate::monitors::OCAML_VOLUME_PATH;
 use crate::monitors::TEZEDGE_VOLUME_PATH;
 
-pub struct TezedgeNode {}
+pub const TEZEDGE_PORT: u16 = 18732;
+pub const OCAML_PORT: u16 = 18733;
+
+pub struct TezedgeNode;
 
 #[async_trait]
 impl Node for TezedgeNode {
@@ -47,9 +50,8 @@ impl Node for TezedgeNode {
     }
 }
 
-impl Image for TezedgeNode {
-    const TAG_ENV_KEY: &'static str = "TEZEDGE_IMAGE_TAG";
-    const IMAGE_NAME: &'static str = "simplestakingcom/tezedge";
+impl WatchdogContainer for TezedgeNode {
+    const NAME: &'static str = "watchdog-tezedge-node";
 }
 
 impl TezedgeNode {
@@ -109,9 +111,8 @@ impl Node for OcamlNode {
     }
 }
 
-impl Image for OcamlNode {
-    const TAG_ENV_KEY: &'static str = "OCAML_IMAGE_TAG";
-    const IMAGE_NAME: &'static str = "tezos/tezos";
+impl WatchdogContainer for OcamlNode {
+    const NAME: &'static str = "watchdog-ocaml-node";
 }
 
 impl OcamlNode {}
