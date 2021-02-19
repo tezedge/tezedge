@@ -23,6 +23,7 @@ snap = "1.0.4"
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+sled = "0.34.6"
 bytes = "1.0.1"
 
 [[bench]]
