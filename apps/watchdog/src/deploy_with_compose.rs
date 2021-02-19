@@ -8,8 +8,8 @@ use std::process::{Command, Output};
 use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
+use crate::image::{Explorer, OcamlDebugger, Sandbox, TezedgeDebugger, WatchdogContainer};
 use crate::node::{OcamlNode, TezedgeNode};
-use crate::image::{OcamlDebugger, TezedgeDebugger, Explorer, Sandbox, WatchdogContainer};
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
 pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
@@ -95,11 +95,17 @@ pub fn cleanup_docker() {
     cleanup_volumes();
 }
 
-pub fn start_with_compose(compose_file_path: &PathBuf, container_name: &str, service_ports_name: &str) -> Output {
+pub fn start_with_compose(
+    compose_file_path: &PathBuf,
+    container_name: &str,
+    service_ports_name: &str,
+) -> Output {
     Command::new("docker-compose")
         .args(&[
             "-f",
-            compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"),
+            compose_file_path
+                .to_str()
+                .unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"),
             "run",
             "-d",
             "--name",
@@ -113,14 +119,26 @@ pub fn start_with_compose(compose_file_path: &PathBuf, container_name: &str, ser
 
 pub fn stop_with_compose(compose_file_path: &PathBuf) -> Output {
     Command::new("docker-compose")
-        .args(&["-f", compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"), "down"])
+        .args(&[
+            "-f",
+            compose_file_path
+                .to_str()
+                .unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"),
+            "down",
+        ])
         .output()
         .expect("failed to execute docker-compose command")
 }
 
 pub fn update_with_compose(compose_file_path: &PathBuf) -> Output {
     Command::new("docker-compose")
-        .args(&["-f", compose_file_path.to_str().unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"), "pull"])
+        .args(&[
+            "-f",
+            compose_file_path
+                .to_str()
+                .unwrap_or("apps/watchdog/docker-compose.deploy.latest.yml"),
+            "pull",
+        ])
         .output()
         .expect("failed to execute docker-compose command")
 }

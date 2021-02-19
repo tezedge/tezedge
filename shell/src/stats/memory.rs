@@ -1,13 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
 use std::fmt;
 use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::path::Path;
 use std::process::Command;
 use std::string::FromUtf8Error;
-use std::convert::TryFrom;
 
 use failure::Fail;
 use merge::Merge;
@@ -77,13 +77,13 @@ impl TryFrom<MemoryData> for ProcessMemoryStats {
                     page_size,
                     ..
                 } = stats;
-        
+
                 let size = size.parse::<usize>()?;
                 let resident = resident.parse::<usize>()?;
-        
+
                 let virtual_mem = size * page_size;
                 let resident_mem = resident * page_size;
-        
+
                 Ok(ProcessMemoryStats {
                     virtual_mem,
                     resident_mem,
@@ -98,7 +98,7 @@ impl TryFrom<MemoryData> for ProcessMemoryStats {
 
                 let resident = resident.parse::<usize>()?;
 
-                // Note: we cannot get the virstual memory size from the data available 
+                // Note: we cannot get the virstual memory size from the data available
                 let virtual_mem = 0;
                 let resident_mem = resident * page_size;
 
@@ -113,10 +113,10 @@ impl TryFrom<MemoryData> for ProcessMemoryStats {
 
 impl fmt::Display for ProcessMemoryStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, 
+        writeln!(
+            f,
             "\n\tVirtual memory: {} MB\n\tResident memory: {} MB",
-            self.virtual_mem,
-            self.resident_mem,
+            self.virtual_mem, self.resident_mem,
         )
     }
 }

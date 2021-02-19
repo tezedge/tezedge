@@ -117,14 +117,14 @@ pub trait Node {
                 NodeInfo::new(
                     res_json["level"]
                         .as_u64()
-                        .ok_or(format_err!("Level is not u64"))?,
+                        .ok_or_else(|| format_err!("Level is not u64"))?,
                     res_json["hash"]
                         .as_str()
-                        .ok_or(format_err!("hash is not str"))?
+                        .ok_or_else(|| format_err!("hash is not str"))?
                         .to_string(),
                     res_json["timestamp"]
                         .as_str()
-                        .ok_or(format_err!("timestamp is not str"))?
+                        .ok_or_else(|| format_err!("timestamp is not str"))?
                         .to_string(),
                 )
             }
@@ -170,9 +170,8 @@ pub trait Node {
         Ok(system
             .get_processes()
             .iter()
-            .map(|(_, process)| process.clone())
-            .filter(|process| process.name().contains(process_name))
-            .map(|process| process.cpu_usage())
+            .filter(|(_, process)| process.name().contains(process_name))
+            .map(|(_, process)| process.cpu_usage())
             .sum::<f32>() as i32)
     }
 

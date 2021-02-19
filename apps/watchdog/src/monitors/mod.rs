@@ -25,10 +25,8 @@ pub mod resource;
 
 // TODO: get this info from docker (shiplift needs to implement docker volume inspect)
 // path to the volumes
-pub const TEZEDGE_VOLUME_PATH: &str =
-    "/var/lib/docker/volumes/watchdog_tezedge-shared-data/_data";
-pub const OCAML_VOLUME_PATH: &str =
-    "/var/lib/docker/volumes/watchdog_ocaml-shared-data/_data";
+pub const TEZEDGE_VOLUME_PATH: &str = "/var/lib/docker/volumes/watchdog_tezedge-shared-data/_data";
+pub const OCAML_VOLUME_PATH: &str = "/var/lib/docker/volumes/watchdog_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
     compose_file_path: PathBuf,
@@ -107,7 +105,11 @@ pub fn start_resource_monitoring(
     })
 }
 
-pub async fn shutdown_and_cleanup(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
+pub async fn shutdown_and_cleanup(
+    compose_file_path: &PathBuf,
+    slack: SlackServer,
+    log: &Logger,
+) -> Result<(), failure::Error> {
     slack.send_message("Manual shuttdown ").await?;
     info!(log, "Manual shutdown");
 
@@ -117,7 +119,11 @@ pub async fn shutdown_and_cleanup(compose_file_path: &PathBuf, slack: SlackServe
     Ok(())
 }
 
-pub async fn start_stack(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
+pub async fn start_stack(
+    compose_file_path: &PathBuf,
+    slack: SlackServer,
+    log: &Logger,
+) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
@@ -126,7 +132,11 @@ pub async fn start_stack(compose_file_path: &PathBuf, slack: SlackServer, log: &
     Ok(())
 }
 
-pub async fn start_sandbox(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
+pub async fn start_sandbox(
+    compose_file_path: &PathBuf,
+    slack: SlackServer,
+    log: &Logger,
+) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack

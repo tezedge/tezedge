@@ -9,8 +9,8 @@ use crate::display_info::{
     CommitHashes, CpuData, DiskSpaceData, HeadData, ImagesInfo, MemoryData,
     TezedgeSpecificMemoryData,
 };
-use crate::image::{TezedgeDebugger, Explorer, WatchdogContainer};
-use crate::node::{Node, OcamlNode, TezedgeNode, TEZEDGE_PORT, OCAML_PORT};
+use crate::image::{Explorer, TezedgeDebugger, WatchdogContainer};
+use crate::node::{Node, OcamlNode, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 use crate::slack::SlackServer;
 
 use crate::monitors::TEZEDGE_VOLUME_PATH;
@@ -44,27 +44,19 @@ impl InfoMonitor {
 
         // collect memory data about light node and protocol runners
         let node_data = TezedgeNode::collect_memory_data(&log, TEZEDGE_PORT).await?;
-        let protocol_runner_data = TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
-        let tezedge_memory_info = TezedgeSpecificMemoryData::new(
-            node_data,
-            protocol_runner_data,
-        );
+        let protocol_runner_data =
+            TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
+        let tezedge_memory_info = TezedgeSpecificMemoryData::new(node_data, protocol_runner_data);
 
         // collect memory data about ocaml node
         let ocaml_memory = OcamlNode::collect_memory_data(&log, OCAML_PORT).await?;
 
-        let memory_info = MemoryData::new(
-            ocaml_memory,
-            tezedge_memory_info,
-        );
+        let memory_info = MemoryData::new(ocaml_memory, tezedge_memory_info);
 
         // collect current head info from both nodes
         let ocaml_head_info = OcamlNode::collect_head_data(&log, OCAML_PORT).await?;
         let tezedge_head_info = TezedgeNode::collect_head_data(&log, TEZEDGE_PORT).await?;
-        let head_info = HeadData::new(
-            ocaml_head_info,
-            tezedge_head_info,
-        );
+        let head_info = HeadData::new(ocaml_head_info, tezedge_head_info);
 
         // collect disk usage data
         let disk_info = DiskSpaceData::new(
