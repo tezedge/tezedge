@@ -1,13 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{btree_map::Entry, BTreeMap, HashSet};
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::RocksDBStats;
 use crate::storage_backend::{
     StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError,
-    StorageBackendStats as KVStoreStats,
 };
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)

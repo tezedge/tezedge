@@ -62,7 +62,7 @@ use crypto::hash::{FromBytesError, HashType};
 use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
-use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::{StorageBackend, StorageBackendError};
 
 const HASH_LEN: usize = 32;
@@ -453,7 +453,7 @@ impl MerkleStorage {
     }
 
     fn value_exists(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<bool, MerkleError> {
-        let mut full_path = key.clone();
+        let mut full_path = key.to_vec();
         let file = full_path.pop().ok_or(MerkleError::KeyEmpty)?;
         let path = full_path;
         // find tree by path
@@ -491,7 +491,7 @@ impl MerkleStorage {
         root_hash: &EntryHash,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
-        let mut full_path = key.clone();
+        let mut full_path = key.to_vec();
         let file = full_path.pop().ok_or(MerkleError::KeyEmpty)?;
         let path = full_path;
         // find tree by path
