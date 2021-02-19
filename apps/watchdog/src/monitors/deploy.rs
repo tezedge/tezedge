@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
+
 use failure::bail;
 use shiplift::Docker;
 use slog::{info, warn, Logger};
@@ -9,20 +11,21 @@ use slog::{info, warn, Logger};
 use crate::deploy_with_compose::{
     restart_sandbox, restart_stack, shutdown_and_update, shutdown_and_update_sandbox,
 };
-use crate::image::{local_hash, remote_hash, Debugger, Explorer, Image, Sandbox, TEZEDGE_NODE_CONTAINER_NAME, SANDBOX_CONTAINER_NAME};
+use crate::image::{local_hash, remote_hash, TezedgeDebugger, Explorer, WatchdogContainer, Sandbox};
 use crate::monitors::info::InfoMonitor;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
 
 pub struct DeployMonitor {
+    compose_file_path: PathBuf,
     docker: Docker,
     slack: SlackServer,
     log: Logger,
 }
 
 impl DeployMonitor {
-    pub fn new(docker: Docker, slack: SlackServer, log: Logger) -> Self {
-        Self { docker, slack, log }
+    pub fn new(compose_file_path: PathBuf, docker: Docker, slack: SlackServer, log: Logger) -> Self {
+        Self { compose_file_path, docker, slack, log }
     }
 
     async fn collect_node_logs(&self) -> Result<serde_json::Value, failure::Error> {
@@ -33,11 +36,11 @@ impl DeployMonitor {
     }
 
     pub async fn monitor_stack(&self) -> Result<(), failure::Error> {
-        let DeployMonitor { slack, .. } = self;
+        let DeployMonitor { slack, log, compose_file_path, .. } = self;
 
         if self.is_node_container_running().await {
             let node_updated = self.changed::<TezedgeNode>().await?;
-            let debugger_updated = self.changed::<Debugger>().await?;
+            let debugger_updated = self.changed::<TezedgeDebugger>().await?;
             let explorer_updated = self.changed::<Explorer>().await?;
             // TODO: here restart everything,
             // but if debugger updated not need to restart explorer
@@ -45,7 +48,7 @@ impl DeployMonitor {
             // if node updated, need to restart tezedge node and tezedge debugger
             // and recreate tezedge volume, but not need to restart tezos and explorer
             if node_updated || debugger_updated || explorer_updated {
-                shutdown_and_update(self.log.clone()).await;
+                shutdown_and_update(&compose_file_path, log).await;
 
                 // send node info after update
                 let info_monitor = InfoMonitor::new(slack.clone(), self.log.clone());
@@ -61,18 +64,18 @@ impl DeployMonitor {
                 .await?;
 
             self.send_log_dump().await?;
-            restart_stack(self.log.clone()).await;
+            restart_stack(&compose_file_path, log).await;
         };
 
         Ok(())
     }
 
     pub async fn monitor_sandbox_launcher(&self) -> Result<(), failure::Error> {
-        let DeployMonitor { slack, log, .. } = self;
+        let DeployMonitor { slack, log, compose_file_path, .. } = self;
 
         if self.is_sandbox_container_running().await {
             if self.changed::<Sandbox>().await? {
-                shutdown_and_update_sandbox(log.clone()).await;
+                shutdown_and_update_sandbox(&compose_file_path, log).await;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");
@@ -82,7 +85,7 @@ impl DeployMonitor {
             slack
                 .send_message("Sandbox launcher not running. Restarting")
                 .await?;
-            restart_sandbox(log.clone()).await;
+            restart_sandbox(&compose_file_path, log).await;
         }
 
         Ok(())
@@ -91,7 +94,7 @@ impl DeployMonitor {
     async fn is_node_container_running(&self) -> bool {
         let DeployMonitor { docker, .. } = self;
 
-        match docker.containers().get(TEZEDGE_NODE_CONTAINER_NAME).inspect().await {
+        match docker.containers().get(TezedgeNode::NAME).inspect().await {
             Ok(container_data) => container_data.state.running,
             _ => false,
         }
@@ -102,7 +105,7 @@ impl DeployMonitor {
 
         match docker
             .containers()
-            .get(SANDBOX_CONTAINER_NAME)
+            .get(Sandbox::NAME)
             .inspect()
             .await
         {
@@ -120,9 +123,10 @@ impl DeployMonitor {
         Ok(())
     }
 
-    async fn changed<T: Image>(&self) -> Result<bool, failure::Error> {
-        let DeployMonitor { docker, slack, log } = self;
+    async fn changed<T: WatchdogContainer + Sync + Send>(&self) -> Result<bool, failure::Error> {
+        let DeployMonitor { docker, slack, log, .. } = self;
 
+        let image = T::image().await?;
         let local_image_hash = local_hash::<T>(&docker).await?;
         let remote_image_hash = remote_hash::<T>().await?;
 
@@ -136,7 +140,7 @@ impl DeployMonitor {
             slack
                 .send_message(&format!(
                     "{} image changing {} -> {}",
-                    T::name(),
+                    image,
                     local_image_hash,
                     remote_image_hash
                 ))

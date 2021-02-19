@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -30,13 +31,14 @@ pub const OCAML_VOLUME_PATH: &str =
     "/var/lib/docker/volumes/watchdog_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
+    compose_file_path: PathBuf,
     slack: SlackServer,
     interval: u64,
     log: Logger,
     running: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor = DeployMonitor::new(docker, slack, log.clone());
+    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone());
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_stack().await {
@@ -48,13 +50,14 @@ pub fn start_deploy_monitoring(
 }
 
 pub fn start_sandbox_monitoring(
+    compose_file_path: PathBuf,
     slack: SlackServer,
     interval: u64,
     log: Logger,
     running: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor = DeployMonitor::new(docker, slack, log.clone());
+    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone());
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_sandbox_launcher().await {
@@ -104,30 +107,30 @@ pub fn start_resource_monitoring(
     })
 }
 
-pub async fn shutdown_and_cleanup(slack: SlackServer, log: Logger) -> Result<(), failure::Error> {
+pub async fn shutdown_and_cleanup(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
     slack.send_message("Manual shuttdown ").await?;
     info!(log, "Manual shutdown");
 
-    stop_with_compose();
+    stop_with_compose(compose_file_path);
     cleanup_docker();
 
     Ok(())
 }
 
-pub async fn start_stack(slack: SlackServer, log: Logger) -> Result<(), failure::Error> {
+pub async fn start_stack(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
-    restart_stack(log).await;
+    restart_stack(compose_file_path, log).await;
     slack.send_message("Tezedge stack started").await?;
     Ok(())
 }
 
-pub async fn start_sandbox(slack: SlackServer, log: Logger) -> Result<(), failure::Error> {
+pub async fn start_sandbox(compose_file_path: &PathBuf, slack: SlackServer, log: &Logger) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
-    restart_sandbox(log).await;
+    restart_sandbox(compose_file_path, log).await;
     slack
         .send_message("Tezedge sandbox launcher started")
         .await?;

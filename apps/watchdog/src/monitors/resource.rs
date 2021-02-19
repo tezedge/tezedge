@@ -12,15 +12,12 @@ use slog::Logger;
 use shell::stats::memory::ProcessMemoryStats;
 
 use crate::display_info::DiskData;
-use crate::node::{Node, TezedgeNode};
+use crate::node::{Node, TezedgeNode, TEZEDGE_PORT, OCAML_PORT};
 
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
 
 /// The max capacity of the VecDeque holding the measurements
 pub const MEASUREMENTS_MAX_CAPACITY: usize = 1440;
-
-/// The interval in sencond in which the measoruments should be taken
-// const MEASUREMENT_INTERVAL: u64 = 1;
 
 #[derive(Clone, Debug)]
 pub struct ResourceMonitor {
@@ -28,15 +25,6 @@ pub struct ResourceMonitor {
     tezedge_resource_utilization: ResourceUtilizationStorage,
     log: Logger,
 }
-
-// #[derive(Clone, Debug, Default, Serialize)]
-// pub struct DiskStats {
-//     main_db: u64,
-//     context_irmin: u64,
-//     context_rocks_db: u64,
-//     context_actions: u64,
-//     block_storage: u64,
-// }
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct MemoryStats {
@@ -75,11 +63,11 @@ impl ResourceMonitor {
 
     pub async fn take_measurement(&self) -> Result<(), failure::Error> {
         // memory rpc
-        let tezedge_node = TezedgeNode::collect_memory_data(&self.log, 18732).await?;
-        let ocaml_node = OcamlNode::collect_memory_data(&self.log, 18733).await?;
+        let tezedge_node = TezedgeNode::collect_memory_data(&self.log, TEZEDGE_PORT).await?;
+        let ocaml_node = OcamlNode::collect_memory_data(&self.log, OCAML_PORT).await?;
 
         // protocol runner memory rpc
-        let protocol_runners = TezedgeNode::collect_protocol_runners_memory_stats(18732).await?;
+        let protocol_runners = TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
 
         // collect disk stats
         let tezedge_disk = TezedgeNode::collect_disk_data()?;
