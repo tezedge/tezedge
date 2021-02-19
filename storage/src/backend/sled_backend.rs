@@ -60,6 +60,7 @@ impl StorageBackend for SledBackend {
     }
 
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
+        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
         Ok(RocksDBStats {
             mem_table_total: 0,
             mem_table_unflushed: 0,
