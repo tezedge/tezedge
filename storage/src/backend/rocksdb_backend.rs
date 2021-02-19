@@ -80,9 +80,8 @@ impl StorageBackend for RocksDBBackend {
             )?;
         }
 
-        (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>).write_batch(
-            rocksb_batch,
-        )?;
+        (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
+            .write_batch(rocksb_batch)?;
 
         Ok(())
     }

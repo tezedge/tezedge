@@ -66,6 +66,7 @@ impl slog::Value for StorageBackendError {
     }
 }
 
+//TODO TE-432 - create single abstraction for StorageBackend and KeyValueWithSchema
 pub trait StorageBackend: Send + Sync {
     fn is_persisted(&self) -> bool;
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
