@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::collections::HashMap;
+
 use reqwest::header::AUTHORIZATION;
-use slack_hook::{PayloadBuilder, Slack};
 use slog::{error, info, Logger};
 
 #[derive(Clone)]
@@ -30,20 +31,19 @@ impl SlackServer {
     }
 
     pub async fn send_message(&self, text: &str) -> Result<(), failure::Error> {
-        // slack webhook url
-        let slack = Slack::new(self.monitor_channel_url.as_ref()).unwrap();
+        let client = reqwest::Client::new();
 
-        let payload = PayloadBuilder::new()
-            // .channel("#monitoring")
-            .channel(&self.channel)
-            .text(text)
-            .build()
-            .unwrap();
+        let mut map = HashMap::new();
+        map.insert("text", text);
 
-        // send message
-        let resposne = slack.send(&payload);
-        match resposne {
-            Ok(()) => info!(self.log, "Slack message sent: {}", text),
+        let res = client
+            .post(&self.monitor_channel_url)
+            .json(&map)
+            .send()
+            .await;
+
+        match res {
+            Ok(_) => info!(self.log, "Slack message sent: {}", text),
             Err(e) => error!(self.log, "Slack message error: {:?}", e),
         }
 

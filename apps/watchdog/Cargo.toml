@@ -18,7 +18,6 @@ reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 shiplift = { git = "https://github.com/simplestaking/shiplift.git", branch = "master" }
-slack-hook = ""
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.6"
