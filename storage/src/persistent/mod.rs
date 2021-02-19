@@ -153,8 +153,6 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
         merkle_backend: KeyValueStoreBackend,
     ) -> Self {
-        let sled = sled::Config::new().path("/tmp/sled").open().unwrap();
-
         let merkle = match merkle_backend {
             KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
                 db_context.clone(),
@@ -162,6 +160,7 @@ impl PersistentStorage {
             ))),
             KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
             KeyValueStoreBackend::Sled => {
+                let sled = sled::Config::new().temporary(true).open().unwrap();
                 MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
             }
             KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),

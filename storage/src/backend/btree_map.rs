@@ -36,8 +36,8 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
     }
 
     /// put kv in map if key doesn't exist. If it does then return false.
-    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
-        match self.kv_map.entry(key) {
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
+        match self.kv_map.entry(key.clone()) {
             Entry::Vacant(entry) => {
                 entry.insert(value);
                 Ok(true)
@@ -46,8 +46,8 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         }
     }
 
-    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
-        self.kv_map.insert(key, value);
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
+        self.kv_map.insert(key.clone(), value);
         Ok(())
     }
 

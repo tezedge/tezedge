@@ -1164,7 +1164,7 @@ impl MerkleStorage {
 
         // atomically write all entries in one batch to DB
         for (k, v) in batch {
-            self.db.put(k, v)?;
+            self.db.put(&k, v)?;
         }
 
         Ok(())

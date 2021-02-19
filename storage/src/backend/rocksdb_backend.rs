@@ -45,7 +45,7 @@ impl StorageBackend for RocksDBBackend {
         true
     }
 
-    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
         let cf = self.inner.cf_handle(&self.column_name).ok_or(
             StorageBackendError::MissingColumnFamily {
                 name: &self.column_name,
@@ -63,7 +63,7 @@ impl StorageBackend for RocksDBBackend {
             .map(|_| true)
     }
 
-    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
         let cf = self.inner.cf_handle(&self.column_name).ok_or(
             StorageBackendError::MissingColumnFamily {
                 name: &self.column_name,

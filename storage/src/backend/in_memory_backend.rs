@@ -28,8 +28,8 @@ impl StorageBackend for InMemoryBackend {
         false
     }
 
-    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-        let measurement = StorageBackendStats::from((&key, &value));
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+        let measurement = StorageBackendStats::from((key, &value));
         let mut w = self
             .inner
             .write()
@@ -37,7 +37,7 @@ impl StorageBackend for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        let was_added = w.insert(key, value).is_none();
+        let was_added = w.insert(key.clone(), value).is_none();
 
         if was_added {
             self.stats += measurement;
@@ -46,7 +46,7 @@ impl StorageBackend for InMemoryBackend {
         Ok(was_added)
     }
 
-    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
         let mut w = self
             .inner
             .write()
@@ -54,7 +54,7 @@ impl StorageBackend for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        w.insert(key, value);
+        w.insert(key.clone(), value);
         Ok(())
     }
 

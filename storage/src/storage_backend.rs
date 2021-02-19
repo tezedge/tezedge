@@ -69,8 +69,8 @@ impl slog::Value for StorageBackendError {
 pub trait StorageBackend: Send + Sync {
     fn is_persisted(&self) -> bool;
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
-    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError>;
-    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError>;
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError>;

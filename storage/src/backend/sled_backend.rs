@@ -20,14 +20,14 @@ impl StorageBackend for SledBackend {
         true
     }
 
-    fn put(&mut self, key: EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
         Ok(self
             .inner
             .insert(&key.as_ref()[..], value)
             .map(|v| v.is_none())?)
     }
 
-    fn merge(&mut self, key: EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
         self.inner.insert(&key.as_ref()[..], value)?;
         Ok(())
     }
