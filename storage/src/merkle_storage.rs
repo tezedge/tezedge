@@ -1929,7 +1929,7 @@ mod tests {
     }
 
     fn test_delete(backend: &str) {
-        let db_name = &format!("ms_test_delete_", {});
+        let db_name = &format!("ms_test_delete_{}", backend);
         clean_db(db_name);
 
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
