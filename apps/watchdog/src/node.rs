@@ -16,11 +16,14 @@ use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
-use crate::image::Image;
+use crate::image::WatchdogContainer;
 use crate::monitors::OCAML_VOLUME_PATH;
 use crate::monitors::TEZEDGE_VOLUME_PATH;
 
-pub struct TezedgeNode {}
+pub const TEZEDGE_PORT: u16 = 18732;
+pub const OCAML_PORT: u16 = 18733;
+
+pub struct TezedgeNode;
 
 #[async_trait]
 impl Node for TezedgeNode {
@@ -47,9 +50,8 @@ impl Node for TezedgeNode {
     }
 }
 
-impl Image for TezedgeNode {
-    const TAG_ENV_KEY: &'static str = "TEZEDGE_IMAGE_TAG";
-    const IMAGE_NAME: &'static str = "simplestakingcom/tezedge";
+impl WatchdogContainer for TezedgeNode {
+    const NAME: &'static str = "watchdog-tezedge-node";
 }
 
 impl TezedgeNode {
@@ -79,23 +81,9 @@ impl TezedgeNode {
 
         Ok(memory_stats)
     }
-
-    // // TODO move to trait
-    // pub fn collect_cpu_data() -> Result<f32, failure::Error> {
-    //     let mut system = System::new_all();
-    //     system.refresh_all();
-
-    //     // get tezos-node process
-    //     Ok(system.get_processes()
-    //         .into_iter()
-    //         .map(|(_, process)| process.clone())
-    //         .filter(|process| process.name().contains("light-node"))
-    //         .map(|process| process.cpu_usage())
-    //         .sum())
-    // }
 }
 
-pub struct OcamlNode {}
+pub struct OcamlNode;
 
 #[async_trait]
 impl Node for OcamlNode {
@@ -109,12 +97,46 @@ impl Node for OcamlNode {
     }
 }
 
-impl Image for OcamlNode {
-    const TAG_ENV_KEY: &'static str = "OCAML_IMAGE_TAG";
-    const IMAGE_NAME: &'static str = "tezos/tezos";
+impl WatchdogContainer for OcamlNode {
+    const NAME: &'static str = "watchdog-ocaml-node";
 }
 
-impl OcamlNode {}
+impl OcamlNode {
+    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStats, failure::Error> {
+        let mut system = System::new_all();
+        system.refresh_all();
+
+        // collect all processes from the system
+        let system_processes = system.get_processes();
+
+        // collect all PIDs from process called tezos-node (ocaml node)
+        let tezos_ocaml_processes: Vec<Option<i32>> = system_processes
+            .iter()
+            .filter(|(_, process)| process.name().contains("tezos-node"))
+            .map(|(pid, _)| Some(*pid))
+            .collect();
+
+        // collect all processes that is the child of the main process and sum up the memory usage
+        let valaidators: ProcessMemoryStats = system_processes
+            .iter()
+            .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
+            .map(|(_, process)| {
+                ProcessMemoryStats::new(
+                    process.virtual_memory().try_into().unwrap_or_default(),
+                    process.memory().try_into().unwrap_or_default(),
+                )
+            })
+            .fold(
+                ProcessMemoryStats::default(),
+                |mut acc, mem: ProcessMemoryStats| {
+                    acc.merge(mem);
+                    acc
+                },
+            );
+
+        Ok(valaidators)
+    }
+}
 
 #[async_trait]
 pub trait Node {
@@ -130,14 +152,14 @@ pub trait Node {
                 NodeInfo::new(
                     res_json["level"]
                         .as_u64()
-                        .ok_or(format_err!("Level is not u64"))?,
+                        .ok_or_else(|| format_err!("Level is not u64"))?,
                     res_json["hash"]
                         .as_str()
-                        .ok_or(format_err!("hash is not str"))?
+                        .ok_or_else(|| format_err!("hash is not str"))?
                         .to_string(),
                     res_json["timestamp"]
                         .as_str()
-                        .ok_or(format_err!("timestamp is not str"))?
+                        .ok_or_else(|| format_err!("timestamp is not str"))?
                         .to_string(),
                 )
             }
@@ -183,9 +205,8 @@ pub trait Node {
         Ok(system
             .get_processes()
             .iter()
-            .map(|(_, process)| process.clone())
-            .filter(|process| process.name().contains(process_name))
-            .map(|process| process.cpu_usage())
+            .filter(|(_, process)| process.name().contains(process_name))
+            .map(|(_, process)| process.cpu_usage())
             .sum::<f32>() as i32)
     }
 

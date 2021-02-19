@@ -16,7 +16,8 @@ We need to set the *TEZEDGE_IMAGE_TAG* environment var to the desired version of
 Note that the debugger container needs root privilages. 
 
 ```
-sudo TEZEDGE_IMAGE_TAG=latest TEZEDGE_DEBUGGER_IMAGE_TAG=latest TEZEDGE_EXPLORER_IMAGE_TAG=latest HOSTNAME=$(hostname) ./target/release/watchdog \
+sudo TEZOS_NETWORK=delphinet HOSTNAME=$(hostname) ./target/release/watchdog \
+--compose-file-path apps/watchdog/docker-compose.deploy.latest.yml
 --image-monitor-interval 60 \ 
 --info-interval 21600 \
 --resource-monitor-interval 15 \

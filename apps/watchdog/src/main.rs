@@ -18,14 +18,11 @@ mod node;
 mod rpc;
 mod slack;
 
-use crate::image::{Debugger, Explorer, Image};
 use crate::monitors::resource::{ResourceUtilization, MEASUREMENTS_MAX_CAPACITY};
 use crate::monitors::{
     shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring,
     start_resource_monitoring, start_sandbox, start_sandbox_monitoring, start_stack,
 };
-
-use crate::node::TezedgeNode;
 
 #[tokio::main]
 async fn main() {
@@ -34,14 +31,6 @@ async fn main() {
 
     // create an slog logger
     let log = create_logger(env.log_level);
-
-    info!(
-        log,
-        "Tezedge stack watchdog started. Images: {}, {}, {}",
-        TezedgeNode::name(),
-        Debugger::name(),
-        Explorer::name(),
-    );
 
     let slack_server = slack::SlackServer::new(
         env.slack_url,
@@ -56,12 +45,13 @@ async fn main() {
     if env.is_sandbox {
         info!(log, "Starting sandbox launcher monitoring");
 
-        start_sandbox(slack_server.clone(), log.clone())
+        start_sandbox(&env.compose_file_path, slack_server.clone(), &log)
             .await
             .expect("Sandbox failed to start");
 
         info!(log, "Creating docker image monitor");
         let deploy_handle = start_sandbox_monitoring(
+            env.compose_file_path.clone(),
             slack_server.clone(),
             env.image_monitor_interval,
             log.clone(),
@@ -69,12 +59,13 @@ async fn main() {
         );
         thread_handles.push(deploy_handle);
     } else {
-        start_stack(slack_server.clone(), log.clone())
+        start_stack(&env.compose_file_path, slack_server.clone(), &log)
             .await
             .expect("Stack failed to start");
 
         info!(log, "Creating docker image monitor");
         let deploy_handle = start_deploy_monitoring(
+            env.compose_file_path.clone(),
             slack_server.clone(),
             env.image_monitor_interval,
             log.clone(),
@@ -137,7 +128,7 @@ async fn main() {
 
     // cleanup
     info!(log, "Cleaning up containers");
-    shutdown_and_cleanup(slack_server, log.clone())
+    shutdown_and_cleanup(&env.compose_file_path, slack_server, &log)
         .await
         .expect("Cleanup failed");
     info!(log, "Shutdown complete");
