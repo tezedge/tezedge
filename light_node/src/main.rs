@@ -226,18 +226,17 @@ fn build_recorders(
     env.storage
         .action_store_backend
         .iter()
-        .map(|backend| {
-            let result: Box<dyn ActionRecorder + Send> = match backend {
-                configuration::ContextActionStoreBackend::RocksDB => {
-                    Box::new(ContextActionStorage::new(&storage))
-                }
-                configuration::ContextActionStoreBackend::FileStorage => {
-                    let action_file_path = env.storage.db_path.join("actionfile.bin");
-                    Box::new(ActionFileStorage::new(action_file_path))
-                }
-                configuration::ContextActionStoreBackend::NoneBackend => Box::new(NoRecorder {}),
-            };
-            return result;
+        .map(|backend| match backend {
+            configuration::ContextActionStoreBackend::RocksDB => {
+                Box::new(ContextActionStorage::new(&storage)) as Box<dyn ActionRecorder + Send>
+            }
+            configuration::ContextActionStoreBackend::FileStorage => {
+                let action_file_path = env.storage.db_path.join("actionfile.bin");
+                Box::new(ActionFileStorage::new(action_file_path)) as Box<dyn ActionRecorder + Send>
+            }
+            configuration::ContextActionStoreBackend::NoneBackend => {
+                Box::new(NoRecorder {}) as Box<dyn ActionRecorder + Send>
+            }
         })
         .collect::<Vec<_>>()
 }
@@ -337,14 +336,12 @@ fn block_on_actors(
     let chain_feeder_channel =
         ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
-    let recorders = build_recorders(&env, &persistent_storage);
-
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
-        recorders,
+        build_recorders(&env, &persistent_storage),
         context_actions_event_server,
         log.clone(),
     )

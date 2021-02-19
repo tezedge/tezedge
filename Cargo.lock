@@ -1527,7 +1527,6 @@ dependencies = [
  "clap",
  "failure",
  "futures",
- "itertools 0.10.0",
  "logging",
  "monitoring",
  "networking",
@@ -2733,7 +2732,6 @@ dependencies = [
 name = "shell"
 version = "1.1.0"
 dependencies = [
- "bytes 1.0.1",
  "chrono",
  "crypto",
  "dns-lookup",

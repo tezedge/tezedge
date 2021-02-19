@@ -211,7 +211,7 @@ NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-
                '--ffi-pool-max-connections=10',
                '--ffi-pool-connection-timeout-in-secs=60',
                '--ffi-pool-max-lifetime-in-secs=21600',
-               '--ffi-pool-idle-timeout-in-secs=1800', '--actions-store-backend=rocksdb',
+               '--ffi-pool-idle-timeout-in-secs=1800', '--actions-store-backend=none',
                '--compute-context-action-tree-hashes=false',
                '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
                '--synchronization-thresh', '0']

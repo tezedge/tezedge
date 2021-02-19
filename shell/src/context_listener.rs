@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, error, info, warn, Logger};
+use slog::{crit, debug, info, warn, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::context::{ContextApi, TezedgeContext};
@@ -218,7 +218,7 @@ fn listen_protocol_events(
                     // record action in the order they are really comming
                     for recorder in action_store_backend.iter_mut() {
                         if let Err(error) = recorder.record(&msg) {
-                            error!(log, "action: {:?} ,error: {} ", &msg.action, error);
+                            warn!(log, "Failed to store context action"; "action" => format!("{:?}", &msg.action), "reason" => format!("{}", error));
                         }
                     }
                 }

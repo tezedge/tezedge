@@ -8,7 +8,7 @@ use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
 
@@ -857,13 +857,14 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
 
-                let mut backends = match args.values_of("actions-store-backend") {
+                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
                     Some(v) => v.map(String::from).collect(),
                     None => {
-                        vec!["rocksdb".to_string()]
+                        let mut h = HashSet::new();
+                        h.insert("rocksdb".to_string());
+                        h
                     }
                 };
-                backends.dedup();
                 let action_store_backend = backends
                     .iter()
                     .map(|name| match name.as_str() {

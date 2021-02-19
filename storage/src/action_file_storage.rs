@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use crate::action_file::*;
 use crate::persistent::{ActionRecordError, ActionRecorder};
 use crate::StorageError;
@@ -23,7 +26,7 @@ impl ActionFileStorage {
     }
 
     fn store_single_message(&mut self, block_hash: BlockHash, msg: &ContextActionMessage) {
-        let block_actions = self.staging.entry(block_hash).or_insert(Vec::new());
+        let block_actions = self.staging.entry(block_hash).or_default();
         block_actions.push(msg.clone());
     }
 
