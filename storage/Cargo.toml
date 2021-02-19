@@ -19,9 +19,11 @@ serde = { version = "1.0", features = ["derive", "rc"] }
 slog = "2.7"
 # local dependencies
 crypto = { path = "../crypto" }
+snap = "1.0.4"
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+bytes = "1.0.1"
 
 [[bench]]
 name = "predecessor_benchmarks"

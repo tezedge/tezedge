@@ -16,8 +16,8 @@ use slog::{crit, debug, info, warn, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::context::{ContextApi, TezedgeContext};
-use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, ContextActionStorage};
+use storage::persistent::{ActionRecorder, PersistentStorage};
+use storage::BlockStorage;
 use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -53,9 +53,9 @@ impl ContextListener {
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
+        action_store_backend: Vec<Box<dyn ActionRecorder + Send>>,
         mut event_server: IpcEvtServer,
         log: Logger,
-        store_context_action: bool,
     ) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -67,16 +67,17 @@ impl ContextListener {
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
                 ));
-                let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
+
+                let mut action_store_backend = action_store_backend;
+
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut context_action_storage,
+                        &mut action_store_backend,
                         &mut context,
                         &log,
-                        store_context_action,
                     ) {
                         Ok(()) => info!(log, "Context listener finished"),
                         Err(err) => {
@@ -162,66 +163,13 @@ impl Receive<ShellChannelMsg> for ContextListener {
     }
 }
 
-fn store_context_action(
-    storage: &mut ContextActionStorage,
-    should_store: bool,
-    action: ContextAction,
-) -> Result<(), Error> {
-    if !should_store {
-        return Ok(());
-    }
-    match &action {
-        ContextAction::Set {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Copy {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Delete {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::RemoveRecursively {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Mem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::DirMem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Commit {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Get {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Fold {
-            block_hash: Some(block_hash),
-            ..
-        } => {
-            storage.put_action(&BlockHash::try_from(block_hash.clone())?, action)?;
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    context_action_storage: &mut ContextActionStorage,
+    action_store_backend: &mut Vec<Box<dyn ActionRecorder + Send>>,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
-    store_context_actions: bool,
 ) -> Result<(), Error> {
     info!(
         log,
@@ -266,16 +214,17 @@ fn listen_protocol_events(
                     event_count + 1
                 };
 
-                if msg.perform {
-                    perform_context_action(&msg.action, context)?;
+                if msg.record {
+                    // record action in the order they are really comming
+                    for recorder in action_store_backend.iter_mut() {
+                        if let Err(error) = recorder.record(&msg) {
+                            warn!(log, "Failed to store context action"; "action" => format!("{:?}", &msg.action), "reason" => format!("{}", error));
+                        }
+                    }
                 }
 
-                if msg.record {
-                    store_context_action(
-                        context_action_storage,
-                        store_context_actions,
-                        msg.action,
-                    )?;
+                if msg.perform {
+                    perform_context_action(&msg.action, context)?;
                 }
             }
             Err(err) => {
