@@ -3,10 +3,14 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::GetInMemStats;
+use crate::persistent::database::KeyValueStoreWithSchema;
 use crate::persistent::database::RocksDBStats;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
+use crate::MerkleStorage;
+use rocksdb::WriteBatch;
 use rocksdb::{WriteOptions, DB};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 use std::sync::Arc;
 
 pub struct RocksDBBackend {
@@ -60,6 +64,23 @@ impl StorageBackend for RocksDBBackend {
             )
             .map_err(StorageBackendError::from)
             .map(|_| true)
+    }
+
+    fn put_batch(
+        &mut self,
+        batch: Vec<(EntryHash, ContextValue)>,
+    ) -> Result<(), StorageBackendError> {
+        let mut rocksb_batch = WriteBatch::default(); // batch containing DB key values to persist
+
+        for (k, v) in batch.iter() {
+            (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>).put_batch(
+                &mut rocksb_batch,
+                &k,
+                &v,
+            )?;
+        }
+
+        Ok(())
     }
 
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {

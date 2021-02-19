@@ -1162,10 +1162,8 @@ impl MerkleStorage {
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
-        // atomically write all entries in one batch to DB
-        for (k, v) in batch {
-            self.db.put(&k, v)?;
-        }
+        // write all entries at once (depends on backend)
+        self.db.put_batch(batch)?;
 
         Ok(())
     }
