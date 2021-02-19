@@ -96,7 +96,7 @@ pub fn start_with_compose(container_name: &str, service_ports_name: &str) -> Out
     Command::new("docker-compose")
         .args(&[
             "-f",
-            "deploy/docker-compose.debugger.yml",
+            "apps/watchdog/docker-compose.debugger.yml",
             "run",
             "-d",
             "--name",
@@ -110,14 +110,14 @@ pub fn start_with_compose(container_name: &str, service_ports_name: &str) -> Out
 
 pub fn stop_with_compose() -> Output {
     Command::new("docker-compose")
-        .args(&["-f", "deploy/docker-compose.debugger.yml", "down"])
+        .args(&["-f", "apps/watchdog/docker-compose.debugger.yml", "down"])
         .output()
         .expect("failed to execute docker-compose command")
 }
 
 pub fn update_with_compose() -> Output {
     Command::new("docker-compose")
-        .args(&["-f", "deploy/docker-compose.debugger.yml", "pull"])
+        .args(&["-f", "apps/watchdog/docker-compose.debugger.yml", "pull"])
         .output()
         .expect("failed to execute docker-compose command")
 }
