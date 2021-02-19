@@ -3,7 +3,7 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::{StorageBackend, StorageBackendError, StorageBackendStats};
+use crate::storage_backend::{StorageBackend, StorageBackendError};
 
 pub struct SledBackend {
     inner: sled::Tree,

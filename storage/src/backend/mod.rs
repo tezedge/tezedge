@@ -1,5 +1,5 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
-// SPDX-License-Identifier: MIT/
+// SPDX-License-Identifier: MIT
 
 pub mod btree_map;
 pub mod in_memory_backend;
