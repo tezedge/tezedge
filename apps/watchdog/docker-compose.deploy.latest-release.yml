@@ -91,7 +91,7 @@ services:
     environment:
       - SANDBOX=http://${HOSTNAME}.dev.tezedge.com:3030
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","debugger":"http://${HOSTNAME}.dev.tezedge.com:17732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","debugger":"http://${HOSTNAME}.dev.tezedge.com:17733","ws":false}]
+      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","debugger":"http://${HOSTNAME}.dev.tezedge.com:17732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","debugger":"http://${HOSTNAME}.dev.tezedge.com:17733","ws":false,"monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"}]
     ports:
       - "80:80"
 volumes:
