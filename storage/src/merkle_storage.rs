@@ -63,6 +63,7 @@ use crate::persistent;
 use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::storage_backend::{StorageBackend, StorageBackendError};
 
 const HASH_LEN: usize = 32;
 
@@ -126,7 +127,7 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn KeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
 
 pub type RefCnt = usize;
 
@@ -134,7 +135,7 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: Arc<MerkleStorageKV>,
+    db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -149,12 +150,12 @@ pub struct MerkleStorage {
 #[derive(Debug, Fail)]
 pub enum MerkleError {
     /// External libs errors
-    #[fail(display = "RocksDB error: {:?}", error)]
-    DBError {
-        error: persistent::database::DBError,
-    },
+    #[fail(display = "KVStore error: {:?}", error)]
+    DBError { error: StorageBackendError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
+    #[fail(display = "Backend error: {:?}", error)]
+    StorageBackendError { error: StorageBackendError },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -187,9 +188,9 @@ pub enum MerkleError {
     HashError { error: FromBytesError },
 }
 
-impl From<persistent::database::DBError> for MerkleError {
-    fn from(error: persistent::database::DBError) -> Self {
-        MerkleError::DBError { error }
+impl From<StorageBackendError> for MerkleError {
+    fn from(error: StorageBackendError) -> Self {
+        MerkleError::StorageBackendError { error }
     }
 }
 
@@ -355,7 +356,7 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Arc<MerkleStorageKV>) -> Self {
+    pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
             db,
             staged: Vec::new(),
@@ -1148,13 +1149,15 @@ impl MerkleStorage {
 
     /// Persists an entry and its descendants from staged area to database on disk.
     fn persist_staged_entry_to_db(&self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch = WriteBatch::default(); // batch containing DB key values to persist
+        let mut batch : Vec<(EntryHash, ContextValue)> = Vec::new();
 
         // build list of entries to be persisted
         self.get_entries_recursively(entry, &mut batch)?;
 
         // atomically write all entries in one batch to DB
-        self.db.write_batch(batch)?;
+        for (k,v) in batch{
+            self.db.put(k,v)?;
+        }
 
         Ok(())
     }
@@ -1163,11 +1166,10 @@ impl MerkleStorage {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        batch: &mut WriteBatch,
+        batch: &mut Vec<(EntryHash, ContextValue)>
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        self.db
-            .put_batch(batch, &self.hash_entry(entry)?, &bincode::serialize(entry)?)?;
+        self.db.put(self.hash_entry(entry)?, bincode::serialize(entry)?)?;
 
         match entry {
             Entry::Blob(_) => Ok(()),

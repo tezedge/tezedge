@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
+#![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
@@ -53,6 +54,7 @@ pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod context;
+pub mod storage_backend;
 pub mod context_action_storage;
 pub mod mempool_storage;
 pub mod merkle_storage;

@@ -15,6 +15,7 @@ pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLo
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
+use crate::backend:: RocksDBBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
 use tezos_context::channel::ContextActionMessage;
@@ -147,13 +148,17 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
     ) -> Self {
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
+        let merkle = MerkleStorage::new(Box::new(RocksDBBackend::new(
+            db_context.clone(),
+            MerkleStorage::name(),
+        )));
         Self {
             clog,
             db,
             db_context: db_context.clone(),
             db_context_actions,
             seq,
-            merkle: Arc::new(RwLock::new(MerkleStorage::new(db_context))),
+            merkle: Arc::new(RwLock::new(merkle)),
         }
     }
 
