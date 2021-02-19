@@ -291,7 +291,7 @@ where
         .map_or(Ok(None), |r| r.map(Some))
 }
 
-fn perform_context_action(
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
