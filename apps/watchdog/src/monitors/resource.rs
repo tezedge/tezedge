@@ -12,7 +12,7 @@ use slog::Logger;
 use shell::stats::memory::ProcessMemoryStats;
 
 use crate::display_info::DiskData;
-use crate::node::{Node, TezedgeNode, TEZEDGE_PORT, OCAML_PORT};
+use crate::node::{Node, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
 
@@ -67,7 +67,8 @@ impl ResourceMonitor {
         let ocaml_node = OcamlNode::collect_memory_data(&self.log, OCAML_PORT).await?;
 
         // protocol runner memory rpc
-        let protocol_runners = TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
+        let protocol_runners =
+            TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
 
         // collect disk stats
         let tezedge_disk = TezedgeNode::collect_disk_data()?;

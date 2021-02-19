@@ -16,11 +16,7 @@ pub trait WatchdogContainer {
     async fn image() -> Result<String, failure::Error> {
         let docker = Docker::new();
 
-        let ContainerDetails { config, .. } = docker
-            .containers()
-            .get(Self::NAME)
-            .inspect()
-            .await?;
+        let ContainerDetails { config, .. } = docker.containers().get(Self::NAME).inspect().await?;
         Ok(config.image)
     }
 }
@@ -48,7 +44,9 @@ pub async fn remote_hash<T: WatchdogContainer + Sync + Send>() -> Result<String,
     }
 }
 
-pub async fn local_hash<T: WatchdogContainer + Sync + Send>(docker: &Docker) -> Result<String, failure::Error> {
+pub async fn local_hash<T: WatchdogContainer + Sync + Send>(
+    docker: &Docker,
+) -> Result<String, failure::Error> {
     let image = T::image().await?;
     let ImageDetails { repo_digests, .. } = docker.images().get(&image).inspect().await?;
     repo_digests
@@ -64,7 +62,12 @@ impl WatchdogContainer for TezedgeDebugger {
 
 impl TezedgeDebugger {
     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let commit_hash = match reqwest::get(&format!("http://localhost:{}/v2/version", TEZEDGE_DEBUGGER_PORT)).await {
+        let commit_hash = match reqwest::get(&format!(
+            "http://localhost:{}/v2/version",
+            TEZEDGE_DEBUGGER_PORT
+        ))
+        .await
+        {
             Ok(result) => result.text().await?,
             Err(e) => bail!("GET commit_hash error: {}", e),
         };
@@ -88,11 +91,7 @@ impl WatchdogContainer for Explorer {
 impl Explorer {
     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
         let docker = Docker::new();
-        let ContainerDetails { config, .. } = docker
-            .containers()
-            .get(Self::NAME)
-            .inspect()
-            .await?;
+        let ContainerDetails { config, .. } = docker.containers().get(Self::NAME).inspect().await?;
         let env = config.env();
 
         if let Some(commit_hash) = env.get("COMMIT") {

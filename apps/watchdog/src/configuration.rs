@@ -35,7 +35,6 @@ pub struct WatchdogEnvironment {
 
     // Path for the compose file needed to manage the deployed containers
     pub compose_file_path: PathBuf,
-
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
