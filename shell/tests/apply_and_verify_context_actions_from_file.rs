@@ -8,7 +8,7 @@ use shell::context_listener::perform_context_action;
 use slog::{debug, info, warn, Drain, Level, Logger};
 use std::convert::TryFrom;
 use std::env;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use storage::action_file::ActionsFileReader;
 use storage::BlockHeaderWithHash;
