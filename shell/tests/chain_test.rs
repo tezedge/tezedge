@@ -16,9 +16,11 @@ use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
+use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
 use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use std::path::Path;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
@@ -537,6 +539,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     name: &str,
     current_head_wait_timeout: (Duration, Duration),
 ) -> Result<(), failure::Error> {
+    let root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
+    let root_context_db_path = &common::prepare_empty_dir("__test_05_context");
     // logger
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
@@ -548,8 +552,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        TmpStorage::create(common::prepare_empty_dir("__test_05"))?,
-        &common::prepare_empty_dir("__test_05_context"),
+        TmpStorage::create(&root_dir_temp_storage_path)?,
+        root_context_db_path,
         name,
         &tezos_env,
         None,
@@ -693,11 +697,47 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         }
     }
 
+    // print dir size
+    print_dir(3, &root_dir_temp_storage_path, true)?;
+    print_dir(3, &root_context_db_path, true)?;
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
 
     Ok(())
+}
+
+fn print_dir<P: AsRef<Path>>(
+    depth: u64,
+    path: P,
+    human_format: bool,
+) -> Result<(), failure::Error> {
+    let mut options = DirOptions::new();
+    options.depth = depth;
+    let dir_content = get_dir_content2(path, &options)?;
+    for directory in dir_content.directories {
+        let dir_size = if human_format {
+            human_readable(get_size(&directory)?)
+        } else {
+            get_size(&directory)?.to_string()
+        };
+        println!("{} {}", &directory, dir_size); // print directory path and size
+    }
+    Ok(())
+}
+
+fn human_readable(bytes: u64) -> String {
+    let mut bytes = bytes as i64;
+    if -1000 < bytes && bytes < 1000 {
+        return format!("{} B", bytes);
+    }
+    let mut ci = "kMGTPE".chars();
+    while bytes <= -999_950 || bytes >= 999_950 {
+        bytes /= 1000;
+        ci.next();
+    }
+
+    return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
 }
 
 #[ignore]
@@ -715,7 +755,7 @@ mod test_data {
     use std::collections::HashMap;
     use std::convert::TryInto;
 
-    use failure::format_err;
+    use failure::{format_err, Fail};
 
     use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use tezos_api::environment::TezosEnvironment;
@@ -905,6 +945,7 @@ mod test_cases_data {
     };
 
     use crate::test_data::Db;
+    use failure::Fail;
 
     lazy_static! {
         // prepared data - we have stored 1326 request for apply block + operations for CARTHAGENET
