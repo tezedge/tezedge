@@ -16,6 +16,7 @@ use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
+use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
 use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
@@ -25,9 +26,8 @@ use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
-use tezos_messages::p2p::encoding::prelude::Mempool;
 use tezos_messages::p2p::encoding::operations_for_blocks::Path;
-use fs_extra::dir::{DirOptions, get_dir_content2, get_size};
+use tezos_messages::p2p::encoding::prelude::Mempool;
 
 mod common;
 mod samples;
@@ -539,7 +539,6 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     name: &str,
     current_head_wait_timeout: (Duration, Duration),
 ) -> Result<(), failure::Error> {
-
     let mut root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
     let mut root_context_db_path = &common::prepare_empty_dir("__test_05_context");
     // logger
@@ -698,10 +697,9 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         }
     }
 
-
     // print dir size
-    print_dir(3,root_dir_temp_storage_path,true);
-    print_dir(3,root_context_db_path,true);
+    print_dir(3, root_dir_temp_storage_path, true);
+    print_dir(3, root_context_db_path, true);
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
@@ -709,14 +707,18 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     Ok(())
 }
 
-fn print_dir<P : AsRef<Path>>(depth : u64, path : P, human_format : bool) -> Result<(), failure::Error>{
-    let mut  options = DirOptions::new();
+fn print_dir<P: AsRef<Path>>(
+    depth: u64,
+    path: P,
+    human_format: bool,
+) -> Result<(), failure::Error> {
+    let mut options = DirOptions::new();
     options.depth = depth; // Get 3 levels of folder.
     let dir_content = get_dir_content2(path, &options).unwrap();
     for directory in dir_content.directories {
         let dir_size = if human_format {
             human_readable(get_size(directory)?)
-        }else {
+        } else {
             get_size(directory)?
         };
         println!("{} {}", dir_size, &directory); // print directory path and size
@@ -735,7 +737,7 @@ fn human_readable(bytes: u64) -> String {
         ci.next();
     }
 
-    return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap())
+    return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
 }
 
 #[ignore]
