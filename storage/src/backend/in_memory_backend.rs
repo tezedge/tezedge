@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::{StorageBackend, StorageBackendError, StorageBackendStats};
+use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
+use crate::MerkleStorage;
+use std::ops::{AddAssign, DerefMut, SubAssign};
 
 #[derive(Default)]
 pub struct InMemoryBackend {
     inner: Arc<RwLock<HashMap<EntryHash, ContextValue>>>,
-    stats: StorageBackendStats,
+    stats: Mutex<StorageBackendStats>,
 }
 
 impl InMemoryBackend {
@@ -23,65 +25,100 @@ impl InMemoryBackend {
     }
 }
 
-impl StorageBackend for InMemoryBackend {
-    fn is_persisted(&self) -> bool {
-        false
+impl GarbageCollector for InMemoryBackend {
+    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+        Ok(())
     }
 
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-        let measurement = StorageBackendStats::from((key, &value));
-        let mut w = self
-            .inner
-            .write()
-            .map_err(|e| StorageBackendError::GuardPoison {
-                error: format!("{}", e),
-            })?;
-
-        let was_added = w.insert(key.clone(), value).is_none();
-
-        if was_added {
-            self.stats += measurement;
-        }
-
-        Ok(was_added)
-    }
-
-    fn put_batch(
+    fn mark_reused(
         &mut self,
-        batch: Vec<(EntryHash, ContextValue)>,
+        _reused_keys: std::collections::HashSet<EntryHash>,
     ) -> Result<(), StorageBackendError> {
-        for (k, v) in batch.into_iter() {
-            self.put(&k, v)?;
+        Ok(())
+    }
+}
+
+impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
+        let garbage_keys: Vec<_> = self
+            .inner
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|(k, _)| if !predicate(k) { Some(*k) } else { None })
+            .collect();
+
+        for k in garbage_keys {
+            self.delete(&k)?;
         }
         Ok(())
     }
 
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
-        let mut w = self
-            .inner
-            .write()
-            .map_err(|e| StorageBackendError::GuardPoison {
-                error: format!("{}", e),
-            })?;
+    fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        let measurement = StorageBackendStats::from((key, value));
+        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
+            error: format!("{}", e),
+        })?;
 
-        w.insert(key.clone(), value);
+        if let Some(val) = w.get(key) {
+            self.stats
+                .lock()
+                .unwrap()
+                .deref_mut()
+                .sub_assign(StorageBackendStats::from((key, val)));
+        }
+
+        w.insert(*key, value.clone());
+        self.stats
+            .lock()
+            .unwrap()
+            .deref_mut()
+            .add_assign(measurement);
         Ok(())
     }
 
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-        let mut w = self
-            .inner
-            .write()
-            .map_err(|e| StorageBackendError::GuardPoison {
-                error: format!("{}", e),
-            })?;
+    fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
+        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
+            error: format!("{}", e),
+        })?;
 
-        Ok(w.remove(key))
+        let removed_key = w.remove(key);
+
+        if let Some(v) = &removed_key {
+            self.stats
+                .lock()
+                .unwrap()
+                .deref_mut()
+                .sub_assign(StorageBackendStats::from((key, v)));
+        }
+
+        Ok(())
     }
 
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
+    fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        let measurement = StorageBackendStats::from((key, value));
+        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
+            error: format!("{}", e),
+        })?;
+
+        if let Some(prev) = w.insert(*key, value.clone()) {
+            self.stats
+                .lock()
+                .unwrap()
+                .deref_mut()
+                .sub_assign(StorageBackendStats::from((key, &prev)));
+        };
+        self.stats
+            .lock()
+            .unwrap()
+            .deref_mut()
+            .add_assign(measurement);
+        Ok(())
+    }
+
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
         let db = self.inner.clone();
-        let r = db.read().map_err(|e| StorageBackendError::GuardPoison {
+        let r = db.read().map_err(|e| DBError::GuardPoison {
             error: format!("{}", e),
         })?;
 
@@ -91,21 +128,26 @@ impl StorageBackend for InMemoryBackend {
         }
     }
 
-    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
+    fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
         let db = self.inner.clone();
-        let r = db.read().map_err(|e| StorageBackendError::GuardPoison {
+        let r = db.read().map_err(|e| DBError::GuardPoison {
             error: format!("{}", e),
         })?;
         Ok(r.contains_key(key))
     }
 
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
+        for (k, v) in batch {
+            self.merge(&k, &v)?;
+        }
+        Ok(())
+    }
+
+    fn total_get_mem_usage(&self) -> Result<usize, DBError> {
+        Ok(self.stats.lock().unwrap().total_as_bytes())
+    }
+
+    fn is_persistent(&self) -> bool {
+        false
     }
 }
