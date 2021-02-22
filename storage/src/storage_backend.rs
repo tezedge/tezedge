@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::persistent::database::{DBError, RocksDBStats};
+use crate::persistent::database::DBError;
 use failure::Fail;
 use serde::Serialize;
+use std::array::TryFromSliceError;
 use std::collections::HashSet;
 use std::mem;
 
@@ -11,6 +12,11 @@ use crate::merkle_storage::{ContextValue, EntryHash};
 
 pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
+}
+
+pub trait GarbageCollector {
+    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError>;
+    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError>;
 }
 
 #[derive(Debug, Fail)]
@@ -29,6 +35,10 @@ pub enum StorageBackendError {
     SerializationError { error: bincode::Error },
     #[fail(display = "DBError error: {:?}", error)]
     DBError { error: DBError },
+    #[fail(display = "Failed to convert hash to array: {}", error)]
+    HashConversionError { error: TryFromSliceError },
+    #[fail(display = "GarbageCollector error: {}", error)]
+    GarbageCollectorError { error: String },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -55,6 +65,12 @@ impl From<bincode::Error> for StorageBackendError {
     }
 }
 
+impl From<TryFromSliceError> for StorageBackendError {
+    fn from(error: TryFromSliceError) -> Self {
+        StorageBackendError::HashConversionError { error }
+    }
+}
+
 impl slog::Value for StorageBackendError {
     fn serialize(
         &self,
@@ -64,21 +80,6 @@ impl slog::Value for StorageBackendError {
     ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
-}
-
-//TODO TE-432 - create single abstraction for StorageBackend and KeyValueWithSchema
-pub trait StorageBackend: Send + Sync {
-    fn is_persisted(&self) -> bool;
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError>;
-    fn put_batch(
-        &mut self,
-        batch: Vec<(EntryHash, ContextValue)>,
-    ) -> Result<(), StorageBackendError>;
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
-    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError>;
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -91,10 +92,7 @@ pub struct StorageBackendStats {
 impl StorageBackendStats {
     /// increases `reused_keys_bytes` based on `key`
     pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        // TODO: bring back when MerklHash aka EntryHash will be allocated
-        // on stack
-        // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-        self.reused_keys_bytes = list.capacity() * 32;
+        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
     }
 
     pub fn total_as_bytes(&self) -> usize {
@@ -173,12 +171,9 @@ impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
 }
 
 impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
-    fn from((entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
+    fn from((_, value): (&EntryHash, &ContextValue)) -> Self {
         StorageBackendStats {
-            // TODO: bring back when MerklHash aka EntryHash will be allocated
-            // on stack
-            // key_bytes: mem::size_of::<EntryHash>(),
-            key_bytes: entry_hash.as_ref().len(),
+            key_bytes: mem::size_of::<EntryHash>(),
             value_bytes: size_of_vec(&value),
             reused_keys_bytes: 0,
         }
