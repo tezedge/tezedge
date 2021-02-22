@@ -134,9 +134,17 @@ impl StorageBackend for RocksDBBackend {
         self.get(key).map(|v| v.is_some())
     }
 
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError> {
         (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
             .get_stats()
-            .map_err(|_| StorageBackendError::BackendError)
+            .map(|stats| 
+                (stats.mem_table_total +
+                stats.mem_table_unflushed +
+                stats.mem_table_readers_total +
+                stats.cache_total) as usize
+                )
+            .map_err(|e| StorageBackendError::DBError{error: e})
+
     }
+
 }

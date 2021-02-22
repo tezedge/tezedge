@@ -4,13 +4,13 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::{StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError};
+use crate::storage_backend::{StorageBackend , StorageBackendError, StorageBackendStats};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
 pub struct KVStore<K: Ord, V> {
     kv_map: BTreeMap<K, V>,
+    stats: StorageBackendStats,
 }
 
 impl<K: Ord, V> Default for KVStore<K, V> {
@@ -23,19 +23,25 @@ impl<K: Ord, V> KVStore<K, V> {
     pub fn new() -> Self {
         Self {
             kv_map: BTreeMap::new(),
+            stats: Default::default(),
         }
     }
 }
 
-impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
+impl StorageBackend for KVStore<EntryHash, ContextValue> {
     fn is_persisted(&self) -> bool {
         false
     }
 
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
+        Ok(self.stats.total_as_bytes())
+    }
+
     /// put kv in map if key doesn't exist. If it does then return false.
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
-        match self.kv_map.entry(key.clone()) {
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+        match self.kv_map.entry(*key) {
             Entry::Vacant(entry) => {
+                self.stats += StorageBackendStats::from((key, &value));
                 entry.insert(value);
                 Ok(true)
             }
@@ -43,31 +49,30 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         }
     }
 
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
-        self.kv_map.insert(key.clone(), value);
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+        self.stats += StorageBackendStats::from((key, &value));
+        if let Some(prev) = self.kv_map.insert(*key, value){
+            self.stats -= StorageBackendStats::from((key, &prev));
+        };
         Ok(())
     }
 
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
-        Ok(self.kv_map.remove(key))
+    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
+        let removed_key = self.kv_map.remove(key);
+
+        if let Some(v) =  &removed_key{
+            self.stats -= StorageBackendStats::from((key, v));
+        }
+
+        Ok(removed_key)
     }
 
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
         Ok(self.kv_map.get(key).cloned())
     }
 
-    fn contains(&self, key: &EntryHash) -> Result<bool, KVStoreError> {
+    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
         Ok(self.kv_map.contains_key(key))
-    }
-
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, KVStoreError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
     }
 }
 

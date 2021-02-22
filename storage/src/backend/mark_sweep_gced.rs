@@ -132,18 +132,8 @@ impl<T: 'static + StorageBackend + Default> StorageBackend for MarkSweepGCed<T> 
 
     fn wait_for_gc_finish(&self) {}
 
-    fn get_stats(&self) -> Vec<StorageBackendStats> {
-        self.store.get_stats()
-    }
-
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
+        self.store.total_get_mem_usage()
     }
 }
 

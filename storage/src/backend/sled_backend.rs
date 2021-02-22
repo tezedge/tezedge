@@ -2,16 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::RocksDBStats;
+use std::ops::Deref;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
 
 pub struct SledBackend {
+    db: sled::Db,
     inner: sled::Tree,
 }
 
 impl SledBackend {
-    pub fn new(db: sled::Tree) -> Self {
-        SledBackend { inner: db }
+    pub fn new(db: sled::Db) -> Self {
+        SledBackend {
+            inner: db.deref().clone(),
+            db,
+        }
     }
 }
 
@@ -49,13 +53,9 @@ impl StorageBackend for SledBackend {
         Ok(self.inner.contains_key(&key.as_ref()[..])?)
     }
 
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError> {
+        self.db.size_on_disk()
+            .map(|size| size as usize)
+            .map_err(|e| StorageBackendError::SledDBError{error: e})
     }
 }

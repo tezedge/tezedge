@@ -93,22 +93,12 @@ pub trait StorageBackend: Send + Sync {
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
 
-    //TODO: split this trait
+    //TODO: gc specific - split this trait
     fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError>{Ok(())}
     fn mark_reused(&mut self, key: EntryHash){}
     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>){}
     fn wait_for_gc_finish(&self){}
-
-    fn get_stats(&self) -> Vec<StorageBackendStats>{vec![]}
-    fn get_total_stats(&self) -> StorageBackendStats {
-        self.get_stats().iter().sum()
-    }
-
-    fn total_mem_usage_as_bytes(&self) -> usize {
-        self.get_total_stats().total_as_bytes()
-    }
-
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError>;
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>;
 
 }
 
@@ -122,10 +112,7 @@ pub struct StorageBackendStats {
 impl StorageBackendStats {
     /// increases `reused_keys_bytes` based on `key`
     pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        // TODO: bring back when MerklHash aka EntryHash will be allocated
-        // on stack
-        // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-        self.reused_keys_bytes = list.capacity() * 32;
+        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
     }
 
     pub fn total_as_bytes(&self) -> usize {
@@ -206,10 +193,7 @@ impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
 impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
     fn from((entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
         StorageBackendStats {
-            // TODO: bring back when MerklHash aka EntryHash will be allocated
-            // on stack
-            // key_bytes: mem::size_of::<EntryHash>(),
-            key_bytes: entry_hash.as_ref().len(),
+            key_bytes: mem::size_of::<EntryHash>(),
             value_bytes: size_of_vec(&value),
             reused_keys_bytes: 0,
         }

@@ -1299,8 +1299,8 @@ impl MerkleStorage {
     }
 
     /// Get various merkle storage statistics
-    pub fn get_merkle_stats(&self) -> MerkleStoragePerfReport {
-        MerkleStoragePerfReport::new(self.stats.perf_stats.clone(), self.db.get_total_stats())
+    pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport,MerkleError> {
+        Ok(MerkleStoragePerfReport::new(self.stats.perf_stats.clone(), self.db.total_get_mem_usage()?))
     }
 
     pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
@@ -1315,7 +1315,6 @@ mod tests {
     use crate::backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend};
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
-    use std::ops::Deref;
     use std::path::{Path, PathBuf};
     use std::{env, fs};
 
@@ -1350,8 +1349,7 @@ mod tests {
                 MerkleStorage::name(),
             ))),
             "sled" => {
-                let sled = sled::Config::new().path(db_name).open().unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
+                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(db_name).open().unwrap())))
             }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),

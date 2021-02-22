@@ -46,11 +46,11 @@ pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStoragePerfReport {
     pub perf_stats: MerklePerfStats,
-    pub kv_store_stats: StorageBackendStats,
+    pub kv_store_stats: usize,
 }
 
 impl MerkleStoragePerfReport {
-    pub fn new(perf_stats: MerklePerfStats, kv_store_stats: StorageBackendStats) -> Self {
+    pub fn new(perf_stats: MerklePerfStats, kv_store_stats: usize) -> Self {
         let mut perf = perf_stats;
         for (_, stat) in perf.global.iter_mut() {
             if stat.op_exec_times > 0 {

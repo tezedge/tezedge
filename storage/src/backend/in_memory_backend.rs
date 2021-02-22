@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap, hash_map::Entry, HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
@@ -37,16 +37,17 @@ impl StorageBackend for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        let was_added = w.insert(key.clone(), value).is_none();
-
-        if was_added {
+        if w.contains_key(key){
+            Ok(false)
+        }else{
+            w.insert(*key,value);
             self.stats += measurement;
+            Ok(true)
         }
-
-        Ok(was_added)
     }
 
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+        let measurement = StorageBackendStats::from((key, &value));
         let mut w = self
             .inner
             .write()
@@ -54,7 +55,11 @@ impl StorageBackend for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        w.insert(key.clone(), value);
+
+        if let Some(prev) = w.insert(*key, value){
+            self.stats -= StorageBackendStats::from((key, &prev));
+        };
+        self.stats += measurement;
         Ok(())
     }
 
@@ -66,7 +71,13 @@ impl StorageBackend for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        Ok(w.remove(key))
+        let removed_key = w.remove(key);
+
+        if let Some(v) =  &removed_key{
+            self.stats -= StorageBackendStats::from((key, v));
+        }
+
+        Ok(removed_key)
     }
 
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
@@ -97,29 +108,20 @@ impl StorageBackend for InMemoryBackend {
             .iter()
             .filter_map(|(k, _)| {
                 if !pred.contains(k) {
-                    Some(k.clone())
+                    Some(*k)
                 } else {
                     None
                 }
             })
             .collect();
 
-        let mut writer = self.inner.write().unwrap();
         for k in garbage_keys {
-            if let Some(v) = writer.remove(&k) {
-                self.stats -= StorageBackendStats::from((&k, &v))
-            }
+            self.delete(&k)?;
         }
         Ok(())
     }
 
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
+        Ok(self.stats.total_as_bytes())
     }
 }

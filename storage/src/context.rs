@@ -255,7 +255,7 @@ impl ContextApi for TezedgeContext {
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
         let merkle = self.merkle.read().expect("lock poisoning");
-        Ok(merkle.get_merkle_stats())
+        Ok(merkle.get_merkle_stats()?)
     }
 
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {

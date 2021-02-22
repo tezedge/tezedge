@@ -135,6 +135,16 @@ impl<T: 'static + StorageBackend + Default> MarkMoveGCed<T> {
     fn stores_contains(&self, key: &EntryHash) -> bool {
         stores_contains(&self.stores.read().unwrap(), key)
     }
+
+    fn get_stats(&self) -> Vec<StorageBackendStats> {
+        self.stores_stats
+            .lock()
+            .unwrap()
+            .iter()
+            .chain(vec![&self.current_stats])
+            .cloned()
+            .collect()
+    }
 }
 
 impl<T: 'static + StorageBackend + Default> StorageBackend for MarkMoveGCed<T> {
@@ -142,14 +152,9 @@ impl<T: 'static + StorageBackend + Default> StorageBackend for MarkMoveGCed<T> {
         self.current.is_persisted()
     }
 
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
+    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
+        let stats: StorageBackendStats = self.get_stats().iter().sum();
+        Ok(stats.total_as_bytes())
     }
 
     /// Get an entry with hash `key` from the current in-progress cycle store,
@@ -221,15 +226,6 @@ impl<T: 'static + StorageBackend + Default> StorageBackend for MarkMoveGCed<T> {
         }
     }
 
-    fn get_stats(&self) -> Vec<StorageBackendStats> {
-        self.stores_stats
-            .lock()
-            .unwrap()
-            .iter()
-            .chain(vec![&self.current_stats])
-            .cloned()
-            .collect()
-    }
 }
 
 /// Garbage collector main function
@@ -509,7 +505,7 @@ mod tests {
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(
-            store.total_mem_usage_as_bytes(),
+            store.total_get_mem_usage().unwrap(),
             vec![
                 4 * mem::size_of::<EntryHash>(),
                 96, // reused keys
@@ -542,7 +538,7 @@ mod tests {
         assert_eq!(stats[2].reused_keys_bytes, 0);
 
         assert_eq!(
-            store.total_mem_usage_as_bytes(),
+            store.total_get_mem_usage().unwrap(),
             vec![
                 3 * mem::size_of::<EntryHash>(),
                 size_of_vec(&kv1.1),
