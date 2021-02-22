@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -14,11 +13,13 @@ use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
-pub use database::{DBError, KeyValueStoreWithSchema};
+pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
+use crate::backend::mark_move_gced::MarkMoveGCed;
+use crate::backend::mark_sweep_gced::MarkSweepGCed;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
 use crate::merkle_storage::MerkleStorage;
@@ -30,6 +31,8 @@ pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
+
+const PRESERVE_CYCLE_COUNT: usize = 7;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -164,13 +167,19 @@ impl PersistentStorage {
                 MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
             }
             KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+                KeyValueStoreBackend::MarkSweepInMem => MerkleStorage::new(Box::new(
+                    MarkSweepGCed::<InMemoryBackend>::new(PRESERVE_CYCLE_COUNT),
+                )),
+                KeyValueStoreBackend::MarkMoveInMem => MerkleStorage::new(Box::new(
+                    MarkMoveGCed::<BTreeMapBackend>::new(PRESERVE_CYCLE_COUNT),
+                )),
         };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
         Self {
             clog,
             db,
-            db_context: db_context.clone(),
+            db_context: db_context,
             db_context_actions,
             seq,
             merkle: Arc::new(RwLock::new(merkle)),
