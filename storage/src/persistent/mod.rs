@@ -14,7 +14,7 @@ use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
-pub use database::{DBError, KeyValueStoreWithSchema};
+pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
 use crate::backend::btree_map::BTreeMapBackend;

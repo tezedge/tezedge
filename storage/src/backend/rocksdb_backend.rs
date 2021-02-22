@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::GetInMemStats;
 use crate::persistent::database::KeyValueStoreWithSchema;
 use crate::persistent::database::RocksDBStats;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
@@ -136,7 +135,7 @@ impl StorageBackend for RocksDBBackend {
     }
 
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {
-        self.inner
+        (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
             .get_stats()
             .map_err(|_| StorageBackendError::BackendError)
     }
