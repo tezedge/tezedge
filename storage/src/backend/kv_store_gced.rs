@@ -357,7 +357,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             // as the lock will be released on more frequent intervals.
             // TODO: it would be more optimized if this number can change dynamically based on
             // how much gc lags behind and such different parameters.
-            let max_iter = if stores.len() - len <= 1 {
+            let max_iter = if stores.len() <= 1 + len {
                 2048
             } else {
                 usize::MAX
@@ -480,8 +480,6 @@ mod tests {
     }
 
     #[test]
-    // TODO: fix data race in GC thread
-    // #[ignore]
     fn test_key_reused_exists() {
         let store = &mut empty_kvstore_gced(3);
 
@@ -503,8 +501,6 @@ mod tests {
     }
 
     #[test]
-    // TODO: fix data race in GC thread
-    // #[ignore]
     fn test_stats() {
         let store = &mut empty_kvstore_gced(3);
 
@@ -514,28 +510,19 @@ mod tests {
         let kv4 = (entry_hash(&[4]), blob_serialized(vec![1, 2, 3, 4]));
 
         store.wait_for_gc_finish();
-        println!("wait for gc finish 0");
 
         store.put(&kv1.0.clone(), kv1.1.clone()).unwrap();
         store.put(&kv2.0.clone(), kv2.1.clone()).unwrap();
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
-        println!("wait for gc finish 1");
-        println!("{:#?}", store.get_stats());
 
         store.put(&kv3.0.clone(), kv3.1.clone()).unwrap();
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
-        println!("gc finished 2");
-        println!("{:#?}", store.get_stats());
 
         store.put(&kv4.0.clone(), kv4.1.clone()).unwrap();
-        store.mark_reused(kv1.0.clone());
+        store.mark_reused(kv1.0);
         store.wait_for_gc_finish();
-        store.wait_for_gc_finish();
-        println!("gc finished 3");
-        println!("{:#?}", store.get_stats());
-        // thread::sleep(Duration::from_millis(500));
 
 
         let stats: Vec<_> = store.get_stats().into_iter().rev().take(3).rev().collect();
@@ -546,65 +533,65 @@ mod tests {
         );
         assert_eq!(stats[0].reused_keys_bytes, 96);
 
-        // assert_eq!(stats[1].key_bytes, 32);
-        // assert_eq!(stats[1].value_bytes, size_of_vec(&kv3.1));
-        // assert_eq!(stats[1].reused_keys_bytes, 0);
-        //
-        // assert_eq!(stats[2].key_bytes, 32);
-        // assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
-        // assert_eq!(stats[2].reused_keys_bytes, 0);
-        //
-        // assert_eq!(
-        //     store.total_mem_usage_as_bytes(),
-        //     vec![
-        //         // TODO: bring back when MerklHash aka EntryHash will be allocated
-        //         // on stack
-        //         // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-        //         // 4 * mem::size_of::<EntryHash>(),
-        //         4 * 32,
-        //         96, // reused keys
-        //         size_of_vec(&kv1.1),
-        //         size_of_vec(&kv2.1),
-        //         size_of_vec(&kv3.1),
-        //         size_of_vec(&kv4.1),
-        //     ]
-        //     .iter()
-        //     .sum::<usize>()
-        // );
-        //
-        // store.start_new_cycle(None);
-        // store.wait_for_gc_finish();
-        //
-        // let stats = store.get_stats();
-        // assert_eq!(stats[0].key_bytes, 32);
-        // assert_eq!(stats[0].value_bytes, size_of_vec(&kv3.1));
-        // assert_eq!(stats[0].reused_keys_bytes, 0);
-        //
-        // assert_eq!(stats[1].key_bytes, 64);
-        // assert_eq!(
-        //     stats[1].value_bytes,
-        //     size_of_vec(&kv1.1) + size_of_vec(&kv4.1)
-        // );
-        // assert_eq!(stats[1].reused_keys_bytes, 0);
-        //
-        // assert_eq!(stats[2].key_bytes, 0);
-        // assert_eq!(stats[2].value_bytes, 0);
-        // assert_eq!(stats[2].reused_keys_bytes, 0);
-        //
-        // assert_eq!(
-        //     store.total_mem_usage_as_bytes(),
-        //     vec![
-        //         // TODO: bring back when MerklHash aka EntryHash will be allocated
-        //         // on stack
-        //         // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-        //         // 3 * mem::size_of::<EntryHash>(),
-        //         3 * 32,
-        //         size_of_vec(&kv1.1),
-        //         size_of_vec(&kv3.1),
-        //         size_of_vec(&kv4.1),
-        //     ]
-        //     .iter()
-        //     .sum::<usize>()
-        // );
+        assert_eq!(stats[1].key_bytes, 32);
+        assert_eq!(stats[1].value_bytes, size_of_vec(&kv3.1));
+        assert_eq!(stats[1].reused_keys_bytes, 0);
+
+        assert_eq!(stats[2].key_bytes, 32);
+        assert_eq!(stats[2].value_bytes, size_of_vec(&kv4.1));
+        assert_eq!(stats[2].reused_keys_bytes, 0);
+
+        assert_eq!(
+            store.total_mem_usage_as_bytes(),
+            vec![
+                // TODO: bring back when MerklHash aka EntryHash will be allocated
+                // on stack
+                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+                // 4 * mem::size_of::<EntryHash>(),
+                4 * 32,
+                96, // reused keys
+                size_of_vec(&kv1.1),
+                size_of_vec(&kv2.1),
+                size_of_vec(&kv3.1),
+                size_of_vec(&kv4.1),
+            ]
+            .iter()
+            .sum::<usize>()
+        );
+
+        store.start_new_cycle(None);
+        store.wait_for_gc_finish();
+
+        let stats = store.get_stats();
+        assert_eq!(stats[0].key_bytes, 32);
+        assert_eq!(stats[0].value_bytes, size_of_vec(&kv3.1));
+        assert_eq!(stats[0].reused_keys_bytes, 0);
+
+        assert_eq!(stats[1].key_bytes, 64);
+        assert_eq!(
+            stats[1].value_bytes,
+            size_of_vec(&kv1.1) + size_of_vec(&kv4.1)
+        );
+        assert_eq!(stats[1].reused_keys_bytes, 0);
+
+        assert_eq!(stats[2].key_bytes, 0);
+        assert_eq!(stats[2].value_bytes, 0);
+        assert_eq!(stats[2].reused_keys_bytes, 0);
+
+        assert_eq!(
+            store.total_mem_usage_as_bytes(),
+            vec![
+                // TODO: bring back when MerklHash aka EntryHash will be allocated
+                // on stack
+                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
+                // 3 * mem::size_of::<EntryHash>(),
+                3 * 32,
+                size_of_vec(&kv1.1),
+                size_of_vec(&kv3.1),
+                size_of_vec(&kv4.1),
+            ]
+            .iter()
+            .sum::<usize>()
+        );
     }
 }
