@@ -304,7 +304,7 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
-fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
+fn hash_tree(tree: &Tree) -> Result<EntryHash, TryFromSliceError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
@@ -316,18 +316,17 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
         hasher.update(&v.entry_hash);
     });
 
-    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+    hasher.finalize_boxed().as_ref().try_into()
 }
 
 // Calculates hash of BLOB
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
-fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
+fn hash_blob(blob: &ContextValue) -> Result<EntryHash, TryFromSliceError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
-
-    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+    hasher.finalize_boxed().as_ref().try_into()
 }
 
 // Calculates hash of commit
@@ -338,7 +337,7 @@ fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
 // <time in epoch format (8bytes)
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
-fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
+fn hash_commit(commit: &Commit) -> Result<EntryHash, TryFromSliceError> {
     let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
     hasher.update(&(HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
@@ -356,7 +355,16 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     hasher.update(&(commit.message.len() as u64).to_be_bytes());
     hasher.update(&commit.message.clone().into_bytes());
 
-    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+    hasher.finalize_boxed().as_ref().try_into()
+}
+
+
+pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
+    match entry {
+        Entry::Commit(commit) => hash_commit(&commit),
+        Entry::Tree(tree) => hash_tree(&tree),
+        Entry::Blob(blob) => hash_blob(blob),
+    }
 }
 
 impl MerkleStorage {
@@ -1149,7 +1157,7 @@ impl MerkleStorage {
         batch: &mut Vec<(EntryHash, ContextValue)>,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        batch.push((self.hash_entry(entry)?, bincode::serialize(entry)?));
+        batch.push((hash_entry(entry)?, bincode::serialize(entry)?));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1173,14 +1181,6 @@ impl MerkleStorage {
                 Err(err) => Err(err),
                 Ok(entry) => self.get_entries_recursively(&entry, batch),
             },
-        }
-    }
-
-    fn hash_entry(&self, entry: &Entry) -> Result<EntryHash, MerkleError> {
-        match entry {
-            Entry::Commit(commit) => hash_commit(&commit),
-            Entry::Tree(tree) => hash_tree(&tree),
-            Entry::Blob(blob) => hash_blob(blob),
         }
     }
 

@@ -5,6 +5,7 @@ use crate::persistent::database::{DBError, RocksDBStats};
 use failure::Fail;
 use serde::Serialize;
 use std::collections::HashSet;
+use std::array::TryFromSliceError;
 use std::mem;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
@@ -29,6 +30,8 @@ pub enum StorageBackendError {
     SerializationError { error: bincode::Error },
     #[fail(display = "DBError error: {:?}", error)]
     DBError { error: DBError },
+    #[fail(display = "Failed to convert hash to array: {}", error)]
+    HashConversionError { error: TryFromSliceError },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -52,6 +55,12 @@ impl From<DBError> for StorageBackendError {
 impl From<bincode::Error> for StorageBackendError {
     fn from(error: bincode::Error) -> Self {
         StorageBackendError::SerializationError { error }
+    }
+}
+
+impl From<TryFromSliceError> for StorageBackendError {
+    fn from(error: TryFromSliceError) -> Self {
+        StorageBackendError::HashConversionError { error }
     }
 }
 
