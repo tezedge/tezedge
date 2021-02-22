@@ -1,16 +1,20 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::MerkleStorage;
 use std::collections::{btree_map::Entry, BTreeMap};
+use std::ops::{AddAssign, DerefMut, SubAssign};
+use std::sync::RwLock;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::{StorageBackend as KVStoreTrait, StorageBackendError as KVStoreError};
+use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
 pub struct KVStore<K: Ord, V> {
-    kv_map: BTreeMap<K, V>,
+    kv_map: RwLock<BTreeMap<K, V>>,
+    stats: RwLock<StorageBackendStats>,
 }
 
 impl<K: Ord, V> Default for KVStore<K, V> {
@@ -22,59 +26,121 @@ impl<K: Ord, V> Default for KVStore<K, V> {
 impl<K: Ord, V> KVStore<K, V> {
     pub fn new() -> Self {
         Self {
-            kv_map: BTreeMap::new(),
+            kv_map: RwLock::new(BTreeMap::new()),
+            stats: Default::default(),
         }
     }
 }
 
-impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
-    fn is_persisted(&self) -> bool {
+impl GarbageCollector for KVStore<EntryHash, ContextValue> {
+    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+        Ok(())
+    }
+
+    fn mark_reused(
+        &mut self,
+        _reused_keys: std::collections::HashSet<EntryHash>,
+    ) -> Result<(), StorageBackendError> {
+        Ok(())
+    }
+}
+
+impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
+    fn is_persistent(&self) -> bool {
         false
     }
 
+    fn total_get_mem_usage(&self) -> Result<usize, DBError> {
+        Ok(self.stats.read().unwrap().total_as_bytes())
+    }
+
     /// put kv in map if key doesn't exist. If it does then return false.
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
-        match self.kv_map.entry(key.clone()) {
+    fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        match self.kv_map.write().unwrap().entry(*key) {
             Entry::Vacant(entry) => {
-                entry.insert(value);
-                Ok(true)
+                self.stats
+                    .write()
+                    .unwrap()
+                    .deref_mut()
+                    .add_assign(StorageBackendStats::from((key, value)));
+                entry.insert(value.clone());
+                Ok(())
             }
-            _ => Ok(false),
+            Entry::Occupied(mut entry) => {
+                self.stats
+                    .write()
+                    .unwrap()
+                    .deref_mut()
+                    .add_assign(StorageBackendStats::from((key, value)));
+                self.stats
+                    .write()
+                    .unwrap()
+                    .deref_mut()
+                    .sub_assign(StorageBackendStats::from((entry.key(), entry.get())));
+                entry.insert(value.clone());
+                Ok(())
+            }
         }
     }
 
-    fn put_batch(&mut self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), KVStoreError> {
-        for (k, v) in batch.into_iter() {
-            self.put(&k, v)?;
+    fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.stats
+            .write()
+            .unwrap()
+            .deref_mut()
+            .add_assign(StorageBackendStats::from((key, value)));
+        if let Some(prev) = self.kv_map.write().unwrap().insert(*key, value.clone()) {
+            self.stats
+                .write()
+                .unwrap()
+                .deref_mut()
+                .sub_assign(StorageBackendStats::from((key, &prev)));
+        };
+        Ok(())
+    }
+
+    fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
+        let removed_key = self.kv_map.write().unwrap().remove(key);
+
+        if let Some(v) = &removed_key {
+            self.stats
+                .write()
+                .unwrap()
+                .deref_mut()
+                .sub_assign(StorageBackendStats::from((key, v)));
+        }
+
+        Ok(())
+    }
+
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
+        Ok(self.kv_map.read().unwrap().get(key).cloned())
+    }
+
+    fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
+        Ok(self.kv_map.read().unwrap().contains_key(key))
+    }
+
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
+        let garbage_keys: Vec<_> = self
+            .kv_map
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|(k, _)| if !predicate(k) { Some(*k) } else { None })
+            .collect();
+
+        for k in garbage_keys {
+            self.delete(&k)?;
         }
         Ok(())
     }
 
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
-        self.kv_map.insert(key.clone(), value);
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
+        for (k, v) in batch {
+            self.merge(&k, &v)?;
+        }
         Ok(())
-    }
-
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
-        Ok(self.kv_map.remove(key))
-    }
-
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
-        Ok(self.kv_map.get(key).cloned())
-    }
-
-    fn contains(&self, key: &EntryHash) -> Result<bool, KVStoreError> {
-        Ok(self.kv_map.contains_key(key))
-    }
-
-    fn get_mem_use_stats(&self) -> Result<RocksDBStats, KVStoreError> {
-        //TODO TE-431 StorageBackent::get_mem_use_stats() should be implemented for all backends
-        Ok(RocksDBStats {
-            mem_table_total: 0,
-            mem_table_unflushed: 0,
-            mem_table_readers_total: 0,
-            cache_total: 0,
-        })
     }
 }
 

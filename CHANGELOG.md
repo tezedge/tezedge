@@ -8,7 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- Flag `--actions-store-backend <BACKEND1> <BACKEND2> ...`. When enabled the node stores incomming actions in one of the selected backends. Possible values are: `rocksdb`, `file`
+- Flag `--kv-store-backend=STRING`. Chooses backend for data related to merkle storage. By default rocksdb database is used, possible values are :
+    - `rocksdb` - persistent [RocksDB](https://rocksdb.org/) database
+    - `sled` - persistent [Sled](http://sled.rs) database
+    - `inmem` - volatile in memory database
+    - `inmem_mark_sweep` - volatile in memory database with mark sweep garbage collector algorithm
+    - `inmem_mark_move` - volatile in memory database with mark move garbage collector algorithm
 
 ### Changed
 

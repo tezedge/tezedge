@@ -10,7 +10,7 @@ use storage::context_action_storage::ContextActionBlockDetails;
 use storage::context_action_storage::{
     contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson,
 };
-use storage::merkle_storage::MerkleStorageStats;
+use storage::merkle_storage_stats::MerkleStoragePerfReport;
 use storage::persistent::PersistentStorage;
 use storage::{ContextActionRecordValue, ContextActionStorage};
 use tezos_context::channel::ContextAction;
@@ -132,7 +132,7 @@ pub(crate) fn get_stats_memory_protocol_runners() -> MemoryStatsResult<Vec<Memor
 
 pub(crate) fn get_context_stats(
     context: &TezedgeContext,
-) -> Result<MerkleStorageStats, failure::Error> {
+) -> Result<MerkleStoragePerfReport, failure::Error> {
     Ok(context.get_merkle_stats()?)
 }
 
