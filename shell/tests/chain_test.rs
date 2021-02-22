@@ -721,7 +721,7 @@ fn print_dir<P: AsRef<Path>>(
         } else {
             get_size(&directory)?.to_string()
         };
-        println!("{} {}", dir_size, &directory); // print directory path and size
+        println!("{} {}", &directory, dir_size); // print directory path and size
     }
     Ok(())
 }
