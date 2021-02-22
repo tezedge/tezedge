@@ -231,8 +231,8 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     fn wait_for_gc_finish(&self) {
         // If there are more stores than self.cycle_count, that means the oldest one still hasn't been collected
         //
-        while *self.is_busy.lock().unwrap(){
-            thread::sleep(Duration::from_millis(100));
+        while *self.is_busy.lock().unwrap() || *self.msg_cnt.lock().unwrap() > 0{
+            thread::sleep(Duration::from_millis(20));
         }
     }
 
@@ -282,8 +282,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         }
 
         let msg = if wait_for_events {
-            println!("WAITING!!!!");
-            thread::sleep(Duration::from_millis(500));
             match rx.recv() {
                 Ok(value) => Some(value),
                 Err(_) => {
@@ -516,31 +514,24 @@ mod tests {
         let kv4 = (entry_hash(&[4]), blob_serialized(vec![1, 2, 3, 4]));
 
         store.wait_for_gc_finish();
+        println!("wait for gc finish 0");
 
         store.put(&kv1.0.clone(), kv1.1.clone()).unwrap();
         store.put(&kv2.0.clone(), kv2.1.clone()).unwrap();
         store.start_new_cycle(None);
-        println!("{:#?}", store.get_stats());
-        println!("wait for gc finish 1");
         store.wait_for_gc_finish();
-        println!("gc finished 1");
+        println!("wait for gc finish 1");
         println!("{:#?}", store.get_stats());
 
-        println!("{:#?}", store.get_stats());
         store.put(&kv3.0.clone(), kv3.1.clone()).unwrap();
         store.start_new_cycle(None);
-        println!("{:#?}", store.get_stats());
-        println!("wait for gc finish 2");
         store.wait_for_gc_finish();
         println!("gc finished 2");
         println!("{:#?}", store.get_stats());
-        // thread::sleep(Duration::from_millis(500));
-        println!("{:#?}", store.get_stats());
+
         store.put(&kv4.0.clone(), kv4.1.clone()).unwrap();
         store.mark_reused(kv1.0.clone());
-        println!("{:#?}", store.get_stats());
         store.wait_for_gc_finish();
-        println!("wait for gc finish 3");
         store.wait_for_gc_finish();
         println!("gc finished 3");
         println!("{:#?}", store.get_stats());
