@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::collections::{HashMap,HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
@@ -87,6 +87,30 @@ impl StorageBackend for InMemoryBackend {
             error: format!("{}", e),
         })?;
         Ok(r.contains_key(key))
+    }
+
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+        let garbage_keys: Vec<_> = self
+            .inner
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|(k, _)| {
+                if !pred.contains(k) {
+                    Some(k.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let mut writer = self.inner.write().unwrap();
+        for k in garbage_keys {
+            if let Some(v) = writer.remove(&k) {
+                self.stats -= StorageBackendStats::from((&k, &v))
+            }
+        }
+        Ok(())
     }
 
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError> {

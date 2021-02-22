@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use crate::persistent::database::RocksDBStats;
-use crate::storage_backend::StorageBackendError;
 
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -11,14 +10,15 @@ use std::time::Duration;
 
 use crate::merkle_storage::{ContextValue, Entry, EntryHash};
 use crate::storage_backend::{
-    StorageBackend as KVStore, StorageBackendError as KVStoreError,
-    StorageBackendStats as KVStoreStats,
+    StorageBackend,
+    StorageBackendError,
+    StorageBackendStats,
 };
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where
-    T: KVStore,
+    T: StorageBackend,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -30,7 +30,7 @@ where
 /// Returns store index containing the entry with hash `key`  (trying from newest to oldest)
 fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
 where
-    T: KVStore,
+    T: StorageBackend,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -43,7 +43,7 @@ where
 /// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
 fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
 where
-    T: KVStore,
+    T: StorageBackend,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -57,7 +57,7 @@ where
 /// The return value is `None` if the value was not found, or Some((store_idx, value)) otherwise.
 fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
 where
-    T: KVStore,
+    T: StorageBackend,
     S: DerefMut<Target = Vec<T>>,
 {
     stores
@@ -72,7 +72,7 @@ where
         })
 }
 
-/// Commands used by KVStoreGCed to interact with GC thread.
+/// Commands used by MarkMoveGCed to interact with GC thread.
 pub enum CmdMsg {
     StartNewCycle,
     Exit,
@@ -80,15 +80,15 @@ pub enum CmdMsg {
 }
 
 /// Garbage Collected Key Value Store
-pub struct KVStoreGCed<T: KVStore> {
+pub struct MarkMoveGCed<T: StorageBackend> {
     /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
     /// Stats for each store in archived stores
-    stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
+    stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     /// Current in-process cycle store
     current: T,
     /// Current in-process cycle store stats
-    current_stats: KVStoreStats,
+    current_stats: StorageBackendStats,
     /// GC thread
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
@@ -97,11 +97,11 @@ pub struct KVStoreGCed<T: KVStore> {
     msg: Mutex<mpsc::Sender<CmdMsg>>,
 }
 
-impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
+impl<T: 'static + StorageBackend + Default> MarkMoveGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
         assert!(
             cycle_count > 1,
-            "cycle_count less than 2 for KVStoreGCed not supported"
+            "cycle_count less than 2 for MarkMoveGCed not supported"
         );
 
         let (tx, rx) = mpsc::channel();
@@ -137,7 +137,7 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     }
 }
 
-impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
+impl<T: 'static + StorageBackend + Default> StorageBackend for MarkMoveGCed<T> {
     fn is_persisted(&self) -> bool {
         self.current.is_persisted()
     }
@@ -154,17 +154,17 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Get an entry with hash `key` from the current in-progress cycle store,
     /// otherwise find and get from archived cycle stores
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
         Ok(self.current.get(key)?.or_else(|| self.stores_get(key)))
     }
 
     /// Checks if an entry with hash `key` exists in any of the cycle stores
-    fn contains(&self, key: &EntryHash) -> Result<bool, KVStoreError> {
+    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
         Ok(self.current.contains(key)? || self.stores_contains(key))
     }
 
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, KVStoreError> {
-        let measurement = KVStoreStats::from((key, &value));
+    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+        let measurement = StorageBackendStats::from((key, &value));
         let was_added = self.current.put(key, value)?;
 
         if was_added {
@@ -174,11 +174,11 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         Ok(was_added)
     }
 
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
+    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
         self.current.merge(key, value)
     }
 
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, KVStoreError> {
+    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
         self.current.delete(key)
     }
 
@@ -193,7 +193,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 
     /// Not needed/implemented.
     // TODO: Maybe this method should go into separate trait?
-    fn retain(&mut self, _pred: HashSet<EntryHash>) -> Result<(), KVStoreError> {
+    fn retain(&mut self, _pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         unimplemented!()
     }
 
@@ -221,7 +221,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
         }
     }
 
-    fn get_stats(&self) -> Vec<KVStoreStats> {
+    fn get_stats(&self) -> Vec<StorageBackendStats> {
         self.stores_stats
             .lock()
             .unwrap()
@@ -233,9 +233,9 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
 }
 
 /// Garbage collector main function
-fn kvstore_gc_thread_fn<T: KVStore>(
+fn kvstore_gc_thread_fn<T: StorageBackend>(
     stores: Arc<RwLock<Vec<T>>>,
-    stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
+    stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>
@@ -347,7 +347,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                     None => continue,
                 };
 
-                let stat: KVStoreStats = (&key, &entry_bytes).into();
+                let stat: StorageBackendStats = (&key, &entry_bytes).into();
                 stats[store_index] -= &stat;
 
                 let entry: Entry = match bincode::deserialize(&entry_bytes) {
@@ -405,8 +405,8 @@ mod tests {
     use crate::storage_backend::size_of_vec;
     use std::convert::TryFrom;
 
-    fn empty_kvstore_gced(cycle_count: usize) -> KVStoreGCed<BTreeMapBackend> {
-        KVStoreGCed::new(cycle_count)
+    fn empty_kvstore_gced(cycle_count: usize) -> MarkMoveGCed<BTreeMapBackend> {
+        MarkMoveGCed::new(cycle_count)
     }
 
     fn entry_hash(key: &[u8]) -> EntryHash {
@@ -429,20 +429,20 @@ mod tests {
         bincode::serialize(&blob(value)).unwrap()
     }
 
-    fn get<T: 'static + KVStore + Default>(store: &KVStoreGCed<T>, key: &[u8]) -> Option<Entry> {
+    fn get<T: 'static + StorageBackend + Default>(store: &MarkMoveGCed<T>, key: &[u8]) -> Option<Entry> {
         store
             .get(&entry_hash(key))
             .unwrap()
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
-    fn put<T: 'static + KVStore + Default>(store: &mut KVStoreGCed<T>, key: &[u8], value: Entry) {
+    fn put<T: 'static + StorageBackend + Default>(store: &mut MarkMoveGCed<T>, key: &[u8], value: Entry) {
         store
             .put(&entry_hash(key), bincode::serialize(&value).unwrap())
             .unwrap();
     }
 
-    fn mark_reused<T: 'static + KVStore + Default>(store: &mut KVStoreGCed<T>, key: &[u8]) {
+    fn mark_reused<T: 'static + StorageBackend + Default>(store: &mut MarkMoveGCed<T>, key: &[u8]) {
         store.mark_reused(entry_hash(key));
     }
 
