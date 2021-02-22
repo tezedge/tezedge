@@ -46,16 +46,6 @@ impl StorageBackend for InMemoryBackend {
         Ok(was_added)
     }
 
-    fn put_batch(
-        &mut self,
-        batch: Vec<(EntryHash, ContextValue)>,
-    ) -> Result<(), StorageBackendError> {
-        for (k, v) in batch.into_iter() {
-            self.put(&k, v)?;
-        }
-        Ok(())
-    }
-
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
         let mut w = self
             .inner

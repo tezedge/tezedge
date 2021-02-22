@@ -48,7 +48,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::Arc;
-use std::time::Instant;
 
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
@@ -64,6 +63,7 @@ use crate::persistent::database::RocksDBStats;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::{StorageBackend, StorageBackendError};
+use crate::merkle_storage_stats::{MerkleStorageStatistics, StatUpdater, MerkleStorageAction, MerkleStoragePerfReport};
 
 const HASH_LEN: usize = 32;
 
@@ -71,33 +71,33 @@ pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub type EntryHash = [u8; HASH_LEN];
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-enum NodeKind {
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum NodeKind {
     NonLeaf,
     Leaf,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct Node {
-    node_kind: NodeKind,
-    entry_hash: EntryHash,
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub node_kind: NodeKind,
+    pub entry_hash: EntryHash,
 }
 
 // Tree must be an ordered structure for consistent hash in hash_tree
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead
-type Tree = BTreeMap<String, Node>;
+pub type Tree = BTreeMap<String, Node>;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-struct Commit {
-    parent_commit_hash: Option<EntryHash>,
-    root_hash: EntryHash,
-    time: u64,
-    author: String,
-    message: String,
+#[derive(Debug, Hash, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Commit {
+    pub parent_commit_hash: Option<EntryHash>,
+    pub root_hash: EntryHash,
+    pub time: u64,
+    pub author: String,
+    pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum Entry {
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
@@ -142,7 +142,7 @@ pub struct MerkleStorage {
     staged_indices: HashMap<EntryHash, usize>,
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
-    perf_stats: MerklePerfStats,
+    stats: MerkleStorageStatistics,
     /// list of all actions done on staging area
     actions: Arc<Vec<Action>>,
 }
@@ -368,10 +368,7 @@ impl MerkleStorage {
             current_stage_tree: None,
             current_stage_tree_hash: None,
             last_commit_hash: None,
-            perf_stats: MerklePerfStats {
-                global: HashMap::new(),
-                perpath: HashMap::new(),
-            },
+            stats: MerkleStorageStatistics::default(),
             actions: Arc::new(Vec::new()),
         }
     }
@@ -382,7 +379,7 @@ impl MerkleStorage {
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Get, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         self.apply_actions_to_staging_area()?;
@@ -391,7 +388,6 @@ impl MerkleStorage {
         let root_hash = hash_tree(&root)?;
 
         let rv = self.get_from_tree(&root_hash, key);
-        self.update_execution_stats("Get".to_string(), Some(&key), &instant);
         if rv.is_err() {
             Ok(Vec::new())
         } else {
@@ -401,7 +397,7 @@ impl MerkleStorage {
 
     /// Check if value exists in current staged root
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Mem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         self.apply_actions_to_staging_area()?;
@@ -409,14 +405,12 @@ impl MerkleStorage {
         let root = &self.get_staged_root()?;
         let root_hash = hash_tree(&root)?;
 
-        let rv = self.value_exists(&root_hash, key);
-        self.update_execution_stats("Mem".to_string(), Some(&key), &instant);
-        rv
+        self.value_exists(&root_hash, key)
     }
 
     /// Check if directory exists in current staged root
     pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::DirMem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         self.apply_actions_to_staging_area()?;
@@ -424,9 +418,7 @@ impl MerkleStorage {
         let root = &self.get_staged_root()?;
         let root_hash = hash_tree(&root)?;
 
-        let rv = self.directory_exists(&root_hash, key);
-        self.update_execution_stats("DirMem".to_string(), Some(&key), &instant);
-        rv
+        self.directory_exists(&root_hash, key)
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
@@ -444,12 +436,9 @@ impl MerkleStorage {
         commit_hash: &EntryHash,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetHistory, Some(key));
         let commit = self.get_commit(commit_hash)?;
-
-        let rv = self.get_from_tree(&commit.root_hash, key);
-        self.update_execution_stats("GetKeyFromHistory".to_string(), Some(&key), &instant);
-        rv
+        self.get_from_tree(&commit.root_hash, key)
     }
 
     fn value_exists(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<bool, MerkleError> {
@@ -602,7 +591,7 @@ impl MerkleStorage {
             return Ok(StringTreeEntry::Null);
         }
 
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -626,11 +615,6 @@ impl MerkleStorage {
             );
         }
 
-        self.update_execution_stats(
-            "GetContextTreeByPrefix".to_string(),
-            Some(&prefix),
-            &instant,
-        );
         Ok(StringTreeEntry::Tree(out))
     }
 
@@ -640,12 +624,10 @@ impl MerkleStorage {
         context_hash: &EntryHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetKeyValuesByPrefix, Some(prefix));
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
-        let rv = self._get_key_values_by_prefix(root_tree, prefix);
-        self.update_execution_stats("GetKeyValuesByPrefix".to_string(), Some(&prefix), &instant);
-        rv
+        self._get_key_values_by_prefix(root_tree, prefix)
     }
 
     fn _get_key_values_by_prefix(
@@ -678,7 +660,7 @@ impl MerkleStorage {
 
     /// Flush the staging area and and move to work on a certain commit from history.
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Checkout, None);
         let commit = self.get_commit(&context_hash)?;
         self.current_stage_tree = Some(self.get_tree(&commit.root_hash)?);
         self.current_stage_tree_hash = Some(commit.root_hash);
@@ -687,7 +669,6 @@ impl MerkleStorage {
         self.staged_indices = HashMap::new();
         // clear list of actions
         self.actions = Arc::new(Vec::new());
-        self.update_execution_stats("Checkout".to_string(), None, &instant);
         Ok(())
     }
 
@@ -700,8 +681,7 @@ impl MerkleStorage {
         author: String,
         message: String,
     ) -> Result<EntryHash, MerkleError> {
-        let instant = Instant::now();
-
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Commit, None);
         // build staging tree from saved list of actions (set/copy/delete)
         self.apply_actions_to_staging_area()?;
 
@@ -724,46 +704,40 @@ impl MerkleStorage {
         self.staged_indices = HashMap::new();
         let last_commit_hash = hash_commit(&new_commit)?;
         self.last_commit_hash = Some(last_commit_hash);
-
-        self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(last_commit_hash)
     }
 
     /// Set key/val to the staging area.
     pub fn set(&mut self, key: &ContextKey, value: &ContextValue) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Set, Some(key));
         let act = Arc::make_mut(&mut self.actions);
         // store action
         act.push(Action::Set(SetAction {
             key: key.to_vec(),
             value: value.to_vec(),
         }));
-        self.update_execution_stats("Set".to_string(), Some(&key), &instant);
         Ok(())
     }
 
     /// Delete an item from the staging area.
     pub fn delete(&mut self, key: &ContextKey) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Delete, Some(key));
         let act = Arc::make_mut(&mut self.actions);
         // store action
         act.push(Action::Remove(RemoveAction { key: key.to_vec() }));
-        self.update_execution_stats("Delete".to_string(), Some(&key), &instant);
         Ok(())
     }
 
     /// Copy subtree under a new path.
     /// TODO Consider copying values!
     pub fn copy(&mut self, from_key: &ContextKey, to_key: &ContextKey) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Copy, Some(from_key));
         let act = Arc::make_mut(&mut self.actions);
         // store action
         act.push(Action::Copy(CopyAction {
             from_key: from_key.to_vec(),
             to_key: to_key.to_vec(),
         }));
-        // TODO: do we need to include from_key in stats?
-        self.update_execution_stats("CopyToDiff".to_string(), Some(&to_key), &instant);
         Ok(())
     }
 
@@ -1325,90 +1299,14 @@ impl MerkleStorage {
     }
 
     /// Get various merkle storage statistics
-    pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let db_stats = self.db.get_mem_use_stats()?;
-
-        // calculate average values for global stats
-        let mut perf = self.perf_stats.clone();
-        for (_, stat) in perf.global.iter_mut() {
-            if stat.op_exec_times > 0 {
-                stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-            } else {
-                stat.avg_exec_time = 0.0;
-            }
-        }
-        // calculate average values for per-path stats
-        for (_node, stat) in perf.perpath.iter_mut() {
-            for (_op, stat) in stat.iter_mut() {
-                if stat.op_exec_times > 0 {
-                    stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-                } else {
-                    stat.avg_exec_time = 0.0;
-                }
-            }
-        }
-        Ok(MerkleStorageStats {
-            rocksdb_stats: db_stats,
-            perf_stats: perf,
-        })
+    pub fn get_merkle_stats(&self) -> MerkleStoragePerfReport {
+        MerkleStoragePerfReport::new(self.stats.perf_stats.clone(), self.db.get_total_stats())
     }
 
-    /// Update global and per-path execution stats. Pass Instant with operation execution time
-    pub fn update_execution_stats(
-        &mut self,
-        op: String,
-        path: Option<&ContextKey>,
-        instant: &Instant,
-    ) {
-        // stop timer and get duration
-        let exec_time: f64 = instant.elapsed().as_nanos() as f64;
-
-        // collect global stats
-        let entry = self
-            .perf_stats
-            .global
-            .entry(op.to_owned())
-            .or_insert_with(OperationLatencies::default);
-        // add to cumulative execution time
-        entry.cumul_op_exec_time += exec_time;
-        entry.op_exec_times += 1;
-
-        // update min/max times for op
-        if exec_time < entry.op_exec_time_min {
-            entry.op_exec_time_min = exec_time;
-        }
-        if exec_time > entry.op_exec_time_max {
-            entry.op_exec_time_max = exec_time;
-        }
-
-        // collect per-path stats
-        if let Some(path) = path {
-            // we are only interested in nodes under /data
-            if path.len() > 1 && path[0] == "data" {
-                let node = path[1].to_string();
-                let perpath = self
-                    .perf_stats
-                    .perpath
-                    .entry(node)
-                    .or_insert_with(HashMap::new);
-                let entry = perpath
-                    .entry(op)
-                    .or_insert_with(OperationLatencies::default);
-
-                // add to cumulative execution time
-                entry.cumul_op_exec_time += exec_time;
-                entry.op_exec_times += 1;
-
-                // update min/max times for op
-                if exec_time < entry.op_exec_time_min {
-                    entry.op_exec_time_min = exec_time;
-                }
-                if exec_time > entry.op_exec_time_max {
-                    entry.op_exec_time_max = exec_time;
-                }
-            }
-        }
+    pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.stats.block_latencies.get(offset_from_last_applied)
     }
+
 }
 
 #[cfg(test)]

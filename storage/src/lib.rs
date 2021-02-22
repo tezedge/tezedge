@@ -58,6 +58,7 @@ pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
 pub mod merkle_storage;
+pub mod merkle_storage_stats;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;

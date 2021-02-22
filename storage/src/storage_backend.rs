@@ -74,11 +74,33 @@ pub trait StorageBackend: Send + Sync {
     fn put_batch(
         &mut self,
         batch: Vec<(EntryHash, ContextValue)>,
-    ) -> Result<(), StorageBackendError>;
+    ) -> Result<(), StorageBackendError>{
+        for (k, v) in batch.into_iter() {
+            self.put(&k, v)?;
+        }
+        Ok(())
+    }
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
+
+    //TODO: split this trait
+    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError>{Ok(())}
+    fn mark_reused(&mut self, key: EntryHash){}
+    fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>){}
+    fn wait_for_gc_finish(&self){}
+
+    fn get_stats(&self) -> Vec<StorageBackendStats>{vec![]}
+    fn get_total_stats(&self) -> StorageBackendStats {
+        self.get_stats().iter().sum()
+    }
+
+    fn total_mem_usage_as_bytes(&self) -> usize {
+        self.get_total_stats().total_as_bytes()
+    }
+
     fn get_mem_use_stats(&self) -> Result<RocksDBStats, StorageBackendError>;
+
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]

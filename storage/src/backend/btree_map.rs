@@ -43,13 +43,6 @@ impl KVStoreTrait for KVStore<EntryHash, ContextValue> {
         }
     }
 
-    fn put_batch(&mut self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), KVStoreError> {
-        for (k, v) in batch.into_iter() {
-            self.put(&k, v)?;
-        }
-        Ok(())
-    }
-
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), KVStoreError> {
         self.kv_map.insert(key.clone(), value);
         Ok(())
