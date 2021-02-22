@@ -331,7 +331,7 @@ impl BlockApplierThreadSpawner {
                 let operations_storage = OperationsStorage::new(&persistent_storage);
                 let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
                 let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                    block_storage.clone(),
+                    Some(block_storage.clone()),
                     persistent_storage.merkle(),
                 ));
 

@@ -2719,6 +2719,7 @@ version = "1.2.0"
 dependencies = [
  "bytes 1.0.1",
  "chrono",
+ "clap",
  "crypto",
  "dns-lookup",
  "failure",
@@ -2740,6 +2741,7 @@ dependencies = [
  "serde 1.0.123",
  "serde_json",
  "serial_test",
+ "sled",
  "slog",
  "slog-async",
  "slog-term",
@@ -2946,6 +2948,7 @@ dependencies = [
  "rocksdb",
  "serde 1.0.123",
  "serde_json",
+ "serial_test",
  "sled",
  "slog",
  "slog-async",

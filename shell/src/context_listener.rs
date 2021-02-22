@@ -66,7 +66,7 @@ impl ContextListener {
 
             thread::spawn(move || -> Result<(), Error> {
                 let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                    BlockStorage::new(&persistent_storage),
+                    Some(BlockStorage::new(&persistent_storage)),
                     persistent_storage.merkle(),
                 ));
 
@@ -200,6 +200,14 @@ fn listen_protocol_events(
                 }
 
                 perform_context_action(&action, context)?;
+
+                // TODO TE-440 subscribe to commit event
+                if let ContextAction::Commit { .. } = &action {
+                    context.block_applied()?;
+                    if event_count > 0 && event_count % 2048 == 0 {
+                        context.cycle_started()?;
+                    }
+                }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));

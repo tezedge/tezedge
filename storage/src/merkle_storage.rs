@@ -47,9 +47,11 @@
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::array::TryFromSliceError;
 use std::collections::{BTreeMap, HashMap};
+use std::convert::TryInto;
 use std::hash::Hash;
-use std::time::Instant;
 
+use blake2::digest::{Update, VariableOutput};
+use blake2::VarBlake2b;
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor};
@@ -62,7 +64,15 @@ use crate::{
     context::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError},
     persistent::database::RocksDBStats,
 };
-use crate::{context::TreeId, persistent};
+use crate::context::TreeId;
+use crate::merkle_storage_stats::{
+    MerkleStorageAction, MerkleStoragePerfReport, MerkleStorageStatistics, StatUpdater,
+};
+use crate::persistent;
+use crate::persistent::database::KeyValueStoreBackend;
+use crate::persistent::BincodeEncoded;
+use crate::persistent::{default_table_options, KeyValueSchema};
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
@@ -125,11 +135,17 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
+pub trait MerkleStorageBackendWithGC:
+    KeyValueStoreBackend<MerkleStorage> + GarbageCollector
+{
+}
+impl<T: KeyValueStoreBackend<MerkleStorage> + GarbageCollector> MerkleStorageBackendWithGC for T {}
+pub type MerkleStorageKV = dyn MerkleStorageBackendWithGC + Sync + Send;
 
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: (Tree, TreeId),
+    /// key value storage backend
     db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
@@ -138,7 +154,7 @@ pub struct MerkleStorage {
     /// HashMap for looking up entry index in self.staged by hash
     last_commit_hash: Option<EntryHash>,
     /// storage latency statistics
-    perf_stats: MerklePerfStats,
+    stats: MerkleStorageStatistics,
 }
 
 #[derive(Debug, Fail)]
@@ -195,6 +211,14 @@ pub enum MerkleError {
     ValueExpected(&'static str),
     #[fail(display = "Invalid state: {}", _0)]
     InvalidState(&'static str),
+    #[fail(display = "GC was called before first commit")]
+    GCTriggeredBeforeFirstCommit,
+}
+
+impl From<persistent::database::DBError> for MerkleError {
+    fn from(error: persistent::database::DBError) -> Self {
+        MerkleError::DBError { error }
+    }
 }
 
 impl From<HashingError> for MerkleError {
@@ -266,7 +290,6 @@ pub struct MerklePerfStats {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
-    rocksdb_stats: RocksDBStats,
     pub perf_stats: MerklePerfStats,
 }
 impl BincodeEncoded for EntryHash {}
@@ -332,20 +355,17 @@ impl MerkleStorage {
             trees: trees_map,
             current_stage_tree: (tree, tree_id),
             last_commit_hash: None,
-            perf_stats: MerklePerfStats {
-                global: HashMap::new(),
-                perpath: HashMap::new(),
-            },
+            stats: MerkleStorageStatistics::default(),
         }
     }
 
     pub fn has_persistent_backend(&self) -> bool {
-        self.db.is_persisted()
+        self.db.is_persistent()
     }
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         let root = &self.get_staged_root();
@@ -354,25 +374,25 @@ impl MerkleStorage {
         let rv = self
             .get_from_tree(&root_hash, key)
             .or_else(|_| Ok(Vec::new()));
-        self.update_execution_stats("Get".to_string(), Some(&key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
     /// Check if value exists in current staged root
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
 
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root)?;
 
         let rv = self.value_exists(&root_hash, key);
-        self.update_execution_stats("Mem".to_string(), Some(&key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
     /// Check if directory exists in current staged root
     pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
 
@@ -380,7 +400,7 @@ impl MerkleStorage {
         let root_hash = hash_tree(&root)?;
 
         let rv = self.directory_exists(&root_hash, key);
-        self.update_execution_stats("DirMem".to_string(), Some(&key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
@@ -399,11 +419,10 @@ impl MerkleStorage {
         commit_hash: &EntryHash,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::GetHistory, Some(key));
         let commit = self.get_commit(commit_hash)?;
-
         let rv = self.get_from_tree(&commit.root_hash, key);
-        self.update_execution_stats("GetKeyFromHistory".to_string(), Some(&key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
@@ -557,7 +576,8 @@ impl MerkleStorage {
             return Ok(StringTreeEntry::Null);
         }
 
-        let instant = Instant::now();
+        let stat_updater =
+            StatUpdater::new(MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -581,11 +601,7 @@ impl MerkleStorage {
             );
         }
 
-        self.update_execution_stats(
-            "GetContextTreeByPrefix".to_string(),
-            Some(&prefix),
-            &instant,
-        );
+        stat_updater.update_execution_stats(&mut self.stats);
         Ok(StringTreeEntry::Tree(out))
     }
 
@@ -595,11 +611,12 @@ impl MerkleStorage {
         context_hash: &EntryHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater =
+            StatUpdater::new(MerkleStorageAction::GetKeyValuesByPrefix, Some(prefix));
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
         let rv = self._get_key_values_by_prefix(root_tree, prefix);
-        self.update_execution_stats("GetKeyValuesByPrefix".to_string(), Some(&prefix), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
@@ -633,14 +650,15 @@ impl MerkleStorage {
 
     /// Flush the staging area and and move to work on a certain commit from history.
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Checkout, None);
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
-        self.trees.clear();
+        self.trees = HashMap::new();
+        self.staged = HashMap::new();
         self.set_stage_root(&tree, 0);
         self.last_commit_hash = Some(hash_commit(&commit)?);
         self.staged.clear();
-        self.update_execution_stats("Checkout".to_string(), None, &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         Ok(())
     }
 
@@ -653,7 +671,7 @@ impl MerkleStorage {
         author: String,
         message: String,
     ) -> Result<EntryHash, MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
         let staged_root = self.get_staged_root();
         let staged_root_hash = hash_tree(&staged_root)?;
         let parent_commit_hash = self.last_commit_hash;
@@ -667,11 +685,18 @@ impl MerkleStorage {
         };
         let entry = Entry::Commit(new_commit.clone());
         self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone());
-        self.persist_staged_entry_to_db(&entry)?;
+
+        // persist staged entries to db
+        let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
+        self.get_entries_recursively(&entry, &mut batch)?;
+        // write all entries at once (depends on backend)
+        self.db.write_batch(batch)?;
 
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
-        self.update_execution_stats("Commit".to_string(), None, &instant);
-        Ok(hash_commit(&new_commit)?)
+
+        let rv = Ok(hash_commit(&new_commit)?);
+        stat_updater.update_execution_stats(&mut self.stats);
+        rv
     }
 
     /// Set key/val to the staging area.
@@ -687,11 +712,11 @@ impl MerkleStorage {
         key: &ContextKey,
         value: &ContextValue,
     ) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Set, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._set(&root, key, value)?;
         self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
-        self.update_execution_stats("Set".to_string(), Some(&key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         Ok(())
     }
 
@@ -712,12 +737,11 @@ impl MerkleStorage {
 
     /// Delete an item from the staging area.
     pub fn delete(&mut self, new_tree_id: TreeId, key: &ContextKey) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Delete, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._delete(&root, key)?;
         self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
-        self.update_execution_stats("Delete".to_string(), Some(&key), &instant);
-
+        stat_updater.update_execution_stats(&mut self.stats);
         Ok(())
     }
 
@@ -735,11 +759,11 @@ impl MerkleStorage {
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), MerkleError> {
-        let instant = Instant::now();
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Copy, Some(from_key));
         let root = self.get_staged_root();
         let new_root_hash = self._copy(&root, from_key, to_key)?;
         self.set_stage_root(&self.get_tree(&new_root_hash)?, new_tree_id);
-        self.update_execution_stats("CopyToDiff".to_string(), Some(&to_key), &instant);
+        stat_updater.update_execution_stats(&mut self.stats);
         Ok(())
     }
 
@@ -874,17 +898,21 @@ impl MerkleStorage {
         self.staged.insert(*key, value);
     }
 
-    /// Persists an entry and its descendants from staged area to database on disk.
-    fn persist_staged_entry_to_db(&mut self, entry: &Entry) -> Result<(), MerkleError> {
-        let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
+    /// Marks all the entries from last commit as used
+    /// so GC can know when to remove them
+    pub fn block_applied(&mut self) -> Result<(), MerkleError> {
+        let stat_updater = StatUpdater::new(MerkleStorageAction::BlockApplied, None);
+        let rv = match self.last_commit_hash {
+            Some(hash) => Ok(self.db.block_applied(hash)?),
+            None => Err(MerkleError::GCTriggeredBeforeFirstCommit),
+        };
+        stat_updater.update_execution_stats(&mut self.stats);
+        rv
+    }
 
-        // build list of entries to be persisted
-        self.get_entries_recursively(entry, &mut batch)?;
-
-        // write all entries at once (depends on backend)
-        self.db.put_batch(batch)?;
-
-        Ok(())
+    /// Notify GC about new cycle
+    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        Ok(self.db.new_cycle_started()?)
     }
 
     /// Builds vector of entries to be persisted to DB, recursively
@@ -1029,89 +1057,19 @@ impl MerkleStorage {
     }
 
     /// Get various merkle storage statistics
-    pub fn get_merkle_stats(&self) -> Result<MerkleStorageStats, MerkleError> {
-        let db_stats = self.db.get_mem_use_stats()?;
-
-        // calculate average values for global stats
-        let mut perf = self.perf_stats.clone();
-        for (_, stat) in perf.global.iter_mut() {
-            if stat.op_exec_times > 0 {
-                stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-            } else {
-                stat.avg_exec_time = 0.0;
-            }
-        }
-        // calculate average values for per-path stats
-        for (_node, stat) in perf.perpath.iter_mut() {
-            for (_op, stat) in stat.iter_mut() {
-                if stat.op_exec_times > 0 {
-                    stat.avg_exec_time = stat.cumul_op_exec_time / (stat.op_exec_times as f64);
-                } else {
-                    stat.avg_exec_time = 0.0;
-                }
-            }
-        }
-        Ok(MerkleStorageStats {
-            rocksdb_stats: db_stats,
-            perf_stats: perf,
+    pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, MerkleError> {
+        Ok(MerkleStoragePerfReport {
+            perf_stats: self.stats.perf_stats.clone(),
+            kv_store_stats: self.db.total_get_mem_usage()?,
         })
     }
 
-    /// Update global and per-path execution stats. Pass Instant with operation execution time
-    pub fn update_execution_stats(
-        &mut self,
-        op: String,
-        path: Option<&ContextKey>,
-        instant: &Instant,
-    ) {
-        // stop timer and get duration
-        let exec_time: f64 = instant.elapsed().as_nanos() as f64;
+    pub fn get_memory_usage(&self) -> Result<usize, MerkleError> {
+        Ok(self.db.total_get_mem_usage()?)
+    }
 
-        // collect global stats
-        let entry = self
-            .perf_stats
-            .global
-            .entry(op.to_owned())
-            .or_insert_with(OperationLatencies::default);
-        // add to cumulative execution time
-        entry.cumul_op_exec_time += exec_time;
-        entry.op_exec_times += 1;
-
-        // update min/max times for op
-        if exec_time < entry.op_exec_time_min {
-            entry.op_exec_time_min = exec_time;
-        }
-        if exec_time > entry.op_exec_time_max {
-            entry.op_exec_time_max = exec_time;
-        }
-
-        // collect per-path stats
-        if let Some(path) = path {
-            // we are only interested in nodes under /data
-            if path.len() > 1 && path[0] == "data" {
-                let node = path[1].to_string();
-                let perpath = self
-                    .perf_stats
-                    .perpath
-                    .entry(node)
-                    .or_insert_with(HashMap::new);
-                let entry = perpath
-                    .entry(op)
-                    .or_insert_with(OperationLatencies::default);
-
-                // add to cumulative execution time
-                entry.cumul_op_exec_time += exec_time;
-                entry.op_exec_times += 1;
-
-                // update min/max times for op
-                if exec_time < entry.op_exec_time_min {
-                    entry.op_exec_time_min = exec_time;
-                }
-                if exec_time > entry.op_exec_time_max {
-                    entry.op_exec_time_max = exec_time;
-                }
-            }
-        }
+    pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
+        self.stats.block_latencies.get(offset_from_last_applied)
     }
 }
 
@@ -1125,8 +1083,8 @@ mod tests {
     use assert_json_diff::assert_json_eq;
     use rocksdb::{Options, DB};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
     use std::{env, fs};
-    use std::{ops::Deref, sync::Arc};
 
     use super::*;
 
@@ -1154,19 +1112,20 @@ mod tests {
 
     fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
         match backend {
-            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
-                Arc::new(get_db(db_name, &cache)),
-                MerkleStorage::name(),
-            ))),
+            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
+                db_name, &cache,
+            ))))),
             "sled" => {
                 let sled = sled::Config::new()
                     .path(get_db_name(db_name))
                     .open()
                     .unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
+                MerkleStorage::new(Box::new(SledBackend::new(sled)))
             }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(3))),
+            "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(3))),
             _ => {
                 panic!("unknown backend set")
             }
@@ -1556,25 +1515,17 @@ mod tests {
         {
             clean_db(db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            MerkleStorage::new(Box::new(RocksDBBackend::new(
-                Arc::new(get_db(db_name, &cache)),
-                MerkleStorage::name(),
-            )));
+            MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
+                db_name, &cache,
+            )))));
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(
-            Arc::new(db),
-            MerkleStorage::name(),
-        )));
+        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(db))));
         storage.set(1, &vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
-        println!("{:?}", res);
 
-        assert!(matches!(
-            res.err().unwrap(),
-            MerkleError::StorageBackendError { .. }
-        ));
+        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
     }
 
     // Test getting entire tree in string format for JSON RPC
@@ -1822,6 +1773,161 @@ mod tests {
         assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
 
+    #[test]
+    fn test_gc() {
+        let mut storage = MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(2)));
+
+        // CYCLE 1
+        storage
+            .set(1, &vec!["a".to_string(), "a".to_string()], &vec![1])
+            .unwrap();
+        let commit1 = storage
+            .commit(0, "dev".to_string(), "commit1".to_string())
+            .unwrap();
+        storage.checkout(&commit1);
+        storage.block_applied().unwrap();
+
+        storage
+            .set(1, &vec!["a".to_string(), "b".to_string()], &vec![2])
+            .unwrap();
+        let commit2 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit2);
+        storage.block_applied().unwrap();
+
+        // CYCLE 2
+        storage.start_new_cycle().unwrap();
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_some());
+        assert!(storage.db.get(&commit2).unwrap().is_some());
+
+        storage
+            .set(1, &vec!["a".to_string(), "c".to_string()], &vec![3])
+            .unwrap();
+        storage
+            .set(2, &vec!["a".to_string(), "a".to_string()], &vec![100])
+            .unwrap();
+        let commit3 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit3);
+        storage.block_applied().unwrap();
+
+        storage
+            .set(1, &vec!["a".to_string(), "d".to_string()], &vec![4])
+            .unwrap();
+        //overwrite value from first commit
+        let commit4 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit4);
+        storage.block_applied().unwrap();
+
+        // CYCLE 3
+        storage.start_new_cycle().unwrap();
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![4])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![100])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_some());
+        assert!(storage.db.get(&commit2).unwrap().is_some());
+        assert!(storage.db.get(&commit3).unwrap().is_some());
+        assert!(storage.db.get(&commit4).unwrap().is_some());
+
+        storage
+            .set(1, &vec!["a".to_string(), "e".to_string()], &vec![5])
+            .unwrap();
+        let commit5 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit5);
+        storage.block_applied().unwrap();
+
+        storage
+            .set(1, &vec!["a".to_string(), "f".to_string()], &vec![6])
+            .unwrap();
+        let commit6 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit6);
+        storage.block_applied().unwrap();
+
+        // CYCLE 4
+        storage.start_new_cycle().unwrap();
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_none()); // removed in commit4
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![4])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![100])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![5])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![6])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_none()); // cleaned up
+        assert!(storage.db.get(&commit2).unwrap().is_none()); // cleaned up
+        assert!(storage.db.get(&commit3).unwrap().is_some());
+        assert!(storage.db.get(&commit4).unwrap().is_some());
+        assert!(storage.db.get(&commit5).unwrap().is_some());
+        assert!(storage.db.get(&commit6).unwrap().is_some());
+    }
+
     macro_rules! tests_with_storage {
         ($storage_name:ident, $name_str:expr) => {
             mod $storage_name {
@@ -1905,4 +2011,6 @@ mod tests {
     tests_with_storage!(sled_tests, "sled");
     tests_with_storage!(btree_tests, "btree");
     tests_with_storage!(inmem_tests, "inmem");
+    tests_with_storage!(mark_move_tests, "mark_move");
+    tests_with_storage!(mark_sweep_tests, "mark_sweep");
 }

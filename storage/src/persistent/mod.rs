@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -14,13 +13,14 @@ use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
-pub use database::{DBError, KeyValueStoreWithSchema};
+pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
-use crate::backend::btree_map::BTreeMapBackend;
-use crate::backend::in_memory_backend::InMemoryBackend;
-use crate::backend::rocksdb_backend::RocksDBBackend;
-use crate::backend::sled_backend::SledBackend;
+use crate::backend::{
+    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
+};
+use crate::storage_backend::StorageBackendError;
+
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
 use tezos_context::channel::ContextAction;
@@ -30,6 +30,8 @@ pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
+
+const PRESERVE_CYCLE_COUNT: usize = 7;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -152,29 +154,37 @@ impl PersistentStorage {
         db_context_actions: Arc<DB>,
         clog: Arc<CommitLogs>,
         merkle_backend: KeyValueStoreBackend,
-    ) -> Self {
-        let merkle = match merkle_backend {
-            KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
-                db_context.clone(),
-                MerkleStorage::name(),
-            ))),
-            KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            KeyValueStoreBackend::Sled { path } => {
-                let sled = sled::Config::new().path(path).open().unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
-            }
-            KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
-        };
+    ) -> Result<Self, StorageBackendError> {
+        let merkle =
+            match merkle_backend {
+                KeyValueStoreBackend::RocksDB => {
+                    MerkleStorage::new(Box::new(RocksDBBackend::new(db_context.clone())))
+                }
+                KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+                KeyValueStoreBackend::Sled { path } => {
+                    let sled = sled::Config::new().path(path).open()?;
+                    MerkleStorage::new(Box::new(SledBackend::new(sled)))
+                }
+                KeyValueStoreBackend::BTreeMap => {
+                    MerkleStorage::new(Box::new(BTreeMapBackend::new()))
+                }
+                KeyValueStoreBackend::MarkSweepInMem => MerkleStorage::new(Box::new(
+                    MarkSweepGCed::<InMemoryBackend>::new(PRESERVE_CYCLE_COUNT),
+                )),
+                KeyValueStoreBackend::MarkMoveInMem => MerkleStorage::new(Box::new(
+                    MarkMoveGCed::<BTreeMapBackend>::new(PRESERVE_CYCLE_COUNT),
+                )),
+            };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
-        Self {
+        Ok(Self {
             clog,
             db,
-            db_context: db_context.clone(),
+            db_context,
             db_context_actions,
             seq,
             merkle: Arc::new(RwLock::new(merkle)),
-        }
+        })
     }
 
     #[inline]

@@ -653,7 +653,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&KeyValueStoreBackend::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
+            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree', 'mark_sweep', 'mark_move'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
             .takes_value(true)
