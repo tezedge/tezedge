@@ -20,13 +20,13 @@ use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
 use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use std::path::Path;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
-use tezos_messages::p2p::encoding::operations_for_blocks::Path;
 use tezos_messages::p2p::encoding::prelude::Mempool;
 
 mod common;
@@ -539,8 +539,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     name: &str,
     current_head_wait_timeout: (Duration, Duration),
 ) -> Result<(), failure::Error> {
-    let mut root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
-    let mut root_context_db_path = &common::prepare_empty_dir("__test_05_context");
+    let root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
+    let root_context_db_path = &common::prepare_empty_dir("__test_05_context");
     // logger
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
@@ -698,8 +698,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     }
 
     // print dir size
-    print_dir(3, root_dir_temp_storage_path, true);
-    print_dir(3, root_context_db_path, true);
+    print_dir(3, &root_dir_temp_storage_path, true)?;
+    print_dir(3, &root_context_db_path, true)?;
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
@@ -713,13 +713,13 @@ fn print_dir<P: AsRef<Path>>(
     human_format: bool,
 ) -> Result<(), failure::Error> {
     let mut options = DirOptions::new();
-    options.depth = depth; // Get 3 levels of folder.
-    let dir_content = get_dir_content2(path, &options).unwrap();
+    options.depth = depth;
+    let dir_content = get_dir_content2(path, &options)?;
     for directory in dir_content.directories {
         let dir_size = if human_format {
-            human_readable(get_size(directory)?)
+            human_readable(get_size(&directory)?)
         } else {
-            get_size(directory)?
+            get_size(&directory)?.to_string()
         };
         println!("{} {}", dir_size, &directory); // print directory path and size
     }
@@ -755,7 +755,7 @@ mod test_data {
     use std::collections::HashMap;
     use std::convert::TryInto;
 
-    use failure::format_err;
+    use failure::{format_err, Fail};
 
     use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use tezos_api::environment::TezosEnvironment;
@@ -945,6 +945,7 @@ mod test_cases_data {
     };
 
     use crate::test_data::Db;
+    use failure::Fail;
 
     lazy_static! {
         // prepared data - we have stored 1326 request for apply block + operations for CARTHAGENET
