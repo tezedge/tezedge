@@ -4,7 +4,8 @@ use crate::storage_backend::StorageBackendError;
 
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::{mpsc, Arc, Mutex, RwLock, Condvar};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -13,8 +14,6 @@ use crate::storage_backend::{
     StorageBackend as KVStore, StorageBackendError as KVStoreError,
     StorageBackendStats as KVStoreStats,
 };
-
-// TODO: add assertions for EntryHash to make sure it is stack allocated.
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
@@ -39,7 +38,6 @@ where
         .enumerate()
         .find(|(_, store)| store.contains(key).unwrap_or(false))
         .map(|(index, _)| index)
-    // .map(|(rev_offset, _)| stores.len() - rev_offset - 1)
 }
 
 /// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
@@ -51,8 +49,7 @@ where
     stores
         .iter()
         .rev()
-        .find(|store| store.contains(key).unwrap_or(false))
-        .is_some()
+        .any(|store| store.contains(key).unwrap_or(false))
 }
 
 /// Searches the stores for an entry with hash `key`, and if found, the value is deleted.
@@ -84,8 +81,6 @@ pub enum CmdMsg {
 
 /// Garbage Collected Key Value Store
 pub struct KVStoreGCed<T: KVStore> {
-    /// Amount of cycles we keep
-    cycle_count: usize,
     /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
     /// Stats for each store in archived stores
@@ -95,9 +90,9 @@ pub struct KVStoreGCed<T: KVStore> {
     /// Current in-process cycle store stats
     current_stats: KVStoreStats,
     /// GC thread
-    is_busy: Arc<Mutex<bool>>,
-    msg_cnt: Arc<Mutex<usize>>,
-    thread: thread::JoinHandle<()>,
+    is_busy: Arc<AtomicBool>,
+    msg_cnt: Arc<AtomicUsize>,
+    _thread: thread::JoinHandle<()>,
     // TODO: Mutex because it's required to be Sync. Better way?
     /// Channel to communicate with GC thread from main thread
     msg: Mutex<mpsc::Sender<CmdMsg>>,
@@ -115,17 +110,16 @@ impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
         let stores = Arc::new(RwLock::new(
             (0..(cycle_count - 1)).map(|_| Default::default()).collect(),
         ));
-        let msg_cnt = Arc::new(Mutex::new(0));
+        let msg_cnt = Arc::new(AtomicUsize::new(0));
         let msg_cnt_ref = msg_cnt.clone();
-        let busy = Arc::new(Mutex::new(true));
+        let busy = Arc::new(AtomicBool::new(true));
         let busy_ref = busy.clone();
         let stores_stats = Arc::new(Mutex::new(vec![Default::default(); cycle_count - 1]));
 
         Self {
-            cycle_count,
             stores: stores.clone(),
             stores_stats: stores_stats.clone(),
-            thread: thread::spawn(move || kvstore_gc_thread_fn(stores, stores_stats, rx, busy.clone(), msg_cnt.clone())),
+            _thread: thread::spawn(move || kvstore_gc_thread_fn(stores, stores_stats, rx, busy.clone(), msg_cnt)),
             msg: Mutex::new(tx),
             is_busy: busy_ref,
             msg_cnt: msg_cnt_ref,
@@ -197,7 +191,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     fn mark_reused(&mut self, key: EntryHash) {
         println!("===> mark reused sent");
         {
-            *self.msg_cnt.lock().unwrap() += 1;
+            self.msg_cnt.fetch_add(1, Ordering::Acquire);
         }
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
@@ -214,7 +208,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {
         {
             println!("===> start new cycle");
-            *self.msg_cnt.lock().unwrap() += 1;
+            self.msg_cnt.fetch_add(1, Ordering::Acquire);
         }
         self.stores_stats
             .lock()
@@ -231,7 +225,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     fn wait_for_gc_finish(&self) {
         // If there are more stores than self.cycle_count, that means the oldest one still hasn't been collected
         //
-        while *self.is_busy.lock().unwrap() || *self.msg_cnt.lock().unwrap() > 0{
+        while self.is_busy.load(Ordering::Acquire) || self.msg_cnt.load(Ordering::Acquire) > 0{
             thread::sleep(Duration::from_millis(20));
         }
     }
@@ -252,8 +246,8 @@ fn kvstore_gc_thread_fn<T: KVStore>(
     stores: Arc<RwLock<Vec<T>>>,
     stores_stats: Arc<Mutex<Vec<KVStoreStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
-    is_busy: Arc<Mutex<bool>>,
-    msg_cnt: Arc<Mutex<usize>>
+    is_busy: Arc<AtomicBool>,
+    msg_cnt: Arc<AtomicUsize>
 ) {
     // number of preserved archived cycles
     let len = stores.read().unwrap().len();
@@ -274,10 +268,10 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         println!("REUSED keys {}" , reused_keys.len());
 
         {
-            if *msg_cnt.lock().unwrap() == 0 && todo_keys.is_empty() && reused_keys.len() == len {
-                *is_busy.lock().unwrap() = false;
+            if msg_cnt.load(Ordering::Acquire) == 0 && todo_keys.is_empty() && reused_keys.len() == len {
+                is_busy.swap(false, Ordering::Acquire);
             }else{
-                *is_busy.lock().unwrap() = true;
+                is_busy.swap(true, Ordering::Acquire);
             }
         }
 
@@ -302,16 +296,14 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 // new cycle started, we add a new reused/referenced keys HashSet for it
                 println!("===X start new cycle received");
                 reused_keys.push(Default::default());
-                *msg_cnt.lock().unwrap() -= 1;
+                msg_cnt.fetch_sub(1, Ordering::Acquire);
             }
             Some(CmdMsg::Exit) => {
                 received_exit_msg = true;
             }
             Some(CmdMsg::MarkReused(key)) => {
                 println!("===X mark reused received");
-                {
-                        *msg_cnt.lock().unwrap() -= 1;
-                }
+                msg_cnt.fetch_sub(1, Ordering::Acquire);
                 if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
                     // only way index can be greater than reused_keys.len() is if GC thread
                     // lags behind (gc has pending 1-2 cycles to collect). When we still haven't
@@ -329,11 +321,9 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
             None => {
                 // we exit only if there are no remaining keys to be processed
-                if received_exit_msg && todo_keys.len() == 0 && reused_keys.len() == len {
+                if received_exit_msg && todo_keys.is_empty() && reused_keys.len() == len {
                     // println!("MerkleStorage GC thread shut down! reason: received exit message.");
-                    {
-                    *is_busy.lock().unwrap() = false;
-                    }
+                    is_busy.swap(false, Ordering::Acquire);
                     return;
                 }
             }
@@ -341,11 +331,11 @@ fn kvstore_gc_thread_fn<T: KVStore>(
 
         // if reused_keys.len() > len  that means that we need to start garbage collecting oldest cycle,
         // reused_keys[0].len() > 0  If no keys are reused we can just drop the cycle.
-        if reused_keys.len() > len && reused_keys[0].len() > 0 {
+        if reused_keys.len() > len && ! reused_keys[0].is_empty() {
             todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
         }
 
-        if todo_keys.len() > 0 {
+        if !todo_keys.is_empty() {
             let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
 
@@ -421,7 +411,7 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             }
         }
 
-        if reused_keys.len() > len && reused_keys[0].len() == 0 && todo_keys.len() == 0 {
+        if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty(){
             drop(reused_keys.drain(..1));
             drop(stores_stats.lock().unwrap().drain(..1));
             drop(stores.write().unwrap().drain(..1));
@@ -448,7 +438,7 @@ mod tests {
             .iter()
             .chain(std::iter::repeat(&0u8))
             .take(32)
-            .map(|elem| *elem)
+            .cloned()
             .collect();
 
         EntryHash::try_from(bytes).unwrap()
