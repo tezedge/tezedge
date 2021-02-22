@@ -93,14 +93,12 @@ pub struct KVStoreGCed<T: KVStore> {
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
     _thread: thread::JoinHandle<()>,
-    // TODO: Mutex because it's required to be Sync. Better way?
     /// Channel to communicate with GC thread from main thread
     msg: Mutex<mpsc::Sender<CmdMsg>>,
 }
 
 impl<T: 'static + KVStore + Default> KVStoreGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
-        // size < 2 wouldn't make sense because there would be nowhere to move things
         assert!(
             cycle_count > 1,
             "cycle_count less than 2 for KVStoreGCed not supported"
@@ -189,10 +187,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     /// Entries that are reused/referenced in current cycle
     /// will be preserved after garbage collection.
     fn mark_reused(&mut self, key: EntryHash) {
-        println!("===> mark reused sent");
-        {
-            self.msg_cnt.fetch_add(1, Ordering::Acquire);
-        }
+        self.msg_cnt.fetch_add(1, Ordering::Acquire);
         let _ = self.msg.lock().unwrap().send(CmdMsg::MarkReused(key));
     }
 
@@ -206,10 +201,7 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     ///
     /// Garbage collector will start collecting the oldest cycle.
     fn start_new_cycle(&mut self, _last_commit_hash: Option<EntryHash>) {
-        {
-            println!("===> start new cycle");
-            self.msg_cnt.fetch_add(1, Ordering::Acquire);
-        }
+        self.msg_cnt.fetch_add(1, Ordering::Acquire);
         self.stores_stats
             .lock()
             .unwrap()
@@ -222,9 +214,8 @@ impl<T: 'static + KVStore + Default> KVStore for KVStoreGCed<T> {
     }
 
     /// Waits for garbage collector to finish collecting the oldest cycle.
+    /// [used only for testing purposes]
     fn wait_for_gc_finish(&self) {
-        // If there are more stores than self.cycle_count, that means the oldest one still hasn't been collected
-        //
         while self.is_busy.load(Ordering::Acquire) || self.msg_cnt.load(Ordering::Acquire) > 0{
             thread::sleep(Duration::from_millis(20));
         }
@@ -260,26 +251,19 @@ fn kvstore_gc_thread_fn<T: KVStore>(
     let mut received_exit_msg = false;
 
     loop {
-        println!("iter");
         // wait (block) for main thread events if there are no items to garbage collect
         let wait_for_events = reused_keys.len() == len && !received_exit_msg;
-        // thread::sleep(Duration::from_millis(100));
-        println!("TODO keys {}" , todo_keys.len());
-        println!("REUSED keys {}" , reused_keys.len());
 
-        {
-            if msg_cnt.load(Ordering::Acquire) == 0 && todo_keys.is_empty() && reused_keys.len() == len {
-                is_busy.swap(false, Ordering::Acquire);
-            }else{
-                is_busy.swap(true, Ordering::Acquire);
-            }
-        }
+        // check if there are not processed eventsda
+        is_busy.swap(
+                msg_cnt.load(Ordering::Acquire) > 0
+                || ! todo_keys.is_empty() 
+                || reused_keys.len() > len, Ordering::Acquire);
 
         let msg = if wait_for_events {
             match rx.recv() {
                 Ok(value) => Some(value),
                 Err(_) => {
-                    // println!("MerkleStorage GC thread shut down! reason: mpsc::Sender dropped.");
                     return;
                 }
             }
@@ -294,7 +278,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
         match msg {
             Some(CmdMsg::StartNewCycle) => {
                 // new cycle started, we add a new reused/referenced keys HashSet for it
-                println!("===X start new cycle received");
                 reused_keys.push(Default::default());
                 msg_cnt.fetch_sub(1, Ordering::Acquire);
             }
@@ -302,8 +285,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                 received_exit_msg = true;
             }
             Some(CmdMsg::MarkReused(key)) => {
-                println!("===X mark reused received");
-                msg_cnt.fetch_sub(1, Ordering::Acquire);
                 if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
                     // only way index can be greater than reused_keys.len() is if GC thread
                     // lags behind (gc has pending 1-2 cycles to collect). When we still haven't
@@ -318,11 +299,11 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                         }
                     }
                 }
+                msg_cnt.fetch_sub(1, Ordering::Acquire);
             }
             None => {
                 // we exit only if there are no remaining keys to be processed
                 if received_exit_msg && todo_keys.is_empty() && reused_keys.len() == len {
-                    // println!("MerkleStorage GC thread shut down! reason: received exit message.");
                     is_busy.swap(false, Ordering::Acquire);
                     return;
                 }
@@ -380,8 +361,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
                     }
                 };
 
-                // move the entry to the latest store
-
                 // TODO: it would be better if we would move entries to the newest store
                 // they were referenced in. This way entries won't live longer then they
                 // have to (unlike how its now). This can be achieved if we keep cycle
@@ -417,8 +396,6 @@ fn kvstore_gc_thread_fn<T: KVStore>(
             drop(stores.write().unwrap().drain(..1));
         }
     }
-
-    // println!("MerkleStorage GC thread shut down!");
 }
 
 #[cfg(test)]
@@ -534,11 +511,7 @@ mod tests {
         assert_eq!(
             store.total_mem_usage_as_bytes(),
             vec![
-                // TODO: bring back when MerklHash aka EntryHash will be allocated
-                // on stack
-                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-                // 4 * mem::size_of::<EntryHash>(),
-                4 * 32,
+                4 * mem::size_of::<EntryHash>(),
                 96, // reused keys
                 size_of_vec(&kv1.1),
                 size_of_vec(&kv2.1),
@@ -571,11 +544,7 @@ mod tests {
         assert_eq!(
             store.total_mem_usage_as_bytes(),
             vec![
-                // TODO: bring back when MerklHash aka EntryHash will be allocated
-                // on stack
-                // self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-                // 3 * mem::size_of::<EntryHash>(),
-                3 * 32,
+                3 * mem::size_of::<EntryHash>(),
                 size_of_vec(&kv1.1),
                 size_of_vec(&kv3.1),
                 size_of_vec(&kv4.1),
