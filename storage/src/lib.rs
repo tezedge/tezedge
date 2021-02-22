@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 #![feature(const_fn)]
+#![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
@@ -12,9 +13,12 @@ use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType};
+use crypto::{
+    base58::FromBase58CheckError,
+    hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
+};
 use tezos_api::environment::{
-    TezosEnvironmentConfiguration, TezosEnvironmentError, OPERATION_LIST_LIST_HASH_EMPTY,
+    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
@@ -38,10 +42,15 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
+use crate::persistent::ActionRecordError;
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
+pub use action_file_storage::ActionFileStorage;
 
+pub mod action_file;
+pub mod action_file_storage;
+pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
@@ -54,6 +63,7 @@ pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod skip_list;
+pub mod storage_backend;
 pub mod system_storage;
 
 /// Extension of block header with block hash
@@ -124,6 +134,8 @@ pub enum StorageError {
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError { error: SequenceError },
+    #[fail(display = "Action record error: {}", error)]
+    ActionRecordError { error: ActionRecordError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
     TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
@@ -132,6 +144,8 @@ pub enum StorageError {
     PredecessorLookupError,
     #[fail(display = "Error constructing hash: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Error decoding hash: {}", error)]
+    HashDecodeError { error: FromBase58CheckError },
 }
 
 impl From<DBError> for StorageError {
@@ -175,6 +189,18 @@ impl From<TezosEnvironmentError> for StorageError {
 impl From<FromBytesError> for StorageError {
     fn from(error: FromBytesError) -> Self {
         StorageError::HashError { error }
+    }
+}
+
+impl From<FromBase58CheckError> for StorageError {
+    fn from(error: FromBase58CheckError) -> Self {
+        StorageError::HashDecodeError { error }
+    }
+}
+
+impl From<ActionRecordError> for StorageError {
+    fn from(error: ActionRecordError) -> Self {
+        StorageError::ActionRecordError { error }
     }
 }
 
@@ -359,7 +385,7 @@ pub fn initialize_storage_with_genesis_block(
         hash: init_storage_data.genesis_block_header_hash.clone(),
         header: Arc::new(
             tezos_env
-                .genesis_header(context_hash.clone(), OPERATION_LIST_LIST_HASH_EMPTY.clone())?,
+                .genesis_header(context_hash.clone(), get_empty_operation_list_list_hash()?)?,
         ),
     };
     let _ = block_storage.put_block_header(&genesis_with_hash)?;
@@ -441,6 +467,14 @@ pub fn check_database_compatibility(
     }
 
     Ok(db_version_ok && chain_id_ok)
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum KeyValueStoreBackend {
+    RocksDB,
+    InMem,
+    Sled,
+    BTreeMap,
 }
 
 pub mod tests_common {
@@ -537,6 +571,7 @@ pub mod tests_common {
                     Arc::new(kv_context),
                     Arc::new(kv_context_action),
                     Arc::new(clog),
+                    KeyValueStoreBackend::RocksDB,
                 ),
                 path,
                 remove_on_destroy,

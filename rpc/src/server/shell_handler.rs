@@ -15,7 +15,7 @@ use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 
 use crate::helpers::{
-    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, MAIN_CHAIN_ID,
+    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID,
 };
 use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
@@ -175,7 +175,7 @@ pub async fn blocks(
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
-    make_json_response(&vec![base_services::get_blocks(
+    make_json_response(&vec![base_services::get_blocks::<SlimBlockData>(
         chain_id,
         head,
         None,
@@ -183,7 +183,7 @@ pub async fn blocks(
         env.persistent_storage(),
     )?
     .iter()
-    .map(|block| block.hash.clone())
+    .map(|block| block.block_hash.clone())
     .collect::<Vec<String>>()])
 }
 

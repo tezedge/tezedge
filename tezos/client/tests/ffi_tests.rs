@@ -19,10 +19,9 @@ fn test_init_protocol_context() {
     // change cfg
     ffi::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
         log_enabled: common::is_ocaml_log_enabled(),
-        no_of_ffi_calls_treshold_for_gc: common::no_of_ffi_calls_treshold_for_gc(),
     })
-    .unwrap()
     .unwrap();
 
     let storage_dir = "test_storage_01";
@@ -81,7 +80,7 @@ fn test_assert_encoding_for_protocol_data() {
     )
     .is_ok());
     assert!(client::assert_encoding_for_protocol_data(
-        protocol_hash_1.clone(),
+        protocol_hash_1,
         block_header_2.protocol_data().clone(),
     )
     .is_err());
@@ -91,7 +90,7 @@ fn test_assert_encoding_for_protocol_data() {
     )
     .is_err());
     assert!(client::assert_encoding_for_protocol_data(
-        protocol_hash_2.clone(),
+        protocol_hash_2,
         block_header_2.protocol_data().clone(),
     )
     .is_ok());
@@ -109,8 +108,8 @@ fn prepare_protocol_context(
 
     // init empty storage for test
     let storage_data_dir_path = common::prepare_empty_dir(dir_name);
-    let storage_init_info = ffi::init_protocol_context(
-        storage_data_dir_path.to_string(),
+    ffi::init_protocol_context(
+        storage_data_dir_path,
         cfg.genesis.clone(),
         cfg.protocol_overrides.clone(),
         commit_genesis,
@@ -119,7 +118,4 @@ fn prepare_protocol_context(
         None,
     )
     .unwrap()
-    .unwrap();
-
-    storage_init_info
 }

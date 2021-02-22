@@ -28,10 +28,11 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         operation_hash: None,
         block_hash: Some(str_block_hash_1.into()),
         context_hash: None,
+        tree_hash: None,
+        new_tree_hash: None,
         value_as_json: None,
         start_time: 0.0,
         end_time: 0.0,
-        ignored: false,
     };
     let value_1_1 = ContextAction::Set {
         key: vec!["hello".to_string(), "world".to_string()],
@@ -39,10 +40,11 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         operation_hash: None,
         block_hash: Some(str_block_hash_1.into()),
         context_hash: None,
+        tree_hash: None,
+        new_tree_hash: None,
         value_as_json: None,
         start_time: 0.0,
         end_time: 0.0,
-        ignored: false,
     };
     let value_2_0 = ContextAction::Set {
         key: vec!["nice".to_string(), "to meet you".to_string()],
@@ -50,10 +52,11 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         operation_hash: None,
         block_hash: Some(str_block_hash_2.into()),
         context_hash: None,
+        tree_hash: None,
+        new_tree_hash: None,
         value_as_json: None,
         start_time: 0.0,
         end_time: 0.0,
-        ignored: false,
     };
     let value_2_1 = ContextAction::Get {
         key: vec!["nice".to_string(), "to meet you".to_string()],
@@ -61,6 +64,7 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         operation_hash: None,
         block_hash: Some(str_block_hash_2.into()),
         context_hash: None,
+        tree_hash: None,
         value_as_json: None,
         start_time: 0.0,
         end_time: 0.0,
@@ -142,10 +146,11 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
         operation_hash: None,
         block_hash: Some(str_block_hash.into()),
         context_hash: None,
+        tree_hash: None,
+        new_tree_hash: None,
         value_as_json: None,
         start_time: 0.0,
         end_time: 0.0,
-        ignored: false,
     };
 
     let mut storage = ContextActionStorage::new(tmp_storage.storage());

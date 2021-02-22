@@ -145,12 +145,6 @@ For example: `./target/debug/protocol-runner`.
 --protocol-runner <PATH>
 ```
 
-### Number of ffi calls 
-Number of ffi calls, after which the Ocaml garbage collector will be called.
-```
---ffi-calls-gc-treshold <NUM>
-```
-
 ### Bootstrap DNS lookup
 Disables DNS lookup to get peers to bootstrap from the network. Default: false
 ```

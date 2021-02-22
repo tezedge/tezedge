@@ -88,13 +88,13 @@ fn main() {
     let log = create_logger(log_level, endpoint_name);
 
     let shutdown_callback = |log: &Logger| {
-        debug!(log, "Shutting down ocaml runtime");
+        debug!(log, "Shutting down OCaml runtime");
         match std::panic::catch_unwind(|| {
             tezos_client::client::shutdown_runtime();
         }) {
-            Ok(_) => debug!(log, "Ocaml runtime shutdown was successful"),
+            Ok(_) => debug!(log, "OCaml runtime shutdown was successful"),
             Err(e) => {
-                warn!(log, "Shutting down ocaml runtime failed (check running sub-process for this endpoint or `[protocol-runner] <defunct>`, and and terminate/kill manually)!"; "reason" => format!("{:?}", e))
+                warn!(log, "Shutting down OCaml runtime failed (check running sub-process for this endpoint or `[protocol-runner] <defunct>`, and and terminate/kill manually)!"; "reason" => format!("{:?}", e))
             }
         }
     };

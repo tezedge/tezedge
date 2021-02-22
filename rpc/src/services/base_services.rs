@@ -23,13 +23,16 @@ use crate::server::RpcServiceEnvironment;
 pub type BlockOperations = Vec<String>;
 
 /// Retrieve blocks from database.
-pub(crate) fn get_blocks(
-    chain_id: ChainId,
+pub(crate) fn get_blocks<T>(
+    _chain_id: ChainId,
     block_hash: BlockHash,
     every_nth_level: Option<i32>,
     limit: usize,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<FullBlockInfo>, failure::Error> {
+) -> Result<Vec<T>, failure::Error>
+where
+    T: From<(BlockHeaderWithHash, BlockJsonData)>,
+{
     let block_storage = BlockStorage::new(persistent_storage);
     let blocks = match every_nth_level {
         Some(every_nth_level) => {
@@ -38,8 +41,8 @@ pub(crate) fn get_blocks(
         None => block_storage.get_multiple_with_json_data(&block_hash, limit),
     }?
     .into_iter()
-    .map(|(header, json_data)| map_header_and_json_to_full_block_info(header, json_data, &chain_id))
-    .collect();
+    .map(|raw_data| raw_data.into())
+    .collect::<Vec<T>>();
     Ok(blocks)
 }
 

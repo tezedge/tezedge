@@ -8,7 +8,7 @@ use std::io::{self, BufRead};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
 
@@ -16,6 +16,7 @@ use rocksdb::ColumnFamilyDescriptor;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::persistent::KeyValueSchema;
+use storage::KeyValueStoreBackend;
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::PatchContext;
@@ -35,9 +36,17 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
+#[derive(PartialEq, Debug, Clone)]
+pub enum ContextActionStoreBackend {
+    NoneBackend,
+    RocksDB,
+    FileStorage,
+}
+
 pub trait ColumnFactory {
     fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor>;
 }
+
 #[derive(Debug, Clone)]
 pub struct DBTableInitializer {}
 
@@ -102,7 +111,9 @@ pub struct Storage {
     pub db_context_actions: RocksDBConfig<ContextActionsTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
-    pub store_context_actions: bool,
+    pub action_store_backend: Vec<ContextActionStoreBackend>,
+    pub kv_store_backend: KeyValueStoreBackend,
+    pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
 }
 
@@ -128,7 +139,6 @@ pub struct Identity {
 #[derive(Debug, Clone)]
 pub struct Ffi {
     pub protocol_runner: PathBuf,
-    pub no_of_ffi_calls_threshold_for_gc: i32,
     pub tezos_readonly_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_readonly_prevalidation_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_without_context_api_pool: TezosApiConnectionPoolConfiguration,
@@ -381,12 +391,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to a tezos protocol runner executable")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
-        .arg(Arg::with_name("ffi-calls-gc-threshold")
-            .long("ffi-calls-gc-threshold")
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Number of ffi calls, after which will be Ocaml garbage collector called")
-            .validator(parse_validator_fn!(i32, "Value must be a valid number")))
         .args(
             &[
                 Arg::with_name("ffi-pool-max-connections")
@@ -474,11 +478,22 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("store-context-actions")
-            .long("store-context-actions")
+        .arg(Arg::with_name("actions-store-backend")
+            .long("actions-store-backend")
+            .takes_value(true)
+            .multiple(true)
+            .value_name("STRING")
+            .help("Activate recording of context storage actions"))
+        .arg(Arg::with_name("kv-store-backend")
+            .long("kv-store-backend")
+            .takes_value(true)
+            .value_name("STRING")
+            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
+        .arg(Arg::with_name("compute-context-action-tree-hashes")
+            .long("compute-context-action-tree-hashes")
             .takes_value(true)
             .value_name("BOOL")
-            .help("Activate recording of context storage actions"))
+            .help("Activate the computation of tree hashes when applying context actions"))
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
             .takes_value(true)
@@ -551,7 +566,6 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "websocket-address");
     validate_required_arg(args, "peer-thresh-low");
     validate_required_arg(args, "peer-thresh-high");
-    validate_required_arg(args, "ffi-calls-gc-threshold");
     validate_required_arg(args, "tokio-threads");
     validate_required_arg(args, "identity-file");
     validate_required_arg(args, "identity-expected-pow");
@@ -844,17 +858,53 @@ impl Environment {
                     columns: ContextActionsTableInitializer {},
                     threads: db_context_actions_threads_count,
                 };
+                let compute_context_action_tree_hashes = args
+                    .value_of("compute-context-action-tree-hashes")
+                    .unwrap_or("false")
+                    .parse::<bool>()
+                    .expect("Provided value cannot be converted to bool");
+
+                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
+                    Some(v) => v.map(String::from).collect(),
+                    None => {
+                        let mut h = HashSet::new();
+                        h.insert("rocksdb".to_string());
+                        h
+                    }
+                };
+
+                let action_store_backend = backends
+                    .iter()
+                    .map(|name| match name.as_str() {
+                        "rocksdb" => ContextActionStoreBackend::RocksDB,
+                        "none" => ContextActionStoreBackend::NoneBackend,
+                        "file" => ContextActionStoreBackend::FileStorage,
+                        _ => {
+                            panic!(format!(
+                                "unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']",
+                                &name
+                            ))
+                        }
+                    })
+                    .collect();
+
+                let kv_store_backend = match args.value_of("kv-store-backend").unwrap_or("rocksdb")
+                {
+                    "inmem" => KeyValueStoreBackend::InMem,
+                    "sled" => KeyValueStoreBackend::Sled,
+                    "btree" => KeyValueStoreBackend::BTreeMap,
+                    _ => KeyValueStoreBackend::RocksDB,
+                };
+
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
                     db_context,
                     db_context_actions,
                     db_path,
-                    store_context_actions: args
-                        .value_of("store-context-actions")
-                        .unwrap_or("true")
-                        .parse::<bool>()
-                        .expect("Provided value cannot be converted to bool"),
+                    compute_context_action_tree_hashes,
+                    action_store_backend,
+                    kv_store_backend,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
@@ -919,11 +969,6 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path"),
-                no_of_ffi_calls_threshold_for_gc: args
-                    .value_of("ffi-calls-gc-threshold")
-                    .unwrap_or("50")
-                    .parse::<i32>()
-                    .expect("Provided value cannot be converted to number"),
                 tezos_readonly_api_pool: pool_cfg(
                     &args,
                     Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR,

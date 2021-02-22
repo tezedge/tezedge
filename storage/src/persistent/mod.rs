@@ -1,9 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use failure::Fail;
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use crate::action_file::ActionFileError;
+use crate::KeyValueStoreBackend;
+use crate::StorageError;
 use derive_builder::Builder;
 use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
@@ -12,8 +17,13 @@ pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLo
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
+use crate::backend::btree_map::BTreeMapBackend;
+use crate::backend::in_memory_backend::InMemoryBackend;
+use crate::backend::rocksdb_backend::RocksDBBackend;
+use crate::backend::sled_backend::SledBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use tezos_context::channel::ContextActionMessage;
 
 pub mod codec;
 pub mod commit_log;
@@ -141,7 +151,21 @@ impl PersistentStorage {
         db_context: Arc<DB>,
         db_context_actions: Arc<DB>,
         clog: Arc<CommitLogs>,
+        merkle_backend: KeyValueStoreBackend,
     ) -> Self {
+        let merkle = match merkle_backend {
+            KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
+                db_context.clone(),
+                MerkleStorage::name(),
+            ))),
+            KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            KeyValueStoreBackend::Sled => {
+                let sled = sled::Config::new().temporary(true).open().unwrap();
+                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
+            }
+            KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+        };
+
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
         Self {
             clog,
@@ -149,7 +173,7 @@ impl PersistentStorage {
             db_context: db_context.clone(),
             db_context_actions,
             seq,
-            merkle: Arc::new(RwLock::new(MerkleStorage::new(db_context))),
+            merkle: Arc::new(RwLock::new(merkle)),
         }
     }
 
@@ -195,5 +219,31 @@ impl PersistentStorage {
 impl Drop for PersistentStorage {
     fn drop(&mut self) {
         self.flush_dbs();
+    }
+}
+
+#[derive(Debug, Fail)]
+pub enum ActionRecordError {
+    #[fail(display = "ActionFileError Error: {}", error)]
+    ActionFileError { error: ActionFileError },
+    #[fail(display = "Missing actions for block {:?}.", hash)]
+    MissingActions { hash: String },
+}
+
+impl From<ActionFileError> for ActionRecordError {
+    fn from(error: ActionFileError) -> Self {
+        ActionRecordError::ActionFileError { error }
+    }
+}
+
+pub trait ActionRecorder {
+    fn record(&mut self, action: &ContextActionMessage) -> Result<(), StorageError>;
+}
+
+pub struct NoRecorder {}
+
+impl ActionRecorder for NoRecorder {
+    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError> {
+        Ok(())
     }
 }

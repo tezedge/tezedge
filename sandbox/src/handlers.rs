@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fmt;
 use std::sync::{Arc, Mutex};
+use std::{collections::HashSet, sync::PoisonError};
 
 use itertools::Itertools;
 use serde::Serialize;
@@ -60,6 +60,17 @@ impl fmt::Display for ErrorMessage {
     }
 }
 
+#[derive(Debug)]
+struct LockErrorCause(String);
+
+impl LockErrorCause {
+    fn new<T>(error: PoisonError<T>, message: &str) -> Self {
+        Self(format!("{} ({})", message, error))
+    }
+}
+
+impl reject::Reject for LockErrorCause {}
+
 /// Handler for start endpoint
 pub async fn start_node_with_config(
     cfg: serde_json::Value,
@@ -71,7 +82,9 @@ pub async fn start_node_with_config(
     info!(log, "Received request to start the light node"; "config" => format!("{:?})", cfg));
 
     // aquire a write lock to the runner
-    let mut runner = runner.write().unwrap();
+    let mut runner = runner
+        .write()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on runner"))?;
 
     // spawn the node
     info!(log, "Starting light-node...");
@@ -79,11 +92,16 @@ pub async fn start_node_with_config(
 
     // initialize data for tezos client
     info!(log, "Initializing tezos-client data  for light-node"; "node_ref" => format!("{}", &node_ref));
-    let mut client_runner = client_runner.write().unwrap();
+    let mut client_runner = client_runner
+        .write()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     client_runner.init_sandbox_data(node_ref.clone(), data_dir);
 
     // store node
-    peers.lock().unwrap().insert(node_ref.clone());
+    peers
+        .lock()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get read lock on peers"))?
+        .insert(node_ref.clone());
 
     info!(log, "Light-node started successfully!"; "node_ref" => format!("{}", &node_ref));
     Ok(warp::reply::with_status(
@@ -102,8 +120,12 @@ pub async fn stop_node(
     info!(log, "Received request to stop the sandbox node..."; "node_ref" => format!("{:?}", &node_ref));
 
     let node_ref = ensure_node(node_ref)?;
-    let mut runner = runner.write().unwrap();
-    let mut client_runner = client_runner.write().unwrap();
+    let mut runner = runner
+        .write()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on runner"))?;
+    let mut client_runner = client_runner
+        .write()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     let mut errors = vec![];
 
     // try to stop sandbox node
@@ -117,7 +139,10 @@ pub async fn stop_node(
     }
 
     // remove from peers
-    peers.lock().unwrap().remove(&node_ref);
+    peers
+        .lock()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get read lock on peers"))?
+        .remove(&node_ref);
 
     if errors.is_empty() {
         info!(log, "Sandbox node stopped!"; "node_ref" => format!("{}", &node_ref));
@@ -143,7 +168,12 @@ pub async fn list_nodes(
     info!(log, "Received request to list sandbox nodes...");
 
     // return all nodes
-    let mut nodes = peers.lock().unwrap().iter().cloned().collect_vec();
+    let mut nodes = peers
+        .lock()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get read lock on peers"))?
+        .iter()
+        .cloned()
+        .collect_vec();
     nodes.sort_by_key(|k| k.port);
 
     Ok(warp::reply::with_status(
@@ -161,7 +191,9 @@ pub async fn init_client_data(
     info!(log, "Received request to init the tezos-client");
 
     let node_ref = ensure_node(node_ref)?;
-    let mut client_runner = client_runner.write().unwrap();
+    let mut client_runner = client_runner
+        .write()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     let client_output = client_runner.init_client_data(wallets, &node_ref)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
@@ -175,7 +207,9 @@ pub async fn get_wallets(
     info!(log, "Received request to list the activated wallets");
 
     let node_ref = ensure_node(node_ref)?;
-    let client_runner = client_runner.read().unwrap();
+    let client_runner = client_runner
+        .read()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
 
     let wallets = client_runner
         .wallets(&node_ref)?
@@ -196,7 +230,9 @@ pub async fn activate_protocol(
     info!(log, "Received request to activate the protocol");
 
     let node_ref = ensure_node(node_ref)?;
-    let client_runner = client_runner.read().unwrap();
+    let client_runner = client_runner
+        .read()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     let client_output = client_runner.activate_protocol(activation_parameters, &node_ref)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
@@ -211,7 +247,9 @@ pub async fn bake_block_with_client(
     info!(log, "Received request to bake a block");
 
     let node_ref = ensure_node(node_ref)?;
-    let client_runner = client_runner.read().unwrap();
+    let client_runner = client_runner
+        .read()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     let client_output = client_runner.bake_block(Some(request), &node_ref)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
@@ -225,7 +263,9 @@ pub async fn bake_block_with_client_arbitrary(
     info!(log, "Received request to bake a block");
 
     let node_ref = ensure_node(node_ref)?;
-    let client_runner = client_runner.read().unwrap();
+    let client_runner = client_runner
+        .read()
+        .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
     let client_output = client_runner.bake_block(None, &node_ref)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
@@ -360,7 +400,12 @@ pub fn resolve_node_from_request(
     peers: Arc<Mutex<HashSet<NodeRpcIpPort>>>,
 ) -> Option<NodeRpcIpPort> {
     // TODO: resolve some peer from request
-    peers.lock().unwrap().iter().next().map(|p| p.clone())
+    peers
+        .lock()
+        .unwrap() // TODO: reject when TE-213 is resolved, since now this should be infallible
+        .iter()
+        .next()
+        .map(|p| p.clone())
 }
 
 fn ensure_node(node_ref: Option<NodeRpcIpPort>) -> Result<NodeRpcIpPort, TezosClientRunnerError> {

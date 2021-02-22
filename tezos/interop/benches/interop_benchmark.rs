@@ -10,10 +10,9 @@ use tezos_api::ffi::{
     RustBytes, TezosRuntimeConfiguration,
 };
 
-use ocaml_interop::{ocaml_call, ocaml_frame, to_ocaml, ToOCaml, ToRust};
-use tezos_interop::ffi;
+use ocaml_interop::{ocaml_frame, to_ocaml, OCamlRuntime, ToOCaml};
 use tezos_interop::runtime;
-use tezos_interop::runtime::OcamlError;
+use tezos_interop::{ffi, runtime::OCamlBlockPanic};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -39,10 +38,9 @@ fn init_bench_runtime() {
     // init runtime and turn on/off ocaml logging
     ffi::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
+        compute_context_action_tree_hashes: false,
         log_enabled: false,
-        no_of_ffi_calls_treshold_for_gc: 1000,
     })
-    .unwrap()
     .unwrap();
 }
 
@@ -76,14 +74,13 @@ fn sample_operations_for_request_decoded() -> Vec<Vec<RustBytes>> {
     ]
 }
 
-fn apply_block_request_decoded_roundtrip(request: ApplyBlockRequest) -> Result<(), OcamlError> {
-    runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let request = to_ocaml!(gc, request);
-            let result = ocaml_call!(tezos_ffi::apply_block_request_decoded_roundtrip(
-                gc, request
-            ))
-            .unwrap();
+fn apply_block_request_decoded_roundtrip(
+    request: ApplyBlockRequest,
+) -> Result<(), OCamlBlockPanic> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(rt, (root), {
+            let request = to_ocaml!(rt, request, root);
+            let result = tezos_ffi::apply_block_request_decoded_roundtrip(rt, &request);
             let _response: ApplyBlockResponse = result.to_rust();
         })
     })
@@ -114,14 +111,10 @@ fn criterion_benchmark(c: &mut Criterion) {
         ops_metadata_hash: None,
     };
 
-    let _ignored = runtime::execute(move || {
-        ocaml_frame!(gc, {
-            let ocaml_response = to_ocaml!(gc, response_with_some_forking_data);
-            ocaml_call!(tezos_ffi::setup_benchmark_apply_block_response(
-                gc,
-                ocaml_response
-            ))
-            .unwrap();
+    let _ignored = runtime::execute(move |rt: &mut OCamlRuntime| {
+        ocaml_frame!(rt, (root), {
+            let ocaml_response = to_ocaml!(rt, response_with_some_forking_data, root);
+            tezos_ffi::setup_benchmark_apply_block_response(rt, ocaml_response);
         })
     });
 

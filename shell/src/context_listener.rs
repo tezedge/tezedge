@@ -16,9 +16,9 @@ use slog::{crit, debug, info, warn, Logger};
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
 use storage::context::{ContextApi, TezedgeContext};
-use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, ContextActionStorage};
-use tezos_context::channel::ContextAction;
+use storage::persistent::{ActionRecorder, PersistentStorage};
+use storage::BlockStorage;
+use tezos_context::channel::{ContextAction, ContextActionMessage};
 use tezos_wrapper::service::IpcEvtServer;
 
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
@@ -53,9 +53,9 @@ impl ContextListener {
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
+        action_store_backend: Vec<Box<dyn ActionRecorder + Send>>,
         mut event_server: IpcEvtServer,
         log: Logger,
-        store_context_action: bool,
     ) -> Result<ContextListenerRef, CreateError> {
         let listener_run = Arc::new(AtomicBool::new(true));
         let block_applier_thread = {
@@ -67,16 +67,17 @@ impl ContextListener {
                     BlockStorage::new(&persistent_storage),
                     persistent_storage.merkle(),
                 ));
-                let mut context_action_storage = ContextActionStorage::new(&persistent_storage);
+
+                let mut action_store_backend = action_store_backend;
+
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut context_action_storage,
+                        &mut action_store_backend,
                         &mut context,
                         &log,
-                        store_context_action,
                     ) {
                         Ok(()) => info!(log, "Context listener finished"),
                         Err(err) => {
@@ -162,66 +163,13 @@ impl Receive<ShellChannelMsg> for ContextListener {
     }
 }
 
-fn store_action(
-    storage: &mut ContextActionStorage,
-    should_store: bool,
-    action: ContextAction,
-) -> Result<(), Error> {
-    if !should_store {
-        return Ok(());
-    }
-    match &action {
-        ContextAction::Set {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Copy {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Delete {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::RemoveRecursively {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Mem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::DirMem {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Commit {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Get {
-            block_hash: Some(block_hash),
-            ..
-        }
-        | ContextAction::Fold {
-            block_hash: Some(block_hash),
-            ..
-        } => {
-            storage.put_action(&BlockHash::try_from(block_hash.clone())?, action)?;
-            Ok(())
-        }
-        _ => Ok(()),
-    }
-}
-
 fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    context_action_storage: &mut ContextActionStorage,
+    action_store_backend: &mut Vec<Box<dyn ActionRecorder + Send>>,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
-    store_context_actions: bool,
 ) -> Result<(), Error> {
     info!(
         log,
@@ -237,7 +185,10 @@ fn listen_protocol_events(
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
-            Ok(ContextAction::Shutdown) => {
+            Ok(ContextActionMessage {
+                action: ContextAction::Shutdown,
+                ..
+            }) => {
                 // when we receive shutting down, it means just that protocol runner disconnected
                 // we dont want to stop context listener here, for example, because we are just restarting protocol runner
                 // and we want to wait for a new one to try_accept
@@ -256,102 +207,25 @@ fn listen_protocol_events(
                         }
                     );
                 }
-                event_count += 1;
 
-                match &msg {
-                    ContextAction::Get { key, .. } => {
-                        context.get_key(key)?;
-                    }
-                    ContextAction::Mem { key, .. } => {
-                        context.mem(key)?;
-                    }
-                    ContextAction::DirMem { key, .. } => {
-                        context.dirmem(key)?;
-                    }
-                    ContextAction::Set {
-                        key,
-                        value,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.set(&context_hash, key, value)?;
-                        }
-                    }
-                    ContextAction::Copy {
-                        to_key: key,
-                        from_key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.copy_to_diff(&context_hash, from_key, key)?;
-                        }
-                    }
-                    ContextAction::Delete {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.delete_to_diff(&context_hash, key)?;
-                        }
-                    }
-                    ContextAction::RemoveRecursively {
-                        key,
-                        context_hash,
-                        ignored,
-                        ..
-                    } => {
-                        if !ignored {
-                            let context_hash = try_from_untyped_option(context_hash)?;
-                            context.remove_recursively_to_diff(&context_hash, key)?;
-                        }
-                    }
-                    ContextAction::Commit {
-                        parent_context_hash,
-                        new_context_hash,
-                        block_hash: Some(block_hash),
-                        author,
-                        message,
-                        date,
-                        ..
-                    } => {
-                        let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
-                        let block_hash = BlockHash::try_from(block_hash.clone())?;
-                        let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
-
-                        let hash = context.commit(
-                            &block_hash,
-                            &parent_context_hash,
-                            author.to_string(),
-                            message.to_string(),
-                            *date,
-                        )?;
-                        assert_eq!(
-                            hash,
-                            new_context_hash,
-                            "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                            block_hash.to_base58_check(),
-                            new_context_hash.to_base58_check(),
-                            hash.to_base58_check(),
-                        );
-                    }
-
-                    ContextAction::Checkout { context_hash, .. } => {
-                        event_count = 0;
-                        context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
-                    }
-                    _ => (),
+                event_count = if let ContextAction::Shutdown = &msg.action {
+                    0
+                } else {
+                    event_count + 1
                 };
 
-                store_action(context_action_storage, store_context_actions, msg)?;
+                if msg.record {
+                    // record action in the order they are really comming
+                    for recorder in action_store_backend.iter_mut() {
+                        if let Err(error) = recorder.record(&msg) {
+                            warn!(log, "Failed to store context action"; "action" => format!("{:?}", &msg.action), "reason" => format!("{}", error));
+                        }
+                    }
+                }
+
+                if msg.perform {
+                    perform_context_action(&msg.action, context)?;
+                }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
@@ -370,4 +244,91 @@ where
     h.as_ref()
         .map(|h| H::try_from(h.clone()))
         .map_or(Ok(None), |r| r.map(Some))
+}
+
+fn perform_context_action(
+    action: &ContextAction,
+    context: &mut Box<dyn ContextApi>,
+) -> Result<(), Error> {
+    match action {
+        ContextAction::Get { key, .. } => {
+            context.get_key(key)?;
+        }
+        ContextAction::Mem { key, .. } => {
+            context.mem(key)?;
+        }
+        ContextAction::DirMem { key, .. } => {
+            context.dirmem(key)?;
+        }
+        ContextAction::Set {
+            key,
+            value,
+            context_hash,
+            ..
+        } => {
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.set(&context_hash, key, value)?;
+        }
+        ContextAction::Copy {
+            to_key: key,
+            from_key,
+            context_hash,
+            ..
+        } => {
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.copy_to_diff(&context_hash, from_key, key)?;
+        }
+        ContextAction::Delete {
+            key, context_hash, ..
+        } => {
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.delete_to_diff(&context_hash, key)?;
+        }
+        ContextAction::RemoveRecursively {
+            key, context_hash, ..
+        } => {
+            let context_hash = try_from_untyped_option(context_hash)?;
+            context.remove_recursively_to_diff(&context_hash, key)?;
+        }
+        ContextAction::Commit {
+            parent_context_hash,
+            new_context_hash,
+            block_hash: Some(block_hash),
+            author,
+            message,
+            date,
+            ..
+        } => {
+            let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
+            let block_hash = BlockHash::try_from(block_hash.clone())?;
+            let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
+            let hash = context.commit(
+                &block_hash,
+                &parent_context_hash,
+                author.to_string(),
+                message.to_string(),
+                *date,
+            )?;
+            assert_eq!(
+                &hash,
+                &new_context_hash,
+                "Invalid context_hash for block: {}, expected: {}, but was: {}",
+                block_hash.to_base58_check(),
+                new_context_hash.to_base58_check(),
+                hash.to_base58_check(),
+            );
+        }
+
+        ContextAction::Checkout { context_hash, .. } => {
+            context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
+        }
+
+        ContextAction::Commit { .. } => (), // Ignored (no block_hash)
+
+        ContextAction::Fold { .. } => (), // Ignored
+
+        ContextAction::Shutdown => (), // Ignored
+    };
+
+    Ok(())
 }
