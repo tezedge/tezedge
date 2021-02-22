@@ -5,6 +5,7 @@ use std::array::TryFromSliceError;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
+use std::sync::PoisonError;
 use std::sync::{Arc, RwLock};
 
 use failure::Fail;
@@ -12,8 +13,9 @@ use failure::Fail;
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 
 use crate::merkle_storage::{
-    ContextKey, ContextValue, MerkleError, MerkleStorage, MerkleStorageStats, StringTreeEntry,
+    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, StringTreeEntry,
 };
+use crate::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
 use self::hash::EntryHash;
@@ -94,7 +96,7 @@ pub trait ContextApi {
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
     // get stats from merkle storage
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError>;
+    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
 
     /// TODO: TE-203 - remove when context_listener will not be used
     // check if context_hash is committed
@@ -103,6 +105,12 @@ pub trait ContextApi {
     fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError>;
 
     fn get_merkle_root(&mut self) -> EntryHash;
+
+    fn block_applied(&self) -> Result<(), ContextError>;
+
+    fn cycle_started(&self) -> Result<(), ContextError>;
+
+    fn get_memory_usage(&self) -> Result<usize, ContextError>;
 }
 
 impl ContextApi for TezedgeContext {
@@ -141,35 +149,7 @@ impl ContextApi for TezedgeContext {
         let commit_hash = merkle.commit(date, author, message)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
 
-        // associate block and context_hash
-        if let Err(e) = self
-            .block_storage
-            .assign_to_context(block_hash, &commit_hash)
-        {
-            match e {
-                StorageError::MissingKey => {
-                    // TODO: is this needed? check it when removing assign_to_context
-                    if parent_context_hash.is_some() {
-                        return Err(ContextError::ContextHashAssignError {
-                            block_hash: block_hash.to_base58_check(),
-                            context_hash: commit_hash.to_base58_check(),
-                            error: e,
-                        });
-                    } else {
-                        // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
-                        // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-                        // but we need to storage assignment elsewhere
-                    }
-                }
-                _ => {
-                    return Err(ContextError::ContextHashAssignError {
-                        block_hash: block_hash.to_base58_check(),
-                        context_hash: commit_hash.to_base58_check(),
-                        error: e,
-                    })
-                }
-            };
-        }
+        self.associate_block_and_context_hash(block_hash, &commit_hash, parent_context_hash)?;
 
         Ok(commit_hash)
     }
@@ -271,17 +251,18 @@ impl ContextApi for TezedgeContext {
         merkle.get_last_commit_hash().map(|x| x.to_vec())
     }
 
-    fn get_merkle_stats(&self) -> Result<MerkleStorageStats, ContextError> {
+    fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
         let merkle = self.merkle.read().expect("lock poisoning");
-        let stats = merkle.get_merkle_stats()?;
-
-        Ok(stats)
+        Ok(merkle.get_merkle_stats()?)
     }
 
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
-        self.block_storage
-            .contains_context_hash(context_hash)
-            .map_err(|e| ContextError::StorageError { error: e })
+        match &self.block_storage {
+            Some(block_storage) => block_storage
+                .contains_context_hash(context_hash)
+                .map_err(|e| ContextError::StorageError { error: e }),
+            None => Err(ContextError::CommitStatusCheckFailure {}),
+        }
     }
 
     fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError> {
@@ -293,21 +274,72 @@ impl ContextApi for TezedgeContext {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_staged_root_hash()
     }
+
+    fn block_applied(&self) -> Result<(), ContextError> {
+        let mut merkle = self.merkle.write()?;
+        Ok(merkle.block_applied()?)
+    }
+
+    fn cycle_started(&self) -> Result<(), ContextError> {
+        let mut merkle = self.merkle.write()?;
+        Ok(merkle.start_new_cycle()?)
+    }
+
+    fn get_memory_usage(&self) -> Result<usize, ContextError> {
+        let merkle = self.merkle.write()?;
+        Ok(merkle.get_memory_usage()?)
+    }
 }
 
 // context implementation using merkle-tree-like storage
 #[derive(Clone)]
 pub struct TezedgeContext {
-    block_storage: BlockStorage,
+    block_storage: Option<BlockStorage>,
     merkle: Arc<RwLock<MerkleStorage>>,
 }
 
 impl TezedgeContext {
-    pub fn new(block_storage: BlockStorage, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
+    pub fn new(block_storage: Option<BlockStorage>, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
         TezedgeContext {
             block_storage,
             merkle,
         }
+    }
+
+    fn associate_block_and_context_hash(
+        &self,
+        block_hash: &BlockHash,
+        commit_hash: &ContextHash,
+        parent_context_hash: &Option<ContextHash>,
+    ) -> Result<(), ContextError> {
+        if let Some(storage) = &self.block_storage {
+            if let Err(e) = storage.assign_to_context(block_hash, &commit_hash) {
+                match e {
+                    StorageError::MissingKey => {
+                        // TODO: is this needed? check it when removing assign_to_context
+                        if parent_context_hash.is_some() {
+                            return Err(ContextError::ContextHashAssignError {
+                                block_hash: block_hash.to_base58_check(),
+                                context_hash: commit_hash.to_base58_check(),
+                                error: e,
+                            });
+                        } else {
+                            // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
+                            // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
+                            // but we need to storage assignment elsewhere
+                        }
+                    }
+                    _ => {
+                        return Err(ContextError::ContextHashAssignError {
+                            block_hash: block_hash.to_base58_check(),
+                            context_hash: commit_hash.to_base58_check(),
+                            error: e,
+                        })
+                    }
+                };
+            }
+        }
+        Ok(())
     }
 }
 
@@ -340,6 +372,10 @@ pub enum ContextError {
     StorageError { error: StorageError },
     #[fail(display = "Conversion from bytes error: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Guard Poison {} ", error)]
+    LockError { error: String },
+    #[fail(display = "Cannot check if context is commited")]
+    CommitStatusCheckFailure,
 }
 
 impl From<MerkleError> for ContextError {
@@ -363,6 +399,14 @@ impl From<TryFromSliceError> for ContextError {
 impl From<FromBytesError> for ContextError {
     fn from(error: FromBytesError) -> Self {
         ContextError::HashError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for ContextError {
+    fn from(pe: PoisonError<T>) -> Self {
+        ContextError::LockError {
+            error: format!("{}", pe),
+        }
     }
 }
 

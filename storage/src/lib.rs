@@ -61,6 +61,7 @@ pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
 pub mod merkle_storage;
+pub mod merkle_storage_stats;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
@@ -477,6 +478,8 @@ pub enum KeyValueStoreBackend {
     InMem,
     Sled { path: PathBuf },
     BTreeMap,
+    MarkSweepInMem,
+    MarkMoveInMem,
 }
 
 impl KeyValueStoreBackend {
@@ -494,6 +497,8 @@ impl KeyValueStoreBackend {
             KeyValueStoreBackend::InMem => vec!["inmem"],
             KeyValueStoreBackend::Sled { .. } => vec!["sled"],
             KeyValueStoreBackend::BTreeMap => vec!["btree"],
+            KeyValueStoreBackend::MarkMoveInMem => vec!["mark_move"],
+            KeyValueStoreBackend::MarkSweepInMem => vec!["mark_sweep"],
         }
     }
 }
@@ -610,7 +615,8 @@ pub mod tests_common {
                     Arc::new(kv_context_action),
                     Arc::new(clog),
                     KeyValueStoreBackend::RocksDB,
-                ),
+                )
+                .expect("cannot initialize persistent storage"),
                 path,
                 remove_on_destroy,
             })
