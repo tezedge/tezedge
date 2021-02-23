@@ -122,6 +122,13 @@ impl fmt::Display for ProcessMemoryStats {
 }
 
 impl ProcessMemoryStats {
+    pub fn new(virtual_mem: usize, resident_mem: usize) -> Self {
+        Self {
+            virtual_mem,
+            resident_mem,
+        }
+    }
+
     pub fn to_megabytes(&self) -> Self {
         Self {
             resident_mem: self.resident_mem / 1024 / 1024,
