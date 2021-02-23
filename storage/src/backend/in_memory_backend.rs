@@ -122,27 +122,19 @@ impl SimpleKeyValueStoreWithSchema<MerkleStorage> for InMemoryBackend {
         Ok(r.contains_key(key))
     }
 
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &EntryHash,
-        value: &ContextValue,
-    ) -> Result<(), DBError> {
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
+        for (k,v) in batch{
+            self.merge(&k,&v)?;
+        }
         Ok(())
     }
 
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
-        unimplemented!();
+    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
+        Ok(self.stats.lock().unwrap().total_as_bytes())
     }
 
-    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
-        Ok(RocksDBStats {
-                mem_table_total: 0,
-                mem_table_unflushed: 0,
-                mem_table_readers_total: 0,
-                cache_total: 0,
-            }
-        )
+    fn is_persistent(&self) -> bool{
+        false
     }
 }
 

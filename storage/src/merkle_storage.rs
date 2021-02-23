@@ -58,8 +58,9 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
+use crate::backend::InMemoryBackend;
 use crate::persistent;
-use crate::persistent::database::RocksDBStats;
+use crate::persistent::database::{RocksDBStats, SimpleKeyValueStoreWithSchema};
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::{StorageBackend, StorageBackendError};
@@ -128,6 +129,7 @@ enum Action {
 }
 
 pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
+pub type MerkleStorageKV2 = dyn SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
 
 pub type RefCnt = usize;
 
@@ -135,7 +137,8 @@ pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: Option<Tree>,
     current_stage_tree_hash: Option<EntryHash>,
-    db: Box<MerkleStorageKV>,
+    // db: Box<MerkleStorageKV>,
+    db: Box<MerkleStorageKV2>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -190,6 +193,12 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
     #[fail(display = "Failed to encode hash: {}", error)]
     HashError { error: FromBytesError },
+}
+
+impl From<persistent::database::DBError> for MerkleError {
+    fn from(error: persistent::database::DBError) -> Self {
+        MerkleError::DBError { error }
+    }
 }
 
 impl From<StorageBackendError> for MerkleError {
@@ -368,7 +377,7 @@ pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Box<MerkleStorageKV>) -> Self {
+    pub fn new2(db: Box<MerkleStorageKV2>) -> Self {
         MerkleStorage {
             db,
             staged: Vec::new(),
@@ -381,8 +390,21 @@ impl MerkleStorage {
         }
     }
 
+    pub fn new(db: Box<MerkleStorageKV>) -> Self {
+        MerkleStorage {
+            db: Box::new(InMemoryBackend::new()),
+            staged: Vec::new(),
+            staged_indices: HashMap::new(),
+            current_stage_tree: None,
+            current_stage_tree_hash: None,
+            last_commit_hash: None,
+            stats: MerkleStorageStatistics::default(),
+            actions: Arc::new(Vec::new()),
+        }
+    }
+
     pub fn has_persistent_backend(&self) -> bool {
-        self.db.is_persisted()
+        self.db.is_persistent()
     }
 
     /// Get value from current staged root
@@ -1145,7 +1167,7 @@ impl MerkleStorage {
         self.get_entries_recursively(entry, &mut batch)?;
 
         // write all entries at once (depends on backend)
-        self.db.put_batch(batch)?;
+        self.db.write_batch(batch)?;
 
         Ok(())
     }
@@ -1344,15 +1366,16 @@ mod tests {
 
     fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
         match backend {
-            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
+            "rocksdb" => MerkleStorage::new2(Box::new(RocksDBBackend::new(
                 Arc::new(get_db(db_name, &cache)),
                 MerkleStorage::name(),
             ))),
             "sled" => {
-                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
+                MerkleStorage::new2(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
             }
-            "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
-            "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            //TODO change to BTREE                 |||||||||||||||||||||||
+            "btree" => MerkleStorage::new2(Box::new(InMemoryBackend::new())),
+            "inmem" => MerkleStorage::new2(Box::new(InMemoryBackend::new())),
             _ => {
                 panic!("unknown backend set")
             }
@@ -1949,17 +1972,16 @@ mod tests {
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(
+        let mut storage = MerkleStorage::new2(Box::new(RocksDBBackend::new(
             Arc::new(db),
             MerkleStorage::name(),
         )));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
-        println!("{:?}", res);
 
         assert!(matches!(
             res.err().unwrap(),
-            MerkleError::StorageBackendError { .. }
+            MerkleError::DBError { .. }
         ));
     }
 

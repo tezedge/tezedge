@@ -172,26 +172,22 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Send + Sync + D
         Ok(self.current.contains(key)? || self.stores_contains(key))
     }
 
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &EntryHash,
-        value: &ContextValue,
-    ) -> Result<(), DBError> {
-        unimplemented!();
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
+        Ok(self.current.write_batch(batch)?)
     }
 
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
-        unimplemented!();
-    }
-
-    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
-        // TODO iter for the whole vector of stats
-        self.current.get_stats()
+    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
+        // TODO iteratee over all stats
+        unimplemented!()
+        // self.store.total_get_mem_usage()
     }
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         self.current.retain(predicate)
+    }
+
+    fn is_persistent(&self) -> bool{
+        self.current.is_persistent()
     }
 }
 

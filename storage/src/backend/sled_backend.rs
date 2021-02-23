@@ -83,21 +83,21 @@ impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
         Ok(self.inner.contains_key(&key.as_ref()[..])?)
     }
 
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &EntryHash,
-        value: &ContextValue,
-    ) -> Result<(), DBError> {
-        unimplemented!();
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
+        for (k,v) in batch{
+            self.merge(&k,&v)?;
+        }
+        Ok(())
     }
 
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
-        unimplemented!();
+    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
+        self.db.size_on_disk()
+            .map(|size| size as usize)
+            .map_err(|e| DBError::SledDBError{error: e})
     }
 
-    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
-        unimplemented!();
+    fn is_persistent(&self) -> bool{
+        true
     }
 
 }

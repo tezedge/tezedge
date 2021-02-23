@@ -93,6 +93,9 @@ pub trait KeyValueStoreWithSchemaIterator<S: KeyValueSchema> {
 
 /// Custom trait extending RocksDB to better handle and enforce database schema
 pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
+
+    fn is_persistent(&self) -> bool;
+
     /// Insert new key value pair into the database. If key already exists, method will fail
     ///
     /// # Arguments
@@ -141,27 +144,15 @@ pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
     /// * `key` - Key (specified by schema), to be checked for existence
     fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
 
-    /// Insert new key value pair into WriteBatch.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &S::Key,
-        value: &S::Value,
-    ) -> Result<(), DBError>;
-
     /// Write batch into DB atomically
     ///
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError>;
+    fn write_batch(&self, batch: Vec<(S::Key, S::Value)> ) -> Result<(), DBError>;
 
     /// Return memory usage statistics
     ///
-    fn get_stats(&self) -> Result<RocksDBStats, DBError>;
+    fn total_get_mem_usage(&self) -> Result<usize,DBError>;
 }
 
 pub trait KeyValueStoreWithSchema<S: KeyValueSchema>: SimpleKeyValueStoreWithSchema<S> + KeyValueStoreWithSchemaIterator<S>{}
@@ -201,6 +192,10 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 }
 
 impl<S: KeyValueSchema> SimpleKeyValueStoreWithSchema<S> for DB {
+
+    fn is_persistent(&self) -> bool{
+        true
+    }
 
     fn put(& self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
@@ -257,36 +252,28 @@ impl<S: KeyValueSchema> SimpleKeyValueStoreWithSchema<S> for DB {
         Ok(val.is_some())
     }
 
-    fn put_batch(
-        &self,
-        batch: &mut WriteBatch,
-        key: &S::Key,
-        value: &S::Value,
-    ) -> Result<(), DBError> {
-        let key = key.encode()?;
-        let value = value.encode()?;
-        let cf = self
-            .cf_handle(S::name())
-            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+    fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), DBError>{
+        let mut rocksb_batch = WriteBatch::default(); // batch containing DB key values to persist
 
-        batch.put_cf(cf, &key, &value);
+        for (k, v) in batch.iter() {
+            let key = k.encode()?;
+            let value = v.encode()?;
+            let cf = self
+                .cf_handle(S::name())
+                .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
+            rocksb_batch.put_cf(cf, &key, &value);
+        }
 
+        self.write_opt(rocksb_batch, &default_write_options())?;
         Ok(())
     }
 
-    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
-        self.write_opt(batch, &default_write_options())?;
-        Ok(())
-    }
-
-    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
+    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
         let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
-        Ok(RocksDBStats {
-            mem_table_total: memory_usage_stats.mem_table_total,
-            mem_table_unflushed: memory_usage_stats.mem_table_unflushed,
-            mem_table_readers_total: memory_usage_stats.mem_table_readers_total,
-            cache_total: memory_usage_stats.cache_total,
-        })
+        return Ok((memory_usage_stats.mem_table_total +
+            memory_usage_stats.mem_table_unflushed +
+            memory_usage_stats.mem_table_readers_total +
+            memory_usage_stats.cache_total) as usize);
     }
 
     fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>{

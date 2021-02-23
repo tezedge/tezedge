@@ -162,7 +162,11 @@ impl PersistentStorage {
             KeyValueStoreBackend::Sled => {
                 MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().temporary(true).open().unwrap())))
             }
-            KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+            KeyValueStoreBackend::BTreeMap => {
+                // TODO REPLACE ME WITH BTREEE
+                MerkleStorage::new(Box::new(InMemoryBackend::new()))
+
+            }
         };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));

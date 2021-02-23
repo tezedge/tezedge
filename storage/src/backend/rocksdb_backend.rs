@@ -3,7 +3,7 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::KeyValueStoreWithSchema;
-use crate::persistent::database::RocksDBStats;
+use crate::persistent::database::{KeyValueStoreWithSchemaIterator, SimpleKeyValueStoreWithSchema, DBError, RocksDBStats, IteratorMode, IteratorWithSchema};
 use crate::storage_backend::{StorageBackend, StorageBackendError};
 use crate::MerkleStorage;
 use rocksdb::WriteBatch;
@@ -42,6 +42,44 @@ pub struct RocksDBBackendStats {
     cache_total: u64,
 }
 
+impl SimpleKeyValueStoreWithSchema<MerkleStorage> for RocksDBBackend {
+    fn is_persistent(&self) -> bool {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).is_persistent()
+    }
+
+    fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).put(key,value)
+    }
+
+    fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).delete(key)
+    }
+
+    fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).merge(key, value)
+    }
+
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).get(key)
+    }
+
+    fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).contains(key)
+    }
+
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).retain(predicate)
+    }
+
+    fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)> ) -> Result<(), DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).write_batch(batch)
+    }
+
+    fn total_get_mem_usage(&self) -> Result<usize,DBError> {
+        (self.inner.deref() as & dyn SimpleKeyValueStoreWithSchema::<MerkleStorage>).total_get_mem_usage()
+    }
+}
+
 impl StorageBackend for RocksDBBackend {
     fn is_persisted(&self) -> bool {
         true
@@ -69,20 +107,20 @@ impl StorageBackend for RocksDBBackend {
         &mut self,
         batch: Vec<(EntryHash, ContextValue)>,
     ) -> Result<(), StorageBackendError> {
-        let mut rocksb_batch = WriteBatch::default(); // batch containing DB key values to persist
-
-        for (k, v) in batch.iter() {
-            (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>).put_batch(
-                &mut rocksb_batch,
-                &k,
-                &v,
-            )?;
-        }
-
-        (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
-            .write_batch(rocksb_batch)?;
-
-        Ok(())
+        unimplemented!()
+        // let mut rocksb_batch = WriteBatch::default(); // batch containing DB key values to persist
+        //
+        // for (k, v) in batch.iter() {
+        //     (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>).put_batch(
+        //         &mut rocksb_batch,
+        //         &k,
+        //         &v,
+        //     )?;
+        // }
+        //
+        // (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
+        //     .write_batch(rocksb_batch)?;
+       //
     }
 
     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
@@ -131,19 +169,21 @@ impl StorageBackend for RocksDBBackend {
     }
 
     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
-        self.get(key).map(|v| v.is_some())
+        Ok(false)
+        // self.get(key).map(|v| v.is_some())
     }
 
     fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError> {
-        (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
-            .get_stats()
-            .map(|stats| 
-                (stats.mem_table_total +
-                stats.mem_table_unflushed +
-                stats.mem_table_readers_total +
-                stats.cache_total) as usize
-                )
-            .map_err(|e| StorageBackendError::DBError{error: e})
+        Ok(0)
+        // (self.inner.deref() as &dyn KeyValueStoreWithSchema<MerkleStorage>)
+        //     .get_stats()
+        //     .map(|stats| 
+        //         (stats.mem_table_total +
+        //         stats.mem_table_unflushed +
+        //         stats.mem_table_readers_total +
+        //         stats.cache_total) as usize
+        //         )
+        //     .map_err(|e| StorageBackendError::DBError{error: e})
 
     }
 
