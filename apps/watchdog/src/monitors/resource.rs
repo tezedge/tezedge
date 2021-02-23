@@ -31,6 +31,8 @@ pub struct MemoryStats {
     node: ProcessMemoryStats,
     #[serde(skip_serializing_if = "Option::is_none")]
     protocol_runners: Option<ProcessMemoryStats>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validators: Option<ProcessMemoryStats>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -70,6 +72,9 @@ impl ResourceMonitor {
         let protocol_runners =
             TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
 
+        // tezos validators memory data
+        let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
+
         // collect disk stats
         let tezedge_disk = TezedgeNode::collect_disk_data()?;
         let ocaml_disk = OcamlNode::collect_disk_data()?;
@@ -94,6 +99,7 @@ impl ResourceMonitor {
             memory: MemoryStats {
                 node: tezedge_node,
                 protocol_runners: Some(protocol_runners),
+                validators: None,
             },
             disk: tezedge_disk,
             cpu: CpuStats {
@@ -106,6 +112,7 @@ impl ResourceMonitor {
             memory: MemoryStats {
                 node: ocaml_node,
                 protocol_runners: None,
+                validators: Some(tezos_validators),
             },
             disk: ocaml_disk,
             cpu: CpuStats {
