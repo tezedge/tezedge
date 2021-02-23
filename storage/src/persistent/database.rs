@@ -93,9 +93,10 @@ pub trait KeyValueStoreWithSchemaIterator<S: KeyValueSchema> {
 /// Custom trait extending RocksDB to better handle and enforce database schema
 pub trait KeyValueStoreBackend<S: KeyValueSchema> {
 
+    /// Provides informatio if backend is persistent
     fn is_persistent(&self) -> bool;
 
-    /// Insert new key value pair into the database. If key already exists, method will fail
+    /// Insert new key value pair into the database.
     ///
     /// # Arguments
     /// * `key` - Value of key specified by schema

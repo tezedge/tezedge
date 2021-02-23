@@ -53,14 +53,10 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
 
 
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        if self.inner.contains_key(key)?{
-            Err(DBError::ValueExists{key: HashType::ContextHash.hash_to_b58check(key)?})
-        }else{
-            self
-                .inner
-                .insert(&key.as_ref()[..], value.clone())?;
-            Ok(())
-        }
+        self
+            .inner
+            .insert(&key.as_ref()[..], value.clone())?;
+        Ok(())
     }
 
     fn delete(&self, key: &EntryHash) -> Result<(), DBError> {

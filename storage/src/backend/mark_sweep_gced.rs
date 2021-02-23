@@ -1,3 +1,5 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
 use std::collections::{HashSet, VecDeque, HashMap};
 

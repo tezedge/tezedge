@@ -56,8 +56,11 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
                 entry.insert(value.clone());
                 Ok(())
             }
-            _ => {
-                Err(DBError::ValueExists{key: HashType::ContextHash.hash_to_b58check(key)?})
+            Entry::Occupied(mut entry) => {
+                self.stats.write().unwrap().deref_mut().add_assign(StorageBackendStats::from((key, value)));
+                self.stats.write().unwrap().deref_mut().sub_assign(StorageBackendStats::from((entry.key(), entry.get())));
+                entry.insert(value.clone());
+                Ok(())
             }
         }
     }

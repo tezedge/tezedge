@@ -57,13 +57,13 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
                 error: format!("{}", e),
             })?;
 
-        if w.contains_key(key){
-            Err(DBError::ValueExists{key: "blah".to_string()})
-        }else{
-            w.insert(*key,value.clone());
-            self.stats.lock().unwrap().deref_mut().add_assign(measurement);
-            Ok(())
+        if let Some(val) = w.get(key){
+            self.stats.lock().unwrap().deref_mut().sub_assign(StorageBackendStats::from((key, val)));
         }
+
+        w.insert(*key,value.clone());
+        self.stats.lock().unwrap().deref_mut().add_assign(measurement);
+        Ok(())
     }
 
     fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
