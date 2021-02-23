@@ -60,10 +60,10 @@ use crypto::hash::{FromBytesError, HashType};
 
 use crate::backend::InMemoryBackend;
 use crate::persistent;
-use crate::persistent::database::{RocksDBStats, SimpleKeyValueStoreWithSchema};
+use crate::persistent::database::SimpleKeyValueStoreWithSchema;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
-use crate::storage_backend::{StorageBackend, StorageBackendError};
+use crate::storage_backend::StorageBackendError;
 use crate::merkle_storage_stats::{MerkleStorageStatistics, StatUpdater, MerkleStorageAction, MerkleStoragePerfReport};
 
 const HASH_LEN: usize = 32;
@@ -128,17 +128,17 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn StorageBackend + Sync + Send;
-pub type MerkleStorageKV2 = dyn SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
 
 pub type RefCnt = usize;
 
 pub struct MerkleStorage {
-    /// tree with current staging area (currently checked out context)
+    /// root of the staging area
     current_stage_tree: Option<Tree>,
+    /// hash of the root of the staging area
     current_stage_tree_hash: Option<EntryHash>,
-    // db: Box<MerkleStorageKV>,
-    db: Box<MerkleStorageKV2>,
+    /// key value storage backend
+    db: Box<MerkleStorageKV>,
     /// all entries in current staging area
     staged: Vec<(EntryHash, RefCnt, Entry)>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -264,7 +264,6 @@ pub struct MerklePerfStats {
 
 #[derive(Serialize, Debug, Clone)]
 pub struct MerkleStorageStats {
-    rocksdb_stats: RocksDBStats,
     pub perf_stats: MerklePerfStats,
 }
 
@@ -377,22 +376,9 @@ pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
 }
 
 impl MerkleStorage {
-    pub fn new2(db: Box<MerkleStorageKV2>) -> Self {
-        MerkleStorage {
-            db,
-            staged: Vec::new(),
-            staged_indices: HashMap::new(),
-            current_stage_tree: None,
-            current_stage_tree_hash: None,
-            last_commit_hash: None,
-            stats: MerkleStorageStatistics::default(),
-            actions: Arc::new(Vec::new()),
-        }
-    }
-
     pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db: Box::new(InMemoryBackend::new()),
+            db, 
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -1366,16 +1352,14 @@ mod tests {
 
     fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
         match backend {
-            "rocksdb" => MerkleStorage::new2(Box::new(RocksDBBackend::new(
+            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
                 Arc::new(get_db(db_name, &cache)),
-                MerkleStorage::name(),
             ))),
             "sled" => {
-                MerkleStorage::new2(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
+                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
             }
-            //TODO change to BTREE                 |||||||||||||||||||||||
-            "btree" => MerkleStorage::new2(Box::new(InMemoryBackend::new())),
-            "inmem" => MerkleStorage::new2(Box::new(InMemoryBackend::new())),
+            "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+            "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
             _ => {
                 panic!("unknown backend set")
             }
@@ -1967,14 +1951,12 @@ mod tests {
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
             MerkleStorage::new(Box::new(RocksDBBackend::new(
                 Arc::new(get_db(db_name, &cache)),
-                MerkleStorage::name(),
             )));
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new2(Box::new(RocksDBBackend::new(
+        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(
             Arc::new(db),
-            MerkleStorage::name(),
         )));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::persistent::database::{DBError, RocksDBStats};
+use crate::persistent::database::DBError;
 use failure::Fail;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -73,33 +73,6 @@ impl slog::Value for StorageBackendError {
     ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
     }
-}
-
-//TODO TE-432 - create single abstraction for StorageBackend and KeyValueWithSchema
-// should be only GC realted trait
-pub trait StorageBackend: Send + Sync {
-    fn is_persisted(&self) -> bool;
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError>;
-    fn put_batch(
-        &mut self,
-        batch: Vec<(EntryHash, ContextValue)>,
-    ) -> Result<(), StorageBackendError>{
-        for (k, v) in batch.into_iter() {
-            self.put(&k, v)?;
-        }
-        Ok(())
-    }
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError>;
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
-    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError>;
-
-    //TODO: gc specific - split this trait
-    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError>{Ok(())}
-    fn mark_reused(&mut self, key: EntryHash){}
-    fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>){}
-    fn wait_for_gc_finish(&self){}
-    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>;
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]

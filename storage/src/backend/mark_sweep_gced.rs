@@ -1,13 +1,10 @@
 
 use std::collections::{HashSet, VecDeque, HashMap};
 
-use rocksdb::WriteBatch;
 use crate::MerkleStorage;
 use crate::merkle_storage::{hash_entry, ContextValue, Entry, EntryHash};
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
-use crate::storage_backend::{
-    StorageBackend , StorageBackendError, StorageBackendStats,
-};
+use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
+use crate::storage_backend::StorageBackendError;
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
@@ -70,7 +67,7 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> MarkSw
     }
 
     fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        self.retain(&|x| todo.contains(x));
+        self.retain(&|x| todo.contains(x))?;
         Ok(())
     }
 
@@ -140,15 +137,9 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> Simple
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::convert::TryFrom;
-    use crate::MerkleStorage;
     use crate::backend::InMemoryBackend;
     use crate::merkle_storage::{Node,Commit,NodeKind};
     use std::collections::BTreeMap;
-
-    fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<MarkSweepGCed<InMemoryBackend>>{
-        Box::new(MarkSweepGCed::<InMemoryBackend>::new(cycle_count, cycle_size))
-    }
 
     macro_rules! map(
     { $($key:expr => $value:expr),+ } => {

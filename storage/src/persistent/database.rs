@@ -5,7 +5,6 @@ use std::marker::PhantomData;
 
 use failure::Fail;
 use rocksdb::{DBIterator, Error, WriteBatch, WriteOptions, DB};
-use std::collections::HashSet;
 use serde::Serialize;
 
 use crypto::hash::FromBytesError;
@@ -115,7 +114,9 @@ pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
     /// * `key` - Value of key specified by schema
     fn try_delete(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>{
         let v = self.get(key)?;
-        self.delete(key)?;
+        if v.is_some(){
+            self.delete(key)?;
+        }
         Ok(v)
     }
 

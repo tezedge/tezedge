@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use failure::Fail;
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
@@ -156,24 +155,19 @@ impl PersistentStorage {
         let merkle = match merkle_backend {
             KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
                 db_context.clone(),
-                MerkleStorage::name(),
             ))),
             KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
             KeyValueStoreBackend::Sled => {
                 MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().temporary(true).open().unwrap())))
             }
-            KeyValueStoreBackend::BTreeMap => {
-                // TODO REPLACE ME WITH BTREEE
-                MerkleStorage::new(Box::new(InMemoryBackend::new()))
-
-            }
+            KeyValueStoreBackend::BTreeMap => { MerkleStorage::new(Box::new(BTreeMapBackend::new())) }
         };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
         Self {
             clog,
             db,
-            db_context: db_context.clone(),
+            db_context: db_context,
             db_context_actions,
             seq,
             merkle: Arc::new(RwLock::new(merkle)),

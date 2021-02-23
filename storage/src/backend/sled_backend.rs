@@ -5,9 +5,7 @@ use crate::merkle_storage::{ContextValue, EntryHash};
 use std::ops::Deref;
 use crypto::hash::HashType;
 use crate::MerkleStorage;
-use rocksdb::WriteBatch;
-use crate::storage_backend::{StorageBackend, StorageBackendError};
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
+use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
 use bytes::Buf;
 use std::io::Read;
 
@@ -34,9 +32,9 @@ impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
             .filter_map(|i| {
                 match i {
                     Err(_) => None,
-                    Ok((k,v)) => {
+                    Ok((k,_)) => {
                         let mut buffer = [0_u8;32];
-                        k.to_vec().reader().read_exact(& mut buffer);
+                        k.to_vec().reader().read_exact(& mut buffer).unwrap();
                         if !predicate(&buffer) {
                             Some(buffer)
                         } else {
@@ -100,45 +98,4 @@ impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
         true
     }
 
-}
-
-impl StorageBackend for SledBackend {
-    fn is_persisted(&self) -> bool {
-        true
-    }
-
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-        Ok(self
-            .inner
-            .insert(&key.as_ref()[..], value)
-            .map(|v| v.is_none())?)
-    }
-
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
-        self.inner.insert(&key.as_ref()[..], value)?;
-        Ok(())
-    }
-
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-        Ok(self.inner.remove(&key.as_ref()[..])?.map(|v| v.to_vec()))
-    }
-
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-        let r = self.inner.get(&key.as_ref()[..])?;
-
-        match r {
-            None => Err(StorageBackendError::BackendError),
-            Some(v) => Ok(Some(v.to_vec())),
-        }
-    }
-
-    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
-        Ok(self.inner.contains_key(&key.as_ref()[..])?)
-    }
-
-    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError> {
-        self.db.size_on_disk()
-            .map(|size| size as usize)
-            .map_err(|e| StorageBackendError::SledDBError{error: e})
-    }
 }
