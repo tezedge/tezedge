@@ -142,48 +142,6 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> Simple
     }
 }
 
-// impl<T: 'static + StorageBackend + Default> StorageBackend for MarkSweepGCed<T> {
-//     fn is_persisted(&self) -> bool {
-//         self.store.is_persisted()
-//     }
-//
-//     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-//         self.store.get(key)
-//     }
-//
-//     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
-//         self.store.contains(key)
-//     }
-//
-//     fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-//         self.store.put(key, value)
-//     }
-//
-//     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
-//         self.store.merge(key, value)
-//     }
-//
-//     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-//         self.store.delete(key)
-//     }
-//
-//     fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-//         self.store.retain(pred)
-//     }
-//
-//     fn mark_reused(&mut self, _key: EntryHash) {}
-//
-//     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>) {
-//         let _ = self.gc(last_commit_hash);
-//     }
-//
-//     fn wait_for_gc_finish(&self) {}
-//
-//     fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
-//         self.store.total_get_mem_usage()
-//     }
-// }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -192,10 +150,6 @@ mod tests {
     use crate::backend::InMemoryBackend;
     use crate::merkle_storage::{Node,Commit,NodeKind};
     use std::collections::BTreeMap;
-
-    // fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<dyn StorageBackend + Sync + Send>{
-    //     Box::new(MarkSweepGCed::<InMemoryBackend>::new(cycle_count, cycle_size))
-    // }
 
     fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<MarkSweepGCed<InMemoryBackend>>{
         Box::new(MarkSweepGCed::<InMemoryBackend>::new(cycle_count, cycle_size))
