@@ -212,7 +212,7 @@ mod tests {
         assert!(store.get(&hash_entry(&commit_1).unwrap()).is_ok());
 
         // run GC
-        store.gc(Some(hash_entry(&commit_1).unwrap()));
+        store.gc(Some(hash_entry(&commit_1).unwrap())).unwrap();
 
         // check valuas are available after GC
         assert!(store.get(&hash_entry(&value_1).unwrap()).unwrap().is_some());
@@ -226,7 +226,7 @@ mod tests {
         store.put(&hash_entry(&commit_2).unwrap(), &bincode::serialize(&commit_2).unwrap()).unwrap();
 
         // run GC
-        store.gc(Some(hash_entry(&commit_2).unwrap()));
+        store.gc(Some(hash_entry(&commit_2).unwrap())).unwrap();
 
         // new hashes should be still in storage
         assert!(store.get(&hash_entry(&value_2).unwrap()).unwrap().is_some());
