@@ -1349,7 +1349,7 @@ mod tests {
                 MerkleStorage::name(),
             ))),
             "sled" => {
-                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(db_name).open().unwrap())))
+                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
             }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
