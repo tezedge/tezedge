@@ -6,7 +6,7 @@ use std::sync::{Arc,RwLock, Mutex};
 
 use rocksdb::WriteBatch;
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
+use crate::persistent::database::{KeyValueStoreWithSchemaIterator, SimpleKeyValueStoreWithSchema, DBError, RocksDBStats, IteratorMode, IteratorWithSchema};
 use crate::persistent::schema::KeyValueSchema;
 use crate::MerkleStorage;
 use std::ops::{DerefMut, AddAssign, SubAssign};
@@ -28,6 +28,27 @@ impl InMemoryBackend {
 }
 
 impl SimpleKeyValueStoreWithSchema<MerkleStorage> for InMemoryBackend {
+
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError>{
+        let garbage_keys: Vec<_> = self
+            .inner
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|(k, _)| {
+                if !predicate(k) {
+                    Some(*k)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for k in garbage_keys {
+            self.delete(&k)?;
+        }
+        Ok(())
+    }
 
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         let measurement = StorageBackendStats::from((key, value));

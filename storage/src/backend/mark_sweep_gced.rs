@@ -1,13 +1,16 @@
 
 use std::collections::{HashSet, VecDeque, HashMap};
 
-use crate::persistent::database::RocksDBStats;
+use rocksdb::WriteBatch;
+use crate::MerkleStorage;
 use crate::merkle_storage::{hash_entry, ContextValue, Entry, EntryHash};
+use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
 use crate::storage_backend::{
     StorageBackend , StorageBackendError, StorageBackendStats,
 };
+
 /// Garbage Collected Key Value Store
-pub struct MarkSweepGCed<T: StorageBackend> {
+pub struct MarkSweepGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
     store: T,
     cycles_limit: usize,
     blocks_per_cycle: usize,
@@ -15,7 +18,7 @@ pub struct MarkSweepGCed<T: StorageBackend> {
     marked: HashMap<EntryHash, HashSet<EntryHash>>
 }
 
-impl<T: 'static + StorageBackend + Default> MarkSweepGCed<T> {
+impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> MarkSweepGCed<T> {
     pub fn new(cycle_count: usize, cycle_size: usize) -> Self {
         Self {
             store: Default::default(),
@@ -67,7 +70,8 @@ impl<T: 'static + StorageBackend + Default> MarkSweepGCed<T> {
     }
 
     fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        self.retain(todo)
+        self.retain(&|x| todo.contains(x));
+        Ok(())
     }
 
     fn mark_entries_recursively(&self, entry: &Entry, todo: &mut HashSet<EntryHash>) -> Result<(), StorageBackendError>{
@@ -95,47 +99,90 @@ impl<T: 'static + StorageBackend + Default> MarkSweepGCed<T> {
     }
 }
 
-impl<T: 'static + StorageBackend + Default> StorageBackend for MarkSweepGCed<T> {
-    fn is_persisted(&self) -> bool {
-        self.store.is_persisted()
+impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> SimpleKeyValueStoreWithSchema<MerkleStorage> for MarkSweepGCed<T> {
+    fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.store.put(key,value)
     }
 
-    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
-        self.store.get(key)
-    }
-
-    fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
-        self.store.contains(key)
-    }
-
-    fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
-        self.store.put(key, value)
-    }
-
-    fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
-        self.store.merge(key, value)
-    }
-
-    fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
+    fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
         self.store.delete(key)
     }
 
-    fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        self.store.retain(pred)
+    fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.store.merge(key, value)
     }
 
-    fn mark_reused(&mut self, _key: EntryHash) {}
-
-    fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>) {
-        let _ = self.gc(last_commit_hash);
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
+        self.store.get(key)
     }
 
-    fn wait_for_gc_finish(&self) {}
+    fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
+        self.store.contains(key)
+    }
 
-    fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
-        self.store.total_get_mem_usage()
+    fn put_batch(
+        &self,
+        batch: &mut WriteBatch,
+        key: &EntryHash,
+        value: &ContextValue,
+    ) -> Result<(), DBError> {
+        unimplemented!();
+    }
+
+    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
+        unimplemented!();
+    }
+
+    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
+        self.store.get_stats()
+    }
+
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
+        self.store.retain(predicate)
     }
 }
+
+// impl<T: 'static + StorageBackend + Default> StorageBackend for MarkSweepGCed<T> {
+//     fn is_persisted(&self) -> bool {
+//         self.store.is_persisted()
+//     }
+//
+//     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
+//         self.store.get(key)
+//     }
+//
+//     fn contains(&self, key: &EntryHash) -> Result<bool, StorageBackendError> {
+//         self.store.contains(key)
+//     }
+//
+//     fn put(&mut self, key: &EntryHash, value: ContextValue) -> Result<bool, StorageBackendError> {
+//         self.store.put(key, value)
+//     }
+//
+//     fn merge(&mut self, key: &EntryHash, value: ContextValue) -> Result<(), StorageBackendError> {
+//         self.store.merge(key, value)
+//     }
+//
+//     fn delete(&mut self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError> {
+//         self.store.delete(key)
+//     }
+//
+//     fn retain(&mut self, pred: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+//         self.store.retain(pred)
+//     }
+//
+//     fn mark_reused(&mut self, _key: EntryHash) {}
+//
+//     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>) {
+//         let _ = self.gc(last_commit_hash);
+//     }
+//
+//     fn wait_for_gc_finish(&self) {}
+//
+//     fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>{
+//         self.store.total_get_mem_usage()
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
@@ -146,7 +193,11 @@ mod tests {
     use crate::merkle_storage::{Node,Commit,NodeKind};
     use std::collections::BTreeMap;
 
-    fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<dyn StorageBackend + Sync + Send>{
+    // fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<dyn StorageBackend + Sync + Send>{
+    //     Box::new(MarkSweepGCed::<InMemoryBackend>::new(cycle_count, cycle_size))
+    // }
+
+    fn create_storage(cycle_count: usize, cycle_size: usize) -> Box<MarkSweepGCed<InMemoryBackend>>{
         Box::new(MarkSweepGCed::<InMemoryBackend>::new(cycle_count, cycle_size))
     }
 
@@ -197,9 +248,9 @@ mod tests {
         });
 
         let mut store = MarkSweepGCed::<InMemoryBackend>::new(1, 1);
-        store.put(&hash_entry(&value_1).unwrap(), bincode::serialize(&value_1).unwrap()).unwrap();
-        store.put(&hash_entry(&tree_1).unwrap(), bincode::serialize(&tree_1).unwrap()).unwrap();
-        store.put(&hash_entry(&commit_1).unwrap(), bincode::serialize(&commit_1).unwrap()).unwrap();
+        store.put(&hash_entry(&value_1).unwrap(), &bincode::serialize(&value_1).unwrap()).unwrap();
+        store.put(&hash_entry(&tree_1).unwrap(), &bincode::serialize(&tree_1).unwrap()).unwrap();
+        store.put(&hash_entry(&commit_1).unwrap(), &bincode::serialize(&commit_1).unwrap()).unwrap();
 
         // check valuas are avaible before running GC
         assert!(store.get(&hash_entry(&value_1).unwrap()).is_ok());
@@ -207,7 +258,7 @@ mod tests {
         assert!(store.get(&hash_entry(&commit_1).unwrap()).is_ok());
 
         // run GC
-        store.start_new_cycle(Some(hash_entry(&commit_1).unwrap()));
+        store.gc(Some(hash_entry(&commit_1).unwrap()));
 
         // check valuas are available after GC
         assert!(store.get(&hash_entry(&value_1).unwrap()).unwrap().is_some());
@@ -215,13 +266,13 @@ mod tests {
         println!("inserting commit {:?}", hash_entry(&commit_1));
         assert!(store.get(&hash_entry(&commit_1).unwrap()).unwrap().is_some());
 
-        store.put(&hash_entry(&value_2).unwrap(), bincode::serialize(&value_2).unwrap()).unwrap();
-        store.put(&hash_entry(&tree_2).unwrap(), bincode::serialize(&tree_2).unwrap()).unwrap();
+        store.put(&hash_entry(&value_2).unwrap(), &bincode::serialize(&value_2).unwrap()).unwrap();
+        store.put(&hash_entry(&tree_2).unwrap(), &bincode::serialize(&tree_2).unwrap()).unwrap();
         println!("inserting commit {:?}", hash_entry(&commit_2));
-        store.put(&hash_entry(&commit_2).unwrap(), bincode::serialize(&commit_2).unwrap()).unwrap();
+        store.put(&hash_entry(&commit_2).unwrap(), &bincode::serialize(&commit_2).unwrap()).unwrap();
 
         // run GC
-        store.start_new_cycle(Some(hash_entry(&commit_2).unwrap()));
+        store.gc(Some(hash_entry(&commit_2).unwrap()));
 
         // new hashes should be still in storage
         assert!(store.get(&hash_entry(&value_2).unwrap()).unwrap().is_some());

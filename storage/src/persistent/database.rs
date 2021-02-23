@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 
 use failure::Fail;
 use rocksdb::{DBIterator, Error, WriteBatch, WriteOptions, DB};
+use std::collections::HashSet;
 use serde::Serialize;
 
 use crypto::hash::FromBytesError;
@@ -52,6 +53,12 @@ impl From<Error> for DBError {
     }
 }
 
+impl From<FromBytesError> for DBError {
+    fn from(error: FromBytesError) -> Self {
+        DBError::HashEncodeError { error }
+    }
+}
+
 impl slog::Value for DBError {
     fn serialize(
         &self,
@@ -66,12 +73,6 @@ impl slog::Value for DBError {
 impl From<sled::Error> for DBError {
     fn from(error: sled::Error) -> Self {
         DBError::SledDBError { error }
-    }
-}
-
-impl From<FromBytesError> for DBError {
-    fn from(error: FromBytesError) -> Self {
-        DBError::HashEncodeError { error }
     }
 }
 
@@ -123,6 +124,12 @@ pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
     /// # Arguments
     /// * `key` - Key (specified by schema), to be checked for existence
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
+
+    /// Check, if database contains given key
+    ///
+    /// # Arguments
+    /// * `key` - Key (specified by schema), to be checked for existence
+    fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
 
     /// Insert new key value pair into WriteBatch.
     ///
@@ -271,6 +278,29 @@ impl<S: KeyValueSchema> SimpleKeyValueStoreWithSchema<S> for DB {
             cache_total: memory_usage_stats.cache_total,
         })
     }
+
+    fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>{
+        let garbage:Vec<_> = (self as & dyn KeyValueStoreWithSchemaIterator::<S>).iterator(IteratorMode::Start).unwrap()
+            .filter_map(
+            |(k,_)|
+            match k {
+                Err(_) => None,
+                Ok(value) => {
+                    if !predicate(&value){
+                        Some(value)
+                    }else{
+                        None
+                    }
+                }
+            }
+            ).collect();
+
+        for i in garbage{
+            (self as & dyn SimpleKeyValueStoreWithSchema::<S>).delete(&i)?;
+        }
+        Ok(())
+    }
+
 }
 
 fn default_write_options() -> WriteOptions {

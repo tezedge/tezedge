@@ -8,6 +8,8 @@ use crate::MerkleStorage;
 use rocksdb::WriteBatch;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
 use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
+use bytes::Buf;
+use std::io::Read;
 
 pub struct SledBackend {
     db: sled::Db,
@@ -24,6 +26,33 @@ impl SledBackend {
 }
 
 impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
+
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError>{
+        let garbage_keys: Vec<_> = self
+            .inner
+            .iter()
+            .filter_map(|i| {
+                match i {
+                    Err(_) => None,
+                    Ok((k,v)) => {
+                        let mut buffer = [0_u8;32];
+                        k.to_vec().reader().read_exact(& mut buffer);
+                        if !predicate(&buffer) {
+                            Some(buffer)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            })
+            .collect();
+
+        for k in garbage_keys {
+            self.delete(&k)?;
+        }
+        Ok(())
+    }
+
 
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         if self.inner.contains_key(key)?{
