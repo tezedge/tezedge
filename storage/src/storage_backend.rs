@@ -4,8 +4,8 @@
 use crate::persistent::database::DBError;
 use failure::Fail;
 use serde::Serialize;
-use std::collections::HashSet;
 use std::array::TryFromSliceError;
+use std::collections::HashSet;
 use std::mem;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
@@ -14,8 +14,8 @@ pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
 }
 
-pub trait GarbageCollector{
-    fn new_commit_applied(& mut self, hash: EntryHash) -> Result<(), StorageBackendError>;
+pub trait GarbageCollector {
+    fn new_commit_applied(&mut self, hash: EntryHash) -> Result<(), StorageBackendError>;
 }
 
 #[derive(Debug, Fail)]

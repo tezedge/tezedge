@@ -3,18 +3,17 @@
 
 use std::collections::HashSet;
 
+use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::MerkleStorage;
 use std::mem;
 use std::ops::{Deref, DerefMut};
-use std::sync::{mpsc, Arc, Mutex, RwLock};
-use crate::MerkleStorage;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use crate::persistent::database::{KeyValueStoreBackend, DBError};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
 use crate::merkle_storage::{ContextValue, Entry, EntryHash};
-use crate::storage_backend::{StorageBackendStats, GarbageCollector, StorageBackendError};
-
+use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
@@ -100,7 +99,6 @@ pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     msg: Mutex<mpsc::Sender<CmdMsg>>,
 }
 
-
 impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> MarkMoveGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
         assert!(
@@ -122,7 +120,9 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
             cycles: cycle_count,
             stores: stores.clone(),
             stores_stats: stores_stats.clone(),
-            _thread: thread::spawn(move || kvstore_gc_thread_fn(stores, stores_stats, rx, busy.clone(), msg_cnt)),
+            _thread: thread::spawn(move || {
+                kvstore_gc_thread_fn(stores, stores_stats, rx, busy.clone(), msg_cnt)
+            }),
             msg: Mutex::new(tx),
             is_busy: busy_ref,
             msg_cnt: msg_cnt_ref,
@@ -169,15 +169,17 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     /// Waits for garbage collector to finish collecting the oldest cycle.
     /// [used only for testing purposes]
     fn wait_for_gc_finish(&self) {
-        while self.is_busy.load(Ordering::Acquire) || self.msg_cnt.load(Ordering::Acquire) > 0{
+        while self.is_busy.load(Ordering::Acquire) || self.msg_cnt.load(Ordering::Acquire) > 0 {
             thread::sleep(Duration::from_millis(20));
         }
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> KeyValueStoreBackend<MerkleStorage> for MarkMoveGCed<T> {
-    fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        self.current.put(key,value)
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
+    KeyValueStoreBackend<MerkleStorage> for MarkMoveGCed<T>
+{
+    fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.current.put(key, value)
     }
 
     fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
@@ -200,8 +202,16 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> K
         Ok(self.current.write_batch(batch)?)
     }
 
-    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
-        let memory: usize = self.stores.read().unwrap().iter().rev().take(self.cycles - 1).map(|store| store.total_get_mem_usage().unwrap()).sum();
+    fn total_get_mem_usage(&self) -> Result<usize, DBError> {
+        let memory: usize = self
+            .stores
+            .read()
+            .unwrap()
+            .iter()
+            .rev()
+            .take(self.cycles - 1)
+            .map(|store| store.total_get_mem_usage().unwrap())
+            .sum();
         Ok(memory + self.current.total_get_mem_usage().unwrap())
     }
 
@@ -209,7 +219,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> K
         self.current.retain(predicate)
     }
 
-    fn is_persistent(&self) -> bool{
+    fn is_persistent(&self) -> bool {
         self.current.is_persistent()
     }
 }
@@ -220,7 +230,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
     is_busy: Arc<AtomicBool>,
-    msg_cnt: Arc<AtomicUsize>
+    msg_cnt: Arc<AtomicUsize>,
 ) {
     // number of preserved archived cycles
     let len = stores.read().unwrap().len();
@@ -238,9 +248,9 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
 
         // check if there are not processed eventsda
         is_busy.swap(
-                msg_cnt.load(Ordering::Acquire) > 0
-                || ! todo_keys.is_empty() 
-                || reused_keys.len() > len, Ordering::Acquire);
+            msg_cnt.load(Ordering::Acquire) > 0 || !todo_keys.is_empty() || reused_keys.len() > len,
+            Ordering::Acquire,
+        );
 
         let msg = if wait_for_events {
             match rx.recv() {
@@ -294,7 +304,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
 
         // if reused_keys.len() > len  that means that we need to start garbage collecting oldest cycle,
         // reused_keys[0].len() > 0  If no keys are reused we can just drop the cycle.
-        if reused_keys.len() > len && ! reused_keys[0].is_empty() {
+        if reused_keys.len() > len && !reused_keys[0].is_empty() {
             todo_keys.extend(mem::take(&mut reused_keys[0]).into_iter());
         }
 
@@ -372,7 +382,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
             }
         }
 
-        if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty(){
+        if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty() {
             drop(reused_keys.drain(..1));
             drop(stores_stats.lock().unwrap().drain(..1));
             drop(stores.write().unwrap().drain(..1));
@@ -380,8 +390,10 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> GarbageCollector for MarkMoveGCed<T> {
-    fn new_commit_applied(& mut self, hash: EntryHash) -> Result<(), StorageBackendError>{
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> GarbageCollector
+    for MarkMoveGCed<T>
+{
+    fn new_commit_applied(&mut self, hash: EntryHash) -> Result<(), StorageBackendError> {
         self.start_new_cycle(Some(hash));
         Ok(())
     }
@@ -418,20 +430,30 @@ mod tests {
         bincode::serialize(&blob(value)).unwrap()
     }
 
-    fn get<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &MarkMoveGCed<T>, key: &[u8]) -> Option<Entry> {
+    fn get<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+        store: &MarkMoveGCed<T>,
+        key: &[u8],
+    ) -> Option<Entry> {
         store
             .get(&entry_hash(key))
             .unwrap()
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
-    fn put<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8], value: Entry) {
+    fn put<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+        store: &mut MarkMoveGCed<T>,
+        key: &[u8],
+        value: Entry,
+    ) {
         store
             .put(&entry_hash(key), &bincode::serialize(&value).unwrap())
             .unwrap();
     }
 
-    fn mark_reused<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8]) {
+    fn mark_reused<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+        store: &mut MarkMoveGCed<T>,
+        key: &[u8],
+    ) {
         store.mark_reused(entry_hash(key));
     }
 
@@ -474,9 +496,7 @@ mod tests {
         store.wait_for_gc_finish();
 
         assert_eq!(
-            2* std::mem::size_of::<EntryHash>()
-            + size_of_vec(&kv1.1) + size_of_vec(&kv2.1)
-            ,
+            2 * std::mem::size_of::<EntryHash>() + size_of_vec(&kv1.1) + size_of_vec(&kv2.1),
             store.total_get_mem_usage().unwrap()
         );
 
@@ -484,33 +504,33 @@ mod tests {
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
         assert_eq!(
-            3* std::mem::size_of::<EntryHash>()
-            + size_of_vec(&kv1.1) + size_of_vec(&kv2.1)
-            + size_of_vec(&kv3.1)
-            ,
+            3 * std::mem::size_of::<EntryHash>()
+                + size_of_vec(&kv1.1)
+                + size_of_vec(&kv2.1)
+                + size_of_vec(&kv3.1),
             store.total_get_mem_usage().unwrap()
         );
-
 
         store.put(&kv4.0.clone(), &kv4.1).unwrap();
         store.mark_reused(kv1.0);
         store.wait_for_gc_finish();
 
         assert_eq!(
-            4* std::mem::size_of::<EntryHash>()
-            + size_of_vec(&kv1.1) + size_of_vec(&kv2.1)
-            + size_of_vec(&kv3.1) + size_of_vec(&kv4.1)
-            ,
+            4 * std::mem::size_of::<EntryHash>()
+                + size_of_vec(&kv1.1)
+                + size_of_vec(&kv2.1)
+                + size_of_vec(&kv3.1)
+                + size_of_vec(&kv4.1),
             store.total_get_mem_usage().unwrap()
         );
 
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
         assert_eq!(
-            3* std::mem::size_of::<EntryHash>()
-            + size_of_vec(&kv1.1)
-            + size_of_vec(&kv3.1) + size_of_vec(&kv4.1)
-            ,
+            3 * std::mem::size_of::<EntryHash>()
+                + size_of_vec(&kv1.1)
+                + size_of_vec(&kv3.1)
+                + size_of_vec(&kv4.1),
             store.total_get_mem_usage().unwrap()
         );
 
@@ -519,18 +539,12 @@ mod tests {
         assert_eq!(
             2* std::mem::size_of::<EntryHash>()
             + size_of_vec(&kv1.1) // inserted
-            + size_of_vec(&kv4.1) // reused
-            ,
+            + size_of_vec(&kv4.1), // reused
             store.total_get_mem_usage().unwrap()
         );
 
         store.start_new_cycle(None);
         store.wait_for_gc_finish();
-        assert_eq!(
-            0
-            ,
-            store.total_get_mem_usage().unwrap()
-        );
-
+        assert_eq!(0, store.total_get_mem_usage().unwrap());
     }
 }

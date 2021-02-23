@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use std::ops::Deref;
+use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 use crate::MerkleStorage;
-use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use bytes::Buf;
 use std::io::Read;
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use std::ops::Deref;
 
 pub struct SledBackend {
     db: sled::Db,
@@ -24,28 +24,25 @@ impl SledBackend {
 }
 
 impl GarbageCollector for SledBackend {
-    fn new_commit_applied(& mut self, _: EntryHash) -> Result<(), StorageBackendError>{
+    fn new_commit_applied(&mut self, _: EntryHash) -> Result<(), StorageBackendError> {
         Ok(())
     }
 }
 
 impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
-
-    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError>{
+    fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner
             .iter()
-            .filter_map(|i| {
-                match i {
-                    Err(_) => None,
-                    Ok((k,_)) => {
-                        let mut buffer = [0_u8;32];
-                        k.to_vec().reader().read_exact(& mut buffer).unwrap();
-                        if !predicate(&buffer) {
-                            Some(buffer)
-                        } else {
-                            None
-                        }
+            .filter_map(|i| match i {
+                Err(_) => None,
+                Ok((k, _)) => {
+                    let mut buffer = [0_u8; 32];
+                    k.to_vec().reader().read_exact(&mut buffer).unwrap();
+                    if !predicate(&buffer) {
+                        Some(buffer)
+                    } else {
+                        None
                     }
                 }
             })
@@ -57,11 +54,8 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
         Ok(())
     }
 
-
-    fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        self
-            .inner
-            .insert(&key.as_ref()[..], value.clone())?;
+    fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.inner.insert(&key.as_ref()[..], value.clone())?;
         Ok(())
     }
 
@@ -84,20 +78,20 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
     }
 
     fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
-        for (k,v) in batch{
-            self.merge(&k,&v)?;
+        for (k, v) in batch {
+            self.merge(&k, &v)?;
         }
         Ok(())
     }
 
-    fn total_get_mem_usage(&self) -> Result<usize,DBError>{
-        self.db.size_on_disk()
+    fn total_get_mem_usage(&self) -> Result<usize, DBError> {
+        self.db
+            .size_on_disk()
             .map(|size| size as usize)
-            .map_err(|e| DBError::SledDBError{error: e})
+            .map_err(|e| DBError::SledDBError { error: e })
     }
 
-    fn is_persistent(&self) -> bool{
+    fn is_persistent(&self) -> bool {
         true
     }
-
 }

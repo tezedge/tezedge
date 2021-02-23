@@ -58,12 +58,14 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
+use crate::merkle_storage_stats::{
+    MerkleStorageAction, MerkleStoragePerfReport, MerkleStorageStatistics, StatUpdater,
+};
 use crate::persistent;
 use crate::persistent::database::KeyValueStoreBackend;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::StorageBackendError;
-use crate::merkle_storage_stats::{MerkleStorageStatistics, StatUpdater, MerkleStorageAction, MerkleStoragePerfReport};
 
 const HASH_LEN: usize = 32;
 
@@ -365,7 +367,6 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, TryFromSliceError> {
     hasher.finalize_boxed().as_ref().try_into()
 }
 
-
 pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
     match entry {
         Entry::Commit(commit) => hash_commit(&commit),
@@ -377,7 +378,7 @@ pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
 impl MerkleStorage {
     pub fn new(db: Box<MerkleStorageKV>) -> Self {
         MerkleStorage {
-            db, 
+            db,
             staged: Vec::new(),
             staged_indices: HashMap::new(),
             current_stage_tree: None,
@@ -606,7 +607,11 @@ impl MerkleStorage {
             return Ok(StringTreeEntry::Null);
         }
 
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
+        let _ = StatUpdater::new(
+            &mut self.stats,
+            MerkleStorageAction::GetContextTreeByPrefix,
+            Some(prefix),
+        );
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
@@ -639,7 +644,11 @@ impl MerkleStorage {
         context_hash: &EntryHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetKeyValuesByPrefix, Some(prefix));
+        let _ = StatUpdater::new(
+            &mut self.stats,
+            MerkleStorageAction::GetKeyValuesByPrefix,
+            Some(prefix),
+        );
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
         self._get_key_values_by_prefix(root_tree, prefix)
@@ -1306,14 +1315,16 @@ impl MerkleStorage {
     }
 
     /// Get various merkle storage statistics
-    pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport,MerkleError> {
-        Ok(MerkleStoragePerfReport::new(self.stats.perf_stats.clone(), self.db.total_get_mem_usage()?))
+    pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, MerkleError> {
+        Ok(MerkleStoragePerfReport::new(
+            self.stats.perf_stats.clone(),
+            self.db.total_get_mem_usage()?,
+        ))
     }
 
     pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
         self.stats.block_latencies.get(offset_from_last_applied)
     }
-
 }
 
 #[cfg(test)]
@@ -1351,12 +1362,15 @@ mod tests {
 
     fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
         match backend {
-            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(
-                Arc::new(get_db(db_name, &cache)),
+            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
+                db_name, &cache,
+            ))))),
+            "sled" => MerkleStorage::new(Box::new(SledBackend::new(
+                sled::Config::new()
+                    .path(get_db_name(db_name))
+                    .open()
+                    .unwrap(),
             ))),
-            "sled" => {
-                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().path(get_db_name(db_name)).open().unwrap())))
-            }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
             _ => {
@@ -1948,22 +1962,17 @@ mod tests {
         {
             clean_db(db_name);
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            MerkleStorage::new(Box::new(RocksDBBackend::new(
-                Arc::new(get_db(db_name, &cache)),
-            )));
+            MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
+                db_name, &cache,
+            )))));
         }
 
         let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(
-            Arc::new(db),
-        )));
+        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(db))));
         storage.set(&vec!["a".to_string()], &vec![1u8]);
         let res = storage.commit(0, "".to_string(), "".to_string());
 
-        assert!(matches!(
-            res.err().unwrap(),
-            MerkleError::DBError { .. }
-        ));
+        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
     }
 
     // Test getting entire tree in string format for JSON RPC

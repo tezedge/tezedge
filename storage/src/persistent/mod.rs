@@ -153,14 +153,14 @@ impl PersistentStorage {
         merkle_backend: KeyValueStoreBackend,
     ) -> Self {
         let merkle = match merkle_backend {
-            KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
-                db_context.clone(),
-            ))),
-            KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            KeyValueStoreBackend::Sled => {
-                MerkleStorage::new(Box::new(SledBackend::new(sled::Config::new().temporary(true).open().unwrap())))
+            KeyValueStoreBackend::RocksDB => {
+                MerkleStorage::new(Box::new(RocksDBBackend::new(db_context.clone())))
             }
-            KeyValueStoreBackend::BTreeMap => { MerkleStorage::new(Box::new(BTreeMapBackend::new())) }
+            KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            KeyValueStoreBackend::Sled => MerkleStorage::new(Box::new(SledBackend::new(
+                sled::Config::new().temporary(true).open().unwrap(),
+            ))),
+            KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
         };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
