@@ -106,6 +106,16 @@ pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
     /// * `key` - Value of key specified by schema
     fn delete(&self, key: &S::Key) -> Result<(), DBError>;
 
+    /// Delete existing value associated with given key from the database.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    fn try_delete(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>{
+        let v = self.get(key)?;
+        self.delete(key)?;
+        Ok(v)
+    }
+
     /// Insert key value pair into the database, overriding existing value if exists.
     ///
     /// # Arguments
