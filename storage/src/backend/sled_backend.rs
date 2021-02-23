@@ -3,7 +3,11 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use std::ops::Deref;
+use crypto::hash::HashType;
+use crate::MerkleStorage;
+use rocksdb::WriteBatch;
 use crate::storage_backend::{StorageBackend, StorageBackendError};
+use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError, RocksDBStats};
 
 pub struct SledBackend {
     db: sled::Db,
@@ -17,6 +21,56 @@ impl SledBackend {
             db,
         }
     }
+}
+
+impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
+
+    fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        if self.inner.contains_key(key)?{
+            Err(DBError::ValueExists{key: HashType::ContextHash.hash_to_b58check(key)?})
+        }else{
+            self
+                .inner
+                .insert(&key.as_ref()[..], value.clone())?;
+            Ok(())
+        }
+    }
+
+    fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
+        self.inner.remove(&key.as_ref()[..])?;
+        Ok(())
+    }
+
+    fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
+        self.inner.insert(&key.as_ref()[..], value.clone())?;
+        Ok(())
+    }
+
+    fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
+        Ok(self.inner.get(&key.as_ref()[..])?.map(|ivec| ivec.to_vec()))
+    }
+
+    fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
+        Ok(self.inner.contains_key(&key.as_ref()[..])?)
+    }
+
+    fn put_batch(
+        &self,
+        batch: &mut WriteBatch,
+        key: &EntryHash,
+        value: &ContextValue,
+    ) -> Result<(), DBError> {
+        unimplemented!();
+    }
+
+    fn write_batch(&self, batch: WriteBatch) -> Result<(), DBError> {
+        unimplemented!();
+    }
+
+    fn get_stats(&self) -> Result<RocksDBStats, DBError> {
+        unimplemented!();
+    }
+
 }
 
 impl StorageBackend for SledBackend {

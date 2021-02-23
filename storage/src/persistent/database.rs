@@ -7,6 +7,7 @@ use failure::Fail;
 use rocksdb::{DBIterator, Error, WriteBatch, WriteOptions, DB};
 use serde::Serialize;
 
+use crypto::hash::FromBytesError;
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::KeyValueSchema;
 
@@ -29,6 +30,14 @@ pub enum DBError {
     MissingColumnFamily { name: &'static str },
     #[fail(display = "Database incompatibility {}", name)]
     DatabaseIncompatibility { name: String },
+    #[fail(display = "Value already exists {}", key)]
+    ValueExists { key: String },
+    #[fail(display = "Guard Poison {} ", error)]
+    GuardPoison { error: String },
+    #[fail(display = "SledDB error: {}", error)]
+    SledDBError { error: sled::Error },
+    #[fail(display = "Hash encode error : {}", error)]
+    HashEncodeError { error: FromBytesError },
 }
 
 impl From<SchemaError> for DBError {
@@ -51,6 +60,18 @@ impl slog::Value for DBError {
         serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
+    }
+}
+
+impl From<sled::Error> for DBError {
+    fn from(error: sled::Error) -> Self {
+        DBError::SledDBError { error }
+    }
+}
+
+impl From<FromBytesError> for DBError {
+    fn from(error: FromBytesError) -> Self {
+        DBError::HashEncodeError { error }
     }
 }
 

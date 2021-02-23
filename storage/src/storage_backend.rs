@@ -76,6 +76,7 @@ impl slog::Value for StorageBackendError {
 }
 
 //TODO TE-432 - create single abstraction for StorageBackend and KeyValueWithSchema
+// should be only GC realted trait
 pub trait StorageBackend: Send + Sync {
     fn is_persisted(&self) -> bool;
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, StorageBackendError>;
@@ -99,7 +100,6 @@ pub trait StorageBackend: Send + Sync {
     fn start_new_cycle(&mut self, last_commit_hash: Option<EntryHash>){}
     fn wait_for_gc_finish(&self){}
     fn total_get_mem_usage(&self) -> Result<usize,StorageBackendError>;
-
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
