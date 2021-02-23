@@ -1,14 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashSet, HashMap};
+use std::collections::HashMap;
 use std::sync::{Arc,RwLock, Mutex};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use crate::MerkleStorage;
 use std::ops::{DerefMut, AddAssign, SubAssign};
-use crate::storage_backend::{StorageBackendError, StorageBackendStats};
+use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
 
 #[derive(Default)]
 pub struct InMemoryBackend {
@@ -22,6 +22,12 @@ impl InMemoryBackend {
             inner: Arc::new(RwLock::new(HashMap::new())),
             stats: Default::default(),
         }
+    }
+}
+
+impl GarbageCollector for InMemoryBackend {
+    fn new_commit_applied(& mut self, _: EntryHash) -> Result<(), StorageBackendError>{
+        Ok(())
     }
 }
 

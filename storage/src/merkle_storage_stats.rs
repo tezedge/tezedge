@@ -1,4 +1,3 @@
-use crate::storage_backend::StorageBackendStats;
 use serde::Serialize;
 use std::cmp;
 use std::collections::HashMap;

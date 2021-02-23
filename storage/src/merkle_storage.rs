@@ -58,7 +58,6 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::backend::InMemoryBackend;
 use crate::persistent;
 use crate::persistent::database::KeyValueStoreBackend;
 use crate::persistent::BincodeEncoded;

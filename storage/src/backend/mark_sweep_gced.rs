@@ -6,7 +6,7 @@ use std::collections::{HashSet, VecDeque, HashMap};
 use crate::MerkleStorage;
 use crate::merkle_storage::{hash_entry, ContextValue, Entry, EntryHash};
 use crate::persistent::database::{KeyValueStoreBackend, DBError};
-use crate::storage_backend::StorageBackendError;
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: KeyValueStoreBackend<MerkleStorage>> {
@@ -44,7 +44,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
 
             while self.commits.len() > self.cycles_limit*self.blocks_per_cycle{
                 if let Some(hash) = self.commits.pop_front(){
-                    println!("removing commit {:?},", &hash);
                     self.marked.remove(&hash);
                 }
             }
@@ -97,6 +96,14 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
         Ok(())
     }
 }
+
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> GarbageCollector for MarkSweepGCed<T> {
+    fn new_commit_applied(& mut self, hash: EntryHash) -> Result<(), StorageBackendError>{
+        self.gc(Some(hash))?;
+        Ok(())
+    }
+}
+
 
 impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBackend<MerkleStorage> for MarkSweepGCed<T> {
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {

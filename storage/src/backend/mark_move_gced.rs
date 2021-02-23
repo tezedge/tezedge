@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::merkle_storage::{ContextValue, Entry, EntryHash};
-use crate::storage_backend::StorageBackendStats;
+use crate::storage_backend::{StorageBackendStats, GarbageCollector, StorageBackendError};
 
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
@@ -139,16 +139,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     /// Returns `true` if any of the archived cycle stores contains a value with hash `key`, and `false` otherwise
     fn stores_contains(&self, key: &EntryHash) -> bool {
         stores_contains(&self.stores.read().unwrap(), key)
-    }
-
-    fn get_stats(&self) -> Vec<StorageBackendStats> {
-        self.stores_stats
-            .lock()
-            .unwrap()
-            .iter()
-            .chain(vec![&self.current_stats])
-            .cloned()
-            .collect()
     }
 
     /// Marks an entry as "reused" in the current cycle.
@@ -332,7 +322,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                     None => break,
                 };
 
-                let (store_index, entry_bytes) = match stores_delete(&mut stores, &key) {
+                let (_store_index, entry_bytes) = match stores_delete(&mut stores, &key) {
                     Some(result) => result,
                     // it's possible entry was deleted already when iterating on some other root during gc.
                     // So it's perfectly normal if referenced entry isn't found.
@@ -387,6 +377,13 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
             drop(stores_stats.lock().unwrap().drain(..1));
             drop(stores.write().unwrap().drain(..1));
         }
+    }
+}
+
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> GarbageCollector for MarkMoveGCed<T> {
+    fn new_commit_applied(& mut self, hash: EntryHash) -> Result<(), StorageBackendError>{
+        self.start_new_cycle(Some(hash));
+        Ok(())
     }
 }
 

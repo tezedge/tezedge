@@ -14,6 +14,10 @@ pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
 }
 
+pub trait GarbageCollector{
+    fn new_commit_applied(& mut self, hash: EntryHash) -> Result<(), StorageBackendError>;
+}
+
 #[derive(Debug, Fail)]
 pub enum StorageBackendError {
     #[fail(display = "RocksDB error: {}", error)]
@@ -164,7 +168,7 @@ impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
 }
 
 impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
-    fn from((entry_hash, value): (&EntryHash, &ContextValue)) -> Self {
+    fn from((_, value): (&EntryHash, &ContextValue)) -> Self {
         StorageBackendStats {
             key_bytes: mem::size_of::<EntryHash>(),
             value_bytes: size_of_vec(&value),

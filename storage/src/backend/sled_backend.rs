@@ -3,11 +3,11 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use std::ops::Deref;
-use crypto::hash::HashType;
 use crate::MerkleStorage;
 use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use bytes::Buf;
 use std::io::Read;
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 
 pub struct SledBackend {
     db: sled::Db,
@@ -20,6 +20,12 @@ impl SledBackend {
             inner: db.deref().clone(),
             db,
         }
+    }
+}
+
+impl GarbageCollector for SledBackend {
+    fn new_commit_applied(& mut self, _: EntryHash) -> Result<(), StorageBackendError>{
+        Ok(())
     }
 }
 

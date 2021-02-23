@@ -3,9 +3,10 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 
-use crate::persistent::database::{ KeyValueStoreBackend, DBError};
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use crate::MerkleStorage;
-use rocksdb::{WriteOptions, DB};
+use rocksdb::DB;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
@@ -22,20 +23,18 @@ impl RocksDBBackend {
     }
 }
 
-impl RocksDBBackend {
-    fn default_write_options() -> WriteOptions {
-        let mut opts = WriteOptions::default();
-        opts.set_sync(false);
-        opts
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RocksDBBackendStats {
     mem_table_total: u64,
     mem_table_unflushed: u64,
     mem_table_readers_total: u64,
     cache_total: u64,
+}
+
+impl GarbageCollector for RocksDBBackend {
+    fn new_commit_applied(& mut self, _: EntryHash) -> Result<(), StorageBackendError>{
+        Ok(())
+    }
 }
 
 impl KeyValueStoreBackend<MerkleStorage> for RocksDBBackend {
