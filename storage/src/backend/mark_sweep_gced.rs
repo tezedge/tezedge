@@ -3,11 +3,11 @@ use std::collections::{HashSet, VecDeque, HashMap};
 
 use crate::MerkleStorage;
 use crate::merkle_storage::{hash_entry, ContextValue, Entry, EntryHash};
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
+use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use crate::storage_backend::StorageBackendError;
 
 /// Garbage Collected Key Value Store
-pub struct MarkSweepGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
+pub struct MarkSweepGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     store: T,
     cycles_limit: usize,
     blocks_per_cycle: usize,
@@ -15,7 +15,7 @@ pub struct MarkSweepGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
     marked: HashMap<EntryHash, HashSet<EntryHash>>
 }
 
-impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> MarkSweepGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T> {
     pub fn new(cycle_count: usize, cycle_size: usize) -> Self {
         Self {
             store: Default::default(),
@@ -96,7 +96,7 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> MarkSw
     }
 }
 
-impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Default> SimpleKeyValueStoreWithSchema<MerkleStorage> for MarkSweepGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBackend<MerkleStorage> for MarkSweepGCed<T> {
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.store.put(key,value)
     }

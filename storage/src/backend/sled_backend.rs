@@ -5,7 +5,7 @@ use crate::merkle_storage::{ContextValue, EntryHash};
 use std::ops::Deref;
 use crypto::hash::HashType;
 use crate::MerkleStorage;
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
+use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use bytes::Buf;
 use std::io::Read;
 
@@ -23,7 +23,7 @@ impl SledBackend {
     }
 }
 
-impl SimpleKeyValueStoreWithSchema<MerkleStorage> for SledBackend {
+impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError>{
         let garbage_keys: Vec<_> = self

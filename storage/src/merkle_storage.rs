@@ -60,7 +60,7 @@ use crypto::hash::{FromBytesError, HashType};
 
 use crate::backend::InMemoryBackend;
 use crate::persistent;
-use crate::persistent::database::SimpleKeyValueStoreWithSchema;
+use crate::persistent::database::KeyValueStoreBackend;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::StorageBackendError;
@@ -128,7 +128,7 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub type MerkleStorageKV = dyn SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send;
+pub type MerkleStorageKV = dyn KeyValueStoreBackend<MerkleStorage> + Sync + Send;
 
 pub type RefCnt = usize;
 

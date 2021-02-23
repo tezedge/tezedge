@@ -91,7 +91,7 @@ pub trait KeyValueStoreWithSchemaIterator<S: KeyValueSchema> {
 }
 
 /// Custom trait extending RocksDB to better handle and enforce database schema
-pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
+pub trait KeyValueStoreBackend<S: KeyValueSchema> {
 
     fn is_persistent(&self) -> bool;
 
@@ -156,7 +156,7 @@ pub trait SimpleKeyValueStoreWithSchema<S: KeyValueSchema> {
     fn total_get_mem_usage(&self) -> Result<usize,DBError>;
 }
 
-pub trait KeyValueStoreWithSchema<S: KeyValueSchema>: SimpleKeyValueStoreWithSchema<S> + KeyValueStoreWithSchemaIterator<S>{}
+pub trait KeyValueStoreWithSchema<S: KeyValueSchema>: KeyValueStoreBackend<S> + KeyValueStoreWithSchemaIterator<S>{}
 
 impl<S: KeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
@@ -192,7 +192,7 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
 impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {
 }
 
-impl<S: KeyValueSchema> SimpleKeyValueStoreWithSchema<S> for DB {
+impl<S: KeyValueSchema> KeyValueStoreBackend<S> for DB {
 
     fn is_persistent(&self) -> bool{
         true
@@ -294,7 +294,7 @@ impl<S: KeyValueSchema> SimpleKeyValueStoreWithSchema<S> for DB {
             ).collect();
 
         for i in garbage{
-            (self as & dyn SimpleKeyValueStoreWithSchema::<S>).delete(&i)?;
+            (self as & dyn KeyValueStoreBackend::<S>).delete(&i)?;
         }
         Ok(())
     }

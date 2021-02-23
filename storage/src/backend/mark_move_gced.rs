@@ -5,7 +5,7 @@ use std::ops::{Deref, DerefMut};
 use std::sync::{mpsc, Arc, Mutex, RwLock};
 use crate::MerkleStorage;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
+use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use std::thread;
 use std::time::Duration;
 
@@ -16,7 +16,7 @@ use crate::storage_backend::StorageBackendStats;
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where
-    T: SimpleKeyValueStoreWithSchema<MerkleStorage>,
+    T: KeyValueStoreBackend<MerkleStorage>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -28,7 +28,7 @@ where
 /// Returns store index containing the entry with hash `key`  (trying from newest to oldest)
 fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
 where
-    T: SimpleKeyValueStoreWithSchema<MerkleStorage>,
+    T: KeyValueStoreBackend<MerkleStorage>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -41,7 +41,7 @@ where
 /// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
 fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
 where
-    T: SimpleKeyValueStoreWithSchema<MerkleStorage>,
+    T: KeyValueStoreBackend<MerkleStorage>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -55,7 +55,7 @@ where
 /// The return value is `None` if the value was not found, or Some((store_idx, value)) otherwise.
 fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
 where
-    T: SimpleKeyValueStoreWithSchema<MerkleStorage>,
+    T: KeyValueStoreBackend<MerkleStorage>,
     S: DerefMut<Target = Vec<T>>,
 {
     stores
@@ -78,7 +78,7 @@ pub enum CmdMsg {
 }
 
 /// Garbage Collected Key Value Store
-pub struct MarkMoveGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
+pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     /// cycles limit
     cycles: usize,
     /// Stores for each cycle, older to newer
@@ -98,7 +98,7 @@ pub struct MarkMoveGCed<T: SimpleKeyValueStoreWithSchema<MerkleStorage>> {
 }
 
 
-impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Send + Sync + Default> MarkMoveGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> MarkMoveGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
         assert!(
             cycle_count > 1,
@@ -182,7 +182,7 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Send + Sync + D
     }
 }
 
-impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Send + Sync + Default> SimpleKeyValueStoreWithSchema<MerkleStorage> for MarkMoveGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> KeyValueStoreBackend<MerkleStorage> for MarkMoveGCed<T> {
     fn put(& self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.current.put(key,value)
     }
@@ -222,7 +222,7 @@ impl<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Send + Sync + D
 }
 
 /// Garbage collector main function
-fn kvstore_gc_thread_fn<T: SimpleKeyValueStoreWithSchema<MerkleStorage>>(
+fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     stores: Arc<RwLock<Vec<T>>>,
     stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
@@ -418,20 +418,20 @@ mod tests {
         bincode::serialize(&blob(value)).unwrap()
     }
 
-    fn get<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send + Default>(store: &MarkMoveGCed<T>, key: &[u8]) -> Option<Entry> {
+    fn get<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &MarkMoveGCed<T>, key: &[u8]) -> Option<Entry> {
         store
             .get(&entry_hash(key))
             .unwrap()
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
-    fn put<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8], value: Entry) {
+    fn put<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8], value: Entry) {
         store
             .put(&entry_hash(key), &bincode::serialize(&value).unwrap())
             .unwrap();
     }
 
-    fn mark_reused<T: 'static + SimpleKeyValueStoreWithSchema<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8]) {
+    fn mark_reused<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(store: &mut MarkMoveGCed<T>, key: &[u8]) {
         store.mark_reused(entry_hash(key));
     }
 

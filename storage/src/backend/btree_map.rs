@@ -4,7 +4,7 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 use std::sync::RwLock;
 use crypto::hash::HashType;
-use crate::persistent::database::{SimpleKeyValueStoreWithSchema, DBError};
+use crate::persistent::database::{KeyValueStoreBackend, DBError};
 use crate::MerkleStorage;
 use std::ops::{DerefMut, AddAssign, SubAssign};
 
@@ -34,7 +34,7 @@ impl<K: Ord, V> KVStore<K, V> {
     }
 }
 
-impl SimpleKeyValueStoreWithSchema<MerkleStorage> for KVStore<EntryHash, ContextValue> {
+impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
 
     fn is_persistent(&self) -> bool{
         false
