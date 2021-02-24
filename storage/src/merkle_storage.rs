@@ -795,7 +795,6 @@ impl MerkleStorage {
     }
 
     /// Copy subtree under a new path.
-    /// TODO Consider copying values!
     pub fn copy(
         &mut self,
         new_tree_id: TreeId,
@@ -831,16 +830,9 @@ impl MerkleStorage {
     ///
     /// # Arguments
     ///
-    /// * `root_hash` - hash of Tree to modify
-    /// * `key` - path under which the changes takes place
-    /// * `new_node` - None for deletion, Some for inserting a hash under the key.
-    /// Get a new tree with `new_entry_hash` put under given `key`.
-    ///
-    /// # Arguments
-    ///
     /// * `root` - Tree to modify
     /// * `key` - path under which the changes takes place
-    /// * `new_entry_hash` - None for deletion, Some for inserting a hash under the key.
+    /// * `new_node` - None for deletion, Some for inserting a hash under the key.
     fn compute_new_root_with_change(
         &mut self,
         root: &Tree,
