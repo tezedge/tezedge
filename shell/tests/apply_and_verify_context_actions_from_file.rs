@@ -20,6 +20,22 @@ use storage::{
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
+pub fn get_tree_action(action: &ContextAction) -> String {
+    match action {
+        ContextAction::Get { .. } => "ContextAction::Get".to_string(),
+        ContextAction::Mem { .. } => "ContextAction::Mem".to_string(),
+        ContextAction::DirMem { .. } => "ContextAction::DirMem".to_string(),
+        ContextAction::Set { .. } => "ContextAction::Set".to_string(),
+        ContextAction::Copy { .. } => "ContextAction::Copy".to_string(),
+        ContextAction::Delete { .. } => "ContextAction::Delete".to_string(),
+        ContextAction::RemoveRecursively { .. } => "ContextAction::RemoveRecursively".to_string(),
+        ContextAction::Commit { .. } => "ContextAction::Commit".to_string(),
+        ContextAction::Fold { .. } => "ContextAction::Fold".to_string(),
+        ContextAction::Checkout { .. } => "ContextAction::Checkout".to_string(),
+        ContextAction::Shutdown { .. } => "ContextAction::Shutdown".to_string(),
+    }
+}
+
 fn create_logger() -> Logger {
     let drain = slog_async::Async::new(
         slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
@@ -207,7 +223,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::Commit { .. }
                 | ContextAction::Checkout { .. } => {
                     if let Err(e) = perform_context_action(&action, &mut context) {
-                        panic!("cannot perform action {:?} error: '{}'", &action, e);
+                        panic!("cannot perform action error: '{}'", e);
                     }
                 }
                 ContextAction::Get { .. }
@@ -216,6 +232,14 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::Fold { .. }
                 | ContextAction::Shutdown { .. } => {}
             };
+
+            // verify context hashes after each block
+            if let ContextAction::Checkout { context_hash, .. } = action {
+                assert_eq!(
+                    context_hash.as_slice(),
+                    context.get_last_commit_hash().unwrap().as_slice()
+                );
+            }
 
             if let Some(expected_hash) = get_new_tree_hash(&action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
