@@ -19,7 +19,10 @@ use tokio::time::timeout;
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
 use crypto::hash::{CryptoboxPublicKeyHash, Hash};
 use crypto::nonce::{self, Nonce, NoncePair};
-use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_encoding::{
+    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
+    binary_writer::BinaryWriterError,
+};
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -54,15 +57,15 @@ pub enum PeerError {
     #[fail(display = "Network error: {}, reason: {}", message, error)]
     NetworkError { error: Error, message: &'static str },
     #[fail(display = "Message serialization error, reason: {}", error)]
-    SerializationError { error: tezos_encoding::ser::Error },
+    SerializationError { error: BinaryWriterError },
     #[fail(display = "Message deserialization error, reason: {}", error)]
     DeserializationError { error: BinaryReaderError },
     #[fail(display = "Crypto error, reason: {}", error)]
     CryptoError { error: crypto::CryptoError },
 }
 
-impl From<tezos_encoding::ser::Error> for PeerError {
-    fn from(error: tezos_encoding::ser::Error) -> Self {
+impl From<BinaryWriterError> for PeerError {
+    fn from(error: BinaryWriterError) -> Self {
         PeerError::SerializationError { error }
     }
 }
@@ -565,17 +568,21 @@ async fn begin_process_incoming(
                         );
                     }
                 }
-                Err(e) => {
-                    if let StreamError::DeserializationError {
-                        error: BinaryReaderError::UnsupportedTag { tag },
-                    } = e
-                    {
-                        warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
-                    } else {
+                Err(e) => match e {
+                    StreamError::DeserializationError { ref error } => match error.kind() {
+                        BinaryReaderErrorKind::UnsupportedTag { tag } => {
+                            warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
+                        }
+                        _ => {
+                            warn!(log, "Failed to read peer message"; "reason" => e);
+                            break;
+                        }
+                    },
+                    _ => {
                         warn!(log, "Failed to read peer message"; "reason" => e);
                         break;
                     }
-                }
+                },
             },
             Err(_) => {
                 warn!(log, "Peer message read timed out"; "secs" => READ_TIMEOUT_LONG.as_secs());
