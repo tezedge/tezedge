@@ -733,8 +733,6 @@ impl MerkleStorage {
         self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone());
         self.persist_staged_entry_to_db(&entry)?;
 
-        self.staged.clear();
-        self.trees.clear();
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
         self.update_execution_stats("Commit".to_string(), None, &instant);
         Ok(hash_commit(&new_commit)?)
@@ -1500,7 +1498,7 @@ mod tests {
 
         assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
 
-        storage.set(2, &vec!["data".to_string(), "x".to_string()], &vec![97]);
+        storage.set(1, &vec!["data".to_string(), "x".to_string()], &vec![97]);
         let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
 
         assert_eq!([0xCA, 0x7B, 0xC7, 0x02], commit.unwrap()[0..4]);
@@ -2067,8 +2065,10 @@ mod tests {
         assert_eq!(storage.get(key).unwrap(), empty_response);
     }
 
-    fn test_fail_to_checkout_stage_from_before_commit(backend: &str) {
-        let db_name = &format!("test_fail_to_checkout_stage_from_before_commit_{}", backend);
+    // Currently we don't perform a cleanup after each COMMIT
+    // That will happen during the next CHECKOUT, this test is to ensure that
+    fn test_checkout_stage_from_before_commit(backend: &str) {
+        let db_name = &format!("test_checkout_stage_from_before_commit_{}", backend);
         let key = &vec!["a".to_string()];
 
         clean_db(db_name);
@@ -2081,8 +2081,8 @@ mod tests {
             .commit(0, "author".to_string(), "message".to_string())
             .unwrap();
 
-        assert_eq!(storage.staged.is_empty(), true);
-        assert_eq!(storage.stage_checkout(1).is_err(), true);
+        assert_eq!(storage.staged.is_empty(), false);
+        assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
 
     macro_rules! tests_with_storage {
@@ -2158,7 +2158,7 @@ mod tests {
                 }
                 #[test]
                 fn test_fail_to_checkout_stage_from_before_commit() {
-                    super::test_fail_to_checkout_stage_from_before_commit($name_str)
+                    super::test_checkout_stage_from_before_commit($name_str)
                 }
             }
         };
