@@ -68,6 +68,7 @@ pub mod predecessor_storage;
 pub mod skip_list;
 pub mod storage_backend;
 pub mod system_storage;
+pub mod commit_log;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
