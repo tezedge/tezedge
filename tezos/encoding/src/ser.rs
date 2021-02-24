@@ -51,7 +51,7 @@ impl ser::Error for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_fmt(format_args!("{}", self))
+        formatter.write_fmt(format_args!("{}", self.message))
     }
 }
 
