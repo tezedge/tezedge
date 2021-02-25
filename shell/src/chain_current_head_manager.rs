@@ -254,7 +254,7 @@ impl ChainCurrentHeadManager {
                 Some(head) => head.to_debug_info(),
             },
             Err(e) => {
-                warn!(ctx.system.log(), "Failed to collect local head debug info"; "reason" => format!("{}", e));
+                warn!(ctx.system.log(), "Failed to collect local head debug info"; "reason" => e);
                 (
                     "-failed-to-collect-".to_string(),
                     0,

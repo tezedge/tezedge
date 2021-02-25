@@ -6,13 +6,14 @@ use std::env;
 use std::iter::FromIterator;
 
 use assert_json_diff::assert_json_eq_no_panic;
-use enum_iterator::IntoEnumIterator;
 use failure::format_err;
 use hyper::body::Buf;
 use hyper::Client;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
@@ -20,7 +21,7 @@ lazy_static! {
     static ref NODE_RPC_CONTEXT_ROOT_2: String = node_rpc_context_root_2();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, IntoEnumIterator)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum NodeType {
     Node1,
     Node2,
@@ -483,7 +484,7 @@ async fn test_rpc_compare_json(rpc_path: &str) {
 
 /// Returns json data from any/random node (if fails, tries other)
 async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
-    let mut nodes: Vec<NodeType> = NodeType::into_enum_iter().collect_vec();
+    let mut nodes: Vec<NodeType> = NodeType::iter().collect_vec();
     nodes.shuffle(&mut rand::thread_rng());
 
     for node in nodes {

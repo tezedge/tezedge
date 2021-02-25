@@ -5,7 +5,10 @@
 //!
 //! - every peer has his own BootstrapState
 //! - bootstrap state is initialized from branch history, which is splitted to partitions
+//!
+//! - it is king of bingo, where we prepare block intervals, and we check/mark what is downloaded/applied, and what needs to be downloaded or applied
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -52,116 +55,207 @@ impl BootstrapState {
         &self.to_level
     }
 
-    /// This finds block, which should be downloaded first.
-    pub fn next_block_to_download(&self) -> Option<Arc<BlockHash>> {
-        let mut previous_interval_applied = true;
+    /// This finds block, which should be downloaded first and refreshes state for all touched blocks
+    ///
+    /// max_interval_ahead_count - we want/need the oldest header at first, so we dont download agressively the whole chain from all intervals (which could speedup download),
+    ///                            so we will download just few intervals ahead
+    ///
+    /// BM - callback then returns actual metadata state + his predecessor
+    pub fn find_next_blocks_to_download<BM>(
+        &mut self,
+        requested_count: usize,
+        mut ignored_blocks: HashSet<Arc<BlockHash>>,
+        max_interval_ahead_count: i8,
+        get_block_metadata: BM,
+    ) -> Result<Vec<Arc<BlockHash>>, StateError>
+    where
+        BM: Fn(&BlockHash) -> Result<Option<(InnerBlockState, Arc<BlockHash>)>, StateError>,
+    {
+        let mut result = Vec::with_capacity(requested_count);
+        if requested_count == 0 {
+            return Ok(result);
+        }
+        let mut max_interval_ahead_count = max_interval_ahead_count;
 
-        for interval in &self.intervals {
-            // Note: little slow down, we want to download next interval, only if the previos one was applied successfully
-            // to prevent downloading invalid rest of the chain
-            if !previous_interval_applied {
-                break;
-            }
-            previous_interval_applied = interval.all_block_applied;
-
+        // lets iterate intervals
+        for interval in self.intervals.iter_mut() {
             // if interval is downloaded, just skip it
             if interval.all_blocks_downloaded {
                 continue;
             }
 
-            // get first non-downloaded block
-            for b in &interval.blocks {
-                // skip applied
-                if b.applied {
-                    continue;
-                }
+            // let walk throught interval and resolve first missing block
+            let (missing_block, was_interval_updated) =
+                interval.find_first_missing_block(&ignored_blocks, &get_block_metadata)?;
 
-                if !b.block_downloaded {
-                    return Some(b.block_hash.clone());
-                }
+            // add to scheduled and continue
+            if let Some(missing_block) = missing_block {
+                result.push(missing_block.clone());
+                ignored_blocks.insert(missing_block);
+                max_interval_ahead_count -= 1;
+            }
+            if was_interval_updated {
+                self.last_updated = Instant::now();
             }
 
-            // if we came here, it means, that interval is not closed, but all blocks are downloaded
-            // we mark all_blocks_downloaded only if predecessor matches first block
-            // so we need to return here first block after begining to continue
-            // to prevent stucking the pipeline
-            if let Some(first_block_after_begining) = interval.blocks.get(1) {
-                return Some(first_block_after_begining.block_hash.clone());
+            if result.len() >= requested_count || max_interval_ahead_count <= 0 {
+                return Ok(result);
             }
         }
-        None
+
+        Ok(result)
     }
 
-    /// This finds block, for which we should download operations.
-    pub fn next_block_operations_to_download(&self) -> Option<Arc<BlockHash>> {
-        let mut previous_interval_applied = true;
+    /// This finds block, which we miss operations and should be downloaded first and also refreshes state for all touched blocks
+    ///
+    /// max_interval_ahead_count - we want/need the oldest header at first, so we dont download agressively the whole chain from all intervals (which could speedup download),
+    ///                            so we will download just few intervals ahead
+    ///
+    /// OC - callback then returns if operations are already completelly downloaded
+    pub fn find_next_block_operations_to_download<OC>(
+        &mut self,
+        requested_count: usize,
+        mut ignored_blocks: HashSet<Arc<BlockHash>>,
+        max_interval_ahead_count: i8,
+        is_operations_complete: OC,
+    ) -> Result<Vec<Arc<BlockHash>>, StateError>
+    where
+        OC: Fn(&BlockHash) -> Result<bool, StateError>,
+    {
+        let mut result = Vec::with_capacity(requested_count);
+        if requested_count == 0 {
+            return Ok(result);
+        }
 
-        for interval in &self.intervals {
-            // Note: little slow down, we want to download next interval, only if the previos one was applied successfully
-            // to prevent downloading invalid rest of the chain
-            if !previous_interval_applied {
-                break;
+        let mut max_interval_ahead_count = max_interval_ahead_count;
+
+        // lets iterate intervals
+        for interval in self.intervals.iter_mut() {
+            // if interval is downloaded, just skip it
+            if interval.all_operations_downloaded {
+                continue;
             }
-            previous_interval_applied = interval.all_block_applied;
 
-            // get first non-downloaded block
-            for b in &interval.blocks {
-                // skip applied
-                if b.applied {
-                    continue;
-                }
+            let partial_requested_count = if result.len() >= requested_count {
+                return Ok(result);
+            } else {
+                requested_count - result.len()
+            };
 
-                if !b.operations_downloaded {
-                    return Some(b.block_hash.clone());
-                }
+            // let walk throught interval and resolve missing block from this interval
+            let (missing_blocks, was_interval_updated) = interval
+                .find_block_with_missing_operations(
+                    partial_requested_count,
+                    &ignored_blocks,
+                    &is_operations_complete,
+                )?;
+
+            if !missing_blocks.is_empty() {
+                // add to scheduled and continue
+                result.extend(missing_blocks.clone());
+                ignored_blocks.extend(missing_blocks);
+                max_interval_ahead_count -= 1;
+            }
+            if was_interval_updated {
+                self.last_updated = Instant::now();
+            }
+
+            if result.len() >= requested_count || max_interval_ahead_count <= 0 {
+                return Ok(result);
             }
         }
-        None
+
+        Ok(result)
     }
 
-    /// This finds block, for which we should apply.
-    pub fn next_block_to_apply(&self) -> Option<Arc<BlockHash>> {
-        let mut previous_interval_applied = true;
+    /// This finds block, for which we should apply and also refreshes state for all touched blocks.
+    ///
+    /// IA - callback then returns if block is already aplpied
+    pub fn find_next_block_to_apply<IA>(
+        &mut self,
+        is_block_applied: IA,
+    ) -> Result<Option<Arc<BlockHash>>, StateError>
+    where
+        IA: Fn(&BlockHash) -> Result<bool, StateError>,
+    {
+        let mut last_marked_as_applied_block = None;
+        let mut non_applied_candidate = None;
 
-        for interval in &self.intervals {
-            // Note: little slow down, we want to download next interval, only if the previos one was applied successfully
-            // to prevent downloading invalid rest of the chain
-            if !previous_interval_applied {
-                break;
+        for interval in self.intervals.iter_mut() {
+            if interval.all_block_applied {
+                continue;
             }
-            previous_interval_applied = interval.all_block_applied;
+
+            let mut previous: Option<(Arc<BlockHash>, bool)> = None;
 
             // get first non-applied block
-            for b in &interval.blocks {
+            for b in interval.blocks.iter_mut() {
                 // skip applied
                 if b.applied {
+                    previous = Some((b.block_hash.clone(), b.applied));
                     continue;
                 }
 
-                // just check first block
-                if b.block_downloaded && b.operations_downloaded {
-                    return Some(b.block_hash.clone());
-                } else {
-                    return None;
+                // check if block is already applied
+                if is_block_applied(&b.block_hash)? {
+                    // refresh state for block
+                    if b.update(&InnerBlockState {
+                        applied: true,
+                        block_downloaded: true,
+                        operations_downloaded: true,
+                    }) {
+                        last_marked_as_applied_block = Some(b.block_hash.clone());
+                        self.last_updated = Instant::now();
+                    }
+
+                    // continue to check next block
+                    previous = Some((b.block_hash.clone(), b.applied));
+                    continue;
                 }
+
+                // if block and operations are downloaded, we check his predecessor, if applied, we can apply
+                if b.block_downloaded && b.operations_downloaded {
+                    if let Some(predecessor) = b.predecessor_block_hash.as_ref() {
+                        if let Some((previous_block_hash, previous_is_applied)) = previous {
+                            if predecessor.as_ref().eq(previous_block_hash.as_ref())
+                                && previous_is_applied
+                            {
+                                // just in this case, we can apply this block
+                                non_applied_candidate = Some(b.block_hash.clone());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // if we did not find anything in this interval and this interval is not whole applied, there is no reason to continue to next interval
+                break;
             }
+
+            // // if we found non applied candidate in this interval, then we dont need to continue to the next interval
+            // if non_applied_candidate.is_some() {
+            //     break;
+            // }
+            break;
         }
-        None
+
+        // handle last block, which we marked as applied - to remove the rest of the intervals to speedup
+        if let Some(last_marked_as_applied_block) = last_marked_as_applied_block {
+            self.block_applied(&last_marked_as_applied_block);
+        }
+
+        Ok(non_applied_candidate)
     }
 
     /// Notify state requested_block_hash was downloaded
     ///
-    /// <BM> callback wchic return (bool as downloaded, bool as applied, bool as are_operations_complete)
-    pub fn block_downloaded<BM>(
+    /// <BM> callback which return (bool as downloaded, bool as applied, bool as are_operations_complete)
+    pub fn block_downloaded(
         &mut self,
         requested_block_hash: &BlockHash,
         requested_block_new_inner_state: &InnerBlockState,
-        predecessor_block_hash: &BlockHash,
-        get_block_metadata: BM,
-    ) -> Result<(), StateError>
-    where
-        BM: Fn(&BlockHash) -> Result<Option<InnerBlockState>, StateError>,
-    {
+        predecessor_block_hash: Arc<BlockHash>,
+    ) {
         // find first interval with this block
         let interval_to_handle = self.intervals.iter_mut().enumerate().find(|(_, interval)| {
             // find first interval with this block
@@ -172,46 +266,15 @@ impl BootstrapState {
                 .any(|b| b.block_hash.as_ref().eq(requested_block_hash))
         });
 
-        let mut is_predecessor_applied = false;
-
         // Note:end_interval
         let mut end_of_interval: Option<(usize, InnerBlockState)> = None;
 
         if let Some((interaval_idx, interval)) = interval_to_handle {
-            let mut predecessor_insert_to_index: Option<usize> = None;
-            let mut predecessor_found = false;
             let block_count = interval.blocks.len();
+            let mut predecessor_insert_to_index: Option<usize> = None;
+
             // update metadata
             for (block_index, b) in interval.blocks.iter_mut().enumerate() {
-                // Note:begining_interval - handle
-                // we found predecessor, means we found begining of interval
-                if predecessor_block_hash.eq(b.block_hash.as_ref()) {
-                    // Note:begining_interval - handle begining of the interval
-                    predecessor_found = true;
-
-                    // if block is not applied, then try to update his state
-                    // Note: we expect that block here is applied
-                    if !b.applied {
-                        // update its state
-                        if let Some(new_state) = get_block_metadata(predecessor_block_hash)? {
-                            if b.update(&new_state) {
-                                self.last_updated = Instant::now();
-                            }
-                        }
-                    }
-
-                    // Note:begining_interval - handle
-                    // if predecessor (a.k.a begining of the interval) is downloaded, it means that whole interval is downloaded
-                    if b.block_downloaded && block_index == 0 {
-                        interval.all_blocks_downloaded = true;
-                        self.last_updated = Instant::now();
-                    }
-
-                    if b.applied {
-                        is_predecessor_applied = true;
-                    }
-                }
-
                 // update request block as downloaded
                 if requested_block_hash.eq(b.block_hash.as_ref()) {
                     // if applied, then skip
@@ -223,13 +286,11 @@ impl BootstrapState {
                     if b.update(&requested_block_new_inner_state) {
                         self.last_updated = Instant::now();
                     }
-
-                    // add predecessor to pipeline, if not found yet
-                    if !predecessor_found {
-                        // predecessor_found = true;
-                        // insert before requested block
-                        predecessor_insert_to_index = Some(block_index);
+                    if b.update_predecessor(predecessor_block_hash.clone()) {
+                        self.last_updated = Instant::now();
                     }
+
+                    predecessor_insert_to_index = Some(block_index);
 
                     // Note:end_interval: handle end of the interval
                     if (block_count - 1) == block_index {
@@ -247,22 +308,31 @@ impl BootstrapState {
                 }
             }
 
-            // if we need to insert predecessor, measn we are not done, and interval is not closed yet
-            if let Some(predecessor_index) = predecessor_insert_to_index {
-                // create actual state
-                let mut predecessor_state =
-                    BlockState::new(Arc::new(predecessor_block_hash.clone()));
-                if let Some(new_state) = &get_block_metadata(predecessor_block_hash)? {
-                    let _ = predecessor_state.update(&new_state);
+            if let Some(predecessor_insert_to_index) = predecessor_insert_to_index {
+                // we cannot add predecessor before begining of interval
+                if predecessor_insert_to_index > 0 {
+                    // check if predecessor block is really our predecessor
+                    if let Some(potential_predecessor) =
+                        interval.blocks.get(predecessor_insert_to_index - 1)
+                    {
+                        // if not, we need to insert predecessor here
+                        if !potential_predecessor
+                            .block_hash
+                            .as_ref()
+                            .eq(&predecessor_block_hash)
+                        {
+                            interval.blocks.insert(
+                                predecessor_insert_to_index,
+                                BlockState::new(predecessor_block_hash),
+                            );
+                        }
+                    }
                 }
+            }
 
-                if predecessor_state.applied {
-                    is_predecessor_applied = true;
-                } else {
-                    // insert
-                    interval.blocks.insert(predecessor_index, predecessor_state);
-                    self.last_updated = Instant::now();
-                }
+            // check if have downloaded whole interval
+            if interval.check_all_blocks_downloaded() {
+                self.last_updated = Instant::now();
             }
         };
 
@@ -278,17 +348,10 @@ impl BootstrapState {
             }
         }
 
-        // handle, what if requested block is already applied (this removes all predecessor)
+        // check, what if requested block is already applied (this removes all predecessor and/or the whole interval)
         if requested_block_new_inner_state.applied {
             self.block_applied(&requested_block_hash);
-            return Ok(());
         }
-        if is_predecessor_applied {
-            self.block_applied(&predecessor_block_hash);
-            return Ok(());
-        }
-
-        Ok(())
     }
 
     /// Notify state requested_block_hash has all downloaded operations
@@ -404,6 +467,9 @@ impl BootstrapState {
                     let _ = interval.blocks.remove(0);
                     self.last_updated = Instant::now();
                 }
+                if interval.check_all_blocks_downloaded() {
+                    self.last_updated = Instant::now();
+                }
             }
 
             // Note:end_interval we need to copy this to beginging of the next interval
@@ -438,45 +504,6 @@ impl BootstrapState {
     pub fn is_done(&self) -> bool {
         self.intervals.is_empty()
     }
-
-    // pub fn state_to_string(&self) -> String {
-    //     let intervals = self
-    //         .intervals
-    //         .iter()
-    //         .map(|i| {
-    //             let mut block_downloaded = 0;
-    //             let mut operations_downloaded = 0;
-    //             let mut applied = 0;
-    //             for b in &i.blocks {
-    //                 if b.block_downloaded {
-    //                     block_downloaded += 1;
-    //                 }
-    //                 if b.operations_downloaded {
-    //                     operations_downloaded += 1;
-    //                 }
-    //                 if b.applied {
-    //                     applied += 1;
-    //                 }
-    //             }
-    //             format!(
-    //                 "({}/{}, bd: {}, opd: {}, ap: {})",
-    //                 i.blocks.len(),
-    //                 i.all_blocks_downloaded,
-    //                 block_downloaded,
-    //                 operations_downloaded,
-    //                 applied
-    //             )
-    //         })
-    //         .collect::<Vec<String>>()
-    //         .join(", ");
-    //
-    //     format!(
-    //         "{:?}, intervals: {} - {}",
-    //         self.last_updated.elapsed(),
-    //         self.intervals.len(),
-    //         intervals
-    //     )
-    // }
 }
 
 /// Partions represents sequence from history, ordered from lowest_level/oldest block
@@ -490,6 +517,7 @@ impl BootstrapState {
 ///     (bh4, bh5)
 struct BootstrapInterval {
     all_blocks_downloaded: bool,
+    all_operations_downloaded: bool,
     all_block_applied: bool,
 
     // TODO: we should maybe add here: (start: Arc<Mutex<BlockState>>, end: Arc<Mutex<BlockState>>)
@@ -501,6 +529,7 @@ impl BootstrapInterval {
     fn new(block_hash: Arc<BlockHash>) -> Self {
         Self {
             all_blocks_downloaded: false,
+            all_operations_downloaded: false,
             all_block_applied: false,
             blocks: vec![BlockState::new(block_hash)],
         }
@@ -509,6 +538,7 @@ impl BootstrapInterval {
     fn new_applied(block_hash: Arc<BlockHash>) -> Self {
         Self {
             all_blocks_downloaded: false,
+            all_operations_downloaded: false,
             all_block_applied: false,
             blocks: vec![BlockState::new_applied(block_hash)],
         }
@@ -517,6 +547,7 @@ impl BootstrapInterval {
     fn new_with_left(left: BlockState, right_block_hash: Arc<BlockHash>) -> Self {
         Self {
             all_blocks_downloaded: false,
+            all_operations_downloaded: false,
             all_block_applied: false,
             blocks: vec![left, BlockState::new(right_block_hash)],
         }
@@ -560,6 +591,208 @@ impl BootstrapInterval {
 
         intervals
     }
+
+    /// Walks trought interval blocks and checks if we can feed it,
+    /// this also can modify/mark all other blocks with get_block_metadata,
+    /// so it can modify this interval
+    ///
+    /// BM - callback then returns actual metadata state + his predecessor
+    ///
+    /// Returns tuple:
+    ///     0 -> missing block, which we want to download
+    ///     1 -> true/false if we updated interval
+    fn find_first_missing_block<BM>(
+        &mut self,
+        ignored_blocks: &HashSet<Arc<BlockHash>>,
+        get_block_metadata: BM,
+    ) -> Result<(Option<Arc<BlockHash>>, bool), StateError>
+    where
+        BM: Fn(&BlockHash) -> Result<Option<(InnerBlockState, Arc<BlockHash>)>, StateError>,
+    {
+        let mut stop_block: Option<Arc<BlockHash>> = None;
+        let mut was_updated = false;
+        let mut start_from_the_begining = true;
+        while start_from_the_begining {
+            start_from_the_begining = false;
+
+            let mut insert_predecessor: Option<(usize, Arc<BlockHash>)> = None;
+            let mut previous: Option<Arc<BlockHash>> = None;
+
+            for (idx, b) in self.blocks.iter_mut().enumerate() {
+                // stop block optimization, because we are just prepending to blocks (optimization)
+                if let Some(stop_block) = stop_block.as_ref() {
+                    if stop_block.eq(&b.block_hash) {
+                        break;
+                    }
+                }
+
+                if !b.block_downloaded {
+                    match get_block_metadata(&b.block_hash)? {
+                        Some((new_inner_state, predecessor)) => {
+                            // lets update state for blocks
+                            if new_inner_state.block_downloaded {
+                                if b.update(&new_inner_state) {
+                                    was_updated = true;
+                                }
+                                if b.update_predecessor(predecessor) {
+                                    was_updated = true;
+                                }
+                            } else {
+                                // still not downloaded, so we schedule and continue
+                                if !ignored_blocks.contains(&b.block_hash) {
+                                    return Ok((Some(b.block_hash.clone()), was_updated));
+                                }
+                            }
+                        }
+                        None => {
+                            // no metadata for block, so we schedule and continue
+                            if !ignored_blocks.contains(&b.block_hash) {
+                                return Ok((Some(b.block_hash.clone()), was_updated));
+                            }
+                        }
+                    }
+                }
+
+                // check if we missing predecessor in the interval (skipping check for the first block)
+                if let Some(previous_block) = previous.as_ref() {
+                    match b.predecessor_block_hash.as_ref() {
+                        Some(block_predecessor) => {
+                            if !previous_block.as_ref().eq(&block_predecessor) {
+                                // if previos block is not our predecessor, we need to insert it there
+                                insert_predecessor = Some((idx, block_predecessor.clone()));
+                                stop_block = Some(b.block_hash.clone());
+                                break;
+                            }
+                        }
+                        None => {
+                            // strange, we dont know predecessor of block, so we schedule block downloading once more
+                            if !ignored_blocks.contains(&b.block_hash) {
+                                return Ok((Some(b.block_hash.clone()), was_updated));
+                            }
+                        }
+                    }
+                }
+
+                previous = Some(b.block_hash.clone());
+            }
+
+            // handle missing predecessor
+            if let Some((predecessor_idx, predecessor_block_hash)) = insert_predecessor {
+                // create actual state for predecessor
+                let predecessor_state = if let Some((new_state, his_predecessor)) =
+                    get_block_metadata(&predecessor_block_hash)?
+                {
+                    let mut predecessor_state = BlockState::new(predecessor_block_hash);
+                    let _ = predecessor_state.update(&new_state);
+                    let _ = predecessor_state.update_predecessor(his_predecessor);
+                    predecessor_state
+                } else {
+                    BlockState::new(predecessor_block_hash)
+                };
+
+                // insert predecessor (we cannot insert predecessor before beginging of interval)
+                if predecessor_idx != 0 {
+                    self.blocks.insert(predecessor_idx, predecessor_state);
+                }
+                was_updated = true;
+                start_from_the_begining = true;
+            }
+        }
+
+        if self.check_all_blocks_downloaded() {
+            was_updated = true;
+        }
+
+        Ok((None, was_updated))
+    }
+
+    /// Check, if we had downloaded the whole interval,
+    /// if flag ['all_blocks_downloaded'] was set, then returns true.
+    fn check_all_blocks_downloaded(&mut self) -> bool {
+        if self.all_blocks_downloaded {
+            return false;
+        }
+
+        // if we came here, we just need to check if we downloaded the whole interval
+        let mut previous: Option<&Arc<BlockHash>> = None;
+        let mut all_blocks_downloaded = true;
+
+        for b in &self.blocks {
+            if !b.block_downloaded {
+                all_blocks_downloaded = false;
+                break;
+            }
+            if let Some(previous) = previous {
+                if let Some(block_predecessor) = &b.predecessor_block_hash {
+                    if !block_predecessor.eq(&previous) {
+                        all_blocks_downloaded = false;
+                        break;
+                    }
+                } else {
+                    // missing predecessor
+                    all_blocks_downloaded = false;
+                    break;
+                }
+            }
+            previous = Some(&b.block_hash);
+        }
+
+        if all_blocks_downloaded {
+            self.all_blocks_downloaded = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(crate) fn find_block_with_missing_operations<OC>(
+        &mut self,
+        requested_count: usize,
+        ignored_blocks: &HashSet<Arc<BlockHash>>,
+        is_operations_complete: OC,
+    ) -> Result<(Vec<Arc<BlockHash>>, bool), StateError>
+    where
+        OC: Fn(&BlockHash) -> Result<bool, StateError>,
+    {
+        if self.all_operations_downloaded {
+            return Ok((vec![], false));
+        }
+
+        let mut result = Vec::with_capacity(requested_count);
+        let mut was_updated = false;
+
+        for b in self.blocks.iter_mut() {
+            // if downloaded, just skip
+            if b.operations_downloaded {
+                continue;
+            }
+
+            // ignored skip also
+            if ignored_blocks.contains(&b.block_hash) {
+                continue;
+            }
+
+            // check result
+            if result.len() >= requested_count {
+                break;
+            }
+
+            // check real status
+            if is_operations_complete(&b.block_hash)? {
+                b.operations_downloaded = true;
+                was_updated = true;
+            } else {
+                result.push(b.block_hash.clone());
+            }
+        }
+
+        // check interval has all operations downloaded
+        if self.all_blocks_downloaded {
+            self.all_operations_downloaded = self.blocks.iter().all(|b| b.operations_downloaded);
+        }
+
+        Ok((result, was_updated))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -572,6 +805,8 @@ pub struct InnerBlockState {
 #[derive(Clone)]
 struct BlockState {
     block_hash: Arc<BlockHash>,
+    predecessor_block_hash: Option<Arc<BlockHash>>,
+
     applied: bool,
     block_downloaded: bool,
     operations_downloaded: bool,
@@ -581,6 +816,7 @@ impl BlockState {
     fn new(block_hash: Arc<BlockHash>) -> Self {
         BlockState {
             block_hash,
+            predecessor_block_hash: None,
             block_downloaded: false,
             operations_downloaded: false,
             applied: false,
@@ -590,6 +826,7 @@ impl BlockState {
     fn new_applied(block_hash: Arc<BlockHash>) -> Self {
         BlockState {
             block_hash,
+            predecessor_block_hash: None,
             block_downloaded: true,
             operations_downloaded: true,
             applied: true,
@@ -622,16 +859,37 @@ impl BlockState {
 
         was_updated
     }
+
+    fn update_predecessor(&mut self, predecessor: Arc<BlockHash>) -> bool {
+        if self.predecessor_block_hash.is_none() {
+            self.predecessor_block_hash = Some(predecessor);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryInto;
+    use crate::state::tests::block;
 
     use super::*;
 
+    macro_rules! hash_set {
+        ( $( $x:expr ),* ) => {
+            {
+                let mut temp_set = HashSet::new();
+                $(
+                    temp_set.insert($x);
+                )*
+                temp_set
+            }
+        };
+    }
+
     #[test]
-    fn test_bootstrap_state_split() {
+    fn test_bootstrap_state_split_to_intervals() {
         // genesis
         let last_applied = block(0);
         // history blocks
@@ -679,7 +937,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bootstrap_state_blocks_downloading() {
+    fn test_bootstrap_state_block_downloaded() -> Result<(), StateError> {
         // genesis
         let last_applied = block(0);
         // history blocks
@@ -707,174 +965,92 @@ mod tests {
         assert_interval(&pipeline.intervals[5], (block(13), block(15)));
         assert_interval(&pipeline.intervals[6], (block(15), block(20)));
 
-        // try get next blocks to download
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
+        // register downloaded block 2 with his predecessor 1
+        assert!(!pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[0].blocks.len(), 2);
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 1, |_| Ok(None))?;
+        assert_eq!(1, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
 
-        // 1. scenario - that predecessor is not downloaded
-        // register downloaded block 2 with his predecessor 1 (1 IS NOT downloaded yet)
-        assert!(pipeline
-            .block_downloaded(
-                &block(2),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: false,
-                    operations_downloaded: false,
-                },
-                &block(1),
-                |_| {
-                    // predecessor IS NOT downloaded yet
-                    Ok(Some(InnerBlockState {
-                        block_downloaded: false,
-                        applied: false,
-                        operations_downloaded: false,
-                    }))
-                },
-            )
-            .is_ok());
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(1),
+        );
         // interval not closed
         assert!(!pipeline.intervals[0].all_blocks_downloaded);
         assert_eq!(pipeline.intervals[0].blocks.len(), 3);
-        // try get next blocks to download, should be 1
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(1).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(1).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(1).as_ref()))
-        );
-        assert!(matches!(pipeline.next_block_to_apply(), None));
 
-        // download 1 block with operations
-        assert!(
-            pipeline.block_downloaded(
-                &block(1),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: false,
-                    operations_downloaded: true,
-                },
-                &block(0),
-                |_| {
-                    panic!("Failed - we sould not trigger this, because, we have found begining of interval by 0")
-                }).is_ok()
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 1, |_| Ok(None))?;
+        assert_eq!(1, result.len());
+        assert_eq!(result[0].as_ref(), block(1).as_ref());
+
+        // register downloaded block 1
+        pipeline.block_downloaded(
+            &block(1),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(0),
         );
-        // interval closed for block downloading
+        // interval is closed
         assert!(pipeline.intervals[0].all_blocks_downloaded);
         assert_eq!(pipeline.intervals[0].blocks.len(), 3);
-        assert!(matches!(pipeline.next_block_to_download(), None));
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_to_apply(), Some(x) if x.as_ref().eq(block(1).as_ref()))
-        );
 
-        // close/remove 0. interval
-        pipeline.block_operations_downloaded(&block(2));
-        pipeline.block_applied(&block(1));
-        pipeline.block_applied(&block(2));
+        // next interval
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[1].blocks.len(), 2);
 
-        // 2. scenario - that predecessor is downloaded yet (by an other peer's bootstrap_pipeline)
-        assert!(!pipeline.intervals[0].all_blocks_downloaded);
-        assert_eq!(pipeline.intervals[0].blocks.len(), 2);
-        // begining was marked as downloaded by end of the previos interval
-        assert_eq!(pipeline.intervals[0].blocks[0].block_downloaded, true);
-        assert_eq!(pipeline.intervals[0].blocks[0].applied, true);
-        assert_eq!(pipeline.intervals[0].blocks[0].operations_downloaded, true);
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 1, |_| Ok(None))?;
+        assert_eq!(1, result.len());
+        assert_eq!(result[0].as_ref(), block(5).as_ref());
 
-        // register downloaded block 5 with his predecessor 4 (4 IS downloaded yet)
-        assert!(pipeline
-            .block_downloaded(
-                &block(5),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: false,
-                    operations_downloaded: false,
-                },
-                &block(4),
-                |_| {
-                    // predecessor IS downloaded yet
-                    Ok(Some(InnerBlockState {
-                        block_downloaded: true,
-                        applied: false,
-                        operations_downloaded: false,
-                    }))
-                },
-            )
-            .is_ok());
-        assert!(!pipeline.intervals[0].all_blocks_downloaded);
-        assert_eq!(pipeline.intervals[0].blocks.len(), 3);
-
-        // interal is not closed and next block to download will be 4, becauase we did not close interval yet
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(4).as_ref()))
+        // register downloaded block 5 with his predecessor 4
+        pipeline.block_downloaded(
+            &block(5),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(4),
         );
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(4).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(4).as_ref()))
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[1].blocks.len(), 3);
+
+        // register downloaded block 4 as applied
+        pipeline.block_downloaded(
+            &block(4),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: true,
+                operations_downloaded: false,
+            },
+            block(3),
         );
 
-        // download 4 without operations
-        assert!(pipeline
-            .block_downloaded(
-                &block(4),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: false,
-                    operations_downloaded: false,
-                },
-                &block(3),
-                |_| {
-                    // predecessor IS downloaded yet
-                    Ok(Some(InnerBlockState {
-                        block_downloaded: false,
-                        applied: false,
-                        operations_downloaded: false,
-                    }))
-                },
-            )
-            .is_ok());
-        // download 3 without operations
-        assert!(pipeline
-            .block_downloaded(
-                &block(3),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: false,
-                    operations_downloaded: false,
-                },
-                &block(2),
-                |_| {
-                    // predecessor IS downloaded yet
-                    Ok(Some(InnerBlockState {
-                        block_downloaded: false,
-                        applied: false,
-                        operations_downloaded: false,
-                    }))
-                },
-            )
-            .is_ok());
-        // now is closed
-        assert!(pipeline.intervals[0].all_blocks_downloaded);
-        assert_eq!(pipeline.intervals[0].blocks.len(), 4);
-
-        assert!(matches!(pipeline.next_block_to_download(), None));
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(3).as_ref()))
+        // block 2 and 3 were removed, because if 4 is applied, 2/3 must be also
+        assert!(pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[1].blocks.len(), 2);
+        assert_eq!(
+            pipeline.intervals[1].blocks[0].block_hash.as_ref(),
+            block(4).as_ref()
         );
-        assert!(matches!(pipeline.next_block_to_apply(), None));
+        assert_eq!(
+            pipeline.intervals[1].blocks[1].block_hash.as_ref(),
+            block(5).as_ref()
+        );
+
+        Ok(())
     }
 
     #[test]
@@ -906,15 +1082,8 @@ mod tests {
         assert_interval(&pipeline.intervals[5], (block(13), block(15)));
         assert_interval(&pipeline.intervals[6], (block(15), block(20)));
 
-        // try get next blocks to download
+        // check intervals
         assert_eq!(pipeline.intervals.len(), 7);
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(2).as_ref()))
-        );
-        assert!(matches!(pipeline.next_block_to_apply(), None));
 
         // check first block (block(2) ) from next 1 interval
         assert!(!pipeline.intervals[1].blocks[0].applied);
@@ -922,24 +1091,15 @@ mod tests {
         assert!(!pipeline.intervals[1].blocks[0].operations_downloaded);
 
         // register downloaded block 2 which is applied
-        assert!(pipeline
-            .block_downloaded(
-                &block(2),
-                &InnerBlockState {
-                    block_downloaded: true,
-                    applied: true,
-                    operations_downloaded: false,
-                },
-                &block(1),
-                |_| {
-                    Ok(Some(InnerBlockState {
-                        block_downloaded: true,
-                        applied: true,
-                        operations_downloaded: true,
-                    }))
-                },
-            )
-            .is_ok());
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: true,
+                operations_downloaded: false,
+            },
+            block(1),
+        );
         // interval 0 was removed
         assert_eq!(pipeline.intervals.len(), 6);
         // and first block of next interval is marked the same as the last block from 0 inerval, becauase it is the same block (block(2))
@@ -947,14 +1107,563 @@ mod tests {
         assert!(pipeline.intervals[0].blocks[0].applied);
         assert!(pipeline.intervals[0].blocks[0].block_downloaded);
         assert!(!pipeline.intervals[0].blocks[0].operations_downloaded);
+    }
 
-        assert!(
-            matches!(pipeline.next_block_to_download(), Some(x) if x.as_ref().eq(block(5).as_ref()))
+    #[test]
+    fn test_find_first_missing_block_with_data_downloaded_as_from_other_peers_step_by_step(
+    ) -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
         );
-        assert!(
-            matches!(pipeline.next_block_operations_to_download(), Some(x) if x.as_ref().eq(block(5).as_ref()))
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check - 2 is not downloaded
+        assert!(!pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[0].blocks.len());
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |_| Ok(None))?,
+            (Some(next_block), was_updated) if eq(&next_block, &block(2)) && !was_updated
+        ));
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&hash_set![block(2)], |_| Ok(None))?,
+            (None, was_updated) if !was_updated
+        ));
+
+        // check - 2 is not downloaded but is already scheduled
+        assert!(!pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[0].blocks.len());
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&hash_set![block(2)], |_| Ok(None))?,
+            (None, was_updated) if !was_updated
+        ));
+
+        // check - with 2 was downloaded
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |bh| {
+                if bh.eq(&block(2)) {
+                    Ok(Some(result(true, false, false, block(1))))
+                } else {
+                   Ok(None)
+                }
+            })?,
+            (Some(next_block), was_updated) if eq(&next_block, &block(1)) && was_updated
+        ));
+        assert!(!pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(3, pipeline.intervals[0].blocks.len());
+
+        // still waiting for1
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |_| Ok(None))?,
+            (Some(next_block), was_updated) if eq(&next_block, &block(1)) && !was_updated
+        ));
+
+        // check - with 1 was downloaded
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |bh| {
+                if bh.eq(&block(1)) {
+                    Ok(Some(result(true, false, false, block(0))))
+                } else if bh.eq(&block(0)) {
+                   Ok(Some(result(true, true, true, block(0))))
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            (None, was_updated) if was_updated
+        ));
+        assert!(pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(3, pipeline.intervals[0].blocks.len());
+
+        // check - nothing
+        assert!(matches!(
+            pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |_| panic!("test failed"))?,
+            (None, was_updated) if !was_updated
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_first_missing_block_with_data_downloaded_as_from_other_peers_in_one_shot(
+    ) -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
         );
-        assert!(matches!(pipeline.next_block_to_apply(), None));
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check 2. inerval -  is not downloaded
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[1].blocks.len());
+
+        // get next for download
+        assert!(matches!(
+            pipeline.intervals[1].find_first_missing_block(&HashSet::default(), |bh| {
+                // on backgroung all data were downloaded by other peers
+                if bh.eq(&block(5)) {
+                    Ok(Some(result(true, false, false, block(4))))
+                } else if bh.eq(&block(4)) {
+                    Ok(Some(result(true, false, false, block(3))))
+                } else if bh.eq(&block(3)) {
+                    Ok(Some(result(true, false, false, block(2))))
+                } else if bh.eq(&block(2)) {
+                    Ok(Some(result(true, false, false, block(1))))
+                } else if bh.eq(&block(1)) {
+                    Ok(Some(result(true, false, false, block(0))))
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            (None, was_updated) if was_updated
+        ));
+
+        // all resolved as downloaded
+        assert!(pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(4, pipeline.intervals[1].blocks.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_first_missing_block_with_data_downloaded_as_from_other_peers_in_one_shot_not_closed_interval(
+    ) -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check 2. inerval -  is not downloaded
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[1].blocks.len());
+
+        // get next for download
+        assert!(matches!(
+            pipeline.intervals[1].find_first_missing_block(&HashSet::default(), |bh| {
+                if bh.eq(&block(5)) {
+                    Ok(Some(result(true, false, false, block(4))))
+                } else if bh.eq(&block(4)) {
+                    Ok(Some(result(true, false, false, block(3))))
+                } else if bh.eq(&block(3)) {
+                    // three not downloaded
+                    Ok(None)
+                } else if bh.eq(&block(2)) {
+                    Ok(Some(result(true, false, false, block(1))))
+                } else if bh.eq(&block(1)) {
+                    Ok(Some(result(true, false, false, block(0))))
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            (Some(next_block), was_updated) if eq(&next_block, &block(3)) && was_updated
+        ));
+
+        // all resolved as downloaded
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(4, pipeline.intervals[1].blocks.len());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_next_blocks_to_download() -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check 2. inerval -  is not downloaded
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[1].blocks.len());
+
+        // try to get blocks for download - max 1 interval
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 1, |_| Ok(None))?;
+        assert_eq!(1, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+
+        // try to get blocks for download - max 2 interval
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 2, |_| Ok(None))?;
+        assert_eq!(2, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(5).as_ref());
+
+        // try to get blocks for download - max 2 interval with ignored
+        let result =
+            pipeline.find_next_blocks_to_download(5, hash_set![block(5)], 2, |_| Ok(None))?;
+        assert_eq!(2, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(8).as_ref());
+
+        // try to get blocks for download - max 4 interval
+        let result =
+            pipeline.find_next_blocks_to_download(5, HashSet::default(), 4, |_| Ok(None))?;
+        assert_eq!(4, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(5).as_ref());
+        assert_eq!(result[2].as_ref(), block(8).as_ref());
+        assert_eq!(result[3].as_ref(), block(10).as_ref());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_block_with_missing_operations() -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check 1. inerval -  is not downloaded
+        assert!(!pipeline.intervals[0].all_operations_downloaded);
+
+        // download block 2 (but operations still misssing)
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(1),
+        );
+
+        // get next for download (meanwhile operations for 2 was downloaded)
+        let (missing_blocks, was_updated) = pipeline.intervals[0]
+            .find_block_with_missing_operations(5, &HashSet::default(), |bh| {
+                if bh.eq(&block(2)) {
+                    Ok(true)
+                } else if bh.eq(&block(1)) {
+                    Ok(false)
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?;
+        assert!(was_updated);
+        assert_eq!(1, missing_blocks.len());
+        assert_eq!(missing_blocks[0], block(1));
+        assert!(!pipeline.intervals[0].all_operations_downloaded);
+
+        // get next for download with ignored blocks
+        let (missing_blocks, was_updated) = pipeline.intervals[0]
+            .find_block_with_missing_operations(5, &hash_set![block(1)], |bh| {
+                panic!("test failed: {:?}", bh)
+            })?;
+        assert!(!was_updated);
+        assert_eq!(0, missing_blocks.len());
+        assert!(!pipeline.intervals[0].all_operations_downloaded);
+
+        // download block 1 (but operations still misssing)
+        pipeline.block_downloaded(
+            &block(1),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(0),
+        );
+
+        // get next for download -- all operations downloaded
+        let (missing_blocks, was_updated) = pipeline.intervals[0]
+            .find_block_with_missing_operations(5, &HashSet::default(), |bh| {
+                if bh.eq(&block(1)) {
+                    Ok(true)
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?;
+        assert!(was_updated);
+        assert_eq!(0, missing_blocks.len());
+        assert!(pipeline.intervals[0].all_operations_downloaded);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_next_block_operations_to_download() -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check 2. inerval -  is not downloaded
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(2, pipeline.intervals[1].blocks.len());
+
+        // try to get blocks for download - max 1 interval
+        let result =
+            pipeline
+                .find_next_block_operations_to_download(5, HashSet::default(), 1, |_| Ok(false))?;
+        assert_eq!(1, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+
+        // try to get blocks for download - max 2 interval
+        let result =
+            pipeline
+                .find_next_block_operations_to_download(5, HashSet::default(), 2, |_| Ok(false))?;
+        assert_eq!(2, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(5).as_ref());
+
+        // try to get blocks for download - max 4 interval
+        let result =
+            pipeline
+                .find_next_block_operations_to_download(5, HashSet::default(), 4, |_| Ok(false))?;
+        assert_eq!(4, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(5).as_ref());
+        assert_eq!(result[2].as_ref(), block(8).as_ref());
+        assert_eq!(result[3].as_ref(), block(10).as_ref());
+
+        // try to get blocks for download - max 4 interval with ignored
+        let result =
+            pipeline.find_next_block_operations_to_download(5, hash_set![block(10)], 4, |_| {
+                Ok(false)
+            })?;
+        assert_eq!(4, result.len());
+        assert_eq!(result[0].as_ref(), block(2).as_ref());
+        assert_eq!(result[1].as_ref(), block(5).as_ref());
+        assert_eq!(result[2].as_ref(), block(8).as_ref());
+        assert_eq!(result[3].as_ref(), block(13).as_ref());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_find_next_block_to_apply() -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check begining of the pipeleines, shoudl be last_applied
+        assert_eq!(
+            pipeline.intervals[0].blocks[0].block_hash.as_ref(),
+            block(0).as_ref()
+        );
+        assert!(pipeline.intervals[0].blocks[0].applied);
+
+        // try to get next block to apply (no data were downloaded before), so nothging to apply
+        assert!(matches!(
+            pipeline.find_next_block_to_apply(|bh| {
+                if bh.eq(&block(2)) {
+                    Ok(false)
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            None
+        ));
+
+        // another try, but block 2 was applied meanwhile
+        assert!(matches!(
+            pipeline.find_next_block_to_apply(|bh| {
+                if bh.eq(&block(2)) {
+                    // was applied
+                    Ok(true)
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            None
+        ));
+
+        // so first interval should be removed now and all other moved
+        assert_eq!(pipeline.intervals.len(), 6);
+        assert_interval(&pipeline.intervals[0], (block(2), block(5)));
+        assert_eq!(
+            pipeline.intervals[0].blocks[0].block_hash.as_ref(),
+            block(2).as_ref()
+        );
+        assert!(pipeline.intervals[0].blocks[0].applied);
+
+        // another try, but nothging
+        assert!(matches!(
+            pipeline.find_next_block_to_apply(|bh| {
+                if bh.eq(&block(5)) {
+                    // was applied
+                    Ok(false)
+                } else {
+                    panic!("test failed: {:?}", bh)
+                }
+            })?,
+            None
+        ));
+
+        Ok(())
+    }
+
+    fn eq(b1: &BlockHash, b2: &BlockHash) -> bool {
+        b1.eq(b2)
+    }
+
+    fn result(
+        block_downloaded: bool,
+        applied: bool,
+        operations_downloaded: bool,
+        block_hash: Arc<BlockHash>,
+    ) -> (InnerBlockState, Arc<BlockHash>) {
+        (
+            InnerBlockState {
+                block_downloaded,
+                applied,
+                operations_downloaded,
+            },
+            block_hash,
+        )
     }
 
     fn assert_interval(
@@ -967,14 +1676,5 @@ mod tests {
             tested.blocks[1].block_hash.as_ref(),
             expected_right.as_ref()
         );
-    }
-
-    fn block(d: u8) -> Arc<BlockHash> {
-        Arc::new(
-            [d; crypto::hash::HashType::BlockHash.size()]
-                .to_vec()
-                .try_into()
-                .expect("Failed to create BlockHash"),
-        )
     }
 }

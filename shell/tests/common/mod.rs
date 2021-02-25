@@ -106,7 +106,6 @@ pub mod infra {
 
     use crate::common;
     use crate::common::contains_all_keys;
-    use shell::chain_feeder_channel::ChainFeederChannel;
 
     pub struct NodeInfrastructure {
         name: String,
@@ -232,8 +231,6 @@ pub mod infra {
                 ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
             let network_channel =
                 NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-            let chain_feeder_channel = ChainFeederChannel::actor(&actor_system)
-                .expect("Failed to create chain feeder channel");
 
             let _ = ContextListener::actor(
                 &actor_system,
@@ -260,7 +257,6 @@ pub mod infra {
                 &actor_system,
                 chain_current_head_manager,
                 shell_channel.clone(),
-                chain_feeder_channel.clone(),
                 persistent_storage.clone(),
                 tezos_writeable_api,
                 init_storage_data.clone(),
@@ -273,7 +269,6 @@ pub mod infra {
                 block_applier.clone(),
                 network_channel.clone(),
                 shell_channel.clone(),
-                chain_feeder_channel,
                 persistent_storage.clone(),
                 tezos_readonly_api.clone(),
                 init_storage_data.clone(),

@@ -28,9 +28,9 @@ fn create_logger(log_level: Level, endpoint_name: String) -> Logger {
 }
 
 fn main() {
-    let matches = App::new("Protocol Runner")
-        .version("1.0")
-        .author("Tomas Sedlak <tomas.sedlak@simplestaking.com>")
+    let matches = App::new("TezEdge Protocol Runner")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
         .about("Tezos Protocol Runner")
         .arg(
             Arg::with_name("sock-cmd")

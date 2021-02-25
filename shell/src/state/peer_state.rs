@@ -3,7 +3,7 @@
 
 use std::cmp;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
 use riker::actors::*;
@@ -14,19 +14,15 @@ use networking::PeerId;
 use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{
     GetOperationsMessage, MetadataMessage, PeerMessageResponse,
 };
 
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
-use crate::state::MissingOperations;
+use crate::state::StateError;
 
-// TODO: TE-386 - remove not needed
-// /// Limit to how many blocks to request in a batch
-// const BLOCK_HEADERS_BATCH_SIZE: usize = 10;
-// /// Limit to how many block operations to request in a batch
-// const BLOCK_OPERATIONS_BATCH_SIZE: usize = 15;
 /// Limit to how many mempool operations to request in a batch
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = 20;
 /// Mempool operation time to live
@@ -44,24 +40,12 @@ pub struct PeerState {
     /// Actor for managing current branch bootstrap from peer
     pub(crate) peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
-    // TODO: TE-386 - rename
-    /// Queued blocks shared with peer_branch_bootstrapper
-    pub(crate) queued_block_headers2: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
-    /// Queued block operations
-    pub(crate) queued_block_operations2: Arc<Mutex<HashMap<BlockHash, MissingOperations>>>,
+    /// Shareable data queues for scheduling of data download (blocks, operations)
+    pub(crate) queues: Arc<DataQueues>,
 
-    // TODO: TE-386 - remove not needed
-    // /// Missing blocks
-    // pub(crate) missing_blocks: MissingBlockData<MissingBlock>,
     // TODO: TE-386 - global queue for requested operations
     /// Missing operations - we use this map for lazy/gracefull receiving
     pub(crate) missing_operations_for_blocks: HashMap<BlockHash, HashSet<i8>>,
-
-    // TODO: TE-386 - remove not needed
-    /// Queued blocks
-    // pub(crate) queued_block_headers: HashMap<Arc<BlockHash>, MissingBlock>,
-    // /// Queued block operations
-    // pub(crate) queued_block_operations: HashMap<BlockHash, MissingOperations>,
 
     /// Level of the current head received from peer
     pub(crate) current_head_level: Option<i32>,
@@ -72,16 +56,6 @@ pub struct PeerState {
     pub(crate) current_head_request_last: Instant,
     /// Last time we received current_head from the peer
     pub(crate) current_head_response_last: Instant,
-
-    /// Last time we requested block from the peer
-    pub(crate) block_request_last: Instant,
-    /// Last time we received block from the peer
-    pub(crate) block_response_last: Instant,
-
-    /// Last time we requested block operations from the peer
-    pub(crate) block_operations_request_last: Instant,
-    /// Last time we received block operations from the peer
-    pub(crate) block_operations_response_last: Instant,
 
     /// Last time we requested mempool operations from the peer
     pub(crate) mempool_operations_request_last: Instant,
@@ -95,33 +69,33 @@ pub struct PeerState {
     /// a tuple of type of a mempool operation with its time to live.
     pub(crate) queued_mempool_operations:
         HashMap<OperationHash, (MempoolOperationType, SystemTime)>,
+
+    /// Collected stats about p2p messages
+    pub(crate) message_stats: MessageStats,
 }
 
 impl PeerState {
-    pub fn new(peer_id: Arc<PeerId>, peer_metadata: &MetadataMessage) -> Self {
+    pub fn new(
+        peer_id: Arc<PeerId>,
+        peer_metadata: &MetadataMessage,
+        limits: DataQueuesLimits,
+    ) -> Self {
         PeerState {
             peer_id,
             mempool_enabled: !peer_metadata.disable_mempool(),
             is_bootstrapped: false,
             peer_branch_bootstrapper: None,
-            queued_block_headers2: Arc::new(Mutex::new(HashSet::default())),
-            queued_block_operations2: Arc::new(Mutex::new(HashMap::default())),
-            // missing_blocks: MissingBlockData::default(),
+            queues: Arc::new(DataQueues::new(limits)),
             missing_operations_for_blocks: HashMap::default(),
-            // queued_block_headers: HashMap::new(),
-            // queued_block_operations: HashMap::new(),
             missing_mempool_operations: Vec::new(),
             queued_mempool_operations: HashMap::default(),
             current_head_level: None,
             current_head_update_last: Instant::now(),
             current_head_request_last: Instant::now(),
             current_head_response_last: Instant::now(),
-            block_request_last: Instant::now(),
-            block_response_last: Instant::now(),
-            block_operations_request_last: Instant::now(),
-            block_operations_response_last: Instant::now(),
             mempool_operations_request_last: Instant::now(),
             mempool_operations_response_last: Instant::now(),
+            message_stats: MessageStats::default(),
         }
     }
 
@@ -304,15 +278,155 @@ impl PeerState {
                             .insert(op_hash, (op_type, ttl));
                     });
 
-                let ops_to_get = ops_to_enqueue
+                let ops_to_get: Vec<OperationHash> = ops_to_enqueue
                     .into_iter()
                     .map(|(op_hash, _)| op_hash)
                     .collect();
 
                 peer.mempool_operations_request_last = Instant::now();
-                tell_peer(GetOperationsMessage::new(ops_to_get).into(), peer);
+
+                if limits::GET_OPERATIONS_MAX_LENGTH > 0 {
+                    ops_to_get
+                        .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
+                        .for_each(|ops_to_get| {
+                            tell_peer(GetOperationsMessage::new(ops_to_get.into()).into(), peer)
+                        });
+                } else {
+                    tell_peer(GetOperationsMessage::new(ops_to_get).into(), peer);
+                }
             });
     }
+
+    pub(crate) fn is_block_response_pending(&self, timeout: Duration) -> Result<bool, StateError> {
+        let request_last = { *self.queues.block_request_last.read()? };
+        let response_last = { *self.queues.block_response_last.read()? };
+
+        Ok(if request_last > response_last {
+            request_last - response_last > timeout
+        } else {
+            false
+        })
+    }
+
+    pub(crate) fn is_block_operations_response_pending(
+        &self,
+        timeout: Duration,
+    ) -> Result<bool, StateError> {
+        let request_last = { *self.queues.block_operations_request_last.read()? };
+        let response_last = { *self.queues.block_operations_response_last.read()? };
+
+        Ok(if request_last > response_last {
+            request_last - response_last > timeout
+        } else {
+            false
+        })
+    }
+}
+
+/// Hold stats about peer received messages
+pub struct MessageStats {
+    unexpected_response_block: usize,
+    unexpected_response_operations: usize,
+}
+
+impl MessageStats {
+    pub fn increment_unexpected_response_block(&mut self) {
+        self.unexpected_response_block += 1;
+    }
+
+    pub fn increment_unexpected_response_operations(&mut self) {
+        self.unexpected_response_operations += 1;
+    }
+}
+
+impl Default for MessageStats {
+    fn default() -> Self {
+        Self {
+            unexpected_response_block: 0,
+            unexpected_response_operations: 0,
+        }
+    }
+}
+
+pub type MissingOperations = HashSet<i8>;
+
+pub struct DataQueues {
+    pub(crate) limits: DataQueuesLimits,
+
+    /// Queued blocks shared with peer_branch_bootstrapper
+    pub(crate) queued_block_headers: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+    /// Last time we requested block from the peer
+    pub(crate) block_request_last: Arc<RwLock<Instant>>,
+    /// Last time we received block from the peer
+    pub(crate) block_response_last: Arc<RwLock<Instant>>,
+
+    /// Queued block operations
+    pub(crate) queued_block_operations: Arc<Mutex<HashMap<Arc<BlockHash>, MissingOperations>>>,
+    /// Last time we requested block operations from the peer
+    pub(crate) block_operations_request_last: Arc<RwLock<Instant>>,
+    /// Last time we received block operations from the peer
+    pub(crate) block_operations_response_last: Arc<RwLock<Instant>>,
+}
+
+impl DataQueues {
+    pub fn new(limits: DataQueuesLimits) -> Self {
+        Self {
+            limits,
+            queued_block_headers: Arc::new(Mutex::new(HashSet::default())),
+            block_request_last: Arc::new(RwLock::new(Instant::now())),
+            block_response_last: Arc::new(RwLock::new(Instant::now())),
+            queued_block_operations: Arc::new(Mutex::new(HashMap::default())),
+            block_operations_request_last: Arc::new(RwLock::new(Instant::now())),
+            block_operations_response_last: Arc::new(RwLock::new(Instant::now())),
+        }
+    }
+
+    pub fn get_already_queued_block_headers_and_max_capacity(
+        &self,
+    ) -> Result<(HashSet<Arc<BlockHash>>, usize), StateError> {
+        // lock, get queued and release
+        let already_queued: HashSet<Arc<BlockHash>> =
+            self.queued_block_headers.lock()?.iter().cloned().collect();
+
+        let available =
+            if already_queued.len() < self.limits.max_queued_block_headers_count as usize {
+                (self.limits.max_queued_block_headers_count as usize) - already_queued.len()
+            } else {
+                0
+            };
+
+        Ok((already_queued, available))
+    }
+
+    pub fn get_already_queued_block_operations_and_max_capacity(
+        &self,
+    ) -> Result<(HashSet<Arc<BlockHash>>, usize), StateError> {
+        // lock, get queued and release
+        let already_queued: HashSet<Arc<BlockHash>> = self
+            .queued_block_operations
+            .lock()?
+            .iter()
+            .map(|(b, _)| b.clone())
+            .collect();
+
+        let available =
+            if already_queued.len() < self.limits.max_queued_block_operations_count as usize {
+                (self.limits.max_queued_block_operations_count as usize) - already_queued.len()
+            } else {
+                0
+            };
+
+        Ok((already_queued, available))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct DataQueuesLimits {
+    /// Limit to how many blocks to request from peer
+    /// Note: This limits speed of downloading chunked history
+    pub(crate) max_queued_block_headers_count: u16,
+    /// Limit to how many block operations to request from peer
+    pub(crate) max_queued_block_operations_count: u16,
 }
 
 impl UpdateIsBootstrapped for PeerState {
