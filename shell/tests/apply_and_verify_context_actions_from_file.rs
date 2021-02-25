@@ -208,7 +208,6 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             }
         };
 
-        let mut context_hash_verified = false;
         for action in messages.iter() {
             if let ContextAction::Commit {
                 block_hash: Some(block_hash),
@@ -221,17 +220,6 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 let mut b = header_stub.clone();
                 b.hash = BlockHash::try_from(block_hash.clone())?;
                 block_storage.put_block_header(&b).unwrap();
-            }
-
-            // in the begining  of the each block there is Checkout message
-            // lets use that and check if current context hash is equal to
-            // one current context hash even before applying the action
-            if let ContextAction::Checkout { context_hash, .. } = action {
-                assert_eq!(
-                    context_hash.as_slice(),
-                    context.get_last_commit_hash().unwrap().as_slice()
-                );
-                context_hash_verified = true;
             }
 
             match action {
@@ -253,15 +241,21 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::Shutdown { .. } => {}
             };
 
+            if let ContextAction::Commit {
+                new_context_hash, ..
+            } = action
+            {
+                assert_eq!(
+                    new_context_hash.as_slice(),
+                    context.get_last_commit_hash().unwrap().as_slice()
+                );
+            }
+
             // verify context hashes after each block
 
             if let Some(expected_hash) = get_new_tree_hash(&action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
             }
-        }
-        // ignore genesis_block
-        if counter > 1 {
-            assert!(context_hash_verified);
         }
     }
     println!("{:#?}", storage.merkle().read().unwrap().get_merkle_stats());
