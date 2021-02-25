@@ -13,7 +13,7 @@ use tezos_client::client;
 mod common;
 
 #[test]
-fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Error> {
+fn test_init_empty_context_for_all_enviroment_nets() {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
@@ -67,8 +67,6 @@ fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Erro
     // check result - we should have
     assert_eq!(environment_counter, genesis_commit_hashes.len());
     assert!(protocol_hashes.len() > 1);
-
-    Ok(())
 }
 
 #[test]

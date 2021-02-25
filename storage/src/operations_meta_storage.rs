@@ -157,7 +157,7 @@ fn merge_meta_value(
                 debug_assert_ne!(0, val.len(), "Value cannot have zero size");
                 debug_assert_eq!(val[0], op[0], "Value of validation passes cannot change");
                 // in case of inconsistency, return `None`
-                if val.len() == 0 || val.len() != op.len() || val[0] != op[0] {
+                if val.is_empty() || val.len() != op.len() || val[0] != op[0] {
                     return None;
                 }
 

@@ -217,12 +217,12 @@ impl BootstrapState {
                 if b.block_downloaded && b.operations_downloaded {
                     if let Some(predecessor) = b.predecessor_block_hash.as_ref() {
                         if let Some((previous_block_hash, previous_is_applied)) = previous {
-                            if predecessor.as_ref().eq(previous_block_hash.as_ref()) {
-                                if previous_is_applied {
-                                    // just in this case, we can apply this block
-                                    non_applied_candidate = Some(b.block_hash.clone());
-                                    break;
-                                }
+                            if predecessor.as_ref().eq(previous_block_hash.as_ref())
+                                && previous_is_applied
+                            {
+                                // just in this case, we can apply this block
+                                non_applied_candidate = Some(b.block_hash.clone());
+                                break;
                             }
                         }
                     }
@@ -1163,7 +1163,7 @@ mod tests {
         assert!(matches!(
             pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |bh| {
                 if bh.eq(&block(2)) {
-                    result(true, false, false, block(1))
+                    Ok(Some(result(true, false, false, block(1))))
                 } else {
                    Ok(None)
                 }
@@ -1183,9 +1183,9 @@ mod tests {
         assert!(matches!(
             pipeline.intervals[0].find_first_missing_block(&HashSet::default(), |bh| {
                 if bh.eq(&block(1)) {
-                    result(true, false, false, block(0))
+                    Ok(Some(result(true, false, false, block(0))))
                 } else if bh.eq(&block(0)) {
-                   result(true, false, false, block(0))
+                   Ok(Some(result(true, true, true, block(0))))
                 } else {
                     panic!("test failed: {:?}", bh)
                 }
@@ -1243,15 +1243,15 @@ mod tests {
             pipeline.intervals[1].find_first_missing_block(&HashSet::default(), |bh| {
                 // on backgroung all data were downloaded by other peers
                 if bh.eq(&block(5)) {
-                    result(true, false, false, block(4))
+                    Ok(Some(result(true, false, false, block(4))))
                 } else if bh.eq(&block(4)) {
-                    result(true, false, false, block(3))
+                    Ok(Some(result(true, false, false, block(3))))
                 } else if bh.eq(&block(3)) {
-                    result(true, false, false, block(2))
+                    Ok(Some(result(true, false, false, block(2))))
                 } else if bh.eq(&block(2)) {
-                    result(true, false, false, block(1))
+                    Ok(Some(result(true, false, false, block(1))))
                 } else if bh.eq(&block(1)) {
-                    result(true, false, false, block(0))
+                    Ok(Some(result(true, false, false, block(0))))
                 } else {
                     panic!("test failed: {:?}", bh)
                 }
@@ -1304,16 +1304,16 @@ mod tests {
         assert!(matches!(
             pipeline.intervals[1].find_first_missing_block(&HashSet::default(), |bh| {
                 if bh.eq(&block(5)) {
-                    result(true, false, false, block(4))
+                    Ok(Some(result(true, false, false, block(4))))
                 } else if bh.eq(&block(4)) {
-                    result(true, false, false, block(3))
+                    Ok(Some(result(true, false, false, block(3))))
                 } else if bh.eq(&block(3)) {
                     // three not downloaded
                     Ok(None)
                 } else if bh.eq(&block(2)) {
-                    result(true, false, false, block(1))
+                    Ok(Some(result(true, false, false, block(1))))
                 } else if bh.eq(&block(1)) {
-                    result(true, false, false, block(0))
+                    Ok(Some(result(true, false, false, block(0))))
                 } else {
                     panic!("test failed: {:?}", bh)
                 }
@@ -1655,15 +1655,15 @@ mod tests {
         applied: bool,
         operations_downloaded: bool,
         block_hash: Arc<BlockHash>,
-    ) -> Result<Option<(InnerBlockState, Arc<BlockHash>)>, StateError> {
-        Ok(Some((
+    ) -> (InnerBlockState, Arc<BlockHash>) {
+        (
             InnerBlockState {
                 block_downloaded,
                 applied,
                 operations_downloaded,
             },
             block_hash,
-        )))
+        )
     }
 
     fn assert_interval(

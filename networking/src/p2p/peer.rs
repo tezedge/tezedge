@@ -255,7 +255,7 @@ impl Actor for Peer {
 
         self.tokio_executor.spawn(async move {
             // prepare PeerId
-            let peer_id = Arc::new(PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, net.socket_address.clone()));
+            let peer_id = Arc::new(PeerId::new(myself.clone(), peer_public_key_hash, peer_id_marker, net.socket_address));
             let log = {
                 let myself_name = myself.name().to_string();
                 let myself_uri = myself.uri().to_string();

@@ -5,13 +5,17 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
+use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
 use rocksdb::ColumnFamilyDescriptor;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
@@ -36,11 +40,50 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, EnumIter)]
 pub enum ContextActionStoreBackend {
     NoneBackend,
     RocksDB,
     FileStorage,
+}
+
+impl ContextActionStoreBackend {
+    pub fn possible_values() -> Vec<&'static str> {
+        let mut possible_values = Vec::new();
+        for sp in ContextActionStoreBackend::iter() {
+            possible_values.extend(sp.supported_values());
+        }
+        possible_values
+    }
+
+    fn supported_values(&self) -> Vec<&'static str> {
+        match self {
+            ContextActionStoreBackend::RocksDB => vec!["rocksdb"],
+            ContextActionStoreBackend::FileStorage => vec!["file"],
+            ContextActionStoreBackend::NoneBackend => vec!["none"],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseContextActionStoreBackendError(String);
+
+impl FromStr for ContextActionStoreBackend {
+    type Err = ParseContextActionStoreBackendError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_ascii_lowercase();
+        for sp in ContextActionStoreBackend::iter() {
+            if sp.supported_values().contains(&s.as_str()) {
+                return Ok(sp);
+            }
+        }
+
+        Err(ParseContextActionStoreBackendError(format!(
+            "Invalid variant name: {}",
+            s
+        )))
+    }
 }
 
 pub trait ColumnFactory {
@@ -128,6 +171,8 @@ impl Storage {
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
     const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
     const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
+
+    const DEFAULT_KV_STORE_BACKEND: KeyValueStoreBackend = KeyValueStoreBackend::RocksDB;
 }
 
 #[derive(Debug, Clone)]
@@ -484,11 +529,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .multiple(true)
             .value_name("STRING")
+            .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("kv-store-backend")
             .long("kv-store-backend")
             .takes_value(true)
             .value_name("STRING")
+            .possible_values(&KeyValueStoreBackend::possible_values())
             .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
@@ -873,35 +920,28 @@ impl Environment {
 
                 let backends: HashSet<String> = match args.values_of("actions-store-backend") {
                     Some(v) => v.map(String::from).collect(),
-                    None => {
-                        let mut h = HashSet::new();
-                        h.insert("rocksdb".to_string());
-                        h
-                    }
+                    None => HashSet::from_iter(std::iter::once("rocksdb".to_string())),
                 };
 
                 let action_store_backend = backends
                     .iter()
-                    .map(|name| match name.as_str() {
-                        "rocksdb" => ContextActionStoreBackend::RocksDB,
-                        "none" => ContextActionStoreBackend::NoneBackend,
-                        "file" => ContextActionStoreBackend::FileStorage,
-                        _ => {
-                            panic!(format!(
-                                "unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']",
-                                &name
-                            ))
-                        }
+                    .map(|name| {
+                        ContextActionStoreBackend::from_str(name).expect(&format!(
+                            "Unknown backend {} - supported backends are: {:?}",
+                            &name,
+                            ContextActionStoreBackend::possible_values()
+                        ))
                     })
                     .collect();
 
-                let kv_store_backend = match args.value_of("kv-store-backend").unwrap_or("rocksdb")
-                {
-                    "inmem" => KeyValueStoreBackend::InMem,
-                    "sled" => KeyValueStoreBackend::Sled,
-                    "btree" => KeyValueStoreBackend::BTreeMap,
-                    _ => KeyValueStoreBackend::RocksDB,
-                };
+                let kv_store_backend = args.value_of("kv-store-backend").map_or(
+                    Storage::DEFAULT_KV_STORE_BACKEND,
+                    |value| {
+                        value
+                            .parse::<KeyValueStoreBackend>()
+                            .expect("Was expecting one value from KeyValueStoreBackend")
+                    },
+                );
 
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),

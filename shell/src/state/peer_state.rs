@@ -298,15 +298,11 @@ impl PeerState {
     }
 
     pub(crate) fn is_block_response_pending(&self, timeout: Duration) -> Result<bool, StateError> {
-        let request_last = (*self.queues.block_request_last.read()?).clone();
-        let response_last = (*self.queues.block_response_last.read()?).clone();
+        let request_last = { *self.queues.block_request_last.read()? };
+        let response_last = { *self.queues.block_response_last.read()? };
 
         Ok(if request_last > response_last {
-            if request_last - response_last > timeout {
-                true
-            } else {
-                false
-            }
+            request_last - response_last > timeout
         } else {
             false
         })
@@ -316,15 +312,11 @@ impl PeerState {
         &self,
         timeout: Duration,
     ) -> Result<bool, StateError> {
-        let request_last = (*self.queues.block_operations_request_last.read()?).clone();
-        let response_last = (*self.queues.block_operations_response_last.read()?).clone();
+        let request_last = { *self.queues.block_operations_request_last.read()? };
+        let response_last = { *self.queues.block_operations_response_last.read()? };
 
         Ok(if request_last > response_last {
-            if request_last - response_last > timeout {
-                true
-            } else {
-                false
-            }
+            request_last - response_last > timeout
         } else {
             false
         })
@@ -393,12 +385,8 @@ impl DataQueues {
         &self,
     ) -> Result<(HashSet<Arc<BlockHash>>, usize), StateError> {
         // lock, get queued and release
-        let already_queued: HashSet<Arc<BlockHash>> = self
-            .queued_block_headers
-            .lock()?
-            .iter()
-            .map(|b| b.clone())
-            .collect();
+        let already_queued: HashSet<Arc<BlockHash>> =
+            self.queued_block_headers.lock()?.iter().cloned().collect();
 
         let available =
             if already_queued.len() < self.limits.max_queued_block_headers_count as usize {

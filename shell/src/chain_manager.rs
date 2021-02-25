@@ -1539,7 +1539,7 @@ impl Receive<LogStats> for ChainManager {
                             "({} blocks - average times [request_response {:?} -> {}]",
                             applied_block_lasts_count, roundtrip, validation,
                         );
-                        let applied_block_level = apply_block_stats.applied_block_level().clone();
+                        let applied_block_level = *apply_block_stats.applied_block_level();
                         let applied_block_last = apply_block_stats
                             .applied_block_last()
                             .map(|i| i.elapsed().as_secs());

@@ -585,7 +585,7 @@ mod tests {
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block")?;
-        let mut peer1 = test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
+        let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -652,12 +652,7 @@ mod tests {
 
         // we can reschedule it once more now
         assert!(matches!(
-            data_requester.fetch_block_headers(
-                vec![block1.clone()],
-                &peer1.peer_id,
-                &peer1.queues,
-                &log
-            ),
+            data_requester.fetch_block_headers(vec![block1], &peer1.peer_id, &peer1.queues, &log),
             Ok(true)
         ));
 
@@ -675,7 +670,7 @@ mod tests {
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage =
             TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block_operations")?;
-        let mut peer1 = test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
+        let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -796,7 +791,7 @@ mod tests {
         // we can reschedule it once more now
         assert!(matches!(
             data_requester.fetch_block_operations(
-                vec![block1.clone()],
+                vec![block1],
                 &peer1.peer_id,
                 &peer1.queues,
                 &log

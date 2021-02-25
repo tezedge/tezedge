@@ -314,10 +314,8 @@ impl PeerBranchBootstrapper {
             }
         });
 
-        if self.bootstrap_state.is_empty() {
-            if self.empty_bootstrap_state.is_none() {
-                self.empty_bootstrap_state = Some(Instant::now());
-            }
+        if self.bootstrap_state.is_empty() && self.empty_bootstrap_state.is_none() {
+            self.empty_bootstrap_state = Some(Instant::now());
         }
     }
 }
