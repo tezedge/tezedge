@@ -32,7 +32,7 @@ services:
 
   tezedge-node:
     image: simplestakingcom/tezedge:latest-release
-    command: "/light-node --config-file /tezedge.config --network ${TEZOS_NETWORK}"
+    command: ["--network ${TEZOS_NETWORK"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
