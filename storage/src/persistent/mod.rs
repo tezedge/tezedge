@@ -156,30 +156,32 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
         merkle_backend: KeyValueStoreBackend,
     ) -> Self {
-        let merkle = match merkle_backend {
-            KeyValueStoreBackend::RocksDB => MerkleStorage::new(Box::new(RocksDBBackend::new(
-                db_context.clone(),
-                MerkleStorage::name(),
-            ))),
-            KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            KeyValueStoreBackend::Sled { path } => {
-                let sled = sled::Config::new().path(path).open().unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
-            }
-            KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+        let merkle =
+            match merkle_backend {
+                KeyValueStoreBackend::RocksDB => {
+                    MerkleStorage::new(Box::new(RocksDBBackend::new(db_context.clone())))
+                }
+                KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+                KeyValueStoreBackend::Sled { path } => {
+                    let sled = sled::Config::new().path(path).open().unwrap();
+                    MerkleStorage::new(Box::new(SledBackend::new(sled)))
+                }
+                KeyValueStoreBackend::BTreeMap => {
+                    MerkleStorage::new(Box::new(BTreeMapBackend::new()))
+                }
                 KeyValueStoreBackend::MarkSweepInMem => MerkleStorage::new(Box::new(
                     MarkSweepGCed::<InMemoryBackend>::new(PRESERVE_CYCLE_COUNT),
                 )),
                 KeyValueStoreBackend::MarkMoveInMem => MerkleStorage::new(Box::new(
                     MarkMoveGCed::<BTreeMapBackend>::new(PRESERVE_CYCLE_COUNT),
                 )),
-        };
+            };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
         Self {
             clog,
             db,
-            db_context: db_context,
+            db_context,
             db_context_actions,
             seq,
             merkle: Arc::new(RwLock::new(merkle)),

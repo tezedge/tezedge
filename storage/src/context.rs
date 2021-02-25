@@ -100,7 +100,7 @@ pub trait ContextApi {
     fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError>;
 
     fn get_merkle_root(&mut self) -> EntryHash;
-    
+
     fn block_applied(&self) -> Result<(), ContextError>;
 
     fn cycle_started(&self) -> Result<(), ContextError>;
@@ -292,7 +292,7 @@ impl ContextApi for TezedgeContext {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_staged_root_hash()
     }
-    
+
     fn block_applied(&self) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         Ok(merkle.mark_entries_from_last_commit_as_used()?)
