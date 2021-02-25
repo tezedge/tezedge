@@ -40,6 +40,7 @@ pub enum TezosEnvironment {
     Carthagenet,
     Delphinet,
     Edonet,
+    Edo2net,
     Mainnet,
     Zeronet,
     Sandbox,
@@ -62,6 +63,7 @@ impl TezosEnvironment {
             TezosEnvironment::Carthagenet => vec!["carthagenet", "carthage"],
             TezosEnvironment::Delphinet => vec!["delphinet", "delphi"],
             TezosEnvironment::Edonet => vec!["edonet", "edo"],
+            TezosEnvironment::Edo2net => vec!["edo2net", "edo2"],
             TezosEnvironment::Zeronet => vec!["zeronet"],
             TezosEnvironment::Sandbox => vec!["sandbox"],
         }
@@ -214,6 +216,32 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         }),
     });
 
+    env.insert(TezosEnvironment::Edo2net, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2021-02-11T14:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisdae8bZxCCxh".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "edonet.tezos.co.il".to_string(),
+            "188.40.128.216:29732".to_string(),
+            "51.79.165.131".to_string(),
+            "edo2net.kaml.fr".to_string(),
+            "edonet2.smartpy.io".to_string(),
+            "edonetb.boot.tezostaquito.io".to_string(),
+        ],
+        version: "TEZOS_EDO2NET_2021-02-11T14:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
+    });
+
     env.insert(
         TezosEnvironment::Mainnet,
         TezosEnvironmentConfiguration {
@@ -239,10 +267,16 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
                         "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
                     ),
                 ],
-                user_activated_protocol_overrides: vec![(
-                    "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
-                    "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
-                )],
+                user_activated_protocol_overrides: vec![
+                    (
+                        "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
+                        "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
+                    ),
+                    (
+                        "PtEdoTezd3RHSC31mpxxo1npxFjoWWcFgQtxapi51Z8TLu6v6Uq".to_string(),
+                        "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA".to_string(),
+                    ),
+                ],
             },
             enable_testchain: false,
             patch_context_genesis_parameters: None,
