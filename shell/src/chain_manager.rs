@@ -43,7 +43,7 @@ use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, InjectBlock, MempoolOperationReceived,
     ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
-use crate::state::block_state::{BlockAcceptanceResult, BlockchainState};
+use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::head_state::CurrentHeadRef;
 use crate::state::peer_state::{tell_peer, PeerState};

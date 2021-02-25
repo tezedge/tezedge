@@ -11,8 +11,8 @@ use crypto::hash::BlockHash;
 use storage::StorageError;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
-pub mod block_state;
 pub mod bootstrap_state;
+pub mod chain_state;
 pub mod data_requester;
 pub mod head_state;
 pub mod peer_state;
