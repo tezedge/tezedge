@@ -134,16 +134,20 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     let header_stub = BlockHeaderWithHash::new(block_header_stub).unwrap();
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
-    let commit_log_db_path = PathBuf::from("/tmp/commit_log/");
-    let key_value_db_path = PathBuf::from("/tmp/key_value_store/");
 
+    let out_dir_env = env::var("OUT_DIR")
+        .unwrap_or_else(|_| "/tmp/feed_tezedge_context_with_actions".to_string());
     let input_file = env::var("INPUT").expect("test input 'INPUT' not set");
     let backend = env::var("BACKEND").expect("test backend 'BACKEND' not set");
 
+    let out_dir = PathBuf::from(out_dir_env.as_str());
+    let commit_log_db_path = out_dir.join("commit_log");
+    let key_value_db_path = out_dir.join("key_value_store");
+
     let actions_storage_path = PathBuf::from(input_file.as_str());
 
-    let _ = fs::remove_dir_all(&commit_log_db_path);
-    let _ = fs::remove_dir_all(&key_value_db_path);
+    let _ = fs::remove_dir_all(&out_dir);
+
     let logger = create_logger();
 
     let commit_log = create_commit_log(&commit_log_db_path);
@@ -155,7 +159,9 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
         commit_log,
         match backend.as_str() {
             "inmem" => storage::KeyValueStoreBackend::InMem,
-            "sled" => storage::KeyValueStoreBackend::Sled,
+            "sled" => storage::KeyValueStoreBackend::Sled {
+                path: out_dir.join("sled"),
+            },
             "btree" => storage::KeyValueStoreBackend::BTreeMap,
             "rocksdb" => storage::KeyValueStoreBackend::RocksDB,
             _ => panic!("unknown backend"),
@@ -229,30 +235,48 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                 | ContextAction::Delete { .. }
                 | ContextAction::RemoveRecursively { .. }
                 | ContextAction::Commit { .. }
-                | ContextAction::Checkout { .. } => {
+                | ContextAction::Checkout { .. }
+                | ContextAction::Get { .. }
+                | ContextAction::Mem { .. }
+                | ContextAction::DirMem { .. }
+                | ContextAction::Fold { .. } => {
                     if let Err(e) = perform_context_action(&action, &mut context) {
                         panic!("cannot perform action error: '{}'", e);
                     }
                 }
-                ContextAction::Get { .. }
-                | ContextAction::Mem { .. }
-                | ContextAction::DirMem { .. }
-                | ContextAction::Fold { .. }
-                | ContextAction::Shutdown { .. } => {}
+                ContextAction::Shutdown { .. } => {}
             };
 
-            if let ContextAction::Commit {
-                new_context_hash, ..
-            } = action
-            {
-                assert_eq!(
-                    new_context_hash.as_slice(),
-                    context.get_last_commit_hash().unwrap().as_slice()
-                );
-            }
+            // verify state of the storage after action has been applied
+            match action {
+                ContextAction::Commit {
+                    new_context_hash, ..
+                } => {
+                    assert_eq!(
+                        new_context_hash.clone(),
+                        context.get_last_commit_hash().unwrap()
+                    );
+                }
+                ContextAction::Checkout { context_hash, .. } => {
+                    assert!(!context_hash.is_empty());
+                    assert_eq!(
+                        context_hash.clone(),
+                        context.get_last_commit_hash().unwrap()
+                    );
+                }
+                ContextAction::Get { key, value, .. } => {
+                    assert_eq!(value.clone(), context.get_key(key).unwrap());
+                }
+                ContextAction::Mem { key, value, .. } => {
+                    assert_eq!(*value, context.mem(key).unwrap());
+                }
+                ContextAction::DirMem { key, value, .. } => {
+                    assert_eq!(*value, context.dirmem(key).unwrap());
+                }
+                _ => {}
+            };
 
             // verify context hashes after each block
-
             if let Some(expected_hash) = get_new_tree_hash(&action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
             }
