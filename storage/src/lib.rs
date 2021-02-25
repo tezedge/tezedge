@@ -497,6 +497,8 @@ impl KeyValueStoreBackend {
             KeyValueStoreBackend::InMem => vec!["inmem"],
             KeyValueStoreBackend::Sled { .. } => vec!["sled"],
             KeyValueStoreBackend::BTreeMap => vec!["btree"],
+            KeyValueStoreBackend::MarkMoveInMem => vec!["mark_move"],
+            KeyValueStoreBackend::MarkSweepInMem => vec!["mark_sweep"],
         }
     }
 }

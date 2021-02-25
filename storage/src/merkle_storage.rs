@@ -49,7 +49,6 @@ use std::array::TryFromSliceError;
 use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
-use std::sync::Arc;
 
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
@@ -63,6 +62,7 @@ use crate::{
     context::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError},
     persistent::database::RocksDBStats,
 };
+use crate::context::TreeId;
 use crate::merkle_storage_stats::{
     MerkleStorageAction, MerkleStoragePerfReport, MerkleStorageStatistics, StatUpdater,
 };
@@ -71,7 +71,6 @@ use crate::persistent::database::KeyValueStoreBackend;
 use crate::persistent::BincodeEncoded;
 use crate::persistent::{default_table_options, KeyValueSchema};
 use crate::storage_backend::{GarbageCollector, StorageBackendError};
-use crate::{context::TreeId, persistent};
 
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
@@ -371,10 +370,8 @@ impl MerkleStorage {
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root)?;
 
-        let rv = self
-            .get_from_tree(&root_hash, key)
-            .or_else(|_| Ok(Vec::new()));
-        rv
+        self.get_from_tree(&root_hash, key)
+            .or_else(|_| Ok(Vec::new()))
     }
 
     /// Check if value exists in current staged root
@@ -686,7 +683,6 @@ impl MerkleStorage {
         // write all entries at once (depends on backend)
         self.db.write_batch(batch)?;
 
-
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
         Ok(hash_commit(&new_commit)?)
     }
@@ -891,7 +887,7 @@ impl MerkleStorage {
     /// Marks all the entries from last commit as used
     /// so GC can know when to remove them
     pub fn mark_entries_from_last_commit_as_used(&mut self) -> Result<(), MerkleError> {
-        if self.actions.is_empty() || self.staged_indices.is_empty() || self.staged.is_empty() {
+        if !self.staged.is_empty() {
             // mark entries should be called just after commit has been called
             Err(MerkleError::GCCalledOnDirtyStagingArea)
         } else {
@@ -1110,15 +1106,17 @@ mod tests {
             "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
                 db_name, &cache,
             ))))),
-            "sled" => {MerkleStorage::new(Box::new(SledBackend::new(
-		let sled = sled::Config::new()
+            "sled" => {
+                let sled = sled::Config::new()
                     .path(get_db_name(db_name))
                     .open()
                     .unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
-	    },
+                MerkleStorage::new(Box::new(SledBackend::new(sled)))
+            }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+            "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5))),
+            "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(5))),
             _ => {
                 panic!("unknown backend set")
             }
@@ -1849,4 +1847,6 @@ mod tests {
     tests_with_storage!(sled_tests, "sled");
     tests_with_storage!(btree_tests, "btree");
     tests_with_storage!(inmem_tests, "inmem");
+    tests_with_storage!(mark_move_tests, "mark_move");
+    tests_with_storage!(mark_sweep_tests, "mark_sweep");
 }

@@ -8,7 +8,9 @@ use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{env, fs};
-use storage::backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend};
+use storage::backend::{
+    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
+};
 use storage::merkle_storage::{Entry, EntryHash};
 use storage::merkle_storage::{MerkleStorage, MerkleStorageKV};
 use storage::persistent::database::KeyValueStoreBackend;
@@ -48,6 +50,8 @@ fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> Box<MerkleStorage
         )),
         "btree" => Box::new(BTreeMapBackend::new()),
         "inmem" => Box::new(InMemoryBackend::new()),
+        "mark_move" => Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5)),
+        "mark_sweep" => Box::new(MarkSweepGCed::<InMemoryBackend>::new(5)),
         _ => {
             panic!("unknown backend set")
         }
@@ -361,3 +365,5 @@ test_with_backend!(rocksdb_tests, "rocksdb");
 test_with_backend!(sled_tests, "sled");
 test_with_backend!(btree_tests, "btree");
 test_with_backend!(inmem_tests, "inmem");
+test_with_backend!(mark_move_test, "mark_move");
+test_with_backend!(mark_sweep_tests, "mark_sweep");

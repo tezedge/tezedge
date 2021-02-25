@@ -120,25 +120,14 @@ mod tests {
     use crate::backend::InMemoryBackend;
     use crate::merkle_storage::{hash_entry, Entry};
     use crate::merkle_storage::{Commit, Node, NodeKind};
+    use im::ordmap;
     use std::collections::BTreeMap;
-
-    macro_rules! map(
-    { $($key:expr => $value:expr),+ } => {
-        {
-            let mut m = BTreeMap::new();
-            $(
-                m.insert($key, $value);
-            )+
-            m
-        }
-     };
-    );
 
     #[test]
     fn test_mark_sweep_gc() {
         let value_1 = Entry::Blob(vec![1]);
         let value_1_hash = hash_entry(&value_1).unwrap();
-        let tree_1 = Entry::Tree(map! {
+        let tree_1 = Entry::Tree(ordmap! {
             "a".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
             "b".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
             "c".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
@@ -154,7 +143,7 @@ mod tests {
 
         let value_2 = Entry::Blob(vec![2]);
         let value_2_hash = hash_entry(&value_2).unwrap();
-        let tree_2 = Entry::Tree(map! {
+        let tree_2 = Entry::Tree(ordmap! {
             "a".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
             "b".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
             "c".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
