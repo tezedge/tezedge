@@ -5,7 +5,7 @@
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use failure::Fail;
@@ -476,7 +476,7 @@ pub fn check_database_compatibility(
 pub enum KeyValueStoreBackend {
     RocksDB,
     InMem,
-    Sled,
+    Sled { path: PathBuf },
     BTreeMap,
 }
 
@@ -493,7 +493,7 @@ impl KeyValueStoreBackend {
         match self {
             KeyValueStoreBackend::RocksDB => vec!["rocksdb"],
             KeyValueStoreBackend::InMem => vec!["inmem"],
-            KeyValueStoreBackend::Sled => vec!["sled"],
+            KeyValueStoreBackend::Sled { .. } => vec!["sled"],
             KeyValueStoreBackend::BTreeMap => vec!["btree"],
         }
     }

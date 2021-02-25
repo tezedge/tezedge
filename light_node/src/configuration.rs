@@ -59,7 +59,7 @@ impl ContextActionStoreBackend {
     fn supported_values(&self) -> Vec<&'static str> {
         match self {
             ContextActionStoreBackend::RocksDB => vec!["rocksdb"],
-            ContextActionStoreBackend::FileStorage => vec!["file"],
+            ContextActionStoreBackend::FileStorage { .. } => vec!["file"],
             ContextActionStoreBackend::NoneBackend => vec!["none"],
         }
     }
@@ -939,6 +939,15 @@ impl Environment {
                     |value| {
                         value
                             .parse::<KeyValueStoreBackend>()
+                            .map(|v| {
+                                if let KeyValueStoreBackend::Sled { .. } = v {
+                                    KeyValueStoreBackend::Sled {
+                                        path: db_path.join("sled"),
+                                    }
+                                } else {
+                                    v
+                                }
+                            })
                             .expect("Was expecting one value from KeyValueStoreBackend")
                     },
                 );
