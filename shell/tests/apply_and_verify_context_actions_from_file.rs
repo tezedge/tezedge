@@ -164,6 +164,8 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             },
             "btree" => storage::KeyValueStoreBackend::BTreeMap,
             "rocksdb" => storage::KeyValueStoreBackend::RocksDB,
+            "mark_move" => storage::KeyValueStoreBackend::MarkMoveInMem,
+            "mark_sweep" => storage::KeyValueStoreBackend::MarkSweepInMem,
             _ => panic!("unknown backend"),
         },
     );
@@ -181,6 +183,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     );
 
     let mut counter = 0;
+    let mut cycle_counter = 0;
     let blocks_count = get_blocks_count(&logger, actions_storage_path.clone());
 
     info!(logger, "{} blocks found", blocks_count);
@@ -190,29 +193,6 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     for messages in actions_reader {
         counter += 1;
         let progress = counter as f64 / blocks_count as f64 * 100.0;
-
-        match messages.last() {
-            Some(action) => match action {
-                ContextAction::Commit {
-                    block_hash: Some(block_hash),
-                    ..
-                } => {
-                    debug!(
-                        logger,
-                        "progress {:.7}% - processing block {} with {} messages",
-                        progress,
-                        hex::encode(&block_hash),
-                        messages.len()
-                    );
-                }
-                _ => {
-                    panic!("missing commit action")
-                }
-            },
-            None => {
-                panic!("missing commit action")
-            }
-        };
 
         for action in messages.iter() {
             if let ContextAction::Commit {
@@ -279,6 +259,32 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             // verify context hashes after each block
             if let Some(expected_hash) = get_new_tree_hash(&action) {
                 assert_eq!(context.get_merkle_root(), expected_hash);
+            }
+
+            if let ContextAction::Commit { block_hash, .. } = &action {
+                debug!(
+                        logger,
+                        "progress {:.7}% - cycle nr: {} block nr {} [{}] with {} messages processed - {} mb",
+                        progress,
+                        cycle_counter,
+                        counter,
+                        hex::encode(&block_hash.clone().unwrap().clone()),
+                        messages.len(),
+                        storage
+                            .merkle()
+                            .read()
+                            .unwrap()
+                            .get_memory_usage()
+                            .unwrap()
+                            / 1024
+                            / 1024
+                    );
+
+                context.block_applied().unwrap();
+                if counter > 0 && counter % 4096 == 0 {
+                    context.cycle_started().unwrap();
+                    cycle_counter += 1;
+                }
             }
         }
     }
