@@ -7,37 +7,44 @@ use std::sync::{Arc, RwLock};
 use std::{fmt, io};
 
 use commitlog::message::MessageSet;
-use commitlog::{AppendError, CommitLog, LogOptions, Offset, ReadError, ReadLimit};
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::persistent::BincodeEncoded;
+use crate::commit_log::CommitLog;
+use crate::commit_log::error::{TezedgeCommitLogError, ReadError};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
+
 
 /// Possible errors for commit log
 #[derive(Debug, Fail)]
 pub enum CommitLogError {
     #[fail(display = "Schema error: {}", error)]
     SchemaError { error: SchemaError },
-    #[fail(display = "Failed to append record: {}", error)]
-    AppendError { error: AppendError },
-    #[fail(display = "Failed to read record at {}: {}", location, error)]
-    ReadError {
-        error: ReadError,
-        location: Location,
-    },
     #[fail(display = "Commit log I/O error {}", error)]
     IOError { error: io::Error },
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
+    #[fail(display = "Failed to read record at {}", location)]
+    ReadError { location : Location},
+    #[fail(display = "Failed to read record data corrupted")]
+    CorruptData,
+    #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
+    TezedgeCommitLogError { error: TezedgeCommitLogError },
 }
 
 impl From<SchemaError> for CommitLogError {
     fn from(error: SchemaError) -> Self {
         CommitLogError::SchemaError { error }
+    }
+}
+
+impl From<TezedgeCommitLogError> for CommitLogError {
+    fn from(error: TezedgeCommitLogError) -> Self {
+        CommitLogError::TezedgeCommitLogError { error }
     }
 }
 
@@ -63,7 +70,7 @@ type ItemCount = u32;
 
 /// Precisely identifies location of a record in a commit log.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Location(pub Offset, pub ByteLimit);
+pub struct Location(pub u64, pub ByteLimit);
 
 impl Location {
     #[inline]
@@ -82,7 +89,7 @@ impl BincodeEncoded for Location {}
 
 /// Range of values to get from a commit log
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Range(pub Offset, pub ByteLimit, pub ItemCount);
+pub struct Range(pub u64, pub ByteLimit, pub ItemCount);
 
 /// Implement this trait for a commit log engine.
 pub trait CommitLogWithSchema<S: CommitLogSchema> {
@@ -105,7 +112,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let bytes = value.encode()?;
         let offset = cl
             .append_msg(&bytes)
-            .map_err(|error| CommitLogError::AppendError { error })?;
+            .map_err(|error| CommitLogError::TezedgeCommitLogError { error })?;
 
         Ok(Location(offset, bytes.len()))
     }
@@ -116,16 +123,12 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
         let msg_buf = cl
-            .read(location.0, fit_read_limit(location.1))
+            .read(location.0 as usize, 1)
             .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: *location,
+                location: location.clone()
             })?;
-        let bytes = msg_buf.iter().next().ok_or(CommitLogError::ReadError {
-            error: ReadError::CorruptLog,
-            location: *location,
-        })?;
-        let value = S::Value::decode(bytes.payload())?;
+        let bytes = msg_buf.iter().next().ok_or(CommitLogError::CorruptData)?;
+        let value = S::Value::decode(bytes)?;
 
         Ok(value)
     }
@@ -136,32 +139,18 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
         let msg_buf = cl
-            .read(range.0, fit_batch_read_limit(range.1, range.2))
+            .read(range.0 as usize, range.2 as usize)
             .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: Location(range.0, range.1),
+                location: Location(range.0, range.2 as usize)
             })?;
         msg_buf
             .iter()
             .take(range.2 as usize)
             .map(|message| {
-                S::Value::decode(message.payload()).map_err(|_| CommitLogError::ReadError {
-                    error: ReadError::CorruptLog,
-                    location: Location(message.offset(), message.size() as usize),
-                })
+                S::Value::decode(message).map_err(|_| CommitLogError::CorruptData)
             })
             .collect()
     }
-}
-
-#[inline]
-fn fit_read_limit(limit: ByteLimit) -> ReadLimit {
-    ReadLimit::max_bytes(limit + 32)
-}
-
-#[inline]
-fn fit_batch_read_limit(limit: ByteLimit, items: ItemCount) -> ReadLimit {
-    ReadLimit::max_bytes(limit + (32 * items as usize))
 }
 
 pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
@@ -196,9 +185,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item = CommitLogDescriptor>,
+        where
+            P: AsRef<Path>,
+            I: IntoIterator<Item=CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -218,11 +207,7 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
-
-        let mut opts = LogOptions::new(&path);
-        // TODO: TE-396 - rework
-        opts.message_max_bytes(15_000_000);
-        let log = CommitLog::new(opts)?;
+        let log = CommitLog::new(path);
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -257,11 +242,11 @@ impl Drop for CommitLogs {
 
 #[cfg(test)]
 impl Location {
-    pub fn new(offset: Offset) -> Self {
+    pub fn new(offset: u64) -> Self {
         Self(offset, 0)
     }
 
-    pub(crate) fn offset(&self) -> Offset {
+    pub(crate) fn offset(&self) -> u64 {
         self.0
     }
 }
