@@ -135,9 +135,12 @@ impl<T: KeyValueStoreBackend<MerkleStorage> + GarbageCollector> MerkleStorageBac
 pub type MerkleStorageKV = dyn MerkleStorageBackendWithGC + Sync + Send;
 
 pub struct MerkleStorage {
+    /// temporary solution for gc trigger
+    current_block: usize,
+    /// temporary solution for gc trigger
+    blocks_per_cycle: usize,
     /// tree with current staging area (currently checked out context)
     current_stage_tree: (Tree, TreeId),
-    /// hash of the root of the staging area
     /// key value storage backend
     db: Box<MerkleStorageKV>,
     /// all entries in current staging area
@@ -407,6 +410,8 @@ impl MerkleStorage {
         trees_map.insert(tree_id, tree.clone());
 
         MerkleStorage {
+            blocks_per_cycle: 2048,
+            current_block: 0,
             db,
             staged: entries_map,
             trees: trees_map,
@@ -742,6 +747,14 @@ impl MerkleStorage {
         self.db.write_batch(batch)?;
 
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
+
+        self.mark_entries_from_last_commit_as_used()?;
+        self.current_block += 1;
+        if self.current_block > self.blocks_per_cycle {
+            self.current_block = 0;
+            self.start_new_cycle()?;
+        }
+
         Ok(hash_commit(&new_commit)?)
     }
 
@@ -943,21 +956,16 @@ impl MerkleStorage {
     /// Marks all the entries from last commit as used
     /// so GC can know when to remove them
     pub fn mark_entries_from_last_commit_as_used(&mut self) -> Result<(), MerkleError> {
-        if !self.staged.is_empty() {
-            // mark entries should be called just after commit has been called
-            Err(MerkleError::GCCalledOnDirtyStagingArea)
-        } else {
-            match self.last_commit_hash {
-                Some(hash) => {
-                    let entry = self.get_entry(&hash)?;
-                    let mut entries = Vec::new();
-                    self.get_entries_recursively(&entry, &mut entries)?;
-                    self.db
-                        .mark_reused(entries.into_iter().map(|(k, _)| k).collect())?;
-                    Ok(())
-                }
-                None => Ok(()),
+        match self.last_commit_hash {
+            Some(hash) => {
+                let entry = self.get_entry(&hash)?;
+                let mut entries = Vec::new();
+                self.get_entries_recursively(&entry, &mut entries)?;
+                self.db
+                    .mark_reused(entries.into_iter().map(|(k, _)| k).collect())?;
+                Ok(())
             }
+            None => Ok(()),
         }
     }
 
