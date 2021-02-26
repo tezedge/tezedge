@@ -1,7 +1,5 @@
 use failure::Fail;
 use std::io;
-use std::array::TryFromSliceError;
-use std::convert::TryFrom;
 
 #[derive(Debug, Fail)]
 pub enum TezedgeCommitLogError {
