@@ -13,7 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::merkle_storage::{ContextValue, Entry, EntryHash};
-use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
@@ -85,12 +85,8 @@ pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     cycles: usize,
     /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
-    /// Stats for each store in archived stores
-    stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     /// Current in-process cycle store
     current: T,
-    /// Current in-process cycle store stats
-    current_stats: StorageBackendStats,
     /// GC thread
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
@@ -114,20 +110,15 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
         let msg_cnt_ref = msg_cnt.clone();
         let busy = Arc::new(AtomicBool::new(true));
         let busy_ref = busy.clone();
-        let stores_stats = Arc::new(Mutex::new(vec![Default::default(); cycle_count - 1]));
 
         Self {
             cycles: cycle_count,
             stores: stores.clone(),
-            stores_stats: stores_stats.clone(),
-            _thread: thread::spawn(move || {
-                kvstore_gc_thread_fn(stores, stores_stats, rx, busy.clone(), msg_cnt)
-            }),
+            _thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx, busy.clone(), msg_cnt)),
             msg: Mutex::new(tx),
             is_busy: busy_ref,
             msg_cnt: msg_cnt_ref,
             current: Default::default(),
-            current_stats: Default::default(),
         }
     }
 
@@ -169,10 +160,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     /// Garbage collector will start collecting the oldest cycle.
     pub fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
         self.msg_cnt.fetch_add(1, Ordering::Acquire);
-        self.stores_stats
-            .lock()
-            .unwrap()
-            .push(mem::take(&mut self.current_stats));
         self.stores
             .write()
             .unwrap()
@@ -247,7 +234,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
 /// Garbage collector main function
 fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     stores: Arc<RwLock<Vec<T>>>,
-    stores_stats: Arc<Mutex<Vec<StorageBackendStats>>>,
     rx: mpsc::Receiver<CmdMsg>,
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
@@ -306,9 +292,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                     // entry with that `key`. So this entry shouldn't be marked as reused.
                     if index < reused_keys.len() {
                         let keys = &mut reused_keys[index];
-                        if keys.insert(key) {
-                            stores_stats.lock().unwrap()[index].update_reused_keys(keys);
-                        }
+                        keys.insert(key);
                     }
                 }
                 msg_cnt.fetch_sub(1, Ordering::Acquire);
@@ -329,7 +313,6 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
         }
 
         if !todo_keys.is_empty() {
-            let mut stats = stores_stats.lock().unwrap();
             let mut stores = stores.write().unwrap();
 
             // it will block if new cycle begins and we still haven't garbage collected prev cycle.
@@ -359,9 +342,6 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                     None => continue,
                 };
 
-                let stat: StorageBackendStats = (&key, &entry_bytes).into();
-                // stats[store_index] -= &stat;
-
                 let entry: Entry = match bincode::deserialize(&entry_bytes) {
                     Ok(value) => value,
                     Err(err) => {
@@ -384,9 +364,6 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                         "MerkleStorage GC: error while adding entry to store: {:?}",
                         err
                     );
-                } else {
-                    // and update the stats for that store
-                    *stats.last_mut().unwrap() += &stat;
                 }
 
                 match entry {
@@ -404,7 +381,6 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
 
         if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty() {
             drop(reused_keys.drain(..1));
-            drop(stores_stats.lock().unwrap().drain(..1));
             drop(stores.write().unwrap().drain(..1));
         }
     }

@@ -102,13 +102,12 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        Ok(
-            self.cycles
-                .iter()
-                .map(|set| set.len() * std::mem::size_of::<EntryHash>() as usize )
-                .sum::<usize>()
-            + self.store.total_get_mem_usage()?
-        )
+        Ok(self
+            .cycles
+            .iter()
+            .map(|set| set.len() * std::mem::size_of::<EntryHash>() as usize)
+            .sum::<usize>()
+            + self.store.total_get_mem_usage()?)
     }
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
