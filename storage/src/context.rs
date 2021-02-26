@@ -108,6 +108,8 @@ pub trait ContextApi {
     fn block_applied(&self) -> Result<(), ContextError>;
 
     fn cycle_started(&self) -> Result<(), ContextError>;
+
+    fn get_memory_usage(&self) -> Result<usize, ContextError>;
 }
 
 impl ContextApi for TezedgeContext {
@@ -305,6 +307,11 @@ impl ContextApi for TezedgeContext {
     fn cycle_started(&self) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
         Ok(merkle.start_new_cycle()?)
+    }
+
+    fn get_memory_usage(&self) -> Result<usize, ContextError> {
+        let merkle = self.merkle.write().expect("lock poisoning");
+        Ok(merkle.get_memory_usage()?)
     }
 }
 

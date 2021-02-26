@@ -126,7 +126,6 @@ mod tests {
     use crate::merkle_storage::{hash_entry, Entry};
     use crate::merkle_storage::{Commit, Node, NodeKind};
     use im::ordmap;
-    use std::collections::BTreeMap;
 
     #[test]
     fn test_mark_sweep_gc() {
