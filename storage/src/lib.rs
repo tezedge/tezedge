@@ -5,15 +5,13 @@
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use failure::Fail;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 
 use crypto::{
     base58::FromBase58CheckError,
@@ -473,52 +471,12 @@ pub fn check_database_compatibility(
     Ok(db_version_ok && chain_id_ok)
 }
 
-#[derive(PartialEq, Debug, Clone, EnumIter)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum KeyValueStoreBackend {
     RocksDB,
     InMem,
-    Sled { path: PathBuf },
+    Sled,
     BTreeMap,
-}
-
-impl KeyValueStoreBackend {
-    pub fn possible_values() -> Vec<&'static str> {
-        let mut possible_values = Vec::new();
-        for sp in KeyValueStoreBackend::iter() {
-            possible_values.extend(sp.supported_values());
-        }
-        possible_values
-    }
-
-    fn supported_values(&self) -> Vec<&'static str> {
-        match self {
-            KeyValueStoreBackend::RocksDB => vec!["rocksdb"],
-            KeyValueStoreBackend::InMem => vec!["inmem"],
-            KeyValueStoreBackend::Sled { .. } => vec!["sled"],
-            KeyValueStoreBackend::BTreeMap => vec!["btree"],
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ParseKeyValueStoreBackendError(String);
-
-impl FromStr for KeyValueStoreBackend {
-    type Err = ParseKeyValueStoreBackendError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        for sp in KeyValueStoreBackend::iter() {
-            if sp.supported_values().contains(&s.as_str()) {
-                return Ok(sp);
-            }
-        }
-
-        Err(ParseKeyValueStoreBackendError(format!(
-            "Invalid variant name: {}",
-            s
-        )))
-    }
 }
 
 pub mod tests_common {
