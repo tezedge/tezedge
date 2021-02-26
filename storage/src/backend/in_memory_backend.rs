@@ -5,22 +5,21 @@ use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::storage_backend::StorageBackendStats;
 use crate::storage_backend::{GarbageCollector, StorageBackendError};
 use crate::MerkleStorage;
 use std::collections::HashMap;
-use crate::storage_backend::StorageBackendStats;
 
 #[derive(Default)]
-pub struct HashMapWithStats{
-    inner: HashMap<EntryHash,ContextValue>,
+pub struct HashMapWithStats {
+    inner: HashMap<EntryHash, ContextValue>,
     stats: StorageBackendStats,
 }
 
-impl HashMapWithStats
-{
-    pub fn insert(&mut self, key: EntryHash, value: ContextValue) -> Option<ContextValue>{
+impl HashMapWithStats {
+    pub fn insert(&mut self, key: EntryHash, value: ContextValue) -> Option<ContextValue> {
         let stats = StorageBackendStats::from((&key, &value));
-        match self.inner.insert(key,value){
+        match self.inner.insert(key, value) {
             Some(prev) => {
                 self.stats -= StorageBackendStats::from((&key, &prev));
                 self.stats += stats;
@@ -33,36 +32,36 @@ impl HashMapWithStats
         }
     }
 
-    pub fn remove(&mut self, key: &EntryHash) -> Option<ContextValue>{
-        match self.inner.remove(key){
+    pub fn remove(&mut self, key: &EntryHash) -> Option<ContextValue> {
+        match self.inner.remove(key) {
             Some(prev) => {
                 self.stats -= StorageBackendStats::from((key, &prev));
                 Some(prev)
-            },
-            None => None
+            }
+            None => None,
         }
     }
 
-    pub fn get(&self, key: &EntryHash) -> Option<&ContextValue>{
+    pub fn get(&self, key: &EntryHash) -> Option<&ContextValue> {
         self.inner.get(key)
     }
 
-    pub fn contains_key(&self, key: &EntryHash) -> bool{
+    pub fn contains_key(&self, key: &EntryHash) -> bool {
         self.inner.contains_key(key)
     }
 
-    pub fn iter(&self) -> std::collections::hash_map::Iter<EntryHash,ContextValue>{
+    pub fn iter(&self) -> std::collections::hash_map::Iter<EntryHash, ContextValue> {
         self.inner.iter()
     }
 
-    pub fn get_memory_usage(&self) -> StorageBackendStats{
+    pub fn get_memory_usage(&self) -> StorageBackendStats {
         self.stats
     }
 }
 
 #[derive(Default)]
 pub struct InMemoryBackend {
-    inner: Arc<RwLock<HashMapWithStats>>
+    inner: Arc<RwLock<HashMapWithStats>>,
 }
 
 impl InMemoryBackend {
