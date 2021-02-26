@@ -1,11 +1,11 @@
 use std::convert::TryInto;
 use crate::commit_log::error::TezedgeCommitLogError;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use crate::commit_log::reader::Reader;
 use crate::commit_log::writer::Writer;
 
 mod reader;
-mod error;
+pub mod error;
 mod writer;
 
 const INDEX_FILE_NAME: &str = "table.index";
@@ -20,6 +20,7 @@ pub struct Index {
     pub position: u64,
     pub data_length: u64,
 }
+
 
 impl Index {
     fn from_buf(buf: &[u8]) -> Result<Self, TezedgeCommitLogError> {
@@ -53,89 +54,48 @@ impl Index {
     }
 }
 
-enum CommitLogMode {
-    ReadOnly(Reader),
-    ReadWrite(Reader, Writer),
-}
-
-pub struct CommitLogConfig {
-    mode: CommitLogMode
-}
-
-impl CommitLogConfig {
-    pub fn open_for_read_only<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
-        Ok(Self {
-            mode: CommitLogMode::ReadOnly(Reader::new(log_dir)?)
-        })
-    }
-    pub fn open<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
-        let writer = Writer::new(&log_dir)?;
-        let reader = Reader::new(log_dir)?;
-        Ok(Self {
-            mode: CommitLogMode::ReadWrite(reader, writer)
-        })
-    }
-}
-
-struct CommitLog {
-    reader: Reader,
-    writer: Option<Writer>,
+pub struct CommitLog {
+    path : PathBuf
 }
 
 impl CommitLog {
-    pub fn new_from_config(config: CommitLogConfig) -> Self {
-        match config.mode {
-            CommitLogMode::ReadOnly(mut r) => {
-                Self {
-                    reader: r,
-                    writer: None,
-                }
-            }
-            CommitLogMode::ReadWrite(mut r, w) => {
-                Self {
-                    reader: r,
-                    writer: Some(w),
-                }
-            }
-        }
-    }
 
-    pub fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
-        Ok(Self::new_from_config(CommitLogConfig::open(log_dir)?))
+    pub fn new<P: AsRef<Path>>(log_dir: P) -> Self {
+        Self {
+            path: log_dir.as_ref().to_path_buf()
+        }
     }
     #[inline]
-    pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<(), TezedgeCommitLogError> {
-        if let Some(writer) = &mut self.writer {
-            writer.write(payload.as_ref())?;
-            self.reader.update();
-        }
-        Ok(())
+    pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
+        let mut writer = Writer::new(&self.path)?;
+        let offset = writer.write(payload.as_ref())?;
+        Ok(offset)
     }
 
     #[inline]
-    pub fn read(&mut self, from: usize, limit: usize) -> Result<Vec<Message>, TezedgeCommitLogError> {
-        return self.reader.range(from, limit);
+    pub fn read(&self, from: usize, limit: usize) -> Result<Vec<Message>, TezedgeCommitLogError> {
+        let mut reader = Reader::new(&self.path)?;
+        return reader.range(from, limit);
     }
 
-    pub fn iter(&mut self) -> CommitLogIterator {
-        CommitLogIterator::new(&mut self.reader)
+    pub fn iter(&mut self) -> Result<CommitLogIterator, TezedgeCommitLogError> {
+        let reader = Reader::new(&self.path)?;
+        Ok(CommitLogIterator::new(reader))
     }
 
     pub fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
-        if let Some(writer) = &mut self.writer {
-            return writer.flush();
-        }
-        Err(TezedgeCommitLogError::WriteFailed)
+        let mut writer = Writer::new(&self.path)?;
+        return writer.flush();
     }
 }
 
-struct CommitLogIterator<'a> {
+pub struct CommitLogIterator{
     cursor: u64,
-    reader: &'a mut Reader,
+    reader: Reader,
 }
 
-impl<'a> CommitLogIterator<'a> {
-    fn new(reader: &'a mut Reader) -> Self {
+impl CommitLogIterator {
+    fn new(reader: Reader) -> Self {
         Self {
             cursor: 0,
             reader,
@@ -143,7 +103,7 @@ impl<'a> CommitLogIterator<'a> {
     }
 }
 
-impl<'a> Iterator for CommitLogIterator<'a> {
+impl Iterator for CommitLogIterator {
     type Item = Message;
 
     fn next(&mut self) -> Option<Self::Item> {
