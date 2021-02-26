@@ -2,8 +2,8 @@ use std::io::{BufReader, Seek, SeekFrom, Read, Error};
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::convert::TryFrom;
-use crate::commit_log::{TH_LENGTH, Index, Message, INDEX_FILE_NAME, DATA_FILE_NAME};
-use crate::commit_log::error::TezedgeCommitLogError;
+use crate::persistent::commit_log::{TH_LENGTH, Index, Message, INDEX_FILE_NAME, DATA_FILE_NAME};
+use crate::persistent::commit_log::error::TezedgeCommitLogError;
 
 
 pub(crate) struct Reader {
