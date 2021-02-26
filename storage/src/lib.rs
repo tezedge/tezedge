@@ -620,7 +620,8 @@ pub mod tests_common {
                     Arc::new(kv_context_action),
                     Arc::new(clog),
                     KeyValueStoreBackend::RocksDB,
-                ),
+                )
+                .expect("cannot initialize persistent storage"),
                 path,
                 remove_on_destroy,
             })

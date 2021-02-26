@@ -216,10 +216,11 @@ fn listen_protocol_events(
                 }
 
                 perform_context_action(&action, context)?;
-                // below logic should be driven by dedicated ContextAction events
+
+                // TODO TE-440 subscribe to commit event
                 if let ContextAction::Commit { .. } = &action {
                     context.block_applied()?;
-                    if event_count > 0 && event_count % 4096 == 0 {
+                    if event_count > 0 && event_count % 2048 == 0 {
                         context.cycle_started()?;
                     }
                 }

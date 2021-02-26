@@ -16,12 +16,11 @@ pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLo
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
-use crate::backend::btree_map::BTreeMapBackend;
-use crate::backend::in_memory_backend::InMemoryBackend;
-use crate::backend::mark_move_gced::MarkMoveGCed;
-use crate::backend::mark_sweep_gced::MarkSweepGCed;
-use crate::backend::rocksdb_backend::RocksDBBackend;
-use crate::backend::sled_backend::SledBackend;
+use crate::backend::{
+    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
+};
+use crate::storage_backend::StorageBackendError;
+
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
 use tezos_context::channel::ContextAction;
@@ -155,7 +154,7 @@ impl PersistentStorage {
         db_context_actions: Arc<DB>,
         clog: Arc<CommitLogs>,
         merkle_backend: KeyValueStoreBackend,
-    ) -> Self {
+    ) -> Result<Self, StorageBackendError> {
         let merkle =
             match merkle_backend {
                 KeyValueStoreBackend::RocksDB => {
@@ -178,14 +177,14 @@ impl PersistentStorage {
             };
 
         let seq = Arc::new(Sequences::new(db.clone(), 1000));
-        Self {
+        Ok(Self {
             clog,
             db,
             db_context,
             db_context_actions,
             seq,
             merkle: Arc::new(RwLock::new(merkle)),
-        }
+        })
     }
 
     #[inline]

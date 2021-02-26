@@ -942,22 +942,52 @@ impl MerkleStorage {
     /// Marks all the entries from last commit as used
     /// so GC can know when to remove them
     pub fn mark_entries_from_last_commit_as_used(&mut self) -> Result<(), MerkleError> {
-        match self.last_commit_hash {
-            Some(hash) => {
-                let entry = self.get_entry(&hash)?;
-                let mut entries = Vec::new();
-                self.get_entries_recursively(&entry, &mut entries)?;
-                self.db
-                    .mark_reused(entries.into_iter().map(|(k, _)| k).collect())?;
-                Ok(())
-            }
-            None => Ok(()),
-        }
+        Ok(())
     }
 
     /// Notify GC about new cycle
     pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
+        match self.last_commit_hash {
+            Some(hash) => {
+                let entry = self.get_entry(&hash)?;
+                let mut entries = Vec::new();
+                self.get_entries_recursively2(&entry, &mut entries)?;
+                println!("found {} entries", entries.len());
+                self.db
+                    .mark_reused(entries.into_iter().map(|(k, _)| k).collect())?;
+            }
+            None => {
+                panic!("missing last commit hash");
+            }
+        };
+
         Ok(self.db.new_cycle_started()?)
+    }
+
+    /// Builds vector of entries to be persisted to DB, recursively
+    fn get_entries_recursively2(
+        &self,
+        entry: &Entry,
+        batch: &mut Vec<(EntryHash, ContextValue)>,
+    ) -> Result<(), MerkleError> {
+        batch.push((hash_entry(entry)?, bincode::serialize(entry)?));
+
+        match entry {
+            Entry::Blob(_) => Ok(()),
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                for (_, child_node) in tree.iter() {
+                    let entry = self.get_entry(&child_node.entry_hash)?;
+                    self.get_entries_recursively2(&entry, batch)?;
+                }
+                Ok(())
+            }
+            Entry::Commit(commit) => {
+                let entry = self.get_entry(&commit.root_hash)?;
+                Ok(self.get_entries_recursively2(&entry, batch)?)
+            }
+        }
     }
 
     /// Builds vector of entries to be persisted to DB, recursively
@@ -1166,8 +1196,8 @@ mod tests {
             }
             "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
             "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5))),
-            "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(5))),
+            "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(3))),
+            "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(3))),
             _ => {
                 panic!("unknown backend set")
             }
@@ -2019,6 +2049,91 @@ mod tests {
 
         assert_eq!(storage.staged.is_empty(), false);
         assert_eq!(storage.stage_checkout(1).is_err(), false);
+    }
+
+    #[test]
+    fn test_gc() {
+        let mut storage = MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(2)));
+        storage
+            .set(1, &vec!["a".to_string(), "b".to_string()], &vec![1])
+            .unwrap();
+        let commit1 = storage
+            .commit(0, "dev".to_string(), "commit1".to_string())
+            .unwrap();
+        storage.checkout(&commit1);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+        storage.start_new_cycle().unwrap();
+
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_some());
+
+        storage
+            .set(1, &vec!["a".to_string(), "c".to_string()], &vec![2])
+            .unwrap();
+        storage
+            .set(2, &vec!["a".to_string(), "b".to_string()], &vec![1, 1])
+            .unwrap();
+        let commit2 = storage
+            .commit(0, "dev".to_string(), "commit2".to_string())
+            .unwrap();
+        storage.checkout(&commit2);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+        storage.start_new_cycle().unwrap();
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1, 1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_some());
+        assert!(storage.db.get(&commit2).unwrap().is_some());
+
+        storage
+            .set(1, &vec!["a".to_string(), "d".to_string()], &vec![3])
+            .unwrap();
+        let commit3 = storage
+            .commit(0, "dev".to_string(), "commit3".to_string())
+            .unwrap();
+        storage.checkout(&commit3);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+        storage.start_new_cycle().unwrap();
+
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
+            .unwrap()
+            .is_none());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![1, 1])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage
+            .db
+            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
+            .unwrap()
+            .is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_none());
+        assert!(storage.db.get(&commit2).unwrap().is_some());
+        assert!(storage.db.get(&commit3).unwrap().is_some());
     }
 
     macro_rules! tests_with_storage {

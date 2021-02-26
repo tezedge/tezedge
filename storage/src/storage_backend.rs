@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::array::TryFromSliceError;
 use std::collections::HashSet;
 use std::mem;
+use std::sync::PoisonError;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 
@@ -15,8 +16,13 @@ pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
 }
 
 pub trait GarbageCollector {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError>;
-    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError>;
+    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+        Ok(())
+    }
+
+    fn mark_reused(&mut self, _reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Fail)]
@@ -39,6 +45,8 @@ pub enum StorageBackendError {
     HashConversionError { error: TryFromSliceError },
     #[fail(display = "GarbageCollector error: {}", error)]
     GarbageCollectorError { error: String },
+    #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
+    LockError { reason: String },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -68,6 +76,14 @@ impl From<bincode::Error> for StorageBackendError {
 impl From<TryFromSliceError> for StorageBackendError {
     fn from(error: TryFromSliceError) -> Self {
         StorageBackendError::HashConversionError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for StorageBackendError {
+    fn from(pe: PoisonError<T>) -> Self {
+        StorageBackendError::LockError {
+            reason: format!("{}", pe),
+        }
     }
 }
 
