@@ -3,8 +3,8 @@
 # - standalone-tests (just rust tests)
 # - sandbox-inject-operation (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them, using tezos_client)
 # - connect-from-different-network-test (runs ocaml nodes and rust node)
-# - edo2net-big-offline-tests (runs snapshoted local ocaml nodes and rust node - more robust then others, uses tezos/tezos:master_4b80b7ae_20210225173318)
-# - edonet-legacy-offline-tests (runs snapshoted local ocaml nodes and rust node - old 008 edo protocol, works just on v8.1 image)
+# - edonet-big-offline-tests (runs snapshoted local ocaml nodes and rust node - more robust then others, old 008 edo protocol, works just on v8.1 image)
+# - edo2net-offline-tests (runs snapshoted local ocaml nodes and rust node - uses tezos/tezos:master_4b80b7ae_20210225173318)
 # - delphinet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 # - mainnet-offline-tests (runs snapshoted local ocaml nodes and rust node)
 # - carthagenet-legacy-offline-tests (runs snapshoted local ocaml nodes and rust node - works just on older v8.0 image)
@@ -118,6 +118,9 @@ steps:
     - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
+    # copy sapling init files
+    - cp ./tezos/interop/lib_tezos/artifacts/sapling-spend.params /artifacts/ffi
+    - cp ./tezos/interop/lib_tezos/artifacts/sapling-output.params /artifacts/ffi
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
@@ -172,6 +175,9 @@ steps:
     - cp /artifacts/light-node /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/protocol-runner /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/unmodified/tezos/
+    # copy zcash-params init files - see constants.py light-node params
+    - cp /artifacts/ffi/sapling-spend.params /tmp/tezos-src/unmodified/tezos/
+    - cp /artifacts/ffi/sapling-output.params /tmp/tezos-src/unmodified/tezos/
 
 # this is not triggered on pull request, because there is complex bench comparison on PR
 - name: benchmarks
@@ -543,8 +549,6 @@ steps:
 - name: test-many-bakers
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
-  # TODO: TE-275 remove failure: ignore
-  failure: ignore
   user: root
   volumes:
     - name: build
@@ -761,7 +765,7 @@ steps:
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
     - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
-    - /artifacts/sandbox --sandbox-rpc-port 3030 --light-node-path /artifacts/light-node --protocol-runner-path /artifacts/protocol-runner --log-level info --tezos-client-path /artifacts/tezos-client
+    - /artifacts/sandbox --sandbox-rpc-port 3030 --light-node-path /artifacts/light-node --protocol-runner-path /artifacts/protocol-runner --log-level info --tezos-client-path /artifacts/tezos-client --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
 - name: start-tezedge-node-via-rpc
   user: root
@@ -1296,7 +1300,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: edo2net-big-offline-tests
+name: edonet-big-offline-tests
 # default build goes with: --network "edonet"
 # integration test is using env variables:
 # - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
@@ -1312,7 +1316,7 @@ clone:
   disable: true
 
 environment:
-  NETWORK: edo2net
+  NETWORK: edonet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
   # TODO: TE-349 - remove, if fixed and use just TO_BLOCK_HEADER
@@ -1345,15 +1349,15 @@ steps:
     - rm -rf /tmp/tezedge_target-branch_developer/light-node
     - rm -rf /tmp/tezedge_target-branch_developer/tezos-node
 
-# just run ocaml 3 edo2net snapshoted nodes
+# just run ocaml 3 edonet snapshoted nodes
 - name: ocaml-node-run-1
   user: root
-  image: tezos/tezos:master_4b80b7ae_20210225173318
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-edo2net-snapshot-data-1
+    - name: ocaml-node-edonet-snapshot-data-1
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip1.txt
@@ -1364,12 +1368,12 @@ steps:
 
 - name: ocaml-node-run-2
   user: root
-  image: tezos/tezos:master_4b80b7ae_20210225173318
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-edo2net-snapshot-data-2
+    - name: ocaml-node-edonet-snapshot-data-2
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip2.txt
@@ -1380,12 +1384,12 @@ steps:
 
 - name: ocaml-node-run-3
   user: root
-  image: tezos/tezos:master_4b80b7ae_20210225173318
+  image: tezos/tezos:v8.1
   detach: true
   volumes:
     - name: build
       path: /artifacts
-    - name: ocaml-node-edo2net-snapshot-data-3
+    - name: ocaml-node-edonet-snapshot-data-3
       path: /home/tezos/data
   commands:
     - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip3.txt
@@ -1558,15 +1562,15 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-edo2net-snapshot-data-1
+  - name: ocaml-node-edonet-snapshot-data-1
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-1
-  - name: ocaml-node-edo2net-snapshot-data-2
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1
+  - name: ocaml-node-edonet-snapshot-data-2
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-2
-  - name: ocaml-node-edo2net-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
+  - name: ocaml-node-edonet-snapshot-data-3
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-ci/data/tezedge-node
@@ -1594,15 +1598,15 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: edonet-legacy-offline-tests
+name: edo2net-offline-tests
 
 clone:
   disable: true
 
 environment:
-  NETWORK: edonet
+  NETWORK: edo2net
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
@@ -1627,12 +1631,12 @@ steps:
   # just run ocaml 3 old edonet snapshoted nodes
   - name: ocaml-node-run-1
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:master_4b80b7ae_20210225173318
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-1
+      - name: ocaml-node-edo2net-snapshot-data-1
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip1.txt
@@ -1643,12 +1647,12 @@ steps:
 
   - name: ocaml-node-run-2
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:master_4b80b7ae_20210225173318
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-2
+      - name: ocaml-node-edo2net-snapshot-data-2
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip2.txt
@@ -1659,12 +1663,12 @@ steps:
 
   - name: ocaml-node-run-3
     user: root
-    image: tezos/tezos:v8.1
+    image: tezos/tezos:master_4b80b7ae_20210225173318
     detach: true
     volumes:
       - name: build
         path: /artifacts
-      - name: ocaml-node-edonet-snapshot-data-3
+      - name: ocaml-node-edo2net-snapshot-data-3
         path: /home/tezos/data
     commands:
       - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > /artifacts/ocaml_ip3.txt
@@ -1723,7 +1727,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=131"]
+    command: ["tzindex", "run", "--stop=257"]
 
   - name: tz-indexer-ocaml
     image: blockwatch/tzindex:latest
@@ -1741,7 +1745,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=131"]
+    command: ["tzindex", "run", "--stop=257"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
@@ -1763,6 +1767,9 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
+    # TODO: TE-349 - if new docker image is published (remove failure and detached)
+    failure: ignore
+    detach: true
 
 image_pull_secrets:
   - docker_pull_secret
@@ -1771,15 +1778,15 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-edonet-snapshot-data-1
+  - name: ocaml-node-edo2net-snapshot-data-1
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1
-  - name: ocaml-node-edonet-snapshot-data-2
+      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-1
+  - name: ocaml-node-edo2net-snapshot-data-2
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
-  - name: ocaml-node-edonet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-2
+  - name: ocaml-node-edo2net-snapshot-data-3
     host:
-      path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
+      path: /etc/tezedge-ci/data/ocaml-node-edo2net-snapshot-data-3
   - name: tezedge-node-data
     host:
       path: /etc/tezedge-ci/data/tezedge-node
@@ -2471,8 +2478,8 @@ depends_on:
   - sandbox-carthage-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
-  - edo2net-big-offline-tests
-  - edonet-legacy-offline-tests
+  - edonet-big-offline-tests
+  - edo2net-offline-tests
   - delphinet-offline-tests
   - mainnet-offline-tests
   - carthagenet-legacy-offline-tests
@@ -2529,8 +2536,8 @@ depends_on:
   - sandbox-carthage-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
-  - edo2net-big-offline-tests
-  - edonet-legacy-offline-tests
+  - edonet-big-offline-tests
+  - edo2net-offline-tests
   - delphinet-offline-tests
   - mainnet-offline-tests
   - carthagenet-legacy-offline-tests

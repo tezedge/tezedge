@@ -5,12 +5,20 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
+use tezos_api::environment::ZcashParams;
+
+pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
+    "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
+    "tezos/interop/lib_tezos/artifacts/sapling-output.params";
+
 pub struct LauncherEnvironment {
     pub light_node_path: PathBuf,
     pub protocol_runner_path: PathBuf,
     pub log_level: slog::Level,
     pub sandbox_rpc_port: u16,
     pub tezos_client_path: PathBuf,
+    pub zcash_param: ZcashParams,
 }
 
 macro_rules! parse_validator_fn {
@@ -94,7 +102,22 @@ fn sandbox_app() -> App<'static, 'static> {
                     u16,
                     "Value must be a valid port number"
                 )),
+        )
+        .arg(
+            Arg::with_name("init-sapling-spend-params-file")
+                .long("init-sapling-spend-params-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to a init file for sapling-spend.params"),
+        )
+        .arg(
+            Arg::with_name("init-sapling-output-params-file")
+                .long("init-sapling-output-params-file")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to a init file for sapling-output.params"),
         );
+
     app
 }
 
@@ -129,6 +152,18 @@ impl LauncherEnvironment {
                 .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
+            zcash_param: ZcashParams {
+                init_sapling_spend_params_file: args
+                    .value_of("init-sapling-spend-params-file")
+                    .unwrap_or(DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path"),
+                init_sapling_output_params_file: args
+                    .value_of("init-sapling-output-params-file")
+                    .unwrap_or(DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path"),
+            },
         }
     }
 }

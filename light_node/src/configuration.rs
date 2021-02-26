@@ -22,7 +22,7 @@ use shell::PeerConnectionThreshold;
 use storage::persistent::KeyValueSchema;
 use storage::KeyValueStoreBackend;
 use tezos_api::environment;
-use tezos_api::environment::TezosEnvironment;
+use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::PatchContext;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
@@ -187,12 +187,18 @@ pub struct Ffi {
     pub tezos_readonly_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_readonly_prevalidation_api_pool: TezosApiConnectionPoolConfiguration,
     pub tezos_without_context_api_pool: TezosApiConnectionPoolConfiguration,
+    pub zcash_param: ZcashParams,
 }
 
 impl Ffi {
     const TEZOS_READONLY_API_POOL_DISCRIMINATOR: &'static str = "";
     const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap";
     const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap";
+
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-output.params";
 }
 
 #[derive(Debug, Clone)]
@@ -518,6 +524,18 @@ pub fn tezos_app() -> App<'static, 'static> {
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number"))
             ])
+        .arg(Arg::with_name("init-sapling-spend-params-file")
+            .long("init-sapling-spend-params-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a init file for sapling-spend.params")
+        )
+        .arg(Arg::with_name("init-sapling-output-params-file")
+            .long("init-sapling-output-params-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a init file for sapling-output.params")
+        )
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
             .takes_value(true)
@@ -1037,6 +1055,18 @@ impl Environment {
                     &args,
                     Ffi::TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR,
                 ),
+                zcash_param: ZcashParams {
+                    init_sapling_spend_params_file: args
+                        .value_of("init-sapling-spend-params-file")
+                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path"),
+                    init_sapling_output_params_file: args
+                        .value_of("init-sapling-output-params-file")
+                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path"),
+                },
             },
             tokio_threads: args
                 .value_of("tokio-threads")
