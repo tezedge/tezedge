@@ -1,8 +1,8 @@
 use std::io::{BufWriter, Seek, SeekFrom, Write, BufReader, Read};
 use std::fs::{File, OpenOptions};
-use crate::commit_log::error::TezedgeCommitLogError;
+use crate::persistent::commit_log::error::TezedgeCommitLogError;
 use std::path::{Path, PathBuf};
-use crate::commit_log::{Index, INDEX_FILE_NAME, DATA_FILE_NAME, TH_LENGTH};
+use crate::persistent::commit_log::{Index, INDEX_FILE_NAME, DATA_FILE_NAME, TH_LENGTH};
 use std::ops::Sub;
 
 pub(crate) struct Writer {
