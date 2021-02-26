@@ -636,16 +636,33 @@ pub struct SlimBlockData {
     pub level: i32,
     pub block_hash: String,
     pub timestamp: String,
+    // TODO: TE-199 Refactor FullBlockInfo (should be i32)
+    // Note: serde's Value can be converted into Option<i64> without panicing, the original tezos value is an i32
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle_position: Option<i64>,
 }
 
 impl From<(BlockHeaderWithHash, BlockJsonData)> for SlimBlockData {
     fn from(
-        (block_header_with_hash, _block_json_data): (BlockHeaderWithHash, BlockJsonData),
+        (block_header_with_hash, block_json_data): (BlockHeaderWithHash, BlockJsonData),
     ) -> Self {
+        // TODO: TE-199 Refactor FullBlockInfo
+        // deserialize the metadata
+        let metadata: BlockMetadata =
+            serde_json::from_str(block_json_data.block_header_proto_metadata_json())
+                .unwrap_or_default();
+
+        let cycle_position = if let Some(level) = metadata.get("level") {
+            level["cycle_position"].as_i64()
+        } else {
+            None
+        };
+
         Self {
             level: block_header_with_hash.header.level(),
             block_hash: block_header_with_hash.hash.to_base58_check(),
             timestamp: block_header_with_hash.header.timestamp().to_string(),
+            cycle_position,
         }
     }
 }
