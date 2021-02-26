@@ -3,7 +3,7 @@
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::storage_backend::GarbageCollector;
 use crate::MerkleStorage;
 use bytes::Buf;
 use std::io::Read;
@@ -23,18 +23,7 @@ impl SledBackend {
     }
 }
 
-impl GarbageCollector for SledBackend {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-
-    fn mark_reused(
-        &mut self,
-        _reused_keys: std::collections::HashSet<EntryHash>,
-    ) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-}
+impl GarbageCollector for SledBackend {}
 
 impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {

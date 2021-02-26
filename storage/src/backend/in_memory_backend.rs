@@ -5,8 +5,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
+use crate::storage_backend::GarbageCollector;
 use crate::storage_backend::StorageBackendStats;
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
 use crate::MerkleStorage;
 use std::collections::HashMap;
 
@@ -72,25 +72,13 @@ impl InMemoryBackend {
     }
 }
 
-impl GarbageCollector for InMemoryBackend {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-
-    fn mark_reused(
-        &mut self,
-        _reused_keys: std::collections::HashSet<EntryHash>,
-    ) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-}
+impl GarbageCollector for InMemoryBackend {}
 
 impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner
-            .read()
-            .unwrap()
+            .read()?
             .iter()
             .filter_map(|(k, _)| if !predicate(k) { Some(*k) } else { None })
             .collect();
