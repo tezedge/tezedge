@@ -168,7 +168,8 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
             "mark_sweep" => storage::KeyValueStoreBackend::MarkSweepInMem,
             _ => panic!("unknown backend"),
         },
-    );
+    )
+    .unwrap();
     let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
         BlockStorage::new(&storage),
         storage.merkle(),
@@ -281,7 +282,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                     );
 
                 context.block_applied().unwrap();
-                if counter > 0 && counter % 4096 == 0 {
+                if counter > 0 && counter % 2048 == 0 {
                     context.cycle_started().unwrap();
                     cycle_counter += 1;
                 }

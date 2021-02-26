@@ -127,49 +127,48 @@ impl fmt::Display for MerkleStorageAction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MerkleStorageAction::Set => {
-                write!(f, "Set").unwrap();
+                write!(f, "Set")
             }
             MerkleStorageAction::Get => {
-                write!(f, "Get").unwrap();
+                write!(f, "Get")
             }
             MerkleStorageAction::GetByPrefix => {
-                write!(f, "GetByPrefix").unwrap();
+                write!(f, "GetByPrefix")
             }
             MerkleStorageAction::GetKeyValuesByPrefix => {
-                write!(f, "GetKeyValuesByPrefix").unwrap();
+                write!(f, "GetKeyValuesByPrefix")
             }
             MerkleStorageAction::GetContextTreeByPrefix => {
-                write!(f, "GetContextTreeByPrefix").unwrap();
+                write!(f, "GetContextTreeByPrefix")
             }
             MerkleStorageAction::GetHistory => {
-                write!(f, "GetHistory").unwrap();
+                write!(f, "GetHistory")
             }
             MerkleStorageAction::Mem => {
-                write!(f, "Mem").unwrap();
+                write!(f, "Mem")
             }
             MerkleStorageAction::DirMem => {
-                write!(f, "DirMem").unwrap();
+                write!(f, "DirMem")
             }
             MerkleStorageAction::Copy => {
-                write!(f, "Copy").unwrap();
+                write!(f, "Copy")
             }
             MerkleStorageAction::Delete => {
-                write!(f, "Delete").unwrap();
+                write!(f, "Delete")
             }
             MerkleStorageAction::DeleteRecursively => {
-                write!(f, "DeleteRecursively").unwrap();
+                write!(f, "DeleteRecursively")
             }
             MerkleStorageAction::Commit => {
-                write!(f, "Commit").unwrap();
+                write!(f, "Commit")
             }
             MerkleStorageAction::Checkout => {
-                write!(f, "Checkout").unwrap();
+                write!(f, "Checkout")
             }
             MerkleStorageAction::GarbageCollector => {
-                write!(f, "GarbageCollector").unwrap();
+                write!(f, "GarbageCollector")
             }
-        };
-        Ok(())
+        }
     }
 }
 
@@ -182,7 +181,7 @@ pub struct StatUpdater<'a> {
 
 impl<'a> Drop for StatUpdater<'a> {
     fn drop(&mut self) {
-        self.update_execution_stats()
+        // self.update_execution_stats()
     }
 }
 
@@ -193,14 +192,8 @@ impl<'a> StatUpdater<'a> {
         action_key: Option<&Vec<String>>,
     ) -> Self {
         let key = match action_key {
-            Some(path) => {
-                if path.len() > 1 && path[0] == "data" {
-                    Some(path[1].to_string())
-                } else {
-                    None
-                }
-            }
-            None => None,
+            Some(path) if path.len() > 1 && path[0] == "data" => Some(path[1].to_string()),
+            Some(_) | None => None,
         };
 
         StatUpdater {

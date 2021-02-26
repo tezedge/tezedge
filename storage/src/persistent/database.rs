@@ -10,6 +10,7 @@ use serde::Serialize;
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::KeyValueSchema;
 use crypto::hash::FromBytesError;
+use std::sync::PoisonError;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RocksDBStats {
@@ -38,6 +39,8 @@ pub enum DBError {
     SledDBError { error: sled::Error },
     #[fail(display = "Hash encode error : {}", error)]
     HashEncodeError { error: FromBytesError },
+    #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
+    LockError { reason: String },
 }
 
 impl From<SchemaError> for DBError {
@@ -72,6 +75,14 @@ impl slog::Value for DBError {
 impl From<sled::Error> for DBError {
     fn from(error: sled::Error) -> Self {
         DBError::SledDBError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for DBError {
+    fn from(pe: PoisonError<T>) -> Self {
+        DBError::LockError {
+            reason: format!("{}", pe),
+        }
     }
 }
 
@@ -139,10 +150,10 @@ pub trait KeyValueStoreBackend<S: KeyValueSchema> {
     /// * `key` - Key (specified by schema), to be checked for existence
     fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
 
-    /// Check, if database contains given key
+    /// Removes every element that predicate(elem) evaluates to false
     ///
     /// # Arguments
-    /// * `key` - Key (specified by schema), to be checked for existence
+    /// * `predicate` - functor used for assessment
     fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
 
     /// Write batch into DB atomically
@@ -272,10 +283,10 @@ impl<S: KeyValueSchema> KeyValueStoreBackend<S> for DB {
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
         let memory_usage_stats = rocksdb::perf::get_memory_usage_stats(Some(&[&self]), None)?;
-        return Ok((memory_usage_stats.mem_table_total
+        Ok((memory_usage_stats.mem_table_total
             + memory_usage_stats.mem_table_unflushed
             + memory_usage_stats.mem_table_readers_total
-            + memory_usage_stats.cache_total) as usize);
+            + memory_usage_stats.cache_total) as usize)
     }
 
     fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError> {
