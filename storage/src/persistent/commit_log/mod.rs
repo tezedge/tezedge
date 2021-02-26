@@ -3,7 +3,18 @@ use crate::persistent::commit_log::error::TezedgeCommitLogError;
 use std::path::{Path, PathBuf};
 use crate::persistent::commit_log::reader::Reader;
 use crate::persistent::commit_log::writer::Writer;
+use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::{fmt, io};
 
+use failure::Fail;
+use serde::{Deserialize, Serialize};
+
+use crate::persistent::codec::{Decoder, Encoder, SchemaError};
+use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
+use crate::persistent::BincodeEncoded;
+
+pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 mod reader;
 pub mod error;
 mod writer;
@@ -14,6 +25,24 @@ const DATA_FILE_NAME: &str = "table.data";
 const TH_LENGTH: usize = 16;
 
 pub type Message = Vec<u8>;
+
+
+/// Possible errors for commit log
+#[derive(Debug, Fail)]
+pub enum CommitLogError {
+    #[fail(display = "Schema error: {}", error)]
+    SchemaError { error: SchemaError },
+    #[fail(display = "Commit log I/O error {}", error)]
+    IOError { error: io::Error },
+    #[fail(display = "Commit log {} is missing", name)]
+    MissingCommitLog { name: &'static str },
+    #[fail(display = "Failed to read record at {}", location)]
+    ReadError { location : Location},
+    #[fail(display = "Failed to read record data corrupted")]
+    CorruptData,
+    #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
+    TezedgeCommitLogError { error: TezedgeCommitLogError },
+}
 
 #[derive(Debug)]
 pub struct Index {
@@ -122,42 +151,6 @@ impl Iterator for CommitLogIterator {
     }
 }
 
-
-// Copyright (c) SimpleStaking and Tezedge Contributors
-// SPDX-License-Identifier: MIT
-
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
-use std::{fmt, io};
-
-use commitlog::message::MessageSet;
-use failure::Fail;
-use serde::{Deserialize, Serialize};
-
-use crate::persistent::codec::{Decoder, Encoder, SchemaError};
-use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
-use crate::persistent::BincodeEncoded;
-
-pub type CommitLogRef = Arc<RwLock<CommitLog>>;
-
-
-/// Possible errors for commit log
-#[derive(Debug, Fail)]
-pub enum CommitLogError {
-    #[fail(display = "Schema error: {}", error)]
-    SchemaError { error: SchemaError },
-    #[fail(display = "Commit log I/O error {}", error)]
-    IOError { error: io::Error },
-    #[fail(display = "Commit log {} is missing", name)]
-    MissingCommitLog { name: &'static str },
-    #[fail(display = "Failed to read record at {}", location)]
-    ReadError { location : Location},
-    #[fail(display = "Failed to read record data corrupted")]
-    CorruptData,
-    #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
-    TezedgeCommitLogError { error: TezedgeCommitLogError },
-}
-
 impl From<SchemaError> for CommitLogError {
     fn from(error: SchemaError) -> Self {
         CommitLogError::SchemaError { error }
@@ -246,7 +239,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let msg_buf = cl
             .read(location.0 as usize, 1)
-            .map_err(|error| CommitLogError::ReadError {
+            .map_err(|_| CommitLogError::ReadError {
                 location: location.clone()
             })?;
         let bytes = msg_buf.iter().next().ok_or(CommitLogError::CorruptData)?;
@@ -262,7 +255,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let msg_buf = cl
             .read(range.0 as usize, range.2 as usize)
-            .map_err(|error| CommitLogError::ReadError {
+            .map_err(|_| CommitLogError::ReadError {
                 location: Location(range.0, range.2 as usize)
             })?;
         msg_buf

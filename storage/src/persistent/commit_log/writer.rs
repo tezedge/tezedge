@@ -57,7 +57,7 @@ impl Writer {
         let mut out = vec![];
         {
             let mut wtr = snap::write::FrameEncoder::new(&mut out);
-            wtr.write_all(buf);
+            wtr.write_all(buf)?;
         }
         let message_len = out.len() as u64;
         let message_pos = self.data_file.seek(SeekFrom::End(0))?;
@@ -71,11 +71,21 @@ impl Writer {
 
     fn last_index(index_file : File) -> i64{
         let mut index_file_reader = BufReader::new(index_file);
-        index_file_reader.seek(SeekFrom::Start(0));
+        match index_file_reader.seek(SeekFrom::Start(0)) {
+            Ok(_) => {}
+            Err(_) => {
+                return -1
+            }
+        };
         let mut indexes = vec![];
         let mut buf = Vec::new();
 
-        index_file_reader.read_to_end(&mut buf);
+        match index_file_reader.read_to_end(&mut buf){
+            Ok(_) => {}
+            Err(_) => {
+                return -1
+            }
+        };
         let header_chunks = buf.chunks_exact(TH_LENGTH);
         for chunk in header_chunks {
             let th = Index::from_buf(chunk).unwrap();
