@@ -216,6 +216,13 @@ fn listen_protocol_events(
                 }
 
                 perform_context_action(&action, context)?;
+                // below logic should be driven by dedicated ContextAction events
+                if let ContextAction::Commit { .. } = &action {
+                    context.block_applied()?;
+                    if event_count > 0 && event_count % 4096 == 0 {
+                        context.cycle_started()?;
+                    }
+                }
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
