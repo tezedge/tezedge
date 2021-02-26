@@ -3,12 +3,12 @@
 
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
 use crate::MerkleStorage;
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::BTreeMap;
 use std::ops::{AddAssign, DerefMut, SubAssign};
 use std::sync::RwLock;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
+use crate::storage_backend::{GarbageCollector, StorageBackendStats};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
@@ -32,18 +32,7 @@ impl<K: Ord, V> KVStore<K, V> {
     }
 }
 
-impl GarbageCollector for KVStore<EntryHash, ContextValue> {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-
-    fn mark_reused(
-        &mut self,
-        _reused_keys: std::collections::HashSet<EntryHash>,
-    ) -> Result<(), StorageBackendError> {
-        Ok(())
-    }
-}
+impl GarbageCollector for KVStore<EntryHash, ContextValue> {}
 
 impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     fn is_persistent(&self) -> bool {
@@ -51,33 +40,30 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        Ok(self.stats.read().unwrap().total_as_bytes())
+        Ok(self.stats.read()?.total_as_bytes())
     }
 
     /// put kv in map if key doesn't exist. If it does then return false.
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        match self.kv_map.write().unwrap().entry(*key) {
-            Entry::Vacant(entry) => {
+        let mut map = self.kv_map.write()?;
+
+        match map.insert(*key, value.clone()) {
+            Some(prev) => {
                 self.stats
-                    .write()
-                    .unwrap()
+                    .write()?
                     .deref_mut()
                     .add_assign(StorageBackendStats::from((key, value)));
-                entry.insert(value.clone());
+                self.stats
+                    .write()?
+                    .deref_mut()
+                    .sub_assign(StorageBackendStats::from((key, &prev)));
                 Ok(())
             }
-            Entry::Occupied(mut entry) => {
+            None => {
                 self.stats
-                    .write()
-                    .unwrap()
+                    .write()?
                     .deref_mut()
                     .add_assign(StorageBackendStats::from((key, value)));
-                self.stats
-                    .write()
-                    .unwrap()
-                    .deref_mut()
-                    .sub_assign(StorageBackendStats::from((entry.key(), entry.get())));
-                entry.insert(value.clone());
                 Ok(())
             }
         }
@@ -85,14 +71,12 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
 
     fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.stats
-            .write()
-            .unwrap()
+            .write()?
             .deref_mut()
             .add_assign(StorageBackendStats::from((key, value)));
-        if let Some(prev) = self.kv_map.write().unwrap().insert(*key, value.clone()) {
+        if let Some(prev) = self.kv_map.write()?.insert(*key, value.clone()) {
             self.stats
-                .write()
-                .unwrap()
+                .write()?
                 .deref_mut()
                 .sub_assign(StorageBackendStats::from((key, &prev)));
         };
@@ -100,12 +84,11 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     }
 
     fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
-        let removed_key = self.kv_map.write().unwrap().remove(key);
+        let removed_key = self.kv_map.write()?.remove(key);
 
         if let Some(v) = &removed_key {
             self.stats
-                .write()
-                .unwrap()
+                .write()?
                 .deref_mut()
                 .sub_assign(StorageBackendStats::from((key, v)));
         }
@@ -114,18 +97,17 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     }
 
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
-        Ok(self.kv_map.read().unwrap().get(key).cloned())
+        Ok(self.kv_map.read()?.get(key).cloned())
     }
 
     fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
-        Ok(self.kv_map.read().unwrap().contains_key(key))
+        Ok(self.kv_map.read()?.contains_key(key))
     }
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .kv_map
-            .read()
-            .unwrap()
+            .read()?
             .iter()
             .filter_map(|(k, _)| if !predicate(k) { Some(*k) } else { None })
             .collect();

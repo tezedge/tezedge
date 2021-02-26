@@ -77,7 +77,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
     for MarkSweepGCed<T>
 {
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        println!("put {:?}", key);
         self.store.put(key, value)
     }
 
@@ -124,44 +123,20 @@ mod tests {
     use super::*;
     use crate::backend::InMemoryBackend;
     use crate::merkle_storage::{hash_entry, Entry};
-    use crate::merkle_storage::{Commit, Node, NodeKind};
-    use im::ordmap;
 
     #[test]
     fn test_mark_sweep_gc() {
         let value_1 = Entry::Blob(vec![1]);
-        let value_1_hash = hash_entry(&value_1).unwrap();
-        let tree_1 = Entry::Tree(ordmap! {
-            "a".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
-            "b".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
-            "c".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash},
-            "d".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_1_hash}
-        });
-        let commit_1 = Entry::Commit(Commit {
-            parent_commit_hash: None,
-            root_hash: hash_entry(&tree_1).unwrap(),
-            time: 0,
-            author: "dev".to_string(),
-            message: "first commit".to_string(),
-        });
-
         let value_2 = Entry::Blob(vec![2]);
-        let value_2_hash = hash_entry(&value_2).unwrap();
-        let tree_2 = Entry::Tree(ordmap! {
-            "a".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
-            "b".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
-            "c".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash},
-            "d".to_string() => Node{node_kind:NodeKind::Leaf, entry_hash: value_2_hash}
-        });
-        let commit_2 = Entry::Commit(Commit {
-            parent_commit_hash: None,
-            root_hash: hash_entry(&tree_2).unwrap(),
-            time: 0,
-            author: "dev".to_string(),
-            message: "second commit".to_string(),
-        });
+        let value_3 = Entry::Blob(vec![3]);
+        let value_4 = Entry::Blob(vec![4]);
+        let value_5 = Entry::Blob(vec![5]);
+        let value_6 = Entry::Blob(vec![6]);
+        let value_7 = Entry::Blob(vec![7]);
+        let value_8 = Entry::Blob(vec![8]);
 
-        let mut store = MarkSweepGCed::<InMemoryBackend>::new(1);
+        let mut store = MarkSweepGCed::<InMemoryBackend>::new(4);
+        // CYCLE 1
         store
             .put(
                 &hash_entry(&value_1).unwrap(),
@@ -169,48 +144,20 @@ mod tests {
             )
             .unwrap();
         store
-            .put(
-                &hash_entry(&tree_1).unwrap(),
-                &bincode::serialize(&tree_1).unwrap(),
-            )
-            .unwrap();
-        store
-            .put(
-                &hash_entry(&commit_1).unwrap(),
-                &bincode::serialize(&commit_1).unwrap(),
-            )
-            .unwrap();
-
-        // check valuas are avaible before running GC
-        assert!(store.get(&hash_entry(&value_1).unwrap()).is_ok());
-        assert!(store.get(&hash_entry(&tree_1).unwrap()).is_ok());
-        assert!(store.get(&hash_entry(&commit_1).unwrap()).is_ok());
-
-        // run GC
-        store
             .mark_reused(
-                vec![
-                    hash_entry(&value_1).unwrap(),
-                    hash_entry(&tree_1).unwrap(),
-                    hash_entry(&commit_1).unwrap(),
-                ]
-                .into_iter()
-                .collect(),
+                vec![hash_entry(&value_1).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
             )
             .unwrap();
         store.new_cycle_started().unwrap();
-
-        // store.gc(Some(hash_entry(&commit_1).unwrap())).unwrap();
-
-        // check valuas are available after GC
-        assert!(store.get(&hash_entry(&value_1).unwrap()).unwrap().is_some());
-        assert!(store.get(&hash_entry(&tree_1).unwrap()).unwrap().is_some());
-        println!("inserting commit {:?}", hash_entry(&commit_1));
-        assert!(store
-            .get(&hash_entry(&commit_1).unwrap())
+        assert!(!store
+            .get(&hash_entry(&value_1).unwrap())
             .unwrap()
-            .is_some());
+            .unwrap()
+            .is_empty());
 
+        // CYCLE 2
         store
             .put(
                 &hash_entry(&value_2).unwrap(),
@@ -218,48 +165,233 @@ mod tests {
             )
             .unwrap();
         store
-            .put(
-                &hash_entry(&tree_2).unwrap(),
-                &bincode::serialize(&tree_2).unwrap(),
-            )
-            .unwrap();
-        println!("inserting commit {:?}", hash_entry(&commit_2));
-        store
-            .put(
-                &hash_entry(&commit_2).unwrap(),
-                &bincode::serialize(&commit_2).unwrap(),
-            )
-            .unwrap();
-
-        // run GC
-        store
             .mark_reused(
-                vec![
-                    hash_entry(&value_1).unwrap(),
-                    hash_entry(&value_2).unwrap(),
-                    hash_entry(&tree_2).unwrap(),
-                    hash_entry(&commit_2).unwrap(),
-                ]
-                .into_iter()
-                .collect(),
+                vec![hash_entry(&value_2).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
             )
             .unwrap();
         store.new_cycle_started().unwrap();
-
-        // new hashes should be still in storage
-        assert!(store.get(&hash_entry(&value_1).unwrap()).unwrap().is_some());
-        assert!(store.get(&hash_entry(&value_2).unwrap()).unwrap().is_some());
-        assert!(store.get(&hash_entry(&tree_2).unwrap()).unwrap().is_some());
-        assert!(store
-            .get(&hash_entry(&commit_2).unwrap())
+        assert!(!store
+            .get(&hash_entry(&value_1).unwrap())
             .unwrap()
-            .is_some());
-
-        // those should be cleaned up
-        assert!(store.get(&hash_entry(&tree_1).unwrap()).unwrap().is_none());
-        assert!(store
-            .get(&hash_entry(&commit_1).unwrap())
             .unwrap()
-            .is_none());
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_2).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 3
+        store
+            .put(
+                &hash_entry(&value_3).unwrap(),
+                &bincode::serialize(&value_3).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_3).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_1).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_2).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_3).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 4
+        store
+            .put(
+                &hash_entry(&value_4).unwrap(),
+                &bincode::serialize(&value_4).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_4).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_1).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_2).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_3).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_4).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 5
+        store
+            .put(
+                &hash_entry(&value_5).unwrap(),
+                &bincode::serialize(&value_5).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_5).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_2).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_3).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_4).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_5).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 6
+        store
+            .put(
+                &hash_entry(&value_6).unwrap(),
+                &bincode::serialize(&value_6).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_6).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_3).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_4).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_5).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_6).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 7
+        store
+            .put(
+                &hash_entry(&value_7).unwrap(),
+                &bincode::serialize(&value_7).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_7).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_4).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_5).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_6).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_7).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+
+        // CYCLE 8
+        store
+            .put(
+                &hash_entry(&value_8).unwrap(),
+                &bincode::serialize(&value_8).unwrap(),
+            )
+            .unwrap();
+        store
+            .mark_reused(
+                vec![hash_entry(&value_8).unwrap()]
+                    .into_iter()
+                    .collect::<HashSet<EntryHash>>(),
+            )
+            .unwrap();
+        store.new_cycle_started().unwrap();
+        assert!(!store
+            .get(&hash_entry(&value_5).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_6).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_7).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
+        assert!(!store
+            .get(&hash_entry(&value_8).unwrap())
+            .unwrap()
+            .unwrap()
+            .is_empty());
     }
 }

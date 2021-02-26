@@ -81,8 +81,6 @@ pub enum CmdMsg {
 
 /// Garbage Collected Key Value Store
 pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
-    /// cycles limit
-    cycles: usize,
     /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
     /// Current in-process cycle store
@@ -112,7 +110,6 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
         let busy_ref = busy.clone();
 
         Self {
-            cycles: cycle_count,
             stores: stores.clone(),
             _thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx, busy.clone(), msg_cnt)),
             msg: Mutex::new(tx),
@@ -123,13 +120,13 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     }
 
     /// Finds an entry with hash `key` in one of the archived cycle stores (trying from newest to oldest)
-    fn stores_get(&self, key: &EntryHash) -> Option<ContextValue> {
-        stores_get(&self.stores.read().unwrap(), key)
+    fn stores_get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
+        Ok(stores_get(&self.stores.read()?, key))
     }
 
     /// Returns `true` if any of the archived cycle stores contains a value with hash `key`, and `false` otherwise
-    fn stores_contains(&self, key: &EntryHash) -> bool {
-        stores_contains(&self.stores.read().unwrap(), key)
+    fn stores_contains(&self, key: &EntryHash) -> Result<bool, DBError> {
+        Ok(stores_contains(&self.stores.read()?, key))
     }
 
     /// Marks an entry as "reused" in the current cycle.
@@ -139,13 +136,11 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     fn mark_single_reused(&mut self, key: EntryHash) -> Result<(), StorageBackendError> {
         self.msg_cnt.fetch_add(1, Ordering::Acquire);
 
-        self.msg
-            .lock()
-            .unwrap()
-            .send(CmdMsg::MarkReused(key))
-            .map_err(|_| StorageBackendError::GarbageCollectorError {
+        self.msg.lock()?.send(CmdMsg::MarkReused(key)).map_err(|_| {
+            StorageBackendError::GarbageCollectorError {
                 error: "cannot send message to GC thread".to_string(),
-            })
+            }
+        })
     }
 
     fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
@@ -175,6 +170,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
 
     /// Waits for garbage collector to finish collecting the oldest cycle.
     /// [used only for testing purposes]
+    #[allow(dead_code)]
     fn wait_for_gc_finish(&self) {
         while self.is_busy.load(Ordering::Acquire) || self.msg_cnt.load(Ordering::Acquire) > 0 {
             thread::sleep(Duration::from_millis(20));
@@ -198,11 +194,14 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
     }
 
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
-        Ok(self.current.get(key)?.or_else(|| self.stores_get(key)))
+        Ok(match self.current.get(key)? {
+            Some(v) => Some(v),
+            None => self.stores_get(key)?,
+        })
     }
 
     fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
-        Ok(self.current.contains(key)? || self.stores_contains(key))
+        Ok(self.current.contains(key)? || self.stores_contains(key)?)
     }
 
     fn write_batch(&self, batch: Vec<(EntryHash, ContextValue)>) -> Result<(), DBError> {
@@ -210,16 +209,14 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        let memory: usize = self
+        let memory: Result<Vec<_>, _> = self
             .stores
-            .read()
-            .unwrap()
+            .read()?
             .iter()
-            .rev()
-            .take(self.cycles - 1)
-            .map(|store| store.total_get_mem_usage().unwrap())
-            .sum();
-        Ok(memory + self.current.total_get_mem_usage().unwrap())
+            .map(|store| store.total_get_mem_usage())
+            .collect();
+
+        Ok(memory?.iter().sum::<usize>() + self.current.total_get_mem_usage()?)
     }
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
