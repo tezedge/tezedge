@@ -1,7 +1,6 @@
-use std::io::{BufReader, Seek, SeekFrom, Read, Error};
+use std::io::{BufReader, Seek, SeekFrom, Read};
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
-use std::convert::TryFrom;
 use crate::persistent::commit_log::{TH_LENGTH, Index, Message, INDEX_FILE_NAME, DATA_FILE_NAME};
 use crate::persistent::commit_log::error::TezedgeCommitLogError;
 
@@ -53,10 +52,20 @@ impl Reader {
     }
 
     fn read_indexes(&mut self) -> Vec<Index>{
-        self.index_file.seek(SeekFrom::Start(0));
         let mut indexes = vec![];
+        match self.index_file.seek(SeekFrom::Start(0)) {
+            Ok(_) => {}
+            Err(_) => {
+                return indexes
+            }
+        };
         let mut buf = Vec::new();
-        self.index_file.read_to_end(&mut buf);
+        match self.index_file.read_to_end(&mut buf){
+            Ok(_) => {}
+            Err(_) => {
+                return indexes
+            }
+        };
         let header_chunks = buf.chunks_exact(TH_LENGTH);
         for chunk in header_chunks {
             let th = Index::from_buf(chunk).unwrap();
@@ -82,7 +91,7 @@ impl Reader {
         let mut decoded_message = vec![];
         {
             let mut rdr = snap::read::FrameDecoder::new(encode_message.as_slice());
-            rdr.read_to_end(&mut decoded_message);
+            rdr.read_to_end(&mut decoded_message)?;
         }
         Ok(decoded_message)
     }
@@ -110,7 +119,7 @@ impl Reader {
             // decompression
             {
                 let mut rdr = snap::read::FrameDecoder::new(data.as_slice());
-                rdr.read_to_end(&mut decoded_message);
+                rdr.read_to_end(&mut decoded_message)?;
             }
             messages.push(decoded_message)
         }
