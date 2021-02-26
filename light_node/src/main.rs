@@ -258,7 +258,7 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    info!(log, "Initializing protocol runners... (3/4)");
+    info!(log, "Initializing protocol runners... (4/5)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(
@@ -306,7 +306,7 @@ fn block_on_actors(
     );
     info!(log, "Protocol runners initialized");
 
-    info!(log, "Initializing actors... (4/4)");
+    info!(log, "Initializing actors... (5/5)");
 
     // create partial (global) states for sharing between threads/actors
     let local_current_head_state = init_current_head_state();
@@ -535,8 +535,18 @@ fn main() {
     // Creates default logger
     let log = create_logger(&env);
 
+    // Validate zcash-params
+    info!(log, "Checking zcash-params for sapling... (1/5)");
+    if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
+        error!(log, "Failed to validate zcash-params required for sapling support"; "reason" => format!("{}", e));
+        panic!(
+            "Failed to validate zcash-params required for sapling support, reason: {}",
+            e
+        );
+    }
+
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    info!(log, "Loading identity... (1/4)");
+    info!(log, "Loading identity... (2/5)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
             info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
@@ -563,7 +573,7 @@ fn main() {
     system::init_limits(&log);
 
     // create/initialize databases
-    info!(log, "Loading databases... (2/4)");
+    info!(log, "Loading databases... (3/5)");
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let cache = [

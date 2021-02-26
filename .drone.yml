@@ -118,6 +118,9 @@ steps:
     - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
+    # copy sapling init files
+    - cp ./tezos/interop/lib_tezos/artifacts/sapling-spend.params /artifacts/ffi
+    - cp ./tezos/interop/lib_tezos/artifacts/sapling-output.params /artifacts/ffi
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
@@ -979,7 +982,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /artifacts/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true
+    - /artifacts/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner /artifacts/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1205,7 +1208,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network mainnet --identity-file "/artifacts/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1419,7 +1422,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+    - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
 # if we are doing pull request, run also "target branch" build (async) for wrk total compare at the end
 - name: tezedge-target-branch-node-run
@@ -1697,7 +1700,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1904,7 +1907,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2112,7 +2115,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2321,7 +2324,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="/artifacts/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+      - /artifacts/light-node --config-file "/artifacts/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "/artifacts/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file=/artifacts/ffi/sapling-spend.params --init-sapling-output-params-file=/artifacts/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
