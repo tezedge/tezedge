@@ -1,26 +1,74 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::{GarbageCollector, StorageBackendError, StorageBackendStats};
+use crate::storage_backend::{GarbageCollector, StorageBackendError};
 use crate::MerkleStorage;
-use std::ops::{AddAssign, DerefMut, SubAssign};
+use std::collections::HashMap;
+use crate::storage_backend::StorageBackendStats;
+
+#[derive(Default)]
+pub struct HashMapWithStats{
+    inner: HashMap<EntryHash,ContextValue>,
+    stats: StorageBackendStats,
+}
+
+impl HashMapWithStats
+{
+    pub fn insert(&mut self, key: EntryHash, value: ContextValue) -> Option<ContextValue>{
+        let stats = StorageBackendStats::from((&key, &value));
+        match self.inner.insert(key,value){
+            Some(prev) => {
+                self.stats -= StorageBackendStats::from((&key, &prev));
+                self.stats += stats;
+                Some(prev)
+            }
+            None => {
+                self.stats += stats;
+                None
+            }
+        }
+    }
+
+    pub fn remove(&mut self, key: &EntryHash) -> Option<ContextValue>{
+        match self.inner.remove(key){
+            Some(prev) => {
+                self.stats -= StorageBackendStats::from((key, &prev));
+                Some(prev)
+            },
+            None => None
+        }
+    }
+
+    pub fn get(&self, key: &EntryHash) -> Option<&ContextValue>{
+        self.inner.get(key)
+    }
+
+    pub fn contains_key(&self, key: &EntryHash) -> bool{
+        self.inner.contains_key(key)
+    }
+
+    pub fn iter(&self) -> std::collections::hash_map::Iter<EntryHash,ContextValue>{
+        self.inner.iter()
+    }
+
+    pub fn get_memory_usage(&self) -> StorageBackendStats{
+        self.stats
+    }
+}
 
 #[derive(Default)]
 pub struct InMemoryBackend {
-    inner: Arc<RwLock<HashMap<EntryHash, ContextValue>>>,
-    stats: Mutex<StorageBackendStats>,
+    inner: Arc<RwLock<HashMapWithStats>>
 }
 
 impl InMemoryBackend {
     pub fn new() -> Self {
         InMemoryBackend {
-            inner: Arc::new(RwLock::new(HashMap::new())),
-            stats: Default::default(),
+            inner: Arc::new(RwLock::new(HashMapWithStats::default())),
         }
     }
 }
@@ -55,25 +103,10 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     }
 
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        let measurement = StorageBackendStats::from((key, value));
         let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
             error: format!("{}", e),
         })?;
-
-        if let Some(val) = w.get(key) {
-            self.stats
-                .lock()
-                .unwrap()
-                .deref_mut()
-                .sub_assign(StorageBackendStats::from((key, val)));
-        }
-
         w.insert(*key, value.clone());
-        self.stats
-            .lock()
-            .unwrap()
-            .deref_mut()
-            .add_assign(measurement);
         Ok(())
     }
 
@@ -81,38 +114,16 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
         let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
             error: format!("{}", e),
         })?;
-
-        let removed_key = w.remove(key);
-
-        if let Some(v) = &removed_key {
-            self.stats
-                .lock()
-                .unwrap()
-                .deref_mut()
-                .sub_assign(StorageBackendStats::from((key, v)));
-        }
-
+        w.remove(key);
         Ok(())
     }
 
     fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        let measurement = StorageBackendStats::from((key, value));
         let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
             error: format!("{}", e),
         })?;
 
-        if let Some(prev) = w.insert(*key, value.clone()) {
-            self.stats
-                .lock()
-                .unwrap()
-                .deref_mut()
-                .sub_assign(StorageBackendStats::from((key, &prev)));
-        };
-        self.stats
-            .lock()
-            .unwrap()
-            .deref_mut()
-            .add_assign(measurement);
+        w.insert(*key, value.clone());
         Ok(())
     }
 
@@ -144,7 +155,10 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        Ok(self.stats.lock().unwrap().total_as_bytes())
+        let r = self.inner.read().map_err(|e| DBError::GuardPoison {
+            error: format!("{}", e),
+        })?;
+        Ok(r.get_memory_usage().total_as_bytes())
     }
 
     fn is_persistent(&self) -> bool {
