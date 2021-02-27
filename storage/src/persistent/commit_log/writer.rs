@@ -69,29 +69,17 @@ impl Writer {
         Ok(self.last_index as u64)
     }
 
-    fn last_index(index_file : File) -> i64{
-        let mut index_file_reader = BufReader::new(index_file);
-        match index_file_reader.seek(SeekFrom::Start(0)) {
-            Ok(_) => {}
+    pub fn last_index(index_file : File) -> i64{
+        let metadata = match index_file.metadata(){
+            Ok(m) => {
+                m
+            }
             Err(_) => {
                 return -1
             }
         };
-        let mut indexes = vec![];
-        let mut buf = Vec::new();
-
-        match index_file_reader.read_to_end(&mut buf){
-            Ok(_) => {}
-            Err(_) => {
-                return -1
-            }
-        };
-        let header_chunks = buf.chunks_exact(TH_LENGTH);
-        for chunk in header_chunks {
-            let th = Index::from_buf(chunk).unwrap();
-            indexes.push(th)
-        }
-        (indexes.len() as i64 ).sub(1)
+        let items_count = metadata.len() / (TH_LENGTH as u64);
+        (items_count as i64 ).sub(1)
     }
 
     pub(crate) fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
