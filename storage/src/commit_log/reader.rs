@@ -1,15 +1,12 @@
-use crate::persistent::commit_log::error::TezedgeCommitLogError;
-use crate::persistent::commit_log::{
-    Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH,
-};
+use crate::commit_log::error::TezedgeCommitLogError;
+use crate::commit_log::{Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Reader {
-    pub(crate) indexes: Vec<Index>,
-    index_file: BufReader<File>,
-    data_file: BufReader<File>,
+    index_file: File,
+    data_file: File,
 }
 
 impl Reader {
@@ -38,63 +35,35 @@ impl Reader {
             .read(true)
             .open(data_file_path.as_path())?;
 
-        let mut reader = Self {
-            indexes: vec![],
-            index_file: BufReader::new(index_file),
-            data_file: BufReader::new(data_file),
+        let reader = Self {
+            index_file,
+            data_file,
         };
-        reader.update();
 
         Ok(reader)
     }
 
-    pub(crate) fn update(&mut self) {
-        self.indexes = self.read_indexes()
-    }
-
-    fn read_indexes(&mut self) -> Vec<Index> {
+    pub fn indexes(&self) -> Result<Vec<Index>, TezedgeCommitLogError> {
+        let mut index_file_buf_reader = BufReader::new(&self.index_file);
+        index_file_buf_reader.seek(SeekFrom::Start(0))?;
         let mut indexes = vec![];
-        match self.index_file.seek(SeekFrom::Start(0)) {
-            Ok(_) => {}
-            Err(_) => return indexes,
-        };
         let mut buf = Vec::new();
-        match self.index_file.read_to_end(&mut buf) {
-            Ok(_) => {}
-            Err(_) => return indexes,
-        };
+        index_file_buf_reader.read_to_end(&mut buf)?;
         let header_chunks = buf.chunks_exact(TH_LENGTH);
         for chunk in header_chunks {
             let th = Index::from_buf(chunk).unwrap();
             indexes.push(th)
         }
-        indexes
-    }
-
-    pub(crate) fn read_at(&mut self, index: usize) -> Result<Vec<u8>, TezedgeCommitLogError> {
-        let indexes = &self.indexes;
-        let index = match indexes.get(index) {
-            None => return Ok(vec![]),
-            Some(index) => index,
-        };
-        let mut encode_message = vec![0; index.compressed_data_length as usize];
-        self.data_file.seek(SeekFrom::Start(index.position))?;
-        self.data_file.read_exact(&mut encode_message)?;
-
-        let mut decoded_message = vec![];
-        {
-            let mut rdr = snap::read::FrameDecoder::new(encode_message.as_slice());
-            rdr.read_to_end(&mut decoded_message)?;
-        }
-        Ok(decoded_message)
+        Ok(indexes)
     }
 
     pub(crate) fn range(
-        &mut self,
+        &self,
         from: usize,
         limit: usize,
     ) -> Result<MessageSet, TezedgeCommitLogError> {
-        let indexes = &self.indexes;
+        let indexes = self.indexes()?;
+        let mut data_file_buf_reader = BufReader::new(&self.data_file);
         if from + limit > indexes.len() {
             return Err(TezedgeCommitLogError::OutOfRange);
         }
@@ -104,8 +73,8 @@ impl Reader {
             .iter()
             .fold(0_u64, |acc, item| acc + item.compressed_data_length);
         let mut compressed_bytes = vec![0; total_compressed_data_size as usize];
-        self.data_file.seek(SeekFrom::Start(from_index.position))?;
-        self.data_file.read_exact(&mut compressed_bytes)?;
+        data_file_buf_reader.seek(SeekFrom::Start(from_index.position))?;
+        data_file_buf_reader.read_exact(&mut compressed_bytes)?;
 
         let mut uncompressed_bytes = Vec::new();
         {
