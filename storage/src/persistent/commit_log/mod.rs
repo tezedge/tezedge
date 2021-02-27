@@ -22,7 +22,7 @@ mod writer;
 const INDEX_FILE_NAME: &str = "table.index";
 const DATA_FILE_NAME: &str = "table.data";
 
-const TH_LENGTH: usize = 16;
+const TH_LENGTH: usize = 24;
 
 pub type Message = Vec<u8>;
 pub struct MessageSet {
