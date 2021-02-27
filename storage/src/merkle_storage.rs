@@ -960,11 +960,7 @@ impl MerkleStorage {
     /// Marks all the entries from last commit as used
     /// so GC can know when to remove them
     pub fn mark_entries_from_last_commit_as_used(&mut self) -> Result<(), MerkleError> {
-        Ok(())
-    }
 
-    /// Notify GC about new cycle
-    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
         match self.last_commit_hash {
             Some(hash) => {
                 let entry = self.get_entry(&hash)?;
@@ -978,6 +974,12 @@ impl MerkleStorage {
                 panic!("missing last commit hash");
             }
         };
+        Ok(())
+
+    }
+
+    /// Notify GC about new cycle
+    pub fn start_new_cycle(&mut self) -> Result<(), MerkleError> {
 
         Ok(self.db.new_cycle_started()?)
     }
@@ -2074,86 +2076,75 @@ mod tests {
     #[test]
     fn test_gc() {
         let mut storage = MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(2)));
-        storage
-            .set(1, &vec!["a".to_string(), "b".to_string()], &vec![1])
-            .unwrap();
-        let commit1 = storage
-            .commit(0, "dev".to_string(), "commit1".to_string())
-            .unwrap();
+
+        // CYCLE 1
+        storage.set(1, &vec!["a".to_string(), "a".to_string()], &vec![1]).unwrap();
+        let commit1 = storage.commit(0, "dev".to_string(), "commit1".to_string()).unwrap();
         storage.checkout(&commit1);
         storage.mark_entries_from_last_commit_as_used().unwrap();
-        storage.start_new_cycle().unwrap();
 
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage.db.get(&commit1).unwrap().is_some());
-
-        storage
-            .set(1, &vec!["a".to_string(), "c".to_string()], &vec![2])
-            .unwrap();
-        storage
-            .set(2, &vec!["a".to_string(), "b".to_string()], &vec![1, 1])
-            .unwrap();
-        let commit2 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
+        storage.set(1, &vec!["a".to_string(), "b".to_string()], &vec![2]).unwrap();
+        let commit2 = storage.commit(0, "dev".to_string(), "commit2".to_string()).unwrap();
         storage.checkout(&commit2);
         storage.mark_entries_from_last_commit_as_used().unwrap();
+        
+        // CYCLE 2
         storage.start_new_cycle().unwrap();
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1, 1])).unwrap())
-            .unwrap()
-            .is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![1])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![2])).unwrap()).unwrap().is_some());
         assert!(storage.db.get(&commit1).unwrap().is_some());
         assert!(storage.db.get(&commit2).unwrap().is_some());
 
-        storage
-            .set(1, &vec!["a".to_string(), "d".to_string()], &vec![3])
-            .unwrap();
-        let commit3 = storage
-            .commit(0, "dev".to_string(), "commit3".to_string())
-            .unwrap();
+        storage.set(1, &vec!["a".to_string(), "c".to_string()], &vec![3]).unwrap();
+        storage.set(2, &vec!["a".to_string(), "a".to_string()], &vec![100]).unwrap();
+        let commit3 = storage.commit(0, "dev".to_string(), "commit2".to_string()).unwrap();
         storage.checkout(&commit3);
         storage.mark_entries_from_last_commit_as_used().unwrap();
-        storage.start_new_cycle().unwrap();
 
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_none());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1, 1])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage.db.get(&commit1).unwrap().is_none());
+        storage.set(1, &vec!["a".to_string(), "d".to_string()], &vec![4]).unwrap();
+        //overwrite value from first commit
+        let commit4 = storage.commit(0, "dev".to_string(), "commit2".to_string()).unwrap();
+        storage.checkout(&commit4);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+
+        // CYCLE 3
+        storage.start_new_cycle().unwrap();
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![1])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![2])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![3])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![4])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![100])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_some());
         assert!(storage.db.get(&commit2).unwrap().is_some());
         assert!(storage.db.get(&commit3).unwrap().is_some());
+        assert!(storage.db.get(&commit4).unwrap().is_some());
+
+        storage.set(1, &vec!["a".to_string(), "e".to_string()], &vec![5]).unwrap();
+        let commit5 = storage.commit(0, "dev".to_string(), "commit2".to_string()).unwrap();
+        storage.checkout(&commit5);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+
+        storage.set(1, &vec!["a".to_string(), "f".to_string()], &vec![6]).unwrap();
+        let commit6 = storage.commit(0, "dev".to_string(), "commit2".to_string()).unwrap();
+        storage.checkout(&commit6);
+        storage.mark_entries_from_last_commit_as_used().unwrap();
+
+        // CYCLE 4
+        storage.start_new_cycle().unwrap();
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![1])).unwrap()).unwrap().is_none()); // removed in commit4
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![2])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![3])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![4])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![100])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![5])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&hash_entry(&Entry::Blob(vec![6])).unwrap()).unwrap().is_some());
+        assert!(storage.db.get(&commit1).unwrap().is_none()); // cleaned up
+        assert!(storage.db.get(&commit2).unwrap().is_none()); // cleaned up
+        assert!(storage.db.get(&commit3).unwrap().is_some());
+        assert!(storage.db.get(&commit4).unwrap().is_some());
+        assert!(storage.db.get(&commit5).unwrap().is_some());
+        assert!(storage.db.get(&commit6).unwrap().is_some());
+        
     }
 
     macro_rules! tests_with_storage {
