@@ -57,6 +57,7 @@ pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
+pub mod commit_log;
 pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
