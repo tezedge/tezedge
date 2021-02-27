@@ -1,4 +1,4 @@
-use std::io::{BufWriter, Seek, SeekFrom, Write, BufReader, Read};
+use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::fs::{File, OpenOptions};
 use crate::persistent::commit_log::error::TezedgeCommitLogError;
 use std::path::{Path, PathBuf};
@@ -55,6 +55,7 @@ impl Writer {
             return Err(TezedgeCommitLogError::MessageLengthError)
         }
         let mut out = vec![];
+        let uncompressed_length = buf.len();
         {
             let mut wtr = snap::write::FrameEncoder::new(&mut out);
             wtr.write_all(buf)?;
@@ -62,7 +63,7 @@ impl Writer {
         let message_len = out.len() as u64;
         let message_pos = self.data_file.seek(SeekFrom::End(0))?;
         self.data_file.write_all(&out)?;
-        let th = Index::new(message_pos, message_len);
+        let th = Index::new(message_pos, message_len, uncompressed_length as u64);
         self.index_file.seek(SeekFrom::End(0))?;
         self.index_file.write(&th.to_vec())?;
         self.last_index += 1;

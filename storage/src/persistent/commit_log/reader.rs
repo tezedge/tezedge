@@ -1,7 +1,7 @@
 use std::io::{BufReader, Seek, SeekFrom, Read};
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
-use crate::persistent::commit_log::{TH_LENGTH, Index, Message, INDEX_FILE_NAME, DATA_FILE_NAME};
+use crate::persistent::commit_log::{TH_LENGTH, Index, INDEX_FILE_NAME, DATA_FILE_NAME, MessageSet};
 use crate::persistent::commit_log::error::TezedgeCommitLogError;
 
 
@@ -84,7 +84,7 @@ impl Reader {
                 index
             }
         };
-        let mut encode_message = vec![0;index.data_length as usize];
+        let mut encode_message = vec![0;index.compressed_data_length as usize];
         self.data_file.seek(SeekFrom::Start(index.position))?;
         self.data_file.read(&mut encode_message)?;
 
@@ -97,33 +97,27 @@ impl Reader {
     }
 
 
-    pub(crate) fn range(&mut self, from : usize, limit : usize) -> Result<Vec<Message>, TezedgeCommitLogError> {
+    pub(crate) fn range(&mut self, from : usize, limit : usize) -> Result<MessageSet, TezedgeCommitLogError> {
 
         let indexes = &self.indexes;
         if from + limit > indexes.len() {
             return Err(TezedgeCommitLogError::OutOfRange)
         }
-        let from_index = &indexes[from];
-        let range : Vec<_> = indexes[from..].iter().take(limit).collect();
-        let total_chunk_size = range.iter().fold(0_u64, |acc, item| {
-            acc + item.data_length
+        let from_index = indexes[from];
+        let range: Vec<_> = indexes[from..].iter().map(|i| i.clone()).take(limit).collect();
+        let total_compressed_data_size = range.iter().fold(0_u64, |acc, item| {
+            acc + item.compressed_data_length
         });
-        let mut bytes = vec![0;total_chunk_size as usize];
+        let mut compressed_bytes = vec![0; total_compressed_data_size as usize];
         self.data_file.seek(SeekFrom::Start(from_index.position))?;
-        self.data_file.read(&mut bytes)?;
-        let mut messages = Vec::new();
+        self.data_file.read(&mut compressed_bytes)?;
 
-        for index in range {
-            let mut decoded_message = Vec::new();
-            let data = bytes.drain(..index.data_length as usize);
-            // decompression
-            {
-                let mut rdr = snap::read::FrameDecoder::new(data.as_slice());
-                rdr.read_to_end(&mut decoded_message)?;
-            }
-            messages.push(decoded_message)
+        let mut uncompressed_bytes = Vec::new();
+        {
+            let mut rdr = snap::read::FrameDecoder::new(compressed_bytes.as_slice());
+            rdr.read_to_end(&mut uncompressed_bytes)?;
         }
-        Ok(messages)
+        Ok(MessageSet::new(range, uncompressed_bytes))
     }
 
 
