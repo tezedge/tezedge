@@ -1,13 +1,13 @@
-use crate::persistent::commit_log::error::TezedgeCommitLogError;
-use crate::persistent::commit_log::{Index, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
+use crate::commit_log::error::TezedgeCommitLogError;
+use crate::commit_log::{Index, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Seek, SeekFrom, Write};
 use std::ops::Sub;
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Writer {
-    index_file: BufWriter<File>,
-    data_file: BufWriter<File>,
+    index_file: File,
+    data_file: File,
     last_index: i64,
 }
 
@@ -43,13 +43,15 @@ impl Writer {
         let last_index = Self::last_index(index_file.try_clone()?);
 
         Ok(Self {
-            index_file: BufWriter::new(index_file),
-            data_file: BufWriter::new(data_file),
+            index_file,
+            data_file,
             last_index,
         })
     }
 
     pub(crate) fn write(&mut self, buf: &[u8]) -> Result<u64, TezedgeCommitLogError> {
+        let mut index_file_buf_writer = BufWriter::new(&mut self.index_file);
+        let mut data_file_buf_writer = BufWriter::new(&mut self.data_file);
         if buf.len() > u64::MAX as usize {
             return Err(TezedgeCommitLogError::MessageLengthError);
         }
@@ -60,11 +62,13 @@ impl Writer {
             wtr.write_all(buf)?;
         }
         let message_len = out.len() as u64;
-        let message_pos = self.data_file.seek(SeekFrom::End(0))?;
-        self.data_file.write_all(&out)?;
+        let message_pos = data_file_buf_writer.seek(SeekFrom::End(0))?;
+        data_file_buf_writer.write_all(&out)?;
         let th = Index::new(message_pos, message_len, uncompressed_length as u64);
-        self.index_file.seek(SeekFrom::End(0))?;
-        self.index_file.write_all(&th.to_vec())?;
+        index_file_buf_writer.seek(SeekFrom::End(0))?;
+        index_file_buf_writer.write_all(&th.to_vec())?;
+        index_file_buf_writer.flush()?;
+        data_file_buf_writer.flush()?;
         self.last_index += 1;
         Ok(self.last_index as u64)
     }
