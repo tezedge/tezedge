@@ -1,7 +1,7 @@
 use crate::commit_log::error::TezedgeCommitLogError;
 use crate::commit_log::{Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom, Error};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Reader {
@@ -43,18 +43,28 @@ impl Reader {
         Ok(reader)
     }
 
-    pub fn indexes(&self) -> Result<Vec<Index>, TezedgeCommitLogError> {
+    pub fn indexes(&self) -> Vec<Index> {
         let mut index_file_buf_reader = BufReader::new(&self.index_file);
-        index_file_buf_reader.seek(SeekFrom::Start(0))?;
+        match index_file_buf_reader.seek(SeekFrom::Start(0)) {
+            Ok(_) => {}
+            Err(_) => {
+                vec![]
+            }
+        };
         let mut indexes = vec![];
         let mut buf = Vec::new();
-        index_file_buf_reader.read_to_end(&mut buf)?;
+        match index_file_buf_reader.read_to_end(&mut buf) {
+            Ok(_) => {}
+            Err(_) => {
+                vec![]
+            }
+        };
         let header_chunks = buf.chunks_exact(TH_LENGTH);
         for chunk in header_chunks {
             let th = Index::from_buf(chunk).unwrap();
             indexes.push(th)
         }
-        Ok(indexes)
+        indexes
     }
 
     pub(crate) fn range(
@@ -62,11 +72,11 @@ impl Reader {
         from: usize,
         limit: usize,
     ) -> Result<MessageSet, TezedgeCommitLogError> {
-        let indexes = self.indexes()?;
-        let mut data_file_buf_reader = BufReader::new(&self.data_file);
+        let indexes = self.indexes();
         if from + limit > indexes.len() {
             return Err(TezedgeCommitLogError::OutOfRange);
         }
+        let mut data_file_buf_reader = BufReader::new(&self.data_file);
         let from_index = indexes[from];
         let range: Vec<_> = indexes[from..].iter().copied().take(limit).collect();
         let total_compressed_data_size = range
