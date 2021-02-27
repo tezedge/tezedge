@@ -23,6 +23,7 @@ pub trait GarbageCollector {
     fn mark_reused(&mut self, _reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
         Ok(())
     }
+
 }
 
 #[derive(Debug, Fail)]
