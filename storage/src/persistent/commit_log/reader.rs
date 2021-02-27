@@ -99,11 +99,7 @@ impl Reader {
             return Err(TezedgeCommitLogError::OutOfRange);
         }
         let from_index = indexes[from];
-        let range: Vec<_> = indexes[from..]
-            .iter()
-            .copied()
-            .take(limit)
-            .collect();
+        let range: Vec<_> = indexes[from..].iter().copied().take(limit).collect();
         let total_compressed_data_size = range
             .iter()
             .fold(0_u64, |acc, item| acc + item.compressed_data_length);
