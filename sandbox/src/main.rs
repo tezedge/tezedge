@@ -9,7 +9,7 @@ use std::{env, fs, io, iter};
 
 use rand::distributions::Alphanumeric;
 use rand::Rng;
-use slog::{info, Drain, Level, Logger};
+use slog::{error, info, Drain, Level, Logger};
 
 mod configuration;
 mod filters;
@@ -24,6 +24,15 @@ async fn main() {
 
     // create an slog logger
     let log = create_logger(env.log_level);
+
+    info!(log, "Checking zcash-params for sapling...");
+    if let Err(e) = env.zcash_param.assert_zcash_params(&log) {
+        error!(log, "Failed to validate zcash-params required for sapling support"; "reason" => format!("{}", e));
+        panic!(
+            "Failed to validate zcash-params required for sapling support, reason: {}",
+            e
+        );
+    }
 
     // sandbox peers map
     let peers = Arc::new(Mutex::new(HashSet::new()));

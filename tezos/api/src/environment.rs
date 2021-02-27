@@ -1,10 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
+    env,
+    ffi::OsString,
+    fs,
 };
 
 use chrono::prelude::*;
@@ -12,6 +16,7 @@ use chrono::ParseError;
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use slog::{debug, info, Logger};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
@@ -437,6 +442,88 @@ fn parse_from_rfc3339(time: &str) -> Result<i64, TezosEnvironmentError> {
             error: e,
         })
         .map(|dt| dt.timestamp())
+}
+
+#[derive(Debug, Clone)]
+pub struct ZcashParams {
+    pub init_sapling_spend_params_file: PathBuf,
+    pub init_sapling_output_params_file: PathBuf,
+}
+
+impl ZcashParams {
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-output.params";
+
+    /// Checks correctly setup environment OS for zcash-params sapling.
+    /// Note: According to Tezos ocaml rustzcash.ml
+    pub fn assert_zcash_params(&self, log: &Logger) -> Result<(), failure::Error> {
+        let mut candidates = Vec::new();
+
+        // first check opam switch (this is default path of Tezos installation)
+        if let Some(opam_switch_path) = env::var_os("OPAM_SWITCH_PREFIX") {
+            candidates.push(PathBuf::from(opam_switch_path).join("share/zcash-params"));
+        }
+
+        // home dir or root
+        let home_dir = env::var_os("HOME")
+            .map(|home| PathBuf::from(home))
+            .unwrap_or(PathBuf::from("/"));
+        candidates.push(home_dir.join(".zcash-params"));
+
+        // data dirs
+        let mut data_dirs = Vec::new();
+        data_dirs.push(match env::var_os("XDG_DATA_HOME") {
+            Some(xdg_data_home) => PathBuf::from(xdg_data_home),
+            None => home_dir.join(".local/share/"),
+        });
+        data_dirs.extend(
+            env::var_os("XDG_DATA_DIRS")
+                .unwrap_or(OsString::from("/usr/local/share/:/usr/share/"))
+                .as_os_str()
+                .to_str()
+                .unwrap_or("/usr/local/share/:/usr/share/")
+                .split(':')
+                .map(|dir| PathBuf::from(dir)),
+        );
+        candidates.extend(data_dirs.into_iter().map(|dir| dir.join("zcash-params")));
+
+        // check if anybody contains required files
+        debug!(log, "Possible candidates for zcash-params found"; "candidates" => format!("{:?}", candidates));
+
+        let zcash_params_dir = candidates.iter().find(|dir| {
+            dir.join("sapling-spend.params").exists() && dir.join("sapling-output.params").exists()
+        });
+
+        // lets check if we found, if not we need to create (because protocol expected it)
+        match zcash_params_dir {
+            Some(zpd) => {
+                info!(log, "Found existing zcash-params dir with files: sapling-spend.params / sapling-output.params"; "dir" => format!("{:?}", zpd))
+            }
+            None => {
+                // no dir with files
+                let zcash_param_dir = home_dir.join(".zcash-params");
+                if !zcash_param_dir.exists() {
+                    info!(log, "Creating new zcash-params dir"; "dir" => format!("{:?}", zcash_param_dir));
+                    fs::create_dir_all(&zcash_param_dir)?;
+                }
+
+                // copy files
+                let spend_path = zcash_param_dir.join("sapling-spend.params");
+                let output_path = zcash_param_dir.join("sapling-output.params");
+                fs::copy(&self.init_sapling_spend_params_file, &spend_path)?;
+                fs::copy(&self.init_sapling_output_params_file, &output_path)?;
+                info!(log, "Prepared zcash-params dir with required files";
+                           "spend_path" => format!("{:?}", spend_path),
+                           "spend_path_init" => format!("{:?}", &self.init_sapling_spend_params_file),
+                           "output_path" => format!("{:?}", output_path),
+                           "output_path_init" => format!("{:?}", &self.init_sapling_output_params_file));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

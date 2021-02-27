@@ -5,12 +5,15 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
+use tezos_api::environment::ZcashParams;
+
 pub struct LauncherEnvironment {
     pub light_node_path: PathBuf,
     pub protocol_runner_path: PathBuf,
     pub log_level: slog::Level,
     pub sandbox_rpc_port: u16,
     pub tezos_client_path: PathBuf,
+    pub zcash_param: ZcashParams,
 }
 
 macro_rules! parse_validator_fn {
@@ -94,7 +97,30 @@ fn sandbox_app() -> App<'static, 'static> {
                     u16,
                     "Value must be a valid port number"
                 )),
+        )
+        .arg(Arg::with_name("init-sapling-spend-params-file")
+            .long("init-sapling-spend-params-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a init file for sapling-spend.params")
+            .validator(|v| if Path::new(&v).exists() {
+                Ok(())
+            } else {
+                Err(format!("File 'sapling-spend.params' not found at '{}', change arg 'init-sapling-spend-params-file'  to point to correct location or you may download it by https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh", v))
+            })
+        )
+        .arg(Arg::with_name("init-sapling-output-params-file")
+            .long("init-sapling-output-params-file")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to a init file for sapling-output.params")
+            .validator(|v| if Path::new(&v).exists() {
+                Ok(())
+            } else {
+                Err(format!("File 'sapling-output.params' not found at '{}', change arg 'init-sapling-output-params-file' to point to correct location or you may download it by https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh", v))
+            })
         );
+
     app
 }
 
@@ -129,6 +155,18 @@ impl LauncherEnvironment {
                 .unwrap_or("")
                 .parse::<PathBuf>()
                 .expect("Provided value cannot be converted to path"),
+            zcash_param: ZcashParams {
+                init_sapling_spend_params_file: args
+                    .value_of("init-sapling-spend-params-file")
+                    .unwrap_or(ZcashParams::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path"),
+                init_sapling_output_params_file: args
+                    .value_of("init-sapling-output-params-file")
+                    .unwrap_or(ZcashParams::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path"),
+            },
         }
     }
 }
