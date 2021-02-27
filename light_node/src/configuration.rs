@@ -5,14 +5,18 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
+use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
-
 use rocksdb::ColumnFamilyDescriptor;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
+
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::persistent::KeyValueSchema;
@@ -36,11 +40,50 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, EnumIter)]
 pub enum ContextActionStoreBackend {
     NoneBackend,
     RocksDB,
     FileStorage,
+}
+
+impl ContextActionStoreBackend {
+    pub fn possible_values() -> Vec<&'static str> {
+        let mut possible_values = Vec::new();
+        for sp in ContextActionStoreBackend::iter() {
+            possible_values.extend(sp.supported_values());
+        }
+        possible_values
+    }
+
+    fn supported_values(&self) -> Vec<&'static str> {
+        match self {
+            ContextActionStoreBackend::RocksDB => vec!["rocksdb"],
+            ContextActionStoreBackend::FileStorage { .. } => vec!["file"],
+            ContextActionStoreBackend::NoneBackend => vec!["none"],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseContextActionStoreBackendError(String);
+
+impl FromStr for ContextActionStoreBackend {
+    type Err = ParseContextActionStoreBackendError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_ascii_lowercase();
+        for sp in ContextActionStoreBackend::iter() {
+            if sp.supported_values().contains(&s.as_str()) {
+                return Ok(sp);
+            }
+        }
+
+        Err(ParseContextActionStoreBackendError(format!(
+            "Invalid variant name: {}",
+            s
+        )))
+    }
 }
 
 pub trait ColumnFactory {
@@ -128,6 +171,8 @@ impl Storage {
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
     const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
     const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
+
+    const DEFAULT_KV_STORE_BACKEND: KeyValueStoreBackend = KeyValueStoreBackend::RocksDB;
 }
 
 #[derive(Debug, Clone)]
@@ -207,10 +252,10 @@ pub fn tezos_app() -> App<'static, 'static> {
     //
     // In case some args are required=true and user provides only config-file,
     // first round of parsing would always fail then
-    let app = App::new("Tezos Light Node")
-        .version("0.3.1")
-        .author("SimpleStaking and the project contributors")
-        .about("Rust implementation of the tezos node")
+    let app = App::new("TezEdge Light Node")
+        .version(env!("CARGO_PKG_VERSION"))
+        .author("TezEdge and the project contributors")
+        .about("Rust implementation of the Tezos node")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(Arg::with_name("validate-cfg-identity-and-stop")
             .long("validate-cfg-identity-and-stop")
@@ -326,8 +371,9 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("network")
             .long("network")
             .takes_value(true)
-            .possible_values(&["alphanet", "babylonnet", "babylon", "mainnet", "zeronet", "carthagenet", "carthage", "delphinet", "delphi", "edonet", "edo", "sandbox"])
-            .help("Choose the Tezos environment"))
+            .possible_values(&TezosEnvironment::possible_values())
+            .help("Choose the Tezos environment")
+        )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
             .takes_value(true)
@@ -483,11 +529,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .multiple(true)
             .value_name("STRING")
+            .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("kv-store-backend")
             .long("kv-store-backend")
             .takes_value(true)
             .value_name("STRING")
+            .possible_values(&KeyValueStoreBackend::possible_values())
             .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
@@ -555,28 +603,34 @@ fn pool_cfg(
 // In case some args are required=true and user provides only config-file,
 // first round of parsing would always fail then
 fn validate_required_args(args: &clap::ArgMatches) {
-    validate_required_arg(args, "tezos-data-dir");
-    validate_required_arg(args, "network");
-    validate_required_arg(args, "bootstrap-db-path");
-    validate_required_arg(args, "log-format");
-    validate_required_arg(args, "ocaml-log-enabled");
-    validate_required_arg(args, "p2p-port");
-    validate_required_arg(args, "protocol-runner");
-    validate_required_arg(args, "rpc-port");
-    validate_required_arg(args, "websocket-address");
-    validate_required_arg(args, "peer-thresh-low");
-    validate_required_arg(args, "peer-thresh-high");
-    validate_required_arg(args, "tokio-threads");
-    validate_required_arg(args, "identity-file");
-    validate_required_arg(args, "identity-expected-pow");
-
-    // "bootstrap-lookup-address", "log-file" and "peers" are not required
+    validate_required_arg(args, "tezos-data-dir", None);
+    validate_required_arg(
+        args,
+        "network",
+        Some(format!(
+            "possible_values: {:?}",
+            TezosEnvironment::possible_values()
+        )),
+    );
+    validate_required_arg(args, "bootstrap-db-path", None);
+    validate_required_arg(args, "p2p-port", None);
+    validate_required_arg(args, "protocol-runner", None);
+    validate_required_arg(args, "rpc-port", None);
+    validate_required_arg(args, "websocket-address", None);
+    validate_required_arg(args, "peer-thresh-low", None);
+    validate_required_arg(args, "peer-thresh-high", None);
+    validate_required_arg(args, "tokio-threads", None);
+    validate_required_arg(args, "identity-file", None);
+    validate_required_arg(args, "identity-expected-pow", None);
 }
 
 // Validates single required arg. If missing, exit whole process
-pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
+pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str, help: Option<String>) {
     if !args.is_present(arg_name) {
-        panic!("required \"{}\" arg is missing !!!", arg_name);
+        match help {
+            Some(help) => panic!("Required \"{}\" arg is missing, {} !!!", arg_name, help),
+            None => panic!("Required \"{}\" arg is missing !!!", arg_name),
+        }
     }
 }
 
@@ -673,7 +727,7 @@ impl Environment {
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")
-            .unwrap_or("")
+            .expect("Network is required")
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 
@@ -866,35 +920,37 @@ impl Environment {
 
                 let backends: HashSet<String> = match args.values_of("actions-store-backend") {
                     Some(v) => v.map(String::from).collect(),
-                    None => {
-                        let mut h = HashSet::new();
-                        h.insert("rocksdb".to_string());
-                        h
-                    }
+                    None => HashSet::from_iter(std::iter::once("rocksdb".to_string())),
                 };
 
                 let action_store_backend = backends
                     .iter()
-                    .map(|name| match name.as_str() {
-                        "rocksdb" => ContextActionStoreBackend::RocksDB,
-                        "none" => ContextActionStoreBackend::NoneBackend,
-                        "file" => ContextActionStoreBackend::FileStorage,
-                        _ => {
-                            panic!(format!(
-                                "unknown backend {} - supported backends are: ['rocksdb', 'file', 'none']",
-                                &name
-                            ))
-                        }
+                    .map(|name| {
+                        ContextActionStoreBackend::from_str(name).expect(&format!(
+                            "Unknown backend {} - supported backends are: {:?}",
+                            &name,
+                            ContextActionStoreBackend::possible_values()
+                        ))
                     })
                     .collect();
 
-                let kv_store_backend = match args.value_of("kv-store-backend").unwrap_or("rocksdb")
-                {
-                    "inmem" => KeyValueStoreBackend::InMem,
-                    "sled" => KeyValueStoreBackend::Sled,
-                    "btree" => KeyValueStoreBackend::BTreeMap,
-                    _ => KeyValueStoreBackend::RocksDB,
-                };
+                let kv_store_backend = args.value_of("kv-store-backend").map_or(
+                    Storage::DEFAULT_KV_STORE_BACKEND,
+                    |value| {
+                        value
+                            .parse::<KeyValueStoreBackend>()
+                            .map(|v| {
+                                if let KeyValueStoreBackend::Sled { .. } = v {
+                                    KeyValueStoreBackend::Sled {
+                                        path: db_path.join("sled"),
+                                    }
+                                } else {
+                                    v
+                                }
+                            })
+                            .expect("Was expecting one value from KeyValueStoreBackend")
+                    },
+                );
 
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),

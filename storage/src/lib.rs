@@ -5,15 +5,16 @@
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use failure::Fail;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
-pub use action_file_storage::ActionFileStorage;
 use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
@@ -47,6 +48,8 @@ use crate::persistent::ActionRecordError;
 use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
+pub use action_file_storage::ActionFileStorage;
+use std::str::FromStr;
 
 pub mod action_file;
 pub mod action_file_storage;
@@ -469,12 +472,52 @@ pub fn check_database_compatibility(
     Ok(db_version_ok && chain_id_ok)
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(PartialEq, Debug, Clone, EnumIter)]
 pub enum KeyValueStoreBackend {
     RocksDB,
     InMem,
-    Sled,
+    Sled { path: PathBuf },
     BTreeMap,
+}
+
+impl KeyValueStoreBackend {
+    pub fn possible_values() -> Vec<&'static str> {
+        let mut possible_values = Vec::new();
+        for sp in KeyValueStoreBackend::iter() {
+            possible_values.extend(sp.supported_values());
+        }
+        possible_values
+    }
+
+    fn supported_values(&self) -> Vec<&'static str> {
+        match self {
+            KeyValueStoreBackend::RocksDB => vec!["rocksdb"],
+            KeyValueStoreBackend::InMem => vec!["inmem"],
+            KeyValueStoreBackend::Sled { .. } => vec!["sled"],
+            KeyValueStoreBackend::BTreeMap => vec!["btree"],
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseKeyValueStoreBackendError(String);
+
+impl FromStr for KeyValueStoreBackend {
+    type Err = ParseKeyValueStoreBackendError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.to_ascii_lowercase();
+        for sp in KeyValueStoreBackend::iter() {
+            if sp.supported_values().contains(&s.as_str()) {
+                return Ok(sp);
+            }
+        }
+
+        Err(ParseKeyValueStoreBackendError(format!(
+            "Invalid variant name: {}",
+            s
+        )))
+    }
 }
 
 pub mod tests_common {

@@ -4,6 +4,7 @@ services:
 
   node:
     image: simplestakingcom/tezedge:latest
+    command: ["--network=mainnet", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927"]
     hostname: node
     ports:
       - "4927:4927"

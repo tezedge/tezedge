@@ -4,7 +4,6 @@
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::time::Instant;
 
 use riker::actors::*;
 use slog::Logger;
@@ -24,17 +23,35 @@ use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBl
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
-use crate::chain_feeder::{ApplyCompletedBlock, ChainFeederRef};
-use crate::chain_feeder_channel::ChainFeederChannelRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
 use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
+use crate::state::data_requester::DataRequesterRef;
 use crate::state::head_state::CurrentHeadRef;
-use crate::state::peer_state::PeerState;
+use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
 use crate::validation;
+
+/// Constants for controlling bootstrap speed
+///
+/// Note: if needed, cound be refactored to cfg and struct
+pub(crate) mod bootstrap_constants {
+    use crate::state::peer_state::DataQueuesLimits;
+
+    /// We can controll speedup of downloading blocks from network
+    pub(crate) const MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT: i8 = 2;
+
+    /// We can validate just few branches/head from one peer, so we limit it by this constant
+    pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
+
+    /// Constants for peer's queue
+    pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
+        max_queued_block_headers_count: 10,
+        max_queued_block_operations_count: 15,
+    };
+}
 
 pub enum BlockAcceptanceResult {
     AcceptBlock,
@@ -43,7 +60,7 @@ pub enum BlockAcceptanceResult {
     MutlipassValidationError(ProtocolServiceError),
 }
 
-/// Holds state of all known blocks
+/// Holds and manages state of the chain
 pub struct BlockchainState {
     /// persistent block storage
     block_storage: BlockStorage,
@@ -56,12 +73,11 @@ pub struct BlockchainState {
     /// Operations metadata storage
     operations_meta_storage: OperationsMetaStorage,
 
-    /// Chain feeder - actor, which is responsible to apply_block to context
-    block_applier: ChainFeederRef,
+    /// Utility for managing different data requests (block, operations, block apply)
+    requester: DataRequesterRef,
 
     /// Common shell channel
     shell_channel: ShellChannelRef,
-    chain_feeder_channel: ChainFeederChannelRef,
 
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
@@ -69,25 +85,31 @@ pub struct BlockchainState {
 
 impl BlockchainState {
     pub fn new(
+        requester: DataRequesterRef,
         persistent_storage: &PersistentStorage,
-        block_applier: ChainFeederRef,
         shell_channel: ShellChannelRef,
-        chain_feeder_channel: ChainFeederChannelRef,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
     ) -> Self {
         BlockchainState {
+            requester,
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
-            block_applier,
             shell_channel,
-            chain_feeder_channel,
             chain_id,
             chain_genesis_block_hash,
         }
+    }
+
+    pub(crate) fn requester(&self) -> &DataRequesterRef {
+        &self.requester
+    }
+
+    pub(crate) fn data_queues_limits(&self) -> DataQueuesLimits {
+        bootstrap_constants::LIMITS.clone()
     }
 
     /// Validate if we can accept branch
@@ -411,13 +433,13 @@ impl BlockchainState {
                     PeerBranchBootstrapper::actor(
                         sys,
                         peer.peer_id.clone(),
-                        peer.queued_block_headers2.clone(),
-                        peer.queued_block_operations2.clone(),
+                        peer.queues.clone(),
+                        self.requester.clone(),
                         self.shell_channel.clone(),
-                        self.chain_feeder_channel.clone(),
-                        self.block_applier.clone(),
                         self.block_meta_storage.clone(),
                         self.operations_meta_storage.clone(),
+                        bootstrap_constants::MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT,
+                        bootstrap_constants::MAX_BOOTSTRAP_BRANCHES_PER_PEER,
                     )
                     .map_err(|e| StateError::ProcessingError {
                         reason: format!("{}", e),
@@ -462,24 +484,6 @@ impl BlockchainState {
 
         // update operations metadata for block
         let (are_operations_complete, _) = self.process_block_header_operations(received_block)?;
-
-        // check if block can be applied
-        if validation::can_apply_block(
-            (&received_block.hash, &block_metadata),
-            |_| Ok(are_operations_complete),
-            |predecessor| self.block_meta_storage.is_applied(predecessor),
-        )? {
-            self.block_applier.tell(
-                ApplyCompletedBlock::new(
-                    received_block.hash.clone(),
-                    self.chain_id.clone(),
-                    None,
-                    None,
-                    Instant::now(),
-                ),
-                None,
-            );
-        }
 
         // ping branch bootstrapper with received block and actual state
         if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
@@ -546,7 +550,7 @@ impl BlockchainState {
             Some(meta) => Ok((meta.is_complete(), meta.get_missing_validation_passes())),
             None => self
                 .operations_meta_storage
-                .put_block_header(block_header, &self.chain_id),
+                .put_block_header(block_header, self.chain_id.as_ref().clone()),
         }
     }
 
@@ -563,19 +567,30 @@ impl BlockchainState {
             Some(meta) => Ok(meta.is_complete()),
             None => self
                 .operations_meta_storage
-                .put_block_header(block_header, &self.chain_id)
+                .put_block_header(block_header, self.chain_id.as_ref().clone())
                 .map(|(is_complete, _)| is_complete),
         }
     }
 
+    /// Processes comming operations from peers
+    ///
+    /// Returns true, if new block is successfully downloaded by this call
     pub fn process_block_operations_from_peer(
         &mut self,
         peer: &mut PeerState,
         block_hash: &BlockHash,
         message: &OperationsForBlocksMessage,
     ) -> Result<bool, StateError> {
-        // update operations metadata for block
-        let (are_operations_complete, _) = self.process_block_operations(message)?;
+        // TODO: TE-369 - optimize double check
+        // we need to differ this flag
+        let (are_operations_complete, was_block_finished_now) =
+            if self.operations_meta_storage.is_complete(block_hash)? {
+                (true, false)
+            } else {
+                // update operations metadata for block
+                let (are_operations_complete, _) = self.process_block_operations(message)?;
+                (are_operations_complete, are_operations_complete)
+            };
 
         if are_operations_complete {
             // ping branch bootstrapper with received operations
@@ -585,30 +600,9 @@ impl BlockchainState {
                     None,
                 );
             }
-
-            // update block metadata
-            if let Some(block_metadata) = self.block_meta_storage.get(block_hash)? {
-                // check if block can be applied
-                if validation::can_apply_block(
-                    (&block_hash, &block_metadata),
-                    |_| Ok(are_operations_complete),
-                    |predecessor| self.block_meta_storage.is_applied(predecessor),
-                )? {
-                    self.block_applier.tell(
-                        ApplyCompletedBlock::new(
-                            block_hash.clone(),
-                            self.chain_id.clone(),
-                            None,
-                            None,
-                            Instant::now(),
-                        ),
-                        None,
-                    );
-                }
-            }
         }
 
-        Ok(are_operations_complete)
+        Ok(was_block_finished_now)
     }
 
     /// Process block operations. This will mark operations in store for the block as seen.
@@ -711,10 +705,12 @@ impl BlockchainState {
 
 #[cfg(test)]
 mod tests {
-    use slog::{Drain, Level, Logger};
+    use slog::Level;
 
     use crypto::hash::chain_id_from_block_hash;
     use storage::tests_common::TmpStorage;
+
+    use crate::state::tests::prerequisites::create_logger;
 
     use super::*;
 
@@ -745,7 +741,7 @@ mod tests {
 
         // store branch1 - root genesis
         data::store_branch(
-            &vec!["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
+            &["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8"],
             &chain_id,
             &blocksdb,
             &block_storage,
@@ -754,7 +750,7 @@ mod tests {
         );
         // store branch2 - root A3
         data::store_branch(
-            &vec!["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"],
+            &["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8"],
             &chain_id,
             &blocksdb,
             &block_storage,
@@ -907,19 +903,6 @@ mod tests {
         );
 
         Ok(())
-    }
-
-    fn create_logger(level: Level) -> Logger {
-        let drain = slog_async::Async::new(
-            slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
-                .build()
-                .fuse(),
-        )
-        .build()
-        .filter_level(level)
-        .fuse();
-
-        Logger::root(drain, slog::o!())
     }
 
     mod data {

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{
     BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
 };
-pub use tezos_context::channel::{ContextAction, ContextActionMessage};
+pub use tezos_context::channel::ContextAction;
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::persistent::codec::range_from_idx_len;
@@ -206,12 +206,8 @@ impl ContextActionStorage {
 
 impl ActionRecorder for ContextActionStorage {
     #[inline]
-    fn record(&mut self, message: &ContextActionMessage) -> Result<(), StorageError> {
-        if !message.record {
-            return Ok(());
-        }
-
-        match &message.action {
+    fn record(&mut self, action: &ContextAction) -> Result<(), StorageError> {
+        match action {
             ContextAction::Set {
                 block_hash: Some(block_hash),
                 ..
@@ -247,10 +243,7 @@ impl ActionRecorder for ContextActionStorage {
             | ContextAction::Commit {
                 block_hash: Some(block_hash),
                 ..
-            } => self.put_action(
-                &BlockHash::try_from(&block_hash[..])?,
-                message.action.clone(),
-            ),
+            } => self.put_action(&BlockHash::try_from(&block_hash[..])?, action.clone()),
             _ => Ok(()),
         }
     }
@@ -1264,6 +1257,7 @@ mod tests {
             block_hash: None,
             operation_hash: None,
             tree_hash: None,
+            tree_id: 0,
             key: to_key(key),
             value: Vec::new(),
             value_as_json: None,

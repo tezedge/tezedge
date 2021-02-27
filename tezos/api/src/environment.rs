@@ -9,10 +9,11 @@ use std::{
 
 use chrono::prelude::*;
 use chrono::ParseError;
-use enum_iterator::IntoEnumIterator;
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 use crypto::base58::FromBase58CheckError;
 use crypto::hash::{
@@ -32,7 +33,7 @@ pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, Fro
 }
 
 /// Enum representing different Tezos environment.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, IntoEnumIterator)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
@@ -44,6 +45,29 @@ pub enum TezosEnvironment {
     Sandbox,
 }
 
+impl TezosEnvironment {
+    pub fn possible_values() -> Vec<&'static str> {
+        let mut possible_values = Vec::new();
+        for sp in TezosEnvironment::iter() {
+            possible_values.extend(sp.supported_values());
+        }
+        possible_values
+    }
+
+    fn supported_values(&self) -> Vec<&'static str> {
+        match self {
+            TezosEnvironment::Mainnet => vec!["mainnet"],
+            TezosEnvironment::Alphanet => vec!["alphanet"],
+            TezosEnvironment::Babylonnet => vec!["babylonnet", "babylon"],
+            TezosEnvironment::Carthagenet => vec!["carthagenet", "carthage"],
+            TezosEnvironment::Delphinet => vec!["delphinet", "delphi"],
+            TezosEnvironment::Edonet => vec!["edonet", "edo"],
+            TezosEnvironment::Zeronet => vec!["zeronet"],
+            TezosEnvironment::Sandbox => vec!["sandbox"],
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ParseTezosEnvironmentError(String);
 
@@ -51,20 +75,17 @@ impl FromStr for TezosEnvironment {
     type Err = ParseTezosEnvironmentError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "alphanet" => Ok(TezosEnvironment::Alphanet),
-            "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
-            "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
-            "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
-            "edonet" | "edo" => Ok(TezosEnvironment::Edonet),
-            "mainnet" => Ok(TezosEnvironment::Mainnet),
-            "zeronet" => Ok(TezosEnvironment::Zeronet),
-            "sandbox" => Ok(TezosEnvironment::Sandbox),
-            _ => Err(ParseTezosEnvironmentError(format!(
-                "Invalid variant name: {}",
-                s
-            ))),
+        let s = s.to_ascii_lowercase();
+        for sp in TezosEnvironment::iter() {
+            if sp.supported_values().contains(&s.as_str()) {
+                return Ok(sp);
+            }
         }
+
+        Err(ParseTezosEnvironmentError(format!(
+            "Invalid variant name: {}",
+            s
+        )))
     }
 }
 
