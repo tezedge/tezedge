@@ -27,10 +27,11 @@ async fn main() {
 
     info!(log, "Checking zcash-params for sapling...");
     if let Err(e) = env.zcash_param.assert_zcash_params(&log) {
-        error!(log, "Failed to validate zcash-params required for sapling support"; "reason" => format!("{}", e));
+        let description = env.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
+        error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
         panic!(
-            "Failed to validate zcash-params required for sapling support, reason: {}",
-            e
+            "Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
+            e, description
         );
     }
 

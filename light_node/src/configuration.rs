@@ -194,6 +194,11 @@ impl Ffi {
     const TEZOS_READONLY_API_POOL_DISCRIMINATOR: &'static str = "";
     const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap";
     const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap";
+
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+    pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
+        "tezos/interop/lib_tezos/artifacts/sapling-output.params";
 }
 
 #[derive(Debug, Clone)]
@@ -524,22 +529,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-spend.params")
-            .validator(|v| if Path::new(&v).exists() {
-                Ok(())
-            } else {
-                Err(format!("File 'sapling-spend.params' not found at '{}', change arg 'init-sapling-spend-params-file'  to point to correct location or you may download it by https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh", v))
-            })
         )
         .arg(Arg::with_name("init-sapling-output-params-file")
             .long("init-sapling-output-params-file")
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-output.params")
-            .validator(|v| if Path::new(&v).exists() {
-                Ok(())
-            } else {
-                Err(format!("File 'sapling-output.params' not found at '{}', change arg 'init-sapling-output-params-file' to point to correct location or you may download it by https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh", v))
-            })
         )
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
@@ -1063,12 +1058,12 @@ impl Environment {
                 zcash_param: ZcashParams {
                     init_sapling_spend_params_file: args
                         .value_of("init-sapling-spend-params-file")
-                        .unwrap_or(ZcashParams::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
+                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH)
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path"),
                     init_sapling_output_params_file: args
                         .value_of("init-sapling-output-params-file")
-                        .unwrap_or(ZcashParams::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
+                        .unwrap_or(Ffi::DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH)
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path"),
                 },

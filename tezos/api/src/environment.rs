@@ -451,14 +451,22 @@ pub struct ZcashParams {
 }
 
 impl ZcashParams {
-    pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
-        "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
-    pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
-        "tezos/interop/lib_tezos/artifacts/sapling-output.params";
+    pub const SAPLING_SPEND_PARAMS_FILE_NAME: &'static str = "sapling-spend.params";
+    pub const SAPLING_OUTPUT_PARAMS_FILE_NAME: &'static str = "sapling-output.params";
 
-    /// Checks correctly setup environment OS for zcash-params sapling.
-    /// Note: According to Tezos ocaml rustzcash.ml
-    pub fn assert_zcash_params(&self, log: &Logger) -> Result<(), failure::Error> {
+    pub fn description(&self, args: &str) -> String {
+        format!(
+            "\nOne of candidate dirs {:?} should contains files: [{}, {}],\n \
+            1. these files could be created on startup, but you must provide correct existing paths as arguments: {},\n \
+            2. or you may download https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh and set it up",
+            self.candidate_dirs(),
+            ZcashParams::SAPLING_SPEND_PARAMS_FILE_NAME,
+            ZcashParams::SAPLING_OUTPUT_PARAMS_FILE_NAME,
+            args,
+        )
+    }
+
+    fn candidate_dirs(&self) -> Vec<PathBuf> {
         let mut candidates = Vec::new();
 
         // first check opam switch (this is default path of Tezos installation)
@@ -489,37 +497,73 @@ impl ZcashParams {
         );
         candidates.extend(data_dirs.into_iter().map(|dir| dir.join("zcash-params")));
 
+        candidates
+    }
+
+    /// Checks correctly setup environment OS for zcash-params sapling.
+    /// Note: According to Tezos ocaml rustzcash.ml
+    pub fn assert_zcash_params(&self, log: &Logger) -> Result<(), failure::Error> {
+        // select candidate dirs
+        let candidates = self.candidate_dirs();
+
         // check if anybody contains required files
         debug!(log, "Possible candidates for zcash-params found"; "candidates" => format!("{:?}", candidates));
 
-        let zcash_params_dir = candidates.iter().find(|dir| {
-            dir.join("sapling-spend.params").exists() && dir.join("sapling-output.params").exists()
-        });
-
-        // lets check if we found, if not we need to create (because protocol expected it)
-        match zcash_params_dir {
-            Some(zpd) => {
-                info!(log, "Found existing zcash-params dir with files: sapling-spend.params / sapling-output.params"; "dir" => format!("{:?}", zpd))
-            }
-            None => {
-                // no dir with files
-                let zcash_param_dir = home_dir.join(".zcash-params");
-                if !zcash_param_dir.exists() {
-                    info!(log, "Creating new zcash-params dir"; "dir" => format!("{:?}", zcash_param_dir));
-                    fs::create_dir_all(&zcash_param_dir)?;
+        let zcash_params_dir_found = {
+            let mut found = false;
+            for candidate in candidates {
+                let spend_path = candidate.join(Self::SAPLING_SPEND_PARAMS_FILE_NAME);
+                let output_path = candidate.join(Self::SAPLING_OUTPUT_PARAMS_FILE_NAME);
+                if spend_path.exists() && output_path.exists() {
+                    info!(log, "Found existing zcash-params files";
+                               "candidate_dir" => format!("{:?}", candidate),
+                               "spend_path" => format!("{:?}", spend_path),
+                               "output_path" => format!("{:?}", output_path));
+                    found = true;
                 }
-
-                // copy files
-                let spend_path = zcash_param_dir.join("sapling-spend.params");
-                let output_path = zcash_param_dir.join("sapling-output.params");
-                fs::copy(&self.init_sapling_spend_params_file, &spend_path)?;
-                fs::copy(&self.init_sapling_output_params_file, &output_path)?;
-                info!(log, "Prepared zcash-params dir with required files";
-                           "spend_path" => format!("{:?}", spend_path),
-                           "spend_path_init" => format!("{:?}", &self.init_sapling_spend_params_file),
-                           "output_path" => format!("{:?}", output_path),
-                           "output_path_init" => format!("{:?}", &self.init_sapling_output_params_file));
             }
+            found
+        };
+
+        // if not found, if we need to create it from configured init files (because protocol expected it)
+        if !zcash_params_dir_found {
+            // check init files
+            if !self.init_sapling_spend_params_file.exists() {
+                return Err(failure::format_err!(
+                    "File not found for init_sapling_spend_params_file: {:?}",
+                    self.init_sapling_spend_params_file
+                ));
+            }
+            if !self.init_sapling_output_params_file.exists() {
+                return Err(failure::format_err!(
+                    "File not found for init_sapling_output_params_file: {:?}",
+                    self.init_sapling_output_params_file
+                ));
+            }
+
+            // we initialize zcash-params in user's home dir (it is one of the candidates)
+            let home_dir = env::var_os("HOME")
+                .map(|home| PathBuf::from(home))
+                .unwrap_or(PathBuf::from("/"));
+            let zcash_param_dir = home_dir.join(".zcash-params");
+            if !zcash_param_dir.exists() {
+                info!(log, "Creating new zcash-params dir"; "dir" => format!("{:?}", zcash_param_dir));
+                fs::create_dir_all(&zcash_param_dir)?;
+            }
+
+            info!(log, "Using configured init files for zcash-params";
+                           "spend_path" => format!("{:?}", self.init_sapling_spend_params_file),
+                           "output_path" => format!("{:?}", self.init_sapling_output_params_file));
+
+            // copy init files to dest
+            let dest_spend_path = zcash_param_dir.join(Self::SAPLING_SPEND_PARAMS_FILE_NAME);
+            let dest_output_path = zcash_param_dir.join(Self::SAPLING_OUTPUT_PARAMS_FILE_NAME);
+            fs::copy(&self.init_sapling_spend_params_file, &dest_spend_path)?;
+            fs::copy(&self.init_sapling_output_params_file, &dest_output_path)?;
+            info!(log, "Sapling zcash-params files were created";
+                           "dir" => format!("{:?}", zcash_param_dir),
+                           "spend_path" => format!("{:?}", dest_spend_path),
+                           "output_path" => format!("{:?}", dest_output_path));
         }
 
         Ok(())
