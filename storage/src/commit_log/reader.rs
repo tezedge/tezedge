@@ -48,7 +48,7 @@ impl Reader {
         match index_file_buf_reader.seek(SeekFrom::Start(0)) {
             Ok(_) => {}
             Err(_) => {
-                vec![]
+                return vec![]
             }
         };
         let mut indexes = vec![];
@@ -56,7 +56,7 @@ impl Reader {
         match index_file_buf_reader.read_to_end(&mut buf) {
             Ok(_) => {}
             Err(_) => {
-                vec![]
+                return vec![]
             }
         };
         let header_chunks = buf.chunks_exact(TH_LENGTH);
