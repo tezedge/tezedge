@@ -27,9 +27,8 @@ pub enum TezedgeCommitLogError {
 }
 
 pub enum ReadError {
-    CorruptLog
+    CorruptLog,
 }
-
 
 impl From<io::Error> for TezedgeCommitLogError {
     fn from(error: io::Error) -> Self {
