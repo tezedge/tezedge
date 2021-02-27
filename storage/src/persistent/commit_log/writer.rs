@@ -64,7 +64,7 @@ impl Writer {
         self.data_file.write_all(&out)?;
         let th = Index::new(message_pos, message_len, uncompressed_length as u64);
         self.index_file.seek(SeekFrom::End(0))?;
-        self.index_file.write(&th.to_vec())?;
+        self.index_file.write_all(&th.to_vec())?;
         self.last_index += 1;
         Ok(self.last_index as u64)
     }
