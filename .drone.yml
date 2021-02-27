@@ -175,6 +175,9 @@ steps:
     - cp /artifacts/light-node /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/protocol-runner /tmp/tezos-src/unmodified/tezos/
     - cp /artifacts/ffi/libtezos.so /tmp/tezos-src/unmodified/tezos/
+    # copy zcash-params init files - see constants.py light-node params
+    - cp /artifacts/ffi/sapling-spend.params /tmp/tezos-src/unmodified/tezos/
+    - cp /artifacts/ffi/sapling-output.params /tmp/tezos-src/unmodified/tezos/
 
 # this is not triggered on pull request, because there is complex bench comparison on PR
 - name: benchmarks
@@ -1561,7 +1564,7 @@ volumes:
   - name: build
     host:
       path: /etc/tezedge-ci/build
-  - name: ocaml-node-net-snapshot-data-1
+  - name: ocaml-node-edonet-snapshot-data-1
     host:
       path: /etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1
   - name: ocaml-node-edonet-snapshot-data-2
