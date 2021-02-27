@@ -22,9 +22,9 @@ use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_messages::Head;
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
+use tezos_messages::Head;
 
 pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
 pub use crate::block_storage::{
@@ -41,10 +41,10 @@ pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaSt
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
 };
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
-use crate::persistent::ActionRecordError;
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
+use crate::persistent::ActionRecordError;
+use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
@@ -478,17 +478,17 @@ pub enum KeyValueStoreBackend {
 }
 
 pub mod tests_common {
-    use std::{env, fs};
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
+    use std::{env, fs};
 
     use failure::Error;
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
     use crate::mempool_storage::MempoolStorage;
-    use crate::persistent::*;
     use crate::persistent::sequence::Sequences;
+    use crate::persistent::*;
     use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;

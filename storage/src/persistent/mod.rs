@@ -7,10 +7,10 @@ use std::sync::{Arc, RwLock};
 
 use derive_builder::Builder;
 use failure::Fail;
-use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, Options};
+use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
+pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 use tezos_context::channel::ContextActionMessage;
@@ -20,16 +20,16 @@ use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
-use crate::KeyValueStoreBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use crate::KeyValueStoreBackend;
 use crate::StorageError;
 
 pub mod codec;
+pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
-pub mod commit_log;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
