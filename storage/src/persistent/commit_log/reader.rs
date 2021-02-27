@@ -79,7 +79,7 @@ impl Reader {
         };
         let mut encode_message = vec![0; index.compressed_data_length as usize];
         self.data_file.seek(SeekFrom::Start(index.position))?;
-        self.data_file.read(&mut encode_message)?;
+        self.data_file.read_exact(&mut encode_message)?;
 
         let mut decoded_message = vec![];
         {
@@ -101,7 +101,7 @@ impl Reader {
         let from_index = indexes[from];
         let range: Vec<_> = indexes[from..]
             .iter()
-            .map(|i| i.clone())
+            .copied()
             .take(limit)
             .collect();
         let total_compressed_data_size = range
@@ -109,7 +109,7 @@ impl Reader {
             .fold(0_u64, |acc, item| acc + item.compressed_data_length);
         let mut compressed_bytes = vec![0; total_compressed_data_size as usize];
         self.data_file.seek(SeekFrom::Start(from_index.position))?;
-        self.data_file.read(&mut compressed_bytes)?;
+        self.data_file.read_exact(&mut compressed_bytes)?;
 
         let mut uncompressed_bytes = Vec::new();
         {
