@@ -476,8 +476,8 @@ impl ZcashParams {
 
         // home dir or root
         let home_dir = env::var_os("HOME")
-            .map(|home| PathBuf::from(home))
-            .unwrap_or(PathBuf::from("/"));
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/"));
         candidates.push(home_dir.join(".zcash-params"));
 
         // data dirs
@@ -488,12 +488,12 @@ impl ZcashParams {
         });
         data_dirs.extend(
             env::var_os("XDG_DATA_DIRS")
-                .unwrap_or(OsString::from("/usr/local/share/:/usr/share/"))
+                .unwrap_or_else(|| OsString::from("/usr/local/share/:/usr/share/"))
                 .as_os_str()
                 .to_str()
                 .unwrap_or("/usr/local/share/:/usr/share/")
                 .split(':')
-                .map(|dir| PathBuf::from(dir)),
+                .map(PathBuf::from),
         );
         candidates.extend(data_dirs.into_iter().map(|dir| dir.join("zcash-params")));
 
@@ -543,8 +543,8 @@ impl ZcashParams {
 
             // we initialize zcash-params in user's home dir (it is one of the candidates)
             let home_dir = env::var_os("HOME")
-                .map(|home| PathBuf::from(home))
-                .unwrap_or(PathBuf::from("/"));
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/"));
             let zcash_param_dir = home_dir.join(".zcash-params");
             if !zcash_param_dir.exists() {
                 info!(log, "Creating new zcash-params dir"; "dir" => format!("{:?}", zcash_param_dir));

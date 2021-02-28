@@ -135,11 +135,13 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
             dest_path.as_os_str().to_str().unwrap(),
         ])
         .status()
-        .expect(&format!(
-            "Couldn't download file '{}' to '{:?}'",
-            remote_file.file_url.as_str(),
-            dest_path
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Couldn't download file '{}' to '{:?}'",
+                remote_file.file_url.as_str(),
+                dest_path
+            )
+        });
 
     // get sha256 checksum file: $ curl <remote_url>
     let remote_file_sha256: Output = Command::new("curl")
@@ -269,10 +271,12 @@ fn run_builder(build_chain: &BuildChain) {
                     libtezos_ffi_dst_path.to_str().unwrap(),
                 ])
                 .status()
-                .expect(&format!(
-                    "Couldn't copy '{:?}' to '{:?}'",
-                    libtezos_ffi_src_path, libtezos_ffi_dst_path
-                ));
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        libtezos_ffi_src_path, libtezos_ffi_dst_path
+                    )
+                });
 
             Command::new("cp")
                 .args(&[
@@ -281,10 +285,12 @@ fn run_builder(build_chain: &BuildChain) {
                     zcash_params_spend_dest_path.to_str().unwrap(),
                 ])
                 .status()
-                .expect(&format!(
-                    "Couldn't copy '{:?}' to '{:?}'",
-                    zcash_params_spend_src_path, zcash_params_spend_dest_path
-                ));
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        zcash_params_spend_src_path, zcash_params_spend_dest_path
+                    )
+                });
 
             Command::new("cp")
                 .args(&[
@@ -293,10 +299,12 @@ fn run_builder(build_chain: &BuildChain) {
                     zcash_params_output_dest_path.to_str().unwrap(),
                 ])
                 .status()
-                .expect(&format!(
-                    "Couldn't copy '{:?}' to '{:?}'",
-                    zcash_params_output_src_path, zcash_params_output_dest_path
-                ));
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        zcash_params_output_src_path, zcash_params_output_dest_path
+                    )
+                });
         }
         BuildChain::Remote => {
             let artifacts = current_release_distributions_artifacts();
