@@ -1,5 +1,6 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
+use clap::{App, Arg};
 use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use failure::Error;
 use rocksdb::Cache;
@@ -7,10 +8,14 @@ use shell::context_listener::get_new_tree_hash;
 use shell::context_listener::perform_context_action;
 use slog::{debug, info, warn, Drain, Level, Logger};
 use std::convert::TryFrom;
-use std::env;
+use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::sync::RwLock;
 use storage::action_file::ActionsFileReader;
+use storage::merkle_storage::MerkleStorage;
+use storage::merkle_storage_stats::{MerkleStorageAction, OperationLatencyStats};
 use storage::BlockHeaderWithHash;
 use storage::{
     context::{ContextApi, TezedgeContext},
@@ -19,6 +24,62 @@ use storage::{
 };
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
+
+struct Args {
+    blocks_per_cycle: usize,
+    blocks_limit: Option<usize>,
+    input: String,
+    output: String,
+    backend: String,
+}
+
+impl Args {
+    pub fn read_args() -> Self {
+        let app = App::new("storage-stats")
+            .about("Generate statistics for storage")
+            .arg(Arg::with_name("input")
+                 .long("input")
+                 .takes_value(true)
+                 .required(true)
+                 .help("path to the actions.bin"))
+            .arg(Arg::with_name("cycle-size")
+                 .long("cycle_size")
+                 .takes_value(true)
+                 .required(true)
+                 .default_value("2048")
+                 .help("number of blocks in cycle"))
+            .arg(Arg::with_name("blocks_limit")
+                 .takes_value(true)
+                 .long("blocks_limit")
+                 .help("limits number of processed blocks"))
+            .arg(Arg::with_name("output")
+                 .takes_value(true)
+                 .long("output")
+                 .default_value("/tmp/storage-stats")
+                 .help("output path for statistics"))
+            .arg(Arg::with_name("backend")
+                 .takes_value(true)
+                 .long("backend")
+                 .required(true)
+                 .default_value("in-memory-gced")
+                 .help("backend to use for storing merkle storage. Possible values: 'inmem', 'rocksdb', 'sled', 'mark_sweep', 'mark-move'"));
+
+        let matches = app.get_matches();
+
+        Self {
+            blocks_per_cycle: matches
+                .value_of("cycle-size")
+                .map(|s| s.parse::<usize>().unwrap())
+                .unwrap(),
+            backend: matches.value_of("backend").unwrap().to_string(),
+            blocks_limit: matches
+                .value_of("blocks_limit")
+                .map(|s| s.parse::<usize>().unwrap()),
+            output: matches.value_of("output").unwrap().to_string(),
+            input: matches.value_of("input").unwrap().to_string(),
+        }
+    }
+}
 
 pub fn get_tree_action(action: &ContextAction) -> String {
     match action {
@@ -115,9 +176,166 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
         .unwrap()
 }
 
-#[test]
-#[ignore]
-fn feed_tezedge_context_with_actions() -> Result<(), Error> {
+struct StatsWriter {
+    output: File,
+    block_latencies_total: usize,
+    merkle_actions: Vec<MerkleStorageAction>,
+}
+
+impl StatsWriter {
+    fn new(output: PathBuf) -> Self {
+        let mut rv = Self {
+            output: File::create(output.to_str().unwrap()).unwrap(),
+            block_latencies_total: 0,
+            merkle_actions: vec![
+                MerkleStorageAction::Set,
+                MerkleStorageAction::Get,
+                MerkleStorageAction::GetByPrefix,
+                MerkleStorageAction::GetKeyValuesByPrefix,
+                MerkleStorageAction::GetContextTreeByPrefix,
+                MerkleStorageAction::GetHistory,
+                MerkleStorageAction::Mem,
+                MerkleStorageAction::DirMem,
+                MerkleStorageAction::Copy,
+                MerkleStorageAction::Delete,
+                MerkleStorageAction::DeleteRecursively,
+                MerkleStorageAction::Commit,
+                MerkleStorageAction::Checkout,
+                MerkleStorageAction::BlockApplied,
+            ],
+        };
+        rv.write_header();
+        rv
+    }
+
+    fn generate_stats_for_merkle_action(
+        &self,
+        action: MerkleStorageAction,
+        stats: &OperationLatencyStats,
+    ) -> String {
+        match stats.get(&action) {
+            Some(v) => {
+                format!(
+                    "{} {} {} {}",
+                    v.cumul_op_exec_time, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max
+                )
+            }
+            None => {
+                format!("{} {} {} {}", 0, 0, 0, 0)
+            }
+        }
+    }
+
+    fn write_header(&mut self) {
+        let header: String = self
+            .merkle_actions
+            .iter()
+            .map(|action| match action {
+                MerkleStorageAction::Set => "Set",
+                MerkleStorageAction::Get => "Get",
+                MerkleStorageAction::GetByPrefix => "GetByPrefix",
+                MerkleStorageAction::GetKeyValuesByPrefix => "GetKeyValuesByPrefix",
+                MerkleStorageAction::GetContextTreeByPrefix => "GetContextTreeByPrefix",
+                MerkleStorageAction::GetHistory => "GetHistory",
+                MerkleStorageAction::Mem => "Mem",
+                MerkleStorageAction::DirMem => "DirMem",
+                MerkleStorageAction::Copy => "Copy",
+                MerkleStorageAction::Delete => "Delete",
+                MerkleStorageAction::DeleteRecursively => "DeleteRecursively",
+                MerkleStorageAction::Commit => "Commit",
+                MerkleStorageAction::Checkout => "Checkout",
+                MerkleStorageAction::BlockApplied => "BlockApplied",
+            })
+            .map(|action| {
+                format!(
+                    "{}_total {}_avg {}_min {}_max ",
+                    action, action, action, action
+                )
+            })
+            .collect();
+
+        writeln!(&mut self.output, "block mem block_latency time {}", header).unwrap();
+        self.output.flush().unwrap();
+    }
+
+    fn update(&mut self, block_nr: usize, merkle: Arc<RwLock<MerkleStorage>>) {
+        let m = merkle.read().unwrap();
+
+        let report = m.get_merkle_stats().unwrap();
+        let usage = report.kv_store_stats;
+        let block_latency = m.get_block_latency(0).unwrap();
+        self.block_latencies_total += block_latency as usize;
+
+        let stats: String = format!(
+            "{} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} ",
+            block_nr,
+            usage,
+            block_latency,
+            self.block_latencies_total,
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Set,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Get,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::GetByPrefix,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::GetKeyValuesByPrefix,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::GetContextTreeByPrefix,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::GetHistory,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Mem,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::DirMem,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Copy,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Delete,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::DeleteRecursively,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Commit,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::Checkout,
+                &report.perf_stats.global
+            ),
+            self.generate_stats_for_merkle_action(
+                MerkleStorageAction::BlockApplied,
+                &report.perf_stats.global
+            )
+        );
+
+        writeln!(&mut self.output, "{}", stats).unwrap();
+    }
+}
+
+fn main() -> Result<(), Error> {
+    let params = Args::read_args();
     let block_header_stub = BlockHeaderBuilder::default()
         .level(0)
         .proto(0)
@@ -135,16 +353,11 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
 
-    let out_dir_env = env::var("OUT_DIR")
-        .unwrap_or_else(|_| "/tmp/feed_tezedge_context_with_actions".to_string());
-    let input_file = env::var("INPUT").expect("test input 'INPUT' not set");
-    let backend = env::var("BACKEND").expect("test backend 'BACKEND' not set");
-
-    let out_dir = PathBuf::from(out_dir_env.as_str());
+    let out_dir = PathBuf::from(params.output.as_str());
     let commit_log_db_path = out_dir.join("commit_log");
     let key_value_db_path = out_dir.join("key_value_store");
 
-    let actions_storage_path = PathBuf::from(input_file.as_str());
+    let actions_storage_path = PathBuf::from(params.input.as_str());
 
     let _ = fs::remove_dir_all(&out_dir);
 
@@ -157,7 +370,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
         kv.clone(),
         kv,
         commit_log,
-        match backend.as_str() {
+        match params.backend.as_str() {
             "inmem" => storage::KeyValueStoreBackend::InMem,
             "sled" => storage::KeyValueStoreBackend::Sled {
                 path: out_dir.join("sled"),
@@ -176,6 +389,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
     ));
 
     let block_storage = BlockStorage::new(&storage);
+    let mut stat_writer = StatsWriter::new(out_dir.join(params.backend + ".txt"));
 
     info!(
         logger,
@@ -191,7 +405,7 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
 
     let actions_reader = ActionsFileReader::new(&actions_storage_path).unwrap();
 
-    for messages in actions_reader {
+    for messages in actions_reader.take(params.blocks_limit.unwrap_or(blocks_count as usize)) {
         counter += 1;
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
@@ -282,13 +496,13 @@ fn feed_tezedge_context_with_actions() -> Result<(), Error> {
                     );
 
                 context.block_applied().unwrap();
-                if counter > 0 && counter % 2048 == 0 {
+                if counter > 0 && counter % params.blocks_per_cycle == 0 {
                     context.cycle_started().unwrap();
                     cycle_counter += 1;
                 }
             }
         }
+        stat_writer.update(counter, storage.merkle());
     }
-    println!("{:#?}", storage.merkle().read().unwrap().get_merkle_stats());
     Ok(())
 }

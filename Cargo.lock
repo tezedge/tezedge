@@ -2709,6 +2709,7 @@ version = "1.2.0"
 dependencies = [
  "bytes 1.0.1",
  "chrono",
+ "clap",
  "crypto",
  "dns-lookup",
  "failure",

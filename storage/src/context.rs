@@ -301,7 +301,7 @@ impl ContextApi for TezedgeContext {
 
     fn block_applied(&self) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        Ok(merkle.mark_entries_from_last_commit_as_used()?)
+        Ok(merkle.block_applied()?)
     }
 
     fn cycle_started(&self) -> Result<(), ContextError> {
