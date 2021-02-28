@@ -19,6 +19,8 @@ lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
     static ref NODE_RPC_CONTEXT_ROOT_1: String = node_rpc_context_root_1();
     static ref NODE_RPC_CONTEXT_ROOT_2: String = node_rpc_context_root_2();
+    // one hyper client instance
+    static ref HTTP_CLIENT: Client<hyper::client::HttpConnector, hyper::Body> = Client::new();
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
@@ -516,8 +518,7 @@ async fn get_rpc_as_json(
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
-    let client = Client::new();
-    let body = match client.get(url).await {
+    let body = match HTTP_CLIENT.get(url).await {
         Ok(res) => hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
         Err(e) => return Err(format_err!("Request url: {:?} for getting block failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
