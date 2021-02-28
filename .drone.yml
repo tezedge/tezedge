@@ -1606,7 +1606,7 @@ clone:
 environment:
   NETWORK: edo2net
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 520 # also check parameter --stop=
+  TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
@@ -1727,7 +1727,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=521"]
+    command: ["tzindex", "run", "--stop=257"]
 
   - name: tz-indexer-ocaml
     image: blockwatch/tzindex:latest
@@ -1745,7 +1745,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=521"]
+    command: ["tzindex", "run", "--stop=257"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
