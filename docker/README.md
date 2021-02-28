@@ -30,33 +30,7 @@ Ports mapping:
       - "18732:18732"  # rpc port
 ```
 
-
-## 2. Full
-Sub-directory: `docker/full`
-
-(Not used, probably will be removed in the future)
-
-Generates full images with linux shell.
-
-### Run
-Need to specify entrypoint:
-```
-    # for light-node
-    entrypoint: /home/appuser/tezedge/docker/full/tezedge.sh
-
-    # for sandbox launcher
-    entrypoint: /home/appuser/tezedge/docker/full/sandbox.sh
-```
-
-Ports mapping:
-```
-    ports:
-      - "4927:4927"    # WS port
-      - "19732:9732"   # p2p port
-      - "18732:18732"  # rpc port
-```
-
-## 3. Docker for run.sh script
+## 2. Docker for run.sh script
 Sub-directory: `docker/distroless`
 
 Used in `./run.sh docker`, when you want to build and run light-node from actual sources.

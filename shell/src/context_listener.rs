@@ -370,7 +370,15 @@ pub fn perform_context_action(
     };
 
     if let Some(post_hash) = get_new_tree_hash(&action) {
-        assert_eq!(context.get_merkle_root(), post_hash);
+        assert_eq!(
+            context.get_merkle_root(),
+            post_hash,
+            "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
+            context.get_merkle_root(),
+            post_hash,
+            get_tree_id(&action),
+            action,
+        );
     }
 
     Ok(())
