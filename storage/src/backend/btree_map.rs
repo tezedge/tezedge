@@ -8,7 +8,7 @@ use std::ops::{AddAssign, DerefMut, SubAssign};
 use std::sync::RwLock;
 
 use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::storage_backend::{GarbageCollector, StorageBackendStats};
+use crate::storage_backend::{NotGarbageCollected, StorageBackendStats};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl<K: Ord, V> KVStore<K, V> {
     }
 }
 
-impl GarbageCollector for KVStore<EntryHash, ContextValue> {}
+impl NotGarbageCollected for KVStore<EntryHash, ContextValue> {}
 
 impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     fn is_persistent(&self) -> bool {

@@ -4,7 +4,7 @@
 use crate::merkle_storage::{ContextValue, EntryHash};
 
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::GarbageCollector;
+use crate::storage_backend::NotGarbageCollected;
 use crate::MerkleStorage;
 use rocksdb::DB;
 use serde::{Deserialize, Serialize};
@@ -33,7 +33,7 @@ pub struct RocksDBBackendStats {
     cache_total: u64,
 }
 
-impl GarbageCollector for RocksDBBackend {}
+impl NotGarbageCollected for RocksDBBackend {}
 
 impl KeyValueStoreBackend<MerkleStorage> for RocksDBBackend {
     fn is_persistent(&self) -> bool {

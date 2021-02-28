@@ -1,10 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use crate::merkle_storage::{hash_entry, Entry};
 use crate::persistent::database::DBError;
+use crate::persistent::database::KeyValueStoreBackend;
+use crate::MerkleStorage;
+use crypto::hash::FromBytesError;
+use crypto::hash::HashType;
 use failure::Fail;
 use serde::Serialize;
 use std::array::TryFromSliceError;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 use std::sync::PoisonError;
@@ -16,14 +22,84 @@ pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
 }
 
 pub trait GarbageCollector {
+    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError>;
+
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError>;
+}
+
+pub trait NotGarbageCollected {}
+
+impl<T: NotGarbageCollected> GarbageCollector for T {
     fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
         Ok(())
     }
 
-    fn mark_reused(&mut self, _reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+    fn block_applied(&mut self, _commit: EntryHash) -> Result<(), StorageBackendError> {
         Ok(())
     }
+}
 
+/// helper function for fetching and deserializing entry from the store
+pub fn fetch_entry_from_store(
+    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    hash: EntryHash,
+) -> Result<Entry, StorageBackendError> {
+    match store.get(&hash)? {
+        None => Err(StorageBackendError::EntryNotFound {
+            hash: HashType::ContextHash.hash_to_b58check(&hash)?,
+        }),
+        Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
+    }
+}
+
+pub fn collect_hashes_recursively(
+    entry: &Entry,
+    cache: HashMap<EntryHash, HashSet<EntryHash>>,
+    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, StorageBackendError> {
+    let mut entries = HashSet::new();
+    let mut c = cache;
+    collect_hashes(entry, &mut entries, &mut c, store)?;
+    Ok(c)
+}
+
+/// collects entries from tree like structure recursively
+pub fn collect_hashes(
+    entry: &Entry,
+    batch: &mut HashSet<EntryHash>,
+    cache: &mut HashMap<EntryHash, HashSet<EntryHash>>,
+    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+) -> Result<(), StorageBackendError> {
+    batch.insert(hash_entry(entry)?);
+
+    match cache.get(&hash_entry(entry).unwrap()) {
+        // if we know subtree already lets just use it
+        Some(v) => {
+            batch.extend(v);
+            Ok(())
+        }
+        None => {
+            match entry {
+                Entry::Blob(_) => Ok(()),
+                Entry::Tree(tree) => {
+                    // Go through all descendants and gather errors. Remap error if there is a failure
+                    // anywhere in the recursion paths. TODO: is revert possible?
+                    let mut b = HashSet::new();
+                    for (_, child_node) in tree.iter() {
+                        let entry = fetch_entry_from_store(store, child_node.entry_hash)?;
+                        collect_hashes(&entry, &mut b, cache, store)?;
+                    }
+                    cache.insert(hash_entry(entry).unwrap(), b.clone());
+                    batch.extend(b);
+                    Ok(())
+                }
+                Entry::Commit(commit) => {
+                    let entry = fetch_entry_from_store(store, commit.root_hash)?;
+                    Ok(collect_hashes(&entry, batch, cache, store)?)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Fail)]
@@ -48,6 +124,10 @@ pub enum StorageBackendError {
     GarbageCollectorError { error: String },
     #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
     LockError { reason: String },
+    #[fail(display = "Entry not found in store: {:?}", hash)]
+    EntryNotFound { hash: String },
+    #[fail(display = "Failed to encode hash: {}", error)]
+    HashError { error: FromBytesError },
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -85,6 +165,12 @@ impl<T> From<PoisonError<T>> for StorageBackendError {
         StorageBackendError::LockError {
             reason: format!("{}", pe),
         }
+    }
+}
+
+impl From<FromBytesError> for StorageBackendError {
+    fn from(error: FromBytesError) -> Self {
+        StorageBackendError::HashError { error }
     }
 }
 
