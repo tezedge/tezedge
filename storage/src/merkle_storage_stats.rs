@@ -37,7 +37,7 @@ pub struct BlockLatencies {
 }
 
 // Latency statistics indexed by operation name (e.g. "Set")
-pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
+pub type OperationLatencyStats = HashMap<MerkleStorageAction, OperationLatencies>;
 
 // Latency statistics per path indexed by first chunk of path (under /data/)
 pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
@@ -46,33 +46,6 @@ pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
 pub struct MerkleStoragePerfReport {
     pub perf_stats: MerklePerfStats,
     pub kv_store_stats: usize,
-}
-
-impl MerkleStoragePerfReport {
-    pub fn new(perf_stats: MerklePerfStats, kv_store_stats: usize) -> Self {
-        let mut perf = perf_stats;
-        for (_, stat) in perf.global.iter_mut() {
-            if stat.op_exec_times > 0 {
-                stat.avg_exec_time = stat.cumul_op_exec_time as f64 / stat.op_exec_times as f64;
-            } else {
-                stat.avg_exec_time = 0.0;
-            }
-        }
-        // calculate average values for per-path stats
-        for (_node, stat) in perf.perpath.iter_mut() {
-            for (_op, stat) in stat.iter_mut() {
-                if stat.op_exec_times > 0 {
-                    stat.avg_exec_time = stat.cumul_op_exec_time as f64 / stat.op_exec_times as f64;
-                } else {
-                    stat.avg_exec_time = 0.0;
-                }
-            }
-        }
-        MerkleStoragePerfReport {
-            perf_stats: perf,
-            kv_store_stats,
-        }
-    }
 }
 
 #[derive(Serialize, Default, Debug, Clone)]
@@ -106,6 +79,7 @@ impl BlockLatencies {
     }
 }
 
+#[derive(Serialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MerkleStorageAction {
     Set,
     Get,
@@ -120,7 +94,7 @@ pub enum MerkleStorageAction {
     DeleteRecursively,
     Commit,
     Checkout,
-    GarbageCollector,
+    BlockApplied,
 }
 
 impl fmt::Display for MerkleStorageAction {
@@ -165,8 +139,8 @@ impl fmt::Display for MerkleStorageAction {
             MerkleStorageAction::Checkout => {
                 write!(f, "Checkout")
             }
-            MerkleStorageAction::GarbageCollector => {
-                write!(f, "GarbageCollector")
+            MerkleStorageAction::BlockApplied => {
+                write!(f, "GC")
             }
         }
     }
@@ -181,7 +155,7 @@ pub struct StatUpdater<'a> {
 
 impl<'a> Drop for StatUpdater<'a> {
     fn drop(&mut self) {
-        // self.update_execution_stats()
+        self.update_execution_stats()
     }
 }
 
@@ -211,7 +185,7 @@ impl<'a> StatUpdater<'a> {
         self.stats.block_latencies.update(exec_time_nanos as u64);
         // commit signifies end of the block
 
-        if let MerkleStorageAction::Commit = self.action {
+        if let MerkleStorageAction::BlockApplied = self.action {
             self.stats.block_latencies.end_block();
         }
 
@@ -220,10 +194,11 @@ impl<'a> StatUpdater<'a> {
             .stats
             .perf_stats
             .global
-            .entry(self.action.to_string())
+            .entry(self.action.clone())
             .or_insert_with(OperationLatencies::default);
         entry.cumul_op_exec_time += exec_time_nanos;
         entry.op_exec_times += 1;
+        entry.avg_exec_time = entry.cumul_op_exec_time as f64 / entry.op_exec_times as f64;
         entry.op_exec_time_min = cmp::min(exec_time_nanos, entry.op_exec_time_min);
         entry.op_exec_time_max = cmp::max(exec_time_nanos, entry.op_exec_time_max);
 
@@ -237,11 +212,12 @@ impl<'a> StatUpdater<'a> {
                 .or_insert_with(HashMap::new);
 
             let entry = perpath
-                .entry(self.action.to_string())
+                .entry(self.action.clone())
                 .or_insert_with(OperationLatencies::default);
 
             entry.cumul_op_exec_time += exec_time_nanos;
             entry.op_exec_times += 1;
+            entry.avg_exec_time = entry.cumul_op_exec_time as f64 / entry.op_exec_times as f64;
             entry.op_exec_time_min = cmp::min(exec_time_nanos, entry.op_exec_time_min);
             entry.op_exec_time_max = cmp::max(exec_time_nanos, entry.op_exec_time_max);
         }

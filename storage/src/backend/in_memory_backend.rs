@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::GarbageCollector;
+use crate::storage_backend::NotGarbageCollected;
 use crate::storage_backend::StorageBackendStats;
 use crate::MerkleStorage;
 use std::collections::HashMap;
@@ -72,7 +72,7 @@ impl InMemoryBackend {
     }
 }
 
-impl GarbageCollector for InMemoryBackend {}
+impl NotGarbageCollected for InMemoryBackend {}
 
 impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
