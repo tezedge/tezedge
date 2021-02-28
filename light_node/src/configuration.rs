@@ -5,7 +5,6 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
-use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -938,17 +937,19 @@ impl Environment {
 
                 let backends: HashSet<String> = match args.values_of("actions-store-backend") {
                     Some(v) => v.map(String::from).collect(),
-                    None => HashSet::from_iter(std::iter::once("rocksdb".to_string())),
+                    None => std::iter::once("rocksdb".to_string()).collect(),
                 };
 
                 let action_store_backend = backends
                     .iter()
                     .map(|name| {
-                        ContextActionStoreBackend::from_str(name).expect(&format!(
-                            "Unknown backend {} - supported backends are: {:?}",
-                            &name,
-                            ContextActionStoreBackend::possible_values()
-                        ))
+                        ContextActionStoreBackend::from_str(name).unwrap_or_else(|_| {
+                            panic!(
+                                "Unknown backend {} - supported backends are: {:?}",
+                                &name,
+                                ContextActionStoreBackend::possible_values()
+                            )
+                        })
                     })
                     .collect();
 
