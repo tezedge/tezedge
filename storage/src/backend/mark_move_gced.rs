@@ -5,6 +5,8 @@ use std::collections::HashSet;
 
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
 use crate::MerkleStorage;
+use crypto::hash::HashType;
+use std::collections::HashMap;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -13,7 +15,9 @@ use std::thread;
 use std::time::Duration;
 
 use crate::merkle_storage::{ContextValue, Entry, EntryHash};
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::storage_backend::{
+    collect_hashes_recursively, fetch_entry_from_store, GarbageCollector, StorageBackendError,
+};
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
@@ -91,6 +95,7 @@ pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     _thread: thread::JoinHandle<()>,
     /// Channel to communicate with GC thread from main thread
     msg: Mutex<mpsc::Sender<CmdMsg>>,
+    cache: HashMap<EntryHash, HashSet<EntryHash>>,
 }
 
 impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> MarkMoveGCed<T> {
@@ -111,11 +116,14 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
 
         Self {
             stores: stores.clone(),
-            _thread: thread::spawn(move || kvstore_gc_thread_fn(stores, rx, busy.clone(), msg_cnt)),
+            _thread: thread::spawn(move || {
+                kvstore_gc_thread_fn(stores, rx, busy.clone(), msg_cnt).unwrap()
+            }),
             msg: Mutex::new(tx),
             is_busy: busy_ref,
             msg_cnt: msg_cnt_ref,
             current: Default::default(),
+            cache: HashMap::new(),
         }
     }
 
@@ -143,9 +151,9 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
         })
     }
 
-    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        for i in reused_keys.into_iter() {
-            self.mark_single_reused(i)?;
+    fn mark_reused(&mut self, reused_keys: &HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+        for i in reused_keys.iter() {
+            self.mark_single_reused(*i)?;
         }
         Ok(())
     }
@@ -155,17 +163,12 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     /// Garbage collector will start collecting the oldest cycle.
     pub fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
         self.msg_cnt.fetch_add(1, Ordering::Acquire);
-        self.stores
-            .write()
-            .unwrap()
-            .push(mem::take(&mut self.current));
-        self.msg
-            .lock()
-            .unwrap()
-            .send(CmdMsg::StartNewCycle)
-            .map_err(|_| StorageBackendError::GarbageCollectorError {
+        self.stores.write()?.push(mem::take(&mut self.current));
+        self.msg.lock()?.send(CmdMsg::StartNewCycle).map_err(|_| {
+            StorageBackendError::GarbageCollectorError {
                 error: "cannot send message to GC thread".to_string(),
-            })
+            }
+        })
     }
 
     /// Waits for garbage collector to finish collecting the oldest cycle.
@@ -234,7 +237,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     rx: mpsc::Receiver<CmdMsg>,
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
-) {
+) -> Result<(), StorageBackendError> {
     // number of preserved archived cycles
     let len = stores.read().unwrap().len();
     // maintains incoming references (hashes) for each archived cycle store.
@@ -259,7 +262,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
             match rx.recv() {
                 Ok(value) => Some(value),
                 Err(_) => {
-                    return;
+                    return Ok(());
                 }
             }
         } else {
@@ -280,7 +283,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                 received_exit_msg = true;
             }
             Some(CmdMsg::MarkReused(key)) => {
-                if let Some(index) = stores_containing(&stores.read().unwrap(), &key) {
+                if let Some(index) = stores_containing(&stores.read()?, &key) {
                     // only way index can be greater than reused_keys.len() is if GC thread
                     // lags behind (gc has pending 1-2 cycles to collect). When we still haven't
                     // received event from main thread that new cycle has started, yet it has.
@@ -298,7 +301,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
                 // we exit only if there are no remaining keys to be processed
                 if received_exit_msg && todo_keys.is_empty() && reused_keys.len() == len {
                     is_busy.swap(false, Ordering::Acquire);
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -310,7 +313,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
         }
 
         if !todo_keys.is_empty() {
-            let mut stores = stores.write().unwrap();
+            let mut stores = stores.write()?;
 
             // it will block if new cycle begins and we still haven't garbage collected prev cycle.
             // Higher the max_iter (2048) will be, longer gc will block the main thread, but GC will
@@ -378,7 +381,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
 
         if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty() {
             drop(reused_keys.drain(..1));
-            drop(stores.write().unwrap().drain(..1));
+            drop(stores.write()?.drain(..1));
         }
     }
 }
@@ -390,8 +393,34 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> G
         self.new_cycle_started()
     }
 
-    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        self.mark_reused(reused_keys)
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError> {
+        let commit_entry = fetch_entry_from_store(
+            self.deref() as &dyn KeyValueStoreBackend<MerkleStorage>,
+            commit,
+        )?;
+
+        match commit_entry {
+            Entry::Commit { .. } => {
+                let cache = collect_hashes_recursively(
+                    &commit_entry,
+                    std::mem::take(&mut self.cache),
+                    self.deref() as &dyn KeyValueStoreBackend<MerkleStorage>,
+                )?;
+
+                let reused = cache.get(&commit);
+                if let Some(r) = reused {
+                    self.mark_reused(r)?;
+                }
+                self.cache = cache.clone();
+                Ok(())
+            }
+            _ => Err(StorageBackendError::GarbageCollectorError {
+                error: format!(
+                    "{} is not a commit",
+                    HashType::ContextHash.hash_to_b58check(&commit)?
+                ),
+            }),
+        }
     }
 }
 

@@ -3,16 +3,22 @@
 
 use std::collections::{HashSet, VecDeque};
 
+use crate::merkle_storage::Entry;
 use crate::merkle_storage::{ContextValue, EntryHash};
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::storage_backend::{
+    collect_hashes, fetch_entry_from_store, GarbageCollector, StorageBackendError,
+};
 use crate::MerkleStorage;
+use crypto::hash::HashType;
+use std::collections::HashMap;
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     store: T,
     cycles_limit: usize,
     cycles: VecDeque<HashSet<EntryHash>>,
+    cache: HashMap<EntryHash, HashSet<EntryHash>>,
 }
 
 impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T> {
@@ -28,14 +34,14 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
             store: Default::default(),
             cycles_limit: cycle_count + 1,
             cycles,
+            cache: HashMap::new(),
         }
     }
 
-    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) {
         if let Some(cycle) = self.cycles.back_mut() {
             cycle.extend(reused_keys);
         }
-        Ok(())
     }
 
     pub fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
@@ -59,6 +65,31 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
         self.retain(&|x| todo.contains(x))?;
         Ok(())
     }
+
+    fn store_entries_referenced_by_commit(
+        &mut self,
+        commit: EntryHash,
+    ) -> Result<(), StorageBackendError> {
+        let commit_entry = fetch_entry_from_store(&self.store, commit)?;
+
+        match commit_entry {
+            Entry::Commit { .. } => {
+                let mut entries = HashSet::new();
+                collect_hashes(&commit_entry, &mut entries, &mut self.cache, &self.store)?;
+
+                // remove keys non used in current block
+                self.cache.retain(|k, _| entries.contains(k));
+                self.mark_reused(entries.into_iter().collect());
+                Ok(())
+            }
+            _ => Err(StorageBackendError::GarbageCollectorError {
+                error: format!(
+                    "{} is not a commit",
+                    HashType::ContextHash.hash_to_b58check(&commit)?
+                ),
+            }),
+        }
+    }
 }
 
 impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> GarbageCollector
@@ -68,8 +99,8 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> GarbageCollecto
         self.new_cycle_started()
     }
 
-    fn mark_reused(&mut self, reused_keys: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
-        self.mark_reused(reused_keys)
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError> {
+        self.store_entries_referenced_by_commit(commit)
     }
 }
 
@@ -106,7 +137,15 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
             .iter()
             .map(|set| set.len() * std::mem::size_of::<EntryHash>() as usize)
             .sum::<usize>()
-            + self.store.total_get_mem_usage()?)
+            + self.store.total_get_mem_usage()?
+            + self
+                .cache
+                .iter()
+                .map(|(_, v)| {
+                    std::mem::size_of::<EntryHash>()
+                        + v.len() * std::mem::size_of::<EntryHash>() as usize
+                })
+                .sum::<usize>())
     }
 
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
@@ -143,13 +182,11 @@ mod tests {
                 &bincode::serialize(&value_1).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_1).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_1).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_1).unwrap())
@@ -164,13 +201,11 @@ mod tests {
                 &bincode::serialize(&value_2).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_2).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_2).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_1).unwrap())
@@ -190,13 +225,11 @@ mod tests {
                 &bincode::serialize(&value_3).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_3).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_3).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_1).unwrap())
@@ -221,13 +254,11 @@ mod tests {
                 &bincode::serialize(&value_4).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_4).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_4).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_1).unwrap())
@@ -257,13 +288,11 @@ mod tests {
                 &bincode::serialize(&value_5).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_5).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_5).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_2).unwrap())
@@ -293,13 +322,11 @@ mod tests {
                 &bincode::serialize(&value_6).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_6).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_6).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_3).unwrap())
@@ -329,13 +356,11 @@ mod tests {
                 &bincode::serialize(&value_7).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_7).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_7).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_4).unwrap())
@@ -365,13 +390,11 @@ mod tests {
                 &bincode::serialize(&value_8).unwrap(),
             )
             .unwrap();
-        store
-            .mark_reused(
-                vec![hash_entry(&value_8).unwrap()]
-                    .into_iter()
-                    .collect::<HashSet<EntryHash>>(),
-            )
-            .unwrap();
+        store.mark_reused(
+            vec![hash_entry(&value_8).unwrap()]
+                .into_iter()
+                .collect::<HashSet<EntryHash>>(),
+        );
         store.new_cycle_started().unwrap();
         assert!(!store
             .get(&hash_entry(&value_5).unwrap())

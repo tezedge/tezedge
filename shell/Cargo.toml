@@ -34,6 +34,16 @@ tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 
+# storage-stats dependencies
+clap = "2.33"
+rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
+slog-term = "2.6"
+slog-async = "2.6"
+
+[[bin]]
+name = "storage-stats"
+path = "scripts/storage_stats.rs"
+
 [dev-dependencies]
 r2d2 = "0.8.9"
 serial_test = "0.5"
