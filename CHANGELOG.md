@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- Added new 008 edo2 support + possibility to connect to edo2net
+- Sapling zcash-params init configuration handling for edo protocol on startup
 
 ### Changed
 
-- Nothing.
+- Rpc integration tests optimization - run in parallel and add elapsed time to result in Drone CI
 
 ### Deprecated
 
