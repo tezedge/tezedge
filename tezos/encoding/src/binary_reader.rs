@@ -288,12 +288,20 @@ impl BinaryReader {
                 let mut buf_slice = safe!(buf, upper, buf.take(upper));
                 let res = self.decode_value(&mut buf_slice, inner_encoding);
                 match res {
+                    // if underlying encoding requires more data than we have,
+                    // and it is limited to maximal possible size, that means
+                    // that this is bounded constraint violation.
                     Err(e) => match e.kind() {
                         BinaryReaderErrorKind::Underflow { bytes } if upper == *max => {
+                            let act_size = bytes.checked_add(*max).ok_or_else(|| {
+                                BinaryReaderErrorKind::ArithmeticOverflow {
+                                    encoding: "Encoding::Bounded",
+                                }
+                            })?;
                             Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
                                 name: "Encoding::Bounded".to_string(),
                                 boundary: *max,
-                                actual: ActualSize::Exact(bytes),
+                                actual: ActualSize::Exact(act_size),
                             })?
                         }
                         _ => Err(e),
@@ -831,5 +839,19 @@ mod tests {
         let location = err.location();
         assert!(location.contains("field `xxx`"));
         assert!(location.contains("list element"));
+    }
+
+    #[test]
+    fn underflow_in_bounded() {
+        let encoded = hex::decode("000000ff00112233445566778899AABBCCDDEEFF").unwrap(); // dynamic block states 255 bytes, got only 16
+        let encoding = Encoding::bounded(1000, Encoding::dynamic(Encoding::list(Encoding::Uint8)));
+        let err = BinaryReader::new()
+            .read(encoded, &encoding)
+            .expect_err("Error is expected");
+        assert!(
+            matches!(err.kind(), BinaryReaderErrorKind::Underflow { .. }),
+            "Underflow error expected, got '{:?}'",
+            err
+        );
     }
 }

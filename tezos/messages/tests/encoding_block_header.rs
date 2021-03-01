@@ -40,9 +40,8 @@ fn can_deserialize_get_block_headers() -> Result<(), Error> {
         "000000260020000000202253698f0c94788689fb95ca35eb1535ec3a8b7c613a97e6683f8007d7959e4b",
     )?;
     let messages = PeerMessageResponse::from_bytes(message_bytes)?;
-    assert_eq!(1, messages.messages().len());
 
-    let message = messages.messages().get(0).unwrap();
+    let message = messages.message();
     match message {
         PeerMessage::GetBlockHeaders(message) => {
             assert_eq!(1, message.get_block_headers().len());
