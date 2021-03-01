@@ -5,6 +5,7 @@ use std::array::TryFromSliceError;
 use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::num::TryFromIntError;
+use std::sync::PoisonError;
 use std::sync::{Arc, RwLock};
 
 use failure::Fail;
@@ -300,17 +301,17 @@ impl ContextApi for TezedgeContext {
     }
 
     fn block_applied(&self) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         Ok(merkle.block_applied()?)
     }
 
     fn cycle_started(&self) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         Ok(merkle.start_new_cycle()?)
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {
-        let merkle = self.merkle.write().expect("lock poisoning");
+        let merkle = self.merkle.write()?;
         Ok(merkle.get_memory_usage()?)
     }
 }
@@ -360,6 +361,8 @@ pub enum ContextError {
     StorageError { error: StorageError },
     #[fail(display = "Conversion from bytes error: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Guard Poison {} ", error)]
+    LockError { error: String },
 }
 
 impl From<MerkleError> for ContextError {
@@ -383,6 +386,14 @@ impl From<TryFromSliceError> for ContextError {
 impl From<FromBytesError> for ContextError {
     fn from(error: FromBytesError) -> Self {
         ContextError::HashError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for ContextError {
+    fn from(pe: PoisonError<T>) -> Self {
+        ContextError::LockError {
+            error: format!("{}", pe),
+        }
     }
 }
 
