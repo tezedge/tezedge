@@ -4107,7 +4107,9 @@ dependencies = [
  "failure",
  "fs2",
  "fs_extra",
+ "getset",
  "http",
+ "libflate",
  "merge",
  "reqwest",
  "serde 1.0.123",
@@ -4121,6 +4123,7 @@ dependencies = [
  "tokio",
  "wait-timeout",
  "warp",
+ "zip",
 ]
 
 [[package]]
