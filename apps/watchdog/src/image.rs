@@ -3,11 +3,11 @@ use shiplift::{
     Docker,
 };
 
-use failure::bail;
+// use failure::bail;
 
 use async_trait::async_trait;
 
-pub const TEZEDGE_DEBUGGER_PORT: u16 = 17732;
+// pub const TEZEDGE_DEBUGGER_PORT: u16 = 17732;
 
 #[async_trait]
 pub trait WatchdogContainer {
@@ -60,21 +60,21 @@ impl WatchdogContainer for TezedgeDebugger {
     const NAME: &'static str = "watchdog-tezedge-debugger";
 }
 
-impl TezedgeDebugger {
-    pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let commit_hash = match reqwest::get(&format!(
-            "http://localhost:{}/v2/version",
-            TEZEDGE_DEBUGGER_PORT
-        ))
-        .await
-        {
-            Ok(result) => result.text().await?,
-            Err(e) => bail!("GET commit_hash error: {}", e),
-        };
+// impl TezedgeDebugger {
+//     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
+//         let commit_hash = match reqwest::get(&format!(
+//             "http://localhost:{}/v2/version",
+//             TEZEDGE_DEBUGGER_PORT
+//         ))
+//         .await
+//         {
+//             Ok(result) => result.text().await?,
+//             Err(e) => bail!("GET commit_hash error: {}", e),
+//         };
 
-        Ok(commit_hash.trim_matches('"').to_string())
-    }
-}
+//         Ok(commit_hash.trim_matches('"').to_string())
+//     }
+// }
 
 pub struct OcamlDebugger;
 
@@ -88,19 +88,19 @@ impl WatchdogContainer for Explorer {
     const NAME: &'static str = "watchdog-explorer";
 }
 
-impl Explorer {
-    pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let docker = Docker::new();
-        let ContainerDetails { config, .. } = docker.containers().get(Self::NAME).inspect().await?;
-        let env = config.env();
+// impl Explorer {
+//     pub async fn collect_commit_hash() -> Result<String, failure::Error> {
+//         let docker = Docker::new();
+//         let ContainerDetails { config, .. } = docker.containers().get(Self::NAME).inspect().await?;
+//         let env = config.env();
 
-        if let Some(commit_hash) = env.get("COMMIT") {
-            Ok(commit_hash.to_owned())
-        } else {
-            bail!("COMMIT env var not found in explorer contianer")
-        }
-    }
-}
+//         if let Some(commit_hash) = env.get("COMMIT") {
+//             Ok(commit_hash.to_owned())
+//         } else {
+//             bail!("COMMIT env var not found in explorer contianer")
+//         }
+//     }
+// }
 
 pub struct Sandbox;
 

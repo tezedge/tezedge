@@ -13,8 +13,12 @@ use crate::node::{OcamlNode, TezedgeNode};
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
 pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
+    info!(log, "Tezedge explorer is starting");
     start_with_compose(compose_file_path, Explorer::NAME, "explorer");
-    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    println!(
+        "{:?}",
+        start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger")
+    );
     // debugger healthcheck
     while reqwest::get("http://localhost:17732/v2/log").await.is_err() {
         sleep(Duration::from_millis(1000)).await;
@@ -75,7 +79,7 @@ pub async fn shutdown_and_update(compose_file_path: &PathBuf, log: &Logger, clea
     restart_stack(compose_file_path, log, cleanup_data).await;
 }
 
-pub async fn restart_sandbox(compose_file_path: &PathBuf, log: &Logger, ) {
+pub async fn restart_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     stop_with_compose(compose_file_path);
     cleanup_volumes();
     launch_sandbox(compose_file_path, log).await;

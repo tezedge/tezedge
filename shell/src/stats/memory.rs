@@ -10,6 +10,7 @@ use std::process::Command;
 use std::string::FromUtf8Error;
 
 use failure::Fail;
+use getset::CopyGetters;
 use merge::Merge;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -37,11 +38,13 @@ pub struct DarwinOsData {
     resident: String, // resident set size
 }
 
-#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq)]
+#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq, CopyGetters)]
 pub struct ProcessMemoryStats {
+    #[get_copy = "pub"]
     #[merge(strategy = merge::num::saturating_add)]
     virtual_mem: usize,
 
+    #[get_copy = "pub"]
     #[merge(strategy = merge::num::saturating_add)]
     resident_mem: usize,
 }

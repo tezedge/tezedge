@@ -4,9 +4,9 @@
 
 use std::fs::File;
 use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::path::PathBuf;
-use std::io::{BufReader, BufRead};
 
 use chrono::Utc;
 use failure::bail;
@@ -20,10 +20,10 @@ use crate::deploy_with_compose::{
 use crate::image::{
     local_hash, remote_hash, Explorer, Sandbox, TezedgeDebugger, WatchdogContainer,
 };
-use crate::monitors::info::InfoMonitor;
+
+use crate::monitors::TEZEDGE_VOLUME_PATH;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
-use crate::monitors::TEZEDGE_VOLUME_PATH;
 
 pub struct DeployMonitor {
     compose_file_path: PathBuf,
@@ -105,7 +105,6 @@ impl DeployMonitor {
         let log_file_name = format!("{}/tezedge.log", TEZEDGE_VOLUME_PATH);
         let log_file_path = Path::new(&log_file_name);
         if log_file_path.exists() {
-
             zip_file.start_file("tezedge.log", zip_options)?;
             let file = File::open(log_file_path)?;
             let reader = BufReader::new(file);
@@ -139,10 +138,6 @@ impl DeployMonitor {
             // and recreate tezedge volume, but not need to restart tezos and explorer
             if node_updated || debugger_updated || explorer_updated {
                 shutdown_and_update(&compose_file_path, log, self.cleanup).await;
-
-                // send node info after update
-                let info_monitor = InfoMonitor::new(slack.clone(), self.log.clone());
-                info_monitor.send_monitoring_info().await?;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");

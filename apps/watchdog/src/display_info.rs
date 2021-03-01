@@ -3,36 +3,37 @@
 #![forbid(unsafe_code)]
 use std::fmt;
 
-use merge::Merge;
+use getset::Getters;
+// use merge::Merge;
 use serde::Serialize;
 
-use shell::stats::memory::ProcessMemoryStats;
+// use shell::stats::memory::ProcessMemoryStats;
 
-pub struct ImagesInfo {
-    node: String,
-    debugger: String,
-    explorer: String,
-}
+// pub struct ImagesInfo {
+//     node: String,
+//     debugger: String,
+//     explorer: String,
+// }
 
-impl ImagesInfo {
-    pub fn new(node: String, debugger: String, explorer: String) -> Self {
-        Self {
-            node,
-            debugger,
-            explorer,
-        }
-    }
-}
+// impl ImagesInfo {
+//     pub fn new(node: String, debugger: String, explorer: String) -> Self {
+//         Self {
+//             node,
+//             debugger,
+//             explorer,
+//         }
+//     }
+// }
 
-impl fmt::Display for ImagesInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "\nNode image: {}\nDebugger image: {}\nExplorer image: {}",
-            self.node, self.debugger, self.explorer,
-        )
-    }
-}
+// impl fmt::Display for ImagesInfo {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         writeln!(
+//             f,
+//             "\nNode image: {}\nDebugger image: {}\nExplorer image: {}",
+//             self.node, self.debugger, self.explorer,
+//         )
+//     }
+// }
 
 #[derive(Serialize, Debug)]
 pub struct DiskSpaceData {
@@ -42,30 +43,30 @@ pub struct DiskSpaceData {
     ocaml: DiskData,
 }
 
-impl DiskSpaceData {
-    pub fn to_megabytes(&self) -> Self {
-        Self::new(
-            self.total_disk_space / 1024 / 1024,
-            self.free_disk_space / 1024 / 1024,
-            self.tezedge.clone(),
-            self.ocaml.clone(),
-        )
-    }
+// impl DiskSpaceData {
+//     pub fn to_megabytes(&self) -> Self {
+//         Self::new(
+//             self.total_disk_space / 1024 / 1024,
+//             self.free_disk_space / 1024 / 1024,
+//             self.tezedge.clone(),
+//             self.ocaml.clone(),
+//         )
+//     }
 
-    pub fn new(
-        total_disk_space: u64,
-        free_disk_space: u64,
-        tezedge: DiskData,
-        ocaml: DiskData,
-    ) -> Self {
-        Self {
-            total_disk_space,
-            free_disk_space,
-            tezedge,
-            ocaml,
-        }
-    }
-}
+//     pub fn new(
+//         total_disk_space: u64,
+//         free_disk_space: u64,
+//         tezedge: DiskData,
+//         ocaml: DiskData,
+//     ) -> Self {
+//         Self {
+//             total_disk_space,
+//             free_disk_space,
+//             tezedge,
+//             ocaml,
+//         }
+//     }
+// }
 
 impl fmt::Display for DiskSpaceData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -77,10 +78,12 @@ impl fmt::Display for DiskSpaceData {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Getters)]
 pub struct NodeInfo {
+    #[get = "pub(crate)"]
     level: u64,
     block_hash: String,
+    #[get = "pub(crate)"]
     timestamp: String,
 }
 
@@ -104,83 +107,84 @@ impl fmt::Display for NodeInfo {
     }
 }
 
-#[derive(Serialize)]
-pub struct HeadData {
-    ocaml: NodeInfo,
-    tezedge: NodeInfo,
-}
+// #[derive(Serialize)]
+// pub struct HeadData {
+//     ocaml: NodeInfo,
+//     tezedge: NodeInfo,
+// }
 
-impl HeadData {
-    pub fn new(ocaml: NodeInfo, tezedge: NodeInfo) -> Self {
-        Self { ocaml, tezedge }
-    }
-}
+// impl HeadData {
+//     pub fn new(ocaml: NodeInfo, tezedge: NodeInfo) -> Self {
+//         Self { ocaml, tezedge }
+//     }
+// }
 
-impl fmt::Display for HeadData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "\nTezedge node: {}\nOcaml node: {}",
-            self.tezedge, self.ocaml,
-        )
-    }
-}
+// impl fmt::Display for HeadData {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         writeln!(
+//             f,
+//             "\nTezedge node: {}\nOcaml node: {}",
+//             self.tezedge, self.ocaml,
+//         )
+//     }
+// }
 
-#[derive(Serialize)]
-pub struct TezedgeSpecificMemoryData {
-    light_node: ProcessMemoryStats,
-    protocol_runners: ProcessMemoryStats,
-}
+// #[derive(Serialize)]
+// pub struct TezedgeSpecificMemoryData {
+//     light_node: ProcessMemoryStats,
+//     protocol_runners: ProcessMemoryStats,
+// }
 
-impl fmt::Display for TezedgeSpecificMemoryData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut total = ProcessMemoryStats::default();
-        total.merge(self.light_node.clone());
-        total.merge(self.protocol_runners.clone());
-        writeln!(
-            f,
-            "\n\tLight-node: {}\n\tProtocol runners: {}\n\tTotal: {}",
-            self.light_node.to_megabytes(),
-            self.protocol_runners.to_megabytes(),
-            total.to_megabytes()
-        )
-    }
-}
+// impl fmt::Display for TezedgeSpecificMemoryData {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let mut total = ProcessMemoryStats::default();
+//         total.merge(self.light_node.clone());
+//         total.merge(self.protocol_runners.clone());
+//         writeln!(
+//             f,
+//             "\n\tLight-node: {}\n\tProtocol runners: {}\n\tTotal: {}",
+//             self.light_node.to_megabytes(),
+//             self.protocol_runners.to_megabytes(),
+//             total.to_megabytes()
+//         )
+//     }
+// }
 
-impl TezedgeSpecificMemoryData {
-    pub fn new(light_node: ProcessMemoryStats, protocol_runners: ProcessMemoryStats) -> Self {
-        Self {
-            light_node,
-            protocol_runners,
-        }
-    }
-}
+// impl TezedgeSpecificMemoryData {
+//     pub fn new(light_node: ProcessMemoryStats, protocol_runners: ProcessMemoryStats) -> Self {
+//         Self {
+//             light_node,
+//             protocol_runners,
+//         }
+//     }
+// }
 
-#[derive(Serialize)]
-pub struct MemoryData {
-    ocaml: ProcessMemoryStats,
-    tezedge: TezedgeSpecificMemoryData,
-}
+// #[derive(Serialize)]
+// pub struct MemoryData {
+//     ocaml: ProcessMemoryStats,
+//     tezedge: TezedgeSpecificMemoryData,
+// }
 
-impl fmt::Display for MemoryData {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "\nTezedge node: {}\nOcaml node: {}",
-            self.tezedge,
-            self.ocaml.to_megabytes(),
-        )
-    }
-}
+// impl fmt::Display for MemoryData {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         writeln!(
+//             f,
+//             "\nTezedge node: {}\nOcaml node: {}",
+//             self.tezedge,
+//             self.ocaml.to_megabytes(),
+//         )
+//     }
+// }
 
-impl MemoryData {
-    pub fn new(ocaml: ProcessMemoryStats, tezedge: TezedgeSpecificMemoryData) -> Self {
-        Self { ocaml, tezedge }
-    }
-}
+// impl MemoryData {
+//     pub fn new(ocaml: ProcessMemoryStats, tezedge: TezedgeSpecificMemoryData) -> Self {
+//         Self { ocaml, tezedge }
+//     }
+// }
 
 #[derive(Serialize, PartialEq, Clone, Debug, Default)]
 pub struct OcamlDiskData {
+    debugger: u64,
     block_storage: u64,
     context_irmin: u64,
 }
@@ -197,10 +201,11 @@ impl fmt::Display for OcamlDiskData {
 }
 
 impl OcamlDiskData {
-    pub fn new(block_storage: u64, context_irmin: u64) -> Self {
+    pub fn new(debugger: u64, block_storage: u64, context_irmin: u64) -> Self {
         Self {
             block_storage,
             context_irmin,
+            debugger,
         }
     }
 
@@ -208,6 +213,7 @@ impl OcamlDiskData {
         Self {
             block_storage: self.block_storage / 1024 / 1024,
             context_irmin: self.context_irmin / 1024 / 1024,
+            debugger: self.debugger / 1024 / 1024,
         }
     }
 }
@@ -251,6 +257,7 @@ pub struct TezedgeDiskData {
     block_storage: u64,
     context_actions: u64,
     main_db: u64,
+    debugger: u64,
 }
 
 impl fmt::Display for TezedgeDiskData {
@@ -261,28 +268,28 @@ impl fmt::Display for TezedgeDiskData {
             context_merkle_rocksdb,
             block_storage,
             main_db,
+            debugger,
         } = self;
 
-        let total = context_actions
-            + context_irmin
-            + context_merkle_rocksdb
-            + block_storage
-            + main_db;
+        let total =
+            context_actions + context_irmin + context_merkle_rocksdb + block_storage + main_db;
         writeln!(
             f,
-            "{} MB (total)\n\tMain database: {} MB\n\tContex - irmin: {} MB\n\tContext - rust_merkel_tree: {} MB\n\tContext actions: {} MB\n\tBlock storage (commit log): {} MB",
+            "{} MB (total)\n\tMain database: {} MB\n\tContex - irmin: {} MB\n\tContext - rust_merkel_tree: {} MB\n\tContext actions: {} MB\n\tBlock storage (commit log): {} MB\n\tDebugger: {} MB",
             total,
             main_db,
             context_irmin,
             context_merkle_rocksdb,
             context_actions,
             block_storage,
+            debugger
         )
     }
 }
 
 impl TezedgeDiskData {
     pub fn new(
+        debugger: u64,
         context_irmin: u64,
         context_merkle_rocksdb: u64,
         block_storage: u64,
@@ -295,6 +302,7 @@ impl TezedgeDiskData {
             block_storage,
             context_actions,
             main_db,
+            debugger
         }
     }
 
@@ -305,49 +313,50 @@ impl TezedgeDiskData {
             block_storage: self.block_storage / 1024 / 1024,
             context_actions: self.context_actions / 1024 / 1024,
             main_db: self.main_db / 1024 / 1024,
+            debugger: self.debugger / 1024 / 1024,
         }
     }
 }
 
-#[derive(Serialize)]
-pub struct CommitHashes {
-    ocaml: String,
-    tezedge: String,
-    debugger: String,
-    explorer: String,
-}
+// #[derive(Serialize)]
+// pub struct CommitHashes {
+//     ocaml: String,
+//     tezedge: String,
+//     debugger: String,
+//     explorer: String,
+// }
 
-impl fmt::Display for CommitHashes {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let ocaml_repo = "https://gitlab.com/tezos/tezos/-/commit";
-        let tezedge_repo = "https://github.com/simplestaking/tezedge/commit";
-        let debugger_repo = "https://github.com/simplestaking/tezedge-debugger/commit";
-        let exploere_repo = "https://github.com/simplestaking/tezedge-explorer/commit";
-        writeln!(
-            f,
-            "\nOcaml: {}/{}\nTezedge: {}/{}\nDebugger: {}/{}\nExplorer: {}/{}",
-            ocaml_repo,
-            self.ocaml,
-            tezedge_repo,
-            self.tezedge,
-            debugger_repo,
-            self.debugger,
-            exploere_repo,
-            self.explorer
-        )
-    }
-}
+// impl fmt::Display for CommitHashes {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let ocaml_repo = "https://gitlab.com/tezos/tezos/-/commit";
+//         let tezedge_repo = "https://github.com/simplestaking/tezedge/commit";
+//         let debugger_repo = "https://github.com/simplestaking/tezedge-debugger/commit";
+//         let exploere_repo = "https://github.com/simplestaking/tezedge-explorer/commit";
+//         writeln!(
+//             f,
+//             "\nOcaml: {}/{}\nTezedge: {}/{}\nDebugger: {}/{}\nExplorer: {}/{}",
+//             ocaml_repo,
+//             self.ocaml,
+//             tezedge_repo,
+//             self.tezedge,
+//             debugger_repo,
+//             self.debugger,
+//             exploere_repo,
+//             self.explorer
+//         )
+//     }
+// }
 
-impl CommitHashes {
-    pub fn new(ocaml: String, tezedge: String, debugger: String, explorer: String) -> Self {
-        Self {
-            ocaml,
-            tezedge,
-            debugger,
-            explorer,
-        }
-    }
-}
+// impl CommitHashes {
+//     pub fn new(ocaml: String, tezedge: String, debugger: String, explorer: String) -> Self {
+//         Self {
+//             ocaml,
+//             tezedge,
+//             debugger,
+//             explorer,
+//         }
+//     }
+// }
 
 #[derive(Serialize)]
 pub struct CpuData {
@@ -366,12 +375,12 @@ impl fmt::Display for CpuData {
     }
 }
 
-impl CpuData {
-    pub fn new(ocaml: i32, tezedge: i32, protocol_runners: i32) -> Self {
-        Self {
-            ocaml,
-            tezedge,
-            protocol_runners,
-        }
-    }
-}
+// impl CpuData {
+//     pub fn new(ocaml: i32, tezedge: i32, protocol_runners: i32) -> Self {
+//         Self {
+//             ocaml,
+//             tezedge,
+//             protocol_runners,
+//         }
+//     }
+// }

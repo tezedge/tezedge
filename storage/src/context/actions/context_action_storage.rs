@@ -8,7 +8,6 @@ use std::ops::Range;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64};
 
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform, DB};

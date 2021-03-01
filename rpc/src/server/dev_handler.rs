@@ -94,7 +94,7 @@ pub async fn dev_action_cursor(
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
     let cursor_id = query.get_u64("cursor_id");
-    let limit = query.get_u64("limit").map(|limit| limit as usize);
+    let limit = query.get_u64("limit").map(|limit| limit as usize); 
     let action_types = query.get_str("action_types");
 
     result_to_json_response(
