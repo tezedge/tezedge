@@ -4,9 +4,9 @@
 
 use std::fs::File;
 use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::path::PathBuf;
-use std::io::{BufReader, BufRead};
 
 use chrono::Utc;
 use failure::bail;
@@ -18,12 +18,12 @@ use crate::deploy_with_compose::{
     restart_sandbox, restart_stack, shutdown_and_update, shutdown_and_update_sandbox,
 };
 use crate::image::{
-    local_hash, remote_hash, Explorer, Sandbox, TezedgeDebugger, WatchdogContainer,
+    local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger,
 };
-use crate::monitors::info::InfoMonitor;
+
+use crate::monitors::TEZEDGE_VOLUME_PATH;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
-use crate::monitors::TEZEDGE_VOLUME_PATH;
 
 pub struct DeployMonitor {
     compose_file_path: PathBuf,
@@ -54,13 +54,13 @@ impl DeployMonitor {
     /// format: [[<latest to latest - LIMIT>], ..., [<LIMIT to 0>]]
     async fn collect_node_logs(&self) -> Result<String, failure::Error> {
         const LIMIT: usize = 2000;
-        if !Path::new("/tmp/tezedge-watchdog-logs").exists() {
-            std::fs::create_dir("/tmp/tezedge-watchdog-logs")?;
+        if !Path::new("/tmp/tezedge-monitoring-logs").exists() {
+            std::fs::create_dir("/tmp/tezedge-monitoring-logs")?;
         }
         let timestamp = Utc::now().time().to_string();
         let file_name = format!("{}_crash.log", &timestamp);
         let zip_name = format!("{}_crash.zip", &timestamp);
-        let file_path = format!("/tmp/tezedge-watchdog-logs/{}", &zip_name);
+        let file_path = format!("/tmp/tezedge-monitoring-logs/{}", &zip_name);
 
         let mut zip_file = ZipWriter::new(File::create(&file_path)?);
         let zip_options =
@@ -69,7 +69,7 @@ impl DeployMonitor {
         zip_file.start_file(&file_name, zip_options)?;
 
         // enclose the arrays in an another array to make the file a valid json
-        zip_file.write("[".as_bytes())?;
+        zip_file.write_all("[".as_bytes())?;
 
         // last log, get its cursor_id
         let mut cursor_id: Option<usize> =
@@ -92,27 +92,26 @@ impl DeployMonitor {
             .await
             {
                 Ok(result) => {
-                    zip_file.write(&result.bytes().await?)?;
-                    zip_file.write(",".as_bytes())?;
+                    zip_file.write_all(&result.bytes().await?)?;
+                    zip_file.write_all(",".as_bytes())?;
                 }
                 Err(e) => bail!("Error collecting node logs from debugger: {:?}", e),
             }
             cursor_id = cursor.checked_sub(LIMIT);
         }
 
-        zip_file.write("]".as_bytes())?;
+        zip_file.write_all("]".as_bytes())?;
 
         let log_file_name = format!("{}/tezedge.log", TEZEDGE_VOLUME_PATH);
         let log_file_path = Path::new(&log_file_name);
         if log_file_path.exists() {
-
             zip_file.start_file("tezedge.log", zip_options)?;
             let file = File::open(log_file_path)?;
             let reader = BufReader::new(file);
 
             for line in reader.lines() {
-                zip_file.write(line?.as_bytes())?;
-                zip_file.write(&[b'\n'])?;
+                zip_file.write_all(line?.as_bytes())?;
+                zip_file.write_all(&[b'\n'])?;
             }
         }
 
@@ -139,10 +138,6 @@ impl DeployMonitor {
             // and recreate tezedge volume, but not need to restart tezos and explorer
             if node_updated || debugger_updated || explorer_updated {
                 shutdown_and_update(&compose_file_path, log, self.cleanup).await;
-
-                // send node info after update
-                let info_monitor = InfoMonitor::new(slack.clone(), self.log.clone());
-                info_monitor.send_monitoring_info().await?;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");
@@ -213,7 +208,9 @@ impl DeployMonitor {
         Ok(())
     }
 
-    async fn changed<T: WatchdogContainer + Sync + Send>(&self) -> Result<bool, failure::Error> {
+    async fn changed<T: DeployMonitoringContainer + Sync + Send>(
+        &self,
+    ) -> Result<bool, failure::Error> {
         let DeployMonitor {
             docker, slack, log, ..
         } = self;

@@ -20,14 +20,14 @@ mod slack;
 
 use crate::monitors::resource::{ResourceUtilization, MEASUREMENTS_MAX_CAPACITY};
 use crate::monitors::{
-    shutdown_and_cleanup, start_deploy_monitoring, start_info_monitoring,
-    start_resource_monitoring, start_sandbox, start_sandbox_monitoring, start_stack,
+    shutdown_and_cleanup, start_deploy_monitoring, start_resource_monitoring, start_sandbox,
+    start_sandbox_monitoring, start_stack,
 };
 
 #[tokio::main]
 async fn main() {
     // parse and validate program arguments
-    let env = configuration::WatchdogEnvironment::from_args();
+    let env = configuration::DeployMonitoringEnvironment::from_args();
 
     // create an slog logger
     let log = create_logger(env.log_level);
@@ -60,9 +60,14 @@ async fn main() {
         );
         thread_handles.push(deploy_handle);
     } else {
-        start_stack(&env.compose_file_path, slack_server.clone(), &log, env.cleanup_volumes)
-            .await
-            .expect("Stack failed to start");
+        start_stack(
+            &env.compose_file_path,
+            slack_server.clone(),
+            &log,
+            env.cleanup_volumes,
+        )
+        .await
+        .expect("Stack failed to start");
 
         info!(log, "Creating docker image monitor");
         let deploy_handle = start_deploy_monitoring(
@@ -74,15 +79,6 @@ async fn main() {
             env.cleanup_volumes,
         );
         thread_handles.push(deploy_handle);
-
-        info!(log, "Creating slack info monitor");
-        let monitor_handle = start_info_monitoring(
-            slack_server.clone(),
-            env.info_interval,
-            log.clone(),
-            running.clone(),
-        );
-        thread_handles.push(monitor_handle);
 
         // create a thread safe VecDeque for each node's resource utilization data
         let ocaml_resource_utilization_storage =
@@ -101,6 +97,8 @@ async fn main() {
             running.clone(),
             ocaml_resource_utilization_storage.clone(),
             tezedge_resource_utilization_storage.clone(),
+            env.alert_thresholds,
+            slack_server.clone(),
         );
         thread_handles.push(resources_handle);
 
@@ -130,9 +128,14 @@ async fn main() {
 
     // cleanup
     info!(log, "Cleaning up containers");
-    shutdown_and_cleanup(&env.compose_file_path, slack_server, &log, env.cleanup_volumes)
-        .await
-        .expect("Cleanup failed");
+    shutdown_and_cleanup(
+        &env.compose_file_path,
+        slack_server,
+        &log,
+        env.cleanup_volumes,
+    )
+    .await
+    .expect("Cleanup failed");
     info!(log, "Shutdown complete");
 }
 

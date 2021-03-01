@@ -9,7 +9,7 @@ use crate::display_info::{
     CommitHashes, CpuData, DiskSpaceData, HeadData, ImagesInfo, MemoryData,
     TezedgeSpecificMemoryData,
 };
-use crate::image::{Explorer, TezedgeDebugger, WatchdogContainer};
+use crate::image::{Explorer, TezedgeDebugger, DeployMonitoringContainer};
 use crate::node::{Node, OcamlNode, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 use crate::slack::SlackServer;
 
@@ -78,11 +78,8 @@ impl InfoMonitor {
             explorer_commit_hash,
         );
 
-        let cpu_data = CpuData::new(
-            OcamlNode::collect_cpu_data("tezos-node")?,
-            TezedgeNode::collect_cpu_data("light-node")?,
-            TezedgeNode::collect_cpu_data("protocol-runner")?,
-        );
+        // TODO fix, or remove, when removing slack info
+        let cpu_data = CpuData::new(0, 0, 0);
 
         Ok(SlackMonitorInfo {
             memory_info,

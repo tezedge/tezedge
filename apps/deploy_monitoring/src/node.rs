@@ -7,8 +7,6 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use failure::{bail, format_err};
 use fs_extra::dir;
-use merge::Merge;
-use slog::{info, Logger};
 
 use sysinfo::{ProcessExt, System, SystemExt};
 
@@ -16,7 +14,7 @@ use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
-use crate::image::WatchdogContainer;
+use crate::image::DeployMonitoringContainer;
 use crate::monitors::OCAML_VOLUME_PATH;
 use crate::monitors::TEZEDGE_VOLUME_PATH;
 
@@ -29,6 +27,8 @@ pub struct TezedgeNode;
 impl Node for TezedgeNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         let disk_data = TezedgeDiskData::new(
+            // dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "debugger_db"))?,
+            0,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
             dir::get_size(&format!(
                 "{}/{}",
@@ -49,14 +49,14 @@ impl Node for TezedgeNode {
     }
 }
 
-impl WatchdogContainer for TezedgeNode {
-    const NAME: &'static str = "watchdog-tezedge-node";
+impl DeployMonitoringContainer for TezedgeNode {
+    const NAME: &'static str = "deploy-monitoring-tezedge-node";
 }
 
 impl TezedgeNode {
     pub async fn collect_protocol_runners_memory_stats(
         port: u16,
-    ) -> Result<ProcessMemoryStats, failure::Error> {
+    ) -> Result<Vec<ProcessMemoryStats>, failure::Error> {
         let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
             "http://localhost:{}/stats/memory/protocol_runners",
             port
@@ -67,16 +67,10 @@ impl TezedgeNode {
             Err(e) => bail!("GET memory error: {}", e),
         };
 
-        let memory_stats: ProcessMemoryStats = protocol_runners
+        let memory_stats: Vec<ProcessMemoryStats> = protocol_runners
             .into_iter()
             .map(|v| v.try_into().unwrap())
-            .fold(
-                ProcessMemoryStats::default(),
-                |mut acc, mem: ProcessMemoryStats| {
-                    acc.merge(mem);
-                    acc
-                },
-            );
+            .collect();
 
         Ok(memory_stats)
     }
@@ -89,6 +83,7 @@ impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         Ok(OcamlDiskData::new(
             // dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
+            0,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
         )
@@ -96,12 +91,12 @@ impl Node for OcamlNode {
     }
 }
 
-impl WatchdogContainer for OcamlNode {
-    const NAME: &'static str = "watchdog-ocaml-node";
+impl DeployMonitoringContainer for OcamlNode {
+    const NAME: &'static str = "deploy-monitoring-ocaml-node";
 }
 
 impl OcamlNode {
-    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStats, failure::Error> {
+    pub fn collect_validator_memory_stats() -> Result<Vec<ProcessMemoryStats>, failure::Error> {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -116,7 +111,7 @@ impl OcamlNode {
             .collect();
 
         // collect all processes that is the child of the main process and sum up the memory usage
-        let valaidators: ProcessMemoryStats = system_processes
+        let valaidators: Vec<ProcessMemoryStats> = system_processes
             .iter()
             .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
             .map(|(_, process)| {
@@ -125,13 +120,7 @@ impl OcamlNode {
                     process.memory().try_into().unwrap_or_default(),
                 )
             })
-            .fold(
-                ProcessMemoryStats::default(),
-                |mut acc, mem: ProcessMemoryStats| {
-                    acc.merge(mem);
-                    acc
-                },
-            );
+            .collect();
 
         Ok(valaidators)
     }
@@ -139,7 +128,7 @@ impl OcamlNode {
 
 #[async_trait]
 pub trait Node {
-    async fn collect_head_data(log: &Logger, port: u16) -> Result<NodeInfo, failure::Error> {
+    async fn collect_head_data(port: u16) -> Result<NodeInfo, failure::Error> {
         let head_data = match reqwest::get(&format!(
             "http://localhost:{}/chains/main/blocks/head/header",
             port
@@ -165,42 +154,32 @@ pub trait Node {
             Err(e) => bail!("GET header error: {}", e),
         };
 
-        info!(log, "head_data: {:?}", port);
-
         Ok(head_data)
     }
 
-    async fn collect_memory_data(
-        log: &Logger,
-        port: u16,
-    ) -> Result<ProcessMemoryStats, failure::Error> {
+    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
         let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,
                 Err(e) => bail!("GET memory error: {}", e),
             };
-        info!(log, "raw_memory_info: {:?}", tezedge_raw_memory_info);
         let memory_stats: ProcessMemoryStats = tezedge_raw_memory_info.try_into()?;
 
         Ok(memory_stats)
     }
 
-    async fn collect_commit_hash(log: &Logger, port: u16) -> Result<String, failure::Error> {
+    async fn collect_commit_hash(port: u16) -> Result<String, failure::Error> {
         let commit_hash =
             match reqwest::get(&format!("http://localhost:{}/monitor/commit_hash", port)).await {
                 Ok(result) => result.text().await?,
                 Err(e) => bail!("GET commit_hash error: {}", e),
             };
-        info!(log, "commit_hash: {}", commit_hash);
 
         Ok(commit_hash.trim_matches('"').trim_matches('\n').to_string())
     }
 
-    fn collect_cpu_data(process_name: &str) -> Result<i32, failure::Error> {
-        let mut system = System::new_all();
-        system.refresh_all();
-
-        // get tezos-node process
+    fn collect_cpu_data(system: &mut System, process_name: &str) -> Result<i32, failure::Error> {
+        // get node process
         Ok(system
             .get_processes()
             .iter()

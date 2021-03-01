@@ -3,14 +3,10 @@ use shiplift::{
     Docker,
 };
 
-use failure::bail;
-
 use async_trait::async_trait;
 
-pub const TEZEDGE_DEBUGGER_PORT: u16 = 17732;
-
 #[async_trait]
-pub trait WatchdogContainer {
+pub trait DeployMonitoringContainer {
     const NAME: &'static str;
 
     async fn image() -> Result<String, failure::Error> {
@@ -21,7 +17,8 @@ pub trait WatchdogContainer {
     }
 }
 
-pub async fn remote_hash<T: WatchdogContainer + Sync + Send>() -> Result<String, failure::Error> {
+pub async fn remote_hash<T: DeployMonitoringContainer + Sync + Send>(
+) -> Result<String, failure::Error> {
     let image = T::image().await?;
     let image_split: Vec<&str> = image.split(':').collect();
     let repo = image_split.get(0).unwrap_or(&"");
@@ -44,7 +41,7 @@ pub async fn remote_hash<T: WatchdogContainer + Sync + Send>() -> Result<String,
     }
 }
 
-pub async fn local_hash<T: WatchdogContainer + Sync + Send>(
+pub async fn local_hash<T: DeployMonitoringContainer + Sync + Send>(
     docker: &Docker,
 ) -> Result<String, failure::Error> {
     let image = T::image().await?;
@@ -56,54 +53,24 @@ pub async fn local_hash<T: WatchdogContainer + Sync + Send>(
 
 pub struct TezedgeDebugger;
 
-impl WatchdogContainer for TezedgeDebugger {
-    const NAME: &'static str = "watchdog-tezedge-debugger";
-}
-
-impl TezedgeDebugger {
-    pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let commit_hash = match reqwest::get(&format!(
-            "http://localhost:{}/v2/version",
-            TEZEDGE_DEBUGGER_PORT
-        ))
-        .await
-        {
-            Ok(result) => result.text().await?,
-            Err(e) => bail!("GET commit_hash error: {}", e),
-        };
-
-        Ok(commit_hash.trim_matches('"').to_string())
-    }
+impl DeployMonitoringContainer for TezedgeDebugger {
+    const NAME: &'static str = "deploy-monitoring-tezedge-debugger";
 }
 
 pub struct OcamlDebugger;
 
-impl WatchdogContainer for OcamlDebugger {
-    const NAME: &'static str = "watchdog-ocaml-debugger";
+impl DeployMonitoringContainer for OcamlDebugger {
+    const NAME: &'static str = "deploy-monitoring-ocaml-debugger";
 }
 
 pub struct Explorer;
 
-impl WatchdogContainer for Explorer {
-    const NAME: &'static str = "watchdog-explorer";
-}
-
-impl Explorer {
-    pub async fn collect_commit_hash() -> Result<String, failure::Error> {
-        let docker = Docker::new();
-        let ContainerDetails { config, .. } = docker.containers().get(Self::NAME).inspect().await?;
-        let env = config.env();
-
-        if let Some(commit_hash) = env.get("COMMIT") {
-            Ok(commit_hash.to_owned())
-        } else {
-            bail!("COMMIT env var not found in explorer contianer")
-        }
-    }
+impl DeployMonitoringContainer for Explorer {
+    const NAME: &'static str = "deploy-monitoring-explorer";
 }
 
 pub struct Sandbox;
 
-impl WatchdogContainer for Sandbox {
-    const NAME: &'static str = "watchdog-tezedge-sandbox-launcher";
+impl DeployMonitoringContainer for Sandbox {
+    const NAME: &'static str = "deploy-monitoring-tezedge-sandbox-launcher";
 }

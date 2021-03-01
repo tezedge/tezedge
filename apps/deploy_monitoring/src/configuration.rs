@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
-pub struct WatchdogEnvironment {
+pub struct DeployMonitoringEnvironment {
     // logging level
     pub log_level: slog::Level,
 
@@ -24,9 +24,6 @@ pub struct WatchdogEnvironment {
     // interval in seconds to check for new remote image
     pub resource_monitor_interval: u64,
 
-    // interval in seconds to send monitor info to slack
-    pub info_interval: u64,
-
     // rpc server port
     pub rpc_port: u16,
 
@@ -36,12 +33,22 @@ pub struct WatchdogEnvironment {
     // Path for the compose file needed to manage the deployed containers
     pub compose_file_path: PathBuf,
 
-    // Do not cleanup the volumes
+    // Thresholds to alerts
+    pub alert_thresholds: AlertThresholds,
+
+    // flag for volume cleanup mode
     pub cleanup_volumes: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct AlertThresholds {
+    pub ram: u64,
+    pub disk: u64,
+    pub head: i64,
+}
+
 fn deploy_monitoring_app() -> App<'static, 'static> {
-    let app = App::new("Tezedge watchdog app")
+    let app = App::new("Tezedge deploy monitoring app")
         .version("0.10.0")
         .author("SimpleStaking and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
@@ -128,22 +135,43 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("rpc-port")
                 .takes_value(true)
                 .value_name("RPC-PORT")
-                .help("Port number to open the watchdog rpc server on"),
+                .help("Port number to open the monitoring rpc server on"),
         )
         .arg(
             Arg::with_name("sandbox")
                 .long("sandbox")
                 .help("Watch only the sandbox launcher and a debugger"),
         )
-        .arg(Arg::with_name("cleanup-volumes")
-            .long("cleanup-volumes")
-            .help("Enable and dissable volume cleanup"))
         .arg(
-            Arg::with_name("info-interval")
-                .long("info-interval")
+            Arg::with_name("cleanup-volumes")
+                .long("cleanup-volumes")
+                .help("Enable and dissable volume cleanup"),
+        )
+        .arg(
+            Arg::with_name("alert-threshold-disk")
+                .long("alert-threshold-disk")
                 .takes_value(true)
-                .value_name("INFO-INTERVAL")
-                .help("Interval in seconds to send monitor info to slack"),
+                .value_name("ALERT-THRESHOLD-DISK")
+                .help("Thershold in bytes for critical alerts - disk"),
+        )
+        .arg(
+            Arg::with_name("alert-threshold-memory")
+                .long("alert-threshold-memory")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-MEMORY")
+                .help("Thershold in bytes for critical alerts - memory"),
+        )
+        .arg(
+            Arg::with_name("alert-threshold-synchronization")
+                .long("alert-threshold-synchronization")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-SYNCHRONIZATION")
+                .help("Thershold in seconds for critical alerts - synchronization"),
+        )
+        .arg(
+            Arg::with_name("cleanup-volumes")
+                .long("cleanup-volumes")
+                .help("Enable and dissable volume cleanup"),
         );
     app
 }
@@ -165,14 +193,32 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "compose-file-path");
 }
 
-impl WatchdogEnvironment {
+impl DeployMonitoringEnvironment {
     pub fn from_args() -> Self {
         let app = deploy_monitoring_app();
         let args = app.clone().get_matches();
 
         validate_required_args(&args);
 
-        WatchdogEnvironment {
+        let alert_thresholds = AlertThresholds {
+            ram: args
+                .value_of("alert-threshold-memory")
+                .unwrap_or("10737418240")
+                .parse::<u64>()
+                .expect("Was expecting number of bytes [u64]"),
+            disk: args
+                .value_of("alert-threshold-disk")
+                .unwrap_or("95")
+                .parse::<u64>()
+                .expect("Was expecting percentage [u64]"),
+            head: args
+                .value_of("alert-threshold-synchronization")
+                .unwrap_or("300")
+                .parse::<i64>()
+                .expect("Was seconds [i64]"),
+        };
+
+        DeployMonitoringEnvironment {
             log_level: args
                 .value_of("log-level")
                 .unwrap_or("info")
@@ -204,13 +250,9 @@ impl WatchdogEnvironment {
                 .unwrap_or("38732")
                 .parse::<u16>()
                 .expect("Expected u16 value of valid port number"),
-            info_interval: args
-                .value_of("info-interval")
-                .unwrap_or("0")
-                .parse::<u64>()
-                .expect("Expected u64 value of seconds"),
             is_sandbox: args.is_present("sandbox"),
             cleanup_volumes: args.is_present("cleanup-volumes"),
+            alert_thresholds,
         }
     }
 }
