@@ -66,7 +66,7 @@ fn test_storage() -> Result<(), Error> {
     );
     assert_eq!(
         init_data.chain_id,
-        chain_id_from_block_hash(&BlockHash::try_from(tezos_env.genesis.block.as_str())?)
+        chain_id_from_block_hash(&BlockHash::try_from(tezos_env.genesis.block.as_str())?)?
     );
 
     // load current head (non)

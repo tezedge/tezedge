@@ -10,7 +10,7 @@ use failure::Fail;
 use hex::{FromHex, FromHexError};
 use serde_json::Value;
 
-use crypto::hash::CryptoboxPublicKeyHash;
+use crypto::{crypto_box::PublicKeyError, hash::CryptoboxPublicKeyHash};
 use crypto::{
     crypto_box::{random_keypair, PublicKey, SecretKey},
     proof_of_work::ProofOfWork,
@@ -32,6 +32,15 @@ pub enum IdentityError {
 
     #[fail(display = "Identity invalid peer_id check")]
     InvalidPeerIdError,
+
+    #[fail(display = "Public key error: {}", _0)]
+    PublicKeyError(PublicKeyError),
+}
+
+impl From<PublicKeyError> for IdentityError {
+    fn from(source: PublicKeyError) -> Self {
+        Self::PublicKeyError(source)
+    }
 }
 
 /// This node identity information compatible with Tezos
@@ -49,19 +58,19 @@ pub struct Identity {
 }
 
 impl Identity {
-    pub fn generate(expected_pow: f64) -> Self {
-        let (sk, pk, peer_id) = random_keypair();
+    pub fn generate(expected_pow: f64) -> Result<Self, PublicKeyError> {
+        let (sk, pk, peer_id) = random_keypair()?;
         let pow = ProofOfWork::generate(&pk, expected_pow);
-        Identity {
+        Ok(Identity {
             peer_id,
             public_key: pk,
             secret_key: sk,
             proof_of_work_stamp: pow,
-        }
+        })
     }
 
     pub fn check_peer_id(&self) -> Result<(), IdentityError> {
-        if self.peer_id == self.public_key.public_key_hash() {
+        if self.peer_id == self.public_key.public_key_hash()? {
             Ok(())
         } else {
             Err(IdentityError::InvalidPeerIdError)
@@ -179,7 +188,7 @@ mod tests {
     #[test]
     fn test_identity_generate() -> Result<(), failure::Error> {
         // generate
-        let identity = Identity::generate(16f64);
+        let identity = Identity::generate(16f64)?;
 
         // check
         assert!(identity.check_peer_id().is_ok());

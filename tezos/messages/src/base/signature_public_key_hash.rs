@@ -10,10 +10,10 @@ use failure::Fail;
 use hex::FromHexError;
 use serde::{Deserialize, Serialize};
 
-use crypto::base58::FromBase58CheckError;
 use crypto::blake2b;
 use crypto::hash::FromBytesError;
 use crypto::hash::{ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
+use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 
 #[derive(Debug, Fail, PartialEq)]
 pub enum ConversionError {
@@ -25,6 +25,9 @@ pub enum ConversionError {
 
     #[fail(display = "Invalid curve tag: {}", curve_tag)]
     InvalidCurveTag { curve_tag: String },
+
+    #[fail(display = "Blake2b digest error")]
+    Blake2bError,
 }
 
 impl From<hex::FromHexError> for ConversionError {
@@ -48,6 +51,12 @@ impl From<FromBytesError> for ConversionError {
         ConversionError::InvalidHash {
             hash: error.to_string(),
         }
+    }
+}
+
+impl From<Blake2bError> for ConversionError {
+    fn from(_: Blake2bError) -> Self {
+        ConversionError::Blake2bError
     }
 }
 
@@ -130,7 +139,7 @@ impl SignaturePublicKeyHash {
     pub fn from_tagged_bytes(pk: Vec<u8>) -> Result<SignaturePublicKeyHash, ConversionError> {
         if pk.len() == 33 || pk.len() == 34 {
             let tag = pk[0];
-            let hash = blake2b::digest_160(&pk[1..]);
+            let hash = blake2b::digest_160(&pk[1..])?;
 
             match tag {
                 0 => Self::from_hex_hash_and_curve(&hex::encode(hash), "ed25519"),

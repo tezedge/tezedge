@@ -7,8 +7,11 @@ use std::convert::TryFrom;
 use failure::{bail, format_err, Fail};
 use getset::Getters;
 
-use crypto::blake2b;
 use crypto::hash::ContextHash;
+use crypto::{
+    blake2b::{self, Blake2bError},
+    crypto_box::PublicKeyError,
+};
 use storage::context::{ContextApi, TezedgeContext};
 use storage::{context_key, num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
@@ -505,6 +508,20 @@ pub fn level_position(level: i32, blocks_per_cycle: i32) -> Result<i32, failure:
 pub enum TezosPRNGError {
     #[fail(display = "Value of bound(last_roll) not correct: {} bytes", bound)]
     BoundNotCorrect { bound: i32 },
+    #[fail(display = "Public key error: {}", _0)]
+    PublicKeyError(PublicKeyError),
+}
+
+impl From<PublicKeyError> for TezosPRNGError {
+    fn from(source: PublicKeyError) -> Self {
+        TezosPRNGError::PublicKeyError(source)
+    }
+}
+
+impl From<Blake2bError> for TezosPRNGError {
+    fn from(source: Blake2bError) -> Self {
+        TezosPRNGError::PublicKeyError(source.into())
+    }
 }
 
 type RandomSeedState = Vec<u8>;
@@ -545,14 +562,14 @@ pub fn init_prng(
         &zero_bytes,
         use_string_bytes,
         &cycle_position.to_be_bytes()
-    ))
+    ))?
     .to_vec();
 
     // take the 4 highest bytes and xor them with the priority/slot (offset)
     let higher = num_from_slice!(rd, 0, i32) ^ offset;
 
     // set the 4 highest bytes to the result of the xor operation
-    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..]));
+    let sequence = blake2b::digest_256(&merge_slices!(&higher.to_be_bytes(), &rd[4..]))?;
 
     Ok(sequence)
 }
@@ -575,7 +592,7 @@ pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
     // hash once again and take the 4 highest bytes and we got our random number
     let mut sequence = state;
     loop {
-        let hashed = blake2b::digest_256(&sequence).to_vec();
+        let hashed = blake2b::digest_256(&sequence)?.to_vec();
 
         // computation for overflow check
         let drop_if_over = i32::max_value() - (i32::max_value() % bound);

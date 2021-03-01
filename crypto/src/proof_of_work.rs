@@ -1,10 +1,11 @@
 use std::convert::TryFrom;
 
+use failure::Fail;
 use hex::FromHex;
 use num_bigint::BigUint;
 use sodiumoxide::randombytes::randombytes;
 
-use crate::CryptoError;
+use crate::{blake2b::Blake2bError, CryptoError};
 
 use super::{
     blake2b,
@@ -14,7 +15,21 @@ use super::{
 
 pub const POW_SIZE: usize = NONCE_SIZE;
 
-pub type PowResult = Result<(), ()>;
+#[derive(Debug, Fail)]
+pub enum PowError {
+    #[fail(display = "Proof-of-work check failed")]
+    CheckFailed,
+    #[fail(display = "Proof-of-work blake2b error: {}", _0)]
+    Blake2b(Blake2bError),
+}
+
+impl From<Blake2bError> for PowError {
+    fn from(error: Blake2bError) -> Self {
+        PowError::Blake2b(error)
+    }
+}
+
+pub type PowResult = Result<(), PowError>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProofOfWork([u8; POW_SIZE]);
@@ -109,12 +124,12 @@ pub fn check_proof_of_work(data: &[u8], target: f64) -> PowResult {
 }
 
 fn check_proof_of_work_inner(data: &[u8], target_number: &BigUint) -> PowResult {
-    let hash = blake2b::digest_256(data);
+    let hash = blake2b::digest_256(data)?;
     let hash_number = BigUint::from_bytes_le(hash.as_ref());
     if hash_number.le(target_number) {
         Ok(())
     } else {
-        Err(())
+        Err(PowError::CheckFailed)
     }
 }
 

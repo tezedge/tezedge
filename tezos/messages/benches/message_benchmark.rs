@@ -145,7 +145,7 @@ pub fn decode_stream(c: &mut Criterion) {
     let NoncePair {
         mut remote,
         mut local,
-    } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
+    } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming).unwrap();
 
     let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
     assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");
@@ -267,7 +267,7 @@ pub fn simulate_bootstrap_crypto(c: &mut Criterion) {
             // generate nonces
             let is_incoming = messages[0].direction == TxRx::Received;
             let NoncePair { remote: _, local } =
-                generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
+                generate_nonces(&messages[0].message, &messages[1].message, is_incoming).unwrap();
 
             // decrypt message
             let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
