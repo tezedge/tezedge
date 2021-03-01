@@ -11,10 +11,9 @@ use failure::{Error, Fail};
 use futures::lock::Mutex;
 use riker::actors::*;
 use slog::{debug, info, o, trace, warn, Logger};
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
+use tokio::{io::AsyncWriteExt, net::TcpStream};
 
 use crypto::nonce::{self, Nonce, NoncePair};
 use crypto::{
@@ -389,7 +388,7 @@ pub async fn bootstrap(
     info: Arc<LocalPeerInfo>,
     log: &Logger,
 ) -> Result<BootstrapOutput, PeerError> {
-    let (mut msg_rx, mut msg_tx) = {
+    let (msg_rx, mut msg_tx) = {
         let stream = msg
             .stream
             .lock()
@@ -423,17 +422,19 @@ pub async fn bootstrap(
         }
     };
 
+    let mut msg_rx = EncryptedMessageReader::new(msg_rx, log.clone());
+
     // receive connection message
-    let received_connection_message_bytes = match timeout(IO_TIMEOUT, msg_rx.read_message()).await?
-    {
-        Ok(msg) => msg,
-        Err(e) => {
-            return Err(PeerError::NetworkError {
-                error: e.into(),
-                message: "No response to connection message was received",
-            })
-        }
-    };
+    let received_connection_message_bytes =
+        match timeout(IO_TIMEOUT, msg_rx.read_connection_message()).await? {
+            Ok(msg) => msg,
+            Err(e) => {
+                return Err(PeerError::NetworkError {
+                    error: e.into(),
+                    message: "No response to connection message was received",
+                })
+            }
+        };
 
     let connection_message =
         ConnectionMessage::from_bytes(received_connection_message_bytes.content())?;
@@ -462,8 +463,7 @@ pub async fn bootstrap(
     // from now on all messages will be encrypted
     let mut msg_tx =
         EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, log.clone());
-    let mut msg_rx =
-        EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, log.clone());
+    msg_rx.set_crypt_data(precomputed_key, nonce_remote);
 
     let connecting_to_self = peer_public_key == info.identity.public_key;
     if connecting_to_self {
@@ -573,7 +573,12 @@ async fn begin_process_incoming(
         .take()
         .expect("Someone took ownership of the encrypted reader before the Peer");
     while net.rx_run.load(Ordering::Acquire) {
-        match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
+        match timeout(
+            READ_TIMEOUT_LONG,
+            rx.read_dynamic_message::<PeerMessageResponse>(),
+        )
+        .await
+        {
             Ok(res) => match res {
                 Ok(msg) => {
                     let should_broadcast_message = net.rx_run.load(Ordering::Acquire);

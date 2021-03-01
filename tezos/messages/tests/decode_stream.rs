@@ -65,6 +65,7 @@ struct Message {
 // decode_stream verifies if the file with sample communication between two nodes is correct
 // for performing a benchmark of decryption, deserialization and decoding.
 #[test]
+#[ignore]
 pub fn decode_stream() {
     let identity =
         tezos_identity::load_identity("benches/identity.json").expect("Failed to load identity");

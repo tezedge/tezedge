@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::{future::Future, pin::Pin, task::Poll};
+
 use bytes::{Buf, BufMut};
 use failure::Fail;
 use failure::_core::convert::TryFrom;
@@ -9,15 +11,20 @@ use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
+use pin_project_lite::pin_project;
 use tezos_encoding::binary_writer;
-use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::ser;
 use tezos_encoding::{
+    binary_async_reader::{BinaryAsyncReader, BinaryRead},
+    de::from_value as deserialize_from_value,
+};
+use tezos_encoding::{
     binary_reader::{BinaryReader, BinaryReaderError},
     binary_writer::BinaryWriterError,
 };
+use tokio::io::AsyncRead;
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
 
@@ -53,13 +60,14 @@ pub mod cache {
     }
 
     pub trait CachedData {
+        fn has_cache() -> bool;
         fn cache_reader(&self) -> Option<&dyn CacheReader>;
         fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter>;
     }
 
     #[derive(Clone, Default)]
     pub struct BinaryDataCache {
-        data: Option<Vec<u8>>,
+        pub(crate) data: Option<Vec<u8>>,
     }
 
     impl CacheReader for BinaryDataCache {
@@ -147,6 +155,11 @@ pub mod cache {
         ($struct_name:ident, $property_cache_name:ident) => {
             impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
                 #[inline]
+                fn has_cache() -> bool {
+                    true
+                }
+
+                #[inline]
                 fn cache_reader(
                     &self,
                 ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
@@ -168,6 +181,11 @@ pub mod cache {
     macro_rules! non_cached_data {
         ($struct_name:ident) => {
             impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
+                #[inline]
+                fn has_cache() -> bool {
+                    true
+                }
+
                 #[inline]
                 fn cache_reader(
                     &self,
@@ -196,6 +214,60 @@ pub trait BinaryMessage: Sized {
 
     /// Create new struct from bytes.
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
+
+    /// Reads a new struct from the limited stream of bytes
+    fn read<'a, R: BinaryRead + Unpin + Send>(
+        read: &'a mut R,
+    ) -> Pin<Box<dyn Future<Output = Result<Self, BinaryReaderError>> + Send + 'a>>;
+
+    /// Reads a new struct with dynamic encoding from the stream of bytes.
+    fn read_dynamic<'a, R: AsyncRead + Unpin + Send>(
+        read: &'a mut R,
+    ) -> Pin<Box<dyn Future<Output = Result<Self, BinaryReaderError>> + Send + 'a>>;
+}
+
+pin_project! {
+    struct CachingAsyncReader<'a, A> {
+        read: &'a mut A,
+        cache: Vec<u8>,
+    }
+}
+
+impl<'a, A> CachingAsyncReader<'a, A> {
+    fn new(read: &'a mut A) -> Self {
+        CachingAsyncReader {
+            read,
+            cache: vec![],
+        }
+    }
+}
+
+impl<'a, A: AsyncRead + Unpin> AsyncRead for CachingAsyncReader<'a, A> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let me = self.project();
+        let len = buf.filled().len();
+        let res = Pin::new(&mut *me.read).poll_read(cx, buf);
+        if let Poll::Ready(Ok(())) = res {
+            me.cache.extend(&buf.filled()[len..]);
+        }
+        res
+    }
+}
+
+impl<'a, A: BinaryRead + Unpin> BinaryRead for CachingAsyncReader<'a, A> {
+    fn remaining(&self) -> Result<usize, BinaryReaderError> {
+        self.read.remaining()
+    }
+}
+
+impl<'a, A> std::convert::AsRef<[u8]> for CachingAsyncReader<'a, A> {
+    fn as_ref(&self) -> &[u8] {
+        self.cache.as_ref()
+    }
 }
 
 impl<T> BinaryMessage for T
@@ -225,6 +297,45 @@ where
             cache_writer.put(bytes);
         }
         Ok(myself)
+    }
+
+    fn read<'a, R: BinaryRead + Unpin + Send>(
+        read: &'a mut R,
+    ) -> Pin<Box<dyn Future<Output = Result<Self, BinaryReaderError>> + Send + 'a>> {
+        Box::pin(async move {
+            if Self::has_cache() {
+                let mut read = CachingAsyncReader::new(read);
+                let value = BinaryAsyncReader::new()
+                    .read_message(&mut read, Self::encoding())
+                    .await?;
+                let mut myself: Self = deserialize_from_value(&value)?;
+                if let Some(cache_writer) = myself.cache_writer() {
+                    cache_writer.put(read.as_ref());
+                }
+                Ok(myself)
+            } else {
+                let value = BinaryAsyncReader::new()
+                    .read_message(read, Self::encoding())
+                    .await?;
+                Ok(deserialize_from_value(&value)?)
+            }
+        })
+    }
+
+    fn read_dynamic<'a, R: AsyncRead + Unpin + Send>(
+        read: &'a mut R,
+    ) -> Pin<Box<dyn Future<Output = Result<Self, BinaryReaderError>> + Send + 'a>> {
+        Box::pin(async move {
+            let myself: Self = {
+                let value = {
+                    BinaryAsyncReader::new()
+                        .read_dynamic_message(read, Self::encoding())
+                        .await?
+                };
+                deserialize_from_value(&value)?
+            };
+            Ok(myself)
+        })
     }
 }
 
@@ -377,7 +488,15 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
 
 #[cfg(test)]
 mod test {
+    use std::io::Cursor;
+
+    use tezos_encoding::encoding::{Encoding, Field};
+
+    use super::cache::*;
     use super::*;
+    use crate::cached_data;
+    use serde::Deserialize;
+    use tezos_encoding::has_encoding;
 
     #[test]
     fn test_binary_from_content() -> Result<(), failure::Error> {
@@ -399,6 +518,33 @@ mod test {
         assert_eq!(
             CONTENT_LENGTH_FIELD_BYTES + CONTENT_LENGTH_MAX,
             chunk.capacity()
+        );
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn async_read_cache() -> Result<(), failure::Error> {
+        #[derive(Debug, Serialize, Deserialize)]
+        #[allow(dead_code)]
+        struct Msg {
+            byte: u8,
+            str: String,
+            #[serde(skip_serializing)]
+            data: BinaryDataCache,
+        }
+        cached_data!(Msg, data);
+        has_encoding!(Msg, MSG_ENCODING, {
+            Encoding::Obj(vec![
+                Field::new("byte", Encoding::Uint8),
+                Field::new("str", Encoding::String),
+            ])
+        });
+
+        let encoded = hex::decode("00000000080102030405060708")?;
+        let mut cursor = Cursor::new(encoded.clone());
+        let message = Msg::read(&mut cursor).await?;
+        assert!(
+            matches!(message, Msg { data: BinaryDataCache { data: Some(vec) }, .. } if vec == encoded)
         );
         Ok(())
     }

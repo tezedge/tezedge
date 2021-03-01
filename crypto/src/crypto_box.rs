@@ -50,7 +50,9 @@ impl From<Blake2bError> for PublicKeyError {
     }
 }
 
-fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(buf: B) -> Result<[u8; CRYPTO_KEY_SIZE], CryptoError> {
+fn ensure_crypto_key_bytes<B: AsRef<[u8]>>(
+    buf: B,
+) -> Result<[u8; CRYPTO_KEY_SIZE as usize], CryptoError> {
     let buf = buf.as_ref();
 
     // check size

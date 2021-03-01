@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::VecDeque;
 use std::sync::Arc;
+use std::{collections::VecDeque, future::Future, pin::Pin};
 
 use bytes::Buf;
 
@@ -10,11 +10,15 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind};
 use tezos_encoding::encoding::{CustomCodec, Encoding, Field, HasEncoding};
 use tezos_encoding::ser::Error;
 use tezos_encoding::types::Value;
+use tezos_encoding::{
+    binary_async_reader::BinaryRead,
+    binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind},
+};
 use tezos_encoding::{has_encoding, safe};
+use tokio::io::AsyncReadExt;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
@@ -522,5 +526,62 @@ impl CustomCodec for PathCodec {
                 _ => (),
             }
         }
+    }
+
+    fn decode_async<'a>(
+        &self,
+        buf: &'a mut (dyn BinaryRead + Unpin + Send),
+        _encoding: &Encoding,
+    ) -> Pin<Box<dyn Future<Output = Result<Value, BinaryReaderError>> + Send + 'a>> {
+        Box::pin(async move {
+            let mut hash = [0; HashType::OperationListListHash.size()];
+            enum PathNode {
+                Left,
+                Right(Hash),
+            }
+            let mut nodes = Vec::new();
+            loop {
+                match buf.read_u8().await? {
+                    0xF0 => {
+                        nodes.push(PathNode::Left);
+                    }
+                    0x0F => {
+                        buf.read_exact(&mut hash).await?;
+                        nodes.push(PathNode::Right(hash.to_vec()));
+                    }
+                    0x00 => {
+                        let mut result = Vec::with_capacity(nodes.len());
+                        for node in nodes.iter().rev() {
+                            match node {
+                                PathNode::Left => {
+                                    buf.read_exact(&mut hash).await?;
+                                    result.push(Self::mk_left(&hash));
+                                }
+                                PathNode::Right(hash) => {
+                                    result.push(Self::mk_right(&hash));
+                                }
+                            }
+                        }
+                        result.reverse();
+                        return Ok(Value::List(result));
+                    }
+                    t => {
+                        return Err(BinaryReaderErrorKind::UnsupportedTag { tag: t as u16 })?;
+                    }
+                }
+                match MAX_PASS_MERKLE_DEPTH {
+                    Some(max) => {
+                        if nodes.len() > max {
+                            return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                                name: "Path".to_string(),
+                                boundary: max,
+                                actual: ActualSize::Exact(nodes.len()),
+                            })?;
+                        }
+                    }
+                    _ => (),
+                }
+            }
+        })
     }
 }

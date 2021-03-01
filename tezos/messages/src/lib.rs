@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
+#![recursion_limit = "1024"]
 
 //! This crate provides definitions of tezos messages.
 

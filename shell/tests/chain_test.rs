@@ -1354,7 +1354,12 @@ mod test_node_peer {
             let mut rx = rx.lock().await;
             let mut rx = rx.take().unwrap();
             while connected.load(Ordering::Acquire) {
-                match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
+                match timeout(
+                    READ_TIMEOUT_LONG,
+                    rx.read_dynamic_message::<PeerMessageResponse>(),
+                )
+                .await
+                {
                     Ok(res) => match res {
                         Ok(msg) => {
                             let msg_type = msg_type(&msg);

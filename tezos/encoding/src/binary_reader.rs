@@ -4,7 +4,10 @@
 //! Tezos binary data reader.
 
 use failure::ResultExt;
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    num::TryFromIntError,
+};
 
 use bit_vec::BitVec;
 use bytes::Buf;
@@ -23,14 +26,14 @@ pub type BinaryReaderError = EncodingError<BinaryReaderErrorKind>;
 
 /// Actual size of encoded data
 #[derive(Debug, Clone, Copy)]
-pub enum ActualSize {
+pub enum ActualSize<T> {
     /// Exact size
-    Exact(usize),
+    Exact(T),
     /// Unknown size exceeding the limit
-    GreaterThan(usize),
+    GreaterThan(T),
 }
 
-impl Display for ActualSize {
+impl<T: Display> Display for ActualSize<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ActualSize::Exact(size) => write!(f, "{}", size),
@@ -42,6 +45,9 @@ impl Display for ActualSize {
 /// Kind of error for [BinaryReaderError]
 #[derive(Debug, Fail, Clone)]
 pub enum BinaryReaderErrorKind {
+    /// IO Error
+    #[fail(display = "I/O error: {}", _0)]
+    IOError(String, std::io::ErrorKind),
     /// More bytes were expected than there were available in input buffer.
     #[fail(display = "Input underflow, missing {} bytes", bytes)]
     Underflow { bytes: usize },
@@ -55,6 +61,9 @@ pub enum BinaryReaderErrorKind {
     /// may simply mean that we have not yet defined tag in encoding.
     #[fail(display = "No tag found for id: 0x{:X}", tag)]
     UnsupportedTag { tag: u16 },
+    ///
+    #[fail(display = "Unexpected encoding: {}", _0)]
+    UnexpectedEncoding(String),
     /// Encoding boundary constraint violation
     #[fail(
         display = "Encoded data {} exceeded its size boundary: {}, actual: {}",
@@ -63,11 +72,23 @@ pub enum BinaryReaderErrorKind {
     EncodingBoundaryExceeded {
         name: String,
         boundary: usize,
-        actual: ActualSize,
+        actual: ActualSize<usize>,
     },
     /// Arithmetic overflow
     #[fail(display = "Arithmetic overflow while encoding {:?}", encoding)]
     ArithmeticOverflow { encoding: &'static str },
+    /// Int conversion error
+    #[fail(display = "Error while converting integer value: {:?}", _0)]
+    FromIntError(TryFromIntError),
+    /// Request for remaining bytes for non-compatible read
+    #[fail(display = "Remaining bytes unknown")]
+    RemainingUnknown,
+}
+
+impl From<std::io::Error> for BinaryReaderError {
+    fn from(error: std::io::Error) -> Self {
+        BinaryReaderErrorKind::IOError(error.to_string(), error.kind()).into()
+    }
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -91,6 +112,12 @@ impl From<crate::bit_utils::BitsError> for BinaryReaderError {
             error: crate::de::Error::custom(format!("Bits operation error: {:?}", source)),
         }
         .into()
+    }
+}
+
+impl From<TryFromIntError> for BinaryReaderError {
+    fn from(error: TryFromIntError) -> Self {
+        BinaryReaderErrorKind::FromIntError(error).into()
     }
 }
 
