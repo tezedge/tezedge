@@ -16,11 +16,9 @@ use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
-use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
 use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use std::path::Path;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
@@ -697,47 +695,47 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         }
     }
 
-    // print dir size
-    print_dir(3, &root_dir_temp_storage_path, true)?;
-    print_dir(3, &root_context_db_path, true)?;
+    // generate merkle stats
+    let merkle_stats = stats::generate_merkle_context_stats(node.tmp_storage.storage())?;
+
+    // generate storage stats
+    let mut disk_usage_stats = Vec::new();
+    disk_usage_stats.extend(stats::generate_dir_stats(
+        "TezEdge DBs:",
+        3,
+        &root_dir_temp_storage_path,
+        true,
+    )?);
+    disk_usage_stats.extend(stats::generate_dir_stats(
+        "Ocaml context:",
+        3,
+        &root_context_db_path,
+        true,
+    )?);
+
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
 
+    // print stats
+    println!();
+    println!();
+    println!("==========================");
+    println!("Storage disk usage stats:");
+    println!("==========================");
+    disk_usage_stats
+        .iter()
+        .for_each(|stat| println!("{}", stat));
+    println!();
+    println!();
+    println!("==========================");
+    println!("Merkle/context stats:");
+    println!("==========================");
+    merkle_stats.iter().for_each(|stat| println!("{}", stat));
+    println!();
+    println!();
+
     Ok(())
-}
-
-fn print_dir<P: AsRef<Path>>(
-    depth: u64,
-    path: P,
-    human_format: bool,
-) -> Result<(), failure::Error> {
-    let mut options = DirOptions::new();
-    options.depth = depth;
-    let dir_content = get_dir_content2(path, &options)?;
-    for directory in dir_content.directories {
-        let dir_size = if human_format {
-            human_readable(get_size(&directory)?)
-        } else {
-            get_size(&directory)?.to_string()
-        };
-        println!("{} {}", &directory, dir_size); // print directory path and size
-    }
-    Ok(())
-}
-
-fn human_readable(bytes: u64) -> String {
-    let mut bytes = bytes as i64;
-    if -1000 < bytes && bytes < 1000 {
-        return format!("{} B", bytes);
-    }
-    let mut ci = "kMGTPE".chars();
-    while bytes <= -999_950 || bytes >= 999_950 {
-        bytes /= 1000;
-        ci.next();
-    }
-
-    return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
 }
 
 #[ignore]
@@ -755,7 +753,7 @@ mod test_data {
     use std::collections::HashMap;
     use std::convert::TryInto;
 
-    use failure::{format_err, Fail};
+    use failure::format_err;
 
     use crypto::hash::{BlockHash, ContextHash, OperationHash};
     use tezos_api::environment::TezosEnvironment;
@@ -945,7 +943,6 @@ mod test_cases_data {
     };
 
     use crate::test_data::Db;
-    use failure::Fail;
 
     lazy_static! {
         // prepared data - we have stored 1326 request for apply block + operations for CARTHAGENET
@@ -1732,5 +1729,91 @@ mod test_actor {
             };
             result
         }
+    }
+}
+
+mod stats {
+    use std::path::Path;
+
+    use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
+    use storage::persistent::PersistentStorage;
+
+    pub fn generate_dir_stats<P: AsRef<Path>>(
+        marker: &str,
+        depth: u64,
+        path: P,
+        human_format: bool,
+    ) -> Result<Vec<String>, failure::Error> {
+        let mut stats = Vec::new();
+        stats.push(String::from(""));
+        stats.push(format!("{}", marker));
+        stats.push(String::from("------------"));
+
+        let mut options = DirOptions::new();
+        options.depth = depth;
+        let dir_content = get_dir_content2(path, &options)?;
+        for directory in dir_content.directories {
+            let dir_size = if human_format {
+                human_readable(get_size(&directory)?)
+            } else {
+                get_size(&directory)?.to_string()
+            };
+            // print directory path and size
+            stats.push(format!("{} {}", &directory, dir_size));
+        }
+
+        Ok(stats)
+    }
+
+    fn human_readable(bytes: u64) -> String {
+        let mut bytes = bytes as i64;
+        if -1000 < bytes && bytes < 1000 {
+            return format!("{} B", bytes);
+        }
+        let mut ci = "kMGTPE".chars();
+        while bytes <= -999_950 || bytes >= 999_950 {
+            bytes /= 1000;
+            ci.next();
+        }
+
+        return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
+    }
+
+    pub fn generate_merkle_context_stats(
+        persistent_storage: &PersistentStorage,
+    ) -> Result<Vec<String>, failure::Error> {
+        let mut log_for_stats = Vec::new();
+
+        // generate stats
+        let m = persistent_storage.merkle();
+        let merkle = m
+            .write()
+            .map_err(|e| failure::format_err!("Lock error: {:?}", e))?;
+        let stats = merkle.get_merkle_stats()?;
+
+        log_for_stats.push(String::from(""));
+        log_for_stats.push("Context storage global latency statistics:".to_string());
+        log_for_stats.push(String::from("------------"));
+        for (op, v) in stats.perf_stats.global.iter() {
+            log_for_stats.push(format!("{}:", op));
+            log_for_stats.push(format!(
+                "\tavg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+                v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+            ));
+        }
+        log_for_stats.push(String::from(""));
+        log_for_stats.push("Context storage per-path latency statistics:".to_string());
+        log_for_stats.push(String::from("------------"));
+        for (node, v) in stats.perf_stats.perpath.iter() {
+            log_for_stats.push(format!("{}:", node));
+            for (op, v) in v.iter() {
+                log_for_stats.push(format!(
+                    "\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+                    op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+                ));
+            }
+        }
+
+        Ok(log_for_stats)
     }
 }

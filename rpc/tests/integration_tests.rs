@@ -505,9 +505,11 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
 async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     if is_ignored(&IGNORE_PATH_PATTERNS, rpc_path) {
+        println!();
         println!("Skipping rpc_path check: {}", rpc_path);
         return Ok(());
     } else {
+        println!();
         println!("Checking: {}", rpc_path);
     }
 

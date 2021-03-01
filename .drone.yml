@@ -124,7 +124,6 @@ steps:
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
-    - cp `find ./target/release/deps/ | grep actors_apply_blocks_test | grep -v "\.d" | head -1` /artifacts/actors_apply_blocks_test
     - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` /artifacts/protocol_runner_test
     # copy test resources
     - cp ./shell/tests/resources/apply_block_request_until_1326.zip /artifacts/test_data/tests/resources
@@ -313,7 +312,7 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
 
-- name: bootstrap-and-mempool-shell-test
+- name: bootstrap-and-mempool-with_stats-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
