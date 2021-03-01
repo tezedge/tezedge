@@ -32,3 +32,6 @@ members = [
     "fuzz/peer_response_message",
     "fuzz/protocol_message",
 ]
+
+[patch.crates-io]
+headers = { git = "https://github.com/hyperium/headers", rev = "9762ea048fde589527c9cc54ddbbad25d2d8256d" }
