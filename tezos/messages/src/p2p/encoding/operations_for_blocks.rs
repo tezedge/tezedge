@@ -10,7 +10,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_encoding::binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind};
 use tezos_encoding::encoding::{CustomCodec, Encoding, Field, HasEncoding};
 use tezos_encoding::ser::Error;
 use tezos_encoding::types::Value;
@@ -506,16 +506,17 @@ impl CustomCodec for PathCodec {
                     return Ok(Value::List(result));
                 }
                 t => {
-                    return Err(BinaryReaderError::UnsupportedTag { tag: t as u16 });
+                    return Err(BinaryReaderErrorKind::UnsupportedTag { tag: t as u16 })?;
                 }
             }
             match MAX_PASS_MERKLE_DEPTH {
                 Some(max) => {
                     if nodes.len() > max {
-                        return Err(BinaryReaderError::EncodingBoundaryExceeded {
+                        return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
                             name: "Path".to_string(),
                             boundary: max,
-                        });
+                            actual: ActualSize::Exact(nodes.len()),
+                        })?;
                     }
                 }
                 _ => (),
