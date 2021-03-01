@@ -41,7 +41,7 @@ impl DeployMonitor {
     }
 
     async fn collect_node_logs(&self) -> Result<serde_json::Value, failure::Error> {
-        match reqwest::get("http://localhost:17732/v2/log?limit=100").await {
+        match reqwest::get("http://localhost:17732/v2/log?limit=2000").await {
             Ok(result) => Ok(result.json::<serde_json::Value>().await?),
             Err(e) => bail!("Error collecting node logs from debugger: {:?}", e),
         }
