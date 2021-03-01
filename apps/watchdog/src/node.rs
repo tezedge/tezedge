@@ -29,7 +29,6 @@ pub struct TezedgeNode;
 impl Node for TezedgeNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         let disk_data = TezedgeDiskData::new(
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "debugger_db"))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
             dir::get_size(&format!(
                 "{}/{}",
@@ -89,7 +88,7 @@ pub struct OcamlNode;
 impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         Ok(OcamlDiskData::new(
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
+            // dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
         )

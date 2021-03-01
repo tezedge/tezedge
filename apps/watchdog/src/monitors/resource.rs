@@ -17,7 +17,7 @@ use crate::node::{Node, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
 
 /// The max capacity of the VecDeque holding the measurements
-pub const MEASUREMENTS_MAX_CAPACITY: usize = 1440;
+pub const MEASUREMENTS_MAX_CAPACITY: usize = 40320;
 
 #[derive(Clone, Debug)]
 pub struct ResourceMonitor {

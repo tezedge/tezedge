@@ -56,10 +56,11 @@ async fn main() {
             env.image_monitor_interval,
             log.clone(),
             running.clone(),
+            env.cleanup_volumes,
         );
         thread_handles.push(deploy_handle);
     } else {
-        start_stack(&env.compose_file_path, slack_server.clone(), &log)
+        start_stack(&env.compose_file_path, slack_server.clone(), &log, env.cleanup_volumes)
             .await
             .expect("Stack failed to start");
 
@@ -70,6 +71,7 @@ async fn main() {
             env.image_monitor_interval,
             log.clone(),
             running.clone(),
+            env.cleanup_volumes,
         );
         thread_handles.push(deploy_handle);
 
@@ -128,7 +130,7 @@ async fn main() {
 
     // cleanup
     info!(log, "Cleaning up containers");
-    shutdown_and_cleanup(&env.compose_file_path, slack_server, &log)
+    shutdown_and_cleanup(&env.compose_file_path, slack_server, &log, env.cleanup_volumes)
         .await
         .expect("Cleanup failed");
     info!(log, "Shutdown complete");
