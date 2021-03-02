@@ -47,7 +47,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
 
-use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
+use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
@@ -197,10 +197,6 @@ pub enum MerkleError {
     HashConversionError { error: TryFromSliceError },
     #[fail(display = "Failed to encode hash: {}", error)]
     HashError { error: FromBytesError },
-    #[fail(display = "Invalid output size")]
-    InvalidOutputSize,
-    #[fail(display = "Expected value instead of `None` for {}", _0)]
-    ValueExpected(&'static str),
     #[fail(display = "Invalid state: {}", _0)]
     InvalidState(&'static str),
     #[fail(display = "GC was called before first commit")]
@@ -234,12 +230,6 @@ impl From<TryFromSliceError> for MerkleError {
 impl From<FromBytesError> for MerkleError {
     fn from(error: FromBytesError) -> Self {
         MerkleError::HashError { error }
-    }
-}
-
-impl From<InvalidOutputSize> for MerkleError {
-    fn from(_: InvalidOutputSize) -> Self {
-        MerkleError::InvalidOutputSize
     }
 }
 
@@ -329,7 +319,7 @@ fn encode_irmin_node_kind(kind: &NodeKind) -> [u8; 8] {
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
-fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
+fn hash_tree(tree: &Tree) -> Result<EntryHash, StorageBackendError> {
     let mut hasher = VarBlake2b::new(HASH_LEN)?;
 
     hasher.update(&(tree.len() as u64).to_be_bytes());
@@ -347,7 +337,7 @@ fn hash_tree(tree: &Tree) -> Result<EntryHash, MerkleError> {
 // Calculates hash of BLOB
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
-fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
+fn hash_blob(blob: &ContextValue) -> Result<EntryHash, StorageBackendError> {
     let mut hasher = VarBlake2b::new(HASH_LEN)?;
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
@@ -363,7 +353,7 @@ fn hash_blob(blob: &ContextValue) -> Result<EntryHash, MerkleError> {
 // <time in epoch format (8bytes)
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
-fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
+fn hash_commit(commit: &Commit) -> Result<EntryHash, StorageBackendError> {
     let mut hasher = VarBlake2b::new(HASH_LEN)?;
     hasher.update(&(HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
@@ -373,7 +363,7 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     } else {
         let parent_commit_hash = commit
             .parent_commit_hash
-            .ok_or_else(|| MerkleError::ValueExpected("parent_commit_hash"))?;
+            .ok_or_else(|| StorageBackendError::ValueExpected("parent_commit_hash"))?;
         hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
         hasher.update(&(parent_commit_hash.len() as u64).to_be_bytes());
         hasher.update(&parent_commit_hash);
@@ -384,10 +374,10 @@ fn hash_commit(commit: &Commit) -> Result<EntryHash, MerkleError> {
     hasher.update(&(commit.message.len() as u64).to_be_bytes());
     hasher.update(&commit.message.clone().into_bytes());
 
-    hasher.finalize_boxed().as_ref().try_into()
+    Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
-pub fn hash_entry(entry: &Entry) -> Result<EntryHash, TryFromSliceError> {
+pub fn hash_entry(entry: &Entry) -> Result<EntryHash, StorageBackendError> {
     match entry {
         Entry::Commit(commit) => hash_commit(&commit),
         Entry::Tree(tree) => hash_tree(&tree),

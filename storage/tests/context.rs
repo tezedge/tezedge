@@ -30,7 +30,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
 
     // context
     let mut context = TezedgeContext::new(
-        BlockStorage::new(&persistent_storage),
+        Some(BlockStorage::new(&persistent_storage)),
         persistent_storage.merkle(),
     );
 
@@ -82,7 +82,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
 
     // context
     let mut context = TezedgeContext::new(
-        BlockStorage::new(&persistent_storage),
+        Some(BlockStorage::new(&persistent_storage)),
         persistent_storage.merkle(),
     );
 
@@ -260,7 +260,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
 
     // context
     let mut context = TezedgeContext::new(
-        BlockStorage::new(&persistent_storage),
+        Some(BlockStorage::new(&persistent_storage)),
         persistent_storage.merkle(),
     );
 
