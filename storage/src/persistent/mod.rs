@@ -162,7 +162,7 @@ impl PersistentStorage {
                 }
                 KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
                 KeyValueStoreBackend::Sled { path } => {
-                    let sled = sled::Config::new().path(path).open().unwrap();
+                    let sled = sled::Config::new().path(path).open()?;
                     MerkleStorage::new(Box::new(SledBackend::new(sled)))
                 }
                 KeyValueStoreBackend::BTreeMap => {

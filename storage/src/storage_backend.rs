@@ -72,7 +72,7 @@ pub fn collect_hashes(
 ) -> Result<(), StorageBackendError> {
     batch.insert(hash_entry(entry)?);
 
-    match cache.get(&hash_entry(entry).unwrap()) {
+    match cache.get(&hash_entry(entry)?) {
         // if we know subtree already lets just use it
         Some(v) => {
             batch.extend(v);
@@ -89,7 +89,7 @@ pub fn collect_hashes(
                         let entry = fetch_entry_from_store(store, child_node.entry_hash)?;
                         collect_hashes(&entry, &mut b, cache, store)?;
                     }
-                    cache.insert(hash_entry(entry).unwrap(), b.clone());
+                    cache.insert(hash_entry(entry)?, b.clone());
                     batch.extend(b);
                     Ok(())
                 }

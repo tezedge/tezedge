@@ -66,7 +66,7 @@ impl ContextListener {
 
             thread::spawn(move || -> Result<(), Error> {
                 let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                    BlockStorage::new(&persistent_storage),
+                    Some(BlockStorage::new(&persistent_storage)),
                     persistent_storage.merkle(),
                 ));
 

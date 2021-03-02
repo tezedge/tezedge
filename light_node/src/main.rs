@@ -609,7 +609,7 @@ fn main() {
         .expect("cannot initialize persitent storage");
 
         let tezedge_context = TezedgeContext::new(
-            BlockStorage::new(&persistent_storage),
+            Some(BlockStorage::new(&persistent_storage)),
             persistent_storage.merkle(),
         );
 
