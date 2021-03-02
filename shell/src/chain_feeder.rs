@@ -799,6 +799,7 @@ fn feed_chain_to_protocol(
                                            "chain_id" => chain_id.to_base58_check(),
                                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
+                                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
                                            "sender" => sender_to_string(&bootstrapper));
                             }
 
@@ -1024,7 +1025,7 @@ fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(300), Duration::from_millis(10));
+    (Duration::from_secs(60 * 60), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
