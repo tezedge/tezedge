@@ -100,7 +100,7 @@ pub fn decode_stream() {
     let NoncePair {
         mut remote,
         mut local,
-    } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming);
+    } = generate_nonces(&messages[0].message, &messages[1].message, is_incoming).unwrap();
 
     let decrypted_message = precomputed_key.decrypt(&messages[2].message[2..], &local);
     assert!(decrypted_message.is_ok(), "can't decrypt sent metadata");

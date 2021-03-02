@@ -19,7 +19,6 @@ use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::ChainFeeder;
-use shell::chain_feeder_channel::ChainFeederChannel;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
@@ -259,7 +258,7 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    info!(log, "Initializing protocol runners... (3/4)");
+    info!(log, "Initializing protocol runners... (4/5)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(
@@ -307,7 +306,7 @@ fn block_on_actors(
     );
     info!(log, "Protocol runners initialized");
 
-    info!(log, "Initializing actors... (4/4)");
+    info!(log, "Initializing actors... (5/5)");
 
     // create partial (global) states for sharing between threads/actors
     let local_current_head_state = init_current_head_state();
@@ -333,8 +332,6 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let chain_feeder_channel =
-        ChainFeederChannel::actor(&actor_system).expect("Failed to create chain feeder channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     let _ = ContextListener::actor(
@@ -362,7 +359,6 @@ fn block_on_actors(
         &actor_system,
         chain_current_head_manager,
         shell_channel.clone(),
-        chain_feeder_channel.clone(),
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
@@ -375,7 +371,6 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
-        chain_feeder_channel,
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
@@ -540,8 +535,19 @@ fn main() {
     // Creates default logger
     let log = create_logger(&env);
 
+    // Validate zcash-params
+    info!(log, "Checking zcash-params for sapling... (1/5)");
+    if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
+        let description = env.ffi.zcash_param.description("'--init-sapling-spend-params-file=<spend-file-path>' / '--init-sapling-output-params-file=<output-file-path'");
+        error!(log, "Failed to validate zcash-params required for sapling support"; "description" => description.clone(), "reason" => format!("{}", e));
+        panic!(
+            "Failed to validate zcash-params required for sapling support, reason: {}, description: {}",
+            e, description
+        );
+    }
+
     // Loads tezos identity based on provided identity-file argument. In case it does not exist, it will try to automatically generate it
-    info!(log, "Loading identity... (1/4)");
+    info!(log, "Loading identity... (2/5)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
             info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
@@ -568,7 +574,7 @@ fn main() {
     system::init_limits(&log);
 
     // create/initialize databases
-    info!(log, "Loading databases... (2/4)");
+    info!(log, "Loading databases... (3/5)");
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let cache = [

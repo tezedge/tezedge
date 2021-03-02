@@ -1,23 +1,29 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
+    env,
+    ffi::OsString,
+    fs,
 };
 
 use chrono::prelude::*;
 use chrono::ParseError;
-use enum_iterator::IntoEnumIterator;
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
+use slog::{debug, info, Logger};
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
-use crypto::base58::FromBase58CheckError;
 use crypto::hash::{
     chain_id_from_block_hash, BlockHash, ChainId, ContextHash, OperationListListHash, ProtocolHash,
 };
+use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
 use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
@@ -32,16 +38,41 @@ pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, Fro
 }
 
 /// Enum representing different Tezos environment.
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, IntoEnumIterator)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezosEnvironment {
     Alphanet,
     Babylonnet,
     Carthagenet,
     Delphinet,
     Edonet,
+    Edo2net,
     Mainnet,
     Zeronet,
     Sandbox,
+}
+
+impl TezosEnvironment {
+    pub fn possible_values() -> Vec<&'static str> {
+        let mut possible_values = Vec::new();
+        for sp in TezosEnvironment::iter() {
+            possible_values.extend(sp.supported_values());
+        }
+        possible_values
+    }
+
+    fn supported_values(&self) -> Vec<&'static str> {
+        match self {
+            TezosEnvironment::Mainnet => vec!["mainnet"],
+            TezosEnvironment::Alphanet => vec!["alphanet"],
+            TezosEnvironment::Babylonnet => vec!["babylonnet", "babylon"],
+            TezosEnvironment::Carthagenet => vec!["carthagenet", "carthage"],
+            TezosEnvironment::Delphinet => vec!["delphinet", "delphi"],
+            TezosEnvironment::Edonet => vec!["edonet", "edo"],
+            TezosEnvironment::Edo2net => vec!["edo2net", "edo2"],
+            TezosEnvironment::Zeronet => vec!["zeronet"],
+            TezosEnvironment::Sandbox => vec!["sandbox"],
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -51,20 +82,17 @@ impl FromStr for TezosEnvironment {
     type Err = ParseTezosEnvironmentError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "alphanet" => Ok(TezosEnvironment::Alphanet),
-            "babylonnet" | "babylon" => Ok(TezosEnvironment::Babylonnet),
-            "carthagenet" | "carthage" => Ok(TezosEnvironment::Carthagenet),
-            "delphinet" | "delphi" => Ok(TezosEnvironment::Delphinet),
-            "edonet" | "edo" => Ok(TezosEnvironment::Edonet),
-            "mainnet" => Ok(TezosEnvironment::Mainnet),
-            "zeronet" => Ok(TezosEnvironment::Zeronet),
-            "sandbox" => Ok(TezosEnvironment::Sandbox),
-            _ => Err(ParseTezosEnvironmentError(format!(
-                "Invalid variant name: {}",
-                s
-            ))),
+        let s = s.to_ascii_lowercase();
+        for sp in TezosEnvironment::iter() {
+            if sp.supported_values().contains(&s.as_str()) {
+                return Ok(sp);
+            }
         }
+
+        Err(ParseTezosEnvironmentError(format!(
+            "Invalid variant name: {}",
+            s
+        )))
     }
 }
 
@@ -193,6 +221,32 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         }),
     });
 
+    env.insert(TezosEnvironment::Edo2net, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2021-02-11T14:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisdae8bZxCCxh".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+        },
+        bootstrap_lookup_addresses: vec![
+            "edonet.tezos.co.il".to_string(),
+            "188.40.128.216:29732".to_string(),
+            "51.79.165.131".to_string(),
+            "edo2net.kaml.fr".to_string(),
+            "edonet2.smartpy.io".to_string(),
+            "edonetb.boot.tezostaquito.io".to_string(),
+        ],
+        version: "TEZOS_EDO2NET_2021-02-11T14:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+        }),
+    });
+
     env.insert(
         TezosEnvironment::Mainnet,
         TezosEnvironmentConfiguration {
@@ -218,10 +272,16 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
                         "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
                     ),
                 ],
-                user_activated_protocol_overrides: vec![(
-                    "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
-                    "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
-                )],
+                user_activated_protocol_overrides: vec![
+                    (
+                        "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
+                        "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
+                    ),
+                    (
+                        "PtEdoTezd3RHSC31mpxxo1npxFjoWWcFgQtxapi51Z8TLu6v6Uq".to_string(),
+                        "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA".to_string(),
+                    ),
+                ],
             },
             enable_testchain: false,
             patch_context_genesis_parameters: None,
@@ -287,6 +347,14 @@ pub enum TezosEnvironmentError {
     },
     #[fail(display = "Invalid time: {}, reason: {:?}", time, error)]
     InvalidTime { time: String, error: ParseError },
+    #[fail(display = "Blake2b digest error")]
+    Blake2bError,
+}
+
+impl From<Blake2bError> for TezosEnvironmentError {
+    fn from(_: Blake2bError) -> Self {
+        TezosEnvironmentError::Blake2bError
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -326,7 +394,7 @@ impl TezosEnvironmentConfiguration {
 
     /// Resolves main chain_id, which is computed from genesis header
     pub fn main_chain_id(&self) -> Result<ChainId, TezosEnvironmentError> {
-        Ok(chain_id_from_block_hash(&self.genesis_header_hash()?))
+        chain_id_from_block_hash(&self.genesis_header_hash()?).map_err(|e| e.into())
     }
 
     /// Resolves genesis protocol
@@ -382,6 +450,132 @@ fn parse_from_rfc3339(time: &str) -> Result<i64, TezosEnvironmentError> {
             error: e,
         })
         .map(|dt| dt.timestamp())
+}
+
+#[derive(Debug, Clone)]
+pub struct ZcashParams {
+    pub init_sapling_spend_params_file: PathBuf,
+    pub init_sapling_output_params_file: PathBuf,
+}
+
+impl ZcashParams {
+    pub const SAPLING_SPEND_PARAMS_FILE_NAME: &'static str = "sapling-spend.params";
+    pub const SAPLING_OUTPUT_PARAMS_FILE_NAME: &'static str = "sapling-output.params";
+
+    pub fn description(&self, args: &str) -> String {
+        format!(
+            "\nOne of candidate dirs {:?} should contains files: [{}, {}],\n \
+            1. these files could be created on startup, but you must provide correct existing paths as arguments: {},\n \
+            2. or you may download https://raw.githubusercontent.com/zcash/zcash/master/zcutil/fetch-params.sh and set it up",
+            self.candidate_dirs(),
+            ZcashParams::SAPLING_SPEND_PARAMS_FILE_NAME,
+            ZcashParams::SAPLING_OUTPUT_PARAMS_FILE_NAME,
+            args,
+        )
+    }
+
+    fn candidate_dirs(&self) -> Vec<PathBuf> {
+        let mut candidates = Vec::new();
+
+        // first check opam switch (this is default path of Tezos installation)
+        if let Some(opam_switch_path) = env::var_os("OPAM_SWITCH_PREFIX") {
+            candidates.push(PathBuf::from(opam_switch_path).join("share/zcash-params"));
+        }
+
+        // home dir or root
+        let home_dir = env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("/"));
+        candidates.push(home_dir.join(".zcash-params"));
+
+        // data dirs
+        let mut data_dirs = Vec::new();
+        data_dirs.push(match env::var_os("XDG_DATA_HOME") {
+            Some(xdg_data_home) => PathBuf::from(xdg_data_home),
+            None => home_dir.join(".local/share/"),
+        });
+        data_dirs.extend(
+            env::var_os("XDG_DATA_DIRS")
+                .unwrap_or_else(|| OsString::from("/usr/local/share/:/usr/share/"))
+                .as_os_str()
+                .to_str()
+                .unwrap_or("/usr/local/share/:/usr/share/")
+                .split(':')
+                .map(PathBuf::from),
+        );
+        candidates.extend(data_dirs.into_iter().map(|dir| dir.join("zcash-params")));
+
+        candidates
+    }
+
+    /// Checks correctly setup environment OS for zcash-params sapling.
+    /// Note: According to Tezos ocaml rustzcash.ml
+    pub fn assert_zcash_params(&self, log: &Logger) -> Result<(), failure::Error> {
+        // select candidate dirs
+        let candidates = self.candidate_dirs();
+
+        // check if anybody contains required files
+        debug!(log, "Possible candidates for zcash-params found"; "candidates" => format!("{:?}", candidates));
+
+        let zcash_params_dir_found = {
+            let mut found = false;
+            for candidate in candidates {
+                let spend_path = candidate.join(Self::SAPLING_SPEND_PARAMS_FILE_NAME);
+                let output_path = candidate.join(Self::SAPLING_OUTPUT_PARAMS_FILE_NAME);
+                if spend_path.exists() && output_path.exists() {
+                    info!(log, "Found existing zcash-params files";
+                               "candidate_dir" => format!("{:?}", candidate),
+                               "spend_path" => format!("{:?}", spend_path),
+                               "output_path" => format!("{:?}", output_path));
+                    found = true;
+                }
+            }
+            found
+        };
+
+        // if not found, if we need to create it from configured init files (because protocol expected it)
+        if !zcash_params_dir_found {
+            // check init files
+            if !self.init_sapling_spend_params_file.exists() {
+                return Err(failure::format_err!(
+                    "File not found for init_sapling_spend_params_file: {:?}",
+                    self.init_sapling_spend_params_file
+                ));
+            }
+            if !self.init_sapling_output_params_file.exists() {
+                return Err(failure::format_err!(
+                    "File not found for init_sapling_output_params_file: {:?}",
+                    self.init_sapling_output_params_file
+                ));
+            }
+
+            // we initialize zcash-params in user's home dir (it is one of the candidates)
+            let home_dir = env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/"));
+            let zcash_param_dir = home_dir.join(".zcash-params");
+            if !zcash_param_dir.exists() {
+                info!(log, "Creating new zcash-params dir"; "dir" => format!("{:?}", zcash_param_dir));
+                fs::create_dir_all(&zcash_param_dir)?;
+            }
+
+            info!(log, "Using configured init files for zcash-params";
+                           "spend_path" => format!("{:?}", self.init_sapling_spend_params_file),
+                           "output_path" => format!("{:?}", self.init_sapling_output_params_file));
+
+            // copy init files to dest
+            let dest_spend_path = zcash_param_dir.join(Self::SAPLING_SPEND_PARAMS_FILE_NAME);
+            let dest_output_path = zcash_param_dir.join(Self::SAPLING_OUTPUT_PARAMS_FILE_NAME);
+            fs::copy(&self.init_sapling_spend_params_file, &dest_spend_path)?;
+            fs::copy(&self.init_sapling_output_params_file, &dest_output_path)?;
+            info!(log, "Sapling zcash-params files were created";
+                           "dir" => format!("{:?}", zcash_param_dir),
+                           "spend_path" => format!("{:?}", dest_spend_path),
+                           "output_path" => format!("{:?}", dest_output_path));
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

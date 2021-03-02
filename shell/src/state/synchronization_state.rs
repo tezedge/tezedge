@@ -200,24 +200,18 @@ impl SynchronizationBootstrapState {
 
 #[cfg(test)]
 pub mod tests {
-    use std::net::SocketAddr;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
     use std::time::Duration;
 
-    use futures::lock::Mutex as TokioMutex;
-    use riker::actors::*;
-    use slog::{Drain, Level, Logger};
+    use slog::Level;
 
-    use crypto::hash::CryptoboxPublicKeyHash;
-    use networking::p2p::network_channel::NetworkChannelRef;
-    use networking::p2p::peer::Peer;
-    use networking::p2p::{network_channel::NetworkChannel, peer::BootstrapOutput};
-    use networking::PeerId;
-    use tezos_identity::Identity;
-    use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
+    use networking::p2p::network_channel::NetworkChannel;
 
     use crate::state::peer_state::PeerState;
+    use crate::state::tests::prerequisites::{
+        create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
+    };
 
     use super::*;
 
@@ -234,17 +228,13 @@ pub mod tests {
     #[test]
     fn test_resolve_is_bootstrapped() {
         // prerequizities
-        let log = create_logger(Level::Debug);
-        let tokio_runtime = create_tokio_runtime();
-        let actor_system = SystemBuilder::new()
-            .name("test_actors_apply_blocks_and_check_context")
-            .log(log.clone())
-            .create()
-            .expect("Failed to create actor system");
+        let tokio_runtime = create_test_tokio_runtime();
+        let actor_system = create_test_actor_system(create_logger(Level::Debug));
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let mut peer_state1 = peer(&actor_system, network_channel.clone(), &tokio_runtime);
-        let mut peer_state2 = peer(&actor_system, network_channel, &tokio_runtime);
+        let mut peer_state1 =
+            test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7775);
+        let mut peer_state2 = test_peer(&actor_system, network_channel, &tokio_runtime, 7776);
 
         let done_peer = |to_level, peer_state: &PeerState| -> PeerBranchSynchronizationDone {
             PeerBranchSynchronizationDone::new(peer_state.peer_id.clone(), Arc::new(to_level))
@@ -372,68 +362,5 @@ pub mod tests {
         assert!(SynchronizationBootstrapState::consider_as_bootstrapped(
             100, 100, 98,
         ));
-    }
-
-    fn create_logger(level: Level) -> Logger {
-        let drain = slog_async::Async::new(
-            slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
-                .build()
-                .fuse(),
-        )
-        .build()
-        .filter_level(level)
-        .fuse();
-
-        Logger::root(drain, slog::o!())
-    }
-
-    fn create_tokio_runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .expect("Failed to create tokio runtime")
-    }
-
-    fn peer(
-        sys: &impl ActorRefFactory,
-        network_channel: NetworkChannelRef,
-        tokio_runtime: &tokio::runtime::Runtime,
-    ) -> PeerState {
-        let socket_address: SocketAddr = "127.0.0.1:3011"
-            .parse()
-            .expect("Expected valid ip:port address");
-
-        let node_identity = Arc::new(Identity::generate(0f64));
-        let peer_public_key_hash: CryptoboxPublicKeyHash =
-            node_identity.public_key.public_key_hash();
-        let peer_id_marker = peer_public_key_hash.to_base58_check();
-
-        let metadata = MetadataMessage::new(false, false);
-        let version = NetworkVersion::new("".to_owned(), 0, 0);
-        let peer_ref = Peer::actor(
-            sys,
-            network_channel,
-            tokio_runtime.handle().clone(),
-            BootstrapOutput(
-                Arc::new(TokioMutex::new(None)),
-                Arc::new(TokioMutex::new(None)),
-                peer_public_key_hash.clone(),
-                peer_id_marker.clone(),
-                metadata.clone(),
-                version,
-                socket_address,
-            ),
-        )
-        .unwrap();
-
-        PeerState::new(
-            Arc::new(PeerId::new(
-                peer_ref,
-                peer_public_key_hash,
-                peer_id_marker,
-                socket_address,
-            )),
-            &metadata,
-        )
     }
 }

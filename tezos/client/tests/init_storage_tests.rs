@@ -3,7 +3,7 @@
 
 use std::{collections::HashSet, convert::TryFrom};
 
-use enum_iterator::IntoEnumIterator;
+use strum::IntoEnumIterator;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
@@ -13,7 +13,7 @@ use tezos_client::client;
 mod common;
 
 #[test]
-fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Error> {
+fn test_init_empty_context_for_all_enviroment_nets() {
     // init runtime and turn on/off ocaml logging
     client::change_runtime_configuration(TezosRuntimeConfiguration {
         debug_mode: false,
@@ -29,9 +29,8 @@ fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Erro
     let mut protocol_hashes: HashSet<ProtocolHash> = HashSet::new();
 
     // run init storage for all nets
-    let iterator = TezosEnvironment::into_enum_iter();
     let mut environment_counter = 0;
-    iterator.for_each(|net| {
+    TezosEnvironment::iter().for_each(|net| {
         environment_counter += 1;
 
         let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
@@ -68,8 +67,6 @@ fn test_init_empty_context_for_all_enviroment_nets() -> Result<(), failure::Erro
     // check result - we should have
     assert_eq!(environment_counter, genesis_commit_hashes.len());
     assert!(protocol_hashes.len() > 1);
-
-    Ok(())
 }
 
 #[test]

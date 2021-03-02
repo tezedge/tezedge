@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding;
 
-use super::limits::*;
+use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
@@ -40,7 +40,7 @@ has_encoding!(AdvertiseMessage, ADVERTISE_MESSAGE_ENCODING, {
         "id",
         Encoding::bounded_list(
             ADVERTISE_ID_LIST_MAX_LENGTH,
-            Encoding::BoundedString(P2P_POINT_MAX_LENGTH),
+            Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
         ),
     )])
 });

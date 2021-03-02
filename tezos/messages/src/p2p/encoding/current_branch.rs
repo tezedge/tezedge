@@ -16,8 +16,6 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
-pub const HISTORY_MAX_SIZE: u8 = CURRENT_BRANCH_HISTORY_MAX_LENGTH as u8; // 200
-
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]

@@ -17,12 +17,16 @@ use crate::merkle_storage::{
 };
 use crate::{BlockStorage, BlockStorageReader, StorageError};
 
+// An unique tree identifier during a block application
+pub type TreeId = i32;
+
 /// Abstraction on context manipulation
 pub trait ContextApi {
     // set key-value
     fn set(
         &mut self,
         context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key: &ContextKey,
         value: &ContextValue,
     ) -> Result<(), ContextError>;
@@ -41,17 +45,20 @@ pub trait ContextApi {
     fn delete_to_diff(
         &self,
         context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key_prefix_to_delete: &ContextKey,
     ) -> Result<(), ContextError>;
     fn remove_recursively_to_diff(
         &self,
         context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key_prefix_to_remove: &ContextKey,
     ) -> Result<(), ContextError>;
     // copies subtree under 'from_key' to new subtree under 'to_key'
     fn copy_to_diff(
         &self,
         context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), ContextError>;
@@ -89,17 +96,22 @@ pub trait ContextApi {
     /// TODO: TE-203 - remove when context_listener will not be used
     // check if context_hash is committed
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
+
+    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError>;
+
+    fn get_merkle_root(&mut self) -> EntryHash;
 }
 
 impl ContextApi for TezedgeContext {
     fn set(
         &mut self,
         _context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key: &ContextKey,
         value: &ContextValue,
     ) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.set(key, value)?;
+        merkle.set(new_tree_id, key, value)?;
 
         Ok(())
     }
@@ -162,31 +174,34 @@ impl ContextApi for TezedgeContext {
     fn delete_to_diff(
         &self,
         _context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key_prefix_to_delete: &ContextKey,
     ) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.delete(key_prefix_to_delete)?;
+        merkle.delete(new_tree_id, key_prefix_to_delete)?;
         Ok(())
     }
 
     fn remove_recursively_to_diff(
         &self,
         _context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         key_prefix_to_remove: &ContextKey,
     ) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.delete(key_prefix_to_remove)?;
+        merkle.delete(new_tree_id, key_prefix_to_remove)?;
         Ok(())
     }
 
     fn copy_to_diff(
         &self,
         _context_hash: &Option<ContextHash>,
+        new_tree_id: TreeId,
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), ContextError> {
         let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.copy(from_key, to_key)?;
+        merkle.copy(new_tree_id, from_key, to_key)?;
         Ok(())
     }
 
@@ -264,6 +279,16 @@ impl ContextApi for TezedgeContext {
         self.block_storage
             .contains_context_hash(context_hash)
             .map_err(|e| ContextError::StorageError { error: e })
+    }
+
+    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError> {
+        let mut merkle = self.merkle.write().expect("lock poisoning");
+        merkle.stage_checkout(tree_id)
+    }
+
+    fn get_merkle_root(&mut self) -> EntryHash {
+        let merkle = self.merkle.read().expect("lock poisoning");
+        merkle.get_staged_root_hash()
     }
 }
 

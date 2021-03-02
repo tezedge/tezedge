@@ -131,7 +131,7 @@ roundtrip_test!(
 fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let header: BlockHeader = BlockHeader::from_bytes(hex::decode(HEADER).unwrap())?;
     let expected_block_hash: BlockHash = header.message_typed_hash()?;
-    let expected_chain_id = chain_id_from_block_hash(&expected_block_hash);
+    let expected_chain_id = chain_id_from_block_hash(&expected_block_hash)?;
 
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
         ocaml_frame!(rt, (header_root), {
@@ -301,7 +301,7 @@ fn test_context_callback() {
     let handle = thread::spawn(move || {
         let mut received = 0;
         for _ in 0..expected_count {
-            let action = context_receive().unwrap().action;
+            let action = context_receive().unwrap();
             received += 1;
 
             match action {

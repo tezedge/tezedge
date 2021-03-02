@@ -34,9 +34,6 @@ use tezos_wrapper::service::{
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValidatedBlock};
-use crate::chain_feeder_channel::{
-    ChainFeederChannelMsg, ChainFeederChannelRef, ChainFeederChannelTopic,
-};
 use crate::peer_branch_bootstrapper::{BlockAlreadyApplied, PeerBranchBootstrapperRef};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::stats::apply_block_stats::BlockValidationTimer;
@@ -106,7 +103,7 @@ impl CheckBlocksForApply {
 }
 
 /// Message commands [`ChainFeeder`] to apply block.
-struct ApplyBlock {
+pub(crate) struct ApplyBlock {
     envelope: ApplyCompletedBlock,
     chain_feeder: ChainFeederRef,
     request: ApplyBlockRequest,
@@ -127,7 +124,7 @@ impl ApplyBlock {
 }
 
 /// Internal queue commands
-enum Event {
+pub(crate) enum Event {
     ApplyBlock(ApplyBlock),
     ShuttingDown,
 }
@@ -137,7 +134,6 @@ enum Event {
 pub struct ChainFeeder {
     /// Just for subscribing to shell shutdown channel
     shell_channel: ShellChannelRef,
-    chain_feeder_channel: ChainFeederChannelRef,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -172,7 +168,6 @@ impl ChainFeeder {
         sys: &impl ActorRefFactory,
         chain_current_head_manager: ChainCurrentHeadManagerRef,
         shell_channel: ShellChannelRef,
-        chain_feeder_channel: ChainFeederChannelRef,
         persistent_storage: PersistentStorage,
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
@@ -183,7 +178,6 @@ impl ChainFeeder {
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
                 chain_current_head_manager,
-                chain_feeder_channel.clone(),
                 persistent_storage.clone(),
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
@@ -196,7 +190,6 @@ impl ChainFeeder {
             ChainFeeder::name(),
             Props::new_args((
                 shell_channel,
-                chain_feeder_channel,
                 persistent_storage,
                 Arc::new(Mutex::new(block_applier_event_sender)),
                 block_applier_run,
@@ -343,8 +336,7 @@ impl ChainFeeder {
         chain_feeder: ChainFeederRef,
         log: &Logger,
     ) -> Result<(), Error> {
-        let mut notify_on_non_processed = true;
-
+        // check all received blocks
         for block in &msg.blocks {
             if let Some(block_metadata) = self.block_meta_storage.get(&block)? {
                 // if block is already applied, check successors
@@ -362,7 +354,6 @@ impl ChainFeeder {
                             ),
                             None,
                         );
-                        notify_on_non_processed = false;
                     } else {
                         // TODO: TE-369 - refactor pinging bootstrapper
                         // if we have sender, we send him direct info
@@ -400,19 +391,6 @@ impl ChainFeeder {
             }
         }
 
-        if notify_on_non_processed {
-            if let Some(block) = msg.on_non_notify_with {
-                // TODO: TE-369 - refactor pinging bootstrapper
-                self.chain_feeder_channel.tell(
-                    Publish {
-                        msg: ChainFeederChannelMsg::BlockApplied(block),
-                        topic: ChainFeederChannelTopic::BlockApplied.into(),
-                    },
-                    None,
-                );
-            }
-        }
-
         Ok(())
     }
 }
@@ -420,7 +398,6 @@ impl ChainFeeder {
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
-        ChainFeederChannelRef,
         PersistentStorage,
         Arc<Mutex<QueueSender<Event>>>,
         Arc<AtomicBool>,
@@ -430,14 +407,12 @@ impl
     fn create_args(
         (
             shell_channel,
-            chain_feeder_channel,
             persistent_storage,
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
         ): (
             ShellChannelRef,
-            ChainFeederChannelRef,
             PersistentStorage,
             Arc<Mutex<QueueSender<Event>>>,
             Arc<AtomicBool>,
@@ -446,7 +421,6 @@ impl
     ) -> Self {
         ChainFeeder {
             shell_channel,
-            chain_feeder_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
@@ -563,7 +537,6 @@ impl From<ProtocolServiceError> for FeedChainError {
 pub(crate) struct BlockApplierThreadSpawner {
     /// actor for managing current head
     chain_current_head_manager: ChainCurrentHeadManagerRef,
-    chain_feeder_channel: ChainFeederChannelRef,
     persistent_storage: PersistentStorage,
     init_storage_data: Arc<StorageInitInfo>,
     tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -574,7 +547,6 @@ pub(crate) struct BlockApplierThreadSpawner {
 impl BlockApplierThreadSpawner {
     pub(crate) fn new(
         chain_current_head_manager: ChainCurrentHeadManagerRef,
-        chain_feeder_channel: ChainFeederChannelRef,
         persistent_storage: PersistentStorage,
         init_storage_data: Arc<StorageInitInfo>,
         tezos_env: Arc<TezosEnvironmentConfiguration>,
@@ -583,7 +555,6 @@ impl BlockApplierThreadSpawner {
     ) -> Self {
         Self {
             chain_current_head_manager,
-            chain_feeder_channel,
             persistent_storage,
             tezos_writeable_api,
             init_storage_data,
@@ -605,7 +576,6 @@ impl BlockApplierThreadSpawner {
         let block_applier_run = Arc::new(AtomicBool::new(false));
 
         let block_applier_thread = {
-            let chain_feeder_channel = self.chain_feeder_channel.clone();
             let chain_current_head_manager = self.chain_current_head_manager.clone();
             let persistent_storage = self.persistent_storage.clone();
             let tezos_writeable_api = self.tezos_writeable_api.clone();
@@ -633,7 +603,6 @@ impl BlockApplierThreadSpawner {
                             &tezos_env,
                             &init_storage_data,
                             &block_applier_run,
-                            &chain_feeder_channel,
                             &chain_current_head_manager,
                             &block_storage,
                             &block_meta_storage,
@@ -677,7 +646,6 @@ fn feed_chain_to_protocol(
     tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: &StorageInitInfo,
     apply_block_run: &AtomicBool,
-    chain_feeder_channel: &ChainFeederChannelRef,
     chain_current_head_manager: &ChainCurrentHeadManagerRef,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
@@ -789,6 +757,15 @@ fn feed_chain_to_protocol(
                                 "validation_result_message" => &apply_block_result.validation_result_message,
                                 "sender" => sender_to_string(&bootstrapper));
 
+                            if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
+                                info!(log, "Block was validated with protocol with long processing";
+                                           "block_header_hash" => block_hash.to_base58_check(),
+                                           "chain_id" => chain_id.to_base58_check(),
+                                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
+                                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
+                                           "sender" => sender_to_string(&bootstrapper));
+                            }
+
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
                             let context_wait_timer = Instant::now();
                             if let Err(e) =
@@ -822,6 +799,7 @@ fn feed_chain_to_protocol(
                                            "chain_id" => chain_id.to_base58_check(),
                                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
+                                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
                                            "sender" => sender_to_string(&bootstrapper));
                             }
 
@@ -880,14 +858,13 @@ fn feed_chain_to_protocol(
                                         ),
                                         None,
                                     );
-                                } else {
-                                    // TODO: TE-369 - refactor pinging bootstrapper
-                                    chain_feeder_channel.tell(
-                                        Publish {
-                                            msg: ChainFeederChannelMsg::BlockApplied(
-                                                block_hash.clone(),
-                                            ),
-                                            topic: ChainFeederChannelTopic::BlockApplied.into(),
+                                }
+
+                                // if we have sender, we send him direct info
+                                if let Some(bootstrapper) = bootstrapper.as_ref() {
+                                    bootstrapper.tell(
+                                        BlockAlreadyApplied {
+                                            block_hash: block_hash.clone(),
                                         },
                                         None,
                                     );
@@ -1048,8 +1025,9 @@ fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(300), Duration::from_millis(10));
+    (Duration::from_secs(60 * 60), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
+const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(

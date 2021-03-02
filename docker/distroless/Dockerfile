@@ -33,8 +33,13 @@ COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libgmp.so.10 /usr/lib/x86_64-linux-gnu/libgmp.so.10
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
 
+# Copy zcash-params init files for sapling
+COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/sapling-spend.params /
+COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/sapling-output.params /
+
 ENV LD_LIBRARY_PATH="/"
-CMD [ "/light-node", "--config-file", "/tezedge.config"]
+# Default entry point runs node with default config + several default values, which can be overriden by CMD
+ENTRYPOINT [ "/light-node", "--config-file=/tezedge.config", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--init-sapling-spend-params-file=/sapling-spend.params", "--init-sapling-output-params-file=/sapling-output.params"]
 
 FROM light-node as sandbox
 
@@ -46,4 +51,5 @@ COPY --from=build-env /lib/x86_64-linux-gnu/libusb-1.0.so.0 /lib/x86_64-linux-gn
 COPY --from=build-env /lib/x86_64-linux-gnu/libudev.so.1 /lib/x86_64-linux-gnu/libudev.so.1
 
 ENV TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
-CMD [ "/sandbox", "--log-level", "debug", "--sandbox-rpc-port", "3030", "--light-node-path", "/light-node", "--protocol-runner-path", "/protocol-runner", "--tezos-client-path", "/tezos-client"]
+# Default entry point runs sandbox launcher with default config + several default values, which can be overriden by CMD
+ENTRYPOINT [ "/sandbox", "--light-node-path=/light-node", "--protocol-runner-path=/protocol-runner", "--tezos-client-path=/tezos-client", "--log-level=debug", "--sandbox-rpc-port=3030", "--init-sapling-spend-params-file=/sapling-spend.params", "--init-sapling-output-params-file=/sapling-output.params"]

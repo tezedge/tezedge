@@ -11,8 +11,9 @@ use crypto::hash::BlockHash;
 use storage::StorageError;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
-pub mod block_state;
 pub mod bootstrap_state;
+pub mod chain_state;
+pub mod data_requester;
 pub mod head_state;
 pub mod peer_state;
 pub mod synchronization_state;
@@ -26,6 +27,17 @@ pub enum StateError {
     LockError { reason: String },
     #[fail(display = "Processing error! Reason: {:?}", reason)]
     ProcessingError { reason: String },
+}
+
+impl slog::Value for StateError {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        key: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        serializer.emit_arguments(key, &format_args!("{}", self))
+    }
 }
 
 impl<T> From<PoisonError<T>> for StateError {
@@ -168,14 +180,17 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;
+    use std::sync::Arc;
 
     use super::*;
 
-    fn block(d: u8) -> BlockHash {
-        [d; crypto::hash::HashType::BlockHash.size()]
-            .to_vec()
-            .try_into()
-            .expect("Failed to create BlockHash")
+    pub(crate) fn block(d: u8) -> Arc<BlockHash> {
+        Arc::new(
+            [d; crypto::hash::HashType::BlockHash.size()]
+                .to_vec()
+                .try_into()
+                .expect("Failed to create BlockHash"),
+        )
     }
 
     // TODO: TE-386 - remove not needed
@@ -258,7 +273,7 @@ mod tests {
     fn test_retry() {
         let mut data = MissingOperations {
             history_order_priority: 1,
-            block_hash: block(5),
+            block_hash: block(5).as_ref().clone(),
             validation_passes: HashSet::new(),
             retries: 5,
         };
@@ -270,5 +285,99 @@ mod tests {
         assert!(data.retry());
         assert!(!data.retry());
         assert!(!data.retry());
+    }
+
+    pub(crate) mod prerequisites {
+        use std::net::SocketAddr;
+        use std::sync::Arc;
+
+        use futures::lock::Mutex as TokioMutex;
+        use riker::actors::*;
+        use slog::{Drain, Level, Logger};
+
+        use crypto::hash::CryptoboxPublicKeyHash;
+        use networking::p2p::network_channel::NetworkChannelRef;
+        use networking::p2p::peer::{BootstrapOutput, Peer};
+        use networking::PeerId;
+        use tezos_identity::Identity;
+        use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
+
+        use crate::state::peer_state::{DataQueuesLimits, PeerState};
+
+        pub(crate) fn test_peer(
+            sys: &impl ActorRefFactory,
+            network_channel: NetworkChannelRef,
+            tokio_runtime: &tokio::runtime::Runtime,
+            port: u16,
+        ) -> PeerState {
+            let socket_address: SocketAddr = format!("127.0.0.1:{}", port)
+                .parse()
+                .expect("Expected valid ip:port address");
+
+            let node_identity = Arc::new(Identity::generate(0f64).unwrap());
+            let peer_public_key_hash: CryptoboxPublicKeyHash =
+                node_identity.public_key.public_key_hash().unwrap();
+            let peer_id_marker = peer_public_key_hash.to_base58_check();
+
+            let metadata = MetadataMessage::new(false, false);
+            let version = NetworkVersion::new("".to_owned(), 0, 0);
+            let peer_ref = Peer::actor(
+                sys,
+                network_channel,
+                tokio_runtime.handle().clone(),
+                BootstrapOutput(
+                    Arc::new(TokioMutex::new(None)),
+                    Arc::new(TokioMutex::new(None)),
+                    peer_public_key_hash.clone(),
+                    peer_id_marker.clone(),
+                    metadata.clone(),
+                    version,
+                    socket_address,
+                ),
+            )
+            .unwrap();
+
+            PeerState::new(
+                Arc::new(PeerId::new(
+                    peer_ref,
+                    peer_public_key_hash,
+                    peer_id_marker,
+                    socket_address,
+                )),
+                &metadata,
+                DataQueuesLimits {
+                    max_queued_block_headers_count: 10,
+                    max_queued_block_operations_count: 15,
+                },
+            )
+        }
+
+        pub(crate) fn create_test_actor_system(log: Logger) -> ActorSystem {
+            SystemBuilder::new()
+                .name("create_actor_system")
+                .log(log)
+                .create()
+                .expect("Failed to create test actor system")
+        }
+
+        pub(crate) fn create_test_tokio_runtime() -> tokio::runtime::Runtime {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create test tokio runtime")
+        }
+
+        pub(crate) fn create_logger(level: Level) -> Logger {
+            let drain = slog_async::Async::new(
+                slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+                    .build()
+                    .fuse(),
+            )
+            .build()
+            .filter_level(level)
+            .fuse();
+
+            Logger::root(drain, slog::o!())
+        }
     }
 }

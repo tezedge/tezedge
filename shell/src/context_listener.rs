@@ -3,22 +3,24 @@
 
 //! Listens for events from the `protocol_runner`.
 
+use bytes::Buf;
+use failure::Error;
+use riker::actors::*;
+use slog::{crit, debug, info, warn, Logger};
 use std::convert::TryFrom;
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use failure::Error;
-use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
-
 use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
-use storage::context::{ContextApi, TezedgeContext};
+use storage::context::{ContextApi, TezedgeContext, TreeId};
+use storage::merkle_storage::EntryHash;
 use storage::persistent::{ActionRecorder, PersistentStorage};
 use storage::BlockStorage;
-use tezos_context::channel::{ContextAction, ContextActionMessage};
+use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
@@ -185,17 +187,14 @@ fn listen_protocol_events(
 
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
-            Ok(ContextActionMessage {
-                action: ContextAction::Shutdown,
-                ..
-            }) => {
+            Ok(ContextAction::Shutdown) => {
                 // when we receive shutting down, it means just that protocol runner disconnected
                 // we dont want to stop context listener here, for example, because we are just restarting protocol runner
                 // and we want to wait for a new one to try_accept
                 // if we want to shutdown context listener, there is ShellChannelMsg for that
                 break;
             }
-            Ok(msg) => {
+            Ok(action) => {
                 if event_count % 100 == 0 {
                     debug!(
                         log,
@@ -208,24 +207,15 @@ fn listen_protocol_events(
                     );
                 }
 
-                event_count = if let ContextAction::Shutdown = &msg.action {
-                    0
-                } else {
-                    event_count + 1
-                };
+                event_count += 1;
 
-                if msg.record {
-                    // record action in the order they are really comming
-                    for recorder in action_store_backend.iter_mut() {
-                        if let Err(error) = recorder.record(&msg) {
-                            warn!(log, "Failed to store context action"; "action" => format!("{:?}", &msg.action), "reason" => format!("{}", error));
-                        }
+                for recorder in action_store_backend.iter_mut() {
+                    if let Err(error) = recorder.record(&action) {
+                        warn!(log, "Failed to store context action"; "action" => format!("{:?}", &action), "reason" => format!("{}", error));
                     }
                 }
 
-                if msg.perform {
-                    perform_context_action(&msg.action, context)?;
-                }
+                perform_context_action(&action, context)?;
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
@@ -237,6 +227,43 @@ fn listen_protocol_events(
     Ok(())
 }
 
+pub fn get_tree_id(action: &ContextAction) -> Option<TreeId> {
+    match &action {
+        ContextAction::Get { tree_id, .. }
+        | ContextAction::Mem { tree_id, .. }
+        | ContextAction::DirMem { tree_id, .. }
+        | ContextAction::Set { tree_id, .. }
+        | ContextAction::Copy { tree_id, .. }
+        | ContextAction::Delete { tree_id, .. }
+        | ContextAction::RemoveRecursively { tree_id, .. }
+        | ContextAction::Commit { tree_id, .. }
+        | ContextAction::Fold { tree_id, .. } => Some(*tree_id),
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
+    }
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Option<EntryHash> {
+    match &action {
+        ContextAction::Set { new_tree_hash, .. }
+        | ContextAction::Copy { new_tree_hash, .. }
+        | ContextAction::Delete { new_tree_hash, .. }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
+            new_tree_hash.clone().map(|hash| {
+                let mut buffer: EntryHash = [0; 32];
+                hash.reader().read_exact(&mut buffer).unwrap();
+                Some(buffer)
+            })?
+        }
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { .. }
+        | ContextAction::Commit { .. }
+        | ContextAction::Fold { .. }
+        | ContextAction::Checkout { .. }
+        | ContextAction::Shutdown => None,
+    }
+}
+
 fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
 where
     H: TryFrom<Vec<u8>, Error = FromBytesError>,
@@ -246,10 +273,14 @@ where
         .map_or(Ok(None), |r| r.map(Some))
 }
 
-fn perform_context_action(
+pub fn perform_context_action(
     action: &ContextAction,
     context: &mut Box<dyn ContextApi>,
 ) -> Result<(), Error> {
+    if let Some(tree_id) = get_tree_id(&action) {
+        context.set_merkle_root(tree_id)?;
+    }
+
     match action {
         ContextAction::Get { key, .. } => {
             context.get_key(key)?;
@@ -263,32 +294,40 @@ fn perform_context_action(
         ContextAction::Set {
             key,
             value,
+            new_tree_id,
             context_hash,
             ..
         } => {
             let context_hash = try_from_untyped_option(context_hash)?;
-            context.set(&context_hash, key, value)?;
+            context.set(&context_hash, *new_tree_id, key, value)?;
         }
         ContextAction::Copy {
             to_key: key,
             from_key,
+            new_tree_id,
             context_hash,
             ..
         } => {
             let context_hash = try_from_untyped_option(context_hash)?;
-            context.copy_to_diff(&context_hash, from_key, key)?;
+            context.copy_to_diff(&context_hash, *new_tree_id, from_key, key)?;
         }
         ContextAction::Delete {
-            key, context_hash, ..
+            key,
+            new_tree_id,
+            context_hash,
+            ..
         } => {
             let context_hash = try_from_untyped_option(context_hash)?;
-            context.delete_to_diff(&context_hash, key)?;
+            context.delete_to_diff(&context_hash, *new_tree_id, key)?;
         }
         ContextAction::RemoveRecursively {
-            key, context_hash, ..
+            key,
+            new_tree_id,
+            context_hash,
+            ..
         } => {
             let context_hash = try_from_untyped_option(context_hash)?;
-            context.remove_recursively_to_diff(&context_hash, key)?;
+            context.remove_recursively_to_diff(&context_hash, *new_tree_id, key)?;
         }
         ContextAction::Commit {
             parent_context_hash,
@@ -329,6 +368,18 @@ fn perform_context_action(
 
         ContextAction::Shutdown => (), // Ignored
     };
+
+    if let Some(post_hash) = get_new_tree_hash(&action) {
+        assert_eq!(
+            context.get_merkle_root(),
+            post_hash,
+            "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
+            context.get_merkle_root(),
+            post_hash,
+            get_tree_id(&action),
+            action,
+        );
+    }
 
     Ok(())
 }

@@ -205,13 +205,16 @@ A high-number of connections helps triggering the maintenance process
 # NODE_PARAMS = ['--connections', '500', '--synchronisation-threshold', '0']
 NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-patch-context.json',
                '--bootstrap-db-path', 'light-node', '--log-format', 'simple',
-               '--ocaml-log-enabled', 'false', '--protocol-runner',
-               paths.TEZOS_HOME + 'protocol-runner',
+               '--ocaml-log-enabled', 'false',
+               '--protocol-runner', paths.TEZOS_HOME + 'protocol-runner',
                '--peer-thresh-low', '0', '--peer-thresh-high', '500',
                '--ffi-pool-max-connections=10',
                '--ffi-pool-connection-timeout-in-secs=60',
                '--ffi-pool-max-lifetime-in-secs=21600',
-               '--ffi-pool-idle-timeout-in-secs=1800', '--actions-store-backend=none',
-               '--compute-context-action-tree-hashes=false',
+               '--ffi-pool-idle-timeout-in-secs=1800',
+               '--actions-store-backend=none', '--compute-context-action-tree-hashes=false',
                '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
-               '--synchronization-thresh', '0']
+               '--synchronization-thresh', '0',
+               # zcash-params files used for init, if zcash-params is not correctly setup it in OS
+               '--init-sapling-spend-params-file', paths.TEZOS_HOME + 'sapling-spend.params',
+               '--init-sapling-output-params-file', paths.TEZOS_HOME + 'sapling-output.params']

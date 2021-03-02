@@ -4,23 +4,27 @@
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
+use std::time::{Duration, Instant};
 
 use assert_json_diff::assert_json_eq_no_panic;
-use enum_iterator::IntoEnumIterator;
 use failure::format_err;
 use hyper::body::Buf;
 use hyper::Client;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
+use strum::IntoEnumIterator;
+use strum_macros::EnumIter;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
     static ref NODE_RPC_CONTEXT_ROOT_1: String = node_rpc_context_root_1();
     static ref NODE_RPC_CONTEXT_ROOT_2: String = node_rpc_context_root_2();
+    // one hyper client instance
+    static ref HTTP_CLIENT: Client<hyper::client::HttpConnector, hyper::Body> = Client::new();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, IntoEnumIterator)]
+#[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
 pub enum NodeType {
     Node1,
     Node2,
@@ -44,15 +48,22 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     const MAX_CYCLE_LOOPS: i64 = 4;
 
     // lets run rpsc, which doeas not depend on block/level
-    test_rpc_compare_json("chains/main/blocks/genesis/header").await;
-    test_rpc_compare_json("config/network/user_activated_upgrades").await;
-    test_rpc_compare_json("config/network/user_activated_protocol_overrides").await;
+    test_rpc_compare_json("chains/main/blocks/genesis/header")
+        .await
+        .expect("test failed");
+    test_rpc_compare_json("config/network/user_activated_upgrades")
+        .await
+        .expect("test failed");
+    test_rpc_compare_json("config/network/user_activated_protocol_overrides")
+        .await
+        .expect("test failed");
 
     // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
         if level <= 0 {
             test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header"))
-                .await;
+                .await
+                .expect("test failed");
             println!(
                 "Genesis with level: {:?} - skipping another rpc comparisons for this block",
                 level
@@ -64,96 +75,119 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // ---------------------- Please keep one function per test ----------------------
 
         // --------------------------- Tests for each block_id - shell rpcs ---------------------------
-        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level)).await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header")).await;
+        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level))
+            .await
+            .expect("test failed");
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header"))
+            .await
+            .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "header/shell"
         ))
-        .await;
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "hash")).await;
+        .await
+        .expect("test failed");
+        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "hash"))
+            .await
+            .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "protocols"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "operation_hashes"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/cycle"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/rolls/owner/current"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/contracts"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/delegates"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/delegates?depth=0"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/delegates?depth=1"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/raw/bytes/delegates?depth=2"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "live_blocks"
         ))
-        .await;
+        .await
+        .expect("test failed");
 
         // --------------------------- Tests for each block_id - protocol rpcs ---------------------------
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "context/constants"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "helpers/endorsing_rights"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "helpers/baking_rights"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "helpers/current_level"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "minimal_valid_time"
         ))
-        .await;
+        .await
+        .expect("test failed");
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "votes/listings"
         ))
-        .await;
+        .await
+        .expect("test failed");
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants
@@ -193,7 +227,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 std::cmp::max(0, level - 1)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -201,7 +236,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 std::cmp::max(0, level - 10)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -209,7 +245,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 std::cmp::max(0, level - 1000)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -217,7 +254,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 std::cmp::max(0, level - 3000)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -225,7 +263,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 level + 1
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -233,7 +272,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 level + 10
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -241,7 +281,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 level + 1000
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -249,7 +290,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/endorsing_rights",
                 level + 3000
             ))
-            .await;
+            .await
+            .expect("test failed");
 
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
@@ -258,7 +300,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 std::cmp::max(0, level - 1)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -266,7 +309,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 std::cmp::max(0, level - 10)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -274,7 +318,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 std::cmp::max(0, level - 1000)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -282,7 +327,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 std::cmp::max(0, level - 3000)
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -290,7 +336,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 level + 1
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -298,7 +345,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 level + 10
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -306,7 +354,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 level + 1000
             ))
-            .await;
+            .await
+            .expect("test failed");
             test_rpc_compare_json(&format!(
                 "{}/{}/{}?level={}",
                 "chains/main/blocks",
@@ -314,7 +363,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 "helpers/baking_rights",
                 level + 3000
             ))
-            .await;
+            .await
+            .expect("test failed");
 
             // ----------------- End of tests for each snapshot of the cycle ------------------
         }
@@ -351,13 +401,15 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                     "{}/{}/{}?cycle={}",
                     "chains/main/blocks", level, "helpers/endorsing_rights", cycle_to_check
                 ))
-                .await;
+                .await
+                .expect("test failed");
 
                 test_rpc_compare_json(&format!(
                     "{}/{}/{}?all=true&cycle={}",
                     "chains/main/blocks", level, "helpers/baking_rights", cycle_to_check
                 ))
-                .await;
+                .await
+                .expect("test failed");
             }
 
             // get all cycles - it is like json: [0,1,2,3,4,5,7,8]
@@ -378,12 +430,14 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                     "{}/{}/{}/{}",
                     "chains/main/blocks", level, "context/raw/bytes/cycle", cycle
                 ))
-                .await;
+                .await
+                .expect("test failed");
                 test_rpc_compare_json(&format!(
                     "{}/{}/{}/{}",
                     "chains/main/blocks", level, "context/raw/json/cycle", cycle
                 ))
-                .await;
+                .await
+                .expect("test failed");
             }
 
             // known ocaml node bugs
@@ -418,7 +472,8 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         "{}/{}/{}",
         "chains/main/blocks", to_block_hash, "header"
     ))
-    .await;
+    .await
+    .expect("test failed");
 
     // simple test for walking on headers (-, ~)
     let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
@@ -428,13 +483,15 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
             "{}/{}~{}/{}",
             "chains/main/blocks", to_block_hash, i, "header"
         ))
-        .await;
+        .await
+        .expect("test failed");
         // -
         test_rpc_compare_json(&format!(
             "{}/{}-{}/{}",
             "chains/main/blocks", to_block_hash, i, "header"
         ))
-        .await;
+        .await
+        .expect("test failed");
     }
 
     // TODO: TE-238 - simple test for walking on headers (+)
@@ -445,30 +502,43 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     // }
 }
 
-async fn test_rpc_compare_json(rpc_path: &str) {
+async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     // print the asserted path, to know which one errored in case of an error, use --nocapture
     if is_ignored(&IGNORE_PATH_PATTERNS, rpc_path) {
+        println!();
         println!("Skipping rpc_path check: {}", rpc_path);
-        return;
+        return Ok(());
     } else {
+        println!();
         println!("Checking: {}", rpc_path);
     }
-    let node1_json = match get_rpc_as_json(NodeType::Node1, rpc_path).await {
-        Ok(json) => json,
-        Err(e) => panic!(
-            "Failed to call rpc on Node1: '{}', Reason: {}",
-            node_rpc_url(NodeType::Node1, rpc_path),
-            e
-        ),
+
+    // get both responses in parallel
+    let node1_response = async {
+        match get_rpc_as_json(NodeType::Node1, rpc_path).await {
+            Ok(response) => Ok(response),
+            Err(e) => Err(format_err!(
+                "Failed to call rpc on Node1: '{}', Reason: {}",
+                node_rpc_url(NodeType::Node1, rpc_path),
+                e
+            )),
+        }
     };
-    let node2_json = match get_rpc_as_json(NodeType::Node2, rpc_path).await {
-        Ok(json) => json,
-        Err(e) => panic!(
-            "Failed to call rpc on Node2: '{}', Reason: {}",
-            node_rpc_url(NodeType::Node2, rpc_path),
-            e
-        ),
+    let node2_response = async {
+        match get_rpc_as_json(NodeType::Node2, rpc_path).await {
+            Ok(response) => Ok(response),
+            Err(e) => Err(format_err!(
+                "Failed to call rpc on Node2: '{}', Reason: {}",
+                node_rpc_url(NodeType::Node2, rpc_path),
+                e
+            )),
+        }
     };
+
+    // Wait on both them at the same time:
+    let ((node1_json, node1_response_time), (node2_json, node2_response_time)) =
+        futures::try_join!(node1_response, node2_response)?;
+
     if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
         panic!(
             "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
@@ -479,16 +549,23 @@ async fn test_rpc_compare_json(rpc_path: &str) {
             node1_json,
         );
     }
+
+    println!(
+        "Checked OK: {} (Node1: {:?} vs Node2: {:?}",
+        rpc_path, node1_response_time, node2_response_time
+    );
+
+    Ok(())
 }
 
 /// Returns json data from any/random node (if fails, tries other)
 async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value, failure::Error> {
-    let mut nodes: Vec<NodeType> = NodeType::into_enum_iter().collect_vec();
+    let mut nodes: Vec<NodeType> = NodeType::iter().collect_vec();
     nodes.shuffle(&mut rand::thread_rng());
 
     for node in nodes {
         match get_rpc_as_json(node, rpc_path).await {
-            Ok(data) => return Ok(data),
+            Ok((data, _)) => return Ok(data),
             Err(e) => {
                 println!(
                     "WARN: failed for (node: {:?}) to get data for rpc '{}'. Reason: {}",
@@ -509,19 +586,25 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
 async fn get_rpc_as_json(
     node: NodeType,
     rpc_path: &str,
-) -> Result<serde_json::value::Value, failure::Error> {
+) -> Result<(serde_json::value::Value, Duration), failure::Error> {
     let url_as_string = node_rpc_url(node, rpc_path);
     let url = url_as_string
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
-    let client = Client::new();
-    let body = match client.get(url).await {
-        Ok(res) => hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
+    let start = Instant::now();
+    let (body, response_time) = match HTTP_CLIENT.get(url).await {
+        Ok(res) => {
+            let finished = start.elapsed();
+            (
+                hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
+                finished,
+            )
+        },
         Err(e) => return Err(format_err!("Request url: {:?} for getting block failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
-    Ok(serde_json::from_reader(&mut body.reader())?)
+    Ok((serde_json::from_reader(&mut body.reader())?, response_time))
 }
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
@@ -591,23 +674,23 @@ fn node_rpc_context_root_2() -> String {
 #[test]
 fn test_ignored_matching() {
     assert!(is_ignored(
-        &vec!["minimal_valid_time".to_string()],
+        &["minimal_valid_time".to_string()],
         "/chains/main/blocks/1/minimal_valid_time",
     ));
     assert!(is_ignored(
-        &vec!["/minimal_valid_time".to_string()],
+        &["/minimal_valid_time".to_string()],
         "/chains/main/blocks/1/minimal_valid_time",
     ));
     assert!(is_ignored(
-        &vec!["1/minimal_valid_time".to_string()],
+        &["1/minimal_valid_time".to_string()],
         "/chains/main/blocks/1/minimal_valid_time",
     ));
     assert!(is_ignored(
-        &vec!["vote/listing".to_string()],
+        &["vote/listing".to_string()],
         "/chains/main/blocks/1/vote/listing",
     ));
     assert!(!is_ignored(
-        &vec!["vote/listing".to_string()],
+        &["vote/listing".to_string()],
         "/chains/main/blocks/1/votesasa/listing",
     ));
 }

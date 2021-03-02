@@ -45,7 +45,7 @@ lazy_static! {
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
-    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64);
+    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64).unwrap();
 }
 
 #[ignore]
@@ -86,7 +86,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::current_branch_on_level_3::serve_data,
@@ -187,7 +187,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         "TEST_PEER_NODE_BRANCH_1",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::sandbox_branch_1_level3::serve_data,
@@ -208,7 +208,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         "TEST_PEER_NODE_BRANCH_2",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::sandbox_branch_2_level4::serve_data,
@@ -328,7 +328,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::dont_serve_current_branch_messages::serve_data,
@@ -439,7 +439,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     )?;
 
     // connect mocked node peer with test data set
-    let test_node_identity = tezos_identity::Identity::generate(0f64);
+    let test_node_identity = tezos_identity::Identity::generate(0f64)?;
     let mut mocked_peer_node = test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE-1",
         NODE_P2P_CFG.0.listener_port,
@@ -537,6 +537,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     name: &str,
     current_head_wait_timeout: (Duration, Duration),
 ) -> Result<(), failure::Error> {
+    let root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
+    let root_context_db_path = &common::prepare_empty_dir("__test_05_context");
     // logger
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
@@ -548,8 +550,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        TmpStorage::create(common::prepare_empty_dir("__test_05"))?,
-        &common::prepare_empty_dir("__test_05_context"),
+        TmpStorage::create(&root_dir_temp_storage_path)?,
+        root_context_db_path,
         name,
         &tezos_env,
         None,
@@ -574,7 +576,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
-        tezos_identity::Identity::generate(0f64),
+        tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
         test_cases_data::current_branch_on_level_1324::serve_data,
@@ -693,9 +695,45 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         }
     }
 
+    // generate merkle stats
+    let merkle_stats = stats::generate_merkle_context_stats(node.tmp_storage.storage())?;
+
+    // generate storage stats
+    let mut disk_usage_stats = Vec::new();
+    disk_usage_stats.extend(stats::generate_dir_stats(
+        "TezEdge DBs:",
+        3,
+        &root_dir_temp_storage_path,
+        true,
+    )?);
+    disk_usage_stats.extend(stats::generate_dir_stats(
+        "Ocaml context:",
+        3,
+        &root_context_db_path,
+        true,
+    )?);
+
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
+
+    // print stats
+    println!();
+    println!();
+    println!("==========================");
+    println!("Storage disk usage stats:");
+    println!("==========================");
+    disk_usage_stats
+        .iter()
+        .for_each(|stat| println!("{}", stat));
+    println!();
+    println!();
+    println!("==========================");
+    println!("Merkle/context stats:");
+    println!("==========================");
+    merkle_stats.iter().for_each(|stat| println!("{}", stat));
+    println!();
+    println!();
 
     Ok(())
 }
@@ -1079,7 +1117,7 @@ mod test_cases_data {
         desired_current_branch_level: Option<Level>,
         db: &Db,
     ) -> Result<Vec<PeerMessageResponse>, failure::Error> {
-        match message.messages().get(0).unwrap() {
+        match message.message() {
             PeerMessage::GetCurrentBranch(request) => match desired_current_branch_level {
                 Some(level) => {
                     let block_hash = db.block_hash(level)?;
@@ -1323,27 +1361,25 @@ mod test_node_peer {
                             trace!(log, "[{}] Handle message", name; "ip" => format!("{:?}", &peer_address), "msg_type" => msg_type.clone());
 
                             // we collect here simple Mempool
-                            for m in msg.messages() {
-                                if let PeerMessage::CurrentHead(current_head) = m {
-                                    let mut test_mempool =
-                                        test_mempool.write().expect("Failed to lock");
-                                    let mut known_valid: Vec<OperationHash> =
-                                        test_mempool.known_valid().clone();
-                                    let mut pending = test_mempool.pending().clone();
+                            if let PeerMessage::CurrentHead(current_head) = msg.message() {
+                                let mut test_mempool =
+                                    test_mempool.write().expect("Failed to lock");
+                                let mut known_valid: Vec<OperationHash> =
+                                    test_mempool.known_valid().clone();
+                                let mut pending = test_mempool.pending().clone();
 
-                                    for op in current_head.current_mempool().known_valid() {
-                                        if !known_valid.contains(op) {
-                                            known_valid.push(op.clone());
-                                        }
+                                for op in current_head.current_mempool().known_valid() {
+                                    if !known_valid.contains(op) {
+                                        known_valid.push(op.clone());
                                     }
-                                    for op in current_head.current_mempool().pending() {
-                                        if !pending.contains(op) {
-                                            pending.push(op.clone());
-                                        }
-                                    }
-
-                                    *test_mempool = Mempool::new(known_valid, pending);
                                 }
+                                for op in current_head.current_mempool().pending() {
+                                    if !pending.contains(op) {
+                                        pending.push(op.clone());
+                                    }
+                                }
+
+                                *test_mempool = Mempool::new(known_valid, pending);
                             }
 
                             // apply callback
@@ -1491,32 +1527,29 @@ mod test_node_peer {
     }
 
     fn msg_type(msg: &PeerMessageResponse) -> String {
-        msg.messages()
-            .iter()
-            .map(|m| match m {
-                PeerMessage::Disconnect => "Disconnect",
-                PeerMessage::Advertise(_) => "Advertise",
-                PeerMessage::SwapRequest(_) => "SwapRequest",
-                PeerMessage::SwapAck(_) => "SwapAck",
-                PeerMessage::Bootstrap => "Bootstrap",
-                PeerMessage::GetCurrentBranch(_) => "GetCurrentBranch",
-                PeerMessage::CurrentBranch(_) => "CurrentBranch",
-                PeerMessage::Deactivate(_) => "Deactivate",
-                PeerMessage::GetCurrentHead(_) => "GetCurrentHead",
-                PeerMessage::CurrentHead(_) => "CurrentHead",
-                PeerMessage::GetBlockHeaders(_) => "GetBlockHeaders",
-                PeerMessage::BlockHeader(_) => "BlockHeader",
-                PeerMessage::GetOperations(_) => "GetOperations",
-                PeerMessage::Operation(_) => "Operation",
-                PeerMessage::GetProtocols(_) => "GetProtocols",
-                PeerMessage::Protocol(_) => "Protocol",
-                PeerMessage::GetOperationHashesForBlocks(_) => "GetOperationHashesForBlocks",
-                PeerMessage::OperationHashesForBlock(_) => "OperationHashesForBlock",
-                PeerMessage::GetOperationsForBlocks(_) => "GetOperationsForBlocks",
-                PeerMessage::OperationsForBlocks(_) => "OperationsForBlocks",
-            })
-            .collect::<Vec<&str>>()
-            .join(",")
+        match msg.message() {
+            PeerMessage::Disconnect => "Disconnect",
+            PeerMessage::Advertise(_) => "Advertise",
+            PeerMessage::SwapRequest(_) => "SwapRequest",
+            PeerMessage::SwapAck(_) => "SwapAck",
+            PeerMessage::Bootstrap => "Bootstrap",
+            PeerMessage::GetCurrentBranch(_) => "GetCurrentBranch",
+            PeerMessage::CurrentBranch(_) => "CurrentBranch",
+            PeerMessage::Deactivate(_) => "Deactivate",
+            PeerMessage::GetCurrentHead(_) => "GetCurrentHead",
+            PeerMessage::CurrentHead(_) => "CurrentHead",
+            PeerMessage::GetBlockHeaders(_) => "GetBlockHeaders",
+            PeerMessage::BlockHeader(_) => "BlockHeader",
+            PeerMessage::GetOperations(_) => "GetOperations",
+            PeerMessage::Operation(_) => "Operation",
+            PeerMessage::GetProtocols(_) => "GetProtocols",
+            PeerMessage::Protocol(_) => "Protocol",
+            PeerMessage::GetOperationHashesForBlocks(_) => "GetOperationHashesForBlocks",
+            PeerMessage::OperationHashesForBlock(_) => "OperationHashesForBlock",
+            PeerMessage::GetOperationsForBlocks(_) => "GetOperationsForBlocks",
+            PeerMessage::OperationsForBlocks(_) => "OperationsForBlocks",
+        }
+        .to_string()
     }
 
     fn contains_all_keys(set: &HashSet<OperationHash>, keys: &HashSet<OperationHash>) -> bool {
@@ -1667,7 +1700,7 @@ mod test_actor {
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
             let start = SystemTime::now();
-            let peer_public_key_hash = &peer.identity.public_key.public_key_hash();
+            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();
@@ -1691,5 +1724,91 @@ mod test_actor {
             };
             result
         }
+    }
+}
+
+mod stats {
+    use std::path::Path;
+
+    use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
+    use storage::persistent::PersistentStorage;
+
+    pub fn generate_dir_stats<P: AsRef<Path>>(
+        marker: &str,
+        depth: u64,
+        path: P,
+        human_format: bool,
+    ) -> Result<Vec<String>, failure::Error> {
+        let mut stats = Vec::new();
+        stats.push(String::from(""));
+        stats.push(format!("{}", marker));
+        stats.push(String::from("------------"));
+
+        let mut options = DirOptions::new();
+        options.depth = depth;
+        let dir_content = get_dir_content2(path, &options)?;
+        for directory in dir_content.directories {
+            let dir_size = if human_format {
+                human_readable(get_size(&directory)?)
+            } else {
+                get_size(&directory)?.to_string()
+            };
+            // print directory path and size
+            stats.push(format!("{} {}", &directory, dir_size));
+        }
+
+        Ok(stats)
+    }
+
+    fn human_readable(bytes: u64) -> String {
+        let mut bytes = bytes as i64;
+        if -1000 < bytes && bytes < 1000 {
+            return format!("{} B", bytes);
+        }
+        let mut ci = "kMGTPE".chars();
+        while bytes <= -999_950 || bytes >= 999_950 {
+            bytes /= 1000;
+            ci.next();
+        }
+
+        return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
+    }
+
+    pub fn generate_merkle_context_stats(
+        persistent_storage: &PersistentStorage,
+    ) -> Result<Vec<String>, failure::Error> {
+        let mut log_for_stats = Vec::new();
+
+        // generate stats
+        let m = persistent_storage.merkle();
+        let merkle = m
+            .write()
+            .map_err(|e| failure::format_err!("Lock error: {:?}", e))?;
+        let stats = merkle.get_merkle_stats()?;
+
+        log_for_stats.push(String::from(""));
+        log_for_stats.push("Context storage global latency statistics:".to_string());
+        log_for_stats.push(String::from("------------"));
+        for (op, v) in stats.perf_stats.global.iter() {
+            log_for_stats.push(format!("{}:", op));
+            log_for_stats.push(format!(
+                "\tavg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+                v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+            ));
+        }
+        log_for_stats.push(String::from(""));
+        log_for_stats.push("Context storage per-path latency statistics:".to_string());
+        log_for_stats.push(String::from("------------"));
+        for (node, v) in stats.perf_stats.perpath.iter() {
+            log_for_stats.push(format!("{}:", node));
+            for (op, v) in v.iter() {
+                log_for_stats.push(format!(
+                    "\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+                    op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+                ));
+            }
+        }
+
+        Ok(log_for_stats)
     }
 }
