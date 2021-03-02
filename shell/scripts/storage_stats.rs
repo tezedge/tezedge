@@ -5,29 +5,23 @@ use storage::backend::{
 };
 
 use clap::{App, Arg};
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use failure::Error;
 use rocksdb::Cache;
 use shell::context_listener::get_new_tree_hash;
 use shell::context_listener::perform_context_action;
 use slog::{debug, info, warn, Drain, Level, Logger};
-use std::convert::TryFrom;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::sync::RwLock;
 use storage::action_file::ActionsFileReader;
+use storage::context::{ContextApi, TezedgeContext};
 use storage::merkle_storage::MerkleStorage;
 use storage::merkle_storage_stats::{MerkleStorageAction, OperationLatencyStats};
-use storage::BlockHeaderWithHash;
-use storage::{
-    context::{ContextApi, TezedgeContext},
-    persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage},
-    BlockStorage,
-};
+use storage::persistent::KeyValueSchema;
+
 use tezos_context::channel::ContextAction;
-use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 struct Args {
     blocks_per_cycle: usize,
@@ -114,12 +108,6 @@ fn create_logger() -> Logger {
     .fuse();
 
     Logger::root(drain, slog::o!())
-}
-
-fn create_commit_log(path: &PathBuf) -> Arc<CommitLogs> {
-    storage::persistent::open_cl(&path, vec![BlockStorage::descriptor()])
-        .map(Arc::new)
-        .unwrap()
 }
 
 // process actionfile without deselializing blocks
@@ -341,7 +329,6 @@ impl StatsWriter {
 fn main() -> Result<(), Error> {
     let params = Args::read_args();
 
-
     let out_dir = PathBuf::from(params.output.as_str());
     let key_value_db_path = out_dir.join("key_value_store");
 
@@ -352,7 +339,6 @@ fn main() -> Result<(), Error> {
 
     let logger = create_logger();
 
-
     let kvbackend = match params.backend.as_str() {
         "rocksdb" => {
             let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
@@ -361,27 +347,21 @@ fn main() -> Result<(), Error> {
         }
         "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
         "sled" => {
-            let sled = sled::Config::new().path(out_dir.join("sled")).open().unwrap();
+            let sled = sled::Config::new()
+                .path(out_dir.join("sled"))
+                .open()
+                .unwrap();
             MerkleStorage::new(Box::new(SledBackend::new(sled)))
         }
-        "btree" => {
-            MerkleStorage::new(Box::new(BTreeMapBackend::new()))
-        }
-        "mark_sweep" => MerkleStorage::new(Box::new(
-            MarkSweepGCed::<InMemoryBackend>::new(7),
-        )),
-        "mark_move" => MerkleStorage::new(Box::new(
-            MarkMoveGCed::<BTreeMapBackend>::new(7),
-        )),
-        _ => panic!("unknown backend")
+        "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+        "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(7))),
+        "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(7))),
+        _ => panic!("unknown backend"),
     };
 
     let merkle = Arc::new(RwLock::new(kvbackend));
 
-    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-        None,
-        merkle.clone(),
-    ));
+    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(None, merkle.clone()));
 
     let mut stat_writer = StatsWriter::new(out_dir.join(params.backend + ".txt"));
 
@@ -404,7 +384,6 @@ fn main() -> Result<(), Error> {
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
         for action in messages.iter() {
-
             match action {
                 // actions that does not mutate staging area can be ommited here
                 ContextAction::Set { .. }

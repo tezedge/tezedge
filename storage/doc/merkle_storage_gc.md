@@ -33,7 +33,7 @@ When we reach end of the block and commit changes, we mark every key that
 wasn't modified and exists in one of previous cycles (not in the current one)
 as **reused**.
 
-**Note:** we only mark roots of tree that is reused, we don't mark it's children.
+**Note:** we only mark roots of tree that is reused, we don't mark its children.
 Garbage collector does that work later. This way we preserve memory.
 
 ## Concurrency

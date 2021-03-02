@@ -145,35 +145,7 @@ impl ContextApi for TezedgeContext {
         let commit_hash = merkle.commit(date, author, message)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
 
-        // associate block and context_hash
-        if let Some(storage) = &self.block_storage {
-            if let Err(e) = storage.assign_to_context(block_hash, &commit_hash)
-            {
-                match e {
-                    StorageError::MissingKey => {
-                        // TODO: is this needed? check it when removing assign_to_context
-                        if parent_context_hash.is_some() {
-                            return Err(ContextError::ContextHashAssignError {
-                                block_hash: block_hash.to_base58_check(),
-                                context_hash: commit_hash.to_base58_check(),
-                                error: e,
-                            });
-                        } else {
-                            // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
-                            // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
-                            // but we need to storage assignment elsewhere
-                        }
-                    }
-                    _ => {
-                        return Err(ContextError::ContextHashAssignError {
-                            block_hash: block_hash.to_base58_check(),
-                            context_hash: commit_hash.to_base58_check(),
-                            error: e,
-                        })
-                    }
-                };
-            }
-        }
+        self.associate_block_and_context_hash(block_hash, &commit_hash, parent_context_hash)?;
 
         Ok(commit_hash)
     }
@@ -282,12 +254,10 @@ impl ContextApi for TezedgeContext {
 
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
         match &self.block_storage {
-            Some(block_storage) => {
-                block_storage
-                    .contains_context_hash(context_hash)
-                    .map_err(|e| ContextError::StorageError { error: e })
-            }
-            None => {Ok(false)}
+            Some(block_storage) => block_storage
+                .contains_context_hash(context_hash)
+                .map_err(|e| ContextError::StorageError { error: e }),
+            None => Err(ContextError::CommitStatusCheckFailure {}),
         }
     }
 
@@ -331,6 +301,42 @@ impl TezedgeContext {
             merkle,
         }
     }
+
+    fn associate_block_and_context_hash(
+        &self,
+        block_hash: &BlockHash,
+        commit_hash: &ContextHash,
+        parent_context_hash: &Option<ContextHash>,
+    ) -> Result<(), ContextError> {
+        if let Some(storage) = &self.block_storage {
+            if let Err(e) = storage.assign_to_context(block_hash, &commit_hash) {
+                match e {
+                    StorageError::MissingKey => {
+                        // TODO: is this needed? check it when removing assign_to_context
+                        if parent_context_hash.is_some() {
+                            return Err(ContextError::ContextHashAssignError {
+                                block_hash: block_hash.to_base58_check(),
+                                context_hash: commit_hash.to_base58_check(),
+                                error: e,
+                            });
+                        } else {
+                            // TODO: do correctly assignement on one place, or remove this assignemnt - it is not needed
+                            // if parent_context_hash is empty, means it is commit_genesis, and block is not already stored, thats ok
+                            // but we need to storage assignment elsewhere
+                        }
+                    }
+                    _ => {
+                        return Err(ContextError::ContextHashAssignError {
+                            block_hash: block_hash.to_base58_check(),
+                            context_hash: commit_hash.to_base58_check(),
+                            error: e,
+                        })
+                    }
+                };
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Possible errors for context
@@ -364,6 +370,8 @@ pub enum ContextError {
     HashError { error: FromBytesError },
     #[fail(display = "Guard Poison {} ", error)]
     LockError { error: String },
+    #[fail(display = "Cannot check if context is commited")]
+    CommitStatusCheckFailure,
 }
 
 impl From<MerkleError> for ContextError {
