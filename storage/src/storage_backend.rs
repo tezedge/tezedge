@@ -5,6 +5,7 @@ use crate::merkle_storage::{hash_entry, Entry};
 use crate::persistent::database::DBError;
 use crate::persistent::database::KeyValueStoreBackend;
 use crate::MerkleStorage;
+use blake2::digest::InvalidOutputSize;
 use crypto::hash::FromBytesError;
 use crypto::hash::HashType;
 use failure::Fail;
@@ -128,6 +129,10 @@ pub enum StorageBackendError {
     EntryNotFound { hash: String },
     #[fail(display = "Failed to encode hash: {}", error)]
     HashError { error: FromBytesError },
+    #[fail(display = "Invalid output size")]
+    InvalidOutputSize,
+    #[fail(display = "Expected value instead of `None` for {}", _0)]
+    ValueExpected(&'static str),
 }
 
 impl From<rocksdb::Error> for StorageBackendError {
@@ -171,6 +176,12 @@ impl<T> From<PoisonError<T>> for StorageBackendError {
 impl From<FromBytesError> for StorageBackendError {
     fn from(error: FromBytesError) -> Self {
         StorageBackendError::HashError { error }
+    }
+}
+
+impl From<InvalidOutputSize> for StorageBackendError {
+    fn from(_: InvalidOutputSize) -> Self {
+        StorageBackendError::InvalidOutputSize
     }
 }
 

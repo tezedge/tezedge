@@ -394,7 +394,7 @@ pub mod infra {
             let start = SystemTime::now();
 
             let context = TezedgeContext::new(
-                BlockStorage::new(self.tmp_storage.storage()),
+                Some(BlockStorage::new(self.tmp_storage.storage())),
                 self.tmp_storage.storage().merkle(),
             );
 
