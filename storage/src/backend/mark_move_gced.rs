@@ -19,6 +19,8 @@ use crate::storage_backend::{
     collect_hashes_recursively, fetch_entry_from_store, GarbageCollector, StorageBackendError,
 };
 
+const COUNT_OF_KEYS_TO_CLEANUP_IN_SINGLE_GC_ITERATION: usize = 2048;
+
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where
@@ -324,7 +326,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
             // TODO: it would be more optimized if this number can change dynamically based on
             // how much gc lags behind and such different parameters.
             let max_iter = if stores.len() <= 1 + len {
-                2048
+                COUNT_OF_KEYS_TO_CLEANUP_IN_SINGLE_GC_ITERATION
             } else {
                 usize::MAX
             };

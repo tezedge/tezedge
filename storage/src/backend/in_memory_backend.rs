@@ -90,25 +90,19 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     }
 
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let mut w = self.inner.write()?;
         w.insert(*key, value.clone());
         Ok(())
     }
 
     fn delete(&self, key: &EntryHash) -> Result<(), DBError> {
-        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let mut w = self.inner.write()?;
         w.remove(key);
         Ok(())
     }
 
     fn merge(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
-        let mut w = self.inner.write().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let mut w = self.inner.write()?;
 
         w.insert(*key, value.clone());
         Ok(())
@@ -116,9 +110,7 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
 
     fn get(&self, key: &EntryHash) -> Result<Option<ContextValue>, DBError> {
         let db = self.inner.clone();
-        let r = db.read().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let r = db.read()?;
 
         match r.get(key) {
             None => Ok(None),
@@ -128,9 +120,7 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
 
     fn contains(&self, key: &EntryHash) -> Result<bool, DBError> {
         let db = self.inner.clone();
-        let r = db.read().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let r = db.read()?;
         Ok(r.contains_key(key))
     }
 
@@ -142,9 +132,7 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
     }
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
-        let r = self.inner.read().map_err(|e| DBError::GuardPoison {
-            error: format!("{}", e),
-        })?;
+        let r = self.inner.read()?;
         Ok(r.get_memory_usage().total_as_bytes())
     }
 

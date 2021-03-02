@@ -20,6 +20,7 @@ impl RocksDBBackend {
         RocksDBBackend { inner: db }
     }
 
+    //TODO TE-437 - get rid of deref call
     fn merkle_ref(&self) -> &dyn KeyValueStoreBackend<MerkleStorage> {
         self.inner.deref() as &dyn KeyValueStoreBackend<MerkleStorage>
     }

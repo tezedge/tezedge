@@ -1,29 +1,27 @@
 use std::{fs, path::PathBuf, sync::Arc};
 
+use storage::backend::{
+    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
+};
+
 use clap::{App, Arg};
-use crypto::hash::{BlockHash, ContextHash, OperationListListHash};
 use failure::Error;
 use rocksdb::Cache;
 use shell::context_listener::get_new_tree_hash;
 use shell::context_listener::perform_context_action;
 use slog::{debug, info, warn, Drain, Level, Logger};
-use std::convert::TryFrom;
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::sync::RwLock;
 use storage::action_file::ActionsFileReader;
+use storage::context::{ContextApi, TezedgeContext};
 use storage::merkle_storage::MerkleStorage;
 use storage::merkle_storage_stats::{MerkleStorageAction, OperationLatencyStats};
-use storage::BlockHeaderWithHash;
-use storage::{
-    context::{ContextApi, TezedgeContext},
-    persistent::{CommitLogSchema, CommitLogs, KeyValueSchema, PersistentStorage},
-    BlockStorage,
-};
+use storage::persistent::KeyValueSchema;
+
 use tezos_context::channel::ContextAction;
-use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
 struct Args {
     blocks_per_cycle: usize,
@@ -110,12 +108,6 @@ fn create_logger() -> Logger {
     .fuse();
 
     Logger::root(drain, slog::o!())
-}
-
-fn create_commit_log(path: &PathBuf) -> Arc<CommitLogs> {
-    storage::persistent::open_cl(&path, vec![BlockStorage::descriptor()])
-        .map(Arc::new)
-        .unwrap()
 }
 
 // process actionfile without deselializing blocks
@@ -336,59 +328,41 @@ impl StatsWriter {
 
 fn main() -> Result<(), Error> {
     let params = Args::read_args();
-    let block_header_stub = BlockHeaderBuilder::default()
-        .level(0)
-        .proto(0)
-        .predecessor(BlockHash::try_from(vec![0; 32])?)
-        .timestamp(0)
-        .validation_pass(0)
-        .operations_hash(OperationListListHash::try_from(vec![0; 32])?)
-        .fitness(vec![])
-        .context(ContextHash::try_from(vec![0; 32])?)
-        .protocol_data(vec![])
-        .build()
-        .unwrap();
-
-    let header_stub = BlockHeaderWithHash::new(block_header_stub).unwrap();
-
-    let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
 
     let out_dir = PathBuf::from(params.output.as_str());
-    let commit_log_db_path = out_dir.join("commit_log");
     let key_value_db_path = out_dir.join("key_value_store");
 
     let actions_storage_path = PathBuf::from(params.input.as_str());
 
     let _ = fs::remove_dir_all(&out_dir);
+    let _ = fs::create_dir(&out_dir);
 
     let logger = create_logger();
 
-    let commit_log = create_commit_log(&commit_log_db_path);
-    let kv = create_key_value_store(&key_value_db_path, &cache);
-    let storage = PersistentStorage::new(
-        kv.clone(),
-        kv.clone(),
-        kv,
-        commit_log,
-        match params.backend.as_str() {
-            "inmem" => storage::KeyValueStoreBackend::InMem,
-            "sled" => storage::KeyValueStoreBackend::Sled {
-                path: out_dir.join("sled"),
-            },
-            "btree" => storage::KeyValueStoreBackend::BTreeMap,
-            "rocksdb" => storage::KeyValueStoreBackend::RocksDB,
-            "mark_move" => storage::KeyValueStoreBackend::MarkMoveInMem,
-            "mark_sweep" => storage::KeyValueStoreBackend::MarkSweepInMem,
-            _ => panic!("unknown backend"),
-        },
-    )
-    .unwrap();
-    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-        BlockStorage::new(&storage),
-        storage.merkle(),
-    ));
+    let kvbackend = match params.backend.as_str() {
+        "rocksdb" => {
+            let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
+            let kv = create_key_value_store(&key_value_db_path, &cache);
+            MerkleStorage::new(Box::new(RocksDBBackend::new(kv.clone())))
+        }
+        "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
+        "sled" => {
+            let sled = sled::Config::new()
+                .path(out_dir.join("sled"))
+                .open()
+                .unwrap();
+            MerkleStorage::new(Box::new(SledBackend::new(sled)))
+        }
+        "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
+        "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(7))),
+        "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(7))),
+        _ => panic!("unknown backend"),
+    };
 
-    let block_storage = BlockStorage::new(&storage);
+    let merkle = Arc::new(RwLock::new(kvbackend));
+
+    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(None, merkle.clone()));
+
     let mut stat_writer = StatsWriter::new(out_dir.join(params.backend + ".txt"));
 
     info!(
@@ -410,19 +384,6 @@ fn main() -> Result<(), Error> {
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
         for action in messages.iter() {
-            if let ContextAction::Commit {
-                block_hash: Some(block_hash),
-                ..
-            } = action
-            {
-                // there is extra validation in ContextApi::commit that verifies that
-                // applied action comes from known block - for testing purposes
-                // block_storage needs to be fed with stub value in order to pass validation
-                let mut b = header_stub.clone();
-                b.hash = BlockHash::try_from(block_hash.clone())?;
-                block_storage.put_block_header(&b).unwrap();
-            }
-
             match action {
                 // actions that does not mutate staging area can be ommited here
                 ContextAction::Set { .. }
@@ -485,8 +446,7 @@ fn main() -> Result<(), Error> {
                         counter,
                         hex::encode(&block_hash.clone().unwrap().clone()),
                         messages.len(),
-                        storage
-                            .merkle()
+                            merkle.clone()
                             .read()
                             .unwrap()
                             .get_memory_usage()
@@ -502,7 +462,7 @@ fn main() -> Result<(), Error> {
                 }
             }
         }
-        stat_writer.update(counter, storage.merkle());
+        stat_writer.update(counter, merkle.clone());
     }
     Ok(())
 }
