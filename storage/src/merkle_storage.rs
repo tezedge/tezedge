@@ -50,6 +50,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::TryInto;
 use std::hash::Hash;
 
+use blake2::digest::{Update, VariableOutput};
+use blake2::VarBlake2b;
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor};
