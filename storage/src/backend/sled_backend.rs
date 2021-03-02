@@ -34,7 +34,7 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
                 Err(_) => None,
                 Ok((k, _)) => {
                     let mut buffer = [0_u8; 32];
-                    k.to_vec().reader().read_exact(&mut buffer).unwrap();
+                    k.to_vec().reader().read_exact(&mut buffer).ok()?;
                     if !predicate(&buffer) {
                         Some(buffer)
                     } else {

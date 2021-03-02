@@ -39,6 +39,7 @@ clap = "2.33"
 rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 slog-term = "2.6"
 slog-async = "2.6"
+sled = "0.34.6"
 
 [[bin]]
 name = "storage-stats"

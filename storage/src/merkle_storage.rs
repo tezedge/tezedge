@@ -645,10 +645,10 @@ impl MerkleStorage {
         let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Checkout, None);
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
-        self.trees.clear();
+        self.trees = HashMap::new();
+        self.staged = HashMap::new();
         self.set_stage_root(&tree, 0);
         self.last_commit_hash = Some(hash_commit(&commit)?);
-        self.staged.clear();
         Ok(())
     }
 
