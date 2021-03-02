@@ -146,22 +146,14 @@ impl fmt::Display for MerkleStorageAction {
     }
 }
 
-pub struct StatUpdater<'a> {
-    stats: &'a mut MerkleStorageStatistics,
+pub struct StatUpdater {
     timer: Instant,
     action: MerkleStorageAction,
     key: Option<String>,
 }
 
-impl<'a> Drop for StatUpdater<'a> {
-    fn drop(&mut self) {
-        self.update_execution_stats()
-    }
-}
-
-impl<'a> StatUpdater<'a> {
+impl StatUpdater {
     pub fn new(
-        stats: &'a mut MerkleStorageStatistics,
         action: MerkleStorageAction,
         action_key: Option<&Vec<String>>,
     ) -> Self {
@@ -171,27 +163,25 @@ impl<'a> StatUpdater<'a> {
         };
 
         StatUpdater {
-            stats,
             timer: Instant::now(),
             action,
             key,
         }
     }
 
-    pub fn update_execution_stats(&mut self) {
+    pub fn update_execution_stats(&self, stats: & mut MerkleStorageStatistics) {
         // stop timer and get duration
         let exec_time_nanos = self.timer.elapsed().as_nanos();
 
-        self.stats.block_latencies.update(exec_time_nanos as u64);
+        stats.block_latencies.update(exec_time_nanos as u64);
         // commit signifies end of the block
 
         if let MerkleStorageAction::BlockApplied = self.action {
-            self.stats.block_latencies.end_block();
+            stats.block_latencies.end_block();
         }
 
         // per action stats
-        let entry = self
-            .stats
+        let entry = stats
             .perf_stats
             .global
             .entry(self.action.clone())
@@ -204,8 +194,7 @@ impl<'a> StatUpdater<'a> {
 
         // per-path stats
         if let Some(path) = &self.key {
-            let perpath = self
-                .stats
+            let perpath = stats
                 .perf_stats
                 .perpath
                 .entry(path.clone())

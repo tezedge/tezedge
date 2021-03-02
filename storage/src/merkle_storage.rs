@@ -421,36 +421,42 @@ impl MerkleStorage {
 
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Get, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root)?;
 
-        self.get_from_tree(&root_hash, key)
-            .or_else(|_| Ok(Vec::new()))
+        let rv = self.get_from_tree(&root_hash, key)
+            .or_else(|_| Ok(Vec::new()));
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     /// Check if value exists in current staged root
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Mem, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
 
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root)?;
 
-        self.value_exists(&root_hash, key)
+        let rv = self.value_exists(&root_hash, key);
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     /// Check if directory exists in current staged root
     pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::DirMem, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
 
         let root = &self.get_staged_root();
         let root_hash = hash_tree(&root)?;
 
-        self.directory_exists(&root_hash, key)
+        let rv = self.directory_exists(&root_hash, key);
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
@@ -468,9 +474,11 @@ impl MerkleStorage {
         commit_hash: &EntryHash,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::GetHistory, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::GetHistory, Some(key));
         let commit = self.get_commit(commit_hash)?;
-        self.get_from_tree(&commit.root_hash, key)
+        let rv = self.get_from_tree(&commit.root_hash, key);
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     fn value_exists(&self, root_hash: &EntryHash, key: &ContextKey) -> Result<bool, MerkleError> {
@@ -623,8 +631,7 @@ impl MerkleStorage {
             return Ok(StringTreeEntry::Null);
         }
 
-        let _ = StatUpdater::new(
-            &mut self.stats,
+        let stat_updater = StatUpdater::new(
             MerkleStorageAction::GetContextTreeByPrefix,
             Some(prefix),
         );
@@ -651,6 +658,7 @@ impl MerkleStorage {
             );
         }
 
+        stat_updater.update_execution_stats(& mut self.stats);
         Ok(StringTreeEntry::Tree(out))
     }
 
@@ -660,14 +668,15 @@ impl MerkleStorage {
         context_hash: &EntryHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let _ = StatUpdater::new(
-            &mut self.stats,
+        let stat_updater = StatUpdater::new(
             MerkleStorageAction::GetKeyValuesByPrefix,
             Some(prefix),
         );
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
-        self._get_key_values_by_prefix(root_tree, prefix)
+        let rv = self._get_key_values_by_prefix(root_tree, prefix);
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     fn _get_key_values_by_prefix(
@@ -700,13 +709,13 @@ impl MerkleStorage {
 
     /// Flush the staging area and and move to work on a certain commit from history.
     pub fn checkout(&mut self, context_hash: &EntryHash) -> Result<(), MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Checkout, None);
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Checkout, None);
         let commit = self.get_commit(&context_hash)?;
         let tree = self.get_tree(&commit.root_hash)?;
         self.trees.clear();
         self.set_stage_root(&tree, 0);
         self.last_commit_hash = Some(hash_commit(&commit)?);
-        self.staged.clear();
+        stat_updater.update_execution_stats(& mut self.stats);
         Ok(())
     }
 
@@ -719,7 +728,7 @@ impl MerkleStorage {
         author: String,
         message: String,
     ) -> Result<EntryHash, MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Commit, None);
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
         let staged_root = self.get_staged_root();
         let staged_root_hash = hash_tree(&staged_root)?;
         let parent_commit_hash = self.last_commit_hash;
@@ -741,7 +750,10 @@ impl MerkleStorage {
         self.db.write_batch(batch)?;
 
         self.last_commit_hash = Some(hash_commit(&new_commit)?);
-        Ok(hash_commit(&new_commit)?)
+
+        let rv = Ok(hash_commit(&new_commit)?);
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     /// Set key/val to the staging area.
@@ -757,10 +769,11 @@ impl MerkleStorage {
         key: &ContextKey,
         value: &ContextValue,
     ) -> Result<(), MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Set, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Set, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._set(&root, key, value)?;
         self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
+        stat_updater.update_execution_stats(& mut self.stats);
         Ok(())
     }
 
@@ -781,11 +794,11 @@ impl MerkleStorage {
 
     /// Delete an item from the staging area.
     pub fn delete(&mut self, new_tree_id: TreeId, key: &ContextKey) -> Result<(), MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Delete, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Delete, Some(key));
         let root = self.get_staged_root();
         let new_root_hash = &self._delete(&root, key)?;
         self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
-
+        stat_updater.update_execution_stats(& mut self.stats);
         Ok(())
     }
 
@@ -803,10 +816,11 @@ impl MerkleStorage {
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::Copy, Some(from_key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Copy, Some(from_key));
         let root = self.get_staged_root();
         let new_root_hash = self._copy(&root, from_key, to_key)?;
         self.set_stage_root(&self.get_tree(&new_root_hash)?, new_tree_id);
+        stat_updater.update_execution_stats(& mut self.stats);
         Ok(())
     }
 
@@ -942,11 +956,13 @@ impl MerkleStorage {
     /// Marks all the entries from last commit as used
     /// so GC can know when to remove them
     pub fn block_applied(&mut self) -> Result<(), MerkleError> {
-        let _ = StatUpdater::new(&mut self.stats, MerkleStorageAction::BlockApplied, None);
-        match self.last_commit_hash {
+        let stat_updater = StatUpdater::new(MerkleStorageAction::BlockApplied, None);
+        let rv = match self.last_commit_hash {
             Some(hash) => Ok(self.db.block_applied(hash)?),
             None => Err(MerkleError::GCTriggeredBeforeFirstCommit),
-        }
+        };
+        stat_updater.update_execution_stats(& mut self.stats);
+        rv
     }
 
     /// Notify GC about new cycle
