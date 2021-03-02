@@ -759,6 +759,55 @@ impl MerkleStorage {
         self.trees.insert(tree_id, tree.clone());
     }
 
+
+    pub fn print_tree(
+        & mut self,
+        entry: &EntryHash,
+        path: Vec<String>,
+    ) -> Result<(), MerkleError> {
+
+
+        match self.get_entry(entry)? {
+            // if we know subtree already lets just use it
+            Entry::Blob(blob) => {
+
+                let mut p = path.clone();
+                p.push(format!("BLOB [{}]: {}", &HashType::ContextHash.hash_to_b58check(entry).unwrap()[2..10], &hex::encode(blob)));
+                for i in p{
+                    print!("{}", i);
+                }
+                println!("");
+                Ok(())
+            }
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                for (name, child_node) in tree.iter() {
+                    let string_hash = &HashType::ContextHash.hash_to_b58check(entry).unwrap()[2..10];
+                    let mut p = path.clone();
+                    p.push(format!("/ {}:[{}] ", name, string_hash));
+                    self.print_tree(&child_node.entry_hash, p).unwrap();
+                }
+                Ok(())
+            }
+            Entry::Commit(commit) => {
+                self.print_tree(&commit.root_hash, path.clone()).unwrap();
+                Ok(())
+            }
+        }
+    }
+
+
+    pub fn print_whole_tree(
+        &mut self,
+        key: &ContextKey,
+    ) -> Result<(), MerkleError> {
+        
+
+        Ok(())
+    }
+
+
     /// Set key/val to the staging area.
     pub fn set(
         &mut self,
@@ -1768,6 +1817,27 @@ mod tests {
 
         assert!(storage.get_history(&commit2, &key_abx).is_err());
     }
+
+    #[test]
+    fn test_print() {
+        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let mut storage = get_storage("inmem", "testtesettest", &cache);
+
+        storage.set(1, &vec!["1".to_string(), "b".to_string(), "c".to_string()], &vec![1u8]).unwrap();
+        storage.set(2, &vec!["1".to_string(), "b".to_string(), "d".to_string()], &vec![1u8]).unwrap();
+        storage.set(3, &vec!["1".to_string(), "b".to_string(), "e".to_string()], &vec![1u8]).unwrap();
+        storage.set(4, &vec!["1".to_string(), "b".to_string(), "f".to_string()], &vec![1u8]).unwrap();
+        storage.set(5, &vec!["1".to_string(), "b".to_string(), "g".to_string()], &vec![1u8]).unwrap();
+
+        storage.set(6, &vec!["1".to_string(), "x".to_string()], &vec![1u8]).unwrap();
+        storage.set(7, &vec!["1".to_string(), "y".to_string()], &vec![1u8]).unwrap();
+        storage.set(8, &vec!["1".to_string(), "z".to_string()], &vec![1u8]).unwrap();
+
+        let context = storage.commit(0,"dev".to_string(), "commit".to_string()).unwrap();
+
+        storage.print_tree(&context, vec![]);
+    }
+
 
     fn test_checkout(backend: &str) {
         let db_name = &format!("ms_test_checkout_{}", backend);
