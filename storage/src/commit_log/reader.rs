@@ -1,7 +1,7 @@
 use crate::commit_log::error::TezedgeCommitLogError;
 use crate::commit_log::{Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Seek, SeekFrom, Error};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Reader {
@@ -64,6 +64,7 @@ impl Reader {
             let th = Index::from_buf(chunk).unwrap();
             indexes.push(th)
         }
+
         indexes
     }
 
@@ -81,16 +82,11 @@ impl Reader {
         let range: Vec<_> = indexes[from..].iter().copied().take(limit).collect();
         let total_compressed_data_size = range
             .iter()
-            .fold(0_u64, |acc, item| acc + item.compressed_data_length);
-        let mut compressed_bytes = vec![0; total_compressed_data_size as usize];
+            .fold(0_u64, |acc, item| acc + item.data_length);
+        let mut bytes = vec![0; total_compressed_data_size as usize];
         data_file_buf_reader.seek(SeekFrom::Start(from_index.position))?;
-        data_file_buf_reader.read_exact(&mut compressed_bytes)?;
+        data_file_buf_reader.read_exact(&mut bytes)?;
 
-        let mut uncompressed_bytes = Vec::new();
-        {
-            let mut rdr = snap::read::FrameDecoder::new(compressed_bytes.as_slice());
-            rdr.read_to_end(&mut uncompressed_bytes)?;
-        }
-        Ok(MessageSet::new(range, uncompressed_bytes))
+        Ok(MessageSet::new(range, bytes))
     }
 }
