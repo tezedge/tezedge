@@ -108,7 +108,6 @@ impl CommitLog {
     }
     #[inline]
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
-        println!("Append");
         let offset = self.writer.write(payload.as_ref())?;
         Ok(offset)
     }

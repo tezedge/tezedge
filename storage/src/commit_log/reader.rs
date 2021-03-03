@@ -74,8 +74,9 @@ impl Reader {
         limit: usize,
     ) -> Result<MessageSet, TezedgeCommitLogError> {
         let indexes = self.indexes();
+
         if from + limit > indexes.len() {
-            println!("Out of range error");
+            println!("Out of range error {}", indexes.len());
             return Err(TezedgeCommitLogError::OutOfRange);
         }
         let mut data_file_buf_reader = BufReader::new(&self.data_file);
