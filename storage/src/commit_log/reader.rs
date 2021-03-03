@@ -80,10 +80,10 @@ impl Reader {
         let mut data_file_buf_reader = BufReader::new(&self.data_file);
         let from_index = indexes[from];
         let range: Vec<_> = indexes[from..].iter().copied().take(limit).collect();
-        let total_compressed_data_size = range
+        let total_data_size = range
             .iter()
             .fold(0_u64, |acc, item| acc + item.data_length);
-        let mut bytes = vec![0; total_compressed_data_size as usize];
+        let mut bytes = vec![0; total_data_size as usize];
         data_file_buf_reader.seek(SeekFrom::Start(from_index.position))?;
         data_file_buf_reader.read_exact(&mut bytes)?;
 
