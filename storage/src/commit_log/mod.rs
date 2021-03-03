@@ -1,5 +1,5 @@
 use std::convert::TryInto;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use crate::commit_log::error::TezedgeCommitLogError;
@@ -96,15 +96,14 @@ impl Index {
 }
 
 pub struct CommitLog {
-    reader: Reader,
     writer: Writer,
+    path : PathBuf
 }
 
 impl CommitLog {
     pub fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
         let writer = Writer::new(log_dir.as_ref())?;
-        let reader = Reader::new(log_dir.as_ref())?;
-        Ok(Self { reader, writer })
+        Ok(Self {  writer, path: log_dir.as_ref().to_path_buf() })
     }
     #[inline]
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
@@ -114,7 +113,8 @@ impl CommitLog {
 
     #[inline]
     pub fn read(&self, from: usize, limit: usize) -> Result<MessageSet, TezedgeCommitLogError> {
-        return self.reader.range(from, limit);
+        let reader = Reader::new(&self.path)?;
+        return reader.range(from, limit);
     }
 
     pub fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
