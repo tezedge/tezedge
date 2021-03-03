@@ -35,13 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Sapling zcash-params init configuration handling for edo protocol on startup
-- Backtracking support for merkle storage
+- Backtracking support for Merkle storage
 
 ### Changed
 
 - Argument `--network=` is required + possibility to run dockers with different networks
-- Rpc integration tests optimization - run in parallel and add elapsed time to result in Drone CI
-- Minor changes for dev rpcs for TezEdge-Explorer
+- RPC integration tests optimization - run in parallel and add elapsed time to the result in Drone CI
+- Minor changes for dev RPCs for TezEdge-Explorer
 
 ### Removed
 
@@ -84,9 +84,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Migrated Tokio dependency from 0.2.x to 1.1.x
-- RocksDB kv store splitted to three instances (db, context, context_actions)
+- RocksDB kv store splitted into three instances (db, context, context_actions)
 - Reworked websocket implementation, now uses warp::ws instead of default ws
-- Various changes around p2p layer and bootstrapping 
+- Various changes around the P2P layer and bootstrapping 
 
 ### Deprecated
 
