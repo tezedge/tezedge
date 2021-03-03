@@ -116,6 +116,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     }
 
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError> {
+        println!("Simple Get");
         let cl = self
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
@@ -132,6 +133,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     }
 
     fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
+        println!("Range Get");
         let cl = self
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
@@ -287,5 +289,19 @@ mod tests {
             ],
             ranges
         );
+    }
+
+    #[test]
+    fn test_commit_log_storage() {
+        let path = env!("LOG_DIR");
+        let mut commitlog = CommitLog::new(path).unwrap();
+        let msgs = vec![vec![1,2,3], vec![4,6,7], vec![21,23,45], vec![10,56,12], vec![51,3,4],vec![76,12,45]];
+        for msg in msgs.iter() {
+            println!("{:?}", commitlog.append_msg(msg))
+        }
+        let items = commitlog.read(2, 2).unwrap();
+        items.for_each(|i| {
+            println!("{:?}", i)
+        })
     }
 }
