@@ -15,7 +15,7 @@ mod writer;
 const INDEX_FILE_NAME: &str = "table.index";
 const DATA_FILE_NAME: &str = "table.data";
 
-const TH_LENGTH: usize = 24;
+const TH_LENGTH: usize = 16;
 
 pub type Message = Vec<u8>;
 
@@ -42,8 +42,8 @@ impl Iterator for MessageSet {
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.indexes.get(self.cursor)?;
-        let data = &self.buf[self.acc..(self.acc + index.uncompressed_data_length as usize)];
-        self.acc += index.uncompressed_data_length as usize;
+        let data = &self.buf[self.acc..(self.acc + index.data_length as usize)];
+        self.acc += index.data_length as usize;
         self.cursor += 1;
         Some(data.to_vec())
     }
@@ -52,8 +52,7 @@ impl Iterator for MessageSet {
 #[derive(Debug, Copy, Clone)]
 pub struct Index {
     pub position: u64,
-    pub compressed_data_length: u64,
-    pub uncompressed_data_length: u64,
+    pub data_length: u64,
 }
 
 impl Index {
@@ -63,7 +62,6 @@ impl Index {
         }
         let mut buf = buf.to_vec();
         let position_raw_bytes: Vec<_> = buf.drain(..8).collect();
-        let compressed_data_length_raw_bytes: Vec<_> = buf.drain(..8).collect();
         let uncompressed_data_length_raw_bytes: Vec<_> = buf.drain(..).collect();
         let position = u64::from_be_bytes(
             position_raw_bytes
@@ -71,13 +69,8 @@ impl Index {
                 .try_into()
                 .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
         );
-        let compressed_data_length = u64::from_be_bytes(
-            compressed_data_length_raw_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
-        );
-        let uncompressed_data_length = u64::from_be_bytes(
+
+        let data_length = u64::from_be_bytes(
             uncompressed_data_length_raw_bytes
                 .as_slice()
                 .try_into()
@@ -85,22 +78,19 @@ impl Index {
         );
         Ok(Self {
             position,
-            compressed_data_length,
-            uncompressed_data_length,
+            data_length
         })
     }
-    fn new(position: u64, compressed_data_length: u64, uncompressed_data_length: u64) -> Self {
+    fn new(position: u64, data_length: u64) -> Self {
         Self {
             position,
-            compressed_data_length,
-            uncompressed_data_length,
+            data_length,
         }
     }
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![];
         buf.extend_from_slice(&self.position.to_be_bytes());
-        buf.extend_from_slice(&self.compressed_data_length.to_be_bytes());
-        buf.extend_from_slice(&self.uncompressed_data_length.to_be_bytes());
+        buf.extend_from_slice(&self.data_length.to_be_bytes());
         return buf;
     }
 }
