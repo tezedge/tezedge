@@ -1,7 +1,7 @@
 use crate::commit_log::error::TezedgeCommitLogError;
 use crate::commit_log::{Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom, Error};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Reader {
@@ -75,6 +75,7 @@ impl Reader {
     ) -> Result<MessageSet, TezedgeCommitLogError> {
         let indexes = self.indexes();
         if from + limit > indexes.len() {
+            println!("Out of range error");
             return Err(TezedgeCommitLogError::OutOfRange);
         }
         let mut data_file_buf_reader = BufReader::new(&self.data_file);
@@ -84,8 +85,18 @@ impl Reader {
             .iter()
             .fold(0_u64, |acc, item| acc + item.data_length);
         let mut bytes = vec![0; total_data_size as usize];
-        data_file_buf_reader.seek(SeekFrom::Start(from_index.position))?;
-        data_file_buf_reader.read_exact(&mut bytes)?;
+        match data_file_buf_reader.seek(SeekFrom::Start(from_index.position)){
+            Ok(_) => {}
+            Err(_) => {
+                println!("Read failed : Seek")
+            }
+        };
+         match data_file_buf_reader.read_exact(&mut bytes){
+             Ok(_) => {}
+             Err(_) => {
+                 println!("Read failed: Read EX")
+             }
+         };
 
         Ok(MessageSet::new(range, bytes))
     }

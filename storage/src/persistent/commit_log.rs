@@ -116,6 +116,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     }
 
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError> {
+        println!("Simple Get");
         let cl = self
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
@@ -132,6 +133,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     }
 
     fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
+        println!("Range Get");
         let cl = self
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
