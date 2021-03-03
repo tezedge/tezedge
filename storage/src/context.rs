@@ -12,10 +12,13 @@ use failure::Fail;
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 
 use crate::merkle_storage::{
-    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, MerkleStorageStats,
-    StringTreeEntry,
+    ContextKey, ContextValue, MerkleError, MerkleStorage, MerkleStorageStats, StringTreeEntry,
 };
 use crate::{BlockStorage, BlockStorageReader, StorageError};
+
+use self::hash::EntryHash;
+
+pub mod hash;
 
 // An unique tree identifier during a block application
 pub type TreeId = i32;
