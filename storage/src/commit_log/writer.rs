@@ -55,20 +55,14 @@ impl Writer {
         if buf.len() > u64::MAX as usize {
             return Err(TezedgeCommitLogError::MessageLengthError);
         }
-        let mut out = vec![];
-        let uncompressed_length = buf.len();
-        {
-            let mut wtr = snap::write::FrameEncoder::new(&mut out);
-            wtr.write_all(buf)?;
-        }
-        let message_len = out.len() as u64;
+        let message_len = buf.len() as u64;
         let message_pos = data_file_buf_writer.seek(SeekFrom::End(0))?;
-        data_file_buf_writer.write_all(&out)?;
-        let th = Index::new(message_pos, message_len, uncompressed_length as u64);
+        data_file_buf_writer.write_all(&buf)?;
+        let th = Index::new(message_pos, message_len);
         index_file_buf_writer.seek(SeekFrom::End(0))?;
         index_file_buf_writer.write_all(&th.to_vec())?;
-        index_file_buf_writer.flush()?;
         data_file_buf_writer.flush()?;
+        index_file_buf_writer.flush()?;
         self.last_index += 1;
         Ok(self.last_index as u64)
     }
