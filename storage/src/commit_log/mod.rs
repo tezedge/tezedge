@@ -78,7 +78,7 @@ impl Index {
         );
         Ok(Self {
             position,
-            data_length
+            data_length,
         })
     }
     fn new(position: u64, data_length: u64) -> Self {
@@ -97,13 +97,16 @@ impl Index {
 
 pub struct CommitLog {
     writer: Writer,
-    path : PathBuf
+    path: PathBuf,
 }
 
 impl CommitLog {
     pub fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
         let writer = Writer::new(log_dir.as_ref())?;
-        Ok(Self {  writer, path: log_dir.as_ref().to_path_buf() })
+        Ok(Self {
+            writer,
+            path: log_dir.as_ref().to_path_buf(),
+        })
     }
     #[inline]
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
