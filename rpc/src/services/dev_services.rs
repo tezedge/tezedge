@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use slog::Logger;
+use serde::Serialize;
 
 use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
