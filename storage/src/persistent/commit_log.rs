@@ -295,13 +295,18 @@ mod tests {
     fn test_commit_log_storage() {
         let path = env!("LOG_DIR");
         let mut commitlog = CommitLog::new(path).unwrap();
-        let msgs = vec![vec![1,2,3], vec![4,6,7], vec![21,23,45], vec![10,56,12], vec![51,3,4],vec![76,12,45]];
+        let msgs = vec![
+            vec![1, 2, 3],
+            vec![4, 6, 7],
+            vec![21, 23, 45],
+            vec![10, 56, 12],
+            vec![51, 3, 4],
+            vec![76, 12, 45],
+        ];
         for msg in msgs.iter() {
             println!("{:?}", commitlog.append_msg(msg))
         }
         let items = commitlog.read(2, 2).unwrap();
-        items.for_each(|i| {
-            println!("{:?}", i)
-        })
+        items.for_each(|i| println!("{:?}", i))
     }
 }

@@ -39,7 +39,6 @@ impl Writer {
             .read(true)
             .open(data_file_path.as_path())?;
 
-
         Ok(Self {
             index_file,
             data_file,
