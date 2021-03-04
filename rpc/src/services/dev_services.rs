@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use slog::Logger;
+use serde::Serialize;
 
 use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
@@ -12,7 +13,7 @@ use storage::context_action_storage::{
 use storage::merkle_storage::MerkleStorageStats;
 use storage::persistent::PersistentStorage;
 use storage::{ContextActionRecordValue, ContextActionStorage};
-use tezos_context::channel::ContextAction;
+use tezos_context::channel::{ContextAction, get_time, get_end_time, get_start_time};
 use tezos_messages::base::rpc_support::UniversalValue;
 
 use crate::helpers::{get_action_types, PagedResult};
@@ -58,6 +59,66 @@ pub(crate) fn get_block_actions_cursor(
         .map(ContextActionJson::from)
         .collect();
     Ok(values)
+}
+
+// TODO: move
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContextActionBlockDetails {
+    number_of_actions: usize,
+    storage_time: f64,
+    protocol_time: f64,
+}
+
+impl ContextActionBlockDetails {
+    pub fn new(number_of_actions: usize, storage_time: f64, protocol_time: f64) -> Self {
+        Self {
+            number_of_actions,
+            storage_time,
+            protocol_time,
+        }
+    }
+}
+
+pub(crate) fn get_block_action_details(
+    block_hash: BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<ContextActionBlockDetails, failure::Error> {
+    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    
+    let values: Vec<ContextAction> = context_action_storage
+        .get_by_block_hash(&block_hash)?
+        .into_iter()
+        .map(|action_record| action_record.action)
+        .collect();
+
+    let mut total_storage_time = 0.0;
+    let mut total_protocol_time = 0.0;
+
+    // TODO (make a task to )
+    // gets the first actions start time, so we end up with 0 in the computation for the first element
+    let mut previous_end_time = get_start_time(values.get(0).unwrap());
+
+    let number_of_actions = values.len();
+
+    for value in values {
+        let time_to_process = get_time(&value);
+
+        // protocol time
+        let protocol_time = match value {
+            ContextAction::Set {..}
+            | ContextAction::Get {..}
+            | ContextAction::Mem {..}
+            | ContextAction::DirMem {..} => get_start_time(&value) - previous_end_time,
+            _ => 0.0
+        };
+
+        previous_end_time = get_end_time(&value);
+        total_protocol_time += protocol_time;
+        total_storage_time += time_to_process;
+    }
+
+    Ok(ContextActionBlockDetails::new(number_of_actions, total_storage_time, total_protocol_time))
 }
 
 pub(crate) fn get_contract_actions_cursor(

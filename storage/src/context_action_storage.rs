@@ -7,6 +7,7 @@ use std::mem;
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64};
 
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
@@ -72,6 +73,8 @@ pub struct ContextActionStorage {
     context_by_type_index: ContextActionByTypeIndex,
     kv: Arc<ContextActionStorageKV>,
     generator: Arc<SequenceGenerator>,
+    last_block_hash: Arc<Option<BlockHash>>,
+    last_block_cursor_id: Arc<AtomicU64>,
 }
 
 impl ContextActionStorage {
@@ -83,6 +86,8 @@ impl ContextActionStorage {
             context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
             context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
             context_by_type_index: ContextActionByTypeIndex::new(storage),
+            last_block_hash: Arc::new(None),
+            last_block_cursor_id: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -92,19 +97,32 @@ impl ContextActionStorage {
         block_hash: &BlockHash,
         action: ContextAction,
     ) -> Result<(), StorageError> {
+        // logic for the block_cursor_id
+        if let Some(last_block_hash) = &*self.last_block_hash {
+            if block_hash != last_block_hash {
+                self.last_block_cursor_id = Arc::new(AtomicU64::new(0));
+                self.last_block_hash = Arc::new(Some(block_hash.clone()));
+            }
+        } else {
+            // first block hash
+            self.last_block_hash = Arc::new(Some(block_hash.clone()));
+        }
+
         // generate ID
         let id = self.generator.next()?;
-        let action = ContextActionRecordValue::new(action, id);
+        let action = ContextActionRecordValue::new(action, id, self.last_block_cursor_id.load(std::sync::atomic::Ordering::SeqCst));
         // Store action
         self.kv.put(&id, &action)?;
+
         // Populate indexes
         self.context_by_block_index
-            .put(&ContextActionByBlockHashKey::new(block_hash, id))?;
+            .put(&ContextActionByBlockHashKey::new(block_hash, id, self.last_block_cursor_id.load(std::sync::atomic::Ordering::SeqCst)))?;
 
         if let Some(action_type) = ContextActionType::extract_type(action.action()) {
             self.context_by_type_index
                 .put(&ContextActionByTypeIndexKey::new(action_type, id))?;
         }
+        self.last_block_cursor_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         extract_contract_addresses(&action)
             .iter()
@@ -263,15 +281,20 @@ impl KeyValueSchema for ContextActionStorage {
 pub struct ContextActionRecordValue {
     pub action: ContextAction,
     pub id: SequenceNumber,
+    pub block_cursor_id: SequenceNumber,
 }
 
 impl ContextActionRecordValue {
-    pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
-        Self { action, id }
+    pub fn new(action: ContextAction, id: SequenceNumber, block_cursor_id: SequenceNumber) -> Self {
+        Self { action, id, block_cursor_id }
     }
 
     pub fn id(&self) -> SequenceNumber {
         self.id
+    }
+
+    pub fn block_cursor_id(&self) -> SequenceNumber {
+        self.block_cursor_id
     }
 
     pub fn action(&self) -> &ContextAction {
@@ -290,6 +313,7 @@ pub struct ContextActionJson {
     #[serde(flatten)]
     pub action: ContextAction,
     pub id: SequenceNumber,
+    pub block_cursor_id: u64,
 }
 
 impl From<ContextActionRecordValue> for ContextActionJson {
@@ -297,6 +321,7 @@ impl From<ContextActionRecordValue> for ContextActionJson {
         Self {
             action: rv.action,
             id: rv.id,
+            block_cursor_id: rv.block_cursor_id,
         }
     }
 }
@@ -402,7 +427,7 @@ impl ContextActionByBlockHashIndex {
     ) -> Result<impl Iterator<Item = SequenceNumber> + '_, StorageError> {
         let key = cursor_id.map_or_else(
             || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash),
-            |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
+            |cursor_id| ContextActionByBlockHashKey::new(block_hash, 0, cursor_id),
         );
         Ok(self
             .kv
@@ -434,20 +459,25 @@ impl KeyValueSchema for ContextActionByBlockHashIndex {
 pub struct ContextActionByBlockHashKey {
     block_hash: BlockHash,
     id: SequenceNumber,
+    block_cursor_id: SequenceNumber,
 }
 
 impl ContextActionByBlockHashKey {
     const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
     const LEN_ID: usize = mem::size_of::<SequenceNumber>();
-    const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID;
+    // duplicated to be more explicit about the lengths
+    const LEN_BLOCK_CURSOR_ID: usize = mem::size_of::<SequenceNumber>();
+    const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID + Self::LEN_BLOCK_CURSOR_ID;
 
     const IDX_BLOCK_HASH: usize = 0;
-    const IDX_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
+    const IDX_BLOCK_CURSOR_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
+    const IDX_ID: usize = Self::IDX_BLOCK_CURSOR_ID + Self::LEN_BLOCK_CURSOR_ID;
 
-    pub fn new(block_hash: &BlockHash, id: SequenceNumber) -> Self {
+    pub fn new(block_hash: &BlockHash, id: SequenceNumber, block_cursor_id: SequenceNumber) -> Self {
         Self {
             block_hash: block_hash.clone(),
             id,
+            block_cursor_id
         }
     }
 
@@ -457,13 +487,14 @@ impl ContextActionByBlockHashKey {
         Self {
             block_hash: block_hash.clone(),
             id: 0,
+            block_cursor_id: 0,
         }
     }
 }
 
 /// Decoder for `ContextPrimaryIndexKey`
 ///
-/// * bytes layout `[block_hash(32)][id(8)]`
+/// * bytes layout `[block_hash(32)][block_cursor_id(8)][id(8)]`
 impl Decoder for ContextActionByBlockHashKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
@@ -471,7 +502,8 @@ impl Decoder for ContextActionByBlockHashKey {
                 &bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH],
             )?;
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
-            Ok(Self { block_hash, id })
+            let block_cursor_id = num_from_slice!(bytes, Self::IDX_BLOCK_CURSOR_ID, SequenceNumber);
+            Ok(Self { block_hash, id, block_cursor_id })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -480,11 +512,12 @@ impl Decoder for ContextActionByBlockHashKey {
 
 /// Encoder for `ContextPrimaryIndexKey`
 ///
-/// * bytes layout `[block_hash(32)][id(8)]`
+/// * bytes layout `[block_hash(32)][block_cursor_id(8)][id(8)]`
 impl Encoder for ContextActionByBlockHashKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(Self::LEN_TOTAL);
         result.extend(self.block_hash.as_ref());
+        result.extend(&self.block_cursor_id.to_be_bytes());
         result.extend(&self.id.to_be_bytes());
         assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
         Ok(result)
@@ -1070,6 +1103,7 @@ mod tests {
         let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 6548654,
+            block_cursor_id: 15,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
@@ -1082,6 +1116,7 @@ mod tests {
         let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 176105218,
+            block_cursor_id: 100,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
@@ -1264,6 +1299,6 @@ mod tests {
             start_time: 0 as f64,
             end_time: 0 as f64,
         };
-        ContextActionRecordValue::new(action, 123 as u64)
+        ContextActionRecordValue::new(action, 123 as u64, 55)
     }
 }

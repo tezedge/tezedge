@@ -220,6 +220,11 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
+        "/dev/chains/main/actions/blocks/:block_hash/details",
+        dev_handler::block_action_details,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/dev/chains/main/actions/contracts/:contract_address",
         dev_handler::dev_action_cursor,
     );
