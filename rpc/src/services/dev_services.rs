@@ -6,6 +6,7 @@ use slog::Logger;
 use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::context::{ContextApi, TezedgeContext};
+use storage::context_action_storage::ContextActionBlockDetails;
 use storage::context_action_storage::{
     contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson,
 };
@@ -58,6 +59,23 @@ pub(crate) fn get_block_actions_cursor(
         .map(ContextActionJson::from)
         .collect();
     Ok(values)
+}
+
+pub(crate) fn get_block_action_details(
+    block_hash: BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<ContextActionBlockDetails, failure::Error> {
+    let context_action_storage = ContextActionStorage::new(persistent_storage);
+
+    let actions: Vec<ContextAction> = context_action_storage
+        .get_by_block_hash(&block_hash)?
+        .into_iter()
+        .map(|action_record| action_record.action)
+        .collect();
+
+    Ok(ContextActionBlockDetails::calculate_block_action_details(
+        actions,
+    ))
 }
 
 pub(crate) fn get_contract_actions_cursor(
@@ -143,8 +161,8 @@ pub(crate) fn get_cycle_length_for_block(
     }
 }
 
-pub(crate) fn get_dev_version() -> Result<String, failure::Error> {
+pub(crate) fn get_dev_version() -> String {
     let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
-    Ok(format!("v{}", version_env.to_string()))
+    format!("v{}", version_env.to_string())
 }
