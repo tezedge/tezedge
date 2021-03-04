@@ -86,18 +86,8 @@ impl Reader {
             .iter()
             .fold(0_u64, |acc, item| acc + item.data_length);
         let mut bytes = vec![0; total_data_size as usize];
-        match data_file_buf_reader.seek(SeekFrom::Start(from_index.position)){
-            Ok(_) => {}
-            Err(_) => {
-                println!("Read failed : Seek")
-            }
-        };
-         match data_file_buf_reader.read_exact(&mut bytes){
-             Ok(_) => {}
-             Err(_) => {
-                 println!("Read failed: Read EX")
-             }
-         };
+        data_file_buf_reader.seek(SeekFrom::Start(from_index.position))?;
+        data_file_buf_reader.read_exact(&mut bytes)?;
 
         Ok(MessageSet::new(range, bytes))
     }
