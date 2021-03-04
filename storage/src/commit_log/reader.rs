@@ -1,7 +1,7 @@
 use crate::commit_log::error::TezedgeCommitLogError;
 use crate::commit_log::{Index, MessageSet, DATA_FILE_NAME, INDEX_FILE_NAME, TH_LENGTH};
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Error, Read, Seek, SeekFrom};
+use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub(crate) struct Reader {
