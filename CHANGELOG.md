@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Added new 008 edo2 support + possibility to connect to edo2net
+- Nothing.
 
 ### Changed
 
@@ -29,6 +29,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+
+## [1.1.2] - 2021-03-05
+
+### Added
+
+- New 008 edo2 support + possibility to connect to edo2net
+- New algorithm for calculation of context_hash according to Tezos
+
+## [1.1.1] - 2021-03-05
+
+### Fixed
+- README.md and predefined docker composes
 
 ## [1.1.0] - 2021-03-02
 
@@ -297,7 +309,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/simplestaking/tezedge/releases/v1.1.2
 [1.1.0]: https://github.com/simplestaking/tezedge/releases/v1.1.0
 [1.0.0]: https://github.com/simplestaking/tezedge/releases/v1.0.0
 [0.9.2]: https://github.com/simplestaking/tezedge/releases/v0.9.2
