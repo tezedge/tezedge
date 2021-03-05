@@ -6,6 +6,7 @@ use std::convert::TryFrom;
 use std::mem;
 use std::ops::Range;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
 
 use failure::Fail;
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{
     BlockHash, ContractKt1Hash, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash, HashType,
 };
-pub use tezos_context::channel::ContextAction;
+pub use tezos_context::channel::{get_end_time, get_start_time, get_time, ContextAction};
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
 use crate::persistent::codec::range_from_idx_len;
@@ -72,6 +73,11 @@ pub struct ContextActionStorage {
     context_by_type_index: ContextActionByTypeIndex,
     kv: Arc<ContextActionStorageKV>,
     generator: Arc<SequenceGenerator>,
+    // Used to detect block change. Actions flow by one in order so when the last block changes
+    // we can reset the block_action_id (Not persisted)
+    last_block_hash: Arc<Option<BlockHash>>,
+    // A basic counter for the block_action_ids. Reset to 0 for a differnt block (Not persisted)
+    next_block_action_id: Arc<AtomicU64>,
 }
 
 impl ContextActionStorage {
@@ -83,6 +89,8 @@ impl ContextActionStorage {
             context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
             context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
             context_by_type_index: ContextActionByTypeIndex::new(storage),
+            last_block_hash: Arc::new(None),
+            next_block_action_id: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -92,27 +100,45 @@ impl ContextActionStorage {
         block_hash: &BlockHash,
         action: ContextAction,
     ) -> Result<(), StorageError> {
+        // logic for the block_action_id
+        if let Some(last_block_hash) = &*self.last_block_hash {
+            if block_hash != last_block_hash {
+                self.next_block_action_id = Arc::new(AtomicU64::new(0));
+                self.last_block_hash = Arc::new(Some(block_hash.clone()));
+            }
+        } else {
+            // first block hash
+            self.last_block_hash = Arc::new(Some(block_hash.clone()));
+        }
+
         // generate ID
         let id = self.generator.next()?;
-        let action = ContextActionRecordValue::new(action, id);
+        let action =
+            ContextActionRecordValue::new(action, id, self.next_block_action_id.load(SeqCst));
         // Store action
         self.kv.put(&id, &action)?;
+
         // Populate indexes
         self.context_by_block_index
-            .put(&ContextActionByBlockHashKey::new(block_hash, id))?;
+            .put(&ContextActionByBlockHashKey::new(
+                block_hash,
+                id,
+                self.next_block_action_id.load(SeqCst),
+            ))?;
 
         if let Some(action_type) = ContextActionType::extract_type(action.action()) {
             self.context_by_type_index
                 .put(&ContextActionByTypeIndexKey::new(action_type, id))?;
         }
+        self.next_block_action_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         extract_contract_addresses(&action)
             .iter()
-            .map(|contract_address| {
+            .try_for_each(|contract_address| {
                 self.context_by_contract_index
                     .put(&ContextActionByContractIndexKey::new(contract_address, id))
             })
-            .collect::<Result<(), _>>()
     }
 
     #[inline]
@@ -133,14 +159,14 @@ impl ContextActionStorage {
                     .get_by_action_types_iterator(&action_type, None)?;
                 let iterators: Vec<Box<dyn Iterator<Item = SequenceNumber>>> =
                     vec![Box::new(base_iterator), Box::new(type_iterator)];
-                self.load_indexes(
+                Ok(self.load_indexes(
                     sorted_intersect::sorted_intersect(iterators, limit.unwrap_or(std::usize::MAX))
                         .into_iter(),
-                )
+                ))
             } else if let Some(limit) = limit {
-                self.load_indexes(base_iterator.take(limit))
+                Ok(self.load_indexes(base_iterator.take(limit)))
             } else {
-                self.load_indexes(base_iterator)
+                Ok(self.load_indexes(base_iterator))
             }
         } else {
             let mut base_iterator = self
@@ -154,20 +180,20 @@ impl ContextActionStorage {
                         .get_by_action_types_iterator(&action_type, Some(*index))?;
                     let iterators: Vec<Box<dyn Iterator<Item = SequenceNumber>>> =
                         vec![Box::new(base_iterator), Box::new(type_iterator)];
-                    self.load_indexes(
+                    Ok(self.load_indexes(
                         sorted_intersect::sorted_intersect(
                             iterators,
                             limit.unwrap_or(std::usize::MAX),
                         )
                         .into_iter(),
-                    )
+                    ))
                 } else {
                     Ok(Default::default())
                 }
             } else if let Some(limit) = limit {
-                self.load_indexes(base_iterator.take(limit))
+                Ok(self.load_indexes(base_iterator.take(limit)))
             } else {
-                self.load_indexes(base_iterator)
+                Ok(self.load_indexes(base_iterator))
             }
         }
     }
@@ -179,7 +205,7 @@ impl ContextActionStorage {
     ) -> Result<Vec<ContextActionRecordValue>, StorageError> {
         self.context_by_block_index
             .get_by_block_hash(block_hash)
-            .and_then(|idx| self.load_indexes(idx.into_iter()))
+            .map(|idx| self.load_indexes(idx.into_iter()))
     }
 
     #[inline]
@@ -191,16 +217,16 @@ impl ContextActionStorage {
     ) -> Result<Vec<ContextActionRecordValue>, StorageError> {
         self.context_by_contract_index
             .get_by_contract_address(contract_address, from_id, limit)
-            .and_then(|idx| self.load_indexes(idx.into_iter()))
+            .map(|idx| self.load_indexes(idx.into_iter()))
     }
 
     fn load_indexes<'a, Idx: Iterator<Item = u64> + 'a>(
         &'a self,
         indexes: Idx,
-    ) -> Result<Vec<ContextActionRecordValue>, StorageError> {
-        Ok(indexes
+    ) -> Vec<ContextActionRecordValue> {
+        indexes
             .filter_map(|id| self.kv.get(&id).ok().flatten())
-            .collect())
+            .collect()
     }
 }
 
@@ -263,15 +289,24 @@ impl KeyValueSchema for ContextActionStorage {
 pub struct ContextActionRecordValue {
     pub action: ContextAction,
     pub id: SequenceNumber,
+    pub block_action_id: SequenceNumber,
 }
 
 impl ContextActionRecordValue {
-    pub fn new(action: ContextAction, id: SequenceNumber) -> Self {
-        Self { action, id }
+    pub fn new(action: ContextAction, id: SequenceNumber, block_action_id: SequenceNumber) -> Self {
+        Self {
+            action,
+            id,
+            block_action_id,
+        }
     }
 
     pub fn id(&self) -> SequenceNumber {
         self.id
+    }
+
+    pub fn block_action_id(&self) -> SequenceNumber {
+        self.block_action_id
     }
 
     pub fn action(&self) -> &ContextAction {
@@ -290,6 +325,7 @@ pub struct ContextActionJson {
     #[serde(flatten)]
     pub action: ContextAction,
     pub id: SequenceNumber,
+    pub block_action_id: u64,
 }
 
 impl From<ContextActionRecordValue> for ContextActionJson {
@@ -297,6 +333,7 @@ impl From<ContextActionRecordValue> for ContextActionJson {
         Self {
             action: rv.action,
             id: rv.id,
+            block_action_id: rv.block_action_id,
         }
     }
 }
@@ -402,7 +439,7 @@ impl ContextActionByBlockHashIndex {
     ) -> Result<impl Iterator<Item = SequenceNumber> + '_, StorageError> {
         let key = cursor_id.map_or_else(
             || ContextActionByBlockHashKey::from_block_hash_prefix(block_hash),
-            |cursor_id| ContextActionByBlockHashKey::new(block_hash, cursor_id),
+            |cursor_id| ContextActionByBlockHashKey::new(block_hash, 0, cursor_id),
         );
         Ok(self
             .kv
@@ -434,20 +471,29 @@ impl KeyValueSchema for ContextActionByBlockHashIndex {
 pub struct ContextActionByBlockHashKey {
     block_hash: BlockHash,
     id: SequenceNumber,
+    block_action_id: SequenceNumber,
 }
 
 impl ContextActionByBlockHashKey {
     const LEN_BLOCK_HASH: usize = HashType::BlockHash.size();
     const LEN_ID: usize = mem::size_of::<SequenceNumber>();
-    const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID;
+    // duplicated to be more explicit about the lengths
+    const LEN_BLOCK_ACTION_ID: usize = mem::size_of::<SequenceNumber>();
+    const LEN_TOTAL: usize = Self::LEN_BLOCK_HASH + Self::LEN_ID + Self::LEN_BLOCK_ACTION_ID;
 
     const IDX_BLOCK_HASH: usize = 0;
-    const IDX_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
+    const IDX_BLOCK_ACTION_ID: usize = Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH;
+    const IDX_ID: usize = Self::IDX_BLOCK_ACTION_ID + Self::LEN_BLOCK_ACTION_ID;
 
-    pub fn new(block_hash: &BlockHash, id: SequenceNumber) -> Self {
+    pub fn new(
+        block_hash: &BlockHash,
+        id: SequenceNumber,
+        block_action_id: SequenceNumber,
+    ) -> Self {
         Self {
             block_hash: block_hash.clone(),
             id,
+            block_action_id,
         }
     }
 
@@ -457,13 +503,14 @@ impl ContextActionByBlockHashKey {
         Self {
             block_hash: block_hash.clone(),
             id: 0,
+            block_action_id: 0,
         }
     }
 }
 
 /// Decoder for `ContextPrimaryIndexKey`
 ///
-/// * bytes layout `[block_hash(32)][id(8)]`
+/// * bytes layout `[block_hash(32)][block_action_id(8)][id(8)]`
 impl Decoder for ContextActionByBlockHashKey {
     fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
         if Self::LEN_TOTAL == bytes.len() {
@@ -471,7 +518,12 @@ impl Decoder for ContextActionByBlockHashKey {
                 &bytes[Self::IDX_BLOCK_HASH..Self::IDX_BLOCK_HASH + Self::LEN_BLOCK_HASH],
             )?;
             let id = num_from_slice!(bytes, Self::IDX_ID, SequenceNumber);
-            Ok(Self { block_hash, id })
+            let block_action_id = num_from_slice!(bytes, Self::IDX_BLOCK_ACTION_ID, SequenceNumber);
+            Ok(Self {
+                block_hash,
+                id,
+                block_action_id,
+            })
         } else {
             Err(SchemaError::DecodeError)
         }
@@ -480,11 +532,12 @@ impl Decoder for ContextActionByBlockHashKey {
 
 /// Encoder for `ContextPrimaryIndexKey`
 ///
-/// * bytes layout `[block_hash(32)][id(8)]`
+/// * bytes layout `[block_hash(32)][block_action_id(8)][id(8)]`
 impl Encoder for ContextActionByBlockHashKey {
     fn encode(&self) -> Result<Vec<u8>, SchemaError> {
         let mut result = Vec::with_capacity(Self::LEN_TOTAL);
         result.extend(self.block_hash.as_ref());
+        result.extend(&self.block_action_id.to_be_bytes());
         result.extend(&self.id.to_be_bytes());
         assert_eq!(result.len(), Self::LEN_TOTAL, "Result length mismatch");
         Ok(result)
@@ -946,6 +999,59 @@ impl FromStr for ContextActionType {
     }
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ContextActionBlockDetails {
+    number_of_actions: usize,
+    total_storage_time: f64,
+    total_protocol_time: f64,
+}
+
+impl ContextActionBlockDetails {
+    pub fn new(
+        number_of_actions: usize,
+        total_storage_time: f64,
+        total_protocol_time: f64,
+    ) -> Self {
+        Self {
+            number_of_actions,
+            total_storage_time,
+            total_protocol_time,
+        }
+    }
+
+    pub fn calculate_block_action_details(actions: Vec<ContextAction>) -> Self {
+        let mut total_storage_time = 0.0;
+        let mut total_protocol_time = 0.0;
+
+        let number_of_actions = actions.len();
+
+        if let Some(first_action) = actions.get(0) {
+            // gets the first actions start time, so we end up with 0 in the computation for the first element
+            let mut previous_end_time = get_start_time(first_action);
+
+            for action in actions {
+                let time_to_process = get_time(&action);
+
+                // protocol time
+                let protocol_time = match action {
+                    ContextAction::Shutdown => 0.0,
+                    _ => get_start_time(&action) - previous_end_time,
+                };
+
+                previous_end_time = get_end_time(&action);
+                total_protocol_time += protocol_time;
+                total_storage_time += time_to_process;
+            }
+        }
+
+        Self {
+            number_of_actions,
+            total_storage_time,
+            total_protocol_time,
+        }
+    }
+}
+
 pub mod sorted_intersect {
     use std::cmp::Ordering;
 
@@ -1032,7 +1138,7 @@ pub mod sorted_intersect {
         true
     }
 
-    fn is_hit<Item: Ord>(heap: &Vec<(Item, usize)>) -> bool {
+    fn is_hit<Item: Ord>(heap: &[(Item, usize)]) -> bool {
         let value = heap.iter().next().map(|(value, _)| {
             heap.iter().fold((value, true), |(a, eq), (b, _)| {
                 (b, eq & (a.cmp(b) == Ordering::Equal))
@@ -1070,6 +1176,7 @@ mod tests {
         let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 6548654,
+            block_action_id: 15,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
@@ -1082,6 +1189,7 @@ mod tests {
         let expected = ContextActionByBlockHashKey {
             block_hash: vec![43; HashType::BlockHash.size()].try_into()?,
             id: 176105218,
+            block_action_id: 100,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = ContextActionByBlockHashKey::decode(&encoded_bytes)?;
@@ -1151,7 +1259,7 @@ mod tests {
     }
 
     #[test]
-    fn extract_contract_address() -> Result<(), Error> {
+    fn extract_contract_address() {
         // ok
         let contract_address = extract_contract_addresses(&action(
             [
@@ -1243,8 +1351,20 @@ mod tests {
             .to_vec(),
         ));
         assert_eq!(0, contract_address.len());
+    }
 
-        Ok(())
+    #[test]
+    fn test_calculate_block_action_details() {
+        let action_1 = action_get_with_time(1.0, 2.0);
+        let action_2 = action_get_with_time(2.5, 3.0);
+        let action_3 = action_get_with_time(5.0, 8.0);
+
+        let actions = vec![action_1, action_2, action_3];
+
+        let expected = ContextActionBlockDetails::new(3, 4.5, 2.5);
+        let block_details = ContextActionBlockDetails::calculate_block_action_details(actions);
+
+        assert_eq!(expected, block_details);
     }
 
     fn to_key(key: Vec<&str>) -> Vec<String> {
@@ -1264,6 +1384,21 @@ mod tests {
             start_time: 0 as f64,
             end_time: 0 as f64,
         };
-        ContextActionRecordValue::new(action, 123 as u64)
+        ContextActionRecordValue::new(action, 123, 55)
+    }
+
+    fn action_get_with_time(start_time: f64, end_time: f64) -> ContextAction {
+        ContextAction::Get {
+            context_hash: None,
+            block_hash: None,
+            operation_hash: None,
+            tree_hash: None,
+            tree_id: 0,
+            key: vec!["0".to_string()],
+            value: Vec::new(),
+            value_as_json: None,
+            start_time,
+            end_time,
+        }
     }
 }
