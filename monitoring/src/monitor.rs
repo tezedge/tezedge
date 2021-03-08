@@ -63,16 +63,14 @@ impl Monitor {
         use std::mem::size_of_val;
         use tezos_messages::p2p::encoding::peer::PeerMessage;
 
-        for message in msg.message.messages() {
-            match message {
-                PeerMessage::CurrentBranch(msg) => {
-                    if msg.current_branch().current_head().level() > 0 {
-                        self.bootstrap_monitor
-                            .set_level(msg.current_branch().current_head().level() as usize);
-                    }
+        match msg.message.message() {
+            PeerMessage::CurrentBranch(msg) => {
+                if msg.current_branch().current_head().level() > 0 {
+                    self.bootstrap_monitor
+                        .set_level(msg.current_branch().current_head().level() as usize);
                 }
-                _ => (),
             }
+            _ => (),
         }
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {

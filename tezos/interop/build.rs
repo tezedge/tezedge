@@ -16,9 +16,14 @@ const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distributio
 const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 
+// zcash params files for sapling - these files are fixed and never ever changes
+const ZCASH_PARAM_SAPLING_SPEND_FILE_NAME: &str = "sapling-spend.params";
+const ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME: &str = "sapling-output.params";
+const ZCASH_PARAM_SAPLING_FILES_TEZOS_PATH: &str = "_opam/share/zcash-params";
+
 #[derive(Debug)]
-struct RemoteLib {
-    lib_url: String,
+struct RemoteFile {
+    file_url: String,
     sha256_checksum_url: String,
 }
 
@@ -33,10 +38,8 @@ enum BuildChain {
     Local(String),
 }
 
-fn get_remote_lib() -> RemoteLib {
+fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
     let platform = current_platform();
-    let artifacts = current_release_distributions_artifacts();
-    println!("Resolved known artifacts: {:?}", &artifacts);
 
     let artifact_for_platform = match platform.os_type {
         OSType::OSX => Some("libtezos-ffi-macos.dylib"),
@@ -76,23 +79,10 @@ fn get_remote_lib() -> RemoteLib {
     match artifact_for_platform {
         Some(artifact_for_platform) => {
             // find artifact for platform
-            match artifacts.iter().find(|a| a.name == artifact_for_platform) {
+            match get_remote_file(artifact_for_platform, artifacts) {
                 Some(artifact) => {
-                    let artifact_for_platform_sha256 = format!("{}.sha256", &artifact_for_platform);
-                    let artifact_sha256 = artifacts
-                        .iter()
-                        .find(|a| a.name.as_str() == artifact_for_platform_sha256.as_str())
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "Expected artifact for name: '{}', artifacts: {:?}",
-                                &artifact_for_platform_sha256, artifacts
-                            )
-                        });
-
-                    RemoteLib {
-                        lib_url: artifact.url.to_string(),
-                        sha256_checksum_url: artifact_sha256.url.to_string(),
-                    }
+                    println!("Resolved platform-dependent remote_lib: {:?}", &artifact);
+                    artifact
                 }
                 None => {
                     println!(
@@ -109,6 +99,79 @@ fn get_remote_lib() -> RemoteLib {
             println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
             panic!("Not yet supported platform!");
         }
+    }
+}
+
+fn get_remote_file(artifact_name: &str, artifacts: &[Artifact]) -> Option<RemoteFile> {
+    // find artifact for platform
+    artifacts
+        .iter()
+        .find(|a| a.name == artifact_name)
+        .map(|artifact| {
+            let artifact_sha256 = format!("{}.sha256", &artifact_name);
+            let artifact_sha256 = artifacts
+                .iter()
+                .find(|a| a.name.as_str() == artifact_sha256.as_str())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Expected artifact for name: '{}', artifacts: {:?}",
+                        &artifact_sha256, artifacts
+                    )
+                });
+
+            RemoteFile {
+                file_url: artifact.url.to_string(),
+                sha256_checksum_url: artifact_sha256.url.to_string(),
+            }
+        })
+}
+
+fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &PathBuf) {
+    // get file: $ curl <remote_url> --output <dest_path>
+    Command::new("curl")
+        .args(&[
+            remote_file.file_url.as_str(),
+            "--output",
+            dest_path.as_os_str().to_str().unwrap(),
+        ])
+        .status()
+        .unwrap_or_else(|_| {
+            panic!(
+                "Couldn't download file '{}' to '{:?}'",
+                remote_file.file_url.as_str(),
+                dest_path
+            )
+        });
+
+    // get sha256 checksum file: $ curl <remote_url>
+    let remote_file_sha256: Output = Command::new("curl")
+        .args(&[remote_file.sha256_checksum_url.as_str()])
+        .output()
+        .unwrap_or_else(|_| {
+            panic!(
+                "Couldn't retrieve sha256check file for tezos binary from url: {:?}!",
+                remote_file.sha256_checksum_url.as_str()
+            )
+        });
+    let remote_file_sha256 =
+        hex::decode(std::str::from_utf8(&remote_file_sha256.stdout).expect("Invalid UTF-8 value!"))
+            .expect("Invalid hex value!");
+
+    // check sha256 hash
+    {
+        let mut file = File::open(dest_path)
+            .unwrap_or_else(|_| panic!("Failed to read contents of {:?}", dest_path));
+        let mut sha256 = Sha256::new();
+        std::io::copy(&mut file, &mut sha256)
+            .unwrap_or_else(|_| panic!("Failed to copy to sha256 contents of {:?}", dest_path));
+        let hash = sha256.finalize();
+        assert_eq!(
+            hash[..],
+            *remote_file_sha256,
+            "{:?} vs {:?} SHA256 mismatch",
+            remote_file.file_url,
+            remote_file.sha256_checksum_url
+        );
     }
 }
 
@@ -134,12 +197,21 @@ fn current_release_distributions_artifacts() -> Vec<Artifact> {
 }
 
 fn run_builder(build_chain: &BuildChain) {
+    let artifacts_path = Path::new(ARTIFACTS_DIR);
+    let libtezos_ffi_dst_path = artifacts_path.join(libtezos_filename());
+    let zcash_params_spend_dest_path = artifacts_path.join(ZCASH_PARAM_SAPLING_SPEND_FILE_NAME);
+    let zcash_params_output_dest_path = artifacts_path.join(ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME);
+
     match build_chain {
         BuildChain::Local(tezos_base_dir) => {
-            let artifacts_path = Path::new(ARTIFACTS_DIR);
             let tezos_path = Path::new(&tezos_base_dir);
             let libtezos_ffi_src_path = tezos_path.join(LIBTEZOS_BUILD_NAME);
-            let libtezos_ffi_dst_path = artifacts_path.join(libtezos_filename());
+            let zcash_params_spend_src_path = tezos_path
+                .join(ZCASH_PARAM_SAPLING_FILES_TEZOS_PATH)
+                .join(ZCASH_PARAM_SAPLING_SPEND_FILE_NAME);
+            let zcash_params_output_src_path = tezos_path
+                .join(ZCASH_PARAM_SAPLING_FILES_TEZOS_PATH)
+                .join(ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME);
 
             if !tezos_path.exists() {
                 println!(
@@ -164,6 +236,34 @@ fn run_builder(build_chain: &BuildChain) {
                 panic!();
             }
 
+            if !zcash_params_spend_src_path.exists() {
+                println!(
+                    "{} {} was not found!",
+                    "error".bright_red(),
+                    zcash_params_spend_src_path.to_str().unwrap()
+                );
+
+                println!();
+                println!(
+                    "Please build Tezos repo before continuing (see: ./tezos/interop/README.md)."
+                );
+                panic!();
+            }
+
+            if !zcash_params_output_src_path.exists() {
+                println!(
+                    "{} {} was not found!",
+                    "error".bright_red(),
+                    zcash_params_output_src_path.to_str().unwrap()
+                );
+
+                println!();
+                println!(
+                    "Please build Tezos repo before continuing (see: ./tezos/interop/README.md)."
+                );
+                panic!();
+            }
+
             Command::new("cp")
                 .args(&[
                     "-f",
@@ -171,51 +271,71 @@ fn run_builder(build_chain: &BuildChain) {
                     libtezos_ffi_dst_path.to_str().unwrap(),
                 ])
                 .status()
-                .expect("Couldn't copy libtezos-ffi.");
-        }
-        BuildChain::Remote => {
-            let libtezos_filename = libtezos_filename();
-            let libtezos_path = Path::new("lib_tezos")
-                .join("artifacts")
-                .join(libtezos_filename);
-            let remote_lib = get_remote_lib();
-            println!("Resolved platform-dependent remote_lib: {:?}", &remote_lib);
-
-            // get library: $ curl <remote_url> --output lib_tezos/artifacts/libtezos.so
-            Command::new("curl")
-                .args(&[
-                    remote_lib.lib_url.as_str(),
-                    "--output",
-                    libtezos_path.as_os_str().to_str().unwrap(),
-                ])
-                .status()
-                .expect("Couldn't retrieve compiled tezos binary.");
-
-            // get sha256 checksum file: $ curl <remote_url>
-            let remote_lib_sha256: Output = Command::new("curl")
-                .args(&[remote_lib.sha256_checksum_url.as_str()])
-                .output()
                 .unwrap_or_else(|_| {
                     panic!(
-                        "Couldn't retrieve sha256check file for tezos binary from url: {:?}!",
-                        remote_lib.sha256_checksum_url.as_str()
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        libtezos_ffi_src_path, libtezos_ffi_dst_path
                     )
                 });
-            let remote_lib_sha256 = hex::decode(
-                std::str::from_utf8(&remote_lib_sha256.stdout).expect("Invalid UTF-8 value!"),
-            )
-            .expect("Invalid hex value!");
 
-            // check sha256 hash
-            {
-                let mut file =
-                    File::open(&libtezos_path).expect("Failed to read contents of libtezos.so");
-                let mut sha256 = Sha256::new();
-                std::io::copy(&mut file, &mut sha256)
-                    .expect("Failed to read contents of libtezos.so");
-                let hash = sha256.finalize();
-                assert_eq!(hash[..], *remote_lib_sha256, "libtezos.so SHA256 mismatch");
-            }
+            Command::new("cp")
+                .args(&[
+                    "-f",
+                    zcash_params_spend_src_path.to_str().unwrap(),
+                    zcash_params_spend_dest_path.to_str().unwrap(),
+                ])
+                .status()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        zcash_params_spend_src_path, zcash_params_spend_dest_path
+                    )
+                });
+
+            Command::new("cp")
+                .args(&[
+                    "-f",
+                    zcash_params_output_src_path.to_str().unwrap(),
+                    zcash_params_output_dest_path.to_str().unwrap(),
+                ])
+                .status()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        zcash_params_output_src_path, zcash_params_output_dest_path
+                    )
+                });
+        }
+        BuildChain::Remote => {
+            let artifacts = current_release_distributions_artifacts();
+            println!("Resolved known artifacts: {:?}", &artifacts);
+
+            download_remote_file_and_check_sha256(
+                get_remote_lib(&artifacts),
+                &libtezos_ffi_dst_path,
+            );
+            download_remote_file_and_check_sha256(
+                get_remote_file(ZCASH_PARAM_SAPLING_SPEND_FILE_NAME, &artifacts).unwrap_or_else(
+                    || {
+                        panic!(
+                            "Failed to find file {} in artifacts",
+                            ZCASH_PARAM_SAPLING_SPEND_FILE_NAME
+                        )
+                    },
+                ),
+                &zcash_params_spend_dest_path,
+            );
+            download_remote_file_and_check_sha256(
+                get_remote_file(ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME, &artifacts).unwrap_or_else(
+                    || {
+                        panic!(
+                            "Failed to find file {} in artifacts",
+                            ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME
+                        )
+                    },
+                ),
+                &zcash_params_output_dest_path,
+            );
         }
     };
 }

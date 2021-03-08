@@ -9,9 +9,8 @@ use tezos_messages::p2p::encoding::prelude::*;
 fn can_deserialize_bootstrap() -> Result<(), Error> {
     let message_bytes = hex::decode("000000020002")?;
     let messages = PeerMessageResponse::from_bytes(message_bytes).unwrap();
-    assert_eq!(1, messages.messages().len());
 
-    let message = messages.messages().get(0).unwrap();
+    let message = messages.message();
     match message {
         PeerMessage::Bootstrap => Ok(()),
         _ => panic!("Unsupported encoding: {:?}", message),

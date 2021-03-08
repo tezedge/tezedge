@@ -314,9 +314,9 @@ mod tests {
                 .parse()
                 .expect("Expected valid ip:port address");
 
-            let node_identity = Arc::new(Identity::generate(0f64));
+            let node_identity = Arc::new(Identity::generate(0f64).unwrap());
             let peer_public_key_hash: CryptoboxPublicKeyHash =
-                node_identity.public_key.public_key_hash();
+                node_identity.public_key.public_key_hash().unwrap();
             let peer_id_marker = peer_public_key_hash.to_base58_check();
 
             let metadata = MetadataMessage::new(false, false);

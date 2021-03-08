@@ -1,6 +1,6 @@
 [package]
 name = "sandbox"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["Adrian Nagy <adrian.nagy@simplestaking.com>"]
 edition = "2018"
 default-run = "sandbox"
@@ -19,6 +19,8 @@ slog-term = "2.6"
 tokio = { version = "1.2", features = ["full"] }
 warp = "0.3"
 wait-timeout = "0.2"
+# local dependencies
+tezos_api = { path = "../tezos/api" }
 
 [build-dependencies]
 colored = "2.0"

@@ -17,9 +17,9 @@ use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,
 };
-use tezos_messages::p2p::encoding::block_header::BlockHeader;
-use tezos_messages::p2p::encoding::current_branch::{CurrentBranchMessage, HISTORY_MAX_SIZE};
+use tezos_messages::p2p::encoding::current_branch::CurrentBranchMessage;
 use tezos_messages::p2p::encoding::prelude::{CurrentHeadMessage, OperationsForBlocksMessage};
+use tezos_messages::p2p::encoding::{block_header::BlockHeader, limits::HISTORY_MAX_SIZE};
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
@@ -732,7 +732,7 @@ mod tests {
         // init with genesis
         let (genesis_hash, genesis_header) =
             (blocksdb.block_hash("Genesis"), blocksdb.header("Genesis"));
-        let chain_id = chain_id_from_block_hash(&genesis_hash);
+        let chain_id = chain_id_from_block_hash(&genesis_hash)?;
         block_storage.put_block_header(&genesis_header)?;
         block_meta_storage.put(
             &genesis_hash,

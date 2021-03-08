@@ -7,14 +7,17 @@ use failure::_core::convert::TryFrom;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use crypto::blake2b;
+use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::binary_reader::{BinaryReader, BinaryReaderError};
 use tezos_encoding::binary_writer;
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::ser;
+use tezos_encoding::{
+    binary_reader::{BinaryReader, BinaryReaderError},
+    binary_writer::BinaryWriterError,
+};
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
 
@@ -189,7 +192,7 @@ pub mod cache {
 /// To read binary encoding use  [`MessageReader`](super::stream::MessageReader).
 pub trait BinaryMessage: Sized {
     /// Produce bytes from the struct.
-    fn as_bytes(&self) -> Result<Vec<u8>, ser::Error>;
+    fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError>;
 
     /// Create new struct from bytes.
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
@@ -200,7 +203,7 @@ where
     T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
 {
     #[inline]
-    fn as_bytes(&self) -> Result<Vec<u8>, ser::Error> {
+    fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
         // check cache at first
         if let Some(cache) = self.cache_reader() {
             if let Some(data) = cache.get() {
@@ -320,14 +323,16 @@ where
 /// Message hash error
 #[derive(Debug, Fail)]
 pub enum MessageHashError {
-    #[fail(display = "Message serialization error")]
-    SerializationError { error: ser::Error },
+    #[fail(display = "Message serialization error: {}", error)]
+    SerializationError { error: BinaryWriterError },
     #[fail(display = "Error constructing hash")]
     FromBytesError { error: crypto::hash::FromBytesError },
+    #[fail(display = "Blake2b digest error")]
+    Blake2bError,
 }
 
-impl From<ser::Error> for MessageHashError {
-    fn from(error: ser::Error) -> Self {
+impl From<BinaryWriterError> for MessageHashError {
+    fn from(error: BinaryWriterError) -> Self {
         SerializationError { error }
     }
 }
@@ -335,6 +340,12 @@ impl From<ser::Error> for MessageHashError {
 impl From<crypto::hash::FromBytesError> for MessageHashError {
     fn from(error: crypto::hash::FromBytesError) -> Self {
         MessageHashError::FromBytesError { error }
+    }
+}
+
+impl From<Blake2bError> for MessageHashError {
+    fn from(_: Blake2bError) -> Self {
+        MessageHashError::Blake2bError
     }
 }
 
@@ -350,7 +361,7 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
     #[inline]
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;
-        Ok(blake2b::digest_256(&bytes))
+        Ok(blake2b::digest_256(&bytes)?)
     }
 
     #[inline]
@@ -359,7 +370,7 @@ impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
         H: crypto::hash::HashTrait,
     {
         let bytes = self.as_bytes()?;
-        let digest = blake2b::digest_256(&bytes);
+        let digest = blake2b::digest_256(&bytes)?;
         H::try_from_bytes(&digest).map_err(|e| e.into())
     }
 }

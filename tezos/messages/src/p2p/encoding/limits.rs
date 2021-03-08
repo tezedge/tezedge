@@ -1,18 +1,60 @@
+use crypto::hash::HashType;
+
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-/// P2P Point length
-/// `ip4:port` or `[ip6]:port`, ip4 max is 3 * 4 + 3, port max is 5
-/// ipv6 is 8 * 4 (octets) + 8 (: separators) + 2 ([]) + 5 (port)
+/// P2P message encoding maximal size
 ///
-/// OCaml ref: tezos/src/lib_p2p/p2p_message.ml:64 (comment)
+/// OCaml refs:
 ///
-pub const P2P_POINT_MAX_LENGTH: usize = 8 * 4 + 8 + 2 + 5;
+/// [lib_p2p/p2p_message.ml:37](https://gitlab.com/simplestaking/tezos/-/blob/9aac95765dc8290ce2f722b7bd71042ff9609f46/src/lib_p2p/p2p_message.ml#L37)
+/// ```ocaml
+/// let encoding msg_encoding =
+///  let open Data_encoding in
+///  check_size (100 * 1024 * 1024)
+///  (*Very high, arbitrary upper bound for message encodings  *)
+///  ...
+/// ```
+pub const MESSAGE_MAX_SIZE: usize = 100 * 1024 * 1024;
 
-/// Peer fixed length
+/// P2P Point ID encoding maximal size
 ///
-/// OCaml ref: tezos/src/lib_p2p/p2p_message.ml:81 (comment)
-pub const PEER_ID_LENGTH: usize = 16;
+/// OCaml refs:
+/// tezos/src/lib_p2p/p2p_message.ml:64 (comment)
+///
+/// lib_base/p2p_point.ml:127
+/// [lib_base/p2p_point.ml#L127](https://gitlab.com/simplestaking/tezos/-/blob/736f733f661877b5868f96d5c878f3f4a0486cb6/src/lib_base/p2p_point.ml#L127)
+/// ```ocaml
+///   let encoding =
+///   let open Data_encoding in
+///    check_size
+///      ( 4 (* Uint30 that gives the size of the encoded string *)
+///      + (8 (*number of IPv6 chunks *) * (*size of IPv6 chunks*) 4)
+///      + (*IPv6 chunk separators*) 7 + (*optional enclosing bracket*) 2
+///      + (*port separator*) 1 + (*size of port number*) 5 )
+///    @@ def "p2p_point.id" ~description:"Identifier for a peer point"
+///    @@ conv to_string of_string_exn string
+/// ```
+pub const P2P_POINT_MAX_SIZE: usize = 4 + 4 * 8 + 7 + 2 + 1 + 5; // 51
+
+/// P2P Point ID maximal length
+///
+/// 4 bytes less than its encoding
+pub const P2P_POINT_MAX_LENGTH: usize = P2P_POINT_MAX_SIZE - 4; // 47
+
+/// NACK's `potential_peers_to_connect` maximal length
+///
+/// OCaml refs:
+/// [lib_p2p/p2p_socket.ml:252](https://gitlab.com/simplestaking/tezos/-/blob/8166ed7ad215544be69241df99af95deebeaeee3/src/lib_p2p/p2p_socket.ml#L252)
+/// ```ocaml
+///     let nack_encoding =
+///      obj2
+///        (req "nack_motive" P2p_rejection.encoding)
+///        (req
+///           "nack_list"
+///           (Data_encoding.list ~max_length:100 P2p_point.Id.encoding))
+/// ```
+pub const NACK_PEERS_MAX_LENGTH: usize = 100;
 
 /// Number of validation passes/operation groups
 ///
@@ -34,21 +76,37 @@ pub const ADVERTISE_ID_LIST_MAX_LENGTH: usize = 100;
 
 /// CurrentBranch history max length
 ///
-/// OCaml ref: tezos/src/lib_shell/state.ml:1794,
-/// `max_locator_size`
+/// OCaml refs:
+///
+/// `block_locator_max_length` in
+/// [lib_shell/distributed_db_message.ml:32](https://gitlab.com/simplestaking/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L32)
 ///
 /// ```ocaml
-/// let max_locator_size = 200
+///   let block_locator_max_length = ref 1000
 /// ````
-pub const CURRENT_BRANCH_HISTORY_MAX_LENGTH: usize = 200;
+pub const CURRENT_BRANCH_HISTORY_MAX_LENGTH: usize = 1000;
+
+/// CurrentBranch history max length used when constructing
+/// current branch.
+///
+/// OCaml refs:
+/// `max_locator_size` in
+/// [lib_shell/state.ml:1801](https://gitlab.com/tezos/tezos/-/blob/latest-release/src/lib_shell/state.ml#L1801)
+///
+/// ```ocaml
+/// (* FIXME: this should not be hard-coded *)
+/// let max_locator_size = 200
+/// ```
+pub const HISTORY_MAX_SIZE: u8 = 200;
 
 /// Block header max size
 ///
-/// OCaml ref: tezos/src/lib_shell/distributed_db_message.ml:30,
+/// OCaml refs:
+/// [lib_shell/distributed_db_message.ml:30](https://gitlab.com/simplestaking/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L30)
 /// `block_header_max_size`
 ///
 /// ```ocaml
-///   let block_header_max_size = ref (Some (8 * 1024 * 1024))
+///   let block_header_max_size = ref (8 * 1024 * 1024)
 /// ```
 pub const BLOCK_HEADER_MAX_SIZE: usize = 8 * 1024 * 1024;
 
@@ -72,14 +130,33 @@ pub const OPERATION_MAX_SIZE: usize = 128 * 1024;
 /// ```
 pub const PROTOCOL_MAX_SIZE: usize = 2 * 1024 * 1024;
 
-/// Mempool size
+/// Mempool maximum operations number
 ///
-/// Not bounded in OCaml. Calculated on the idea that there should't be more
-/// operations than can exist in a single block.
+/// OCaml refs:
 ///
-/// TODO Check with Tezos
-/// https://simplestakingcom.atlassian.net/browse/TE-407
-pub const MEMPOOL_MAX_SIZE: usize = OPERATION_MAX_PASS * 1024 * 1024 * 32;
+/// `mempool_max_operations` in
+/// [lib_shell/distributed_db_message.ml:142](https://gitlab.com/simplestaking/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_shell/distributed_db_message.ml#L142)
+/// ```ocaml
+///   let mempool_max_operations = ref (Some 4000)
+/// ```
+pub const MEMPOOL_MAX_OPERATIONS: usize = 4000;
+
+/// Mempool encoding maximum size
+///
+/// OCaml refs:
+///
+/// [lib_base/mempool.ml:44](https://gitlab.com/simplestaking/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_base/mempool.ml#L44)
+/// ```ocaml
+/// let bounded_encoding ?max_operations () =
+///  match max_operations with
+///  | None ->
+///      encoding
+///  | Some max_operations ->
+///      Data_encoding.check_size
+///        (8 + (max_operations * Operation_hash.size))
+///        encoding
+/// ```
+pub const MEMPOOL_MAX_SIZE: usize = 8 + MEMPOOL_MAX_OPERATIONS * HashType::OperationHash.size();
 
 /// Get block headers max length
 ///

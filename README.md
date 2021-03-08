@@ -102,6 +102,14 @@ docker-machine ip
 ```
 and make sure that port forwarding is set up correctly for docker or use docker-machine resolved ip instead of `http://localhost:8080`
 
+```
+TCP ports (<host_port>:<docker_port>):
+    - "80:80"
+    - "4927:4927"
+    - "18732:18732"
+    - "19732:9732"
+```
+
 ## Documentation
 
 ---
@@ -303,17 +311,28 @@ docker-compose -f docker-compose.latest.yml pull
 docker-compose -f docker-compose.latest.yml up
 ```
 
-#### Sandbox node launcher + tezedge-explorer + tezedge-debugger
-**Last released version:**
-```
-docker-compose -f docker-compose.sandbox.yml pull
-docker-compose -f docker-compose.sandbox.yml up
-```
-**Actual development version:**
-```
-docker-compose -f docker-compose.sandbox.latest.yml pull
-docker-compose -f docker-compose.sandbox.latest.yml up
+[comment]: <> (#### Sandbox node launcher + tezedge-explorer + tezedge-debugger)
 
-# stop and remove docker volume
-docker-compose -f docker-compose.sandbox.latest.yml down -v
-```
+[comment]: <> (**Last released version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml up)
+
+[comment]: <> (```)
+
+[comment]: <> (**Actual development version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml up)
+
+[comment]: <> (# stop and remove docker volume)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml down -v)
+
+[comment]: <> (```)

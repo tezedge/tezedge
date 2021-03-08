@@ -3,6 +3,9 @@
 
 //! Tezos binary data reader.
 
+use failure::ResultExt;
+use std::fmt::{self, Display};
+
 use bit_vec::BitVec;
 use bytes::Buf;
 use failure::Fail;
@@ -13,9 +16,32 @@ use crate::de;
 use crate::encoding::{Encoding, Field, SchemaType};
 use crate::types::{self, Value};
 
+use super::error_context::EncodingError;
+
 /// Error produced by a [BinaryReader].
-#[derive(Debug, Fail)]
-pub enum BinaryReaderError {
+pub type BinaryReaderError = EncodingError<BinaryReaderErrorKind>;
+
+/// Actual size of encoded data
+#[derive(Debug, Clone, Copy)]
+pub enum ActualSize {
+    /// Exact size
+    Exact(usize),
+    /// Unknown size exceeding the limit
+    GreaterThan(usize),
+}
+
+impl Display for ActualSize {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ActualSize::Exact(size) => write!(f, "{}", size),
+            ActualSize::GreaterThan(size) => write!(f, "greater than {}", size),
+        }
+    }
+}
+
+/// Kind of error for [BinaryReaderError]
+#[derive(Debug, Fail, Clone)]
+pub enum BinaryReaderErrorKind {
     /// More bytes were expected than there were available in input buffer.
     #[fail(display = "Input underflow, missing {} bytes", bytes)]
     Underflow { bytes: usize },
@@ -23,7 +49,7 @@ pub enum BinaryReaderError {
     #[fail(display = "Input overflow, excess of {} bytes", bytes)]
     Overflow { bytes: usize },
     /// Generic deserialization error.
-    #[fail(display = "Message de-serialization error: {:?}", error)]
+    #[fail(display = "Deserializer error: {}", error)]
     DeserializationError { error: crate::de::Error },
     /// No tag with the corresponding id was found. This might not be an error of the binary data but
     /// may simply mean that we have not yet defined tag in encoding.
@@ -31,10 +57,14 @@ pub enum BinaryReaderError {
     UnsupportedTag { tag: u16 },
     /// Encoding boundary constraint violation
     #[fail(
-        display = "Encoded data {} exceeded its size boundary: {}",
-        name, boundary
+        display = "Encoded data {} exceeded its size boundary: {}, actual: {}",
+        name, boundary, actual
     )]
-    EncodingBoundaryExceeded { name: String, boundary: usize },
+    EncodingBoundaryExceeded {
+        name: String,
+        boundary: usize,
+        actual: ActualSize,
+    },
     /// Arithmetic overflow
     #[fail(display = "Arithmetic overflow while encoding {:?}", encoding)]
     ArithmeticOverflow { encoding: &'static str },
@@ -42,23 +72,25 @@ pub enum BinaryReaderError {
 
 impl From<crate::de::Error> for BinaryReaderError {
     fn from(error: crate::de::Error) -> Self {
-        BinaryReaderError::DeserializationError { error }
+        BinaryReaderErrorKind::DeserializationError { error }.into()
     }
 }
 
 impl From<std::string::FromUtf8Error> for BinaryReaderError {
     fn from(from: std::string::FromUtf8Error) -> Self {
-        BinaryReaderError::DeserializationError {
+        BinaryReaderErrorKind::DeserializationError {
             error: de::Error::custom(format!("Error decoding UTF-8 string. Reason: {:?}", from)),
         }
+        .into()
     }
 }
 
 impl From<crate::bit_utils::BitsError> for BinaryReaderError {
     fn from(source: crate::bit_utils::BitsError) -> Self {
-        Self::DeserializationError {
+        BinaryReaderErrorKind::DeserializationError {
             error: crate::de::Error::custom(format!("Bits operation error: {:?}", source)),
         }
+        .into()
     }
 }
 
@@ -70,18 +102,18 @@ macro_rules! safe {
         if $buf.remaining() >= size_of::<$sz>() {
             $buf.$foo()
         } else {
-            return Result::Err(BinaryReaderError::Underflow {
+            return Result::Err(BinaryReaderErrorKind::Underflow {
                 bytes: (size_of::<$sz>() - $buf.remaining()),
-            });
+            })?;
         }
     }};
     ($buf:ident, $sz:expr, $exp:expr) => {{
         if $buf.remaining() >= $sz {
             $exp
         } else {
-            return Result::Err(BinaryReaderError::Underflow {
+            return Result::Err(BinaryReaderErrorKind::Underflow {
                 bytes: ($sz - $buf.remaining()),
-            });
+            })?;
         }
     }};
 }
@@ -144,9 +176,9 @@ impl BinaryReader {
         if buf.remaining() == 0 {
             Ok(result)
         } else {
-            Err(BinaryReaderError::Overflow {
+            Err(BinaryReaderErrorKind::Overflow {
                 bytes: buf.remaining(),
-            })
+            })?
         }
     }
 
@@ -159,7 +191,11 @@ impl BinaryReader {
         for field in schema {
             let name = field.get_name();
             let encoding = field.get_encoding();
-            values.push((name.clone(), self.decode_value(buf, encoding)?))
+            values.push((
+                name.clone(),
+                self.decode_value(buf, encoding)
+                    .with_context(|e| e.field(field.get_name()))?,
+            ))
         }
         Ok(Value::Record(values))
     }
@@ -199,8 +235,7 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Vas expecting 0xFF or 0x00 but instead got {:X}",
                         b
-                    ))
-                    .into()),
+                    )))?,
                 }
             }
             Encoding::String => {
@@ -213,10 +248,11 @@ impl BinaryReader {
             Encoding::BoundedString(bytes_max) => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
                 if bytes_sz > *bytes_max {
-                    Err(BinaryReaderError::EncodingBoundaryExceeded {
+                    Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
                         name: "Encoding::BoundedString".to_string(),
                         boundary: *bytes_max,
-                    })
+                        actual: ActualSize::Exact(bytes_sz),
+                    })?
                 } else {
                     let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
                     safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
@@ -233,10 +269,11 @@ impl BinaryReader {
             Encoding::BoundedDynamic(max, dynamic_encoding) => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
                 if bytes_sz > *max {
-                    Err(BinaryReaderError::EncodingBoundaryExceeded {
+                    Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
                         name: "Encoding::BoundedDynamic".to_string(),
                         boundary: *max,
-                    })
+                        actual: ActualSize::Exact(bytes_sz),
+                    })?
                 } else {
                     let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                     self.decode_value(&mut buf_slice, dynamic_encoding)
@@ -251,12 +288,24 @@ impl BinaryReader {
                 let mut buf_slice = safe!(buf, upper, buf.take(upper));
                 let res = self.decode_value(&mut buf_slice, inner_encoding);
                 match res {
-                    Err(BinaryReaderError::Underflow { bytes: _ }) => {
-                        Err(BinaryReaderError::EncodingBoundaryExceeded {
-                            name: "Encoding::Bounded".to_string(),
-                            boundary: *max,
-                        })
-                    }
+                    // if underlying encoding requires more data than we have,
+                    // and it is limited to maximal possible size, that means
+                    // that this is bounded constraint violation.
+                    Err(e) => match e.kind() {
+                        BinaryReaderErrorKind::Underflow { bytes } if upper == *max => {
+                            let act_size = bytes.checked_add(*max).ok_or_else(|| {
+                                BinaryReaderErrorKind::ArithmeticOverflow {
+                                    encoding: "Encoding::Bounded",
+                                }
+                            })?;
+                            Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                                name: "Encoding::Bounded".to_string(),
+                                boundary: *max,
+                                actual: ActualSize::Exact(act_size),
+                            })?
+                        }
+                        _ => Err(e),
+                    },
                     r => r,
                 }
             }
@@ -283,7 +332,7 @@ impl BinaryReader {
                             Box::new(tag_value),
                         ))
                     }
-                    None => Err(BinaryReaderError::UnsupportedTag { tag: tag_id }),
+                    None => Err(BinaryReaderErrorKind::UnsupportedTag { tag: tag_id })?,
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -293,7 +342,10 @@ impl BinaryReader {
 
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
-                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                    values.push(
+                        self.decode_value(&mut buf_slice, encoding_inner)
+                            .with_context(|e| e.element_of())?,
+                    );
                 }
 
                 Ok(Value::List(values))
@@ -306,12 +358,16 @@ impl BinaryReader {
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
                     if values.len() >= *max {
-                        return Err(BinaryReaderError::EncodingBoundaryExceeded {
+                        return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
                             name: "Encoding::List".to_string(),
                             boundary: *max,
-                        });
+                            actual: ActualSize::GreaterThan(values.len()),
+                        })?;
                     }
-                    values.push(self.decode_value(&mut buf_slice, encoding_inner)?);
+                    values.push(
+                        self.decode_value(&mut buf_slice, encoding_inner)
+                            .with_context(|e| e.element_of())?,
+                    );
                 }
 
                 Ok(Value::List(values))
@@ -327,8 +383,7 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    ))
-                    .into()),
+                    )))?,
                 }
             }
             Encoding::OptionalField(inner_encoding) => {
@@ -342,8 +397,7 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    ))
-                    .into()),
+                    )))?,
                 }
             }
             Encoding::Obj(schema_inner) => Ok(self.decode_record(buf, schema_inner)?),
@@ -456,9 +510,9 @@ impl BinaryReader {
                 self.decode_value(buf, &inner_encoding)
             }
             Encoding::Custom(codec) => codec.decode(buf, encoding),
-            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => {
-                Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
-            }
+            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => Err(
+                de::Error::custom(format!("Unsupported encoding {:?}", encoding)),
+            )?,
         }
     }
 }
@@ -718,5 +772,86 @@ mod tests {
 
         let record_deserialized: Option<Record> = de::from_value(&value).unwrap();
         assert_eq!(record, record_deserialized);
+    }
+
+    #[test]
+    fn deserialize_bounds_error_location_string() {
+        let schema = Encoding::Obj(vec![Field::new("xxx", Encoding::BoundedString(1))]);
+        let data = hex::decode("000000020000").unwrap();
+        let err = BinaryReader::new()
+            .read(data, &schema)
+            .expect_err("Error is expected");
+        let kind = err.kind();
+        assert!(matches!(
+            kind,
+            BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                name: _,
+                boundary: 1,
+                actual: ActualSize::Exact(2)
+            }
+        ));
+        let location = err.location();
+        assert!(location.contains("field `xxx`"));
+    }
+
+    #[test]
+    fn deserialize_bounds_error_location_list() {
+        let schema = Encoding::Obj(vec![Field::new(
+            "xxx",
+            Encoding::bounded_list(1, Encoding::Uint8),
+        )]);
+        let data = hex::decode("0000").unwrap();
+        let err = BinaryReader::new()
+            .read(data, &schema)
+            .expect_err("Error is expected");
+        let kind = err.kind();
+        assert!(matches!(
+            kind,
+            BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                name: _,
+                boundary: 1,
+                actual: ActualSize::GreaterThan(1)
+            }
+        ));
+        let location = err.location();
+        assert!(location.contains("field `xxx`"));
+    }
+
+    #[test]
+    fn deserialize_bounds_error_location_element_of() {
+        let schema = Encoding::Obj(vec![Field::new(
+            "xxx",
+            Encoding::list(Encoding::BoundedString(1)),
+        )]);
+        let data = hex::decode("000000020000").unwrap();
+        let err = BinaryReader::new()
+            .read(data, &schema)
+            .expect_err("Error is expected");
+        let kind = err.kind();
+        assert!(matches!(
+            kind,
+            BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                name: _,
+                boundary: 1,
+                actual: ActualSize::Exact(2)
+            }
+        ));
+        let location = err.location();
+        assert!(location.contains("field `xxx`"));
+        assert!(location.contains("list element"));
+    }
+
+    #[test]
+    fn underflow_in_bounded() {
+        let encoded = hex::decode("000000ff00112233445566778899AABBCCDDEEFF").unwrap(); // dynamic block states 255 bytes, got only 16
+        let encoding = Encoding::bounded(1000, Encoding::dynamic(Encoding::list(Encoding::Uint8)));
+        let err = BinaryReader::new()
+            .read(encoded, &encoding)
+            .expect_err("Error is expected");
+        assert!(
+            matches!(err.kind(), BinaryReaderErrorKind::Underflow { .. }),
+            "Underflow error expected, got '{:?}'",
+            err
+        );
     }
 }

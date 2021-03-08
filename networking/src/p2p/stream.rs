@@ -18,7 +18,10 @@ use tokio::net::TcpStream;
 use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
 use crypto::CryptoError;
-use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_encoding::{
+    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
+    binary_writer::BinaryWriterError,
+};
 use tezos_messages::p2p::binary_message::{
     BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES,
 };
@@ -34,16 +37,16 @@ pub enum StreamError {
     FailedToEncryptMessage { error: CryptoError },
     #[fail(display = "Failed to decrypt message")]
     FailedToDecryptMessage { error: CryptoError },
-    #[fail(display = "Message serialization error")]
-    SerializationError { error: tezos_encoding::ser::Error },
-    #[fail(display = "Message de-serialization error: {:?}", error)]
+    #[fail(display = "Message serialization error: {}", error)]
+    SerializationError { error: BinaryWriterError },
+    #[fail(display = "Message de-serialization error: {}", error)]
     DeserializationError { error: BinaryReaderError },
     #[fail(display = "Network error: {}, cause: {}", message, error)]
     NetworkError { message: &'static str, error: Error },
 }
 
-impl From<tezos_encoding::ser::Error> for StreamError {
-    fn from(error: tezos_encoding::ser::Error) -> Self {
+impl From<BinaryWriterError> for StreamError {
+    fn from(error: BinaryWriterError) -> Self {
         StreamError::SerializationError { error }
     }
 }
@@ -286,8 +289,12 @@ impl EncryptedMessageReader {
                     if input_remaining == 0 {
                         match M::from_bytes(&input_data) {
                             Ok(message) => break Ok(message),
-                            Err(BinaryReaderError::Underflow { bytes }) => input_remaining += bytes,
-                            Err(e) => break Err(e.into()),
+                            Err(e) => match e.kind() {
+                                BinaryReaderErrorKind::Underflow { bytes } => {
+                                    input_remaining += bytes
+                                }
+                                _ => break Err(e.into()),
+                            },
                         }
                     }
                 }

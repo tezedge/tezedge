@@ -16,10 +16,19 @@ use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
-use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
-use crypto::hash::{CryptoboxPublicKeyHash, Hash};
 use crypto::nonce::{self, Nonce, NoncePair};
-use tezos_encoding::binary_reader::BinaryReaderError;
+use crypto::{
+    blake2b::Blake2bError,
+    crypto_box::{CryptoKey, PrecomputedKey, PublicKey},
+};
+use crypto::{
+    crypto_box::PublicKeyError,
+    hash::{CryptoboxPublicKeyHash, Hash},
+};
+use tezos_encoding::{
+    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
+    binary_writer::BinaryWriterError,
+};
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -54,15 +63,17 @@ pub enum PeerError {
     #[fail(display = "Network error: {}, reason: {}", message, error)]
     NetworkError { error: Error, message: &'static str },
     #[fail(display = "Message serialization error, reason: {}", error)]
-    SerializationError { error: tezos_encoding::ser::Error },
+    SerializationError { error: BinaryWriterError },
     #[fail(display = "Message deserialization error, reason: {}", error)]
     DeserializationError { error: BinaryReaderError },
     #[fail(display = "Crypto error, reason: {}", error)]
     CryptoError { error: crypto::CryptoError },
+    #[fail(display = "Public key error: {}", _0)]
+    PublicKeyError(PublicKeyError),
 }
 
-impl From<tezos_encoding::ser::Error> for PeerError {
-    fn from(error: tezos_encoding::ser::Error) -> Self {
+impl From<BinaryWriterError> for PeerError {
+    fn from(error: BinaryWriterError) -> Self {
         PeerError::SerializationError { error }
     }
 }
@@ -112,6 +123,18 @@ impl From<tokio::time::error::Elapsed> for PeerError {
             message: "Connection timeout",
             error: timeout.into(),
         }
+    }
+}
+
+impl From<PublicKeyError> for PeerError {
+    fn from(source: PublicKeyError) -> Self {
+        PeerError::PublicKeyError(source)
+    }
+}
+
+impl From<Blake2bError> for PeerError {
+    fn from(source: Blake2bError) -> Self {
+        PeerError::PublicKeyError(source.into())
     }
 }
 
@@ -423,7 +446,7 @@ pub async fn bootstrap(
         &connection_message_sent,
         &received_connection_message_bytes,
         msg.incoming,
-    );
+    )?;
 
     // create PublicKey from received bytes from remote peer
     let peer_public_key = PublicKey::from_bytes(connection_message.public_key())?;
@@ -432,7 +455,7 @@ pub async fn bootstrap(
     let precomputed_key = PrecomputedKey::precompute(&peer_public_key, &info.identity.secret_key);
 
     // generate public key hash for PublicKey, which will be used as a peer_id
-    let peer_public_key_hash = peer_public_key.public_key_hash();
+    let peer_public_key_hash = peer_public_key.public_key_hash()?;
     let peer_id_marker = peer_public_key_hash.to_base58_check();
     let log = log.new(o!("peer_id" => peer_id_marker.clone()));
 
@@ -528,7 +551,11 @@ pub async fn bootstrap(
 ///
 /// local_nonce is used for writing crypto messages to other peers
 /// remote_nonce is used for reading crypto messages from other peers
-fn generate_nonces(sent_msg: &BinaryChunk, recv_msg: &BinaryChunk, incoming: bool) -> NoncePair {
+fn generate_nonces(
+    sent_msg: &BinaryChunk,
+    recv_msg: &BinaryChunk,
+    incoming: bool,
+) -> Result<NoncePair, Blake2bError> {
     nonce::generate_nonces(sent_msg.raw(), recv_msg.raw(), incoming)
 }
 
@@ -565,16 +592,18 @@ async fn begin_process_incoming(
                         );
                     }
                 }
-                Err(e) => {
-                    if let StreamError::DeserializationError {
-                        error: BinaryReaderError::UnsupportedTag { tag },
-                    } = e
-                    {
+                Err(StreamError::DeserializationError { error }) => match error.kind() {
+                    BinaryReaderErrorKind::UnsupportedTag { tag } => {
                         warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
-                    } else {
-                        warn!(log, "Failed to read peer message"; "reason" => e);
+                    }
+                    _ => {
+                        warn!(log, "Failed to read peer message"; "reason" => StreamError::DeserializationError{ error });
                         break;
                     }
+                },
+                Err(e) => {
+                    warn!(log, "Failed to read peer message"; "reason" => e);
+                    break;
                 }
             },
             Err(_) => {

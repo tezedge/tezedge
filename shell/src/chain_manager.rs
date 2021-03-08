@@ -321,208 +321,202 @@ impl ChainManager {
                             slog::o!("peer_id" => peer.peer_id.as_ref().peer_id_marker.clone(), "peer_ip" => peer.peer_id.as_ref().peer_address.to_string(), "peer" => peer.peer_id.as_ref().peer_ref.name().to_string(), "peer_uri" => peer.peer_id.as_ref().peer_ref.uri().to_string()),
                         );
 
-                        for message in received.message.messages() {
-                            match message {
-                                PeerMessage::CurrentBranch(message) => {
-                                    peer.update_current_head_level(
-                                        message.current_branch().current_head().level(),
-                                    );
+                        match received.message.message() {
+                            PeerMessage::CurrentBranch(message) => {
+                                peer.update_current_head_level(
+                                    message.current_branch().current_head().level(),
+                                );
 
-                                    // at first, check if we can accept branch or just ignore it
-                                    if !chain_state
-                                        .can_accept_branch(&message, &current_head.local)?
-                                    {
-                                        let head = message.current_branch().current_head();
-                                        debug!(log, "Ignoring received (low) current branch";
+                                // at first, check if we can accept branch or just ignore it
+                                if !chain_state.can_accept_branch(&message, &current_head.local)? {
+                                    let head = message.current_branch().current_head();
+                                    debug!(log, "Ignoring received (low) current branch";
                                                     "branch" => head.message_typed_hash::<BlockHash>()?.to_base58_check(),
                                                     "level" => head.level());
-                                    } else {
-                                        let message_current_head = BlockHeaderWithHash::new(
-                                            message.current_branch().current_head().clone(),
-                                        )?;
+                                } else {
+                                    let message_current_head = BlockHeaderWithHash::new(
+                                        message.current_branch().current_head().clone(),
+                                    )?;
 
-                                        // update remote heads
-                                        peer.update_current_head(&message_current_head);
-                                        if let Err(e) =
-                                            current_head.update_remote_head(&message_current_head)
-                                        {
-                                            warn!(log, "Failed to update remote head (by current branch)"; "reason" => e);
-                                        }
-
-                                        // schedule to download missing branch blocks
-                                        chain_state.schedule_history_bootstrap(
-                                            &ctx.system,
-                                            peer,
-                                            &message_current_head,
-                                            message.current_branch().history().to_vec(),
-                                        )?;
-                                    }
-                                }
-                                PeerMessage::GetCurrentBranch(message) => {
-                                    if chain_state.get_chain_id().as_ref() == &message.chain_id {
-                                        if let Some(current_head_local) = current_head
-                                            .local
-                                            .read()
-                                            .map_err(StateError::from)?
-                                            .as_ref()
-                                        {
-                                            if let Some(current_head) = block_storage
-                                                .get(current_head_local.block_hash())?
-                                            {
-                                                // calculate history
-                                                let history = chain_state.get_history(
-                                                    &current_head.hash,
-                                                    &Seed::new(
-                                                        &identity_peer_id,
-                                                        &peer.peer_id.peer_public_key_hash,
-                                                    ),
-                                                )?;
-                                                // send message
-                                                let msg = CurrentBranchMessage::new(
-                                                    chain_state.get_chain_id().as_ref().clone(),
-                                                    CurrentBranch::new(
-                                                        (*current_head.header).clone(),
-                                                        history,
-                                                    ),
-                                                );
-                                                tell_peer(msg.into(), peer);
-                                            }
-                                        }
-                                    } else {
-                                        warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
-                                    }
-                                }
-                                PeerMessage::BlockHeader(message) => {
-                                    let block_header_with_hash =
-                                        BlockHeaderWithHash::new(message.block_header().clone())?;
-
-                                    // check, if we requested data from this peer
-                                    if let Some(requested_data) =
-                                        chain_state.requester().block_header_received(
-                                            &block_header_with_hash.hash,
-                                            peer,
-                                            &log,
-                                        )?
+                                    // update remote heads
+                                    peer.update_current_head(&message_current_head);
+                                    if let Err(e) =
+                                        current_head.update_remote_head(&message_current_head)
                                     {
-                                        // now handle received header
-                                        Self::process_downloaded_header(
-                                            block_header_with_hash,
-                                            peer,
-                                            stats,
-                                            chain_state,
-                                            shell_channel,
-                                            &log,
-                                        )?;
+                                        warn!(log, "Failed to update remote head (by current branch)"; "reason" => e);
+                                    }
 
-                                        // explicit drop (not needed)
-                                        drop(requested_data);
+                                    // schedule to download missing branch blocks
+                                    chain_state.schedule_history_bootstrap(
+                                        &ctx.system,
+                                        peer,
+                                        &message_current_head,
+                                        message.current_branch().history().to_vec(),
+                                    )?;
+                                }
+                            }
+                            PeerMessage::GetCurrentBranch(message) => {
+                                if chain_state.get_chain_id().as_ref() == &message.chain_id {
+                                    if let Some(current_head_local) = current_head
+                                        .local
+                                        .read()
+                                        .map_err(StateError::from)?
+                                        .as_ref()
+                                    {
+                                        if let Some(current_head) =
+                                            block_storage.get(current_head_local.block_hash())?
+                                        {
+                                            // calculate history
+                                            let history = chain_state.get_history(
+                                                &current_head.hash,
+                                                &Seed::new(
+                                                    &identity_peer_id,
+                                                    &peer.peer_id.peer_public_key_hash,
+                                                ),
+                                            )?;
+                                            // send message
+                                            let msg = CurrentBranchMessage::new(
+                                                chain_state.get_chain_id().as_ref().clone(),
+                                                CurrentBranch::new(
+                                                    (*current_head.header).clone(),
+                                                    history,
+                                                ),
+                                            );
+                                            tell_peer(msg.into(), peer);
+                                        }
+                                    }
+                                } else {
+                                    warn!(log, "Peer is requesting current branch from unsupported chain_id"; "chain_id" => chain_state.get_chain_id().to_base58_check());
+                                }
+                            }
+                            PeerMessage::BlockHeader(message) => {
+                                let block_header_with_hash =
+                                    BlockHeaderWithHash::new(message.block_header().clone())?;
+
+                                // check, if we requested data from this peer
+                                if let Some(requested_data) =
+                                    chain_state.requester().block_header_received(
+                                        &block_header_with_hash.hash,
+                                        peer,
+                                        &log,
+                                    )?
+                                {
+                                    // now handle received header
+                                    Self::process_downloaded_header(
+                                        block_header_with_hash,
+                                        peer,
+                                        stats,
+                                        chain_state,
+                                        shell_channel,
+                                        &log,
+                                    )?;
+
+                                    // explicit drop (not needed)
+                                    drop(requested_data);
+                                }
+                            }
+                            PeerMessage::GetBlockHeaders(message) => {
+                                for block_hash in message.get_block_headers() {
+                                    if let Some(block) = block_storage.get(block_hash)? {
+                                        let msg: BlockHeaderMessage =
+                                            (*block.header).clone().into();
+                                        tell_peer(msg.into(), peer);
                                     }
                                 }
-                                PeerMessage::GetBlockHeaders(message) => {
-                                    for block_hash in message.get_block_headers() {
-                                        if let Some(block) = block_storage.get(block_hash)? {
-                                            let msg: BlockHeaderMessage =
-                                                (*block.header).clone().into();
+                            }
+                            PeerMessage::GetCurrentHead(message) => {
+                                if chain_state.get_chain_id().as_ref() == message.chain_id() {
+                                    if let Some(current_head_local) = current_head
+                                        .local
+                                        .read()
+                                        .map_err(StateError::from)?
+                                        .as_ref()
+                                    {
+                                        if let Some(current_head) =
+                                            block_storage.get(current_head_local.block_hash())?
+                                        {
+                                            let msg = CurrentHeadMessage::new(
+                                                chain_state.get_chain_id().as_ref().clone(),
+                                                current_head.header.as_ref().clone(),
+                                                Self::resolve_mempool_to_send_to_peer(
+                                                    &peer,
+                                                    self.p2p_disable_mempool,
+                                                    self.current_mempool_state.clone(),
+                                                    &current_head_local,
+                                                )?,
+                                            );
                                             tell_peer(msg.into(), peer);
                                         }
                                     }
                                 }
-                                PeerMessage::GetCurrentHead(message) => {
-                                    if chain_state.get_chain_id().as_ref() == message.chain_id() {
-                                        if let Some(current_head_local) = current_head
-                                            .local
-                                            .read()
-                                            .map_err(StateError::from)?
-                                            .as_ref()
-                                        {
-                                            if let Some(current_head) = block_storage
-                                                .get(current_head_local.block_hash())?
-                                            {
-                                                let msg = CurrentHeadMessage::new(
-                                                    chain_state.get_chain_id().as_ref().clone(),
-                                                    current_head.header.as_ref().clone(),
-                                                    Self::resolve_mempool_to_send_to_peer(
-                                                        &peer,
-                                                        self.p2p_disable_mempool,
-                                                        self.current_mempool_state.clone(),
-                                                        &current_head_local,
-                                                    )?,
-                                                );
-                                                tell_peer(msg.into(), peer);
-                                            }
-                                        }
+                            }
+                            PeerMessage::OperationsForBlocks(operations) => {
+                                if let Some(requested_data) =
+                                    chain_state.requester().block_operations_received(
+                                        operations.operations_for_block(),
+                                        peer,
+                                        &log,
+                                    )?
+                                {
+                                    // update stats
+                                    stats.unseen_block_operations_last = Instant::now();
+
+                                    // update operations state
+                                    let block_hash = operations.operations_for_block().hash();
+                                    if chain_state.process_block_operations_from_peer(
+                                        peer,
+                                        &block_hash,
+                                        &operations,
+                                    )? {
+                                        // TODO: TE-369 - is this necessery?
+                                        // notify others that new all operations for block were received
+                                        let block_meta = block_meta_storage
+                                            .get(&block_hash)?
+                                            .ok_or(StorageError::MissingKey)?;
+
+                                        // notify others that new all operations for block were received
+                                        shell_channel.tell(
+                                            Publish {
+                                                msg: AllBlockOperationsReceived {
+                                                    hash: block_hash.clone(),
+                                                    level: block_meta.level(),
+                                                }
+                                                .into(),
+                                                topic: ShellChannelTopic::ShellEvents.into(),
+                                            },
+                                            None,
+                                        );
                                     }
+
+                                    // explicit drop (not needed)
+                                    drop(requested_data)
                                 }
-                                PeerMessage::OperationsForBlocks(operations) => {
-                                    if let Some(requested_data) =
-                                        chain_state.requester().block_operations_received(
-                                            operations.operations_for_block(),
-                                            peer,
-                                            &log,
-                                        )?
-                                    {
-                                        // update stats
-                                        stats.unseen_block_operations_last = Instant::now();
-
-                                        // update operations state
-                                        let block_hash = operations.operations_for_block().hash();
-                                        if chain_state.process_block_operations_from_peer(
-                                            peer,
-                                            &block_hash,
-                                            &operations,
-                                        )? {
-                                            // TODO: TE-369 - is this necessery?
-                                            // notify others that new all operations for block were received
-                                            let block_meta = block_meta_storage
-                                                .get(&block_hash)?
-                                                .ok_or(StorageError::MissingKey)?;
-
-                                            // notify others that new all operations for block were received
-                                            shell_channel.tell(
-                                                Publish {
-                                                    msg: AllBlockOperationsReceived {
-                                                        hash: block_hash.clone(),
-                                                        level: block_meta.level(),
-                                                    }
-                                                    .into(),
-                                                    topic: ShellChannelTopic::ShellEvents.into(),
-                                                },
-                                                None,
-                                            );
-                                        }
-
-                                        // explicit drop (not needed)
-                                        drop(requested_data)
-                                    }
-                                }
-                                PeerMessage::GetOperationsForBlocks(message) => {
-                                    for get_op in message.get_operations_for_blocks() {
-                                        if get_op.validation_pass() < 0 {
-                                            continue;
-                                        }
-
-                                        let key = get_op.into();
-                                        if let Some(op) = operations_storage.get(&key)? {
-                                            tell_peer(op.into(), peer);
-                                        }
-                                    }
-                                }
-                                PeerMessage::CurrentHead(message) => {
-                                    peer.current_head_response_last = Instant::now();
-                                    peer.update_current_head_level(
-                                        message.current_block_header().level(),
-                                    );
-
-                                    // process current head only if we are bootstrapped
-                                    if !self
-                                        .current_bootstrap_state
-                                        .read()
-                                        .map_err(StateError::from)?
-                                        .is_bootstrapped()
-                                    {
+                            }
+                            PeerMessage::GetOperationsForBlocks(message) => {
+                                for get_op in message.get_operations_for_blocks() {
+                                    if get_op.validation_pass() < 0 {
                                         continue;
                                     }
 
+                                    let key = get_op.into();
+                                    if let Some(op) = operations_storage.get(&key)? {
+                                        tell_peer(op.into(), peer);
+                                    }
+                                }
+                            }
+                            PeerMessage::CurrentHead(message) => {
+                                peer.current_head_response_last = Instant::now();
+                                peer.update_current_head_level(
+                                    message.current_block_header().level(),
+                                );
+
+                                // process current head only if we are bootstrapped
+                                if self
+                                    .current_bootstrap_state
+                                    .read()
+                                    .map_err(StateError::from)?
+                                    .is_bootstrapped()
+                                {
                                     // check if we can accept head
                                     match chain_state.can_accept_head(
                                         &message,
@@ -635,29 +629,28 @@ impl ChainManager {
                                         }
                                     };
                                 }
-                                PeerMessage::GetOperations(message) => {
-                                    let requested_operations: &Vec<OperationHash> =
-                                        message.get_operations();
-                                    for operation_hash in requested_operations {
-                                        // TODO: where to look for operations for advertised mempool?
-                                        // TODO: if not found here, check regular operation storage?
-                                        if let Some(found) =
-                                            mempool_storage.find(&operation_hash)?
-                                        {
-                                            tell_peer(found.into(), peer);
-                                        }
+                            }
+                            PeerMessage::GetOperations(message) => {
+                                let requested_operations: &Vec<OperationHash> =
+                                    message.get_operations();
+                                for operation_hash in requested_operations {
+                                    // TODO: where to look for operations for advertised mempool?
+                                    // TODO: if not found here, check regular operation storage?
+                                    if let Some(found) = mempool_storage.find(&operation_hash)? {
+                                        tell_peer(found.into(), peer);
                                     }
                                 }
-                                PeerMessage::Operation(message) => {
-                                    // handling new mempool operations here
-                                    // parse operation data
-                                    let operation = message.operation();
-                                    let operation_hash = operation.message_typed_hash()?;
+                            }
+                            PeerMessage::Operation(message) => {
+                                // handling new mempool operations here
+                                // parse operation data
+                                let operation = message.operation();
+                                let operation_hash = operation.message_typed_hash()?;
 
-                                    match peer.queued_mempool_operations.remove(&operation_hash) {
-                                        Some((operation_type, op_ttl)) => {
-                                            // do prevalidation before add the operation to mempool
-                                            let result = match validation::prevalidate_operation(
+                                match peer.queued_mempool_operations.remove(&operation_hash) {
+                                    Some((operation_type, op_ttl)) => {
+                                        // do prevalidation before add the operation to mempool
+                                        let result = match validation::prevalidate_operation(
                                                 chain_state.get_chain_id(),
                                                 &operation_hash,
                                                 &operation,
@@ -680,72 +673,71 @@ impl ChainManager {
                                                 }
                                             };
 
-                                            // can accpect operation ?
-                                            if !validation::can_accept_operation_from_p2p(
-                                                &operation_hash,
-                                                &result,
-                                            ) {
-                                                return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), result));
-                                            }
-
-                                            // store mempool operation
-                                            peer.mempool_operations_response_last = Instant::now();
-                                            mempool_storage.put(
-                                                operation_type.clone(),
-                                                message.clone(),
-                                                op_ttl,
-                                            )?;
-
-                                            // trigger CheckMempoolCompleteness
-                                            ctx.myself().tell(CheckMempoolCompleteness, None);
-
-                                            // notify others that new operation was received
-                                            shell_channel.tell(
-                                                Publish {
-                                                    msg: MempoolOperationReceived {
-                                                        operation_hash,
-                                                        operation_type,
-                                                        result_callback: None,
-                                                    }
-                                                    .into(),
-                                                    topic: ShellChannelTopic::ShellEvents.into(),
-                                                },
-                                                None,
-                                            );
+                                        // can accpect operation ?
+                                        if !validation::can_accept_operation_from_p2p(
+                                            &operation_hash,
+                                            &result,
+                                        ) {
+                                            return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), result));
                                         }
-                                        None => {
-                                            debug!(log, "Unexpected mempool operation received")
-                                        }
+
+                                        // store mempool operation
+                                        peer.mempool_operations_response_last = Instant::now();
+                                        mempool_storage.put(
+                                            operation_type.clone(),
+                                            message.clone(),
+                                            op_ttl,
+                                        )?;
+
+                                        // trigger CheckMempoolCompleteness
+                                        ctx.myself().tell(CheckMempoolCompleteness, None);
+
+                                        // notify others that new operation was received
+                                        shell_channel.tell(
+                                            Publish {
+                                                msg: MempoolOperationReceived {
+                                                    operation_hash,
+                                                    operation_type,
+                                                    result_callback: None,
+                                                }
+                                                .into(),
+                                                topic: ShellChannelTopic::ShellEvents.into(),
+                                            },
+                                            None,
+                                        );
+                                    }
+                                    None => {
+                                        debug!(log, "Unexpected mempool operation received")
                                     }
                                 }
-                                PeerMessage::Advertise(msg) => {
-                                    // re-send command to network layer
-                                    network_channel.tell(
-                                        Publish {
-                                            msg: NetworkChannelMsg::ProcessAdvertisedPeers(
-                                                peer.peer_id.clone(),
-                                                msg.clone(),
-                                            ),
-                                            topic: NetworkChannelTopic::NetworkCommands.into(),
-                                        },
-                                        None,
-                                    );
-                                }
-                                PeerMessage::Bootstrap => {
-                                    // re-send command to network layer
-                                    network_channel.tell(
-                                        Publish {
-                                            msg: NetworkChannelMsg::SendBootstrapPeers(
-                                                peer.peer_id.clone(),
-                                            ),
-                                            topic: NetworkChannelTopic::NetworkCommands.into(),
-                                        },
-                                        None,
-                                    );
-                                }
-                                ignored_message => {
-                                    trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
-                                }
+                            }
+                            PeerMessage::Advertise(msg) => {
+                                // re-send command to network layer
+                                network_channel.tell(
+                                    Publish {
+                                        msg: NetworkChannelMsg::ProcessAdvertisedPeers(
+                                            peer.peer_id.clone(),
+                                            msg.clone(),
+                                        ),
+                                        topic: NetworkChannelTopic::NetworkCommands.into(),
+                                    },
+                                    None,
+                                );
+                            }
+                            PeerMessage::Bootstrap => {
+                                // re-send command to network layer
+                                network_channel.tell(
+                                    Publish {
+                                        msg: NetworkChannelMsg::SendBootstrapPeers(
+                                            peer.peer_id.clone(),
+                                        ),
+                                        topic: NetworkChannelTopic::NetworkCommands.into(),
+                                    },
+                                    None,
+                                );
+                            }
+                            ignored_message => {
+                                trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                             }
                         }
                     }

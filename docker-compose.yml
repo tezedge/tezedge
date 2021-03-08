@@ -17,8 +17,11 @@ services:
   explorer:
     image: simplestakingcom/tezedge-explorer:latest-release
     hostname: explorer
+    environment:
+        API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927"}]'
     ports:
-      - "8080:8080"
+      - "80:80"
+      - "8080:80"
     networks:
       - default
     tty: true

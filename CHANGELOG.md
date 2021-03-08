@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- light-node `--ffi-calls-gc-treshold` flag.
+- Nothing.
 
 ### Fixed
 
@@ -29,6 +29,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Nothing.
+
+## [1.1.2] - 2021-03-05
+
+### Added
+
+- New 008 edo2 support + possibility to connect to edo2net
+- New algorithm for calculation of context_hash according to Tezos
+
+## [1.1.1] - 2021-03-05
+
+### Fixed
+- README.md and predefined docker composes
+
+## [1.1.0] - 2021-03-02
+
+### Added
+
+- Sapling zcash-params init configuration handling for edo protocol on startup
+- Backtracking support for Merkle storage
+
+### Changed
+
+- Argument `--network=` is required + possibility to run dockers with different networks
+- RPC integration tests optimization - run in parallel and add elapsed time to the result in Drone CI
+- Minor changes for dev RPCs for TezEdge-Explorer
+
+### Removed
+
+- Argument `--ffi-calls-gc-treshold`.
+- Default value for argument `--network=`
+
+### Fixed
+
+- Used hash instead of string for peer_id in SwapMessage
+
+### Security
+
+- Added limits for p2p messages according to the Tezos updates
 
 ## [1.0.0] - 2021-02-10
 
@@ -58,9 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Migrated Tokio dependency from 0.2.x to 1.1.x
-- RocksDB kv store splitted to three instances (db, context, context_actions)
+- RocksDB kv store splitted into three instances (db, context, context_actions)
 - Reworked websocket implementation, now uses warp::ws instead of default ws
-- Various changes around p2p layer and bootstrapping 
+- Various changes around the P2P layer and bootstrapping 
 
 ### Deprecated
 
@@ -271,7 +309,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/simplestaking/tezedge/releases/v1.1.2
+[1.1.0]: https://github.com/simplestaking/tezedge/releases/v1.1.0
 [1.0.0]: https://github.com/simplestaking/tezedge/releases/v1.0.0
 [0.9.2]: https://github.com/simplestaking/tezedge/releases/v0.9.2
 [0.9.1]: https://github.com/simplestaking/tezedge/releases/v0.9.1

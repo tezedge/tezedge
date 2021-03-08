@@ -757,6 +757,15 @@ fn feed_chain_to_protocol(
                                 "validation_result_message" => &apply_block_result.validation_result_message,
                                 "sender" => sender_to_string(&bootstrapper));
 
+                            if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
+                                info!(log, "Block was validated with protocol with long processing";
+                                           "block_header_hash" => block_hash.to_base58_check(),
+                                           "chain_id" => chain_id.to_base58_check(),
+                                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
+                                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
+                                           "sender" => sender_to_string(&bootstrapper));
+                            }
+
                             // we need to check and wait for context_hash to be 100% sure, that everything is ok
                             let context_wait_timer = Instant::now();
                             if let Err(e) =
@@ -790,6 +799,7 @@ fn feed_chain_to_protocol(
                                            "chain_id" => chain_id.to_base58_check(),
                                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
                                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
+                                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
                                            "sender" => sender_to_string(&bootstrapper));
                             }
 
@@ -1015,8 +1025,9 @@ fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(300), Duration::from_millis(10));
+    (Duration::from_secs(60 * 60), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
+const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(

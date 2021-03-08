@@ -14,7 +14,7 @@ pub fn ensure_identity(
         load_identity(&identity_cfg.identity_json_file_path)
     } else {
         info!(log, "Generating new tezos identity. This will take a while"; "expected_pow" => identity_cfg.expected_pow);
-        let identity = Identity::generate(identity_cfg.expected_pow);
+        let identity = Identity::generate(identity_cfg.expected_pow)?;
         info!(log, "Identity successfully generated");
 
         match store_identity(&identity_cfg.identity_json_file_path, &identity) {

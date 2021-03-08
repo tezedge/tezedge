@@ -11,7 +11,7 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
-use super::limits::P2P_POINT_MAX_LENGTH;
+use super::limits::P2P_POINT_MAX_SIZE;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct SwapMessage {
@@ -37,7 +37,10 @@ impl SwapMessage {
 cached_data!(SwapMessage, body);
 has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
     Encoding::Obj(vec![
-        Field::new("point", Encoding::BoundedString(P2P_POINT_MAX_LENGTH)),
+        Field::new(
+            "point",
+            Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
+        ),
         Field::new("peer_id", Encoding::Hash(HashType::CryptoboxPublicKeyHash)),
     ])
 });

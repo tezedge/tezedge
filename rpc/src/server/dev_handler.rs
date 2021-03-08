@@ -128,6 +128,21 @@ pub async fn dev_action_cursor(
     )
 }
 
+pub async fn block_action_details(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id_param = MAIN_CHAIN_ID;
+    let chain_id = parse_chain_id(chain_id_param, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_hash")?, &env)?;
+    result_to_json_response(
+        dev_services::get_block_action_details(block_hash, env.persistent_storage()),
+        env.log(),
+    )
+}
+
 #[allow(dead_code)]
 pub async fn dev_stats_storage(
     _: Request<Body>,
@@ -192,13 +207,7 @@ pub async fn dev_version(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    _: RpcServiceEnvironment,
 ) -> ServiceResult {
-    match dev_services::get_dev_version() {
-        Ok(resp) => make_json_response(&resp),
-        Err(e) => {
-            warn!(env.log(), "GetStatsMemory: {}", e);
-            empty()
-        }
-    }
+    make_json_response(&dev_services::get_dev_version())
 }
