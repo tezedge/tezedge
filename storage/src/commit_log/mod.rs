@@ -1,11 +1,7 @@
-use crate::persistent::commit_log::error::TezedgeCommitLogError;
-use crate::persistent::commit_log::reader::Reader;
-use crate::persistent::commit_log::writer::Writer;
-use std::collections::HashMap;
-use std::convert::TryInto;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
-use std::{fmt, io};
+
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 
 use failure::Fail;
 use serde::{Deserialize, Serialize};
@@ -13,8 +9,19 @@ use serde::{Deserialize, Serialize};
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::persistent::BincodeEncoded;
+use std::{io, fmt};
+
+use std::convert::TryInto;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+
+use crate::commit_log::error::TezedgeCommitLogError;
+use crate::commit_log::reader::Reader;
+use crate::commit_log::writer::Writer;
+use std::collections::HashMap;
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
+
 pub mod error;
 mod reader;
 mod writer;
@@ -22,9 +29,10 @@ mod writer;
 const INDEX_FILE_NAME: &str = "table.index";
 const DATA_FILE_NAME: &str = "table.data";
 
-const TH_LENGTH: usize = 24;
+const TH_LENGTH: usize = 16;
 
 pub type Message = Vec<u8>;
+
 pub struct MessageSet {
     cursor: usize,
     indexes: Vec<Index>,
@@ -48,12 +56,91 @@ impl Iterator for MessageSet {
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.indexes.get(self.cursor)?;
-        let data = &self.buf[self.acc..(self.acc + index.uncompressed_data_length as usize)];
-        self.acc += index.uncompressed_data_length as usize;
+        let data = &self.buf[self.acc..(self.acc + index.data_length as usize)];
+        self.acc += index.data_length as usize;
         self.cursor += 1;
         Some(data.to_vec())
     }
 }
+
+#[derive(Debug, Copy, Clone)]
+pub struct Index {
+    pub position: u64,
+    pub data_length: u64,
+}
+
+impl Index {
+    fn from_buf(buf: &[u8]) -> Result<Self, TezedgeCommitLogError> {
+        if buf.len() != TH_LENGTH {
+            return Err(TezedgeCommitLogError::IndexLengthError);
+        }
+        let mut buf = buf.to_vec();
+        let position_raw_bytes: Vec<_> = buf.drain(..8).collect();
+        let uncompressed_data_length_raw_bytes: Vec<_> = buf.drain(..).collect();
+        let position = u64::from_be_bytes(
+            position_raw_bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
+        );
+
+        let data_length = u64::from_be_bytes(
+            uncompressed_data_length_raw_bytes
+                .as_slice()
+                .try_into()
+                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
+        );
+        Ok(Self {
+            position,
+            data_length,
+        })
+    }
+    fn new(position: u64, data_length: u64) -> Self {
+        Self {
+            position,
+            data_length,
+        }
+    }
+    fn to_vec(&self) -> Vec<u8> {
+        let mut buf = vec![];
+        buf.extend_from_slice(&self.position.to_be_bytes());
+        buf.extend_from_slice(&self.data_length.to_be_bytes());
+        buf
+    }
+}
+
+pub struct CommitLog {
+    writer: Writer,
+    path: PathBuf,
+}
+
+impl CommitLog {
+    pub fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
+        let writer = Writer::new(log_dir.as_ref())?;
+        Ok(Self {
+            writer,
+            path: log_dir.as_ref().to_path_buf(),
+        })
+    }
+    #[inline]
+    pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
+        let offset = self.writer.write(payload.as_ref())?;
+        Ok(offset)
+    }
+
+    #[inline]
+    pub fn read(&self, from: usize, limit: usize) -> Result<MessageSet, TezedgeCommitLogError> {
+        let reader = Reader::new(&self.path)?;
+        reader.range(from, limit)
+    }
+
+    pub fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
+        self.writer.flush()?;
+        Ok(())
+    }
+}
+
+
 
 /// Possible errors for commit log
 #[derive(Debug, Fail)]
@@ -64,136 +151,12 @@ pub enum CommitLogError {
     IOError { error: io::Error },
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
-    #[fail(display = "Failed to read record at {}", location)]
-    ReadError { location: Location },
+    #[fail(display = "Failed to read record at {}, {:#?}", location, error)]
+    ReadError { location: Location, error : TezedgeCommitLogError },
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
     #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
     TezedgeCommitLogError { error: TezedgeCommitLogError },
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Index {
-    pub position: u64,
-    pub compressed_data_length: u64,
-    pub uncompressed_data_length: u64,
-}
-
-impl Index {
-    fn from_buf(buf: &[u8]) -> Result<Self, TezedgeCommitLogError> {
-        if buf.len() != TH_LENGTH {
-            return Err(TezedgeCommitLogError::IndexLengthError);
-        }
-        let mut buf = buf.to_vec();
-        let position_raw_bytes: Vec<_> = buf.drain(..8).collect();
-        let compressed_data_length_raw_bytes: Vec<_> = buf.drain(..8).collect();
-        let uncompressed_data_length_raw_bytes: Vec<_> = buf.drain(..).collect();
-        let position = u64::from_be_bytes(
-            position_raw_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
-        );
-        let compressed_data_length = u64::from_be_bytes(
-            compressed_data_length_raw_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
-        );
-        let uncompressed_data_length = u64::from_be_bytes(
-            uncompressed_data_length_raw_bytes
-                .as_slice()
-                .try_into()
-                .map_err(|_| TezedgeCommitLogError::TryFromSliceError)?,
-        );
-        Ok(Self {
-            position,
-            compressed_data_length,
-            uncompressed_data_length,
-        })
-    }
-    fn new(position: u64, compressed_data_length: u64, uncompressed_data_length: u64) -> Self {
-        Self {
-            position,
-            compressed_data_length,
-            uncompressed_data_length,
-        }
-    }
-    fn to_vec(&self) -> Vec<u8> {
-        let mut buf = vec![];
-        for b in &self.position.to_be_bytes() {
-            buf.push(*b)
-        }
-        for b in &self.compressed_data_length.to_be_bytes() {
-            buf.push(*b)
-        }
-        for b in &self.uncompressed_data_length.to_be_bytes() {
-            buf.push(*b)
-        }
-        return buf;
-    }
-}
-
-pub struct CommitLog {
-    path: PathBuf,
-}
-
-impl CommitLog {
-    pub fn new<P: AsRef<Path>>(log_dir: P) -> Self {
-        Self {
-            path: log_dir.as_ref().to_path_buf(),
-        }
-    }
-    #[inline]
-    pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
-        let mut writer = Writer::new(&self.path)?;
-        let offset = writer.write(payload.as_ref())?;
-        Ok(offset)
-    }
-
-    #[inline]
-    pub fn read(&self, from: usize, limit: usize) -> Result<MessageSet, TezedgeCommitLogError> {
-        let mut reader = Reader::new(&self.path)?;
-        return reader.range(from, limit);
-    }
-
-    pub fn iter(&mut self) -> Result<CommitLogIterator, TezedgeCommitLogError> {
-        let reader = Reader::new(&self.path)?;
-        Ok(CommitLogIterator::new(reader))
-    }
-
-    pub fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
-        let mut writer = Writer::new(&self.path)?;
-        return writer.flush();
-    }
-}
-
-pub struct CommitLogIterator {
-    cursor: u64,
-    reader: Reader,
-}
-
-impl CommitLogIterator {
-    fn new(reader: Reader) -> Self {
-        Self { cursor: 0, reader }
-    }
-}
-
-impl Iterator for CommitLogIterator {
-    type Item = Message;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.reader.indexes.get(self.cursor as usize).is_none() {
-            return None;
-        }
-        match self.reader.read_at(self.cursor as usize) {
-            Ok(m) => {
-                self.cursor += 1;
-                Some(m)
-            }
-            Err(_) => None,
-        }
-    }
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -284,8 +247,9 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let mut msg_buf =
             cl.read(location.0 as usize, 1)
-                .map_err(|_| CommitLogError::ReadError {
-                    location: location.clone(),
+                .map_err(|error| CommitLogError::ReadError {
+                    error,
+                    location: *location,
                 })?;
         let bytes = msg_buf.next().ok_or(CommitLogError::CorruptData)?;
         let value = S::Value::decode(&bytes)?;
@@ -300,7 +264,8 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let msg_buf =
             cl.read(range.0 as usize, range.2 as usize)
-                .map_err(|_| CommitLogError::ReadError {
+                .map_err(|error| CommitLogError::ReadError {
+                    error,
                     location: Location(range.0, range.2 as usize),
                 })?;
         msg_buf
@@ -342,9 +307,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item = CommitLogDescriptor>,
+        where
+            P: AsRef<Path>,
+            I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -364,7 +329,7 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
-        let log = CommitLog::new(path);
+        let log = CommitLog::new(path)?;
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -410,7 +375,11 @@ impl Location {
 
 #[cfg(test)]
 mod tests {
-    use crate::persistent::commit_log::fold_consecutive_locations;
+    use rand::Rng;
+    use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
+    use commitlog::message::MessageSet;
+    use std::time::Instant;
+    use crate::commit_log::fold_consecutive_locations;
 
     use super::*;
 
@@ -450,4 +419,65 @@ mod tests {
             ranges
         );
     }
+
+
+
+    fn generate_random_data(data_size: usize, min_message_size: usize, max_message_size: usize) -> Vec<Vec<u8>> {
+        let mut rand_messages = vec![];
+        let mut rng = rand::thread_rng();
+        for _ in 0..data_size {
+            let random_data_size = rng.gen_range(min_message_size,max_message_size);
+            let random_bytes: Vec<u8> = (0..random_data_size).map(|_| { 2_u8 }).collect();
+            rand_messages.push(random_bytes);
+        }
+        rand_messages
+    }
+
+    #[test]
+    fn compare_with_old_log() {
+        let data_size = 10_000;
+        let new_commit_log_dir = "./testdir/bench/new_log";
+        let old_commit_log_dir = "./testdir/bench/old_log";
+        let messages = generate_random_data(data_size, 200_000, 500_000);
+        let mut options = LogOptions::new(old_commit_log_dir);
+        options.message_max_bytes(15_000_000);
+        let mut old_commit_log = OldCommitLog::new(options).unwrap();
+        let mut new_commit_log = CommitLog::new(new_commit_log_dir).unwrap();
+
+        let mut timer = Instant::now();
+        for msg in &messages {
+            old_commit_log.append_msg(msg);
+        }
+        println!("Old CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
+
+        timer = Instant::now();
+        for msg in &messages {
+            new_commit_log.append_msg(msg);
+        }
+        println!("New CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
+
+        let old_commit_folder_size = fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
+        let new_commit_folder_size = fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
+
+        println!("Folder Sizes");
+        println!("OldCommitLog {}", old_commit_folder_size);
+        println!("NewCommitLog {}", new_commit_folder_size);
+
+        //Read Test on new commit log
+        let mut timer = Instant::now();
+        timer = Instant::now();
+        let set = new_commit_log.read(0, data_size).unwrap();
+        for (i, _) in set.enumerate() {
+            if i % 20 == 0 {
+                print!(".")
+            }
+        }
+        println!();
+        println!("CommitLog New Read Took {}ms", timer.elapsed().as_millis());
+
+        std::fs::remove_dir_all(new_commit_log_dir).unwrap();
+        std::fs::remove_dir_all(old_commit_log_dir).unwrap();
+    }
+
 }
+

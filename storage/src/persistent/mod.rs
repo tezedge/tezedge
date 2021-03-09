@@ -1,36 +1,34 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::Fail;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use crate::action_file::ActionFileError;
-use crate::KeyValueStoreBackend;
-use crate::StorageError;
 use derive_builder::Builder;
-use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
+use failure::Fail;
+use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, Options};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
-use tezos_context::channel::ContextActionMessage;
+use tezos_context::channel::ContextAction;
 
+use crate::action_file::ActionFileError;
 use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
+pub use crate::commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
+use crate::KeyValueStoreBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use crate::StorageError;
 
-use tezos_context::channel::ContextAction;
 pub mod codec;
 pub mod database;
 pub mod schema;
 pub mod sequence;
-pub mod commit_log;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -160,8 +158,8 @@ impl PersistentStorage {
                 MerkleStorage::name(),
             ))),
             KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            KeyValueStoreBackend::Sled => {
-                let sled = sled::Config::new().temporary(true).open().unwrap();
+            KeyValueStoreBackend::Sled { path } => {
+                let sled = sled::Config::new().path(path).open().unwrap();
                 MerkleStorage::new(Box::new(SledBackend::new(sled.deref().clone())))
             }
             KeyValueStoreBackend::BTreeMap => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
@@ -238,13 +236,13 @@ impl From<ActionFileError> for ActionRecordError {
 }
 
 pub trait ActionRecorder {
-    fn record(&mut self, action: &ContextActionMessage) -> Result<(), StorageError>;
+    fn record(&mut self, action: &ContextAction) -> Result<(), StorageError>;
 }
 
 pub struct NoRecorder {}
 
 impl ActionRecorder for NoRecorder {
-    fn record(&mut self, _action: &ContextActionMessage) -> Result<(), StorageError> {
+    fn record(&mut self, _action: &ContextAction) -> Result<(), StorageError> {
         Ok(())
     }
 }
