@@ -1,32 +1,31 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::Fail;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use crate::action_file::ActionFileError;
-use crate::KeyValueStoreBackend;
-use crate::StorageError;
 use derive_builder::Builder;
-use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
+use failure::Fail;
+use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, Options};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
+use tezos_context::channel::ContextAction;
 
+use crate::action_file::ActionFileError;
 use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
+pub use crate::commit_log::commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
+use crate::KeyValueStoreBackend;
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
-use tezos_context::channel::ContextAction;
+use crate::StorageError;
 
 pub mod codec;
-pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
