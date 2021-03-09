@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use riker::actors::*;
 use rocksdb::{Cache, DB};
-use slog::{debug, error, info, Drain, Logger};
+use slog::{debug, error, info, warn, Drain, Logger};
 
 use configuration::{ColumnFactory, RocksDBConfig};
 use logging::detailed_json;
@@ -47,7 +47,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
-use crate::configuration::LogFormat;
+use crate::configuration::{Environment, LogFormat};
 
 mod configuration;
 mod identity;
@@ -520,6 +520,12 @@ fn initialize_db<Factory: ColumnFactory>(
     }
 }
 
+fn check_deprecated_network(env: &Environment, log: &Logger) {
+    if let Some(deprecation_notice) = env.tezos_network.check_deprecated_network() {
+        warn!(log, "Deprecated network: {}", deprecation_notice);
+    }
+}
+
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
@@ -534,6 +540,15 @@ fn main() {
 
     // Creates default logger
     let log = create_logger(&env);
+
+    // check deprecated networks
+    info!(
+        log,
+        "Configured network {:?} -> {}",
+        env.tezos_network.supported_values(),
+        tezos_env.version
+    );
+    check_deprecated_network(&env, &log);
 
     // Validate zcash-params
     info!(log, "Checking zcash-params for sapling... (1/5)");

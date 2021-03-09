@@ -60,7 +60,7 @@ impl TezosEnvironment {
         possible_values
     }
 
-    fn supported_values(&self) -> Vec<&'static str> {
+    pub fn supported_values(&self) -> Vec<&'static str> {
         match self {
             TezosEnvironment::Mainnet => vec!["mainnet"],
             TezosEnvironment::Alphanet => vec!["alphanet"],
@@ -72,6 +72,83 @@ impl TezosEnvironment {
             TezosEnvironment::Zeronet => vec!["zeronet"],
             TezosEnvironment::Sandbox => vec!["sandbox"],
         }
+    }
+
+    pub fn check_deprecated_network(&self) -> Option<String> {
+        match self {
+            TezosEnvironment::Alphanet => Some(Self::deprecated_testnet_notice(
+                TezosEnvironment::Alphanet,
+                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            )),
+            TezosEnvironment::Babylonnet => Some(Self::deprecated_testnet_notice(
+                TezosEnvironment::Babylonnet,
+                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            )),
+            TezosEnvironment::Carthagenet => Some(Self::deprecated_testnet_notice(
+                TezosEnvironment::Carthagenet,
+                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            )),
+            TezosEnvironment::Delphinet => None,
+            TezosEnvironment::Edonet => Some(Self::deprecated_net_notice(
+                "EDONET",
+                TezosEnvironment::Edonet,
+                TezosEnvironment::Edo2net,
+            )),
+            TezosEnvironment::Edo2net => None,
+            TezosEnvironment::Mainnet => None,
+            TezosEnvironment::Zeronet => Some(Self::deprecated_testnet_notice(
+                TezosEnvironment::Zeronet,
+                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            )),
+            TezosEnvironment::Sandbox => None,
+        }
+    }
+
+    fn deprecated_testnet_notice(
+        selected_network: TezosEnvironment,
+        alternate_networks: Vec<TezosEnvironment>,
+    ) -> String {
+        let mut selected = selected_network.supported_values();
+        selected.sort();
+        let mut alternate_networks = alternate_networks
+            .iter()
+            .flat_map(|rn| rn.supported_values())
+            .collect::<Vec<_>>();
+        alternate_networks.sort();
+        format!(
+            "\n\n\n\n////////////////////////////////////////// \
+            \n//      !!! DEPRECATED TESTNET !!!      //\
+            \n////////////////////////////////////////// \
+            \n// Selected (deprecated) network: {:?} \
+            \n// Use recommended network(s): {:?} \
+            \n// Possible problems: \
+            \n// - no peers to connect \
+            \n// - no data to download \
+            \n//////////////////////////////////////////\n\n\n\n",
+            selected, alternate_networks
+        )
+    }
+
+    fn deprecated_net_notice(
+        title: &str,
+        selected: TezosEnvironment,
+        alternate: TezosEnvironment,
+    ) -> String {
+        let mut selected = selected.supported_values();
+        selected.sort();
+        let mut alternate_networks = alternate.supported_values();
+        alternate_networks.sort();
+        format!(
+            "\n\n\n\n////////////////////////////////////////// \
+            \n//      !!! DEPRECATED {} !!!      //\
+            \n////////////////////////////////////////// \
+            \n// {:?} is automatically switched to {:?} \
+            \n// Better use directly network(s): {:?} \
+            \n// Possible problems: \
+            \n// - deprecated network will be removed soon \
+            \n//////////////////////////////////////////\n\n\n\n",
+            title, selected, alternate_networks, alternate_networks
+        )
     }
 }
 
@@ -193,35 +270,36 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         }),
     });
 
-    env.insert(TezosEnvironment::Edonet, TezosEnvironmentConfiguration {
-        genesis: GenesisChain {
-            time: "2020-11-30T12:00:00Z".to_string(),
-            block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
-            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
-        },
-        bootstrap_lookup_addresses: vec![
-            "51.75.246.56:9733".to_string(),
-            "edonet.tezos.co.il".to_string(),
-            "46.245.179.161:9733".to_string(),
-            "edonet.smartpy.io".to_string(),
-            "188.40.128.216:29732".to_string(),
-            "51.79.165.131".to_string(),
-            "edonet.boot.tezostaquito.io".to_string(),
-            "95.216.228.228:9733".to_string(),
-        ],
-        version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
-        protocol_overrides: ProtocolOverrides {
-            user_activated_upgrades: vec![],
-            user_activated_protocol_overrides: vec![],
-        },
-        enable_testchain: true,
-        patch_context_genesis_parameters: Some(PatchContext {
-            key: "sandbox_parameter".to_string(),
-            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
-        }),
-    });
+    // TODO: remove after florence support
+    // env.insert(TezosEnvironment::Edonet, TezosEnvironmentConfiguration {
+    //     genesis: GenesisChain {
+    //         time: "2020-11-30T12:00:00Z".to_string(),
+    //         block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
+    //         protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+    //     },
+    //     bootstrap_lookup_addresses: vec![
+    //         "51.75.246.56:9733".to_string(),
+    //         "edonet.tezos.co.il".to_string(),
+    //         "46.245.179.161:9733".to_string(),
+    //         "edonet.smartpy.io".to_string(),
+    //         "188.40.128.216:29732".to_string(),
+    //         "51.79.165.131".to_string(),
+    //         "edonet.boot.tezostaquito.io".to_string(),
+    //         "95.216.228.228:9733".to_string(),
+    //     ],
+    //     version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
+    //     protocol_overrides: ProtocolOverrides {
+    //         user_activated_upgrades: vec![],
+    //         user_activated_protocol_overrides: vec![],
+    //     },
+    //     enable_testchain: true,
+    //     patch_context_genesis_parameters: Some(PatchContext {
+    //         key: "sandbox_parameter".to_string(),
+    //         json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+    //     }),
+    // });
 
-    env.insert(TezosEnvironment::Edo2net, TezosEnvironmentConfiguration {
+    let edo2net_cfg = TezosEnvironmentConfiguration {
         genesis: GenesisChain {
             time: "2021-02-11T14:00:00Z".to_string(),
             block: "BLockGenesisGenesisGenesisGenesisGenesisdae8bZxCCxh".to_string(),
@@ -243,9 +321,16 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
         enable_testchain: true,
         patch_context_genesis_parameters: Some(PatchContext {
             key: "sandbox_parameter".to_string(),
-            json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+            json:
+                r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#
+                    .to_string(),
         }),
-    });
+    };
+
+    // TODO: for edo/edonet we redirect to edo2net, because edo/edonet is deprecated and not working
+    // TODO: remove after florence support
+    env.insert(TezosEnvironment::Edonet, edo2net_cfg.clone());
+    env.insert(TezosEnvironment::Edo2net, edo2net_cfg);
 
     env.insert(
         TezosEnvironment::Mainnet,
