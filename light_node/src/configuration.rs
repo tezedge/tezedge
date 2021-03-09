@@ -785,10 +785,16 @@ impl Environment {
                     })
                     .iter()
                     .map(|addr| {
-                        (
-                            addr.clone(),
+                        environment::parse_bootstrap_addr_port(
+                            addr,
                             crate::configuration::P2p::DEFAULT_P2P_PORT_FOR_LOOKUP,
                         )
+                        .unwrap_or_else(|_| {
+                            panic!(
+                                "Was expecting 'ADDR' or 'ADDR:PORT', invalid value: {}",
+                                addr
+                            )
+                        })
                     })
                     .collect(),
                 bootstrap_peers: args
