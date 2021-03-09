@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Correct parsing of bootstrap addresses with port
 
+### Deprecated
+
+- edo/edonet - automatically is switched to edo2/edo2net
+
 ## [1.1.2] - 2021-03-05
 
 ### Added
