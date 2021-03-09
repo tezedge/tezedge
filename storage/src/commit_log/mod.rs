@@ -433,9 +433,10 @@ mod tests {
 
     #[test]
     fn compare_with_old_log() {
+        let data_size = 10_000;
         let new_commit_log_dir = "./testdir/bench/new_log";
         let old_commit_log_dir = "./testdir/bench/old_log";
-        let messages = generate_random_data(10_000, 200_000, 500_000);
+        let messages = generate_random_data(data_size, 200_000, 500_000);
         let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
@@ -460,8 +461,21 @@ mod tests {
         println!("OldCommitLog {}", old_commit_folder_size);
         println!("NewCommitLog {}", new_commit_folder_size);
 
+        //Read Test on new commit log
+        let mut timer = Instant::now();
+        timer = Instant::now();
+        let set = new_commit_log.read(0, data_size).unwrap();
+        for (i, _) in set.enumerate() {
+            if i % 20 == 0 {
+                print!(".")
+            }
+        }
+        println!();
+        println!("CommitLog New Read Took {}ms", timer.elapsed().as_millis());
+
         std::fs::remove_dir_all(new_commit_log_dir).unwrap();
         std::fs::remove_dir_all(old_commit_log_dir).unwrap();
     }
+
 }
 
