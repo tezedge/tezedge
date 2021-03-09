@@ -11,6 +11,7 @@ pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 pub mod error;
 mod reader;
 mod writer;
+pub mod commit_log;
 
 const INDEX_FILE_NAME: &str = "table.index";
 const DATA_FILE_NAME: &str = "table.data";
