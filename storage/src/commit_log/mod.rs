@@ -1,7 +1,5 @@
-
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-
 
 use failure::Fail;
 use serde::{Deserialize, Serialize};
@@ -9,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::persistent::BincodeEncoded;
-use std::{io, fmt};
+use std::{fmt, io};
 
 use std::convert::TryInto;
 use std::path::{Path, PathBuf};
@@ -140,8 +138,6 @@ impl CommitLog {
     }
 }
 
-
-
 /// Possible errors for commit log
 #[derive(Debug, Fail)]
 pub enum CommitLogError {
@@ -152,7 +148,10 @@ pub enum CommitLogError {
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
     #[fail(display = "Failed to read record at {}, {:#?}", location, error)]
-    ReadError { location: Location, error : TezedgeCommitLogError },
+    ReadError {
+        location: Location,
+        error: TezedgeCommitLogError,
+    },
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
     #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
@@ -262,12 +261,12 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let msg_buf =
-            cl.read(range.0 as usize, range.2 as usize)
-                .map_err(|error| CommitLogError::ReadError {
-                    error,
-                    location: Location(range.0, range.2 as usize),
-                })?;
+        let msg_buf = cl
+            .read(range.0 as usize, range.2 as usize)
+            .map_err(|error| CommitLogError::ReadError {
+                error,
+                location: Location(range.0, range.2 as usize),
+            })?;
         msg_buf
             .take(range.2 as usize)
             .map(|message| S::Value::decode(&message).map_err(|_| CommitLogError::CorruptData))
@@ -307,9 +306,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-        where
-            P: AsRef<Path>,
-            I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -375,11 +374,11 @@ impl Location {
 
 #[cfg(test)]
 mod tests {
-    use rand::Rng;
-    use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
-    use commitlog::message::MessageSet;
-    use std::time::Instant;
     use crate::commit_log::fold_consecutive_locations;
+    use commitlog::message::MessageSet;
+    use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
+    use rand::Rng;
+    use std::time::Instant;
 
     use super::*;
 
@@ -420,14 +419,16 @@ mod tests {
         );
     }
 
-
-
-    fn generate_random_data(data_size: usize, min_message_size: usize, max_message_size: usize) -> Vec<Vec<u8>> {
+    fn generate_random_data(
+        data_size: usize,
+        min_message_size: usize,
+        max_message_size: usize,
+    ) -> Vec<Vec<u8>> {
         let mut rand_messages = vec![];
         let mut rng = rand::thread_rng();
         for _ in 0..data_size {
-            let random_data_size = rng.gen_range(min_message_size,max_message_size);
-            let random_bytes: Vec<u8> = (0..random_data_size).map(|_| { 2_u8 }).collect();
+            let random_data_size = rng.gen_range(min_message_size, max_message_size);
+            let random_bytes: Vec<u8> = (0..random_data_size).map(|_| 2_u8).collect();
             rand_messages.push(random_bytes);
         }
         rand_messages
@@ -448,16 +449,26 @@ mod tests {
         for msg in &messages {
             old_commit_log.append_msg(msg);
         }
-        println!("Old CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
+        println!(
+            "Old CommitLog Store [{}] Took {}ms",
+            messages.len(),
+            timer.elapsed().as_millis()
+        );
 
         timer = Instant::now();
         for msg in &messages {
             new_commit_log.append_msg(msg);
         }
-        println!("New CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
+        println!(
+            "New CommitLog Store [{}] Took {}ms",
+            messages.len(),
+            timer.elapsed().as_millis()
+        );
 
-        let old_commit_folder_size = fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
-        let new_commit_folder_size = fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
+        let old_commit_folder_size =
+            fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
+        let new_commit_folder_size =
+            fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
 
         println!("Folder Sizes");
         println!("OldCommitLog {}", old_commit_folder_size);
@@ -478,6 +489,4 @@ mod tests {
         std::fs::remove_dir_all(new_commit_log_dir).unwrap();
         std::fs::remove_dir_all(old_commit_log_dir).unwrap();
     }
-
 }
-
