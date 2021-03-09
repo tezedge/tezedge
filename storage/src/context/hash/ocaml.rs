@@ -77,4 +77,40 @@ mod tests {
         assert_eq!(335633756, ocaml_hash_string(0, b"abcde"));
         assert_eq!(926323203, ocaml_hash_string(0, b"abcdef"));
     }
+
+    // Tests from Tarides json dataset
+
+    use std::{env, fs::File, path::Path};
+
+    #[derive(serde::Deserialize)]
+    struct OCamlHashTest {
+        s: String,
+        seed: u32,
+        ocaml_hash: u32,
+    }
+
+    #[test]
+    fn test_ocaml_hashes() {
+        let mut json_file = open_hashes_json("ocaml_hash.json");
+
+        let test_cases: Vec<OCamlHashTest> = serde_json::from_reader(&mut json_file).unwrap();
+
+        for test_case in test_cases {
+            let computed_hash = ocaml_hash_string(test_case.seed, test_case.s.as_bytes());
+            assert_eq!(
+                test_case.ocaml_hash, computed_hash,
+                "Expected hash of v={} with seed={} to be {}, but got {}",
+                test_case.s, test_case.seed, test_case.ocaml_hash, computed_hash
+            );
+        }
+    }
+
+    fn open_hashes_json(json_file_name: &str) -> File {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join(json_file_name);
+        File::open(path)
+            .unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", json_file_name))
+    }
 }

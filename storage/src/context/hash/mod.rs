@@ -445,4 +445,89 @@ mod tests {
             hex::decode(expected_tree_hash).unwrap()
         );
     }
+
+    // Tests from Tarides json dataset
+
+    use super::{hash_tree, Tree};
+    use crypto::hash::{ContextHash, HashTrait};
+    use flate2::read::GzDecoder;
+    use std::{env, fs::File, io::Read, path::Path};
+
+    #[derive(serde::Deserialize)]
+    struct NodeHashTest {
+        hash: String,
+        bindings: Vec<NodeHashBinding>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct NodeHashBinding {
+        name: String,
+        kind: String,
+        hash: String,
+    }
+
+    #[test]
+    fn test_node_hashes() {
+        test_type_hashes("nodes.json.gz");
+    }
+
+    #[test]
+    fn test_inode_hashes() {
+        test_type_hashes("inodes.json.gz");
+    }
+
+    fn test_type_hashes(json_gz_file_name: &str) {
+        let mut json_file = open_hashes_json_gz(json_gz_file_name);
+        let mut bytes = Vec::new();
+
+        // NOTE: reading from a stream is very slow with serde, thats why
+        // the whole file is being read here before parsing.
+        // See: https://github.com/serde-rs/json/issues/160#issuecomment-253446892
+        json_file.read_to_end(&mut bytes).unwrap();
+
+        let test_cases: Vec<NodeHashTest> = serde_json::from_slice(&bytes).unwrap();
+
+        for test_case in test_cases {
+            let bindings_count = test_case.bindings.len();
+            let mut tree = Tree::new();
+
+            for binding in test_case.bindings {
+                let node_kind = match binding.kind.as_str() {
+                    "Tree" => NodeKind::NonLeaf,
+                    "Contents" => NodeKind::Leaf,
+                    other => panic!("Got unexpected binding kind: {}", other),
+                };
+                let entry_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
+                let entry_hash: EntryHash = entry_hash.as_ref().as_slice().try_into().unwrap();
+                let node = Node {
+                    node_kind,
+                    entry_hash,
+                };
+                tree = tree.update(binding.name, node);
+            }
+
+            let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
+            let computed_hash = hash_tree(&tree).unwrap();
+            let computed_hash = ContextHash::try_from_bytes(&computed_hash).unwrap();
+
+            assert_eq!(
+                expected_hash.to_base58_check(),
+                computed_hash.to_base58_check(),
+                "Expected hash {} but got {} (bindings: {})",
+                expected_hash.to_base58_check(),
+                computed_hash.to_base58_check(),
+                bindings_count
+            );
+        }
+    }
+
+    fn open_hashes_json_gz(file_name: &str) -> GzDecoder<File> {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join(file_name);
+        let file = File::open(path)
+            .unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", file_name));
+        GzDecoder::new(file)
+    }
 }
