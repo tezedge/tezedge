@@ -160,7 +160,7 @@ pub enum ContextAction {
     Shutdown,
 }
 
-fn get_time(action: &ContextAction) -> f64 {
+pub fn get_time(action: &ContextAction) -> f64 {
     match action {
         ContextAction::Set {
             start_time,
@@ -212,6 +212,38 @@ fn get_time(action: &ContextAction) -> f64 {
             end_time,
             ..
         } => *end_time - *start_time,
+        ContextAction::Shutdown => 0_f64,
+    }
+}
+
+pub fn get_end_time(action: &ContextAction) -> f64 {
+    match action {
+        ContextAction::Set { end_time, .. } => *end_time,
+        ContextAction::Delete { end_time, .. } => *end_time,
+        ContextAction::RemoveRecursively { end_time, .. } => *end_time,
+        ContextAction::Copy { end_time, .. } => *end_time,
+        ContextAction::Checkout { end_time, .. } => *end_time,
+        ContextAction::Commit { end_time, .. } => *end_time,
+        ContextAction::Mem { end_time, .. } => *end_time,
+        ContextAction::DirMem { end_time, .. } => *end_time,
+        ContextAction::Get { end_time, .. } => *end_time,
+        ContextAction::Fold { end_time, .. } => *end_time,
+        ContextAction::Shutdown => 0_f64,
+    }
+}
+
+pub fn get_start_time(action: &ContextAction) -> f64 {
+    match action {
+        ContextAction::Set { start_time, .. } => *start_time,
+        ContextAction::Delete { start_time, .. } => *start_time,
+        ContextAction::RemoveRecursively { start_time, .. } => *start_time,
+        ContextAction::Copy { start_time, .. } => *start_time,
+        ContextAction::Checkout { start_time, .. } => *start_time,
+        ContextAction::Commit { start_time, .. } => *start_time,
+        ContextAction::Mem { start_time, .. } => *start_time,
+        ContextAction::DirMem { start_time, .. } => *start_time,
+        ContextAction::Get { start_time, .. } => *start_time,
+        ContextAction::Fold { start_time, .. } => *start_time,
         ContextAction::Shutdown => 0_f64,
     }
 }
