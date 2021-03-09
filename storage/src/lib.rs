@@ -6,8 +6,8 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use failure::Fail;
 use rocksdb::Cache;
