@@ -452,6 +452,111 @@ fn parse_from_rfc3339(time: &str) -> Result<i64, TezosEnvironmentError> {
         .map(|dt| dt.timestamp())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AddrParseError(String);
+
+/// Parse ip:port from str, if port is not present, then uses default
+///
+/// IPv6 addresses must be enclosed with brackets '[...]'
+///
+/// Note: ip could be <IP> or domain/host name
+/// Note: see p2p_point.ml -> parse_addr_port
+pub fn parse_bootstrap_addr_port(
+    addr: &str,
+    default_port: u16,
+) -> Result<(String, u16), AddrParseError> {
+    let (addr, port) = if addr.starts_with('[') {
+        // handle ipv6
+        match addr.rfind(']') {
+            Some(idx) => {
+                // parse addr
+                let addr_part = &addr[1..idx];
+                let port_part = if idx >= addr.len() - 1 {
+                    // no port
+                    None
+                } else if addr.get((idx + 1)..(idx + 2)) != Some(":") {
+                    return Err(AddrParseError(format!(
+                        "Invalid value '{}' - invalid part with '<:PORT>'",
+                        addr
+                    )));
+                } else {
+                    // try get port part after ':'
+                    match addr.get((idx + 2)..) {
+                        Some(port_part) => Some(port_part),
+                        None => {
+                            return Err(AddrParseError(format!(
+                                "Invalid value '{}' - invalid port part",
+                                addr
+                            )))
+                        }
+                    }
+                };
+                (addr_part, port_part)
+            }
+            None => {
+                return Err(AddrParseError(format!(
+                    "Invalid value '{}' - missing closing ']'",
+                    addr
+                )))
+            }
+        }
+    } else {
+        if let Some(_) = addr.rfind(']') {
+            return Err(AddrParseError(format!(
+                "Invalid value '{}' - missing starting '['",
+                addr
+            )));
+        }
+        match addr.match_indices(':').count() {
+            0 => (addr, None),
+            1 => {
+                let mut split = addr.split(':');
+                let addr_part = match split.next() {
+                    Some(s) => s,
+                    None => {
+                        return Err(AddrParseError(format!(
+                            "Invalid value '{}' - invalid addr part",
+                            addr
+                        )))
+                    }
+                };
+                let port_part = match split.next() {
+                    Some(s) => s,
+                    None => {
+                        return Err(AddrParseError(format!(
+                            "Invalid value '{}' - invalid port part",
+                            addr
+                        )))
+                    }
+                };
+                (addr_part, Some(port_part))
+            }
+            _ => {
+                return Err(AddrParseError(format!(
+                    "Invalid value '{}' - Ipv6 addr should be wrapped with '[...]'",
+                    addr
+                )))
+            }
+        }
+    };
+
+    // check port
+    let port = match port {
+        Some(p) => match p.parse::<u16>() {
+            Ok(p) => p,
+            Err(e) => {
+                return Err(AddrParseError(format!(
+                    "Invalid value '{}' - invalid port value '{}', reason: {}",
+                    addr, p, e
+                )))
+            }
+        },
+        None => default_port,
+    };
+
+    Ok((addr.to_string(), port))
+}
+
 #[derive(Debug, Clone)]
 pub struct ZcashParams {
     pub init_sapling_spend_params_file: PathBuf,
@@ -592,5 +697,47 @@ mod tests {
 
         assert_eq!(expected, decoded);
         Ok(())
+    }
+
+    #[test]
+    fn test_parse_bootstrap_addr_port() -> Result<(), AddrParseError> {
+        let (addr, port) = parse_bootstrap_addr_port("edonet.tezos.co.il", 5)?;
+        assert_eq!("edonet.tezos.co.il", addr);
+        assert_eq!(5, port);
+
+        let (addr, port) = parse_bootstrap_addr_port("188.40.128.216:29732", 5)?;
+        assert_eq!("188.40.128.216", addr);
+        assert_eq!(29732, port);
+
+        let (addr, port) = parse_bootstrap_addr_port("[fe80:e828:209d:20e:c0ae::]:375", 5)?;
+        assert_eq!("fe80:e828:209d:20e:c0ae::", addr);
+        assert_eq!(375, port);
+
+        let (addr, port) = parse_bootstrap_addr_port("[2a01:4f8:171:1f2d::2]:9732", 5)?;
+        assert_eq!("2a01:4f8:171:1f2d::2", addr);
+        assert_eq!(9732, port);
+
+        assert!(parse_bootstrap_addr_port("[fe80:e828:209d:20e:c0ae::", 5).is_err());
+        assert!(parse_bootstrap_addr_port("fe80:e828:209d:20e:c0ae::]:375", 5).is_err());
+        assert!(parse_bootstrap_addr_port("fe80:e828:209d:20e:c0ae::]:", 5).is_err());
+        assert!(parse_bootstrap_addr_port("fe80:e828:209d:20e:c0ae:375", 5).is_err());
+        assert!(parse_bootstrap_addr_port("188.40.128.216:a", 5).is_err());
+        assert!(parse_bootstrap_addr_port("188.40.128.216:", 5).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_bootstrap_addr_port_for_all_environment() {
+        TezosEnvironment::iter().for_each(|net| {
+            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                .get(&net)
+                .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
+
+            tezos_env
+                .bootstrap_lookup_addresses
+                .iter()
+                .for_each(|addr| assert!(parse_bootstrap_addr_port(addr, 1111).is_ok()));
+        });
     }
 }
