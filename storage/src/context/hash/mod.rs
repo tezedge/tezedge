@@ -103,7 +103,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
 
             match ti {
                 Inode::Empty => (),
-                non_empty => pointers.push((i as u8, hash_inode(&non_empty)?)),
+                non_empty => pointers.push((i as u8, hash_long_inode(&non_empty)?)),
             }
         }
 
@@ -115,7 +115,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
     }
 }
 
-fn hash_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
+fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
     let mut hasher = VarBlake2b::new(HASH_LEN)?;
 
     match inode {
@@ -181,46 +181,50 @@ fn hash_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
-// Calculates hash of tree
-// uses BLAKE2 binary 256 length hash function
 // hash is calculated as:
 // <number of child nodes (8 bytes)><CHILD NODE>
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
+fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
+    let mut hasher = VarBlake2b::new(HASH_LEN)?;
+
+    // Node list:
+    //
+    // |    8   |     n_1      | ... |      n_k     |
+    // +--------+--------------+-----+--------------+
+    // |   \k   | prehash(e_1) | ... | prehash(e_k) |
+
+    hasher.update(&(tree.len() as u64).to_be_bytes());
+
+    // Node entry:
+    //
+    // |   8   |   (LEB128)   |  len(name)  |   8   |   32   |
+    // +-------+--------------+-------------+-------+--------+
+    // | kind  |  \len(name)  |    name     |  \32  |  hash  |
+
+    for (k, v) in tree {
+        hasher.update(encode_irmin_node_kind(&v.node_kind));
+        // Key length is written in LEB128 encoding
+        leb128::write::unsigned(&mut hasher, k.len() as u64)?;
+        hasher.update(k.as_bytes());
+        hasher.update(&(HASH_LEN as u64).to_be_bytes());
+        hasher.update(&v.entry_hash);
+    }
+
+    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+}
+
+// Calculates hash of tree
+// uses BLAKE2 binary 256 length hash function
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
         let entries: Vec<(&String, &Node)> = tree.iter().collect();
         let inode = partition_entries(0, &entries)?;
-        hash_inode(&inode)
+        hash_long_inode(&inode)
     } else {
-        let mut hasher = VarBlake2b::new(HASH_LEN)?;
-
-        // Node list:
-        //
-        // |    8   |     n_1      | ... |      n_k     |
-        // +--------+--------------+-----+--------------+
-        // |   \k   | prehash(e_1) | ... | prehash(e_k) |
-
-        hasher.update(&(tree.len() as u64).to_be_bytes());
-
-        // Node entry:
-        //
-        // |   8   |   (LEB128)   |  len(name)  |   8   |   32   |
-        // +-------+--------------+-------------+-------+--------+
-        // | kind  |  \len(name)  |    name     |  \32  |  hash  |
-
-        for (k, v) in tree {
-            hasher.update(encode_irmin_node_kind(&v.node_kind));
-            // Key length is written in LEB128 encoding
-            leb128::write::unsigned(&mut hasher, k.len() as u64)?;
-            hasher.update(k.as_bytes());
-            hasher.update(&(HASH_LEN as u64).to_be_bytes());
-            hasher.update(&v.entry_hash);
-        }
-
-        Ok(hasher.finalize_boxed().as_ref().try_into()?)
+        hash_short_inode(tree)
     }
 }
 
