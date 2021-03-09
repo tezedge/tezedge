@@ -88,7 +88,7 @@ Enable OCaml runtime logger.
 
 ### Network
 Specifies the Tezos environment for this node. Accepted values are: 
-`alphanet, babylonnet, babylon, mainnet, zeronet, carthagenet, carthage, delphinet, delphi, edonet, edo, edo2net, edo2, sandbox`
+`alphanet, babylonnet, babylon, mainnet, zeronet, carthagenet, carthage, delphinet, delphi, edonet (deprecated - use edo2), edo (deprecated - use edo2), edo2net, edo2, sandbox`
 
 ```
 --network <NETWORK>

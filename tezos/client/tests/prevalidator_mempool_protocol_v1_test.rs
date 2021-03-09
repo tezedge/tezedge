@@ -4,9 +4,7 @@
 use serial_test::serial;
 
 use crypto::hash::{ChainId, ProtocolHash};
-use tezos_api::environment::{
-    get_empty_operation_list_list_hash, TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV,
-};
+use tezos_api::environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration};
 use tezos_api::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
     TezosRuntimeConfiguration, ValidateOperationRequest,
@@ -29,17 +27,13 @@ fn init_test_runtime() {
 
 fn init_test_protocol_context(
     dir_name: &str,
-    tezos_env: TezosEnvironment,
+    tezos_env: TezosEnvironmentConfiguration,
 ) -> (
     ChainId,
     BlockHeader,
     ProtocolHash,
     InitProtocolContextResult,
 ) {
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
-        .get(&tezos_env)
-        .expect("no tezos environment configured");
-
     let result = client::init_protocol_context(
         common::prepare_empty_dir(dir_name),
         tezos_env.genesis.clone(),
@@ -77,7 +71,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), failure::Error
     // init empty context for test
     let (chain_id, genesis_block_header, ..) = init_test_protocol_context(
         "mempool_test_storage_01",
-        test_data_protocol_v1::TEZOS_NETWORK,
+        test_data_protocol_v1::tezos_network(),
     );
 
     // apply block 1 and block 2
@@ -183,11 +177,40 @@ mod test_data_protocol_v1 {
     use std::convert::TryFrom;
 
     use crypto::hash::{BlockHash, ContextHash};
-    use tezos_api::environment::TezosEnvironment;
+    use tezos_api::environment::TezosEnvironmentConfiguration;
+    use tezos_api::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
     use tezos_messages::p2p::binary_message::BinaryMessage;
     use tezos_messages::p2p::encoding::prelude::*;
 
-    pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Edonet;
+    pub fn tezos_network() -> TezosEnvironmentConfiguration {
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2020-11-30T12:00:00Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
+                protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "51.75.246.56:9733".to_string(),
+                "edonet.tezos.co.il".to_string(),
+                "46.245.179.161:9733".to_string(),
+                "edonet.smartpy.io".to_string(),
+                "188.40.128.216:29732".to_string(),
+                "51.79.165.131".to_string(),
+                "edonet.boot.tezostaquito.io".to_string(),
+                "95.216.228.228:9733".to_string(),
+            ],
+            version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: Some(PatchContext {
+                key: "sandbox_parameter".to_string(),
+                json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+            }),
+        }
+    }
 
     pub fn context_hash(hash: &str) -> ContextHash {
         ContextHash::from_base58_check(hash).unwrap()
