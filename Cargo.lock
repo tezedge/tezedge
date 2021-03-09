@@ -2924,6 +2924,7 @@ dependencies = [
  "crypto",
  "derive_builder",
  "failure",
+ "flate2",
  "getset",
  "hex",
  "im",
