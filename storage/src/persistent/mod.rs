@@ -19,10 +19,12 @@ use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
-pub use crate::commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
-use crate::KeyValueStoreBackend;
+pub use crate::commit_log::{
+    CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location,
+};
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use crate::KeyValueStoreBackend;
 use crate::StorageError;
 
 pub mod codec;
