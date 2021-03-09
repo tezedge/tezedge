@@ -377,7 +377,7 @@ mod tests {
     use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
     use commitlog::message::MessageSet;
     use std::time::Instant;
-    use crate::commit_log::commit_log::fold_consecutive_locations;
+    use crate::commit_log::fold_consecutive_locations;
 
     use super::*;
 
@@ -424,7 +424,7 @@ mod tests {
         let mut rand_messages = vec![];
         let mut rng = rand::thread_rng();
         for _ in 0..data_size {
-            let random_data_size = rng.gen_range(min_message_size..max_message_size);
+            let random_data_size = rng.gen_range(min_message_size,max_message_size);
             let random_bytes: Vec<u8> = (0..random_data_size).map(|_| { 2_u8 }).collect();
             rand_messages.push(random_bytes);
         }
@@ -433,11 +433,13 @@ mod tests {
 
     #[test]
     fn compare_with_old_log() {
+        let new_commit_log_dir = "./testdir/bench/new_log";
+        let old_commit_log_dir = "./testdir/bench/old_log";
         let messages = generate_random_data(10_000, 200_000, 500_000);
-        let mut options = LogOptions::new("./testdir/bench/old_log");
+        let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
-        let mut new_commit_log = CommitLog::new("./testdir/bench/new_log").unwrap();
+        let mut new_commit_log = CommitLog::new(new_commit_log_dir).unwrap();
 
         let mut timer = Instant::now();
         for msg in &messages {
@@ -452,10 +454,12 @@ mod tests {
         println!("New CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
 
 
-        let old_commit_folder_size = fs_extra::dir::get_size("./testdir/bench/old_log").unwrap_or_default();
-        let new_commit_folder_size = fs_extra::dir::get_size("./testdir/bench/new_log").unwrap_or_default();
+        let old_commit_folder_size = fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
+        let new_commit_folder_size = fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
 
-        println!("Old : {} New: {}", old_commit_folder_size, new_commit_folder_size)
+        println!("Old : {} New: {}", old_commit_folder_size, new_commit_folder_size);
+        std::fs::remove_dir_all(new_commit_log_dir);
+        std::fs::remove_dir_all(old_commit_log_dir);
     }
 }
 
