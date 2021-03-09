@@ -453,13 +453,15 @@ mod tests {
         }
         println!("New CommitLog Store [{}] Took {}ms", messages.len(), timer.elapsed().as_millis());
 
-
         let old_commit_folder_size = fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
         let new_commit_folder_size = fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
 
-        println!("Old : {} New: {}", old_commit_folder_size, new_commit_folder_size);
-        std::fs::remove_dir_all(new_commit_log_dir);
-        std::fs::remove_dir_all(old_commit_log_dir);
+        println!("Folder Sizes");
+        println!("OldCommitLog {}", old_commit_folder_size);
+        println!("NewCommitLog {}", new_commit_folder_size);
+
+        std::fs::remove_dir_all(new_commit_log_dir).unwrap();
+        std::fs::remove_dir_all(old_commit_log_dir).unwrap();
     }
 }
 
