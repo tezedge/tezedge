@@ -151,8 +151,8 @@ pub enum CommitLogError {
     IOError { error: io::Error },
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
-    #[fail(display = "Failed to read record at {}", location)]
-    ReadError { location: Location },
+    #[fail(display = "Failed to read record at {}, {:#?}", location, error)]
+    ReadError { location: Location, error : TezedgeCommitLogError },
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
     #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
@@ -247,7 +247,8 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let mut msg_buf =
             cl.read(location.0 as usize, 1)
-                .map_err(|_| CommitLogError::ReadError {
+                .map_err(|error| CommitLogError::ReadError {
+                    error,
                     location: *location,
                 })?;
         let bytes = msg_buf.next().ok_or(CommitLogError::CorruptData)?;
@@ -263,7 +264,8 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = cl.read().expect("Read lock failed");
         let msg_buf =
             cl.read(range.0 as usize, range.2 as usize)
-                .map_err(|_| CommitLogError::ReadError {
+                .map_err(|error| CommitLogError::ReadError {
+                    error,
                     location: Location(range.0, range.2 as usize),
                 })?;
         msg_buf
