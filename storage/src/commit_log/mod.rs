@@ -460,8 +460,8 @@ mod tests {
         println!("OldCommitLog {}", old_commit_folder_size);
         println!("NewCommitLog {}", new_commit_folder_size);
 
-        std::fs::remove_dir_all(new_commit_log_dir);
-        std::fs::remove_dir_all(old_commit_log_dir);
+        std::fs::remove_dir_all(new_commit_log_dir).unwrap();
+        std::fs::remove_dir_all(old_commit_log_dir).unwrap();
     }
 }
 
