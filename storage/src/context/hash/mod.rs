@@ -3,7 +3,7 @@
 
 //! This module contains an implementation of Irmin's context hashes.
 //!
-//! A document describing the algorithm can be founde [here](https://hackmd.io/DnsQrkXCRLmHA3xzLiFgGw?view).
+//! A document describing the algorithm can be found [here](https://github.com/tarides/tezos-context-hash).
 
 mod ocaml;
 
