@@ -436,10 +436,10 @@ mod tests {
 
     #[test]
     fn compare_with_old_log() {
-        let data_size = 10_000;
+        let data_size = 1_000;
         let new_commit_log_dir = "./testdir/bench/new_log";
         let old_commit_log_dir = "./testdir/bench/old_log";
-        let messages = generate_random_data(data_size, 200_000, 500_000);
+        let messages = generate_random_data(data_size, 10_000, 10_900);
         let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
