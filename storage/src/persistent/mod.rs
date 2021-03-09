@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 
 use derive_builder::Builder;
 use failure::Fail;
-use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, DB, Options};
+use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema};
@@ -19,10 +19,12 @@ use crate::backend::btree_map::BTreeMapBackend;
 use crate::backend::in_memory_backend::InMemoryBackend;
 use crate::backend::rocksdb_backend::RocksDBBackend;
 use crate::backend::sled_backend::SledBackend;
-pub use crate::commit_log::{CommitLogError, CommitLogRef, CommitLogs, CommitLogWithSchema, Location};
-use crate::KeyValueStoreBackend;
+pub use crate::commit_log::{
+    CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location,
+};
 use crate::merkle_storage::MerkleStorage;
 use crate::persistent::sequence::Sequences;
+use crate::KeyValueStoreBackend;
 use crate::StorageError;
 
 pub mod codec;
