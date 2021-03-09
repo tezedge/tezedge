@@ -248,7 +248,7 @@ impl Location {
 
 #[cfg(test)]
 mod tests {
-    use crate::persistent::commit_log::fold_consecutive_locations;
+    use crate::commit_log::commit_log::fold_consecutive_locations;
 
     use super::*;
 
