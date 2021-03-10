@@ -489,18 +489,28 @@ mod tests {
             }
         }
         println!();
-        println!("New CommitLog Read [{}] items in {}ms", data_size,timer.elapsed().as_millis());
+        println!(
+            "New CommitLog Read [{}] items in {}ms",
+            data_size,
+            timer.elapsed().as_millis()
+        );
 
         //Read Test on old commit log
         timer = Instant::now();
-        let set = old_commit_log.read(0, ReadLimit::max_bytes(200_000_000)).unwrap();
+        let set = old_commit_log
+            .read(0, ReadLimit::max_bytes(200_000_000))
+            .unwrap();
         for (i, _) in set.iter().enumerate() {
             if i % 200 == 0 {
                 print!(".")
             }
         }
         println!();
-        println!("Old CommitLog Read [{}] items in {}ms", data_size,timer.elapsed().as_millis());
+        println!(
+            "Old CommitLog Read [{}] items in {}ms",
+            data_size,
+            timer.elapsed().as_millis()
+        );
 
         std::fs::remove_dir_all(new_commit_log_dir).unwrap();
         std::fs::remove_dir_all(old_commit_log_dir).unwrap();
