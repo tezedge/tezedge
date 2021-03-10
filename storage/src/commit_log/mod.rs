@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn compare_with_old_log() {
-        let data_size = 1_000;
+        let data_size = 10_000;
         let new_commit_log_dir = "./testdir/bench/new_log";
         let old_commit_log_dir = "./testdir/bench/old_log";
         let messages = generate_random_data(data_size, 10_000, 10_900);
@@ -484,7 +484,18 @@ mod tests {
             }
         }
         println!();
-        println!("CommitLog New Read Took {}ms", timer.elapsed().as_millis());
+        println!("New CommitLog Read [{}] items in {}ms", data_size,timer.elapsed().as_millis());
+
+        //Read Test on old commit log
+        timer = Instant::now();
+        let set = old_commit_log.read(0, ReadLimit::max_bytes(200_000_000)).unwrap();
+        for (i, _) in set.iter().enumerate() {
+            if i % 20 == 0 {
+                print!(".")
+            }
+        }
+        println!();
+        println!("Old CommitLog Read [{}] items in {}ms", data_size,timer.elapsed().as_millis());
 
         std::fs::remove_dir_all(new_commit_log_dir).unwrap();
         std::fs::remove_dir_all(old_commit_log_dir).unwrap();
