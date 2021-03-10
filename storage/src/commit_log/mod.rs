@@ -444,10 +444,12 @@ mod tests {
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
         let mut new_commit_log = CommitLog::new(new_commit_log_dir).unwrap();
-
+        println!("-------------------------------------------------------");
+        println!("Write Benchmark");
+        println!("-------------------------------------------------------");
         let mut timer = Instant::now();
         for msg in &messages {
-            old_commit_log.append_msg(msg);
+            old_commit_log.append_msg(msg).unwrap();
         }
         println!(
             "Old CommitLog Store [{}] Took {}ms",
@@ -457,7 +459,7 @@ mod tests {
 
         timer = Instant::now();
         for msg in &messages {
-            new_commit_log.append_msg(msg);
+            new_commit_log.append_msg(msg).unwrap();
         }
         println!(
             "New CommitLog Store [{}] Took {}ms",
@@ -469,17 +471,20 @@ mod tests {
             fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
         let new_commit_folder_size =
             fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
-
-        println!("Folder Sizes");
+        println!("-------------------------------------------------------");
+        println!("Size Benchmark");
+        println!("-------------------------------------------------------");
         println!("OldCommitLog {}", old_commit_folder_size);
         println!("NewCommitLog {}", new_commit_folder_size);
 
+        println!("-------------------------------------------------------");
+        println!("Read Benchmark");
+        println!("-------------------------------------------------------");
         //Read Test on new commit log
         let mut timer = Instant::now();
-        timer = Instant::now();
         let set = new_commit_log.read(0, data_size).unwrap();
         for (i, _) in set.enumerate() {
-            if i % 20 == 0 {
+            if i % 200 == 0 {
                 print!(".")
             }
         }
@@ -490,7 +495,7 @@ mod tests {
         timer = Instant::now();
         let set = old_commit_log.read(0, ReadLimit::max_bytes(200_000_000)).unwrap();
         for (i, _) in set.iter().enumerate() {
-            if i % 20 == 0 {
+            if i % 200 == 0 {
                 print!(".")
             }
         }
