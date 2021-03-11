@@ -14,16 +14,15 @@ use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, SeekFrom, Seek, Write, BufReader, Read};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
 const DATA_FILE_NAME: &str = "table.data";
 
-
 pub struct CommitLog {
     data_file: File,
-    data_file_path : PathBuf
+    data_file_path: PathBuf,
 }
 
 impl CommitLog {
@@ -41,7 +40,7 @@ impl CommitLog {
             .open(data_file_path.clone())?;
         Ok(Self {
             data_file,
-            data_file_path
+            data_file_path,
         })
     }
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, CommitLogError> {
@@ -76,9 +75,7 @@ pub enum CommitLogError {
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
     #[fail(display = "Failed to read record at {}", location)]
-    ReadError {
-        location: Location,
-    },
+    ReadError { location: Location },
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
 }
@@ -151,8 +148,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let mut cl = cl.write().expect("Write lock failed");
         let bytes = value.encode()?;
-        let offset = cl
-            .append_msg(&bytes)?;
+        let offset = cl.append_msg(&bytes)?;
 
         Ok(Location(offset, bytes.len()))
     }
@@ -162,14 +158,13 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let bytes =
-            cl.read(location.0, location.1)?;
+        let bytes = cl.read(location.0, location.1)?;
         let value = S::Value::decode(&bytes)?;
         Ok(value)
     }
 
     fn get_range(&self, _range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-       unimplemented!()
+        unimplemented!()
     }
 }
 
