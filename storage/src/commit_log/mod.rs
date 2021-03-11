@@ -110,7 +110,8 @@ impl Index {
 }
 
 pub struct CommitLog {
-    data_file: File
+    data_file: File,
+    data_file_path : PathBuf
 }
 
 impl CommitLog {
@@ -125,9 +126,10 @@ impl CommitLog {
             .create(true)
             .write(true)
             .read(true)
-            .open(data_file_path)?;
+            .open(data_file_path.clone())?;
         Ok(Self {
-            data_file
+            data_file,
+            data_file_path
         })
     }
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
@@ -140,7 +142,7 @@ impl CommitLog {
 
     pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, TezedgeCommitLogError> {
         let mut buf = vec![0_u8; buf_size];
-        let mut reader = BufReader::new(&self.data_file);
+        let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
         reader.seek(SeekFrom::Start(offset))?;
         reader.read_exact(&mut buf)?;
         Ok(buf)
