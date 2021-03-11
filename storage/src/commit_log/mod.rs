@@ -138,6 +138,51 @@ impl CommitLog {
     }
 }
 
+pub struct SledCommitLog {
+    block_data_tree: sled::Db,
+}
+
+impl SledCommitLog {
+    fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, CommitLogError> {
+        let db = sled::Config::new().path(log_dir)
+            .mode(sled::Mode::LowSpace)
+            .use_compression(true)
+            .compression_factor(10)
+            .open()?;
+        Ok(Self {
+            block_data_tree: db,
+        })
+    }
+}
+
+
+impl SledCommitLog {
+    fn append_msg(&self, bytes: &[u8]) -> Result<u64, CommitLogError> {
+        let location = self.block_data_tree.generate_id()?;
+        self.block_data_tree.insert(&location.to_be_bytes(), IVec::from(bytes))?;
+        Ok(location)
+    }
+
+    fn read(&self, id : u64) -> Result<Vec<u8>, CommitLogError> {
+        let bytes = self.block_data_tree.get(&id.to_be_bytes())?;
+        let bytes = match bytes {
+            None => {
+                return Err(CommitLogError::CorruptData)
+            }
+            Some(bytes) => {
+                bytes.to_vec()
+            }
+        };
+        Ok(bytes)
+    }
+
+    fn flush(&self) -> Result<(), CommitLogError> {
+        self.block_data_tree.flush()?;
+        Ok(())
+    }
+
+}
+
 /// Possible errors for commit log
 #[derive(Debug, Fail)]
 pub enum CommitLogError {
