@@ -17,6 +17,8 @@ use crate::commit_log::error::TezedgeCommitLogError;
 use crate::commit_log::reader::Reader;
 use crate::commit_log::writer::Writer;
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{BufWriter, SeekFrom, Seek, Write, BufReader, Read};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
@@ -108,32 +110,44 @@ impl Index {
 }
 
 pub struct CommitLog {
-    writer: Writer,
-    path: PathBuf,
+    data_file: File
 }
 
 impl CommitLog {
-    pub fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, TezedgeCommitLogError> {
-        let writer = Writer::new(log_dir.as_ref())?;
+    pub fn new<P: AsRef<Path>>(dir: P) -> Result<Self, TezedgeCommitLogError> {
+        if !dir.as_ref().exists() {
+            std::fs::create_dir_all(dir.as_ref())?;
+        }
+        let mut data_file_path = PathBuf::new();
+        data_file_path.push(dir.as_ref());
+        data_file_path.push("table.data");
+        let data_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .read(true)
+            .open(data_file_path)?;
         Ok(Self {
-            writer,
-            path: log_dir.as_ref().to_path_buf(),
+            data_file
         })
     }
-    #[inline]
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, TezedgeCommitLogError> {
-        let offset = self.writer.write(payload.as_ref())?;
+        let mut writer = BufWriter::new(&mut self.data_file);
+        let offset = writer.seek(SeekFrom::End(0))?;
+        writer.write_all(payload.as_ref())?;
+        writer.flush()?;
         Ok(offset)
     }
 
-    #[inline]
-    pub fn read(&self, from: usize, limit: usize) -> Result<MessageSet, TezedgeCommitLogError> {
-        let reader = Reader::new(&self.path)?;
-        reader.range(from, limit)
+    pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, TezedgeCommitLogError> {
+        let mut buf = vec![0_u8; buf_size];
+        let mut reader = BufReader::new(&self.data_file);
+        reader.seek(SeekFrom::Start(offset))?;
+        reader.read_exact(&mut buf)?;
+        Ok(buf)
     }
 
     pub fn flush(&mut self) -> Result<(), TezedgeCommitLogError> {
-        self.writer.flush()?;
+        self.data_file.flush()?;
         Ok(())
     }
 }
@@ -244,33 +258,18 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let mut msg_buf =
-            cl.read(location.0 as usize, 1)
+        let mut bytes =
+            cl.read(location.0, location.1)
                 .map_err(|error| CommitLogError::ReadError {
                     error,
                     location: *location,
                 })?;
-        let bytes = msg_buf.next().ok_or(CommitLogError::CorruptData)?;
         let value = S::Value::decode(&bytes)?;
-
         Ok(value)
     }
 
     fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-        let cl = self
-            .cl_handle(S::name())
-            .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl
-            .read(range.0 as usize, range.2 as usize)
-            .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: Location(range.0, range.2 as usize),
-            })?;
-        msg_buf
-            .take(range.2 as usize)
-            .map(|message| S::Value::decode(&message).map_err(|_| CommitLogError::CorruptData))
-            .collect()
+       unimplemented!()
     }
 }
 
