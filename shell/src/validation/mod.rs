@@ -131,12 +131,20 @@ pub fn can_accept_operation_from_p2p(
     false
 }
 
+pub enum CanApplyStatus {
+    Ready,
+    AlreadyApplied,
+    MissingPredecessor,
+    PredecessorNotApplied,
+    MissingOperations,
+}
+
 /// Returns true, if [block] can be applied
 pub fn can_apply_block<'b, OP, PA>(
     (block, block_metadata): (&'b BlockHash, &'b Meta),
     operations_complete: OP,
     predecessor_applied: PA,
-) -> Result<bool, StorageError>
+) -> Result<CanApplyStatus, StorageError>
 where
     OP: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if operations are completed */
     PA: Fn(&'b BlockHash) -> Result<bool, StorageError>, /* func returns true, if predecessor is applied */
@@ -145,27 +153,27 @@ where
 
     // check if block is already applied, dont need to apply second time
     if block_metadata.is_applied() {
-        return Ok(false);
+        return Ok(CanApplyStatus::AlreadyApplied);
     }
 
     // we need to have predecessor (every block has)
     if block_predecessor.is_none() {
-        return Ok(false);
+        return Ok(CanApplyStatus::MissingPredecessor);
     }
 
     // if operations are not complete, we cannot apply block
     if !operations_complete(block)? {
-        return Ok(false);
+        return Ok(CanApplyStatus::MissingOperations);
     }
 
     // check if predecesor is applied
     if let Some(predecessor) = block_predecessor {
         if predecessor_applied(predecessor)? {
-            return Ok(true);
+            return Ok(CanApplyStatus::Ready);
         }
     }
 
-    Ok(false)
+    Ok(CanApplyStatus::PredecessorNotApplied)
 }
 
 /// Error produced by a [prevalidate_operation].
@@ -183,10 +191,10 @@ pub enum PrevalidateOperationError {
         reason
     )]
     PrevalidatorNotInitialized { reason: String },
-    #[fail(display = "Storage read error! Reason: {:?}", error)]
+    #[fail(display = "Storage read error, reason: {:?}", error)]
     StorageError { error: StorageError },
     #[fail(
-        display = "Failed to validate operation: {}! Reason: {:?}",
+        display = "Failed to validate operation: {}, reason: {:?}",
         operation_hash, reason
     )]
     ValidationError {

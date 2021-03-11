@@ -3,7 +3,7 @@
 
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
 
 use failure::Fail;
 
@@ -21,11 +21,11 @@ pub mod synchronization_state;
 /// Possible errors for state processing
 #[derive(Debug, Fail)]
 pub enum StateError {
-    #[fail(display = "Storage read/write error! Reason: {:?}", error)]
+    #[fail(display = "Storage read/write error, reason: {:?}", error)]
     StorageError { error: StorageError },
-    #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
+    #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
     LockError { reason: String },
-    #[fail(display = "Processing error! Reason: {:?}", reason)]
+    #[fail(display = "State processing error, reason: {:?}", reason)]
     ProcessingError { reason: String },
 }
 
@@ -59,6 +59,76 @@ impl From<failure::Error> for StateError {
         StateError::ProcessingError {
             reason: format!("{}", error),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BlockApplyBatch {
+    pub block_to_apply: Arc<BlockHash>,
+    pub successors: Vec<Arc<BlockHash>>,
+}
+
+impl BlockApplyBatch {
+    pub fn one(block_hash: BlockHash) -> Self {
+        Self {
+            block_to_apply: Arc::new(block_hash),
+            successors: Vec::new(),
+        }
+    }
+
+    pub fn start_batch(block_hash: Arc<BlockHash>) -> Self {
+        Self {
+            block_to_apply: block_hash,
+            successors: Vec::new(),
+        }
+    }
+
+    pub fn batch(starting_block: Arc<BlockHash>, successors: Vec<Arc<BlockHash>>) -> Self {
+        Self {
+            block_to_apply: starting_block,
+            successors,
+        }
+    }
+
+    pub fn add_successor(&mut self, block_hash: Arc<BlockHash>) {
+        if !self.successors.contains(&block_hash) {
+            self.successors.push(block_hash);
+        }
+    }
+
+    pub fn successors_size(&self) -> usize {
+        self.successors.len()
+    }
+
+    pub fn take_all_blocks_to_apply(self) -> Vec<Arc<BlockHash>> {
+        let Self {
+            block_to_apply,
+            mut successors,
+        } = self;
+
+        successors.insert(0, block_to_apply);
+        successors
+    }
+
+    pub fn shift(self) -> Option<BlockApplyBatch> {
+        let Self { mut successors, .. } = self;
+
+        if successors.is_empty() {
+            None
+        } else {
+            let head = successors.remove(0);
+            Some(BlockApplyBatch::batch(head, successors))
+        }
+    }
+}
+
+impl From<BlockApplyBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
+    fn from(b: BlockApplyBatch) -> Self {
+        let BlockApplyBatch {
+            block_to_apply,
+            successors,
+        } = b;
+        (block_to_apply, successors)
     }
 }
 
@@ -183,6 +253,40 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+
+    #[test]
+    fn test_batch() {
+        // create batch
+        let mut batch = BlockApplyBatch::batch(block(1), vec![block(2)]);
+        batch.add_successor(block(3));
+        batch.add_successor(block(4));
+        assert_eq!(block(1).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(3, batch.successors_size());
+        assert_eq!(block(2).as_ref(), batch.successors[0].as_ref());
+        assert_eq!(block(3).as_ref(), batch.successors[1].as_ref());
+        assert_eq!(block(4).as_ref(), batch.successors[2].as_ref());
+
+        // shift
+        let batch = batch.shift().expect("Expected new batch");
+        assert_eq!(block(2).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(2, batch.successors_size());
+        assert_eq!(block(3).as_ref(), batch.successors[0].as_ref());
+        assert_eq!(block(4).as_ref(), batch.successors[1].as_ref());
+
+        // shift
+        let batch = batch.shift().expect("Expected new batch");
+        assert_eq!(block(3).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(1, batch.successors_size());
+        assert_eq!(block(4).as_ref(), batch.successors[0].as_ref());
+
+        // shift
+        let batch = batch.shift().expect("Expected new batch");
+        assert_eq!(block(4).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(0, batch.successors_size());
+
+        // shift
+        assert!(batch.shift().is_none());
+    }
 
     pub(crate) fn block(d: u8) -> Arc<BlockHash> {
         Arc::new(

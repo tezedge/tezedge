@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use crypto::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::state::StateError;
+use crate::state::{BlockApplyBatch, StateError};
 
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
@@ -173,31 +173,45 @@ impl BootstrapState {
     /// IA - callback then returns if block is already aplpied
     pub fn find_next_block_to_apply<IA>(
         &mut self,
+        max_block_apply_batch: usize,
         is_block_applied: IA,
-    ) -> Result<Option<Arc<BlockHash>>, StateError>
+    ) -> Result<Option<BlockApplyBatch>, StateError>
     where
         IA: Fn(&BlockHash) -> Result<bool, StateError>,
     {
         let mut last_marked_as_applied_block = None;
-        let mut non_applied_candidate = None;
+        let mut batch_for_apply: Option<BlockApplyBatch> = None;
+        let mut previous_block: Option<(Arc<BlockHash>, bool)> = None;
 
         for interval in self.intervals.iter_mut() {
             if interval.all_block_applied {
                 continue;
             }
 
-            let mut previous: Option<(Arc<BlockHash>, bool)> = None;
+            let mut interval_break = false;
 
+            // check all blocks in interval
             // get first non-applied block
             for b in interval.blocks.iter_mut() {
                 // skip applied
                 if b.applied {
-                    previous = Some((b.block_hash.clone(), b.applied));
+                    // continue to check next block
+                    previous_block = Some((b.block_hash.clone(), b.applied));
                     continue;
                 }
 
-                // check if block is already applied
-                if is_block_applied(&b.block_hash)? {
+                // if previous is the same as a block - can happen on the border of interevals
+                // where last block of previous interval is the first block of next interval
+                if let Some((previous_block_hash, _)) = previous_block.as_ref() {
+                    if b.block_hash.as_ref().eq(previous_block_hash.as_ref()) {
+                        // just continue, previous_block is the same and we processed it right before
+                        continue;
+                    }
+                }
+
+                // check if block is already applied,
+                // we check this only if did not find batch start yet - optimization to prevent unnecesesery calls to is_block_applied
+                if batch_for_apply.is_none() && is_block_applied(&b.block_hash)? {
                     // refresh state for block
                     if b.update(&InnerBlockState {
                         applied: true,
@@ -209,34 +223,54 @@ impl BootstrapState {
                     }
 
                     // continue to check next block
-                    previous = Some((b.block_hash.clone(), b.applied));
+                    previous_block = Some((b.block_hash.clone(), b.applied));
                     continue;
                 }
 
                 // if block and operations are downloaded, we check his predecessor, if applied, we can apply
                 if b.block_downloaded && b.operations_downloaded {
-                    if let Some(predecessor) = b.predecessor_block_hash.as_ref() {
-                        if let Some((previous_block_hash, previous_is_applied)) = previous {
-                            if predecessor.as_ref().eq(previous_block_hash.as_ref())
-                                && previous_is_applied
-                            {
-                                // just in this case, we can apply this block
-                                non_applied_candidate = Some(b.block_hash.clone());
-                                break;
+                    // predecessor must match - continuos chain of blocks
+                    if let Some(block_predecessor) = b.predecessor_block_hash.as_ref() {
+                        if let Some((previous_block_hash, previous_is_applied)) =
+                            previous_block.as_ref()
+                        {
+                            if block_predecessor.as_ref().eq(previous_block_hash.as_ref()) {
+                                // if we came here, we have still continuous chain
+
+                                // if previos block is applied and b is not, then we have batch start candidate
+                                if *previous_is_applied {
+                                    // start batch and continue to next blocks
+                                    batch_for_apply =
+                                        Some(BlockApplyBatch::start_batch(b.block_hash.clone()));
+
+                                    if max_block_apply_batch > 0 {
+                                        // continue to check next block
+                                        previous_block = Some((b.block_hash.clone(), b.applied));
+                                        continue;
+                                    }
+                                } else if let Some(batch) = batch_for_apply.as_mut() {
+                                    // if previous block is not applied, means we can add it to batch
+                                    batch.add_successor(b.block_hash.clone());
+                                    if batch.successors_size() < max_block_apply_batch {
+                                        // continue to check next block
+                                        previous_block = Some((b.block_hash.clone(), b.applied));
+                                        continue;
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
                 // if we did not find anything in this interval and this interval is not whole applied, there is no reason to continue to next interval
+                interval_break = true;
                 break;
             }
 
-            // // if we found non applied candidate in this interval, then we dont need to continue to the next interval
-            // if non_applied_candidate.is_some() {
-            //     break;
-            // }
-            break;
+            // if we stop interval with break, we dont want to continue to next interval
+            if interval_break {
+                break;
+            }
         }
 
         // handle last block, which we marked as applied - to remove the rest of the intervals to speedup
@@ -244,7 +278,7 @@ impl BootstrapState {
             self.block_applied(&last_marked_as_applied_block);
         }
 
-        Ok(non_applied_candidate)
+        Ok(batch_for_apply)
     }
 
     /// Notify state requested_block_hash was downloaded
@@ -344,6 +378,11 @@ impl BootstrapState {
                     if begin.update(&end_of_previos_interval_state) {
                         self.last_updated = Instant::now();
                     }
+                }
+
+                // check if have downloaded whole next interval
+                if next_interval.check_all_blocks_downloaded() {
+                    self.last_updated = Instant::now();
                 }
             }
         }
@@ -490,6 +529,15 @@ impl BootstrapState {
                     let all_applied = interval_to_remove.blocks.iter().all(|b| b.applied);
                     if all_applied {
                         let _ = self.intervals.remove(interval_idx);
+                        self.last_updated = Instant::now();
+                    }
+                }
+
+                // here we need to remove all previous interval, becuse we dont need them, when higher block was applied
+                if interval_idx > 0 {
+                    // so, remove all previous
+                    for _ in 0..interval_idx {
+                        let _ = self.intervals.remove(0);
                         self.last_updated = Instant::now();
                     }
                 }
@@ -739,6 +787,7 @@ impl BootstrapInterval {
 
         if all_blocks_downloaded {
             self.all_blocks_downloaded = true;
+            self.all_operations_downloaded = self.blocks.iter().all(|b| b.operations_downloaded);
             true
         } else {
             false
@@ -1038,16 +1087,27 @@ mod tests {
             block(3),
         );
 
-        // block 2 and 3 were removed, because if 4 is applied, 2/3 must be also
-        assert!(pipeline.intervals[1].all_blocks_downloaded);
-        assert_eq!(pipeline.intervals[1].blocks.len(), 2);
+        // first interval with block 2 and block 3 were removed, because if 4 is applied, 2/3 must be also
+        assert!(pipeline.intervals[0].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[0].blocks.len(), 2);
         assert_eq!(
-            pipeline.intervals[1].blocks[0].block_hash.as_ref(),
+            pipeline.intervals[0].blocks[0].block_hash.as_ref(),
             block(4).as_ref()
         );
         assert_eq!(
-            pipeline.intervals[1].blocks[1].block_hash.as_ref(),
+            pipeline.intervals[0].blocks[1].block_hash.as_ref(),
             block(5).as_ref()
+        );
+
+        assert!(!pipeline.intervals[1].all_blocks_downloaded);
+        assert_eq!(pipeline.intervals[1].blocks.len(), 2);
+        assert_eq!(
+            pipeline.intervals[1].blocks[0].block_hash.as_ref(),
+            block(5).as_ref()
+        );
+        assert_eq!(
+            pipeline.intervals[1].blocks[1].block_hash.as_ref(),
+            block(8).as_ref()
         );
 
         Ok(())
@@ -1107,6 +1167,89 @@ mod tests {
         assert!(pipeline.intervals[0].blocks[0].applied);
         assert!(pipeline.intervals[0].blocks[0].block_downloaded);
         assert!(!pipeline.intervals[0].blocks[0].operations_downloaded);
+    }
+
+    #[test]
+    fn test_bootstrap_state_block_applied_marking() {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // check intervals
+        assert_eq!(pipeline.intervals.len(), 7);
+
+        // trigger that block 2 is download with predecessor 1
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: false,
+            },
+            block(1),
+        );
+        // mark 1 as applied (half of interval)
+        pipeline.block_applied(&block(1));
+        assert_eq!(pipeline.intervals.len(), 7);
+        // begining of interval is changed to block1
+        assert_eq!(pipeline.intervals[0].blocks.len(), 2);
+        assert_eq!(
+            pipeline.intervals[0].blocks[0].block_hash.as_ref(),
+            block(1).as_ref()
+        );
+        assert_eq!(
+            pipeline.intervals[0].blocks[1].block_hash.as_ref(),
+            block(2).as_ref()
+        );
+
+        // trigger that block 2 is applied
+        pipeline.block_applied(&block(2));
+        assert_eq!(pipeline.intervals.len(), 6);
+
+        // trigger that block 8 is applied
+        pipeline.block_applied(&block(8));
+        for (id, i) in pipeline.intervals.iter().enumerate() {
+            println!(
+                "{} : {:?}",
+                id,
+                i.blocks
+                    .iter()
+                    .map(|b| b.block_hash.as_ref().clone())
+                    .collect::<Vec<_>>()
+            );
+        }
+        assert_eq!(pipeline.intervals.len(), 4);
+
+        // trigger that last block is applied
+        pipeline.block_applied(&block(20));
+
+        println!("inevals: {}", pipeline.intervals.len());
+
+        // interval 0 was removed
+        assert!(pipeline.is_done());
     }
 
     #[test]
@@ -1598,7 +1741,7 @@ mod tests {
 
         // try to get next block to apply (no data were downloaded before), so nothging to apply
         assert!(matches!(
-            pipeline.find_next_block_to_apply(|bh| {
+            pipeline.find_next_block_to_apply(0, |bh| {
                 if bh.eq(&block(2)) {
                     Ok(false)
                 } else {
@@ -1610,10 +1753,13 @@ mod tests {
 
         // another try, but block 2 was applied meanwhile
         assert!(matches!(
-            pipeline.find_next_block_to_apply(|bh| {
+            pipeline.find_next_block_to_apply(0, |bh| {
                 if bh.eq(&block(2)) {
                     // was applied
                     Ok(true)
+                } else if bh.eq(&block(5)) {
+                    // was applied
+                    Ok(false)
                 } else {
                     panic!("test failed: {:?}", bh)
                 }
@@ -1632,7 +1778,7 @@ mod tests {
 
         // another try, but nothging
         assert!(matches!(
-            pipeline.find_next_block_to_apply(|bh| {
+            pipeline.find_next_block_to_apply(0, |bh| {
                 if bh.eq(&block(5)) {
                     // was applied
                     Ok(false)
@@ -1642,6 +1788,305 @@ mod tests {
             })?,
             None
         ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_download_all_blocks_and_operations() {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // download blocks and operations from 0 to 8
+        pipeline.block_downloaded(
+            &block(8),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(7),
+        );
+        pipeline.block_downloaded(
+            &block(7),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(6),
+        );
+        pipeline.block_downloaded(
+            &block(6),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(5),
+        );
+        pipeline.block_downloaded(
+            &block(5),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(4),
+        );
+        pipeline.block_downloaded(
+            &block(4),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(3),
+        );
+        pipeline.block_downloaded(
+            &block(3),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(2),
+        );
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(1),
+        );
+        pipeline.block_downloaded(
+            &block(1),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(0),
+        );
+
+        // check all downloaded inervals
+        assert!(pipeline.intervals[0].all_blocks_downloaded);
+        assert!(pipeline.intervals[0].all_operations_downloaded);
+        assert!(pipeline.intervals[1].all_blocks_downloaded);
+        assert!(pipeline.intervals[1].all_operations_downloaded);
+    }
+
+    #[test]
+    fn test_find_next_block_to_apply_batch() -> Result<(), StateError> {
+        // genesis
+        let last_applied = block(0);
+        // history blocks
+        let history: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+
+        // create
+        let mut pipeline = BootstrapState::new(chain_id, last_applied, history, Arc::new(20));
+        assert_eq!(pipeline.intervals.len(), 7);
+        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+
+        // download blocks and operations from 0 to 8
+        pipeline.block_downloaded(
+            &block(8),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(7),
+        );
+        pipeline.block_downloaded(
+            &block(7),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(6),
+        );
+        pipeline.block_downloaded(
+            &block(6),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(5),
+        );
+        pipeline.block_downloaded(
+            &block(5),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(4),
+        );
+        pipeline.block_downloaded(
+            &block(4),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(3),
+        );
+        pipeline.block_downloaded(
+            &block(3),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(2),
+        );
+        pipeline.block_downloaded(
+            &block(2),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(1),
+        );
+        pipeline.block_downloaded(
+            &block(1),
+            &InnerBlockState {
+                block_downloaded: true,
+                applied: false,
+                operations_downloaded: true,
+            },
+            block(0),
+        );
+
+        // check all downloaded inervals
+        assert!(pipeline.intervals[0].all_blocks_downloaded);
+        assert!(pipeline.intervals[0].all_operations_downloaded);
+        assert!(pipeline.intervals[1].all_blocks_downloaded);
+        assert!(pipeline.intervals[1].all_operations_downloaded);
+
+        // next for apply with max batch 0
+        let next_batch = pipeline.find_next_block_to_apply(0, |bh| {
+            if bh.eq(&block(1)) {
+                // was not applied
+                Ok(false)
+            } else {
+                panic!("test failed: {:?}", bh)
+            }
+        })?;
+        assert!(next_batch.is_some());
+        let next_batch = next_batch.unwrap();
+        assert_eq!(next_batch.block_to_apply.as_ref(), block(1).as_ref());
+        assert_eq!(0, next_batch.successors_size());
+
+        // next for apply with max batch 1
+        let next_batch = pipeline.find_next_block_to_apply(1, |bh| {
+            if bh.eq(&block(1)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(2)) {
+                // was not applied
+                Ok(false)
+            } else {
+                panic!("test failed: {:?}", bh)
+            }
+        })?;
+        assert!(next_batch.is_some());
+        let next_batch = next_batch.unwrap();
+        assert_eq!(next_batch.block_to_apply.as_ref(), block(1).as_ref());
+        assert_eq!(1, next_batch.successors_size());
+        assert_eq!(next_batch.successors[0].as_ref(), block(2).as_ref());
+
+        // next for apply with max batch 100
+        let next_batch = pipeline.find_next_block_to_apply(100, |bh| {
+            if bh.eq(&block(1)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(2)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(3)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(4)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(5)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(6)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(7)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(8)) {
+                // was not applied
+                Ok(false)
+            } else if bh.eq(&block(10)) {
+                // was not applied
+                Ok(false)
+            } else {
+                panic!("test failed: {:?}", bh)
+            }
+        })?;
+        assert!(next_batch.is_some());
+        let next_batch = next_batch.unwrap();
+        assert_eq!(next_batch.block_to_apply.as_ref(), block(1).as_ref());
+        assert_eq!(7, next_batch.successors_size());
+        assert_eq!(next_batch.successors[0].as_ref(), block(2).as_ref());
+        assert_eq!(next_batch.successors[1].as_ref(), block(3).as_ref());
+        assert_eq!(next_batch.successors[2].as_ref(), block(4).as_ref());
+        assert_eq!(next_batch.successors[3].as_ref(), block(5).as_ref());
+        assert_eq!(next_batch.successors[4].as_ref(), block(6).as_ref());
+        assert_eq!(next_batch.successors[5].as_ref(), block(7).as_ref());
+        assert_eq!(next_batch.successors[6].as_ref(), block(8).as_ref());
 
         Ok(())
     }

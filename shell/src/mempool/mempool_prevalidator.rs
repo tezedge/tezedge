@@ -255,11 +255,11 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
 /// Possible errors for prevalidation
 #[derive(Debug, Fail)]
 pub enum PrevalidationError {
-    #[fail(display = "Storage read/write error! Reason: {:?}", error)]
+    #[fail(display = "Storage read/write error, reason: {:?}", error)]
     StorageError { error: StorageError },
-    #[fail(display = "Protocol service error! Reason: {:?}", error)]
+    #[fail(display = "Protocol service error, reason: {:?}", error)]
     ProtocolServiceError { error: ProtocolServiceError },
-    #[fail(display = "Current mempool storage lock error! Reason: {:?}", reason)]
+    #[fail(display = "Current mempool storage lock error, reason: {:?}", reason)]
     CurrentMempoolStorageLockError { reason: String },
 }
 

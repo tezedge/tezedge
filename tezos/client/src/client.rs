@@ -21,7 +21,7 @@ pub fn change_runtime_configuration(
 ) -> Result<(), TezosRuntimeConfigurationError> {
     ffi::change_runtime_configuration(settings).map_err(|e| {
         TezosRuntimeConfigurationError::ChangeConfigurationError {
-            message: format!("FFI 'change_runtime_configuration' failed! Reason: {:?}", e),
+            message: format!("FFI 'change_runtime_configuration' failed, reason: {:?}", e),
         }
     })
 }
@@ -46,7 +46,7 @@ pub fn init_protocol_context(
         patch_context,
     ).map_err(|e| {
         TezosStorageInitError::InitializeError {
-            message: format!("FFI 'init_protocol_context' failed! Initialization of Tezos context failed, this storage is required, we can do nothing without that! Reason: {:?}", e)
+            message: format!("FFI 'init_protocol_context' failed! Initialization of Tezos context failed, this storage is required, we can do nothing without that, reason: {:?}", e)
         }
     })
 }
@@ -65,7 +65,7 @@ pub fn genesis_result_data(
         genesis_max_operations_ttl,
     )
     .map_err(|e| GetDataError::ReadError {
-        message: format!("FFI 'genesis_result_data' failed! Reason: {:?}", e),
+        message: format!("FFI 'genesis_result_data' failed, reason: {:?}", e),
     })
 }
 
@@ -118,7 +118,7 @@ pub fn call_protocol_rpc(
 /// TODO: TE-207 Implement in Rust
 pub fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, ComputePathError> {
     ffi::compute_path(request).map_err(|e| ComputePathError::PathError {
-        message: format!("Path computation failed! Reason: {:?}", e),
+        message: format!("Path computation failed, reason: {:?}", e),
     })
 }
 
@@ -144,7 +144,7 @@ pub fn decode_context_data(
 ) -> Result<Option<String>, ContextDataError> {
     ffi::decode_context_data(protocol_hash.into(), key, data).map_err(|e| {
         ContextDataError::DecodeError {
-            message: format!("FFI 'decode_context_data' failed! Reason: {:?}", e),
+            message: format!("FFI 'decode_context_data' failed, reason: {:?}", e),
         }
     })
 }
@@ -157,7 +157,7 @@ pub fn assert_encoding_for_protocol_data(
     ffi::assert_encoding_for_protocol_data(protocol_hash.into(), protocol_data).map_err(|e| {
         ProtocolDataError::DecodeError {
             message: format!(
-                "FFI 'assert_encoding_for_protocol_data' failed! Reason: {:?}",
+                "FFI 'assert_encoding_for_protocol_data' failed, reason: {:?}",
                 e
             ),
         }

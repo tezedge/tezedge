@@ -1,8 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use failure::Fail;
 
@@ -92,6 +93,46 @@ pub fn try_wait_for_condvar_result<T, E>(
     }
 }
 
+/// Simple try_lock without Mutex/RwLock
+///
+/// Inspired by: https://morestina.net/blog/749/exploring-lock-free-rust-2-atomics
+pub struct DeadlineTryLock(Arc<AtomicBool>, Duration);
+
+impl DeadlineTryLock {
+    pub fn new(timeout: Duration) -> DeadlineTryLock {
+        DeadlineTryLock(Arc::new(AtomicBool::new(false)), timeout)
+    }
+
+    pub fn try_lock(&self) -> Option<DeadlineTryLockGuard> {
+        let was_locked = self.0.swap(true, Ordering::Acquire);
+        if was_locked {
+            None
+        } else {
+            Some(DeadlineTryLockGuard {
+                lock: self.0.clone(),
+                deadline: Instant::now() + self.1,
+            })
+        }
+    }
+}
+
+pub struct DeadlineTryLockGuard {
+    lock: Arc<AtomicBool>,
+    deadline: Instant,
+}
+
+impl DeadlineTryLockGuard {
+    pub fn is_deadline_reached(&self) -> bool {
+        self.deadline.le(&Instant::now())
+    }
+}
+
+impl Drop for DeadlineTryLockGuard {
+    fn drop(&mut self) {
+        self.lock.store(false, Ordering::Release);
+    }
+}
+
 // TODO: TE-386 - remove not needed
 // /// Unility to help manage [`UniqueBlockData`] structure
 // pub(crate) struct MissingBlockData<D> {
@@ -152,7 +193,9 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::utils::{dispatch_condvar_result, try_wait_for_condvar_result, CondvarResult};
+    use crate::utils::{
+        dispatch_condvar_result, try_wait_for_condvar_result, CondvarResult, DeadlineTryLock,
+    };
 
     #[test]
     fn test_wait_and_dispatch() -> Result<(), failure::Error> {
@@ -172,5 +215,26 @@ mod tests {
         assert!(try_wait_for_condvar_result(condvar_result, Duration::from_secs(4))?.is_ok());
 
         Ok(())
+    }
+
+    #[test]
+    fn test_atomic_try_lock() {
+        let lock = DeadlineTryLock::new(Duration::from_secs(2));
+
+        // get lock
+        let lock_guard = lock.try_lock();
+        assert!(lock_guard.is_some());
+
+        // get next lock
+        assert!(lock.try_lock().is_none());
+        assert!(lock.try_lock().is_none());
+        assert!(lock.try_lock().is_none());
+
+        // release lock
+        drop(lock_guard);
+
+        // try next lock
+        assert!(lock.try_lock().is_some());
+        assert!(lock.try_lock().is_some());
     }
 }

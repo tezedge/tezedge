@@ -609,7 +609,10 @@ impl ChainManager {
                                             );
                                         }
                                         BlockAcceptanceResult::MutlipassValidationError(error) => {
-                                            warn!(log, "Mutlipass validation error detected - blacklisting peer"; "reason" => &error);
+                                            warn!(log, "Mutlipass validation error detected - blacklisting peer";
+                                                       "message_head_level" => message.current_block_header().level(),
+                                                       "message_head_proto" => message.current_block_header().proto(),
+                                                       "reason" => &error);
 
                                             // clear peer stuff immediatelly
                                             peer.clear();
@@ -651,27 +654,27 @@ impl ChainManager {
                                     Some((operation_type, op_ttl)) => {
                                         // do prevalidation before add the operation to mempool
                                         let result = match validation::prevalidate_operation(
-                                                chain_state.get_chain_id(),
-                                                &operation_hash,
-                                                &operation,
-                                                self.current_mempool_state.clone(),
-                                                &self.tezos_readonly_prevalidation_api.pool.get()?.api,
-                                                block_storage,
-                                                block_meta_storage,
-                                            ) {
-                                                Ok(result) => result,
-                                                Err(e) => match e {
-                                                    validation::PrevalidateOperationError::UnknownBranch { .. }
-                                                    | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
-                                                        // here we just ignore UnknownBranch
-                                                        return Ok(());
-                                                    }
-                                                    poe => {
-                                                        // other error just propagate
-                                                        return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), poe));
-                                                    }
+                                            chain_state.get_chain_id(),
+                                            &operation_hash,
+                                            &operation,
+                                            self.current_mempool_state.clone(),
+                                            &self.tezos_readonly_prevalidation_api.pool.get()?.api,
+                                            block_storage,
+                                            block_meta_storage,
+                                        ) {
+                                            Ok(result) => result,
+                                            Err(e) => match e {
+                                                validation::PrevalidateOperationError::UnknownBranch { .. }
+                                                | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
+                                                    // here we just ignore UnknownBranch
+                                                    return Ok(());
                                                 }
-                                            };
+                                                poe => {
+                                                    // other error just propagate
+                                                    return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), poe));
+                                                }
+                                            }
+                                        };
 
                                         // can accpect operation ?
                                         if !validation::can_accept_operation_from_p2p(
@@ -1040,42 +1043,21 @@ impl ChainManager {
             }
 
             // try apply block
-            match self.chain_state.requester().try_schedule_apply_block(
-                Arc::new(block_header_with_hash.hash.clone()),
+            if let Err(e) = self.chain_state.requester().try_apply_block(
                 chain_id,
+                block_header_with_hash.hash.clone(),
                 result_callback.clone(),
-                None,
-                None,
             ) {
-                Ok(was_block_apply_triggered) => {
-                    if !was_block_apply_triggered {
-                        warn!(log, "Injected block cannot be applied - will be ignored!";
-                                   "block_predecessor" => block_header_with_hash.header.predecessor().to_base58_check(),
-                                   "was_block_apply_triggered" => was_block_apply_triggered,
-                                   "are_operations_complete" => are_operations_complete);
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!("Injected block cannot be applied - will be ignored!, block_hash: {}, are_operations_complete: {}", block_header_with_hash.hash.to_base58_check(), are_operations_complete))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
-                        }
-                    }
+                if let Err(e) = dispatch_condvar_result(
+                    result_callback,
+                    || {
+                        Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
+                    },
+                    true,
+                ) {
+                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
                 }
-                Err(e) => {
-                    if let Err(e) = dispatch_condvar_result(
-                        result_callback,
-                        || {
-                            Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
-                        },
-                        true,
-                    ) {
-                        warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
-                    }
-                    return Err(e.into());
-                }
+                return Err(e.into());
             };
         } else {
             warn!(log, "Injected duplicated block - will be ignored!");
@@ -1518,18 +1500,11 @@ impl Receive<LogStats> for ChainManager {
                         let validation = apply_block_stats
                             .applied_block_lasts_sum_validation_timer()
                             .print_formatted_average_for_count(*applied_block_lasts_count);
-                        let roundtrip = match apply_block_stats
-                            .applied_block_lasts_sum_roundtrip_timer()
-                            .checked_div(*applied_block_lasts_count)
-                        {
-                            Some(result) => format!("{:?}", result),
-                            None => "-".to_string(),
-                        };
 
                         // collect stats before clearing
                         let stats = format!(
-                            "({} blocks - average times [request_response {:?} -> {}]",
-                            applied_block_lasts_count, roundtrip, validation,
+                            "({} blocks - average times [{}]",
+                            applied_block_lasts_count, validation,
                         );
                         let applied_block_level = *apply_block_stats.applied_block_level();
                         let applied_block_last = apply_block_stats

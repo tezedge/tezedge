@@ -33,9 +33,6 @@ pub struct ApplyBlockStats {
     /// Sum of durations of block validation with protocol from last LogStats run
     #[get = "pub(crate)"]
     applied_block_lasts_sum_validation_timer: BlockValidationTimer,
-    /// Sum of durations of roundtrip: time of fired event for validation to received response
-    #[get = "pub(crate)"]
-    applied_block_lasts_sum_roundtrip_timer: Duration,
 }
 
 impl Default for ApplyBlockStats {
@@ -45,7 +42,6 @@ impl Default for ApplyBlockStats {
             applied_block_last: None,
             applied_block_lasts_count: 0,
             applied_block_lasts_sum_validation_timer: BlockValidationTimer::default(),
-            applied_block_lasts_sum_roundtrip_timer: Duration::new(0, 0),
         }
     }
 }
@@ -54,24 +50,12 @@ impl ApplyBlockStats {
     pub fn clear_applied_block_lasts(&mut self) {
         self.applied_block_lasts_count = 0;
         self.applied_block_lasts_sum_validation_timer = BlockValidationTimer::default();
-        self.applied_block_lasts_sum_roundtrip_timer = Duration::new(0, 0);
     }
 
-    pub fn add_block_validation_stats(
-        &mut self,
-        roundtrip_timer: Arc<Instant>,
-        validation_timer: Arc<BlockValidationTimer>,
-    ) {
+    pub fn add_block_validation_stats(&mut self, validation_timer: Arc<BlockValidationTimer>) {
         self.applied_block_lasts_count += 1;
         self.applied_block_lasts_sum_validation_timer
             .add_assign(validation_timer);
-        self.applied_block_lasts_sum_roundtrip_timer = match self
-            .applied_block_lasts_sum_roundtrip_timer
-            .checked_add(roundtrip_timer.elapsed())
-        {
-            Some(result) => result,
-            None => self.applied_block_lasts_sum_roundtrip_timer,
-        };
     }
 
     pub fn set_applied_block_level(&mut self, new_level: Level) {
