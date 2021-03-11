@@ -136,7 +136,6 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
 
     /// Retrieve a stored record.
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError>;
-
 }
 
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
@@ -160,7 +159,6 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let value = S::Value::decode(&bytes)?;
         Ok(value)
     }
-
 }
 
 pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
