@@ -137,8 +137,6 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
     /// Retrieve a stored record.
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError>;
 
-    /// Retrieve stored records stored in a single range.
-    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError>;
 }
 
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
@@ -163,9 +161,6 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         Ok(value)
     }
 
-    fn get_range(&self, _range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-        unimplemented!()
-    }
 }
 
 pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
