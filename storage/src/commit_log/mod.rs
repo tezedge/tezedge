@@ -18,7 +18,7 @@ use crate::commit_log::reader::Reader;
 use crate::commit_log::writer::Writer;
 use std::collections::HashMap;
 
-pub type CommitLogRef = Arc<RwLock<CommitLog>>;
+pub type CommitLogRef = Arc<RwLock<SledCommitLog>>;
 
 pub mod error;
 mod reader;
@@ -144,7 +144,8 @@ pub struct SledCommitLog {
 
 impl SledCommitLog {
     fn new<P: AsRef<Path>>(log_dir: P) -> Result<Self, CommitLogError> {
-        let db = sled::Config::new().path(log_dir)
+        let db = sled::Config::new()
+            .path(log_dir)
             .mode(sled::Mode::LowSpace)
             .use_compression(true)
             .compression_factor(10)
@@ -155,23 +156,19 @@ impl SledCommitLog {
     }
 }
 
-
 impl SledCommitLog {
-    fn append_msg(&self, bytes: &[u8]) -> Result<u64, CommitLogError> {
+    fn append_msg(&mut self, bytes: &[u8]) -> Result<u64, CommitLogError> {
         let location = self.block_data_tree.generate_id()?;
-        self.block_data_tree.insert(&location.to_be_bytes(), IVec::from(bytes))?;
+        self.block_data_tree
+            .insert(&location.to_be_bytes(), sled::IVec::from(bytes))?;
         Ok(location)
     }
 
-    fn read(&self, id : u64) -> Result<Vec<u8>, CommitLogError> {
+    fn read(&self, id: u64) -> Result<Vec<u8>, CommitLogError> {
         let bytes = self.block_data_tree.get(&id.to_be_bytes())?;
         let bytes = match bytes {
-            None => {
-                return Err(CommitLogError::CorruptData)
-            }
-            Some(bytes) => {
-                bytes.to_vec()
-            }
+            None => return Err(CommitLogError::CorruptData),
+            Some(bytes) => bytes.to_vec(),
         };
         Ok(bytes)
     }
@@ -180,7 +177,6 @@ impl SledCommitLog {
         self.block_data_tree.flush()?;
         Ok(())
     }
-
 }
 
 /// Possible errors for commit log
@@ -201,6 +197,8 @@ pub enum CommitLogError {
     CorruptData,
     #[fail(display = "Tezedge CommitLog error: {:#?}", error)]
     TezedgeCommitLogError { error: TezedgeCommitLogError },
+    #[fail(display = "Sled CommitLog error: {:#?}", error)]
+    SledCommitLogError { error: sled::Error },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -218,6 +216,12 @@ impl From<TezedgeCommitLogError> for CommitLogError {
 impl From<io::Error> for CommitLogError {
     fn from(error: io::Error) -> Self {
         CommitLogError::IOError { error }
+    }
+}
+
+impl From<sled::Error> for CommitLogError {
+    fn from(error: sled::Error) -> Self {
+        CommitLogError::SledCommitLogError { error }
     }
 }
 
@@ -277,9 +281,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let mut cl = cl.write().expect("Write lock failed");
         let bytes = value.encode()?;
-        let offset = cl
-            .append_msg(&bytes)
-            .map_err(|error| CommitLogError::TezedgeCommitLogError { error })?;
+        let offset = cl.append_msg(&bytes)?;
 
         Ok(Location(offset, bytes.len()))
     }
@@ -289,33 +291,14 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
             .cl_handle(S::name())
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
         let cl = cl.read().expect("Read lock failed");
-        let mut msg_buf =
-            cl.read(location.0 as usize, 1)
-                .map_err(|error| CommitLogError::ReadError {
-                    error,
-                    location: *location,
-                })?;
-        let bytes = msg_buf.next().ok_or(CommitLogError::CorruptData)?;
+        let bytes = cl.read(location.0)?;
         let value = S::Value::decode(&bytes)?;
 
         Ok(value)
     }
 
-    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-        let cl = self
-            .cl_handle(S::name())
-            .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl
-            .read(range.0 as usize, range.2 as usize)
-            .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: Location(range.0, range.2 as usize),
-            })?;
-        msg_buf
-            .take(range.2 as usize)
-            .map(|message| S::Value::decode(&message).map_err(|_| CommitLogError::CorruptData))
-            .collect()
+    fn get_range(&self, _range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
+        unimplemented!()
     }
 }
 
@@ -373,7 +356,7 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
-        let log = CommitLog::new(path)?;
+        let log = SledCommitLog::new(path)?;
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -392,7 +375,7 @@ impl CommitLogs {
     pub fn flush(&self) -> Result<(), CommitLogError> {
         let commit_log_map = self.commit_log_map.read().unwrap();
         for commit_log in commit_log_map.values() {
-            let mut commit_log = commit_log.write().unwrap();
+            let commit_log = commit_log.write().unwrap();
             commit_log.flush()?;
         }
 
