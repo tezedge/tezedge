@@ -8,11 +8,9 @@ use std::time::Duration;
 
 use riker::actors::*;
 use rocksdb::{Cache, DB};
-use slog::{debug, error, info, warn, Drain, Logger};
+use slog::{debug, error, info, warn, Logger};
 
 use configuration::{ColumnFactory, RocksDBConfig};
-use logging::detailed_json;
-use logging::file::FileAppenderBuilder;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
@@ -47,68 +45,11 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
-use crate::configuration::{Environment, LogFormat};
+use crate::configuration::Environment;
 
 mod configuration;
 mod identity;
 mod system;
-
-macro_rules! create_terminal_logger {
-    ($type:expr) => {{
-        match $type {
-            LogFormat::Simple => slog_async::Async::new(
-                slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
-                    .build()
-                    .fuse(),
-            )
-            .chan_size(32768)
-            .overflow_strategy(slog_async::OverflowStrategy::Block)
-            .build(),
-            LogFormat::Json => {
-                slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse())
-                    .chan_size(32768)
-                    .overflow_strategy(slog_async::OverflowStrategy::Block)
-                    .build()
-            }
-        }
-    }};
-}
-
-macro_rules! create_file_logger {
-    ($type:expr, $path:expr) => {{
-        let appender = FileAppenderBuilder::new($path)
-            .rotate_size(10_485_760 * 10) // 100 MB
-            .rotate_keep(2)
-            .rotate_compress(true)
-            .build();
-
-        match $type {
-            LogFormat::Simple => slog_async::Async::new(
-                slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender))
-                    .build()
-                    .fuse(),
-            )
-            .chan_size(32768)
-            .overflow_strategy(slog_async::OverflowStrategy::Block)
-            .build(),
-            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse())
-                .chan_size(32768)
-                .overflow_strategy(slog_async::OverflowStrategy::Block)
-                .build(),
-        }
-    }};
-}
-
-fn create_logger(env: &crate::configuration::Environment) -> Logger {
-    let drain = match &env.logging.file {
-        Some(log_file) => create_file_logger!(env.logging.format, log_file),
-        None => create_terminal_logger!(env.logging.format),
-    }
-    .filter_level(env.logging.level)
-    .fuse();
-
-    Logger::root(drain, slog::o!())
-}
 
 fn create_tokio_runtime(
     env: &crate::configuration::Environment,
@@ -538,8 +479,14 @@ fn main() {
             )
         });
 
-    // Creates default logger
-    let log = create_logger(&env);
+    // Creates loggers
+    let log = match env.create_logger() {
+        Ok(log) => log,
+        Err(e) => panic!(
+            "Error while creating loggers, check '--log' argument, reason: {:?}",
+            e
+        ),
+    };
 
     // check deprecated networks
     info!(
