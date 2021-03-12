@@ -24,7 +24,8 @@ use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapper, StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
+    PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, StartBranchBootstraping,
+    UpdateBlockState, UpdateOperationsState,
 };
 use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
@@ -45,6 +46,9 @@ pub(crate) mod bootstrap_constants {
 
     /// We can validate just few branches/head from one peer, so we limit it by this constant
     pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
+
+    /// We tries to apply downloaded blocks in batch to speedup and save resources
+    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 1000;
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
@@ -308,7 +312,8 @@ impl BlockchainState {
                         .map_err(|e| StateError::ProcessingError {
                             reason: format!("{}", e),
                         })?;
-                        let protocol_hash = metadata.get("protocol").map(|value| value.as_str());
+                        let protocol_hash =
+                            metadata.get("next_protocol").map(|value| value.as_str());
                         if let Some(Some(protocol_hash)) = protocol_hash {
                             // return protocol
                             Ok((
@@ -438,8 +443,11 @@ impl BlockchainState {
                         self.shell_channel.clone(),
                         self.block_meta_storage.clone(),
                         self.operations_meta_storage.clone(),
-                        bootstrap_constants::MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT,
-                        bootstrap_constants::MAX_BOOTSTRAP_BRANCHES_PER_PEER,
+                        PeerBranchBootstrapperConfiguration::new(
+                            bootstrap_constants::MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT,
+                            bootstrap_constants::MAX_BOOTSTRAP_BRANCHES_PER_PEER,
+                            bootstrap_constants::MAX_BLOCK_APPLY_BATCH,
+                        ),
                     )
                     .map_err(|e| StateError::ProcessingError {
                         reason: format!("{}", e),

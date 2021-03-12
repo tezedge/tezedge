@@ -6,7 +6,7 @@
 use bytes::Buf;
 use failure::Error;
 use riker::actors::*;
-use slog::{crit, debug, info, warn, Logger};
+use slog::{crit, info, warn, Logger};
 use std::convert::TryFrom;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,7 +15,7 @@ use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crypto::hash::{BlockHash, ContextHash, FromBytesError, HashType};
+use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 use storage::context::{ContextApi, TezedgeContext, TreeId};
 use storage::merkle_storage::EntryHash;
 use storage::persistent::{ActionRecorder, PersistentStorage};
@@ -183,8 +183,6 @@ fn listen_protocol_events(
         "Context listener received connection from protocol runner. Starting to process context events."
     );
 
-    let mut event_count = 0;
-
     while apply_block_run.load(Ordering::Acquire) {
         match rx.receive() {
             Ok(ContextAction::Shutdown) => {
@@ -195,20 +193,6 @@ fn listen_protocol_events(
                 break;
             }
             Ok(action) => {
-                if event_count % 100 == 0 {
-                    debug!(
-                        log,
-                        "Received protocol event";
-                        "count" => event_count,
-                        "context_hash" => match &context.get_last_commit_hash() {
-                            None => "-none-".to_string(),
-                            Some(c) => HashType::ContextHash.hash_to_b58check(c)?
-                        }
-                    );
-                }
-
-                event_count += 1;
-
                 for recorder in action_store_backend.iter_mut() {
                     if let Err(error) = recorder.record(&action) {
                         warn!(log, "Failed to store context action"; "action" => format!("{:?}", &action), "reason" => format!("{}", error));
