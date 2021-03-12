@@ -497,6 +497,15 @@ fn main() {
     );
     check_deprecated_network(&env, &log);
 
+    // check deprecated networks
+    info!(
+        log,
+        "Configured network {:?} -> {}",
+        env.tezos_network.supported_values(),
+        tezos_env.version
+    );
+    check_deprecated_network(&env, &log);
+
     // Validate zcash-params
     info!(log, "Checking zcash-params for sapling... (1/5)");
     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
