@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use std::io::{BufReader, BufRead};
 
 use chrono::Utc;
 use failure::bail;
@@ -22,6 +23,7 @@ use crate::image::{
 use crate::monitors::info::InfoMonitor;
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
+use crate::monitors::TEZEDGE_VOLUME_PATH;
 
 pub struct DeployMonitor {
     compose_file_path: PathBuf,
@@ -96,6 +98,21 @@ impl DeployMonitor {
         }
 
         zip_file.write("]".as_bytes())?;
+
+        let log_file_name = format!("{}/tezedge.log", TEZEDGE_VOLUME_PATH);
+        let log_file_path = Path::new(&log_file_name);
+        if log_file_path.exists() {
+
+            zip_file.start_file("tezedge.log", zip_options)?;
+            let file = File::open(log_file_path)?;
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                zip_file.write(line?.as_bytes())?;
+                zip_file.write(&[b'\n'])?;
+            }
+        }
+
         zip_file.finish()?;
         Ok(file_path)
     }
