@@ -343,7 +343,7 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     # we should have here precompiled target branch
-    - /artifacts/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 120
+    - /artifacts/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 240
     - branch=$(git status | grep "On branch")
     - echo "...running bench for git - $branch"
     # message_benchmark - target
