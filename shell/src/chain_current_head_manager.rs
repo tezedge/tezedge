@@ -10,7 +10,6 @@
 //! -- ...
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use riker::actors::*;
 use slog::{debug, info, warn};
@@ -31,10 +30,8 @@ use crate::stats::apply_block_stats::{ApplyBlockStatsRef, BlockValidationTimer};
 /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
 #[derive(Clone, Debug)]
 pub struct ProcessValidatedBlock {
-    block: Arc<BlockHash>,
+    pub block: Arc<BlockHash>,
     chain_id: Arc<ChainId>,
-
-    roundtrip_timer: Arc<Instant>,
     validation_timer: Arc<BlockValidationTimer>,
 }
 
@@ -42,13 +39,11 @@ impl ProcessValidatedBlock {
     pub fn new(
         block: Arc<BlockHash>,
         chain_id: Arc<ChainId>,
-        roundtrip_timer: Arc<Instant>,
         validation_timer: Arc<BlockValidationTimer>,
     ) -> Self {
         Self {
             block,
             chain_id,
-            roundtrip_timer,
             validation_timer,
         }
     }
@@ -128,7 +123,6 @@ impl ChainCurrentHeadManager {
         let ProcessValidatedBlock {
             block,
             chain_id,
-            roundtrip_timer,
             validation_timer,
         } = validated_block;
 
@@ -238,7 +232,7 @@ impl ChainCurrentHeadManager {
         // add to stats
         self.apply_block_stats
             .write()?
-            .add_block_validation_stats(roundtrip_timer, validation_timer);
+            .add_block_validation_stats(validation_timer);
 
         Ok(())
     }

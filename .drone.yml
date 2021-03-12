@@ -343,7 +343,7 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     # we should have here precompiled target branch
-    - /artifacts/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 120
+    - /artifacts/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 240
     - branch=$(git status | grep "On branch")
     - echo "...running bench for git - $branch"
     # message_benchmark - target
@@ -1763,9 +1763,6 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap --indexer-test --level=$${TO_BLOCK_HEADER} --node_tezedge=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --indexer_tezedge=$${TEZEDGE_NODE_INDEXER_ROOT} --node_ocaml=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --indexer_ocaml=$${OCAML_NODE_INDEXER_ROOT}
-    # TODO: TE-349 - if new docker image is published (remove failure and detached)
-    failure: ignore
-    detach: true
 
 image_pull_secrets:
   - docker_pull_secret

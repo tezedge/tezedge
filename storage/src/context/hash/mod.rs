@@ -3,7 +3,7 @@
 
 //! This module contains an implementation of Irmin's context hashes.
 //!
-//! A document describing the algorithm can be founde [here](https://hackmd.io/DnsQrkXCRLmHA3xzLiFgGw?view).
+//! A document describing the algorithm can be found [here](https://github.com/tarides/tezos-context-hash).
 
 mod ocaml;
 
@@ -103,7 +103,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
 
             match ti {
                 Inode::Empty => (),
-                non_empty => pointers.push((i as u8, hash_inode(&non_empty)?)),
+                non_empty => pointers.push((i as u8, hash_long_inode(&non_empty)?)),
             }
         }
 
@@ -115,7 +115,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
     }
 }
 
-fn hash_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
+fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
     let mut hasher = VarBlake2b::new(HASH_LEN)?;
 
     match inode {
@@ -181,46 +181,50 @@ fn hash_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
 }
 
-// Calculates hash of tree
-// uses BLAKE2 binary 256 length hash function
 // hash is calculated as:
 // <number of child nodes (8 bytes)><CHILD NODE>
 // where:
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
+fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
+    let mut hasher = VarBlake2b::new(HASH_LEN)?;
+
+    // Node list:
+    //
+    // |    8   |     n_1      | ... |      n_k     |
+    // +--------+--------------+-----+--------------+
+    // |   \k   | prehash(e_1) | ... | prehash(e_k) |
+
+    hasher.update(&(tree.len() as u64).to_be_bytes());
+
+    // Node entry:
+    //
+    // |   8   |   (LEB128)   |  len(name)  |   8   |   32   |
+    // +-------+--------------+-------------+-------+--------+
+    // | kind  |  \len(name)  |    name     |  \32  |  hash  |
+
+    for (k, v) in tree {
+        hasher.update(encode_irmin_node_kind(&v.node_kind));
+        // Key length is written in LEB128 encoding
+        leb128::write::unsigned(&mut hasher, k.len() as u64)?;
+        hasher.update(k.as_bytes());
+        hasher.update(&(HASH_LEN as u64).to_be_bytes());
+        hasher.update(&v.entry_hash);
+    }
+
+    Ok(hasher.finalize_boxed().as_ref().try_into()?)
+}
+
+// Calculates hash of tree
+// uses BLAKE2 binary 256 length hash function
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
         let entries: Vec<(&String, &Node)> = tree.iter().collect();
         let inode = partition_entries(0, &entries)?;
-        hash_inode(&inode)
+        hash_long_inode(&inode)
     } else {
-        let mut hasher = VarBlake2b::new(HASH_LEN)?;
-
-        // Node list:
-        //
-        // |    8   |     n_1      | ... |      n_k     |
-        // +--------+--------------+-----+--------------+
-        // |   \k   | prehash(e_1) | ... | prehash(e_k) |
-
-        hasher.update(&(tree.len() as u64).to_be_bytes());
-
-        // Node entry:
-        //
-        // |   8   |   (LEB128)   |  len(name)  |   8   |   32   |
-        // +-------+--------------+-------------+-------+--------+
-        // | kind  |  \len(name)  |    name     |  \32  |  hash  |
-
-        for (k, v) in tree {
-            hasher.update(encode_irmin_node_kind(&v.node_kind));
-            // Key length is written in LEB128 encoding
-            leb128::write::unsigned(&mut hasher, k.len() as u64)?;
-            hasher.update(k.as_bytes());
-            hasher.update(&(HASH_LEN as u64).to_be_bytes());
-            hasher.update(&v.entry_hash);
-        }
-
-        Ok(hasher.finalize_boxed().as_ref().try_into()?)
+        hash_short_inode(tree)
     }
 }
 
@@ -444,5 +448,90 @@ mod tests {
             calculated_tree_hash.as_ref(),
             hex::decode(expected_tree_hash).unwrap()
         );
+    }
+
+    // Tests from Tarides json dataset
+
+    use super::{hash_tree, Tree};
+    use crypto::hash::{ContextHash, HashTrait};
+    use flate2::read::GzDecoder;
+    use std::{env, fs::File, io::Read, path::Path};
+
+    #[derive(serde::Deserialize)]
+    struct NodeHashTest {
+        hash: String,
+        bindings: Vec<NodeHashBinding>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct NodeHashBinding {
+        name: String,
+        kind: String,
+        hash: String,
+    }
+
+    #[test]
+    fn test_node_hashes() {
+        test_type_hashes("nodes.json.gz");
+    }
+
+    #[test]
+    fn test_inode_hashes() {
+        test_type_hashes("inodes.json.gz");
+    }
+
+    fn test_type_hashes(json_gz_file_name: &str) {
+        let mut json_file = open_hashes_json_gz(json_gz_file_name);
+        let mut bytes = Vec::new();
+
+        // NOTE: reading from a stream is very slow with serde, thats why
+        // the whole file is being read here before parsing.
+        // See: https://github.com/serde-rs/json/issues/160#issuecomment-253446892
+        json_file.read_to_end(&mut bytes).unwrap();
+
+        let test_cases: Vec<NodeHashTest> = serde_json::from_slice(&bytes).unwrap();
+
+        for test_case in test_cases {
+            let bindings_count = test_case.bindings.len();
+            let mut tree = Tree::new();
+
+            for binding in test_case.bindings {
+                let node_kind = match binding.kind.as_str() {
+                    "Tree" => NodeKind::NonLeaf,
+                    "Contents" => NodeKind::Leaf,
+                    other => panic!("Got unexpected binding kind: {}", other),
+                };
+                let entry_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
+                let entry_hash: EntryHash = entry_hash.as_ref().as_slice().try_into().unwrap();
+                let node = Node {
+                    node_kind,
+                    entry_hash,
+                };
+                tree = tree.update(binding.name, node);
+            }
+
+            let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
+            let computed_hash = hash_tree(&tree).unwrap();
+            let computed_hash = ContextHash::try_from_bytes(&computed_hash).unwrap();
+
+            assert_eq!(
+                expected_hash.to_base58_check(),
+                computed_hash.to_base58_check(),
+                "Expected hash {} but got {} (bindings: {})",
+                expected_hash.to_base58_check(),
+                computed_hash.to_base58_check(),
+                bindings_count
+            );
+        }
+    }
+
+    fn open_hashes_json_gz(file_name: &str) -> GzDecoder<File> {
+        let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("tests")
+            .join("resources")
+            .join(file_name);
+        let file = File::open(path)
+            .unwrap_or_else(|_| panic!("Couldn't open file: tests/resources/{}", file_name));
+        GzDecoder::new(file)
     }
 }
