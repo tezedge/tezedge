@@ -1,6 +1,6 @@
 [package]
 name = "tezos_context"
-version = "1.1.4"
+version = "1.2.0"
 authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
