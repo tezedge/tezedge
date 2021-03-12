@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.1.4] - 2021-03-12
+
+### Added
+
+- Extended tests for calculation of context_hash
+- Possibility to use multiple logger (terminal and/or file)
+
+### Changed
+
+- Shell refactor to batch block application to context
+
 ## [1.1.3] - 2021-03-09
 
 ### Fixed
@@ -315,7 +326,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.1.3...HEAD
+[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.1.4...HEAD
+[1.1.4]: https://github.com/simplestaking/tezedge/releases/v1.1.4
 [1.1.3]: https://github.com/simplestaking/tezedge/releases/v1.1.3
 [1.1.2]: https://github.com/simplestaking/tezedge/releases/v1.1.2
 [1.1.0]: https://github.com/simplestaking/tezedge/releases/v1.1.0
