@@ -42,7 +42,10 @@ impl BootstrapState {
         BootstrapState {
             chain_id,
             last_updated: Instant::now(),
-            intervals: BootstrapInterval::split(first_applied_block, blocks),
+            intervals: BootstrapInterval::split(
+                BlockState::new_applied(first_applied_block),
+                blocks,
+            ),
             to_level,
         }
     }
@@ -53,6 +56,59 @@ impl BootstrapState {
 
     pub fn to_level(&self) -> &Arc<Level> {
         &self.to_level
+    }
+
+    /// Returns true if any interval contains requested block
+    pub fn contains_block(&self, block: &BlockHash) -> bool {
+        self.intervals.iter().any(|interval| {
+            interval
+                .blocks
+                .iter()
+                .any(|b| b.block_hash.as_ref().eq(block))
+        })
+    }
+
+    /// Tries to merge/extends existing bootstrap (optimization)
+    pub fn merge(
+        &mut self,
+        new_bootstrap_chain_id: &ChainId,
+        new_bootstrap_level: Arc<Level>,
+        new_missing_history: &[Arc<BlockHash>],
+    ) -> bool {
+        if self.chain_id.as_ref().ne(new_bootstrap_chain_id) {
+            return false;
+        }
+
+        // we can merge, only if the last block has continuation in new_bootstrap
+        let mut new_intervals = Vec::new();
+
+        if let Some(last_interval) = self.intervals.last() {
+            if let Some(last_block) = last_interval.blocks.last() {
+                // we need to find this last block in new_bootstrap
+                if let Some(found_position) = new_missing_history
+                    .iter()
+                    .position(|b| b.as_ref().eq(last_block.block_hash.as_ref()))
+                {
+                    // check if we have more elements after found, means, we can add new interval
+                    if (found_position + 1) < new_missing_history.len() {
+                        // split to intervals
+                        new_intervals.extend(BootstrapInterval::split(
+                            last_block.clone(),
+                            new_missing_history[(found_position + 1)..].to_vec(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        if !new_intervals.is_empty() {
+            self.intervals.extend(new_intervals);
+            self.to_level = new_bootstrap_level;
+            self.last_updated = Instant::now();
+            return true;
+        }
+
+        false
     }
 
     /// This finds block, which should be downloaded first and refreshes state for all touched blocks
@@ -574,21 +630,12 @@ struct BootstrapInterval {
 }
 
 impl BootstrapInterval {
-    fn new(block_hash: Arc<BlockHash>) -> Self {
+    fn new(left: BlockState) -> Self {
         Self {
             all_blocks_downloaded: false,
             all_operations_downloaded: false,
             all_block_applied: false,
-            blocks: vec![BlockState::new(block_hash)],
-        }
-    }
-
-    fn new_applied(block_hash: Arc<BlockHash>) -> Self {
-        Self {
-            all_blocks_downloaded: false,
-            all_operations_downloaded: false,
-            all_block_applied: false,
-            blocks: vec![BlockState::new_applied(block_hash)],
+            blocks: vec![left],
         }
     }
 
@@ -601,14 +648,11 @@ impl BootstrapInterval {
         }
     }
 
-    fn split(
-        first_applied_block: Arc<BlockHash>,
-        blocks: Vec<Arc<BlockHash>>,
-    ) -> Vec<BootstrapInterval> {
+    fn split(first_block_state: BlockState, blocks: Vec<Arc<BlockHash>>) -> Vec<BootstrapInterval> {
         let mut intervals: Vec<BootstrapInterval> = Vec::with_capacity(blocks.len() / 2);
 
-        // insert first interval with applied block
-        intervals.push(BootstrapInterval::new_applied(first_applied_block));
+        // insert first interval
+        intervals.push(BootstrapInterval::new(first_block_state));
 
         // now split to interval the rest of the blocks
         for bh in blocks {
@@ -629,7 +673,7 @@ impl BootstrapInterval {
                         None
                     }
                 }
-                None => Some(BootstrapInterval::new(bh)),
+                None => Some(BootstrapInterval::new(BlockState::new(bh))),
             };
 
             if let Some(new_interval) = new_interval {
@@ -966,6 +1010,17 @@ mod tests {
         assert_interval(&pipeline.intervals[5], (block(13), block(15)));
         assert_interval(&pipeline.intervals[6], (block(15), block(20)));
 
+        assert!(pipeline.contains_block(&block(0)));
+        assert!(pipeline.contains_block(&block(2)));
+        assert!(pipeline.contains_block(&block(5)));
+        assert!(pipeline.contains_block(&block(10)));
+        assert!(pipeline.contains_block(&block(13)));
+        assert!(pipeline.contains_block(&block(15)));
+        assert!(pipeline.contains_block(&block(20)));
+        assert!(!pipeline.contains_block(&block(1)));
+        assert!(!pipeline.contains_block(&block(3)));
+        assert!(!pipeline.contains_block(&block(4)));
+
         // check applied is just first block
         pipeline
             .intervals
@@ -983,6 +1038,120 @@ mod tests {
                     assert!(!b.operations_downloaded);
                 }
             })
+    }
+
+    #[test]
+    fn test_bootstrap_state_merge() {
+        let chain_id = Arc::new(
+            ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
+        );
+        // genesis
+        let last_applied = block(0);
+
+        // history blocks
+        let history1: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        let mut pipeline1 = BootstrapState::new(
+            chain_id.clone(),
+            last_applied.clone(),
+            history1,
+            Arc::new(20),
+        );
+        assert_eq!(pipeline1.intervals.len(), 7);
+        assert_eq!(*pipeline1.to_level, 20);
+
+        // try merge lower - nothing
+        let history_to_merge: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+        ];
+        assert!(!pipeline1.merge(&chain_id, Arc::new(100), &history_to_merge));
+        assert_eq!(pipeline1.intervals.len(), 7);
+        assert_eq!(*pipeline1.to_level, 20);
+
+        // try merge different - nothing
+        let history_to_merge: Vec<Arc<BlockHash>> = vec![
+            block(1),
+            block(4),
+            block(7),
+            block(9),
+            block(12),
+            block(14),
+            block(16),
+        ];
+        assert!(!pipeline1.merge(&chain_id, Arc::new(100), &history_to_merge));
+        assert_eq!(pipeline1.intervals.len(), 7);
+        assert_eq!(*pipeline1.to_level, 20);
+
+        // try merge the same - nothing
+        let history_to_merge: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+        ];
+        assert!(!pipeline1.merge(&chain_id, Arc::new(100), &history_to_merge));
+        assert_eq!(pipeline1.intervals.len(), 7);
+        assert_eq!(*pipeline1.to_level, 20);
+
+        // try merge the one new - nothing
+        let history_to_merge: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+            block(22),
+        ];
+        assert!(pipeline1.merge(&chain_id, Arc::new(22), &history_to_merge));
+        assert_eq!(pipeline1.intervals.len(), 8);
+        assert_eq!(*pipeline1.to_level, 22);
+
+        // try merge new - ok
+        let history_to_merge: Vec<Arc<BlockHash>> = vec![
+            block(2),
+            block(5),
+            block(8),
+            block(10),
+            block(13),
+            block(15),
+            block(20),
+            block(22),
+            block(23),
+            block(25),
+            block(29),
+        ];
+        assert!(pipeline1.merge(&chain_id, Arc::new(29), &history_to_merge));
+        assert_eq!(pipeline1.intervals.len(), 11);
+        assert_eq!(*pipeline1.to_level, 29);
+
+        assert_interval(&pipeline1.intervals[0], (block(0), block(2)));
+        assert_interval(&pipeline1.intervals[1], (block(2), block(5)));
+        assert_interval(&pipeline1.intervals[2], (block(5), block(8)));
+        assert_interval(&pipeline1.intervals[3], (block(8), block(10)));
+        assert_interval(&pipeline1.intervals[4], (block(10), block(13)));
+        assert_interval(&pipeline1.intervals[5], (block(13), block(15)));
+        assert_interval(&pipeline1.intervals[6], (block(15), block(20)));
+        assert_interval(&pipeline1.intervals[7], (block(20), block(22)));
+        assert_interval(&pipeline1.intervals[8], (block(22), block(23)));
+        assert_interval(&pipeline1.intervals[9], (block(23), block(25)));
+        assert_interval(&pipeline1.intervals[10], (block(25), block(29)));
     }
 
     #[test]
@@ -2027,10 +2196,7 @@ mod tests {
 
         // next for apply with max batch 1
         let next_batch = pipeline.find_next_block_to_apply(1, |bh| {
-            if bh.eq(&block(1)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(2)) {
+            if bh.eq(&block(1)) || bh.eq(&block(2)) {
                 // was not applied
                 Ok(false)
             } else {
@@ -2045,31 +2211,16 @@ mod tests {
 
         // next for apply with max batch 100
         let next_batch = pipeline.find_next_block_to_apply(100, |bh| {
-            if bh.eq(&block(1)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(2)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(3)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(4)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(5)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(6)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(7)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(8)) {
-                // was not applied
-                Ok(false)
-            } else if bh.eq(&block(10)) {
+            if bh.eq(&block(1))
+                || bh.eq(&block(2))
+                || bh.eq(&block(3))
+                || bh.eq(&block(4))
+                || bh.eq(&block(5))
+                || bh.eq(&block(6))
+                || bh.eq(&block(7))
+                || bh.eq(&block(8))
+                || bh.eq(&block(10))
+            {
                 // was not applied
                 Ok(false)
             } else {

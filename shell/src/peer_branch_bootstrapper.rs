@@ -109,7 +109,7 @@ pub struct BlockBatchApplied {
 /// Event is fired, when some batch was not applied and error occured
 #[derive(Clone, Debug)]
 pub struct BlockBatchApplyFailed {
-    pub last_applied: Option<Arc<BlockHash>>,
+    pub failed_block: Arc<BlockHash>,
 }
 
 #[actor(
@@ -249,18 +249,18 @@ impl PeerBranchBootstrapper {
         self.handle_resolved_bootstraps(log);
 
         // check if we need to release lock
-        self.check_deadline_for_block_batch_apply_try_lock(log);
+        self.check_deadline_for_block_batch_apply_try_lock();
     }
 
-    fn check_deadline_for_block_batch_apply_try_lock(&mut self, log: &Logger) {
+    fn check_deadline_for_block_batch_apply_try_lock(&mut self) {
         if let Some(lock) = self.block_batch_apply_try_lock.as_ref() {
             if lock.is_deadline_reached() {
-                self.release_block_batch_apply_try_lock(log);
+                self.release_block_batch_apply_try_lock();
             }
         }
     }
 
-    fn release_block_batch_apply_try_lock(&mut self, log: &Logger) {
+    fn release_block_batch_apply_try_lock(&mut self) {
         if let Some(lock) = self.block_batch_apply_try_lock.take() {
             drop(lock);
         }
@@ -343,8 +343,8 @@ impl PeerBranchBootstrapper {
         bootstrap_state.retain(|b| {
             if b.is_done() {
                 debug!(log, "Finished branch bootstrapping process";
-                                         "to_level" => b.to_level(),
-                                         "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
+                            "to_level" => b.to_level(),
+                            "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
 
                 shell_channel.tell(
                     Publish {
@@ -491,20 +491,32 @@ impl Receive<StartBranchBootstraping> for PeerBranchBootstrapper {
         // check closed pipelines
         self.handle_resolved_bootstraps(&log);
 
-        if self.bootstrap_state.len() >= self.cfg.max_bootstrap_branches_per_peer {
-            debug!(log, "Peer has started already maximum ({}) pipeline, so we dont start new one", self.cfg.max_bootstrap_branches_per_peer;
-                                     "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string());
-            return;
+        // try to check if we can just extends existing pipeline (HeadIncrement)
+        let mut was_merged = false;
+        for bootstrap in self.bootstrap_state.iter_mut() {
+            if bootstrap.merge(&msg.chain_id, msg.to_level.clone(), &msg.missing_history) {
+                was_merged = true;
+                break;
+            }
         }
 
-        // add new bootstrap
-        self.bootstrap_state.push(BootstrapState::new(
-            msg.chain_id,
-            msg.last_applied_block,
-            msg.missing_history,
-            msg.to_level,
-        ));
-        self.empty_bootstrap_state = None;
+        if !was_merged {
+            if self.bootstrap_state.len() >= self.cfg.max_bootstrap_branches_per_peer {
+                debug!(log, "Peer has started already maximum ({}) pipeline, so we dont start new one", self.cfg.max_bootstrap_branches_per_peer;
+                            "to_level" => &msg.to_level,
+                            "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string());
+                return;
+            }
+
+            // add new bootstrap
+            self.bootstrap_state.push(BootstrapState::new(
+                msg.chain_id,
+                msg.last_applied_block,
+                msg.missing_history,
+                msg.to_level,
+            ));
+            self.empty_bootstrap_state = None;
+        }
 
         // process
         self.process_bootstrap_pipelines(ctx, &log)
@@ -581,7 +593,7 @@ impl Receive<BlockBatchApplied> for PeerBranchBootstrapper {
         _: Option<BasicActorRef>,
     ) {
         // release lock
-        self.release_block_batch_apply_try_lock(&ctx.system.log());
+        self.release_block_batch_apply_try_lock();
 
         // process message
         self.bootstrap_state.iter_mut().for_each(|bootstrap| {
@@ -602,6 +614,26 @@ impl Receive<BlockBatchApplyFailed> for PeerBranchBootstrapper {
         msg: BlockBatchApplyFailed,
         _: Option<BasicActorRef>,
     ) {
+        let log = ctx.system.log();
+        let Self {
+            bootstrap_state,
+            peer,
+            ..
+        } = self;
+
+        // just remove the whole pipeline if contains failed blocks (it can cause stalled peer and then it will be stopped)
+        bootstrap_state
+            .retain(|bootstrap| {
+                if bootstrap.contains_block(&msg.failed_block) {
+                    warn!(log, "Peer's branch bootstrap contains failed block, so this branch bootstrap is removed";
+                               "block_hash" => msg.failed_block.to_base58_check(),
+                               "to_level" => bootstrap.to_level(),
+                               "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
+                    false
+                } else {
+                    true
+                }
+            });
     }
 }
 
@@ -626,7 +658,7 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         if let Some(empty_bootstrap_state) = self.empty_bootstrap_state {
             if empty_bootstrap_state.elapsed() > MISSING_NEW_BOOTSTRAP_TIMEOUT {
                 warn!(log, "Peer did not sent new curent_head/current_branch for a long time";
-                    "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
+                           "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
                 );
                 is_stalled = true;
             }
@@ -635,7 +667,7 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         // if stalled, just disconnect peer
         if is_stalled {
             warn!(log, "Disconnecting peer, because of stalled bootstrap pipeline";
-                "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
+                       "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
             );
 
             // stop actors for peer
@@ -795,14 +827,12 @@ fn schedule_block_applying(
             ) {
                 Ok(Some(lock)) => {
                     *block_apply_try_lock = Some(lock);
-                    ()
                 }
                 Ok(None) => {
                     // no lock acquired, so not our turn
-                    ()
                 }
                 Err(e) => {
-                    warn!(log, "Failed to schedule blocks for apply for peer"; "reason" => e,
+                    warn!(log, "Failed to schedule next blocks for apply"; "reason" => e,
                         "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
                 }
             }

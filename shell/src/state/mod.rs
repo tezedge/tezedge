@@ -65,7 +65,7 @@ impl From<failure::Error> for StateError {
 #[derive(Clone, Debug)]
 pub struct BlockApplyBatch {
     pub block_to_apply: Arc<BlockHash>,
-    pub successors: Vec<Arc<BlockHash>>,
+    successors: Vec<Arc<BlockHash>>,
 }
 
 impl BlockApplyBatch {

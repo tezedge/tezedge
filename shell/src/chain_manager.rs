@@ -884,7 +884,7 @@ impl ChainManager {
             .new(slog::o!("block" => block_header_with_hash.hash.to_base58_check(), "chain_id" => chain_id.to_base58_check()));
 
         // this should  allways return [is_new_block==true], as we are injecting a forged new block
-        let (block_metadata, is_new_block, mut are_operations_complete) = match self
+        let (block_metadata, is_new_block, are_operations_complete) = match self
             .chain_state
             .process_injected_block_header(&chain_id, &block_header_with_hash, &log)
         {
@@ -908,8 +908,7 @@ impl ChainManager {
         };
         info!(log, "New block injection";
                    "is_new_block" => is_new_block,
-                   "level" => block_header_with_hash.header.level(),
-                   "are_operations_complete" => are_operations_complete);
+                   "level" => block_header_with_hash.header.level());
 
         if is_new_block {
             // update stats
@@ -1004,10 +1003,13 @@ impl ChainManager {
                     let msg: OperationsForBlocksMessage =
                         OperationsForBlocksMessage::new(opb, operation_hashes_path, ops);
 
-                    are_operations_complete = match self.chain_state.process_block_operations(&msg)
-                    {
+                    match self.chain_state.process_block_operations(&msg) {
                         Ok((all_operations_received, _)) => {
                             if all_operations_received {
+                                info!(log, "New block injection - operations are complete";
+                                           "is_new_block" => is_new_block,
+                                           "level" => block_header_with_hash.header.level());
+
                                 // update stats
                                 self.stats.unseen_block_operations_last = Instant::now();
 
@@ -1024,7 +1026,6 @@ impl ChainManager {
                                     None,
                                 );
                             }
-                            all_operations_received
                         }
                         Err(e) => {
                             if let Err(e) = dispatch_condvar_result(

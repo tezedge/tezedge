@@ -116,7 +116,7 @@ impl ChainFeeder {
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
                 chain_current_head_manager,
-                persistent_storage.clone(),
+                persistent_storage,
                 Arc::new(init_storage_data),
                 Arc::new(tezos_env),
                 tezos_writeable_api,
@@ -429,7 +429,6 @@ fn feed_chain_to_protocol(
         if let Ok(event) = block_applier_event_receiver.recv() {
             match event {
                 Event::ApplyBlock(request) => {
-
                     // lets apply block batch
                     let ApplyBlock {
                         batch,
@@ -439,6 +438,7 @@ fn feed_chain_to_protocol(
                     } = request;
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
+                    let mut condvar_result: Option<Result<(), failure::Error>> = None;
 
                     // lets apply blocks in order
                     for block_to_apply in batch.take_all_blocks_to_apply() {
@@ -457,45 +457,39 @@ fn feed_chain_to_protocol(
                         ) {
                             Ok(result) => {
                                 match result {
-
-
                                     Some(validated_block) => {
-                                        // notify condvar - OK
-                                        if let Err(e) = dispatch_condvar_result(
-                                            result_callback.clone(),
-                                            || Ok(()),
-                                            true,
-                                        ) {
-                                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                        last_applied = Some(block_to_apply);
+                                        if result_callback.is_some() {
+                                            condvar_result = Some(Ok(()));
                                         }
 
                                         // notify  chain current head manager (only for new applied block)
                                         chain_current_head_manager.tell(validated_block, None);
                                     }
                                     None => {
-                                        // block already applied - ok, doing nothing
-                                        if let Err(e) = dispatch_condvar_result(
-                                            result_callback.clone(),
-                                            || Err(format_err!("Block is already applied")),
-                                            true,
-                                        ) {
-                                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                        last_applied = Some(block_to_apply);
+                                        if result_callback.is_some() {
+                                            condvar_result = Some(Err(format_err!(
+                                                "Block/batch is already applied"
+                                            )));
                                         }
                                     }
                                 }
-
-                                last_applied = Some(block_to_apply);
                             }
                             Err(e) => {
                                 warn!(log, "Block apply processing failed"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{}", e));
 
-                                // handle condvar
+                                // handle condvar immediately
                                 if let Err(e) = dispatch_condvar_result(
-                                    result_callback,
+                                    result_callback.clone(),
                                     || Err(format_err!("{}", e)),
                                     true,
                                 ) {
                                     warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                }
+                                if result_callback.is_some() {
+                                    // dont process next time
+                                    condvar_result = None;
                                 }
 
                                 // notify bootstrapper with failed + last_applied
@@ -503,7 +497,7 @@ fn feed_chain_to_protocol(
                                     if let Some(bootstrapper) = bootstrapper.as_ref() {
                                         bootstrapper.tell(
                                             BlockBatchApplyFailed {
-                                                last_applied: last_applied.clone(),
+                                                failed_block: block_to_apply.clone(),
                                             },
                                             None,
                                         );
@@ -524,9 +518,20 @@ fn feed_chain_to_protocol(
                         }
                     }
 
-                    // notify bootstrapper just on the end of the success batch
+                    // notify condvar
+                    if let Some(condvar_result) = condvar_result {
+                        // notify condvar
+                        if let Err(e) =
+                            dispatch_condvar_result(result_callback, || condvar_result, true)
+                        {
+                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        }
+                    }
+
+                    // notify after batch success done
                     if apply_block_run.load(Ordering::Acquire) {
                         if let Some(last_applied) = last_applied {
+                            // notify bootstrapper just on the end of the success batch
                             if let Some(bootstrapper) = bootstrapper {
                                 bootstrapper.tell(BlockBatchApplied { last_applied }, None);
                             }

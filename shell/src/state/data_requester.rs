@@ -408,24 +408,25 @@ impl DataRequester {
         result_callback: Option<CondvarResult<(), failure::Error>>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
     ) -> Result<(), StateError> {
-        // 1. filter - check if can be applied
-        let block_metadata = match self.block_meta_storage.get(&batch.block_to_apply)? {
-            Some(block_metadata) => block_metadata,
-            None => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "No metadata found for block_hash: {}",
-                        batch.block_to_apply.to_base58_check()
-                    ),
-                });
-            }
-        };
-
         // check batch, if the start block is ok and can be applied
         // if start is already applied, we fold the bath to next block (if any)
         let batch = {
             let mut batch_to_use = batch;
             loop {
+                // get block metadata
+                let block_metadata =
+                    match self.block_meta_storage.get(&batch_to_use.block_to_apply)? {
+                        Some(block_metadata) => block_metadata,
+                        None => {
+                            return Err(StateError::ProcessingError {
+                                reason: format!(
+                                    "No metadata found for block_hash: {}",
+                                    batch_to_use.block_to_apply.to_base58_check()
+                                ),
+                            });
+                        }
+                    };
+
                 // check if can be applied
                 match validation::can_apply_block(
                     (&batch_to_use.block_to_apply, &block_metadata),
@@ -436,21 +437,12 @@ impl DataRequester {
                     CanApplyStatus::AlreadyApplied => {
                         // if we dont have successors, we need to finished,
                         // if we have, we can shift the batch and try again
-                        if batch_to_use.successors_size() == 0 {
-                            return Err(StateError::ProcessingError {
-                                reason: format!(
-                                    "Block {} cannot be applied because already is_applied",
-                                    batch_to_use.block_to_apply.to_base58_check()
-                                ),
-                            });
-                        } else {
-                            batch_to_use = match batch_to_use.shift() {
-                                Some(shifted_batch) => shifted_batch,
-                                None => return Err(StateError::ProcessingError {
-                                    reason: "Block batch cannot be applied, because the whole batch is already is_applied".to_string(),
-                                })
-                            }
-                        }
+                        batch_to_use = match batch_to_use.shift() {
+                            Some(shifted_batch) => shifted_batch,
+                            None => return Err(StateError::ProcessingError {
+                                reason: "Block cannot be applied, because the whole batch is already applied".to_string(),
+                            })
+                        };
                     }
                     CanApplyStatus::MissingPredecessor => {
                         return Err(StateError::ProcessingError {
@@ -905,12 +897,7 @@ mod tests {
 
         // try schedule - ok
         assert!(matches!(
-            data_requester.call_apply_block(
-                chain_id.clone(),
-                batch_with_block1.clone(),
-                None,
-                None,
-            ),
+            data_requester.call_apply_block(chain_id, batch_with_block1, None, None,),
             Ok(())
         ));
 
@@ -992,10 +979,92 @@ mod tests {
         assert!(matches!(
             data_requester.try_schedule_apply_block(
                 chain_id.clone(),
-                batch_with_block1,
+                batch_with_block1.clone(),
                 None,
             ),
             Ok(x) if x.is_some()
+        ));
+
+        // try to apply if block1 is_already applied - testing shifting batch
+        // mark block1 as applied
+        block_meta_storage.put(
+            &block1,
+            &block_meta_storage::Meta::new(
+                true,
+                Some(block0.as_ref().clone()),
+                1,
+                chain_id.as_ref().clone(),
+            ),
+        )?;
+
+        // we are missing metadata for block2 so it should fail
+        assert!(matches!(
+            data_requester.try_schedule_apply_block(
+                chain_id.clone(),
+                batch_with_block1.clone(),
+                None,
+            ),
+            Err(StateError::ProcessingError {reason}) if reason.contains("No metadata found")
+        ));
+
+        // mark block2 as ready to be applied
+        block_meta_storage.put(
+            &block2,
+            &block_meta_storage::Meta::new(
+                false,
+                Some(block1.as_ref().clone()),
+                2,
+                chain_id.as_ref().clone(),
+            ),
+        )?;
+        OperationsMetaStorage::new(storage.storage()).put(
+            &block2,
+            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
+        )?;
+        assert!(matches!(
+            data_requester.try_schedule_apply_block(
+                chain_id.clone(),
+                batch_with_block1.clone(),
+                None,
+            ),
+            Ok(x) if x.is_some()
+        ));
+
+        // try to apply if the whole batch is_already applied - testing shifting batch
+        block_meta_storage.put(
+            &block2,
+            &block_meta_storage::Meta::new(
+                true,
+                Some(block1.as_ref().clone()),
+                2,
+                chain_id.as_ref().clone(),
+            ),
+        )?;
+        block_meta_storage.put(
+            &block3,
+            &block_meta_storage::Meta::new(
+                true,
+                Some(block2.as_ref().clone()),
+                3,
+                chain_id.as_ref().clone(),
+            ),
+        )?;
+        block_meta_storage.put(
+            &block4,
+            &block_meta_storage::Meta::new(
+                true,
+                Some(block3.as_ref().clone()),
+                4,
+                chain_id.as_ref().clone(),
+            ),
+        )?;
+        assert!(matches!(
+            data_requester.try_schedule_apply_block(
+                chain_id,
+                batch_with_block1,
+                None,
+            ),
+            Err(StateError::ProcessingError {reason}) if reason.contains("is already applied")
         ));
 
         Ok(())
