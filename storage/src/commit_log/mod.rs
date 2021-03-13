@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+mod compression;
+
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
@@ -23,10 +25,11 @@ const DATA_FILE_NAME: &str = "table.data";
 pub struct CommitLog {
     data_file: File,
     data_file_path: PathBuf,
+    use_compression : bool
 }
 
 impl CommitLog {
-    pub fn new<P: AsRef<Path>>(dir: P) -> Result<Self, CommitLogError> {
+    pub fn new<P: AsRef<Path>>(dir: P, use_compression : bool) -> Result<Self, CommitLogError> {
         if !dir.as_ref().exists() {
             std::fs::create_dir_all(dir.as_ref())?;
         }
@@ -41,6 +44,7 @@ impl CommitLog {
         Ok(Self {
             data_file,
             data_file_path,
+            use_compression
         })
     }
     pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<u64, CommitLogError> {
@@ -215,7 +219,7 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
-        let log = CommitLog::new(path)?;
+        let log = CommitLog::new(path,false)?;
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -330,7 +334,7 @@ mod tests {
         let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
         let mut old_commit_log = OldCommitLog::new(options).unwrap();
-        let mut new_commit_log = CommitLog::new(new_commit_log_dir).unwrap();
+        let mut new_commit_log = CommitLog::new(new_commit_log_dir, true).unwrap();
         println!("-------------------------------------------------------");
         println!("Write Benchmark");
         println!("-------------------------------------------------------");
