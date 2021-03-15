@@ -14,10 +14,10 @@ use std::{fmt, io};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use crate::commit_log::compression::{zstd_compress, zstd_decompress};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use crate::commit_log::compression::{zstd_compress, zstd_decompress};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
@@ -26,11 +26,11 @@ const DATA_FILE_NAME: &str = "table.data";
 pub struct CommitLog {
     data_file: File,
     data_file_path: PathBuf,
-    use_compression : bool
+    use_compression: bool,
 }
 
 impl CommitLog {
-    pub fn new<P: AsRef<Path>>(dir: P, use_compression : bool) -> Result<Self, CommitLogError> {
+    pub fn new<P: AsRef<Path>>(dir: P, use_compression: bool) -> Result<Self, CommitLogError> {
         if !dir.as_ref().exists() {
             std::fs::create_dir_all(dir.as_ref())?;
         }
@@ -45,10 +45,13 @@ impl CommitLog {
         Ok(Self {
             data_file,
             data_file_path,
-            use_compression
+            use_compression,
         })
     }
-    pub fn append_msg<B: AsRef<[u8]>>(&mut self, payload: B) -> Result<(u64,usize), CommitLogError> {
+    pub fn append_msg<B: AsRef<[u8]>>(
+        &mut self,
+        payload: B,
+    ) -> Result<(u64, usize), CommitLogError> {
         let mut writer = BufWriter::new(&mut self.data_file);
         let offset = writer.seek(SeekFrom::End(0))?;
         let buf_size = if self.use_compression {
@@ -56,7 +59,7 @@ impl CommitLog {
             zstd_compress(payload, &mut compressed_payload)?;
             writer.write_all(compressed_payload.as_slice())?;
             compressed_payload.len()
-        }else {
+        } else {
             writer.write_all(payload.as_ref())?;
             payload.as_ref().len()
         };
@@ -74,9 +77,9 @@ impl CommitLog {
             let mut uncompressed_payload = Vec::new();
             zstd_decompress(buf.as_slice(), &mut uncompressed_payload)?;
             Ok(uncompressed_payload)
-        }else {
+        } else {
             Ok(buf)
-        }
+        };
     }
 
     pub fn flush(&mut self) -> Result<(), CommitLogError> {
@@ -235,7 +238,7 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
-        let log = CommitLog::new(path,true)?;
+        let log = CommitLog::new(path, true)?;
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -284,12 +287,11 @@ mod tests {
     use crate::commit_log::fold_consecutive_locations;
     use commitlog::message::MessageSet;
     use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
-    use rand::{Rng, thread_rng};
+    use rand::{thread_rng, Rng};
     use std::time::Instant;
 
     use super::*;
     use rand::prelude::SliceRandom;
-
 
     #[test]
     fn test_fold_consecutive_locations_empty() {
@@ -371,8 +373,9 @@ mod tests {
         locations.shuffle(&mut thread_rng());
         let mut timer = Instant::now();
         for location in locations.iter().take(locations.len() / 2) {
-            old_commit_log.read(location.0
-                                , ReadLimit::max_bytes(location.1 + 32)).unwrap();
+            old_commit_log
+                .read(location.0, ReadLimit::max_bytes(location.1 + 32))
+                .unwrap();
         }
         println!(
             "Old CommitLog Read [{}] items Took {}ms",
@@ -380,12 +383,11 @@ mod tests {
             timer.elapsed().as_millis()
         );
 
-
         locations = Vec::new();
         timer = Instant::now();
         for msg in &messages {
             let out = new_commit_log.append_msg(msg).unwrap();
-            locations.push(Location(out.0,out.1));
+            locations.push(Location(out.0, out.1));
         }
         println!(
             "New CommitLog Write [{}] items Took {}ms",
@@ -395,8 +397,7 @@ mod tests {
         locations.shuffle(&mut thread_rng());
         let mut timer = Instant::now();
         for location in locations.iter().take(locations.len() / 2) {
-           new_commit_log.read(location.0
-           , location.1).unwrap();
+            new_commit_log.read(location.0, location.1).unwrap();
         }
         println!(
             "New CommitLog Read [{}] items Took {}ms",
@@ -446,8 +447,9 @@ mod tests {
         locations.shuffle(&mut thread_rng());
         let mut timer = Instant::now();
         for location in locations.iter().take(locations.len() / 2) {
-            old_commit_log.read(location.0
-                                , ReadLimit::max_bytes(location.1 + 32)).unwrap();
+            old_commit_log
+                .read(location.0, ReadLimit::max_bytes(location.1 + 32))
+                .unwrap();
         }
         println!(
             "Old CommitLog Read [{}] items Took {}ms",
@@ -455,12 +457,11 @@ mod tests {
             timer.elapsed().as_millis()
         );
 
-
         locations = Vec::new();
         timer = Instant::now();
         for msg in &messages {
             let out = new_commit_log.append_msg(msg).unwrap();
-            locations.push(Location(out.0,out.1));
+            locations.push(Location(out.0, out.1));
         }
         println!(
             "New CommitLog Write [{}] items Took {}ms",
@@ -470,8 +471,7 @@ mod tests {
         locations.shuffle(&mut thread_rng());
         let timer = Instant::now();
         for location in locations.iter().take(locations.len() / 2) {
-            new_commit_log.read(location.0
-                                , location.1).unwrap();
+            new_commit_log.read(location.0, location.1).unwrap();
         }
         println!(
             "New CommitLog Read [{}] items Took {}ms",
