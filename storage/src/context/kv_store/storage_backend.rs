@@ -1,10 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::merkle_storage::{hash_entry, Entry};
 use crate::persistent::database::DBError;
-use crate::persistent::database::KeyValueStoreBackend;
-use crate::MerkleStorage;
+use crate::persistent::KeyValueStoreBackend;
 use blake2::digest::InvalidOutputSize;
 use crypto::hash::FromBytesError;
 use crypto::hash::HashType;
@@ -16,7 +14,9 @@ use std::collections::HashSet;
 use std::mem;
 use std::sync::PoisonError;
 
-use crate::merkle_storage::{ContextValue, EntryHash};
+use crate::context::merkle::hash::{hash_entry, EntryHash, HashingError};
+use crate::context::merkle::Entry;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 
 pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
@@ -42,7 +42,7 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
 /// helper function for fetching and deserializing entry from the store
 pub fn fetch_entry_from_store(
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     hash: EntryHash,
 ) -> Result<Entry, StorageBackendError> {
     match store.get(&hash)? {
@@ -56,7 +56,7 @@ pub fn fetch_entry_from_store(
 pub fn collect_hashes_recursively(
     entry: &Entry,
     cache: HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
 ) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, StorageBackendError> {
     let mut entries = HashSet::new();
     let mut c = cache;
@@ -69,7 +69,7 @@ pub fn collect_hashes(
     entry: &Entry,
     batch: &mut HashSet<EntryHash>,
     cache: &mut HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
 ) -> Result<(), StorageBackendError> {
     batch.insert(hash_entry(entry)?);
 
@@ -127,8 +127,10 @@ pub enum StorageBackendError {
     LockError { reason: String },
     #[fail(display = "Entry not found in store: {:?}", hash)]
     EntryNotFound { hash: String },
+    #[fail(display = "Failed to convert hash into string: {}", error)]
+    HashToStringError { error: FromBytesError },
     #[fail(display = "Failed to encode hash: {}", error)]
-    HashError { error: FromBytesError },
+    HashingError { error: HashingError },
     #[fail(display = "Invalid output size")]
     InvalidOutputSize,
     #[fail(display = "Expected value instead of `None` for {}", _0)]
@@ -175,13 +177,19 @@ impl<T> From<PoisonError<T>> for StorageBackendError {
 
 impl From<FromBytesError> for StorageBackendError {
     fn from(error: FromBytesError) -> Self {
-        StorageBackendError::HashError { error }
+        StorageBackendError::HashToStringError { error }
     }
 }
 
 impl From<InvalidOutputSize> for StorageBackendError {
     fn from(_: InvalidOutputSize) -> Self {
         StorageBackendError::InvalidOutputSize
+    }
+}
+
+impl From<HashingError> for StorageBackendError {
+    fn from(error: HashingError) -> Self {
+        Self::HashingError { error }
     }
 }
 

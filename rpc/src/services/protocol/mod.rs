@@ -15,8 +15,8 @@ use std::convert::{TryFrom, TryInto};
 use failure::{bail, format_err, Error, Fail};
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
+use storage::context::merkle::merkle_storage::MerkleError;
 use storage::context::ContextApi;
-use storage::merkle_storage::MerkleError;
 use storage::{context_key, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,

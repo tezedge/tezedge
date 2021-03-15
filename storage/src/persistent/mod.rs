@@ -1,37 +1,20 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::Fail;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
 
-use crate::action_file::ActionFileError;
-use crate::KeyValueStoreBackend;
-use crate::StorageError;
 use derive_builder::Builder;
-use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
-pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
-
-use crate::backend::{
-    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
-};
-use crate::storage_backend::StorageBackendError;
-
-use crate::merkle_storage::MerkleStorage;
-use crate::persistent::sequence::Sequences;
-use tezos_context::channel::ContextAction;
+pub use schema::{CommitLogDescriptor, CommitLogSchema};
 
 pub mod codec;
 pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
-
-const PRESERVE_CYCLE_COUNT: usize = 7;
 
 /// Rocksdb database system configuration
 /// - [max_num_of_threads] - if not set, num of cpus is used
@@ -47,73 +30,6 @@ impl Default for DbConfiguration {
     }
 }
 
-/// Open RocksDB database at given path with specified Column Family configurations
-///
-/// # Arguments
-/// * `path` - Path to open RocksDB
-/// * `cfs` - Iterator of Column Family descriptors
-pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = ColumnFamilyDescriptor>,
-{
-    DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
-}
-
-/// Create default database configuration options,
-/// based on recommended setting: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-fn default_kv_options(cfg: &DbConfiguration) -> Options {
-    // default db options
-    let mut db_opts = Options::default();
-    db_opts.create_missing_column_families(true);
-    db_opts.create_if_missing(true);
-
-    // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-    db_opts.set_bytes_per_sync(1048576);
-    db_opts.set_level_compaction_dynamic_level_bytes(true);
-    db_opts.set_max_background_jobs(6);
-    db_opts.enable_statistics();
-    db_opts.set_report_bg_io_stats(true);
-
-    // resolve thread count to use
-    let num_of_threads = match cfg.max_threads {
-        Some(num) => std::cmp::min(num, num_cpus::get()),
-        None => num_cpus::get(),
-    };
-    // rocksdb default is 1, so we increase only, if above 1
-    if num_of_threads > 1 {
-        db_opts.increase_parallelism(num_of_threads as i32);
-    }
-
-    db_opts
-}
-
-/// Create default database configuration options,
-/// based on recommended setting:
-///     https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-///     https://rocksdb.org/blog/2019/03/08/format-version-4.html
-pub fn default_table_options(cache: &Cache) -> Options {
-    // default db options
-    let mut db_opts = Options::default();
-
-    // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-    db_opts.set_level_compaction_dynamic_level_bytes(true);
-
-    // block table options
-    let mut table_options = BlockBasedOptions::default();
-    table_options.set_block_cache(cache);
-    table_options.set_block_size(16 * 1024);
-    table_options.set_cache_index_and_filter_blocks(true);
-    table_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
-
-    // set format_version 4 https://rocksdb.org/blog/2019/03/08/format-version-4.html
-    table_options.set_format_version(4);
-    table_options.set_index_block_restart_interval(16);
-
-    db_opts.set_block_based_table_factory(&table_options);
-
-    db_opts
-}
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
@@ -124,136 +40,106 @@ where
     CommitLogs::new(path, cfs)
 }
 
-/// Groups all components required for correct permanent storage functioning
-#[derive(Clone)]
-pub struct PersistentStorage {
-    /// key-value store for operational database
-    db: Arc<DB>,
-    /// key-value store for context (used by merkle)
-    db_context: Arc<DB>,
-    /// context actions store
-    db_context_actions: Arc<DB>,
-    /// commit log store for storing plain block header data
-    clog: Arc<CommitLogs>,
-    /// autoincrement  id generators
-    seq: Arc<Sequences>,
-    /// merkle-tree based context storage (uses db_context)
-    merkle: Arc<RwLock<MerkleStorage>>,
+/// This trait extends basic column family by introducing Codec types safety and enforcement
+pub trait KeyValueSchema {
+    type Key: Codec;
+    type Value: Codec;
 }
 
-pub enum StorageType {
-    Database,
-    Context,
-    ContextAction,
+pub trait Flushable {
+    fn flush(&self) -> Result<(), failure::Error>;
 }
 
-impl PersistentStorage {
-    pub fn new(
-        db: Arc<DB>,
-        db_context: Arc<DB>,
-        db_context_actions: Arc<DB>,
-        clog: Arc<CommitLogs>,
-        merkle_backend: KeyValueStoreBackend,
-    ) -> Result<Self, StorageBackendError> {
-        let merkle =
-            match merkle_backend {
-                KeyValueStoreBackend::RocksDB => {
-                    MerkleStorage::new(Box::new(RocksDBBackend::new(db_context.clone())))
-                }
-                KeyValueStoreBackend::InMem => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-                KeyValueStoreBackend::Sled { path } => {
-                    let sled = sled::Config::new().path(path).open()?;
-                    MerkleStorage::new(Box::new(SledBackend::new(sled)))
-                }
-                KeyValueStoreBackend::BTreeMap => {
-                    MerkleStorage::new(Box::new(BTreeMapBackend::new()))
-                }
-                KeyValueStoreBackend::MarkSweepInMem => MerkleStorage::new(Box::new(
-                    MarkSweepGCed::<InMemoryBackend>::new(PRESERVE_CYCLE_COUNT),
-                )),
-                KeyValueStoreBackend::MarkMoveInMem => MerkleStorage::new(Box::new(
-                    MarkMoveGCed::<BTreeMapBackend>::new(PRESERVE_CYCLE_COUNT),
-                )),
-            };
+pub trait Persistable {
+    fn is_persistent(&self) -> bool;
+}
 
-        let seq = Arc::new(Sequences::new(db.clone(), 1000));
-        Ok(Self {
-            clog,
-            db,
-            db_context,
-            db_context_actions,
-            seq,
-            merkle: Arc::new(RwLock::new(merkle)),
-        })
-    }
+/// Provides information if backend can be opened for multi-instance access
+pub trait MultiInstanceable {
+    fn supports_multiple_opened_instances(&self) -> bool;
 
-    #[inline]
-    pub fn kv(&self, storage: StorageType) -> Arc<DB> {
-        match storage {
-            StorageType::Context => self.db_context.clone(),
-            StorageType::ContextAction => self.db_context_actions.clone(),
-            StorageType::Database => self.db.clone(),
-        }
-    }
-
-    #[inline]
-    pub fn clog(&self) -> Arc<CommitLogs> {
-        self.clog.clone()
-    }
-
-    #[inline]
-    pub fn seq(&self) -> Arc<Sequences> {
-        self.seq.clone()
-    }
-
-    #[inline]
-    pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
-        self.merkle.clone()
-    }
-
-    pub fn flush_dbs(&mut self) {
-        let clog = self.clog.flush();
-        let db = self.db.flush();
-        let db_context = self.db_context.flush();
-        let db_context_actions = self.db_context_actions.flush();
-
-        if clog.is_err() || db.is_err() || db_context.is_err() || db_context_actions.is_err() {
-            println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, kv_context: {:?}, kv_context_actions: {:?}",
-                clog, db, db_context, db_context_actions
-            );
+    // TODO: TE-150 - real support mutliprocess
+    fn sync_with_primary(&self) -> Result<(), MultiInstanceableSyncError> {
+        if self.supports_multiple_opened_instances() {
+            Err(MultiInstanceableSyncError::new(
+                "Not implemented yet, please implement correctly!".to_string(),
+            ))
+        } else {
+            Err(MultiInstanceableSyncError::new(
+                "Not supported - supports_multiple_opened_instances is false".to_string(),
+            ))
         }
     }
 }
 
-impl Drop for PersistentStorage {
-    fn drop(&mut self) {
-        self.flush_dbs();
+#[derive(Debug, Clone)]
+pub struct MultiInstanceableSyncError(String);
+
+impl MultiInstanceableSyncError {
+    pub fn new(error_message: String) -> Self {
+        MultiInstanceableSyncError(error_message)
     }
 }
 
-#[derive(Debug, Fail)]
-pub enum ActionRecordError {
-    #[fail(display = "ActionFileError Error: {}", error)]
-    ActionFileError { error: ActionFileError },
-    #[fail(display = "Missing actions for block {:?}.", hash)]
-    MissingActions { hash: String },
-}
+/// Custom trait to unify any kv-store schema access
+pub trait KeyValueStoreBackend<S: KeyValueSchema> {
+    /// Insert new key value pair into the database.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    /// * `value` - Value to be inserted associated with given key, specified by schema
+    fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
-impl From<ActionFileError> for ActionRecordError {
-    fn from(error: ActionFileError) -> Self {
-        ActionRecordError::ActionFileError { error }
+    /// Delete existing value associated with given key from the database.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    fn delete(&self, key: &S::Key) -> Result<(), DBError>;
+
+    /// Delete existing value associated with given key from the database.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    fn try_delete(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
+        let v = self.get(key)?;
+        if v.is_some() {
+            self.delete(key)?;
+        }
+        Ok(v)
     }
-}
 
-pub trait ActionRecorder {
-    fn record(&mut self, action: &ContextAction) -> Result<(), StorageError>;
-}
+    /// Insert key value pair into the database, overriding existing value if exists.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    /// * `value` - Value to be inserted associated with given key, specified by schema
+    fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
 
-pub struct NoRecorder {}
+    /// Read value associated with given key, if exists.
+    ///
+    /// # Arguments
+    /// * `key` - Value of key specified by schema
+    fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
 
-impl ActionRecorder for NoRecorder {
-    fn record(&mut self, _action: &ContextAction) -> Result<(), StorageError> {
-        Ok(())
-    }
+    /// Check, if database contains given key
+    ///
+    /// # Arguments
+    /// * `key` - Key (specified by schema), to be checked for existence
+    fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
+
+    /// Removes every element that predicate(elem) evaluates to false
+    ///
+    /// # Arguments
+    /// * `predicate` - functor used for assessment
+    fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
+
+    /// Write batch into DB atomically
+    ///
+    /// # Arguments
+    /// * `batch` - WriteBatch containing all batched writes to be written to DB
+    fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), DBError>;
+
+    /// Return memory usage statistics
+    ///
+    fn total_get_mem_usage(&self) -> Result<usize, DBError>;
 }

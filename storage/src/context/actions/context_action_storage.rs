@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
 
 use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform, DB};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
@@ -19,14 +19,15 @@ use crypto::hash::{
 pub use tezos_context::channel::{get_end_time, get_start_time, get_time, ContextAction};
 use tezos_messages::base::signature_public_key_hash::{ConversionError, SignaturePublicKeyHash};
 
+use crate::context::actions::{ActionRecorder, ActionRecorderError};
+use crate::num_from_slice;
 use crate::persistent::codec::range_from_idx_len;
-use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::sequence::{SequenceGenerator, SequenceNumber, Sequences};
 use crate::persistent::{
-    default_table_options, ActionRecorder, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
-    KeyValueStoreWithSchema, PersistentStorage, SchemaError,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
 use crate::StorageError;
-use crate::{num_from_slice, persistent::StorageType};
 
 pub enum ContextHashType {
     Block,
@@ -68,10 +69,11 @@ pub type ContextActionStorageKV = dyn KeyValueStoreWithSchema<ContextActionStora
 /// Holds all actions received from a tezos context.
 /// Action is created every time a context is modified.
 pub struct ContextActionStorage {
+    kv: Arc<ContextActionStorageKV>,
     context_by_block_index: ContextActionByBlockHashIndex,
     context_by_contract_index: ContextActionByContractIndex,
     context_by_type_index: ContextActionByTypeIndex,
-    kv: Arc<ContextActionStorageKV>,
+
     generator: Arc<SequenceGenerator>,
     // Used to detect block change. Actions flow by one in order so when the last block changes
     // we can reset the block_action_id (Not persisted)
@@ -81,11 +83,10 @@ pub struct ContextActionStorage {
 }
 
 impl ContextActionStorage {
-    pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        let storage = persistent_storage.kv(StorageType::ContextAction);
+    pub fn new(storage: Arc<DB>, sequences: Arc<Sequences>) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::ContextAction),
-            generator: persistent_storage.seq().generator(Self::name()),
+            kv: storage.clone(),
+            generator: sequences.generator(Self::name()),
             context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
             context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
             context_by_type_index: ContextActionByTypeIndex::new(storage),
@@ -139,6 +140,25 @@ impl ContextActionStorage {
                 self.context_by_contract_index
                     .put(&ContextActionByContractIndexKey::new(contract_address, id))
             })
+    }
+}
+
+/// Holds/manipulates indexes - used for reading
+pub struct ContextActionStorageReader {
+    kv: Arc<ContextActionStorageKV>,
+    context_by_block_index: ContextActionByBlockHashIndex,
+    context_by_contract_index: ContextActionByContractIndex,
+    context_by_type_index: ContextActionByTypeIndex,
+}
+
+impl ContextActionStorageReader {
+    pub fn new(storage: Arc<DB>) -> Self {
+        Self {
+            kv: storage.clone(),
+            context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
+            context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
+            context_by_type_index: ContextActionByTypeIndex::new(storage),
+        }
     }
 
     #[inline]
@@ -232,7 +252,7 @@ impl ContextActionStorage {
 
 impl ActionRecorder for ContextActionStorage {
     #[inline]
-    fn record(&mut self, action: &ContextAction) -> Result<(), StorageError> {
+    fn record(&mut self, action: &ContextAction) -> Result<(), ActionRecorderError> {
         match action {
             ContextAction::Set {
                 block_hash: Some(block_hash),
@@ -269,7 +289,18 @@ impl ActionRecorder for ContextActionStorage {
             | ContextAction::Commit {
                 block_hash: Some(block_hash),
                 ..
-            } => self.put_action(&BlockHash::try_from(&block_hash[..])?, action.clone()),
+            } => {
+                let block_hash = BlockHash::try_from(&block_hash[..]).map_err(|e| {
+                    ActionRecorderError::StoreError {
+                        reason: format!("Failed to decode block_hash, reason: {:?}", e),
+                    }
+                })?;
+                self.put_action(&block_hash, action.clone()).map_err(|e| {
+                    ActionRecorderError::StoreError {
+                        reason: format!("{:?}", e),
+                    }
+                })
+            }
             _ => Ok(()),
         }
     }
@@ -278,7 +309,9 @@ impl ActionRecorder for ContextActionStorage {
 impl KeyValueSchema for ContextActionStorage {
     type Key = SequenceNumber;
     type Value = ContextActionRecordValue;
+}
 
+impl RocksDbKeyValueSchema for ContextActionStorage {
     #[inline]
     fn name() -> &'static str {
         "context_action_storage"
@@ -451,7 +484,9 @@ impl ContextActionByBlockHashIndex {
 impl KeyValueSchema for ContextActionByBlockHashIndex {
     type Key = ContextActionByBlockHashKey;
     type Value = ();
+}
 
+impl RocksDbKeyValueSchema for ContextActionByBlockHashIndex {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(
@@ -603,7 +638,9 @@ impl ContextActionByContractIndex {
 impl KeyValueSchema for ContextActionByContractIndex {
     type Key = ContextActionByContractIndexKey;
     type Value = ();
+}
 
+impl RocksDbKeyValueSchema for ContextActionByContractIndex {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(
@@ -757,7 +794,7 @@ pub fn contract_id_to_contract_address_for_index(
                 _ => {
                     return Err(ConversionError::InvalidCurveTag {
                         curve_tag: contract_id.to_string(),
-                    })
+                    });
                 }
             }
             contract_address
@@ -825,7 +862,9 @@ impl ContextActionByTypeIndex {
 impl KeyValueSchema for ContextActionByTypeIndex {
     type Key = ContextActionByTypeIndexKey;
     type Value = ();
+}
 
+impl RocksDbKeyValueSchema for ContextActionByTypeIndex {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(mem::size_of::<

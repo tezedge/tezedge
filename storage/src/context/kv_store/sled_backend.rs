@@ -1,13 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::NotGarbageCollected;
-use crate::MerkleStorage;
-use bytes::Buf;
 use std::io::Read;
 use std::ops::Deref;
+
+use bytes::Buf;
+use failure::Error;
+
+use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use crate::persistent::database::DBError;
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 pub struct SledBackend {
     db: sled::Db,
@@ -16,6 +20,7 @@ pub struct SledBackend {
 
 impl SledBackend {
     pub fn new(db: sled::Db) -> Self {
+        // TODO TE-437 - get rid of deref call
         SledBackend {
             inner: db.deref().clone(),
             db,
@@ -25,7 +30,7 @@ impl SledBackend {
 
 impl NotGarbageCollected for SledBackend {}
 
-impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for SledBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner
@@ -86,7 +91,27 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
             .map(|size| size as usize)
             .map_err(|e| DBError::SledDBError { error: e })
     }
+}
 
+impl Flushable for SledBackend {
+    fn flush(&self) -> Result<(), Error> {
+        match self.db.flush() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(failure::format_err!(
+                "Failed to flush sled db for context, reason: {:?}",
+                e
+            )),
+        }
+    }
+}
+
+impl MultiInstanceable for SledBackend {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for SledBackend {
     fn is_persistent(&self) -> bool {
         true
     }

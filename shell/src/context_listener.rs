@@ -16,10 +16,9 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
-use storage::context::{ContextApi, TezedgeContext, TreeId};
-use storage::merkle_storage::EntryHash;
-use storage::persistent::{ActionRecorder, PersistentStorage};
+use storage::context::{ActionRecorder, ContextApi, EntryHash, TezedgeContext, TreeId};
 use storage::BlockStorage;
+use storage::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 
@@ -204,9 +203,9 @@ fn listen_protocol_events(
                 // TODO TE-440 subscribe to commit event
                 if let ContextAction::Commit { .. } = &action {
                     context.block_applied()?;
-                    if event_count > 0 && event_count % 2048 == 0 {
-                        context.cycle_started()?;
-                    }
+                    // if event_count > 0 && event_count % 2048 == 0 {
+                    context.cycle_started()?;
+                    // }
                 }
             }
             Err(err) => {

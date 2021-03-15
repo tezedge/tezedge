@@ -1,11 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::action_file::*;
-use crate::persistent::{ActionRecordError, ActionRecorder};
-use crate::StorageError;
 use std::path::PathBuf;
+
 use tezos_context::channel::ContextAction;
+
+use crate::context::actions::action_file::{ActionFileError, ActionsFileWriter};
+use crate::context::actions::{ActionRecorder, ActionRecorderError};
 
 pub struct ActionFileStorage {
     file: PathBuf,
@@ -26,21 +27,15 @@ impl ActionFileStorage {
         self.staging.push(action.clone());
     }
 
-    fn store_commit_action(&mut self, action: &ContextAction) -> Result<(), StorageError> {
+    fn store_commit_action(&mut self, action: &ContextAction) -> Result<(), ActionFileError> {
         self.level += 1;
         self.store_single_action(action);
         self.flush_entries_to_file()
     }
 
-    fn flush_entries_to_file(&mut self) -> Result<(), StorageError> {
-        let mut action_file_writer =
-            ActionsFileWriter::new(&self.file).map_err(|e| StorageError::ActionRecordError {
-                error: ActionRecordError::ActionFileError { error: e },
-            })?;
-
-        action_file_writer
-            .update(self.staging.clone())
-            .map_err(ActionRecordError::from)?;
+    fn flush_entries_to_file(&mut self) -> Result<(), ActionFileError> {
+        let mut action_file_writer = ActionsFileWriter::new(&self.file)?;
+        action_file_writer.update(self.staging.clone())?;
         self.staging.clear();
         Ok(())
     }
@@ -63,7 +58,10 @@ pub fn get_tree_action(action: &ContextAction) -> String {
 }
 
 impl ActionRecorder for ActionFileStorage {
-    fn record(&mut self, context_action: &ContextAction) -> std::result::Result<(), StorageError> {
+    fn record(
+        &mut self,
+        context_action: &ContextAction,
+    ) -> std::result::Result<(), ActionRecorderError> {
         match context_action {
             ContextAction::Set { .. }
             | ContextAction::Copy { .. }
@@ -77,7 +75,11 @@ impl ActionRecorder for ActionFileStorage {
                 self.store_single_action(context_action);
                 Ok(())
             }
-            ContextAction::Commit { .. } => self.store_commit_action(context_action),
+            ContextAction::Commit { .. } => self.store_commit_action(context_action).map_err(|e| {
+                ActionRecorderError::StoreError {
+                    reason: format!("Failed to store action to action file, reason: {:?}", e),
+                }
+            }),
             ContextAction::Shutdown => Ok(()),
         }
     }

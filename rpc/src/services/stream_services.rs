@@ -14,7 +14,7 @@ use tokio::time::{Duration, Instant};
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader};
 
 use crate::helpers::{BlockHeaderInfo, FullBlockInfo};

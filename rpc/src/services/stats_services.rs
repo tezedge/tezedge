@@ -10,12 +10,12 @@ use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
-use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, ContextActionStorage};
+use storage::PersistentStorage;
+use storage::{BlockStorage, BlockStorageReader};
 use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
-use crate::services::dev_services::get_block_actions_by_hash;
+use crate::services::dev_services::{ensure_context_action_storage, get_block_actions_by_hash};
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionTypeStats {
@@ -76,30 +76,27 @@ fn add_action<'a>(
         action_stats.val_length_max = val_len;
     }
 
-    match key {
-        Some(key) => {
-            if let Some(first) = key.get(0) {
-                let action_type = if first == "data" {
-                    if let Some(second) = key.get(1) {
-                        second
-                    } else {
-                        first
-                    }
+    if let Some(key) = key {
+        if let Some(first) = key.get(0) {
+            let action_type = if first == "data" {
+                if let Some(second) = key.get(1) {
+                    second
                 } else {
                     first
-                };
-                let actions_type_stats = action_stats
-                    .action_type_stats
-                    .entry(action_type.clone())
-                    .or_insert(ActionTypeStats {
-                        total_time: 0_f64,
-                        total_actions: 0,
-                    });
-                actions_type_stats.total_time += time;
-                actions_type_stats.total_actions += 1;
+                }
+            } else {
+                first
             };
+            let actions_type_stats = action_stats
+                .action_type_stats
+                .entry(action_type.clone())
+                .or_insert(ActionTypeStats {
+                    total_time: 0_f64,
+                    total_actions: 0,
+                });
+            actions_type_stats.total_time += time;
+            actions_type_stats.total_actions += 1;
         }
-        None => {}
     }
 }
 
@@ -189,7 +186,7 @@ pub(crate) fn compute_storage_stats<'a>(
     from_block: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<StatsResponse<'a>, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     let block_storage = BlockStorage::new(persistent_storage);
     let stats: Mutex<HashMap<&str, ActionStats>> = Mutex::new(HashMap::new());
     let fat_tail: TopN<ContextAction> = TopN::new(100);

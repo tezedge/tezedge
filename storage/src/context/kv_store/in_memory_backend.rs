@@ -1,14 +1,17 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::NotGarbageCollected;
-use crate::storage_backend::StorageBackendStats;
-use crate::MerkleStorage;
-use std::collections::HashMap;
+use failure::Error;
+
+use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::kv_store::storage_backend::StorageBackendStats;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use crate::persistent::database::DBError;
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 #[derive(Default)]
 pub struct HashMapWithStats {
@@ -74,7 +77,7 @@ impl InMemoryBackend {
 
 impl NotGarbageCollected for InMemoryBackend {}
 
-impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for InMemoryBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner
@@ -135,8 +138,73 @@ impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
         let r = self.inner.read()?;
         Ok(r.get_memory_usage().total_as_bytes())
     }
+}
 
+impl Flushable for InMemoryBackend {
+    fn flush(&self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl MultiInstanceable for InMemoryBackend {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for InMemoryBackend {
     fn is_persistent(&self) -> bool {
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::context::kv_store::in_memory_backend::InMemoryBackend;
+    use crate::context::kv_store::storage_backend::size_of_vec;
+    use crate::context::kv_store::test_support::{blob_serialized, entry_hash};
+    use crate::context::EntryHash;
+    use crate::persistent::KeyValueStoreBackend;
+
+    #[test]
+    fn test_memory_consumption_in_memory() {
+        let entry1 = entry_hash(&[1]);
+        let value1 = blob_serialized(vec![1, 2, 3, 3, 5]);
+        let entry2 = entry_hash(&[2]);
+        let value2 = blob_serialized(vec![11, 22, 33]);
+
+        let storage = InMemoryBackend::default();
+        assert_eq!(0, storage.total_get_mem_usage().unwrap());
+
+        // insert first entry
+        storage.put(&entry1, &value1).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value1),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        // change value under key
+        storage.merge(&entry1, &value2).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        storage.put(&entry2, &value2).unwrap();
+        assert_eq!(
+            2 * std::mem::size_of::<EntryHash>() + size_of_vec(&value2) + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        //remove first entry
+        storage.delete(&entry1).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        //remove second entry
+        storage.delete(&entry2).unwrap();
+        assert_eq!(0, storage.total_get_mem_usage().unwrap());
     }
 }

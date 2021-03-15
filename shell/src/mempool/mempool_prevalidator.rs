@@ -24,7 +24,7 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError};
 use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
