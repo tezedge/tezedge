@@ -47,56 +47,56 @@
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::array::TryFromSliceError;
 use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
 use std::hash::Hash;
 
-use blake2::digest::{Update, VariableOutput};
-use blake2::VarBlake2b;
 use crypto::hash::{FromBytesError, HashType};
 use failure::Fail;
 use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::persistent::{default_table_options, BincodeEncoded, KeyValueSchema};
-use crate::storage_backend::{StorageBackend, StorageBackendError};
-use crate::{
-    context::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError},
-    persistent::database::RocksDBStats,
-};
+use crate::context::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError};
 use crate::context::TreeId;
 use crate::merkle_storage_stats::{
     MerkleStorageAction, MerkleStoragePerfReport, MerkleStorageStatistics, StatUpdater,
 };
 use crate::persistent;
 use crate::persistent::database::KeyValueStoreBackend;
-use crate::persistent::BincodeEncoded;
-use crate::persistent::{default_table_options, KeyValueSchema};
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::persistent::{default_table_options, BincodeEncoded, KeyValueSchema};
+use crate::storage_backend::GarbageCollector;
+use crate::storage_backend::StorageBackendError;
 
 pub type ContextKey = Vec<String>;
 pub type ContextValue = Vec<u8>;
 pub use crate::context::hash::EntryHash;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) enum NodeKind {
+// TODO: move to src/context/mod.rs
+// TODO: check Eq, PartialEq because of mark_move_gced.rs -> test_key_reused_exists
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum NodeKind {
     NonLeaf,
     Leaf,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Node {
-    pub(crate) node_kind: NodeKind,
-    pub(crate) entry_hash: EntryHash,
+// TODO: move to src/context/mod.rs
+// TODO: check Eq, PartialEq because of mark_move_gced.rs -> test_key_reused_exists
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Node {
+    pub node_kind: NodeKind,
+    pub entry_hash: EntryHash,
 }
 
+// TODO: move to src/context/mod.rs
+// TODO: check Eq, PartialEq because of mark_move_gced.rs -> test_key_reused_exists
 // Tree must be an ordered structure for consistent hash in hash_tree.
 // The entry names *must* be in lexicographical order, as required by the hashing algorithm.
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead.
-pub(crate) type Tree = im::OrdMap<String, Node>;
+pub type Tree = im::OrdMap<String, Node>;
 
-#[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-pub(crate) struct Commit {
+// TODO: move to src/context/mod.rs
+// TODO: check Eq, PartialEq because of mark_move_gced.rs -> test_key_reused_exists
+#[derive(Debug, Hash, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Commit {
     pub(crate) parent_commit_hash: Option<EntryHash>,
     pub(crate) root_hash: EntryHash,
     pub(crate) time: u64,
@@ -104,8 +104,9 @@ pub(crate) struct Commit {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum Entry {
+// TODO: move to src/context/mod.rs
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+pub enum Entry {
     Tree(Tree),
     Blob(ContextValue),
     Commit(Commit),
@@ -1087,6 +1088,7 @@ mod tests {
     use std::{env, fs};
 
     use super::*;
+    use crate::backend::{MarkMoveGCed, MarkSweepGCed};
 
     /// Open DB at path, used in tests
     fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {

@@ -161,7 +161,8 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
 mod tests {
     use super::*;
     use crate::backend::InMemoryBackend;
-    use crate::merkle_storage::{hash_entry, Entry};
+    use crate::context::hash::hash_entry;
+    use crate::merkle_storage::Entry;
 
     #[test]
     fn test_mark_sweep_gc() {

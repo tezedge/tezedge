@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::merkle_storage::{hash_entry, Entry};
 use crate::persistent::database::DBError;
 use crate::persistent::database::KeyValueStoreBackend;
 use crate::MerkleStorage;
@@ -16,7 +15,8 @@ use std::collections::HashSet;
 use std::mem;
 use std::sync::PoisonError;
 
-use crate::merkle_storage::{ContextValue, EntryHash};
+use crate::context::hash::{hash_entry, EntryHash, HashingError};
+use crate::merkle_storage::{ContextValue, Entry};
 
 pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
@@ -127,8 +127,10 @@ pub enum StorageBackendError {
     LockError { reason: String },
     #[fail(display = "Entry not found in store: {:?}", hash)]
     EntryNotFound { hash: String },
+    #[fail(display = "Failed to convert hash into string: {}", error)]
+    HashToStringError { error: FromBytesError },
     #[fail(display = "Failed to encode hash: {}", error)]
-    HashError { error: FromBytesError },
+    HashingError { error: HashingError },
     #[fail(display = "Invalid output size")]
     InvalidOutputSize,
     #[fail(display = "Expected value instead of `None` for {}", _0)]
@@ -175,13 +177,19 @@ impl<T> From<PoisonError<T>> for StorageBackendError {
 
 impl From<FromBytesError> for StorageBackendError {
     fn from(error: FromBytesError) -> Self {
-        StorageBackendError::HashError { error }
+        StorageBackendError::HashToStringError { error }
     }
 }
 
 impl From<InvalidOutputSize> for StorageBackendError {
     fn from(_: InvalidOutputSize) -> Self {
         StorageBackendError::InvalidOutputSize
+    }
+}
+
+impl From<HashingError> for StorageBackendError {
+    fn from(error: HashingError) -> Self {
+        Self::HashingError { error }
     }
 }
 
