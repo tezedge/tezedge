@@ -101,7 +101,7 @@ steps:
       # just compile all benches
     - cargo bench --no-run -- --nocapture
       # run benches except tezos_messages (they have special step)
-    - cargo bench --workspace --exclude tezos_messages --exclude tezos_interop -- --nocapture
+    - cargo bench --workspace --exclude tezos_messages --exclude networking --exclude tezos_interop -- --nocapture
       # run all other test benches
     - cargo bench --tests -- --nocapture
     # collect binary artefacts
@@ -193,6 +193,9 @@ steps:
     # message_benchmark
     - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
     - cargo bench --bench message_benchmark -- --noplot
+    # stream_benchmark
+    - echo "" && echo "" && echo "...stream_benchmark..." && echo "" && echo ""
+    - cargo bench --bench stream_benchmark -- --noplot
     # interop_benchmark
     - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
     - cargo bench --bench interop_benchmark -- --noplot
@@ -227,6 +230,9 @@ steps:
     # message_benchmark
     - cd /tmp/tezedge-cache/tezedge/tezos/messages
     - cargo bench --bench message_benchmark --no-run
+    # stream_benchmark
+    - cd /tmp/tezedge-cache/tezedge/networking
+    - cargo bench --bench stream_benchmark --no-run
     # interop_benchmark
     - cd /tmp/tezedge-cache/tezedge/tezos/interop
     - cargo bench --bench interop_benchmark --no-run
@@ -409,6 +415,11 @@ steps:
     - cargo bench --bench message_benchmark --no-run
     - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
     - critcmp --export message_benchmark_target_branch_result > /artifacts/message_benchmark_target_branch_result.json
+    # stream_benchmark - target
+    - cd /tmp/tezedge-cache/tezedge/networking
+    - cargo bench --bench stream_benchmark --no-run
+    - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_target_branch_result
+    - critcmp --export stream_benchmark_target_branch_result > /artifacts/stream_benchmark_target_branch_result.json
     # interop_benchmark - target
     - cd /tmp/tezedge-cache/tezedge/tezos/interop
     - cargo bench --bench interop_benchmark --no-run
@@ -429,6 +440,11 @@ steps:
     - cargo bench --bench message_benchmark --no-run
     - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
     - critcmp --export message_benchmark_current_branch_result > /artifacts/message_benchmark_current_branch_result.json
+    # stream_benchmark - current
+    - cd /tmp/tezedge-cache/tezedge/networking
+    - cargo bench --bench stream_benchmark --no-run
+    - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_current_branch_result
+    - critcmp --export stream_benchmark_current_branch_result > /artifacts/stream_benchmark_current_branch_result.json
     # interop_benchmark - current
     - cd /tmp/tezedge-cache/tezedge/tezos/interop
     - cargo bench --bench interop_benchmark --no-run

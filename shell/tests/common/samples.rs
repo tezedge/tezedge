@@ -93,7 +93,7 @@ pub fn read_data_zip(
     HashMap<OperationsForBlocksMessageKey, OperationsForBlocksMessage>,
     TezosEnvironment,
 ) {
-    let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap())
+    let path = Path::new(&env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is not set"))
         .join("tests")
         .join("resources")
         .join(zip_file_name);
@@ -102,19 +102,16 @@ pub fn read_data_zip(
     let mut archive = zip::ZipArchive::new(file).unwrap();
 
     // 1. get requests from files sorted by name
-    let requests_files = archive
+    let requests = archive
         .file_names()
         .filter(|file_name| file_name.starts_with("apply_block_request_"))
         .map(String::from)
         .sorted()
-        .collect_vec();
-    let requests = requests_files
-        .iter()
         .map(|file_name| {
-            let mut file = archive.by_name(file_name).unwrap();
+            let mut file = archive.by_name(&file_name).unwrap();
             let mut writer: Vec<u8> = vec![];
             io::copy(&mut file, &mut writer).unwrap();
-            String::from_utf8(writer).expect("error")
+            String::from_utf8(writer).expect(&format!("error reading entry {}", file_name))
         })
         .collect_vec();
 

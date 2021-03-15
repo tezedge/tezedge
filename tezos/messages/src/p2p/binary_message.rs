@@ -232,6 +232,7 @@ where
 ///
 /// Difference from [`BinaryMessage`] is that it also contains [`CONTENT_LENGTH_FIELD_BYTES`] bytes
 /// of information about how many bytes is the actual encoding.
+#[derive(Debug)]
 pub struct BinaryChunk(Vec<u8>);
 
 impl BinaryChunk {
