@@ -1,11 +1,9 @@
 version: "3"
 
 services:
-
   tezedge-debugger:
     image: simplestakingcom/tezedge-debugger:latest
     privileged: true
-    init: true
     environment:
       - RUST_BACKTRACE=1
     volumes:
