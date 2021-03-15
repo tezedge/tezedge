@@ -15,7 +15,7 @@ pub mod ffi;
 /// ```rust, no_run
 /// use tezos_interop::runtime::OCamlCallResult;
 /// use tezos_interop::runtime;
-/// use ocaml_interop::{ocaml, ocaml_frame, to_ocaml, ToOCaml, FromOCaml, OCamlRuntime};
+/// use ocaml_interop::{ocaml, ToOCaml, FromOCaml, OCamlRuntime};
 ///
 /// ocaml! {
 ///     pub fn echo(value: String) -> String;
@@ -23,11 +23,9 @@ pub mod ffi;
 ///
 /// fn ocaml_fn_echo(arg: String) -> OCamlCallResult<String> {
 ///     runtime::spawn(move |rt: &mut OCamlRuntime| {
-///         ocaml_frame!(rt, (root), {
-///             let value = to_ocaml!(rt, arg, root);
-///             let ocaml_result = echo(rt, value);
-///             String::from_ocaml(ocaml_result)
-///         })
+///         let value = arg.to_boxroot(rt);
+///         let ocaml_result = echo(rt, &value);
+///         ocaml_result.to_rust(rt)
 ///     })
 /// }
 ///
