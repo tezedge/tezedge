@@ -13,7 +13,7 @@ use failure::Fail;
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 
 use crate::merkle_storage::{
-    ContextKey, ContextValue, EntryHash, MerkleError, MerkleStorage, StringTreeEntry,
+    ContextKey, ContextValue, MerkleError, MerkleStorage, StringTreeEntry,
 };
 use crate::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::{BlockStorage, BlockStorageReader, StorageError};

@@ -14,6 +14,7 @@ use blake2::VarBlake2b;
 use failure::Fail;
 use ocaml::ocaml_hash_string;
 
+// TODO: move to src/context/mod.rs
 use crate::merkle_storage::{Commit, ContextValue, Entry, Node, NodeKind, Tree};
 
 pub const HASH_LEN: usize = 32;

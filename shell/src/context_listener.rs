@@ -204,9 +204,9 @@ fn listen_protocol_events(
                 // TODO TE-440 subscribe to commit event
                 if let ContextAction::Commit { .. } = &action {
                     context.block_applied()?;
-                    if event_count > 0 && event_count % 2048 == 0 {
-                        context.cycle_started()?;
-                    }
+                    // if event_count > 0 && event_count % 2048 == 0 {
+                    context.cycle_started()?;
+                    // }
                 }
             }
             Err(err) => {
