@@ -10,7 +10,7 @@ use tezos_api::ffi::{
     RustBytes, TezosRuntimeConfiguration,
 };
 
-use ocaml_interop::{ocaml_frame, to_ocaml, OCamlRuntime, ToOCaml};
+use ocaml_interop::{OCamlRuntime, ToOCaml};
 use tezos_interop::runtime;
 use tezos_interop::{ffi, runtime::OCamlBlockPanic};
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -78,11 +78,9 @@ fn apply_block_request_decoded_roundtrip(
     request: ApplyBlockRequest,
 ) -> Result<(), OCamlBlockPanic> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (root), {
-            let request = to_ocaml!(rt, request, root);
-            let result = tezos_ffi::apply_block_request_decoded_roundtrip(rt, &request);
-            let _response: ApplyBlockResponse = result.to_rust();
-        })
+        let request = request.to_boxroot(rt);
+        let result = tezos_ffi::apply_block_request_decoded_roundtrip(rt, &request);
+        let _response: ApplyBlockResponse = result.to_rust(rt);
     })
 }
 
@@ -112,10 +110,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
 
     let _ignored = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (root), {
-            let ocaml_response = to_ocaml!(rt, response_with_some_forking_data, root);
-            tezos_ffi::setup_benchmark_apply_block_response(rt, ocaml_response);
-        })
+        let ocaml_response = response_with_some_forking_data.to_boxroot(rt);
+        tezos_ffi::setup_benchmark_apply_block_response(rt, &ocaml_response);
     });
 
     c.bench_function("apply_block_request_decoded_roundtrip", |b| {

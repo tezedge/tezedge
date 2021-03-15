@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use std::sync::Once;
 
 use crypto::hash::{ContextHash, ProtocolHash};
-use ocaml_interop::{ocaml_frame, to_ocaml, OCaml, OCamlRuntime, ToOCaml};
+use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
 
 use tezos_api::ffi::*;
 use tezos_api::ocaml_conv::FfiPath;
@@ -128,80 +128,53 @@ pub fn init_protocol_context(
     patch_context: Option<PatchContext>,
 ) -> Result<InitProtocolContextResult, TezosStorageInitError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(
-            rt,
-            (
-                genesis_tuple,
-                protocol_overrides_tuple,
-                configuration,
-                patch_context_tuple,
-                storage_data_dir_root
-            ),
-            {
-                // genesis configuration
-                let genesis_tuple = to_ocaml!(
-                    rt,
-                    (genesis.time, genesis.block, genesis.protocol),
-                    genesis_tuple
-                );
+        // genesis configuration
+        let genesis_tuple = (genesis.time, genesis.block, genesis.protocol).to_boxroot(rt);
 
-                // protocol overrides
-                let protocol_overrides_tuple = to_ocaml!(
-                    rt,
-                    (
-                        protocol_overrides.user_activated_upgrades,
-                        protocol_overrides.user_activated_protocol_overrides,
-                    ),
-                    protocol_overrides_tuple
-                );
-
-                // configuration
-                let configuration = to_ocaml!(
-                    rt,
-                    (commit_genesis, enable_testchain, readonly),
-                    configuration
-                );
-
-                // patch context
-                let patch_context_tuple = to_ocaml!(
-                    rt,
-                    patch_context.map(|pc| (pc.key, pc.json)),
-                    patch_context_tuple
-                );
-
-                let storage_data_dir = to_ocaml!(rt, storage_data_dir, storage_data_dir_root);
-                let result = tezos_ffi::init_protocol_context(
-                    rt,
-                    storage_data_dir,
-                    genesis_tuple,
-                    protocol_overrides_tuple,
-                    configuration,
-                    patch_context_tuple,
-                )
-                .to_result();
-
-                match result {
-                    Ok(result) => {
-                        let (supported_protocol_hashes, genesis_commit_hash): (
-                            Vec<RustBytes>,
-                            Option<RustBytes>,
-                        ) = result.to_rust();
-                        let supported_protocol_hashes = supported_protocol_hashes
-                            .into_iter()
-                            .map(|h| ProtocolHash::try_from(h))
-                            .collect::<Result<_, _>>()?;
-                        let genesis_commit_hash = genesis_commit_hash
-                            .map(|bytes| ContextHash::try_from(bytes.to_vec()))
-                            .map_or(Ok(None), |r| r.map(Some))?;
-                        Ok(InitProtocolContextResult {
-                            supported_protocol_hashes,
-                            genesis_commit_hash,
-                        })
-                    }
-                    Err(e) => Err(TezosStorageInitError::from(e.to_rust::<TezosErrorTrace>())),
-                }
-            }
+        // protocol overrides
+        let protocol_overrides_tuple = (
+            protocol_overrides.user_activated_upgrades,
+            protocol_overrides.user_activated_protocol_overrides,
         )
+            .to_boxroot(rt);
+
+        // configuration
+        let configuration = (commit_genesis, enable_testchain, readonly).to_boxroot(rt);
+
+        // patch context
+        let sandbox_json_patch_context = patch_context.map(|pc| (pc.key, pc.json)).to_boxroot(rt);
+
+        let storage_data_dir = storage_data_dir.to_boxroot(rt);
+        let result = tezos_ffi::init_protocol_context(
+            rt,
+            &storage_data_dir,
+            &genesis_tuple,
+            &protocol_overrides_tuple,
+            &configuration,
+            &sandbox_json_patch_context,
+        );
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(result) => {
+                let (supported_protocol_hashes, genesis_commit_hash): (
+                    Vec<RustBytes>,
+                    Option<RustBytes>,
+                ) = result.to_rust();
+                let supported_protocol_hashes = supported_protocol_hashes
+                    .into_iter()
+                    .map(|h| ProtocolHash::try_from(h))
+                    .collect::<Result<_, _>>()?;
+                let genesis_commit_hash = genesis_commit_hash
+                    .map(|bytes| ContextHash::try_from(bytes.to_vec()))
+                    .map_or(Ok(None), |r| r.map(Some))?;
+                Ok(InitProtocolContextResult {
+                    supported_protocol_hashes,
+                    genesis_commit_hash,
+                })
+            }
+            Err(e) => Err(TezosStorageInitError::from(e.to_rust::<TezosErrorTrace>())),
+        }
     })
     .unwrap_or_else(|p| {
         Err(TezosStorageInitError::InitializeError {
@@ -217,40 +190,34 @@ pub fn genesis_result_data(
     genesis_max_operations_ttl: u16,
 ) -> Result<CommitGenesisResult, GetDataError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(
-            rt,
-            (context_hash_root, chain_id_root, protocol_hash_root),
-            {
-                let context_hash = to_ocaml!(rt, context_hash, context_hash_root);
-                let chain_id = to_ocaml!(rt, chain_id, chain_id_root);
-                let protocol_hash = to_ocaml!(rt, protocol_hash, protocol_hash_root);
-                let genesis_max_operations_ttl = OCaml::of_i32(genesis_max_operations_ttl as i32);
+        let context_hash = context_hash.to_boxroot(rt);
+        let chain_id = chain_id.to_boxroot(rt);
+        let protocol_hash = protocol_hash.to_boxroot(rt);
+        let genesis_max_operations_ttl = OCaml::of_i32(genesis_max_operations_ttl as i32);
 
-                let result = tezos_ffi::genesis_result_data(
-                    rt,
-                    context_hash,
-                    chain_id,
-                    protocol_hash,
-                    &genesis_max_operations_ttl,
-                )
-                .to_result();
-                match result {
-                    Ok(result) => {
-                        let (
-                            block_header_proto_json,
-                            block_header_proto_metadata_json,
-                            operations_proto_metadata_json,
-                        ) = result.to_rust();
-                        Ok(CommitGenesisResult {
-                            block_header_proto_json,
-                            block_header_proto_metadata_json,
-                            operations_proto_metadata_json,
-                        })
-                    }
-                    Err(e) => Err(GetDataError::from(e.to_rust::<TezosErrorTrace>())),
-                }
+        let result = tezos_ffi::genesis_result_data(
+            rt,
+            &context_hash,
+            &chain_id,
+            &protocol_hash,
+            &genesis_max_operations_ttl,
+        );
+        let result = rt.get(&result).to_result();
+        match result {
+            Ok(result) => {
+                let (
+                    block_header_proto_json,
+                    block_header_proto_metadata_json,
+                    operations_proto_metadata_json,
+                ) = result.to_rust();
+                Ok(CommitGenesisResult {
+                    block_header_proto_json,
+                    block_header_proto_metadata_json,
+                    operations_proto_metadata_json,
+                })
             }
-        )
+            Err(e) => Err(GetDataError::from(e.to_rust::<TezosErrorTrace>())),
+        }
     })
     .unwrap_or_else(|p| {
         Err(GetDataError::ReadError {
@@ -262,14 +229,13 @@ pub fn genesis_result_data(
 macro_rules! call_helper {
     (tezos_ffi::$f:ident($request:ident)) => {
         runtime::execute(move |rt: &mut OCamlRuntime| {
-            ocaml_frame!(rt, (request_root), {
-                let ocaml_request = to_ocaml!(rt, $request, request_root);
-                let result = tezos_ffi::$f(rt, ocaml_request).to_result();
-                match result {
-                    Ok(response) => Ok(response.to_rust()),
-                    Err(e) => Err(CallError::from(e.to_rust::<TezosErrorTrace>())),
-                }
-            })
+            let ocaml_request = $request.to_boxroot(rt);
+            let result = tezos_ffi::$f(rt, &ocaml_request);
+            let result = rt.get(&result).to_result();
+            match result {
+                Ok(response) => Ok(response.to_rust()),
+                Err(e) => Err(CallError::from(e.to_rust::<TezosErrorTrace>())),
+            }
         })
         .unwrap_or_else(|p| {
             Err(CallError::FailedToCall {
@@ -310,13 +276,11 @@ pub fn call_protocol_rpc(
     request: ProtocolRpcRequest,
 ) -> Result<ProtocolRpcResponse, ProtocolRpcError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (request_root), {
-            let request = to_ocaml!(rt, request, request_root);
-            let result = tezos_ffi::call_protocol_rpc(rt, request);
-            // TODO: should call_protocol_rpc be Result<_, OCamlErrorTrace> instead?
-            // looks like not, but verify and add a catch-all for unhandled cases
-            result.to_rust()
-        })
+        let request = request.to_boxroot(rt);
+        let result = tezos_ffi::call_protocol_rpc(rt, &request);
+        // TODO: should call_protocol_rpc be Result<_, OCamlErrorTrace> instead?
+        // looks like not, but verify and add a catch-all for unhandled cases
+        rt.get(&result).to_rust()
     })
     .unwrap_or_else(|p| Err(ProtocolRpcError::FailedToCallProtocolRpc(p.to_string())))
 }
@@ -338,44 +302,43 @@ pub fn helpers_preapply_block(
 /// Call compute path
 pub fn compute_path(request: ComputePathRequest) -> Result<ComputePathResponse, CallError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (operations_root), {
-            let operations = to_ocaml!(rt, request.operations, operations_root);
-            let result = tezos_ffi::compute_path(rt, operations).to_result();
-            match result {
-                Ok(response) => {
-                    let operations_hashes_path: Vec<FfiPath> = response.to_rust();
-                    let operations_hashes_path = operations_hashes_path
-                        .into_iter()
-                        .map(|path| {
-                            let mut res = Vec::new();
-                            let mut path = path;
-                            loop {
-                                use tezos_messages::p2p::encoding::operations_for_blocks::{
-                                    Path, PathItem,
-                                };
-                                match path {
-                                    FfiPath::Right(right) => {
-                                        res.push(PathItem::right(right.left));
-                                        path = right.path;
-                                    }
-                                    FfiPath::Left(left) => {
-                                        res.push(PathItem::left(left.right));
-                                        path = left.path;
-                                    }
-                                    FfiPath::Op => {
-                                        return Path(res);
-                                    }
+        let operations = request.operations.to_boxroot(rt);
+        let result = tezos_ffi::compute_path(rt, &operations);
+        let result = rt.get(&result).to_result();
+        match result {
+            Ok(response) => {
+                let operations_hashes_path: Vec<FfiPath> = response.to_rust();
+                let operations_hashes_path = operations_hashes_path
+                    .into_iter()
+                    .map(|path| {
+                        let mut res = Vec::new();
+                        let mut path = path;
+                        loop {
+                            use tezos_messages::p2p::encoding::operations_for_blocks::{
+                                Path, PathItem,
+                            };
+                            match path {
+                                FfiPath::Right(right) => {
+                                    res.push(PathItem::right(right.left));
+                                    path = right.path;
+                                }
+                                FfiPath::Left(left) => {
+                                    res.push(PathItem::left(left.right));
+                                    path = left.path;
+                                }
+                                FfiPath::Op => {
+                                    return Path(res);
                                 }
                             }
-                        })
-                        .collect();
-                    Ok(ComputePathResponse {
-                        operations_hashes_path,
+                        }
                     })
-                }
-                Err(e) => Err(CallError::from(e.to_rust::<TezosErrorTrace>())),
+                    .collect();
+                Ok(ComputePathResponse {
+                    operations_hashes_path,
+                })
             }
-        })
+            Err(e) => Err(CallError::from(e.to_rust::<TezosErrorTrace>())),
+        }
     })
     .unwrap_or_else(|p| {
         Err(CallError::FailedToCall {
@@ -391,19 +354,17 @@ pub fn decode_context_data(
     data: RustBytes,
 ) -> Result<Option<String>, ContextDataError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (protocol_hash_root, key_list_root, data_root), {
-            let protocol_hash = to_ocaml!(rt, protocol_hash, protocol_hash_root);
-            let key_list = to_ocaml!(rt, key, key_list_root);
-            let data = to_ocaml!(rt, data, data_root);
+        let protocol_hash = protocol_hash.to_boxroot(rt);
+        let key_list = key.to_boxroot(rt);
+        let data = data.to_boxroot(rt);
 
-            let result =
-                tezos_ffi::decode_context_data(rt, protocol_hash, key_list, data).to_result();
+        let result = tezos_ffi::decode_context_data(rt, &protocol_hash, &key_list, &data);
+        let result = rt.get(&result).to_result();
 
-            match result {
-                Ok(decoded_data) => Ok(decoded_data.to_rust()),
-                Err(e) => Err(ContextDataError::from(e.to_rust::<TezosErrorTrace>())),
-            }
-        })
+        match result {
+            Ok(decoded_data) => Ok(decoded_data.to_rust()),
+            Err(e) => Err(ContextDataError::from(e.to_rust::<TezosErrorTrace>())),
+        }
     })
     .unwrap_or_else(|p| {
         Err(ContextDataError::DecodeError {
@@ -417,19 +378,17 @@ pub fn assert_encoding_for_protocol_data(
     protocol_data: RustBytes,
 ) -> Result<(), ProtocolDataError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (protocol_hash_root, data_root), {
-            let protocol_hash = ProtocolHash::try_from(protocol_hash)?;
-            let protocol_hash = to_ocaml!(rt, protocol_hash, protocol_hash_root);
-            let data = to_ocaml!(rt, protocol_data, data_root);
+        let protocol_hash = ProtocolHash::try_from(protocol_hash)?;
+        let protocol_hash = protocol_hash.to_boxroot(rt);
+        let data = protocol_data.to_boxroot(rt);
 
-            let result =
-                tezos_ffi::assert_encoding_for_protocol_data(rt, protocol_hash, data).to_result();
+        let result = tezos_ffi::assert_encoding_for_protocol_data(rt, &protocol_hash, &data);
+        let result = rt.get(&result).to_result();
 
-            match result {
-                Ok(_) => Ok(()),
-                Err(e) => Err(ProtocolDataError::from(e.to_rust::<TezosErrorTrace>())),
-            }
-        })
+        match result {
+            Ok(_) => Ok(()),
+            Err(e) => Err(ProtocolDataError::from(e.to_rust::<TezosErrorTrace>())),
+        }
     })
     .unwrap_or_else(|p| {
         Err(ProtocolDataError::DecodeError {

@@ -5,7 +5,7 @@ extern crate test;
 
 use std::{convert::TryFrom, env, thread};
 
-use ocaml_interop::{ocaml_frame, to_ocaml, FromOCaml, OCaml, OCamlRuntime, ToOCaml};
+use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ChainId};
@@ -74,12 +74,10 @@ roundtrip_test!(test_chain_id_roundtrip_calls, test_chain_id_roundtrip, 1);
 fn test_chain_id_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let chain_id: RustBytes = hex::decode(CHAIN_ID)?;
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (chain_id_root), {
-            // sent bytes to ocaml
-            let chain_id = to_ocaml!(rt, chain_id, chain_id_root);
-            let result = tezos_ffi::chain_id_roundtrip(rt, chain_id).to_rust();
-            assert_eq_hash(CHAIN_ID, result);
-        })
+        // sent bytes to ocaml
+        let chain_id = chain_id.to_boxroot(rt);
+        let result = tezos_ffi::chain_id_roundtrip(rt, &chain_id).to_rust(rt);
+        assert_eq_hash(CHAIN_ID, result);
     });
 
     assert!(
@@ -103,12 +101,10 @@ fn test_block_header_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let header: RustBytes = hex::decode(HEADER)?;
 
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (header_root), {
-            // sent bytes to ocaml
-            let header = to_ocaml!(rt, header, header_root);
-            let result = tezos_ffi::block_header_roundtrip(rt, header).to_rust();
-            assert_eq_hash_and_header(HEADER_HASH, HEADER, result);
-        })
+        // sent bytes to ocaml
+        let header = header.to_boxroot(rt);
+        let result = tezos_ffi::block_header_roundtrip(rt, &header).to_rust(rt);
+        assert_eq_hash_and_header(HEADER_HASH, HEADER, result);
     });
 
     assert!(
@@ -134,17 +130,15 @@ fn test_block_header_struct_roundtrip(iteration: i32) -> Result<(), failure::Err
     let expected_chain_id = chain_id_from_block_hash(&expected_block_hash)?;
 
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (header_root), {
-            // send header to ocaml
-            let header = to_ocaml!(rt, FfiBlockHeader::from(&header), header_root);
-            let (block_hash, chain_id) =
-                tezos_ffi::block_header_struct_roundtrip(rt, header).to_rust::<(String, String)>();
+        // send header to ocaml
+        let header = FfiBlockHeader::from(&header).to_boxroot(rt);
+        let (block_hash, chain_id) =
+            tezos_ffi::block_header_struct_roundtrip(rt, &header).to_rust::<(String, String)>(rt);
 
-            let block_hash: BlockHash = BlockHash::try_from(block_hash.as_bytes()).unwrap();
-            let chain_id: ChainId = ChainId::try_from(chain_id.as_bytes()).unwrap();
+        let block_hash: BlockHash = BlockHash::try_from(block_hash.as_bytes()).unwrap();
+        let chain_id: ChainId = ChainId::try_from(chain_id.as_bytes()).unwrap();
 
-            (block_hash, chain_id)
-        })
+        (block_hash, chain_id)
     });
 
     match result {
@@ -172,15 +166,13 @@ fn test_block_header_with_hash_roundtrip(iteration: i32) -> Result<(), failure::
     let header: RustBytes = hex::decode(HEADER)?;
 
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (header_hash_root, header_root), {
-            // sent bytes to ocaml
-            let header_hash = to_ocaml!(rt, header_hash, header_hash_root);
-            let header = to_ocaml!(rt, header, header_root);
+        // sent bytes to ocaml
+        let header_hash = header_hash.to_boxroot(rt);
+        let header = header.to_boxroot(rt);
 
-            let result = tezos_ffi::block_header_with_hash_roundtrip(rt, header_hash, header);
-            let result = <(String, String)>::from_ocaml(result);
-            assert_eq_hash_and_header(HEADER_HASH, HEADER, result);
-        })
+        let result = tezos_ffi::block_header_with_hash_roundtrip(rt, &header_hash, &header)
+            .to_rust::<(String, String)>(rt);
+        assert_eq_hash_and_header(HEADER_HASH, HEADER, result);
     });
 
     assert!(
@@ -200,15 +192,12 @@ fn test_operation_roundtrip(iteration: i32) -> Result<(), failure::Error> {
     let operation: RustBytes = hex::decode(OPERATION)?;
 
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (operation_root), {
-            // sent bytes to ocaml
-            let operation = to_ocaml!(rt, operation, operation_root);
-            let result = tezos_ffi::operation_roundtrip(rt, operation);
+        // sent bytes to ocaml
+        let operation = operation.to_boxroot(rt);
+        let result = tezos_ffi::operation_roundtrip(rt, &operation).to_rust::<String>(rt);
 
-            // check
-            let result = String::from_ocaml(result);
-            assert_eq!(OPERATION, hex::encode(result).as_str());
-        })
+        // check
+        assert_eq!(OPERATION, hex::encode(result).as_str());
     });
 
     assert!(
@@ -246,21 +235,19 @@ fn test_operations_list_list_roundtrip(
     expected_list_0_count: usize,
 ) -> Result<(), failure::Error> {
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(rt, (operations_root), {
-            let empty_vec = vec![];
-            let operations: Vec<_> = operations
-                .iter()
-                .map(|op| op.as_ref().unwrap_or(&empty_vec))
-                .collect();
-            let operations_list_list_ocaml = to_ocaml!(rt, operations, operations_root);
+        let empty_vec = vec![];
+        let operations: Vec<_> = operations
+            .iter()
+            .map(|op| op.as_ref().unwrap_or(&empty_vec).clone())
+            .collect();
+        let operations_list_list_ocaml = operations.to_boxroot(rt);
 
-            // sent bytes to ocaml
-            let result = tezos_ffi::operations_list_list_roundtrip(rt, operations_list_list_ocaml);
+        // sent bytes to ocaml
+        let result = tezos_ffi::operations_list_list_roundtrip(rt, &operations_list_list_ocaml);
 
-            // check
-            let result = result.to_rust();
-            assert_eq_operations(result, expected_list_count, expected_list_0_count);
-        })
+        // check
+        let result = result.to_rust(rt);
+        assert_eq_operations(result, expected_list_count, expected_list_0_count);
     });
 
     assert!(
@@ -356,35 +343,23 @@ fn call_to_send_context_events(
     data: RustBytes,
 ) {
     let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        ocaml_frame!(
-            rt,
-            (
-                context_hash_root,
-                block_header_hash_root,
-                operation_hash_root,
-                key_root,
-                data_root,
-            ),
-            {
-                // sent bytes to ocaml
-                let count = OCaml::of_i32(count);
-                let context_hash = to_ocaml!(rt, context_hash, context_hash_root);
-                let block_header_hash = to_ocaml!(rt, block_header_hash, block_header_hash_root);
-                let operation_hash = to_ocaml!(rt, operation_hash, operation_hash_root);
-                let key = to_ocaml!(rt, key, key_root);
-                let data = to_ocaml!(rt, data, data_root);
+        // sent bytes to ocaml
+        let count = OCaml::of_i32(count);
+        let context_hash = context_hash.to_boxroot(rt);
+        let block_header_hash = block_header_hash.to_boxroot(rt);
+        let operation_hash = operation_hash.to_boxroot(rt);
+        let key = key.to_boxroot(rt);
+        let data = data.to_boxroot(rt);
 
-                tezos_ffi::context_callback_roundtrip(
-                    rt,
-                    &count,
-                    context_hash,
-                    block_header_hash,
-                    operation_hash,
-                    key,
-                    data,
-                );
-            }
-        )
+        tezos_ffi::context_callback_roundtrip(
+            rt,
+            &count,
+            &context_hash,
+            &block_header_hash,
+            &operation_hash,
+            &key,
+            &data,
+        );
     });
 
     // check
