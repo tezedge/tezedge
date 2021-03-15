@@ -291,6 +291,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use fs_extra::error::Error;
     use rand::prelude::SliceRandom;
 
     #[test]
@@ -350,6 +351,12 @@ mod tests {
         let data_size = 10_000;
         let new_commit_log_dir = "./testdir/bench/new_log";
         let old_commit_log_dir = "./testdir/bench/old_log";
+
+        match fs_extra::remove_items(&vec![new_commit_log_dir, old_commit_log_dir]) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
+
         let messages = generate_random_data(data_size, 10_000, 10_900);
         let mut options = LogOptions::new(old_commit_log_dir);
         options.message_max_bytes(15_000_000);
@@ -415,81 +422,9 @@ mod tests {
         println!("OldCommitLog {}", old_commit_folder_size);
         println!("NewCommitLog {}", new_commit_folder_size);
 
-        std::fs::remove_dir_all(new_commit_log_dir).unwrap();
-        std::fs::remove_dir_all(old_commit_log_dir).unwrap();
-    }
-
-    #[test]
-    fn compare_with_old_log_compression_disabled() {
-        let data_size = 10_000;
-        let new_commit_log_dir = "./testdir/bench/new_log";
-        let old_commit_log_dir = "./testdir/bench/old_log";
-        let messages = generate_random_data(data_size, 10_000, 10_900);
-        let mut options = LogOptions::new(old_commit_log_dir);
-        options.message_max_bytes(15_000_000);
-        let mut old_commit_log = OldCommitLog::new(options).unwrap();
-        let mut new_commit_log = CommitLog::new(new_commit_log_dir, false).unwrap();
-        let mut locations = Vec::new();
-
-        println!("-------------------------------------------------------");
-        println!("Write Read Benchmark");
-        println!("-------------------------------------------------------");
-        let mut timer = Instant::now();
-        for msg in &messages {
-            let offset = old_commit_log.append_msg(msg).unwrap();
-            locations.push(Location(offset, msg.len()))
-        }
-        println!(
-            "Old CommitLog Write [{}] items Took {}ms",
-            messages.len(),
-            timer.elapsed().as_millis()
-        );
-        locations.shuffle(&mut thread_rng());
-        let mut timer = Instant::now();
-        for location in locations.iter().take(locations.len() / 2) {
-            old_commit_log
-                .read(location.0, ReadLimit::max_bytes(location.1 + 32))
-                .unwrap();
-        }
-        println!(
-            "Old CommitLog Read [{}] items Took {}ms",
-            locations.len() / 2,
-            timer.elapsed().as_millis()
-        );
-
-        locations = Vec::new();
-        timer = Instant::now();
-        for msg in &messages {
-            let out = new_commit_log.append_msg(msg).unwrap();
-            locations.push(Location(out.0, out.1));
-        }
-        println!(
-            "New CommitLog Write [{}] items Took {}ms",
-            messages.len(),
-            timer.elapsed().as_millis()
-        );
-        locations.shuffle(&mut thread_rng());
-        let timer = Instant::now();
-        for location in locations.iter().take(locations.len() / 2) {
-            new_commit_log.read(location.0, location.1).unwrap();
-        }
-        println!(
-            "New CommitLog Read [{}] items Took {}ms",
-            locations.len() / 2,
-            timer.elapsed().as_millis()
-        );
-
-        let old_commit_folder_size =
-            fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
-        let new_commit_folder_size =
-            fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
-        println!("-------------------------------------------------------");
-        println!("Size Benchmark");
-        println!("-------------------------------------------------------");
-        println!("OldCommitLog {}", old_commit_folder_size);
-        println!("NewCommitLog {}", new_commit_folder_size);
-
-        std::fs::remove_dir_all(new_commit_log_dir).unwrap();
-        std::fs::remove_dir_all(old_commit_log_dir).unwrap();
+        match fs_extra::remove_items(&vec![new_commit_log_dir, old_commit_log_dir]) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
     }
 }
