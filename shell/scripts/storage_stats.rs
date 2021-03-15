@@ -334,8 +334,8 @@ fn main() -> Result<(), Error> {
 
     let actions_storage_path = PathBuf::from(params.input.as_str());
 
-    let _ = fs::remove_dir_all(&out_dir);
-    let _ = fs::create_dir(&out_dir);
+    let _ = fs::remove_dir_all(&out_dir)?;
+    let _ = fs::create_dir(&out_dir)?;
 
     let logger = create_logger();
 
@@ -343,7 +343,7 @@ fn main() -> Result<(), Error> {
         "rocksdb" => {
             let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
             let kv = create_key_value_store(&key_value_db_path, &cache);
-            MerkleStorage::new(Box::new(RocksDBBackend::new(kv.clone())))
+            MerkleStorage::new(Box::new(RocksDBBackend::new(kv)))
         }
         "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
         "sled" => {
