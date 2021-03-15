@@ -5,15 +5,13 @@
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
-use rocksdb::Cache;
+use rocksdb::{Cache, DB};
 use serde::{Deserialize, Serialize};
 use slog::{error, info, Logger};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 
 use crypto::{
     base58::FromBase58CheckError,
@@ -33,40 +31,29 @@ pub use crate::block_storage::{
     BlockStorage, BlockStorageReader,
 };
 pub use crate::chain_meta_storage::ChainMetaStorage;
-pub use crate::context_action_storage::{
-    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
-};
+use crate::context::merkle::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
-use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
-use crate::persistent::sequence::SequenceError;
-use crate::persistent::ActionRecordError;
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::sequence::{SequenceError, Sequences};
+use crate::persistent::{
+    CommitLogError, CommitLogs, DBError, Decoder, Encoder, Flushable, SchemaError,
+};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
-pub use action_file_storage::ActionFileStorage;
-use std::str::FromStr;
 
-pub mod action_file;
-pub mod action_file_storage;
-pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod context;
-pub mod context_action_storage;
 pub mod mempool_storage;
-pub mod merkle_storage;
-pub mod merkle_storage_stats;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
-pub mod storage_backend;
 pub mod system_storage;
 
 /// Extension of block header with block hash
@@ -137,8 +124,6 @@ pub enum StorageError {
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError { error: SequenceError },
-    #[fail(display = "Action record error: {}", error)]
-    ActionRecordError { error: ActionRecordError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
     TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
@@ -198,12 +183,6 @@ impl From<FromBytesError> for StorageError {
 impl From<FromBase58CheckError> for StorageError {
     fn from(error: FromBase58CheckError) -> Self {
         StorageError::HashDecodeError { error }
-    }
-}
-
-impl From<ActionRecordError> for StorageError {
-    fn from(error: ActionRecordError) -> Self {
-        StorageError::ActionRecordError { error }
     }
 }
 
@@ -472,55 +451,89 @@ pub fn check_database_compatibility(
     Ok(db_version_ok && chain_id_ok)
 }
 
-#[derive(PartialEq, Debug, Clone, EnumIter)]
-pub enum KeyValueStoreBackend {
-    RocksDB,
-    InMem,
-    Sled { path: PathBuf },
-    BTreeMap,
-    MarkSweepInMem,
-    MarkMoveInMem,
+#[derive(Clone)]
+pub struct PersistentStorage {
+    /// key-value store for operational database
+    db: Arc<DB>,
+    /// commit log store for storing plain block header data
+    clog: Arc<CommitLogs>,
+    /// autoincrement  id generators
+    seq: Arc<Sequences>,
+    /// merkle-tree based context storage
+    merkle: Arc<RwLock<MerkleStorage>>,
+    /// persistent context actions storage
+    merkle_context_actions: Option<Arc<DB>>,
 }
 
-impl KeyValueStoreBackend {
-    pub fn possible_values() -> Vec<&'static str> {
-        let mut possible_values = Vec::new();
-        for sp in KeyValueStoreBackend::iter() {
-            possible_values.extend(sp.supported_values());
+impl PersistentStorage {
+    pub fn new(
+        db: Arc<DB>,
+        clog: Arc<CommitLogs>,
+        seq: Arc<Sequences>,
+        merkle: Arc<RwLock<MerkleStorage>>,
+        merkle_context_actions: Option<Arc<DB>>,
+    ) -> Self {
+        Self {
+            clog,
+            db,
+            seq,
+            merkle,
+            merkle_context_actions,
         }
-        possible_values
     }
 
-    fn supported_values(&self) -> Vec<&'static str> {
-        match self {
-            KeyValueStoreBackend::RocksDB => vec!["rocksdb"],
-            KeyValueStoreBackend::InMem => vec!["inmem"],
-            KeyValueStoreBackend::Sled { .. } => vec!["sled"],
-            KeyValueStoreBackend::BTreeMap => vec!["btree"],
-            KeyValueStoreBackend::MarkMoveInMem => vec!["mark_move"],
-            KeyValueStoreBackend::MarkSweepInMem => vec!["mark_sweep"],
+    #[inline]
+    pub fn db(&self) -> Arc<DB> {
+        self.db.clone()
+    }
+
+    #[inline]
+    pub fn clog(&self) -> Arc<CommitLogs> {
+        self.clog.clone()
+    }
+
+    #[inline]
+    pub fn seq(&self) -> Arc<Sequences> {
+        self.seq.clone()
+    }
+
+    #[inline]
+    pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
+        self.merkle.clone()
+    }
+
+    #[inline]
+    pub fn merkle_context_actions(&self) -> Option<Arc<DB>> {
+        self.merkle_context_actions.clone()
+    }
+
+    pub fn flush_dbs(&mut self) {
+        let clog = self.clog.flush();
+        let db = self.db.flush();
+        let merkle = match self.merkle.write() {
+            Ok(merkle) => merkle.flush(),
+            Err(e) => Err(failure::format_err!(
+                "Failed to write/lock for flush, reason: {:?}",
+                e
+            )),
+        };
+        let merkle_context_actions = match self.merkle_context_actions.as_ref() {
+            Some(merkle_context_actions) => merkle_context_actions.flush(),
+            None => Ok(()),
+        };
+
+        if clog.is_err() || db.is_err() || merkle.is_err() || merkle_context_actions.is_err() {
+            println!(
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, merkle_err: {:?}, merkle_context_actions_err: {:?}",
+                clog, db, merkle, merkle_context_actions
+            );
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ParseKeyValueStoreBackendError(String);
-
-impl FromStr for KeyValueStoreBackend {
-    type Err = ParseKeyValueStoreBackendError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        for sp in KeyValueStoreBackend::iter() {
-            if sp.supported_values().contains(&s.as_str()) {
-                return Ok(sp);
-            }
-        }
-
-        Err(ParseKeyValueStoreBackendError(format!(
-            "Invalid variant name: {}",
-            s
-        )))
+impl Drop for PersistentStorage {
+    fn drop(&mut self) {
+        self.flush_dbs();
     }
 }
 
@@ -533,9 +546,13 @@ pub mod tests_common {
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
+    use crate::context::actions::context_action_storage;
+    use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
+    use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::mempool_storage::MempoolStorage;
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
-    use crate::persistent::*;
+    use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
 
@@ -570,53 +587,68 @@ pub mod tests_common {
             let cfg = DbConfiguration::default();
 
             // create common RocksDB block cache to be shared among column families
-            let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
+            let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
-            let kv = open_kv(
+            // db storage - is used for db and sequences
+            let kv = Arc::new(open_kv(
                 path.join("db"),
                 vec![
-                    block_storage::BlockPrimaryIndex::descriptor(&cache),
-                    block_storage::BlockByLevelIndex::descriptor(&cache),
-                    block_storage::BlockByContextHashIndex::descriptor(&cache),
-                    BlockMetaStorage::descriptor(&cache),
-                    OperationsStorage::descriptor(&cache),
-                    OperationsMetaStorage::descriptor(&cache),
-                    SystemStorage::descriptor(&cache),
-                    Sequences::descriptor(&cache),
-                    MempoolStorage::descriptor(&cache),
-                    ChainMetaStorage::descriptor(&cache),
-                    PredecessorStorage::descriptor(&cache),
+                    block_storage::BlockPrimaryIndex::descriptor(&db_cache),
+                    block_storage::BlockByLevelIndex::descriptor(&db_cache),
+                    block_storage::BlockByContextHashIndex::descriptor(&db_cache),
+                    BlockMetaStorage::descriptor(&db_cache),
+                    OperationsStorage::descriptor(&db_cache),
+                    OperationsMetaStorage::descriptor(&db_cache),
+                    SystemStorage::descriptor(&db_cache),
+                    Sequences::descriptor(&db_cache),
+                    MempoolStorage::descriptor(&db_cache),
+                    ChainMetaStorage::descriptor(&db_cache),
+                    PredecessorStorage::descriptor(&db_cache),
                 ],
                 &cfg,
-            )?;
+            )?);
 
-            let kv_context = open_kv(
+            // context
+            let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
+            let context_kv_store = RocksDBBackend::new(Arc::new(open_kv(
                 path.join("context"),
-                vec![MerkleStorage::descriptor(&cache)],
+                vec![RocksDBBackend::descriptor(&db_context_cache)],
                 &cfg,
-            )?;
+            )?));
+            let merkle = MerkleStorage::new(Box::new(context_kv_store));
 
+            // context actions storage
+            let db_context_actions_cache = Cache::new_lru_cache(16 * 1024 * 1024)?; // 16 MB
             let kv_context_action = open_kv(
                 path.join("context_actions"),
                 vec![
-                    ContextActionStorage::descriptor(&cache),
-                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+                    context_action_storage::ContextActionStorage::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByBlockHashIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByContractIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByTypeIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
                 ],
                 &cfg,
             )?;
+
+            // commit log storage
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
-                    Arc::new(kv),
-                    Arc::new(kv_context),
-                    Arc::new(kv_context_action),
+                    kv.clone(),
                     Arc::new(clog),
-                    KeyValueStoreBackend::RocksDB,
-                )
-                .expect("cannot initialize persistent storage"),
+                    Arc::new(Sequences::new(kv, 1000)),
+                    Arc::new(RwLock::new(merkle)),
+                    Some(Arc::new(kv_context_action)),
+                ),
                 path,
                 remove_on_destroy,
             })

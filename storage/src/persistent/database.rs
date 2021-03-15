@@ -1,17 +1,93 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! This module provides wrapper on RocksDB database.
+//! Everything related to RocksDB should be placed here.
+
 use std::io;
 use std::marker::PhantomData;
+use std::path::Path;
+use std::sync::PoisonError;
 
 use failure::Fail;
-use rocksdb::{DBIterator, Error, WriteBatch, WriteOptions, DB};
+use rocksdb::{
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, DBIterator, Error, Options, WriteBatch,
+    WriteOptions, DB,
+};
 use serde::Serialize;
 
-use crate::persistent::codec::{Decoder, Encoder, SchemaError};
-use crate::persistent::schema::KeyValueSchema;
 use crypto::hash::FromBytesError;
-use std::sync::PoisonError;
+
+use crate::persistent::codec::{Decoder, Encoder, SchemaError};
+use crate::persistent::{DbConfiguration, KeyValueSchema, KeyValueStoreBackend};
+
+/// Open RocksDB database at given path with specified Column Family configurations
+///
+/// # Arguments
+/// * `path` - Path to open RocksDB
+/// * `cfs` - Iterator of Column Family descriptors
+pub fn open_kv<P, I>(path: P, cfs: I, cfg: &DbConfiguration) -> Result<DB, DBError>
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = ColumnFamilyDescriptor>,
+{
+    DB::open_cf_descriptors(&default_kv_options(cfg), path, cfs).map_err(DBError::from)
+}
+
+/// Create default database configuration options,
+/// based on recommended setting: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+fn default_kv_options(cfg: &DbConfiguration) -> Options {
+    // default db options
+    let mut db_opts = Options::default();
+    db_opts.create_missing_column_families(true);
+    db_opts.create_if_missing(true);
+
+    // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+    db_opts.set_bytes_per_sync(1048576);
+    db_opts.set_level_compaction_dynamic_level_bytes(true);
+    db_opts.set_max_background_jobs(6);
+    db_opts.enable_statistics();
+    db_opts.set_report_bg_io_stats(true);
+
+    // resolve thread count to use
+    let num_of_threads = match cfg.max_threads {
+        Some(num) => std::cmp::min(num, num_cpus::get()),
+        None => num_cpus::get(),
+    };
+    // rocksdb default is 1, so we increase only, if above 1
+    if num_of_threads > 1 {
+        db_opts.increase_parallelism(num_of_threads as i32);
+    }
+
+    db_opts
+}
+
+/// Create default database configuration options,
+/// based on recommended setting:
+///     https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+///     https://rocksdb.org/blog/2019/03/08/format-version-4.html
+pub fn default_table_options(cache: &Cache) -> Options {
+    // default db options
+    let mut db_opts = Options::default();
+
+    // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+    db_opts.set_level_compaction_dynamic_level_bytes(true);
+
+    // block table options
+    let mut table_options = BlockBasedOptions::default();
+    table_options.set_block_cache(cache);
+    table_options.set_block_size(16 * 1024);
+    table_options.set_cache_index_and_filter_blocks(true);
+    table_options.set_pin_l0_filter_and_index_blocks_in_cache(true);
+
+    // set format_version 4 https://rocksdb.org/blog/2019/03/08/format-version-4.html
+    table_options.set_format_version(4);
+    table_options.set_index_block_restart_interval(16);
+
+    db_opts.set_block_based_table_factory(&table_options);
+
+    db_opts
+}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct RocksDBStats {
@@ -97,7 +173,15 @@ impl From<io::Error> for DBError {
     }
 }
 
-pub trait KeyValueStoreWithSchemaIterator<S: KeyValueSchema> {
+pub trait RocksDbKeyValueSchema: KeyValueSchema {
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        ColumnFamilyDescriptor::new(Self::name(), default_table_options(cache))
+    }
+
+    fn name() -> &'static str;
+}
+
+pub trait KeyValueStoreWithSchemaIterator<S: RocksDbKeyValueSchema> {
     /// Read all entries in database.
     ///
     /// # Arguments
@@ -112,78 +196,13 @@ pub trait KeyValueStoreWithSchemaIterator<S: KeyValueSchema> {
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError>;
 }
 
-/// Custom trait extending RocksDB to better handle and enforce database schema
-pub trait KeyValueStoreBackend<S: KeyValueSchema> {
-    /// Provides informatio if backend is persistent
-    fn is_persistent(&self) -> bool;
 
-    /// Insert new key value pair into the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
-
-    /// Delete existing value associated with given key from the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn delete(&self, key: &S::Key) -> Result<(), DBError>;
-
-    /// Delete existing value associated with given key from the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn try_delete(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
-        let v = self.get(key)?;
-        if v.is_some() {
-            self.delete(key)?;
-        }
-        Ok(v)
-    }
-
-    /// Insert key value pair into the database, overriding existing value if exists.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
-
-    /// Read value associated with given key, if exists.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
-
-    /// Check, if database contains given key
-    ///
-    /// # Arguments
-    /// * `key` - Key (specified by schema), to be checked for existence
-    fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
-
-    /// Removes every element that predicate(elem) evaluates to false
-    ///
-    /// # Arguments
-    /// * `predicate` - functor used for assessment
-    fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
-
-    /// Write batch into DB atomically
-    ///
-    /// # Arguments
-    /// * `batch` - WriteBatch containing all batched writes to be written to DB
-    fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), DBError>;
-
-    /// Return memory usage statistics
-    ///
-    fn total_get_mem_usage(&self) -> Result<usize, DBError>;
-}
-
-pub trait KeyValueStoreWithSchema<S: KeyValueSchema>:
+pub trait KeyValueStoreWithSchema<S: RocksDbKeyValueSchema>:
     KeyValueStoreBackend<S> + KeyValueStoreWithSchemaIterator<S>
 {
 }
 
-impl<S: KeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
+impl<S: RocksDbKeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
     fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
         let cf = self
             .cf_handle(S::name())
@@ -214,13 +233,9 @@ impl<S: KeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
     }
 }
 
-impl<S: KeyValueSchema> KeyValueStoreWithSchema<S> for DB {}
+impl<S: RocksDbKeyValueSchema> KeyValueStoreWithSchema<S> for DB {}
 
-impl<S: KeyValueSchema> KeyValueStoreBackend<S> for DB {
-    fn is_persistent(&self) -> bool {
-        true
-    }
-
+impl<S: RocksDbKeyValueSchema> KeyValueStoreBackend<S> for DB {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;

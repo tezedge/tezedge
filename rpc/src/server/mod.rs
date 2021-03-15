@@ -17,7 +17,7 @@ use crypto::hash::{BlockHash, ChainId};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
 use storage::context::TezedgeContext;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;

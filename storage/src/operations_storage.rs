@@ -10,11 +10,9 @@ use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::{
-    default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage, SchemaError, StorageType,
-};
-use crate::StorageError;
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::{PersistentStorage, StorageError};
 
 pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
 
@@ -35,7 +33,7 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
         }
     }
 
@@ -88,7 +86,9 @@ impl OperationsStorageReader for OperationsStorage {
 impl KeyValueSchema for OperationsStorage {
     type Key = OperationKey;
     type Value = OperationsForBlocksMessage;
+}
 
+impl RocksDbKeyValueSchema for OperationsStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_prefix_extractor(SliceTransform::create_fixed_prefix(

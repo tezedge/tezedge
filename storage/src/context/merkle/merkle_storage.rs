@@ -3,7 +3,7 @@
 
 //! # MerkleStorage
 //!
-//! Storage for key/values with git-like semantics and history.
+//! Abstract merkle storage with git-like semantics and history which can be used with different K-V stores.
 //!
 //! # Data Structure
 //! A storage with just one key `a/b/c` and its corresponding value `8` is represented like this:
@@ -46,70 +46,26 @@
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
 use std::array::TryFromSliceError;
-use std::collections::{BTreeMap, HashMap};
-use std::convert::TryInto;
-use std::hash::Hash;
+use std::collections::HashMap;
 
-use blake2::digest::{Update, VariableOutput};
-use blake2::VarBlake2b;
-use crypto::hash::{FromBytesError, HashType};
-use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor};
+use failure::{Error, Fail};
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::persistent::{default_table_options, BincodeEncoded, KeyValueSchema};
-use crate::storage_backend::{StorageBackend, StorageBackendError};
-use crate::{
-    context::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError},
-    persistent::database::RocksDBStats,
-};
-use crate::context::TreeId;
-use crate::merkle_storage_stats::{
+use crypto::hash::{FromBytesError, HashType};
+
+use crate::context::kv_store::storage_backend::StorageBackendError;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::merkle::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError};
+use crate::context::merkle::merkle_storage_stats::{
     MerkleStorageAction, MerkleStoragePerfReport, MerkleStorageStatistics, StatUpdater,
 };
+use crate::context::merkle::{Commit, Entry, Node, NodeKind, Tree};
+use crate::context::{
+    ContextKey, ContextKeyValueStore, ContextValue, StringTreeEntry, StringTreeMap, TreeId,
+};
 use crate::persistent;
-use crate::persistent::database::KeyValueStoreBackend;
-use crate::persistent::BincodeEncoded;
-use crate::persistent::{default_table_options, KeyValueSchema};
-use crate::storage_backend::{GarbageCollector, StorageBackendError};
-
-pub type ContextKey = Vec<String>;
-pub type ContextValue = Vec<u8>;
-pub use crate::context::hash::EntryHash;
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) enum NodeKind {
-    NonLeaf,
-    Leaf,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub(crate) struct Node {
-    pub(crate) node_kind: NodeKind,
-    pub(crate) entry_hash: EntryHash,
-}
-
-// Tree must be an ordered structure for consistent hash in hash_tree.
-// The entry names *must* be in lexicographical order, as required by the hashing algorithm.
-// Currently immutable OrdMap is used to allow cloning trees without too much overhead.
-pub(crate) type Tree = im::OrdMap<String, Node>;
-
-#[derive(Debug, Hash, Clone, Serialize, Deserialize)]
-pub(crate) struct Commit {
-    pub(crate) parent_commit_hash: Option<EntryHash>,
-    pub(crate) root_hash: EntryHash,
-    pub(crate) time: u64,
-    pub(crate) author: String,
-    pub(crate) message: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) enum Entry {
-    Tree(Tree),
-    Blob(ContextValue),
-    Commit(Commit),
-}
+use crate::persistent::Flushable;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SetAction {
@@ -135,18 +91,11 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub trait MerkleStorageBackendWithGC:
-    KeyValueStoreBackend<MerkleStorage> + GarbageCollector
-{
-}
-impl<T: KeyValueStoreBackend<MerkleStorage> + GarbageCollector> MerkleStorageBackendWithGC for T {}
-pub type MerkleStorageKV = dyn MerkleStorageBackendWithGC + Sync + Send;
-
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: (Tree, TreeId),
     /// key value storage backend
-    db: Box<MerkleStorageKV>,
+    db: Box<ContextKeyValueStore>,
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
     /// all different versions of the staging tree
@@ -251,78 +200,6 @@ impl From<FromBytesError> for MerkleError {
     }
 }
 
-/// Latency statistics for each action (in nanoseconds)
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct OperationLatencies {
-    /// divide this by the next field to get avg (mean) time spent in operation
-    cumul_op_exec_time: f64,
-    pub op_exec_times: u64,
-    pub avg_exec_time: f64,
-    /// lowest time spent in operation
-    pub op_exec_time_min: f64,
-    /// highest time spent in operation
-    pub op_exec_time_max: f64,
-}
-
-impl Default for OperationLatencies {
-    fn default() -> Self {
-        OperationLatencies {
-            cumul_op_exec_time: 0.0,
-            op_exec_times: 0,
-            avg_exec_time: 0.0,
-            op_exec_time_min: f64::MAX,
-            op_exec_time_max: f64::MIN,
-        }
-    }
-}
-
-// Latency statistics indexed by operation name (e.g. "Set")
-pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
-
-// Latency statistics per path indexed by first chunk of path (under /data/)
-pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerklePerfStats {
-    pub global: OperationLatencyStats,
-    pub perpath: PerPathOperationStats,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerkleStorageStats {
-    pub perf_stats: MerklePerfStats,
-}
-impl BincodeEncoded for EntryHash {}
-
-impl KeyValueSchema for MerkleStorage {
-    // keys is hash of Entry
-    type Key = EntryHash;
-    // Entry (serialized)
-    type Value = Vec<u8>;
-
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
-        "merkle_storage"
-    }
-}
-
-// Tree in String form needed for JSON RPCs
-pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
-
-/// Tree in String form needed for JSON RPCs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum StringTreeEntry {
-    Tree(StringTreeMap),
-    Blob(String),
-    Null,
-}
-
 #[derive(Debug, Fail)]
 pub enum CheckEntryHashError {
     #[fail(display = "MerkleError error: {:?}", error)]
@@ -339,7 +216,7 @@ pub enum CheckEntryHashError {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Box<MerkleStorageKV>) -> Self {
+    pub fn new(db: Box<ContextKeyValueStore>) -> Self {
         let tree = Tree::new();
         let tree_hash = hash_tree(&tree).unwrap();
         let tree_id = 0;
@@ -359,13 +236,9 @@ impl MerkleStorage {
         }
     }
 
-    pub fn has_persistent_backend(&self) -> bool {
-        self.db.is_persistent()
-    }
-
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
-        let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
+        let stat_updater = StatUpdater::new(MerkleStorageAction::Get, Some(key));
         // build staging tree from saved list of actions (set/copy/delete)
         // note: this can be slow if there are a lot of actions
         let root = &self.get_staged_root();
@@ -477,7 +350,7 @@ impl MerkleStorage {
             None => {
                 return Err(MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
-                })
+                });
             }
             Some(entry) => entry,
         };
@@ -1071,135 +944,32 @@ impl MerkleStorage {
     pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
         self.stats.block_latencies.get(offset_from_last_applied)
     }
+
+    fn flush_db(&self) -> Result<(), Error> {
+        self.db.flush()
+    }
 }
 
+impl Flushable for MerkleStorage {
+    fn flush(&self) -> Result<(), Error> {
+        self.flush_db()
+    }
+}
+
+/// Merkle storage predefined tests with abstraction for underlaying kv_store for context
 #[cfg(test)]
-#[allow(unused_must_use)]
 mod tests {
-    use crate::{
-        backend::{BTreeMapBackend, InMemoryBackend, RocksDBBackend, SledBackend},
-        context::hash::hash_tree,
-    };
+    use std::env;
+    use std::path::PathBuf;
+
     use assert_json_diff::assert_json_eq;
-    use rocksdb::{Options, DB};
-    use std::path::{Path, PathBuf};
-    use std::sync::Arc;
-    use std::{env, fs};
+
+    use crate::context::kv_store::test_support::TestContextKvStoreFactoryInstance;
+    use crate::context::kv_store::SupportedContextKeyValueStore;
+    use crate::context::merkle::hash::hash_tree;
+    use crate::context::ContextValue;
 
     use super::*;
-
-    /// Open DB at path, used in tests
-    fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
-        let mut db_opts = Options::default();
-        db_opts.create_if_missing(true);
-        db_opts.create_missing_column_families(true);
-
-        DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
-    }
-
-    pub fn out_dir_path(dir_name: &str) -> PathBuf {
-        let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-        Path::new(out_dir.as_str()).join(Path::new(dir_name))
-    }
-
-    fn get_db_name(db_name: &str) -> PathBuf {
-        out_dir_path(db_name)
-    }
-
-    fn get_db(db_name: &str, cache: &Cache) -> DB {
-        open_db(get_db_name(db_name), &cache)
-    }
-
-    fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> MerkleStorage {
-        match backend {
-            "rocksdb" => MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
-                db_name, &cache,
-            ))))),
-            "sled" => {
-                let sled = sled::Config::new()
-                    .path(get_db_name(db_name))
-                    .open()
-                    .unwrap();
-                MerkleStorage::new(Box::new(SledBackend::new(sled)))
-            }
-            "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
-            "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-            "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(3))),
-            "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(3))),
-            _ => {
-                panic!("unknown backend set")
-            }
-        }
-    }
-
-    fn clean_db(db_name: &str) {
-        let _ = DB::destroy(&Options::default(), get_db_name(db_name));
-        let _ = fs::remove_dir_all(get_db_name(db_name));
-    }
-
-    fn test_duplicate_entry_in_staging(backend: &str) {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, "ms_test_duplicate_entry", &cache);
-        let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
-        let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
-        storage.set(1, &vec!["a".to_string(), "foo".to_string()], &vec![97, 98]);
-        storage.set(2, &vec!["c".to_string(), "zoo".to_string()], &vec![1, 2]);
-        storage.set(3, &vec!["c".to_string(), "foo".to_string()], &vec![97, 98]);
-        storage.delete(4, &vec!["c".to_string(), "zoo".to_string()]);
-        // now c/ is the same tree as a/ - which means there are two references to single entry in staging area
-        // modify the tree and check that the other one was kept intact
-        storage.set(5, &vec!["c".to_string(), "foo".to_string()], &vec![3, 4]);
-        let commit = storage
-            .commit(0, "Tezos".to_string(), "Genesis".to_string())
-            .unwrap();
-        assert_eq!(storage.get_history(&commit, a_foo).unwrap(), vec![97, 98]);
-        assert_eq!(storage.get_history(&commit, c_foo).unwrap(), vec![3, 4]);
-    }
-
-    fn test_tree_hash(backend: &str) {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, "ms_test_tree_hash", &cache);
-        storage.set(
-            1,
-            &vec!["a".to_string(), "foo".to_string()],
-            &vec![97, 98, 99],
-        ); // abc
-        storage.set(2, &vec!["b".to_string(), "boo".to_string()], &vec![97, 98]);
-        storage.set(
-            3,
-            &vec!["a".to_string(), "aaa".to_string()],
-            &vec![97, 98, 99, 100],
-        );
-        storage.set(4, &vec!["x".to_string()], &vec![97]);
-        storage.set(
-            5,
-            &vec!["one".to_string(), "two".to_string(), "three".to_string()],
-            &vec![97],
-        );
-        storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
-
-        let tree = storage.get_staged_root();
-
-        let hash = hash_tree(&tree).unwrap();
-
-        assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
-    }
-
-    fn test_commit_hash(backend: &str) {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, "ms_test_commit_hash", &cache);
-        storage.set(1, &vec!["a".to_string()], &vec![97, 98, 99]);
-
-        let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
-
-        assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
-
-        storage.set(1, &vec!["data".to_string(), "x".to_string()], &vec![97]);
-        let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
-
-        assert_eq!([0xCA, 0x7B, 0xC7, 0x02], commit.unwrap()[0..4]);
-        // full irmin hash: ca7bc7022ffbd35acc97f7defb00c486bb7f4d19a2d62790d5949775eb74f3c8
-    }
 
     fn get_short_hash(hash: &EntryHash) -> String {
         hex::encode(&hash[0..3])
@@ -1211,31 +981,130 @@ mod tests {
         get_short_hash(&hash)
     }
 
-    fn test_examples_from_article_about_storage(backend: &str) {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db_name = &format!("test_examples_from_article_about_storage_{}", backend);
-        clean_db(db_name);
-        let mut storage = get_storage(backend, db_name, &cache);
+    fn test_duplicate_entry_in_staging(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_duplicate_entry_in_staging")
+                .unwrap(),
+        );
 
-        storage.set(1, &vec!["a".to_string()], &vec![1]);
+        let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
+        let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
+        storage
+            .set(1, &vec!["a".to_string(), "foo".to_string()], &vec![97, 98])
+            .unwrap();
+        storage
+            .set(2, &vec!["c".to_string(), "zoo".to_string()], &vec![1, 2])
+            .unwrap();
+        storage
+            .set(3, &vec!["c".to_string(), "foo".to_string()], &vec![97, 98])
+            .unwrap();
+        storage
+            .delete(4, &vec!["c".to_string(), "zoo".to_string()])
+            .unwrap();
+        // now c/ is the same tree as a/ - which means there are two references to single entry in staging area
+        // modify the tree and check that the other one was kept intact
+        storage
+            .set(5, &vec!["c".to_string(), "foo".to_string()], &vec![3, 4])
+            .unwrap();
+        let commit = storage
+            .commit(0, "Tezos".to_string(), "Genesis".to_string())
+            .unwrap();
+        assert_eq!(storage.get_history(&commit, a_foo).unwrap(), vec![97, 98]);
+        assert_eq!(storage.get_history(&commit, c_foo).unwrap(), vec![3, 4]);
+    }
+
+    fn test_tree_hash(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_tree_hash").unwrap());
+
+        storage
+            .set(
+                1,
+                &vec!["a".to_string(), "foo".to_string()],
+                &vec![97, 98, 99],
+            )
+            .unwrap(); // abc
+        storage
+            .set(2, &vec!["b".to_string(), "boo".to_string()], &vec![97, 98])
+            .unwrap();
+        storage
+            .set(
+                3,
+                &vec!["a".to_string(), "aaa".to_string()],
+                &vec![97, 98, 99, 100],
+            )
+            .unwrap();
+        storage.set(4, &vec!["x".to_string()], &vec![97]).unwrap();
+        storage
+            .set(
+                5,
+                &vec!["one".to_string(), "two".to_string(), "three".to_string()],
+                &vec![97],
+            )
+            .unwrap();
+        storage
+            .commit(0, "Tezos".to_string(), "Genesis".to_string())
+            .unwrap();
+
+        let tree = storage.get_staged_root();
+
+        let hash = hash_tree(&tree).unwrap();
+
+        assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
+    }
+
+    fn test_commit_hash(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_commit_hash").unwrap());
+
+        storage
+            .set(1, &vec!["a".to_string()], &vec![97, 98, 99])
+            .unwrap();
+
+        let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+
+        assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
+
+        storage
+            .set(1, &vec!["data".to_string(), "x".to_string()], &vec![97])
+            .unwrap();
+        let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
+
+        assert_eq!([0xCA, 0x7B, 0xC7, 0x02], commit.unwrap()[0..4]);
+        // full irmin hash: ca7bc7022ffbd35acc97f7defb00c486bb7f4d19a2d62790d5949775eb74f3c8
+    }
+
+    fn test_examples_from_article_about_storage(
+        kv_store_factory: &TestContextKvStoreFactoryInstance,
+    ) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_examples_from_article_about_storage")
+                .unwrap(),
+        );
+
+        storage.set(1, &vec!["a".to_string()], &vec![1]).unwrap();
         let root = get_staged_root_short_hash(&mut storage);
         println!("SET [a] = 1\nROOT: {}", root);
         println!("CONTENT {}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "d49a53".to_string());
 
-        storage.set(2, &vec!["b".to_string(), "c".to_string()], &vec![1]);
+        storage
+            .set(2, &vec!["b".to_string(), "c".to_string()], &vec![1])
+            .unwrap();
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,c] = 1\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "ed8adf".to_string());
 
-        storage.set(3, &vec!["b".to_string(), "d".to_string()], &vec![2]);
+        storage
+            .set(3, &vec!["b".to_string(), "d".to_string()], &vec![2])
+            .unwrap();
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [b,d] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "437186".to_string());
 
-        storage.set(4, &vec!["a".to_string()], &vec![2]);
+        storage.set(4, &vec!["a".to_string()], &vec![2]).unwrap();
         let root = get_staged_root_short_hash(&mut storage);
         println!("\nSET [a] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
@@ -1248,79 +1117,78 @@ mod tests {
         println!("\nCOMMIT time:0 author:'tezedge' message:'persist'");
         println!("ROOT: {}", get_short_hash(&commit_hash));
         if let Entry::Commit(c) = storage.get_entry(&commit_hash).unwrap() {
-            println!("{} : Commit{{time:{}, message:{}, author:{}, root_hash:{}, parent_commit_hash: None}}", get_short_hash(&commit_hash), c.time,  c.message, c.author, get_short_hash(&c.root_hash));
+            println!("{} : Commit{{time:{}, message:{}, author:{}, root_hash:{}, parent_commit_hash: None}}", get_short_hash(&commit_hash), c.time, c.message, c.author, get_short_hash(&c.root_hash));
         }
         print!("{}", entries);
         assert_eq!("e6de3f", get_short_hash(&commit_hash))
     }
 
-    fn test_multiple_commit_hash(backend: &str) {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, "ms_test_multiple_commit_hash", &cache);
+    fn test_multiple_commit_hash(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_multiple_commit_hash")
+                .unwrap(),
+        );
+
         let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
 
-        storage.set(
-            1,
-            &vec!["data".to_string(), "a".to_string(), "x".to_string()],
-            &vec![97],
-        );
-        storage.copy(
-            2,
-            &vec!["data".to_string(), "a".to_string()],
-            &vec!["data".to_string(), "b".to_string()],
-        );
-        storage.delete(
-            3,
-            &vec!["data".to_string(), "b".to_string(), "x".to_string()],
-        );
+        storage
+            .set(
+                1,
+                &vec!["data".to_string(), "a".to_string(), "x".to_string()],
+                &vec![97],
+            )
+            .unwrap();
+        storage
+            .copy(
+                2,
+                &vec!["data".to_string(), "a".to_string()],
+                &vec!["data".to_string(), "b".to_string()],
+            )
+            .unwrap();
+        storage
+            .delete(
+                3,
+                &vec!["data".to_string(), "b".to_string(), "x".to_string()],
+            )
+            .unwrap();
         let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
 
         assert_eq!([0x9B, 0xB0, 0x0D, 0x6E], commit.unwrap()[0..4]);
     }
 
-    fn test_get(backend: &str) {
-        let db_name = &format!("ms_get_test_{}", backend);
-        clean_db(db_name);
+    fn test_get(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let db_name = "test_get";
 
-        let commit1;
-        let commit2;
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         let key_eab: &ContextKey = &vec!["e".to_string(), "a".to_string(), "b".to_string()];
         let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
         let key_d: &ContextKey = &vec!["d".to_string()];
 
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(backend, db_name, &cache);
+        let kv_store = kv_store_factory.create(db_name).unwrap();
+        let mut storage = MerkleStorage::new(kv_store);
 
-            let res = storage.get(&vec![]);
-            assert_eq!(res.unwrap().is_empty(), true);
-            let res = storage.get(&vec!["a".to_string()]);
-            assert_eq!(res.unwrap().is_empty(), true);
+        let res = storage.get(&vec![]);
+        assert_eq!(res.unwrap().is_empty(), true);
+        let res = storage.get(&vec!["a".to_string()]);
+        assert_eq!(res.unwrap().is_empty(), true);
 
-            storage.set(1, key_abc, &vec![1u8, 2u8]);
-            storage.set(2, key_abx, &vec![3u8]);
-            assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
-            assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
+        storage.set(2, key_abx, &vec![3u8]).unwrap();
+        assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
+        assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
+        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(3, key_az, &vec![4u8]);
-            storage.set(4, key_abx, &vec![5u8]);
-            storage.set(5, key_d, &vec![6u8]);
-            storage.set(6, key_eab, &vec![7u8]);
-            assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
-            assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
-            assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
-            assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-        if !storage.has_persistent_backend() {
-            return;
-        }
+        storage.set(3, key_az, &vec![4u8]).unwrap();
+        storage.set(4, key_abx, &vec![5u8]).unwrap();
+        storage.set(5, key_d, &vec![6u8]).unwrap();
+        storage.set(6, key_eab, &vec![7u8]).unwrap();
+        assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
+        assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
+        assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
+        assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
+        let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -1333,60 +1201,53 @@ mod tests {
         assert_eq!(storage.get_history(&commit2, key_eab).unwrap(), vec![7u8]);
     }
 
-    fn test_mem(backend: &str) {
-        let db_name = &format!("ms_test_mem_{}", backend);
-        clean_db(db_name);
+    fn test_mem(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_mem").unwrap());
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(1, key_abc, &vec![1u8, 2u8]);
+        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(2, key_abx, &vec![3u8]);
+        storage.set(2, key_abx, &vec![3u8]).unwrap();
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), true);
-        storage.delete(3, key_abx);
+        storage.delete(3, key_abx).unwrap();
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
     }
 
-    fn test_dirmem(backend: &str) {
-        let db_name = &format!("ms_test_dirmem_{}", backend);
-        clean_db(db_name);
+    fn test_dirmem(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_dirmem").unwrap());
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_ab: &ContextKey = &vec!["a".to_string(), "b".to_string()];
         let key_a: &ContextKey = &vec!["a".to_string()];
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        storage.set(1, key_abc, &vec![1u8, 2u8]);
+        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
         assert_eq!(storage.dirmem(&key_a).unwrap(), true);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), true);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        storage.delete(2, key_abc);
+        storage.delete(2, key_abc).unwrap();
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
     }
 
-    fn test_copy(backend: &str) {
-        let db_name = &format!("ms_test_copy_{}", backend);
-        clean_db(db_name);
+    fn test_copy(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_copy").unwrap());
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(1, key_abc, &vec![1_u8]);
-        storage.copy(2, &vec!["a".to_string()], &vec!["z".to_string()]);
+        storage.set(1, key_abc, &vec![1_u8]).unwrap();
+        storage
+            .copy(2, &vec!["a".to_string()], &vec!["z".to_string()])
+            .unwrap();
 
         assert_eq!(
             vec![1_u8],
@@ -1397,143 +1258,86 @@ mod tests {
         // TODO test copy over commits
     }
 
-    fn test_delete(backend: &str) {
-        let db_name = &format!("ms_test_delete_{}", backend);
-        clean_db(db_name);
+    fn test_delete(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_delete").unwrap());
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(1, key_abc, &vec![2_u8]);
-        storage.set(2, key_abx, &vec![3_u8]);
-        storage.delete(3, key_abx);
+        storage.set(1, key_abc, &vec![2_u8]).unwrap();
+        storage.set(2, key_abx, &vec![3_u8]).unwrap();
+        storage.delete(3, key_abx).unwrap();
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert!(storage.get_history(&commit1, &key_abx).is_err());
     }
 
-    fn test_deleted_entry_available(backend: &str) {
-        let db_name = &format!("ms_test_deleted_entry_available_{}", backend);
-        clean_db(db_name);
+    fn test_deleted_entry_available(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_deleted_entry_available")
+                .unwrap(),
+        );
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(1, key_abc, &vec![2_u8]);
+        storage.set(1, key_abc, &vec![2_u8]).unwrap();
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        storage.delete(2, key_abc);
+        storage.delete(2, key_abc).unwrap();
         let _commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
-    fn test_delete_in_separate_commit(backend: &str) {
-        let db_name = &format!("ms_test_delete_in_separate_commit_{}", backend);
-        clean_db(db_name);
+    fn test_delete_in_separate_commit(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_delete_in_separate_commit")
+                .unwrap(),
+        );
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
         storage.set(1, key_abc, &vec![2_u8]).unwrap();
         storage.set(2, key_abx, &vec![3_u8]).unwrap();
         storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        storage.delete(1, key_abx);
+        storage.delete(1, key_abx).unwrap();
         let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert!(storage.get_history(&commit2, &key_abx).is_err());
     }
 
-    fn test_checkout(backend: &str) {
-        let db_name = &format!("ms_test_checkout_{}", backend);
-        clean_db(db_name);
-
-        let commit1;
-        let commit2;
+    fn test_checkout(kv_store_factory: &TestContextKvStoreFactoryInstance) {
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(backend, db_name, &cache);
-            storage.set(1, key_abc, &vec![1u8]).unwrap();
-            storage.set(2, key_abx, &vec![2u8]).unwrap();
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_checkout").unwrap());
 
-            storage.set(1, key_abc, &vec![3u8]).unwrap();
-            storage.set(2, key_abx, &vec![4u8]).unwrap();
-            commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
+        storage.set(1, key_abc, &vec![1u8]).unwrap();
+        storage.set(2, key_abx, &vec![2u8]).unwrap();
+        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-        if !storage.has_persistent_backend() {
-            return;
-        }
-        storage.checkout(&commit1);
+        storage.set(1, key_abc, &vec![3u8]).unwrap();
+        storage.set(2, key_abx, &vec![4u8]).unwrap();
+        let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+
+        storage.checkout(&commit1).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
         // this set be wiped by checkout
         storage.set(1, key_abc, &vec![8u8]).unwrap();
 
-        storage.checkout(&commit2);
+        storage.checkout(&commit2).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
     }
 
-    fn test_persistence_over_reopens(backend: &str) {
-        let db_name = &format!("ms_test_persistence_over_reopens_{}", backend);
-        {
-            clean_db(db_name);
-        }
-
-        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let commit1;
-        {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let mut storage = get_storage(backend, db_name, &cache);
-            let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(1, key_abc, &vec![2_u8]).unwrap();
-            storage.set(2, key_abx, &vec![3_u8]).unwrap();
-            commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-        }
-
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-        if !storage.has_persistent_backend() {
-            return;
-        }
-        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
-    }
-
-    // Test a DB error by writing into a read-only database.
-    #[test]
-    fn test_db_error() {
-        let db_name = "ms_test_db_error";
-        {
-            clean_db(db_name);
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(get_db(
-                db_name, &cache,
-            )))));
-        }
-
-        let db = DB::open_for_read_only(&Options::default(), get_db_name(db_name), true).unwrap();
-        let mut storage = MerkleStorage::new(Box::new(RocksDBBackend::new(Arc::new(db))));
-        storage.set(1, &vec!["a".to_string()], &vec![1u8]);
-        let res = storage.commit(0, "".to_string(), "".to_string());
-
-        assert!(matches!(res.err().unwrap(), MerkleError::DBError { .. }));
-    }
-
-    // Test getting entire tree in string format for JSON RPC
-    fn test_get_context_tree_by_prefix(backend: &str) {
-        let db_name = &format!("ms_test_get_context_tree_by_prefix_{}", backend);
-        {
-            clean_db(db_name);
-        }
+    /// Test getting entire tree in string format for JSON RPC
+    fn test_get_context_tree_by_prefix(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_get_context_tree_by_prefix")
+                .unwrap(),
+        );
 
         let all_json = serde_json::json!(
             {
@@ -1575,47 +1379,59 @@ mod tests {
             }
         );
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-        let _commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
+        let _commit = storage
+            .commit(0, "Tezos".to_string(), "Genesis".to_string())
+            .unwrap();
 
-        storage.set(
-            1,
-            &vec!["data".to_string(), "a".to_string(), "x".to_string()],
-            &vec![3, 4],
-        );
-        storage.set(2, &vec!["data".to_string(), "a".to_string()], &vec![1, 2]);
-        storage.set(
-            3,
-            &vec![
-                "data".to_string(),
-                "a".to_string(),
-                "x".to_string(),
-                "y".to_string(),
-            ],
-            &vec![5, 6],
-        );
-        storage.set(
-            4,
-            &vec![
-                "data".to_string(),
-                "b".to_string(),
-                "x".to_string(),
-                "y".to_string(),
-            ],
-            &vec![7, 8],
-        );
-        storage.set(5, &vec!["data".to_string(), "c".to_string()], &vec![1, 2]);
-        storage.set(
-            6,
-            &vec![
-                "adata".to_string(),
-                "b".to_string(),
-                "x".to_string(),
-                "y".to_string(),
-            ],
-            &vec![9, 10],
-        );
+        storage
+            .set(
+                1,
+                &vec!["data".to_string(), "a".to_string(), "x".to_string()],
+                &vec![3, 4],
+            )
+            .unwrap();
+        storage
+            .set(2, &vec!["data".to_string(), "a".to_string()], &vec![1, 2])
+            .unwrap();
+        storage
+            .set(
+                3,
+                &vec![
+                    "data".to_string(),
+                    "a".to_string(),
+                    "x".to_string(),
+                    "y".to_string(),
+                ],
+                &vec![5, 6],
+            )
+            .unwrap();
+        storage
+            .set(
+                4,
+                &vec![
+                    "data".to_string(),
+                    "b".to_string(),
+                    "x".to_string(),
+                    "y".to_string(),
+                ],
+                &vec![7, 8],
+            )
+            .unwrap();
+        storage
+            .set(5, &vec!["data".to_string(), "c".to_string()], &vec![1, 2])
+            .unwrap();
+        storage
+            .set(
+                6,
+                &vec![
+                    "adata".to_string(),
+                    "b".to_string(),
+                    "x".to_string(),
+                    "y".to_string(),
+                ],
+                &vec![9, 10],
+            )
+            .unwrap();
         //data-a[1,2]
         //data-a-x[3,4]
         //data-a-x-y[5,6]
@@ -1684,87 +1500,65 @@ mod tests {
         );
     }
 
-    // TODO: use mock_instant crate or something like and enable this unit test
-    // #[test]
-    // fn test_block_latenices() {
-    //     let mut storage = get_empty_storage();
+    fn test_backtracking_on_set(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage =
+            MerkleStorage::new(kv_store_factory.create("test_backtracking_on_set").unwrap());
 
-    //     let t = |milis: u64| Instant::now() - Duration::from_nanos(milis * 1000);
-
-    //     storage.update_execution_stats("Get".to_string(), None, &t(10));
-    //     storage.update_execution_stats("Set".to_string(), None, &t(20));
-    //     storage.update_execution_stats("Commit".to_string(), None, &t(30));
-
-    //     assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 60);
-
-    //     storage.update_execution_stats("Set".to_string(), None, &t(6));
-    //     storage.update_execution_stats("Commit".to_string(), None, &t(60));
-
-    //     assert_eq!(storage.get_block_latency(0).unwrap() / 1000, 66);
-    //     assert_eq!(storage.get_block_latency(1).unwrap() / 1000, 60);
-    // }
-
-    fn test_backtracking_on_set(backend: &str) {
-        let db_name = &format!("test_backtracking_on_set_{}", backend);
         let dummy_key = &vec!["a".to_string()];
-
-        clean_db(db_name);
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-
-        storage.set(1, dummy_key, &vec![1u8]);
-
-        storage.set(2, dummy_key, &vec![2u8]);
+        storage.set(1, dummy_key, &vec![1u8]).unwrap();
+        storage.set(2, dummy_key, &vec![2u8]).unwrap();
 
         // get recent value
         assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
 
         // checkout previous stage state
-        storage.stage_checkout(1);
+        storage.stage_checkout(1).unwrap();
         assert_eq!(storage.get(dummy_key).unwrap(), vec![1u8]);
 
         // checkout newest stage state
-        storage.stage_checkout(2);
+        storage.stage_checkout(2).unwrap();
         assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
     }
 
-    fn test_backtracking_on_delete(backend: &str) {
-        let db_name = &format!("test_backtracking_on_delete_{}", backend);
+    fn test_backtracking_on_delete(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_backtracking_on_delete")
+                .unwrap(),
+        );
+
         let key = &vec!["a".to_string()];
         let value = vec![1u8];
         let empty_response: ContextValue = Vec::new();
 
-        clean_db(db_name);
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-
-        storage.set(1, key, &value);
-
-        storage.delete(2, key);
+        storage.set(1, key, &value).unwrap();
+        storage.delete(2, key).unwrap();
 
         assert_eq!(storage.get(key).unwrap(), empty_response);
 
         // // checkout previous stage state
-        storage.stage_checkout(1);
+        storage.stage_checkout(1).unwrap();
         assert_eq!(storage.get(key).unwrap(), value);
 
         // checkout latest stage state
-        storage.stage_checkout(2);
+        storage.stage_checkout(2).unwrap();
         assert_eq!(storage.get(key).unwrap(), empty_response);
     }
 
     // Currently we don't perform a cleanup after each COMMIT
     // That will happen during the next CHECKOUT, this test is to ensure that
-    fn test_checkout_stage_from_before_commit(backend: &str) {
-        let db_name = &format!("test_checkout_stage_from_before_commit_{}", backend);
+    fn test_checkout_stage_from_before_commit(
+        kv_store_factory: &TestContextKvStoreFactoryInstance,
+    ) {
+        let mut storage = MerkleStorage::new(
+            kv_store_factory
+                .create("test_checkout_stage_from_before_commit")
+                .unwrap(),
+        );
+
         let key = &vec!["a".to_string()];
-
-        clean_db(db_name);
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let mut storage = get_storage(backend, db_name, &cache);
-
-        storage.set(1, key, &vec![1u8]);
-        storage.set(2, key, &vec![2u8]);
+        storage.set(1, key, &vec![1u8]).unwrap();
+        storage.set(2, key, &vec![2u8]).unwrap();
         storage
             .commit(0, "author".to_string(), "message".to_string())
             .unwrap();
@@ -1773,244 +1567,129 @@ mod tests {
         assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
 
-    #[test]
-    fn test_gc() {
-        let mut storage = MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(2)));
-
-        // CYCLE 1
-        storage
-            .set(1, &vec!["a".to_string(), "a".to_string()], &vec![1])
-            .unwrap();
-        let commit1 = storage
-            .commit(0, "dev".to_string(), "commit1".to_string())
-            .unwrap();
-        storage.checkout(&commit1);
-        storage.block_applied().unwrap();
-
-        storage
-            .set(1, &vec!["a".to_string(), "b".to_string()], &vec![2])
-            .unwrap();
-        let commit2 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
-        storage.checkout(&commit2);
-        storage.block_applied().unwrap();
-
-        // CYCLE 2
-        storage.start_new_cycle().unwrap();
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage.db.get(&commit1).unwrap().is_some());
-        assert!(storage.db.get(&commit2).unwrap().is_some());
-
-        storage
-            .set(1, &vec!["a".to_string(), "c".to_string()], &vec![3])
-            .unwrap();
-        storage
-            .set(2, &vec!["a".to_string(), "a".to_string()], &vec![100])
-            .unwrap();
-        let commit3 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
-        storage.checkout(&commit3);
-        storage.block_applied().unwrap();
-
-        storage
-            .set(1, &vec!["a".to_string(), "d".to_string()], &vec![4])
-            .unwrap();
-        //overwrite value from first commit
-        let commit4 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
-        storage.checkout(&commit4);
-        storage.block_applied().unwrap();
-
-        // CYCLE 3
-        storage.start_new_cycle().unwrap();
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![4])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![100])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage.db.get(&commit1).unwrap().is_some());
-        assert!(storage.db.get(&commit2).unwrap().is_some());
-        assert!(storage.db.get(&commit3).unwrap().is_some());
-        assert!(storage.db.get(&commit4).unwrap().is_some());
-
-        storage
-            .set(1, &vec!["a".to_string(), "e".to_string()], &vec![5])
-            .unwrap();
-        let commit5 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
-        storage.checkout(&commit5);
-        storage.block_applied().unwrap();
-
-        storage
-            .set(1, &vec!["a".to_string(), "f".to_string()], &vec![6])
-            .unwrap();
-        let commit6 = storage
-            .commit(0, "dev".to_string(), "commit2".to_string())
-            .unwrap();
-        storage.checkout(&commit6);
-        storage.block_applied().unwrap();
-
-        // CYCLE 4
-        storage.start_new_cycle().unwrap();
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![1])).unwrap())
-            .unwrap()
-            .is_none()); // removed in commit4
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![2])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![3])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![4])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![100])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![5])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage
-            .db
-            .get(&hash_entry(&Entry::Blob(vec![6])).unwrap())
-            .unwrap()
-            .is_some());
-        assert!(storage.db.get(&commit1).unwrap().is_none()); // cleaned up
-        assert!(storage.db.get(&commit2).unwrap().is_none()); // cleaned up
-        assert!(storage.db.get(&commit3).unwrap().is_some());
-        assert!(storage.db.get(&commit4).unwrap().is_some());
-        assert!(storage.db.get(&commit5).unwrap().is_some());
-        assert!(storage.db.get(&commit6).unwrap().is_some());
-    }
 
     macro_rules! tests_with_storage {
-        ($storage_name:ident, $name_str:expr) => {
-            mod $storage_name {
+        ($storage_tests_name:ident, $kv_store_factory:expr) => {
+            mod $storage_tests_name {
                 #[test]
                 fn test_tree_hash() {
-                    super::test_tree_hash($name_str)
+                    super::test_tree_hash($kv_store_factory)
                 }
                 #[test]
                 fn test_duplicate_entry_in_staging() {
-                    super::test_duplicate_entry_in_staging($name_str)
+                    super::test_duplicate_entry_in_staging($kv_store_factory)
                 }
                 #[test]
                 fn test_commit_hash() {
-                    super::test_commit_hash($name_str)
+                    super::test_commit_hash($kv_store_factory)
                 }
                 #[test]
                 fn test_examples_from_article_about_storage() {
-                    super::test_examples_from_article_about_storage($name_str)
+                    super::test_examples_from_article_about_storage($kv_store_factory)
                 }
                 #[test]
                 fn test_multiple_commit_hash() {
-                    super::test_multiple_commit_hash($name_str)
+                    super::test_multiple_commit_hash($kv_store_factory)
                 }
                 #[test]
                 fn test_get() {
-                    super::test_get($name_str)
+                    super::test_get($kv_store_factory)
                 }
                 #[test]
                 fn test_mem() {
-                    super::test_mem($name_str)
+                    super::test_mem($kv_store_factory)
                 }
                 #[test]
                 fn test_dirmem() {
-                    super::test_dirmem($name_str)
+                    super::test_dirmem($kv_store_factory)
                 }
                 #[test]
                 fn test_copy() {
-                    super::test_copy($name_str)
+                    super::test_copy($kv_store_factory)
                 }
                 #[test]
                 fn test_delete() {
-                    super::test_delete($name_str)
+                    super::test_delete($kv_store_factory)
                 }
                 #[test]
                 fn test_deleted_entry_available() {
-                    super::test_deleted_entry_available($name_str)
+                    super::test_deleted_entry_available($kv_store_factory)
                 }
                 #[test]
                 fn test_delete_in_separate_commit() {
-                    super::test_delete_in_separate_commit($name_str)
+                    super::test_delete_in_separate_commit($kv_store_factory)
                 }
                 #[test]
                 fn test_checkout() {
-                    super::test_checkout($name_str)
-                }
-                #[test]
-                fn test_persistence_over_reopens() {
-                    super::test_persistence_over_reopens($name_str)
+                    super::test_checkout($kv_store_factory)
                 }
                 #[test]
                 fn test_get_context_tree_by_prefix() {
-                    super::test_get_context_tree_by_prefix($name_str)
+                    super::test_get_context_tree_by_prefix($kv_store_factory)
                 }
                 #[test]
                 fn test_backtracking_on_set() {
-                    super::test_backtracking_on_set($name_str)
+                    super::test_backtracking_on_set($kv_store_factory)
                 }
                 #[test]
                 fn test_backtracking_on_delete() {
-                    super::test_backtracking_on_delete($name_str)
+                    super::test_backtracking_on_delete($kv_store_factory)
                 }
                 #[test]
                 fn test_fail_to_checkout_stage_from_before_commit() {
-                    super::test_checkout_stage_from_before_commit($name_str)
+                    super::test_checkout_stage_from_before_commit($kv_store_factory)
                 }
             }
         };
     }
 
-    tests_with_storage!(rocksdb_tests, "rocksdb");
-    tests_with_storage!(sled_tests, "sled");
-    tests_with_storage!(btree_tests, "btree");
-    tests_with_storage!(inmem_tests, "inmem");
-    tests_with_storage!(mark_move_tests, "mark_move");
-    tests_with_storage!(mark_sweep_tests, "mark_sweep");
+    lazy_static::lazy_static! {
+        static ref SUPPORTED_KV_STORES: std::collections::HashMap<SupportedContextKeyValueStore, TestContextKvStoreFactoryInstance> = crate::context::kv_store::test_support::all_kv_stores(out_dir_path());
+    }
+
+    fn out_dir_path() -> PathBuf {
+        let out_dir = env::var("OUT_DIR").expect(
+            "OUT_DIR is not defined - please add build.rs to root or set env variable OUT_DIR",
+        );
+        out_dir.as_str().into()
+    }
+
+    macro_rules! tests_with_all_kv_stores {
+        () => {
+            tests_with_storage!(
+                kv_store_inmemory_tests,
+                super::SUPPORTED_KV_STORES
+                    .get(&crate::context::kv_store::SupportedContextKeyValueStore::InMem)
+                    .unwrap()
+            );
+            tests_with_storage!(
+                kv_store_btree_tests,
+                super::SUPPORTED_KV_STORES
+                    .get(&crate::context::kv_store::SupportedContextKeyValueStore::BTreeMap)
+                    .unwrap()
+            );
+            tests_with_storage!(
+                kv_store_rocksdb_tests,
+                super::SUPPORTED_KV_STORES
+                    .get(
+                        &crate::context::kv_store::SupportedContextKeyValueStore::RocksDB {
+                            path: super::out_dir_path()
+                        }
+                    )
+                    .unwrap()
+            );
+            tests_with_storage!(
+                kv_store_sled_tests,
+                super::SUPPORTED_KV_STORES
+                    .get(
+                        &crate::context::kv_store::SupportedContextKeyValueStore::Sled {
+                            path: super::out_dir_path()
+                        }
+                    )
+                    .unwrap()
+            );
+        };
+    }
+
+    tests_with_all_kv_stores!();
 }

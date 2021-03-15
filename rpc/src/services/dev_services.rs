@@ -5,18 +5,17 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::context::{ContextApi, TezedgeContext};
-use storage::context_action_storage::ContextActionBlockDetails;
-use storage::context_action_storage::{
-    contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson,
+use storage::context::actions::context_action_storage::{
+    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
+    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 };
-use storage::merkle_storage_stats::MerkleStoragePerfReport;
-use storage::persistent::PersistentStorage;
-use storage::{ContextActionRecordValue, ContextActionStorage};
+use storage::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
+use storage::context::{ContextApi, TezedgeContext};
+use storage::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
 
-use crate::helpers::{get_action_types, PagedResult};
+use crate::helpers::PagedResult;
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
 
@@ -26,13 +25,15 @@ pub(crate) fn get_block_actions(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<ContextAction>, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
-    get_block_actions_by_hash(&context_action_storage, &block_hash)
+    get_block_actions_by_hash(
+        &ensure_context_action_storage(persistent_storage)?,
+        &block_hash,
+    )
 }
 
 #[allow(dead_code)]
 pub(crate) fn get_block_actions_by_hash(
-    context_action_storage: &ContextActionStorage,
+    context_action_storage: &ContextActionStorageReader,
     block_hash: &BlockHash,
 ) -> Result<Vec<ContextAction>, failure::Error> {
     context_action_storage
@@ -48,7 +49,7 @@ pub(crate) fn get_block_actions_cursor(
     action_types: Option<&str>,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<ContextActionJson>, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
     if let Some(action_types) = action_types {
         filters = filters.with_action_types(get_action_types(action_types));
@@ -65,7 +66,7 @@ pub(crate) fn get_block_action_details(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<ContextActionBlockDetails, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
 
     let actions: Vec<ContextAction> = context_action_storage
         .get_by_block_hash(&block_hash)?
@@ -85,7 +86,7 @@ pub(crate) fn get_contract_actions_cursor(
     action_types: Option<&str>,
     persistent_storage: &PersistentStorage,
 ) -> Result<Vec<ContextActionJson>, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     let contract_address = contract_id_to_contract_address_for_index(contract_address)?;
     let mut filters = ContextActionFilters::with_contract_id(contract_address);
     if let Some(action_types) = action_types {
@@ -107,7 +108,7 @@ pub(crate) fn get_contract_actions(
     limit: usize,
     persistent_storage: &PersistentStorage,
 ) -> Result<PagedResult<Vec<ContextActionRecordValue>>, failure::Error> {
-    let context_action_storage = ContextActionStorage::new(persistent_storage);
+    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     let contract_address = contract_id_to_contract_address_for_index(contract_id)?;
     let mut context_records =
         context_action_storage.get_by_contract_address(&contract_address, from_id, limit + 1)?;
@@ -165,4 +166,24 @@ pub(crate) fn get_dev_version() -> String {
     let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
     format!("v{}", version_env.to_string())
+}
+
+#[inline]
+pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
+    action_types
+        .split(',')
+        .filter_map(|x: &str| x.parse().ok())
+        .collect()
+}
+
+#[inline]
+pub(crate) fn ensure_context_action_storage(
+    persistent_storage: &PersistentStorage,
+) -> Result<ContextActionStorageReader, failure::Error> {
+    match persistent_storage.merkle_context_actions() {
+        None => Err(failure::format_err!(
+            "Persistent context actions storage is not initialized!"
+        )),
+        Some(context_action_storage) => Ok(ContextActionStorageReader::new(context_action_storage)),
+    }
 }

@@ -3,7 +3,7 @@
 // #![forbid(unsafe_code)]
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use riker::actors::*;
@@ -26,15 +26,14 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
-use storage::persistent::{
-    open_cl, open_kv, ActionRecorder, CommitLogSchema, DbConfiguration, NoRecorder,
-    PersistentStorage,
-};
-use storage::ActionFileStorage;
-use storage::ContextActionStorage;
+use storage::context::merkle::merkle_storage::MerkleStorage;
+use storage::context::TezedgeContext;
+use storage::persistent::database::open_kv;
+use storage::persistent::sequence::Sequences;
+use storage::persistent::{open_cl, CommitLogSchema, DBError, DbConfiguration};
 use storage::{
-    check_database_compatibility, context::TezedgeContext, persistent::DBError,
-    resolve_storage_init_chain_data, BlockStorage, StorageInitInfo,
+    check_database_compatibility, resolve_storage_init_chain_data, BlockStorage, PersistentStorage,
+    StorageInitInfo,
 };
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -45,7 +44,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
-use crate::configuration::Environment;
+use crate::configuration::{ContextKvStoreConfiguration, Environment};
 
 mod configuration;
 mod identity;
@@ -159,28 +158,6 @@ fn create_tezos_writeable_api_pool(
     )
 }
 
-fn build_recorders(
-    env: &crate::configuration::Environment,
-    storage: &PersistentStorage,
-) -> Vec<Box<dyn ActionRecorder + Send>> {
-    env.storage
-        .action_store_backend
-        .iter()
-        .map(|backend| match backend {
-            configuration::ContextActionStoreBackend::RocksDB => {
-                Box::new(ContextActionStorage::new(&storage)) as Box<dyn ActionRecorder + Send>
-            }
-            configuration::ContextActionStoreBackend::FileStorage => {
-                let action_file_path = env.storage.db_path.join("actionfile.bin");
-                Box::new(ActionFileStorage::new(action_file_path)) as Box<dyn ActionRecorder + Send>
-            }
-            configuration::ContextActionStoreBackend::NoneBackend => {
-                Box::new(NoRecorder {}) as Box<dyn ActionRecorder + Send>
-            }
-        })
-        .collect::<Vec<_>>()
-}
-
 fn block_on_actors(
     env: crate::configuration::Environment,
     tezos_env: &TezosEnvironmentConfiguration,
@@ -198,6 +175,10 @@ fn block_on_actors(
         shell::SUPPORTED_DISTRIBUTED_DB_VERSION.to_vec(),
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
+
+    let context_action_recorders = env
+        .build_recorders(&persistent_storage)
+        .expect("Failed to configure context action recorders");
 
     info!(log, "Initializing protocol runners... (4/5)");
 
@@ -279,7 +260,7 @@ fn block_on_actors(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
-        build_recorders(&env, &persistent_storage),
+        context_action_recorders,
         context_actions_event_server,
         log.clone(),
     )
@@ -499,15 +480,6 @@ fn main() {
     );
     check_deprecated_network(&env, &log);
 
-    // check deprecated networks
-    info!(
-        log,
-        "Configured network {:?} -> {}",
-        env.tezos_network.supported_values(),
-        tezos_env.version
-    );
-    check_deprecated_network(&env, &log);
-
     // Validate zcash-params
     info!(log, "Checking zcash-params for sapling... (1/5)");
     if let Err(e) = env.ffi.zcash_param.assert_zcash_params(&log) {
@@ -550,36 +522,78 @@ fn main() {
     info!(log, "Loading databases... (3/5)");
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
-    let cache = [
-        Cache::new_lru_cache(env.storage.db.cache_size)
-            .expect("Failed to initialize RocksDB cache (db)"),
-        Cache::new_lru_cache(env.storage.db_context.cache_size)
-            .expect("Failed to initialize RocksDB cache (db_context)"),
-        Cache::new_lru_cache(env.storage.db_context_actions.cache_size)
-            .expect("Failed to initialize RocksDB cache (db_context_actions)"),
-    ];
+    let mut caches = vec![];
 
     // initialize dbs
-    let kv = initialize_db(&log, &cache[0], &env.storage.db, &tezos_env)
+    let kv_cache = Cache::new_lru_cache(env.storage.db.cache_size)
+        .expect("Failed to initialize RocksDB cache (db)");
+    let kv = initialize_db(&log, &kv_cache, &env.storage.db, &tezos_env)
         .expect("Failed to create/initialize RocksDB database (db)");
-    let kv_context = initialize_db(&log, &cache[1], &env.storage.db_context, &tezos_env)
-        .expect("Failed to create/initialize RocksDB database (db_context)");
-    let kv_actions = initialize_db(&log, &cache[2], &env.storage.db_context_actions, &tezos_env)
-        .expect("Failed to create/initialize RocksDB database (db_context_actions)");
+    caches.push(kv_cache);
+
     let commit_logs = Arc::new(
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),
     );
+    let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
+
+    // initialize merkle context
+    let merkle = Arc::new(RwLock::new(MerkleStorage::new(
+        match &env.storage.context_kv_store {
+            ContextKvStoreConfiguration::RocksDb(cfg) => {
+                let kv_context_cache = Cache::new_lru_cache(cfg.cache_size)
+                    .expect("Failed to initialize RocksDB cache (db_context)");
+                let kv_context = initialize_db(&log, &kv_context_cache, cfg, &tezos_env)
+                    .expect("Failed to create/initialize RocksDB database (db_context)");
+                caches.push(kv_context_cache);
+                Box::new(
+                    storage::context::kv_store::rocksdb_backend::RocksDBBackend::new(kv_context),
+                )
+            }
+            ContextKvStoreConfiguration::Sled { path } => {
+                let sled = sled::Config::new()
+                    .path(path)
+                    .open()
+                    .expect("Failed to create/initialize Sled database (db_context)");
+                Box::new(storage::context::kv_store::sled_backend::SledBackend::new(
+                    sled,
+                ))
+            }
+            ContextKvStoreConfiguration::InMem => {
+                Box::new(storage::context::kv_store::in_memory_backend::InMemoryBackend::new())
+            }
+            ContextKvStoreConfiguration::BTreeMap => {
+                Box::new(storage::context::kv_store::btree_map::BTreeMapBackend::new())
+            }
+        },
+    )));
+
+    // context actions persistent db (optional)
+    let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {
+        Some(merkle_context_actions_store) => {
+            let kv_actions_cache = Cache::new_lru_cache(merkle_context_actions_store.cache_size)
+                .expect("Failed to initialize RocksDB cache (db_context_actions)");
+            let kv_actions = initialize_db(
+                &log,
+                &kv_actions_cache,
+                &merkle_context_actions_store,
+                &tezos_env,
+            )
+            .expect("Failed to create/initialize RocksDB database (db_context_actions)");
+            caches.push(kv_actions_cache);
+            Some(kv_actions)
+        }
+        None => None,
+    };
 
     {
         let persistent_storage = PersistentStorage::new(
             kv,
-            kv_context,
-            kv_actions,
             commit_logs,
-            env.storage.kv_store_backend.clone(),
-        )
-        .expect("cannot initialize persitent storage");
+            sequences,
+            merkle,
+            merkle_context_actions_store,
+        );
 
         let tezedge_context = TezedgeContext::new(
             Some(BlockStorage::new(&persistent_storage)),

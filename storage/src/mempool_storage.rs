@@ -13,11 +13,11 @@ use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 
+use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage,
-    SchemaError, StorageType,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
-use crate::{num_from_slice, IteratorMode, StorageError};
+use crate::{num_from_slice, IteratorMode, PersistentStorage, StorageError};
 
 /// Convenience type for operation meta storage database
 pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
@@ -65,7 +65,7 @@ pub struct MempoolStorage {
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
         }
     }
 
@@ -175,7 +175,9 @@ impl MempoolStorage {
 impl KeyValueSchema for MempoolStorage {
     type Key = MempoolKey;
     type Value = MempoolValue;
+}
 
+impl RocksDbKeyValueSchema for MempoolStorage {
     #[inline]
     fn name() -> &'static str {
         "mempool_storage"

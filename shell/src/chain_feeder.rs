@@ -19,7 +19,7 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
     BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,

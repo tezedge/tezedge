@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO: move to separate subdir with GarbageCollector
+
 use std::collections::HashSet;
 
 use crate::persistent::database::{DBError, KeyValueStoreBackend};
@@ -14,10 +16,12 @@ use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::merkle_storage::{ContextValue, Entry, EntryHash};
-use crate::storage_backend::{
+use crate::context::kv_store::storage_backend::{
     collect_hashes_recursively, fetch_entry_from_store, GarbageCollector, StorageBackendError,
 };
+use crate::context::merkle::hash::EntryHash;
+use crate::context::merkle::Entry;
+use crate::context::ContextValue;
 
 const COUNT_OF_KEYS_TO_CLEANUP_IN_SINGLE_GC_ITERATION: usize = 2048;
 
@@ -429,8 +433,9 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> G
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::BTreeMapBackend;
-    use crate::storage_backend::size_of_vec;
+    use crate::context::kv_store::btree_map::BTreeMapBackend;
+    use crate::context::kv_store::storage_backend::size_of_vec;
+    use crate::context::merkle::Entry;
     use std::convert::TryFrom;
 
     fn empty_kvstore_gced(cycle_count: usize) -> MarkMoveGCed<BTreeMapBackend> {

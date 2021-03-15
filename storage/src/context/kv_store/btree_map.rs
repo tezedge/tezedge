@@ -1,29 +1,30 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::MerkleStorage;
 use std::collections::BTreeMap;
 use std::ops::{AddAssign, DerefMut, SubAssign};
 use std::sync::RwLock;
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::storage_backend::{NotGarbageCollected, StorageBackendStats};
+use crate::context::kv_store::storage_backend::{NotGarbageCollected, StorageBackendStats};
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use crate::persistent::database::DBError;
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
-pub struct KVStore<K: Ord, V> {
+pub struct BTreeMapBackend<K: Ord, V> {
     kv_map: RwLock<BTreeMap<K, V>>,
     stats: RwLock<StorageBackendStats>,
 }
 
-impl<K: Ord, V> Default for KVStore<K, V> {
+impl<K: Ord, V> Default for BTreeMapBackend<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: Ord, V> KVStore<K, V> {
+impl<K: Ord, V> BTreeMapBackend<K, V> {
     pub fn new() -> Self {
         Self {
             kv_map: RwLock::new(BTreeMap::new()),
@@ -32,13 +33,9 @@ impl<K: Ord, V> KVStore<K, V> {
     }
 }
 
-impl NotGarbageCollected for KVStore<EntryHash, ContextValue> {}
+impl NotGarbageCollected for BTreeMapBackend<EntryHash, ContextValue> {}
 
-impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
-    fn is_persistent(&self) -> bool {
-        false
-    }
-
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for BTreeMapBackend<EntryHash, ContextValue> {
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
         Ok(self.stats.read()?.total_as_bytes())
     }
@@ -126,4 +123,71 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
     }
 }
 
-pub type BTreeMapBackend = KVStore<EntryHash, ContextValue>;
+impl Flushable for BTreeMapBackend<EntryHash, ContextValue> {
+    fn flush(&self) -> Result<(), failure::Error> {
+        Ok(())
+    }
+}
+
+impl MultiInstanceable for BTreeMapBackend<EntryHash, ContextValue> {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for BTreeMapBackend<EntryHash, ContextValue> {
+    fn is_persistent(&self) -> bool {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::context::kv_store::btree_map::BTreeMapBackend;
+    use crate::context::kv_store::storage_backend::size_of_vec;
+    use crate::context::kv_store::test_support::{blob_serialized, entry_hash};
+    use crate::context::EntryHash;
+    use crate::persistent::KeyValueStoreBackend;
+
+    #[test]
+    fn test_memory_consumption_btree() {
+        let entry1 = entry_hash(&[1]);
+        let value1 = blob_serialized(vec![1, 2, 3, 3, 5]);
+        let entry2 = entry_hash(&[2]);
+        let value2 = blob_serialized(vec![11, 22, 33]);
+
+        let storage = BTreeMapBackend::default();
+        assert_eq!(0, storage.total_get_mem_usage().unwrap());
+
+        // insert first entry
+        storage.put(&entry1, &value1).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value1),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        // change value under key
+        storage.merge(&entry1, &value2).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        storage.put(&entry2, &value2).unwrap();
+        assert_eq!(
+            2 * std::mem::size_of::<EntryHash>() + size_of_vec(&value2) + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        //remove first entry
+        storage.delete(&entry1).unwrap();
+        assert_eq!(
+            std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
+            storage.total_get_mem_usage().unwrap()
+        );
+
+        //remove second entry
+        storage.delete(&entry2).unwrap();
+        assert_eq!(0, storage.total_get_mem_usage().unwrap());
+    }
+}

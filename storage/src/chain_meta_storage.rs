@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{ChainId, HashType};
 use tezos_messages::Head;
 
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{
-    default_table_options, BincodeEncoded, Decoder, Encoder, KeyValueSchema,
-    KeyValueStoreWithSchema, PersistentStorage, SchemaError, StorageType,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
-use crate::StorageError;
+use crate::{PersistentStorage, StorageError};
 
 pub type ChainMetaStorageKv = dyn KeyValueStoreWithSchema<ChainMetaStorage> + Sync + Send;
 
@@ -59,7 +59,7 @@ pub struct ChainMetaStorage {
 impl ChainMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
         }
     }
 
@@ -164,7 +164,9 @@ impl ChainMetaStorageReader for ChainMetaStorage {
 impl KeyValueSchema for ChainMetaStorage {
     type Key = MetaKey;
     type Value = MetadataValue;
+}
 
+impl RocksDbKeyValueSchema for ChainMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -268,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_current_head() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__test_current_head")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__test_current_head")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
         let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
@@ -329,7 +331,7 @@ mod tests {
 
     #[test]
     fn test_caboose() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__test_caboose")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__test_caboose")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
         let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
@@ -390,7 +392,7 @@ mod tests {
 
     #[test]
     fn test_genesis() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__test_genesis")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__test_genesis")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
         let chain_id1 = "NetXgtSLGNJvNye".try_into()?;
@@ -451,7 +453,7 @@ mod tests {
 
     #[test]
     fn test_test_chain_id() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__test_test_chain_id")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__test_test_chain_id")?;
         let index = ChainMetaStorage::new(tmp_storage.storage());
 
         let chain_id1 = "NetXgtSLGNJvNye".try_into()?;

@@ -917,7 +917,7 @@ mod stats {
     use std::path::Path;
 
     use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
-    use storage::persistent::PersistentStorage;
+    use storage::PersistentStorage;
 
     pub fn generate_dir_stats<P: AsRef<Path>>(
         marker: &str,
