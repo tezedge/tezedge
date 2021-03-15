@@ -8,7 +8,7 @@ use std::process::{Command, Output};
 use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
-use crate::image::{Explorer, OcamlDebugger, Sandbox, TezedgeDebugger, WatchdogContainer};
+use crate::image::{Explorer, Sandbox, TezedgeDebugger, WatchdogContainer};
 use crate::node::{OcamlNode, TezedgeNode};
 
 // TODO: use external docker-compose for now, should we manage the images/containers directly?
@@ -32,8 +32,6 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
     info!(log, "Tezedge node is running");
 
     start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
-    start_with_compose(compose_file_path, OcamlDebugger::NAME, "ocaml-debugger");
-    info!(log, "Debugger for ocaml node started");
     // node healthcheck
     while reqwest::get("http://localhost:18733/chains/main/blocks/head/header")
         .await

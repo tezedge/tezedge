@@ -83,7 +83,7 @@ impl DeployMonitor {
         // "move" trough all the possible cursor_ids with a LIMIT step
         while let Some(cursor) = cursor_id {
             match reqwest::get(&format!(
-                "http://localhost:17732/v2/log?limit={}&cursor_id={}",
+                "http://localhost:17732/v2/log?node_name=9732&limit={}&cursor_id={}",
                 LIMIT, cursor
             ))
             .await
