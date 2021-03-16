@@ -13,16 +13,33 @@ jobs:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
-        sanitizer: [none, address]
+        sanitizer: [none]
+        include:
+          - os: ubuntu-latest
+            sanitizer: address
     steps:
       - uses: actions/checkout@v2
+      - name: OCaml/Opam cache
+        id: tezedge-opam-cache
+        uses: actions/cache@v2
+        with:
+          path: "~/.opam"
+          key: tezedge-${{ matrix.os }}-ocaml-4.09.1
+      - name: Setup OCaml ${{ matrix.ocaml-version }}
+        uses: avsm/setup-ocaml@v1
+        with:
+          ocaml-version: 4.09.1
+      - name: Set Opam env
+        run: opam env >> $GITHUB_ENV
+      - name: Add Opam switch to PATH
+        run: opam var bin >> $GITHUB_PATH
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly-2020-12-31
           default: true
       - name: Settings for cargo in Linux
-        if: matrix.os == 'ubuntu-latest' && matrix.sanitizer == 'address'
+        if: matrix.sanitizer == 'address'
         run: |
             echo '[build]' >> ~/.cargo/config
             echo 'rustflags = ["-Z", "sanitizer=address"]' >> ~/.cargo/config
@@ -34,29 +51,21 @@ jobs:
             echo '[build]' >> ~/.cargo/config
             echo 'rustflags = ["-C", "link-args=-Wl,-undefined,dynamic_lookup"]' >> ~/.cargo/config
       - name: APT dependencies
+        if: runner.os == 'Linux'
         run: |
             wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
             sudo add-apt-repository ppa:ubuntu-toolchain-r/test
             sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty main"
             sudo apt-get update -y
             sudo apt-get install libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
-        if: runner.os == 'Linux'
       - name: OSX dependencies
-        run: brew install hidapi
         if: runner.os == 'macOS'
+        run: brew install hidapi
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
           command: check
       - name: cargo test
-        if: matrix.sanitizer == 'none'
         uses: actions-rs/cargo@v1
         with:
           command: test
-      - name: cargo test
-        if: matrix.sanitizer == 'address' && matrix.os == 'ubuntu-latest'
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --all --exclude tezos_messages
-
