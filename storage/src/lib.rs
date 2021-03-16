@@ -65,7 +65,6 @@ pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
-pub mod skip_list;
 pub mod storage_backend;
 pub mod system_storage;
 
@@ -532,7 +531,6 @@ pub mod tests_common {
     use crate::mempool_storage::MempoolStorage;
     use crate::persistent::sequence::Sequences;
     use crate::persistent::*;
-    use crate::skip_list::{DatabaseBackedSkipList, Lane, ListValue};
 
     use super::*;
 
@@ -580,9 +578,6 @@ pub mod tests_common {
                     OperationsMetaStorage::descriptor(&cache),
                     SystemStorage::descriptor(&cache),
                     Sequences::descriptor(&cache),
-                    DatabaseBackedSkipList::descriptor(&cache),
-                    Lane::descriptor(&cache),
-                    ListValue::descriptor(&cache),
                     MempoolStorage::descriptor(&cache),
                     ChainMetaStorage::descriptor(&cache),
                     PredecessorStorage::descriptor(&cache),
