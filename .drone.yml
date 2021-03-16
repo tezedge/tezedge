@@ -2023,8 +2023,8 @@ clone:
 environment:
   NETWORK: mainnet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 1000 # also check parameter --stop=
-  TO_BLOCK_HEADER_FOR_RPC: 1000
+  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
   # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
   LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
