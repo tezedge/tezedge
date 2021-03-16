@@ -2744,11 +2744,11 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezos-sys",
  "tezos_api",
  "tezos_context",
  "tezos_encoding",
  "tezos_identity",
- "tezos_interop",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",
@@ -3078,6 +3078,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos-sys"
+version = "1.2.0"
+dependencies = [
+ "colored",
+ "fs_extra",
+ "hex",
+ "os_type",
+ "serde 1.0.123",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "tezos_api"
 version = "1.2.0"
 dependencies = [
@@ -3094,6 +3107,7 @@ dependencies = [
  "slog",
  "strum",
  "strum_macros",
+ "tezos-sys",
  "tezos_messages",
 ]
 
@@ -3121,6 +3135,7 @@ dependencies = [
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.123",
+ "tezos-sys",
 ]
 
 [[package]]
@@ -3156,20 +3171,16 @@ dependencies = [
 name = "tezos_interop"
 version = "1.2.0"
 dependencies = [
- "colored",
  "criterion",
  "crypto",
  "failure",
- "fs_extra",
  "futures",
  "hex",
  "lazy_static",
  "ocaml-interop",
- "os_type",
- "serde 1.0.123",
  "serde_json",
  "serial_test",
- "sha2",
+ "tezos-sys",
  "tezos_api",
  "tezos_context",
  "tezos_interop_callback",
@@ -3181,6 +3192,7 @@ name = "tezos_interop_callback"
 version = "1.2.0"
 dependencies = [
  "ocaml-interop",
+ "tezos-sys",
  "tezos_context",
 ]
 

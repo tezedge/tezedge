@@ -182,7 +182,7 @@ impl BincodeEncoded for () {}
 
 /// Create number from a bytes
 ///
-/// ```rust
+/// ```rust,no_run
 /// use storage::num_from_slice;
 ///
 /// let mut bytes = vec![];

@@ -1,0 +1,19 @@
+[package]
+name = "tezos-sys"
+version = "1.2.0"
+authors = ["Bruno Deferrari <bruno.deferrari@simplestaking.com>"]
+edition = "2018"
+links = "tezos"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[build-dependencies]
+colored = "2.0"
+fs_extra = "1.1"
+hex = "0.4"
+os_type = "2.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.9"

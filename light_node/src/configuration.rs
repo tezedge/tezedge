@@ -288,9 +288,9 @@ impl Ffi {
     const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap";
 
     pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
-        "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+        "tezos/sys/lib_tezos/artifacts/sapling-spend.params";
     pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
-        "tezos/interop/lib_tezos/artifacts/sapling-output.params";
+        "tezos/sys/lib_tezos/artifacts/sapling-output.params";
 }
 
 #[derive(Debug, Clone)]

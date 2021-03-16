@@ -42,6 +42,6 @@ slog-term = "2.6"
 tezos_encoding = { path = "../tezos/encoding" }
 zip = "0.5.5"
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
-tezos_interop = { path = "../tezos/interop" }
+tezos-sys = { path = "../tezos/sys" }
 rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 fs_extra = "1.2.0"

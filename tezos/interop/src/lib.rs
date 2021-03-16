@@ -35,3 +35,7 @@ pub mod ffi;
 /// assert_eq!("Hello world!", &result);
 /// ```
 pub mod runtime;
+
+pub fn force_libtezos_linking() {
+    tezos_sys::force_libtezos_linking();
+}

@@ -3,6 +3,7 @@ members = [
     "ipc",
     "logging",
     "crypto",
+    "tezos/sys",
     "tezos/api",
     "tezos/messages",
     "tezos/identity",

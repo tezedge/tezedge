@@ -17,6 +17,7 @@ strum = "0.20"
 strum_macros = "0.20"
 # local dependencies
 crypto = { path = "../../crypto" }
+tezos-sys = { path = "../sys" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
