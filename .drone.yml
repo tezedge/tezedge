@@ -114,7 +114,6 @@ steps:
     - cp ./target/release/light-node /artifacts
     - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
-    - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
     - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
     # copy sapling init files
@@ -2282,7 +2281,7 @@ steps:
     settings:
       repo: simplestakingcom/tezedge
       target: light-node
-      tags: 
+      tags:
         - ${DRONE_TAG}
         - latest-release
       dockerfile: docker/distroless/Dockerfile
@@ -2298,7 +2297,7 @@ steps:
     settings:
       repo: simplestakingcom/tezedge
       target: sandbox
-      tags: 
+      tags:
         - sandbox-${DRONE_TAG}
         - sandbox-latest-release
       dockerfile: docker/distroless/Dockerfile
