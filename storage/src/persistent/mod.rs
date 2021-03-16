@@ -12,8 +12,10 @@ use crate::StorageError;
 use derive_builder::Builder;
 use rocksdb::{BlockBasedOptions, Cache, ColumnFamilyDescriptor, Options, DB};
 
+pub use crate::commit_log::{
+    CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location,
+};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema};
 pub use schema::{CommitLogDescriptor, CommitLogSchema, KeyValueSchema};
 
@@ -26,7 +28,6 @@ use crate::persistent::sequence::Sequences;
 use tezos_context::channel::ContextAction;
 
 pub mod codec;
-pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;

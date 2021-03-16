@@ -11,9 +11,10 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
+use crate::commit_log::{CommitLogWithSchema, Location};
 use crate::persistent::{
-    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location, PersistentStorage, StorageType,
+    BincodeEncoded, CommitLogSchema, KeyValueSchema, KeyValueStoreWithSchema, PersistentStorage,
+    StorageType,
 };
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 
