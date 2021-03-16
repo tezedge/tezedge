@@ -184,7 +184,7 @@ impl BinaryReader {
 
     fn decode_record(
         &self,
-        buf: &mut dyn Buf,
+        buf: &mut &[u8],
         schema: &[Field],
     ) -> Result<Value, BinaryReaderError> {
         let mut values = Vec::with_capacity(schema.len());
@@ -202,7 +202,7 @@ impl BinaryReader {
 
     fn decode_tuple(
         &self,
-        buf: &mut dyn Buf,
+        buf: &mut &[u8],
         encodings: &[Encoding],
     ) -> Result<Value, BinaryReaderError> {
         let mut values = Vec::with_capacity(encodings.len());
@@ -214,7 +214,7 @@ impl BinaryReader {
 
     fn decode_value(
         &self,
-        buf: &mut dyn Buf,
+        buf: &mut &[u8],
         encoding: &Encoding,
     ) -> Result<Value, BinaryReaderError> {
         match encoding {
@@ -273,7 +273,7 @@ impl BinaryReader {
             Encoding::Enum => Ok(Value::Enum(None, Some(u32::from(safe!(buf, get_u8, u8))))),
             Encoding::Dynamic(dynamic_encoding) => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
-                let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                let mut buf_slice = safe!(buf, bytes_sz, { let (a, b) = buf.split_at(bytes_sz); *buf = b; a });
                 self.decode_value(&mut buf_slice, dynamic_encoding)
             }
             Encoding::BoundedDynamic(max, dynamic_encoding) => {
@@ -285,17 +285,17 @@ impl BinaryReader {
                         actual: ActualSize::Exact(bytes_sz),
                     })?
                 } else {
-                    let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                    let mut buf_slice = safe!(buf, bytes_sz, { let (a, b) = buf.split_at(bytes_sz); *buf = b; a });
                     self.decode_value(&mut buf_slice, dynamic_encoding)
                 }
             }
             Encoding::Sized(sized_size, sized_encoding) => {
-                let mut buf_slice = safe!(buf, *sized_size, buf.take(*sized_size));
+                let mut buf_slice = safe!(buf, *sized_size, { let (a, b) = buf.split_at(*sized_size); *buf = b; a });
                 self.decode_value(&mut buf_slice, sized_encoding)
             }
             Encoding::Bounded(max, inner_encoding) => {
                 let upper = std::cmp::min(*max, buf.remaining());
-                let mut buf_slice = safe!(buf, upper, buf.take(upper));
+                let mut buf_slice = safe!(buf, upper, { let (a, b) = buf.split_at(upper); *buf = b; a });
                 let res = self.decode_value(&mut buf_slice, inner_encoding);
                 match res {
                     // if underlying encoding requires more data than we have,
@@ -321,7 +321,7 @@ impl BinaryReader {
             }
             Encoding::Greedy(un_sized_encoding) => {
                 let bytes_sz = buf.remaining();
-                let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                let mut buf_slice = safe!(buf, bytes_sz, { let (a, b) = buf.split_at(bytes_sz); *buf = b; a });
                 self.decode_value(&mut buf_slice, un_sized_encoding)
             }
             Encoding::Tags(tag_sz, ref tag_map) => {
@@ -348,7 +348,7 @@ impl BinaryReader {
             Encoding::List(encoding_inner) => {
                 let bytes_sz = buf.remaining();
 
-                let mut buf_slice = buf.take(bytes_sz);
+                let mut buf_slice = safe!(buf, bytes_sz, { let (a, b) = buf.split_at(bytes_sz); *buf = b; a });
 
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {
@@ -363,7 +363,7 @@ impl BinaryReader {
             Encoding::BoundedList(max, encoding_inner) => {
                 let bytes_sz = buf.remaining();
 
-                let mut buf_slice = buf.take(bytes_sz);
+                let mut buf_slice = safe!(buf, bytes_sz, { let (a, b) = buf.split_at(bytes_sz); *buf = b; a });
 
                 let mut values = vec![];
                 while buf_slice.remaining() > 0 {

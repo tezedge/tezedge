@@ -28,12 +28,25 @@
       ]
     },
     {
-      "name": "(lldbg) Launch",
+      "name": "(lldb) Launch",
       "type": "lldb",
+      "sourceLanguages": ["rust"],
       "request": "launch",
       "program": "${workspaceFolder}/target/debug/light-node",
-      "args": [],
+      "args": [
+        "--tezos-data-dir", "/tmp/tezedge/tezos-node",
+        "--bootstrap-db-path", "/tmp/tezedge/light-node",
+        "--identity-file", "${workspaceFolder}/light_node/etc/tezedge/identity.json",
+        "--protocol-runner", "${workspaceFolder}/target/debug/protocol-runner",
+        "--network", "mainnet",
+        //"--p2p-port", "9732",
+        //"--rpc-port", "18732",
+        "--config-file", "${workspaceFolder}/light_node/etc/tezedge/tezedge.config"
+      ],
       "cwd": "${workspaceFolder}/light_node",
+      "env": {
+        "LD_LIBRARY_PATH": "${workspaceFolder}/tezos/interop/lib_tezos/artifacts:${workspaceFolder}/target/debug"
+      }
     }
   ]
 }
