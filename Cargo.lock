@@ -2925,6 +2925,7 @@ dependencies = [
  "derive_builder",
  "failure",
  "flate2",
+ "fs_extra",
  "getset",
  "hex",
  "im",
