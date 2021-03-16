@@ -33,6 +33,7 @@ pub use crate::block_storage::{
     BlockStorage, BlockStorageReader,
 };
 pub use crate::chain_meta_storage::ChainMetaStorage;
+use crate::commit_log::CommitLogError;
 pub use crate::context_action_storage::{
     ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
 };
@@ -45,7 +46,7 @@ pub use crate::operations_storage::{
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::SequenceError;
 use crate::persistent::ActionRecordError;
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 pub use action_file_storage::ActionFileStorage;
@@ -57,6 +58,7 @@ pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
+pub mod commit_log;
 pub mod context;
 pub mod context_action_storage;
 pub mod mempool_storage;
