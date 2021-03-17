@@ -3,7 +3,7 @@ use crypto::hash::HashType;
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-/// P2P message encoding maximal size
+/// P2P message encoding maximal size in OCaml
 ///
 /// OCaml refs:
 ///
@@ -15,7 +15,19 @@ use crypto::hash::HashType;
 ///  (*Very high, arbitrary upper bound for message encodings  *)
 ///  ...
 /// ```
-pub const MESSAGE_MAX_SIZE: usize = 100 * 1024 * 1024;
+pub const OCAML_MESSAGE_MAX_SIZE: usize = 100 * 1024 * 1024;
+
+/// P2P message encoding maximal size.
+///
+/// This is calculated from encoding schema as a maximal possible size of all message variants.
+/// The biggest one happens to be a `PeerResponseMessage::CurrentHead`.
+pub const MESSAGE_MAX_SIZE: usize = 4 +         // dynamic block size
+    2 +                                         // tag size
+    (                                           // CurrentHeadMessage
+        HashType::ChainId.size() +              //   chain_id: ChainId
+        4 + BLOCK_HEADER_MAX_SIZE +                 //   current_block_header: BlockHeader
+        MEMPOOL_MAX_SIZE                        //   current_mempool: Mempool,
+    );
 
 /// P2P Point ID encoding maximal size
 ///

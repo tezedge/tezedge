@@ -14,7 +14,6 @@ pub mod limits;
 pub mod mempool;
 pub mod metadata;
 pub mod operation;
-pub mod operation_hashes_for_blocks;
 pub mod operations_for_blocks;
 pub mod peer;
 pub mod protocol;
@@ -34,9 +33,6 @@ pub mod prelude {
     pub use super::mempool::Mempool;
     pub use super::metadata::MetadataMessage;
     pub use super::operation::{GetOperationsMessage, Operation, OperationMessage};
-    pub use super::operation_hashes_for_blocks::{
-        GetOperationHashesForBlocksMessage, OperationHashesForBlocksMessage,
-    };
     pub use super::operations_for_blocks::MAX_PASS_MERKLE_DEPTH;
     pub use super::operations_for_blocks::{
         GetOperationsForBlocksMessage, OperationsForBlock, OperationsForBlocksMessage, Path,

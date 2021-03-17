@@ -577,16 +577,6 @@ mod tests {
     }
 
     #[test]
-    fn decode_generated_data_get_operation_hashes_for_blocks() {
-        test_decoding_generated_data::<GetOperationHashesForBlocksMessage>();
-    }
-
-    #[test]
-    fn decode_generated_data_operation_hashes_for_blocks() {
-        test_decoding_generated_data::<OperationHashesForBlocksMessage>();
-    }
-
-    #[test]
     fn decode_generated_data_get_operations_for_blocks() {
         test_decoding_generated_data::<GetOperationsForBlocksMessage>();
     }
