@@ -1319,7 +1319,8 @@ environment:
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -1603,7 +1604,8 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -1811,7 +1813,8 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -2020,7 +2023,8 @@ environment:
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732

@@ -8,6 +8,7 @@ links = "tezos"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# NOTE: should not have any local dependencies, this crate is just for linking libtezos.so
 
 [build-dependencies]
 colored = "2.0"
