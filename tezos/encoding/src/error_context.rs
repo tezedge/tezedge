@@ -36,7 +36,7 @@ impl<T: Display + Send + Sync + Clone + 'static> EncodingError<T> {
         &self.inner.get_context().1
     }
 
-    pub(crate) fn field(&self, name: &String) -> ErrorInfo<T> {
+    pub(crate) fn field(&self, name: &str) -> ErrorInfo<T> {
         self.inner.get_context().field(name)
     }
 
@@ -71,7 +71,7 @@ impl<T: Display + Send + Sync + 'static> From<Context<ErrorInfo<T>>> for Encodin
 pub(crate) struct ErrorInfo<T: Display + Send + Sync + 'static>(T, String);
 
 impl<T: Display + Send + Sync + Clone + 'static> ErrorInfo<T> {
-    pub fn field(&self, name: &String) -> Self {
+    pub fn field(&self, name: &str) -> Self {
         let msg = if self.1.is_empty() {
             format!("field `{}`", name)
         } else {
@@ -82,7 +82,7 @@ impl<T: Display + Send + Sync + Clone + 'static> ErrorInfo<T> {
 
     pub fn element_of(&self) -> Self {
         let msg = if self.1.is_empty() {
-            format!("list element")
+            "list element".to_string()
         } else {
             format!("{} @ list element", self.1)
         };

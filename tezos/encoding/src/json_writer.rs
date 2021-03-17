@@ -136,31 +136,50 @@ impl JsonWriter {
 
     fn encode_value(&mut self, value: &Value, encoding: &Encoding) -> Result<(), Error> {
         match encoding {
-            Encoding::Unit => Ok(self.push_null()),
+            Encoding::Unit => {
+                self.push_null();
+                Ok(())
+            }
             Encoding::Int8 => match value {
-                Value::Int8(v) => Ok(self.push_num(*v)),
+                Value::Int8(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Uint8 => match value {
-                Value::Uint8(v) => Ok(self.push_num(*v)),
+                Value::Uint8(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Int16 => match value {
-                Value::Int16(v) => Ok(self.push_num(*v)),
+                Value::Int16(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Uint16 => match value {
-                Value::Uint16(v) => Ok(self.push_num(*v)),
+                Value::Uint16(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Int32 => match value {
-                Value::Int32(v) => Ok(self.push_num(*v)),
+                Value::Int32(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Int31 => match value {
                 Value::Int32(v) => {
                     if (*v & 0x7FFF_FFFF) == *v {
-                        Ok(self.push_num(*v))
+                        self.push_num(*v);
+                        Ok(())
                     } else {
                         Err(Error::custom("Value is outside of Int31 range"))
                     }
@@ -168,36 +187,60 @@ impl JsonWriter {
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Uint32 => match value {
-                Value::Int32(v) => Ok(self.push_num(*v)),
+                Value::Int32(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::RangedInt => match value {
-                Value::RangedInt(v) => Ok(self.push_num(*v)),
+                Value::RangedInt(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::RangedFloat => match value {
-                Value::RangedFloat(v) => Ok(self.push_num(*v)),
+                Value::RangedFloat(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Int64 => match value {
-                Value::Int64(v) => Ok(self.push_num(*v)),
+                Value::Int64(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Timestamp => match value {
-                Value::Int64(v) => Ok(self.push_str(&Utc.timestamp(*v, 0).to_rfc3339())),
+                Value::Int64(v) => {
+                    self.push_str(&Utc.timestamp(*v, 0).to_rfc3339());
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Float => match value {
-                Value::Float(v) => Ok(self.push_num(*v)),
+                Value::Float(v) => {
+                    self.push_num(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::Bool => match value {
-                Value::Bool(v) => Ok(self.push_bool(*v)),
+                Value::Bool(v) => {
+                    self.push_bool(*v);
+                    Ok(())
+                }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
             Encoding::String | Encoding::BoundedString(_) | Encoding::Z | Encoding::Mutez => {
                 match value {
-                    Value::String(v) => Ok(self.push_str(v)),
+                    Value::String(v) => {
+                        self.push_str(v);
+                        Ok(())
+                    }
                     _ => Err(Error::encoding_mismatch(encoding, value)),
                 }
             }
@@ -206,7 +249,8 @@ impl JsonWriter {
                     let variant_name = name
                         .as_ref()
                         .ok_or_else(|| Error::custom("Was expecting variant name"))?;
-                    Ok(self.push_str(variant_name))
+                    self.push_str(variant_name);
+                    Ok(())
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
@@ -220,7 +264,8 @@ impl JsonWriter {
                             }
                             self.encode_value(value, list_inner_encoding)?;
                         }
-                        Ok(self.close_array())
+                        self.close_array();
+                        Ok(())
                     }
                     _ => Err(Error::encoding_mismatch(encoding, value)),
                 }
@@ -236,34 +281,39 @@ impl JsonWriter {
                                 _ => return Err(Error::custom(format!("Encoding::Bytes could be applied only to &[u8] value but found: {:?}", value)))
                             }
                     }
-                    Ok(self.push_str(&hex::encode(bytes)))
+                    self.push_str(&hex::encode(bytes));
+                    Ok(())
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value)),
             },
-            Encoding::Hash(hash_encoding) => match value {
-                Value::List(values) => {
-                    let mut bytes = vec![];
-                    for value in values {
-                        match *value {
+            Encoding::Hash(hash_encoding) => {
+                match value {
+                    Value::List(values) => {
+                        let mut bytes = vec![];
+                        for value in values {
+                            match *value {
                                 Value::Uint8(u8_val) => {
                                     bytes.push(u8_val);
                                 }
                                 _ => return Err(Error::custom(format!("Encoding::Hash could be applied only to &[u8] value but found: {:?}", value)))
                             }
-                    }
-                    Ok(self.push_str(
-                        &hash_encoding.hash_to_b58check(&bytes).map_err(|e| {
+                        }
+                        self.push_str(&hash_encoding.hash_to_b58check(&bytes).map_err(|e| {
                             Error::custom(format!("Failed to encode hash: {:?}", e))
-                        })?,
-                    ))
+                        })?);
+                        Ok(())
+                    }
+                    _ => Err(Error::encoding_mismatch(encoding, value)),
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value)),
-            },
+            }
             Encoding::Option(option_encoding) | Encoding::OptionalField(option_encoding) => {
                 match value {
                     Value::Option(wrapped_value) => match wrapped_value {
                         Some(option_value) => self.encode_value(option_value, option_encoding),
-                        None => Ok(self.push_null()),
+                        None => {
+                            self.push_null();
+                            Ok(())
+                        }
                     },
                     _ => Err(Error::encoding_mismatch(encoding, value)),
                 }

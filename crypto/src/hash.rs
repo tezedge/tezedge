@@ -60,7 +60,7 @@ macro_rules! define_hash {
 
         impl $name {
             pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-                HashType::$name.b58check_to_hash(data).map(Self)
+                HashType::$name.b58check_to_hash(data).map($name)
             }
 
             fn from_bytes(data: &[u8]) -> Result<Self, FromBytesError> {

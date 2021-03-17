@@ -79,7 +79,7 @@ impl Step {
             std::mem::replace(&mut self.step, new_step)
         } else {
             // just decrement counter
-            self.counter = self.counter - 1;
+            self.counter -= 1;
             self.step
         };
 

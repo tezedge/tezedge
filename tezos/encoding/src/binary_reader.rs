@@ -102,20 +102,49 @@ macro_rules! safe {
         if $buf.remaining() >= size_of::<$sz>() {
             $buf.$foo()
         } else {
-            return Result::Err(BinaryReaderErrorKind::Underflow {
-                bytes: (size_of::<$sz>() - $buf.remaining()),
-            })?;
+            return Result::Err(
+                BinaryReaderErrorKind::Underflow {
+                    bytes: (size_of::<$sz>() - $buf.remaining()),
+                }
+                .into(),
+            );
         }
     }};
     ($buf:ident, $sz:expr, $exp:expr) => {{
         if $buf.remaining() >= $sz {
             $exp
         } else {
-            return Result::Err(BinaryReaderErrorKind::Underflow {
-                bytes: ($sz - $buf.remaining()),
-            })?;
+            return Result::Err(
+                BinaryReaderErrorKind::Underflow {
+                    bytes: ($sz - $buf.remaining()),
+                }
+                .into(),
+            );
         }
     }};
+}
+
+/// With bound
+fn take_slice<R, F>(buf: &mut &[u8], max: &usize, f: F) -> Result<R, BinaryReaderError>
+where
+    F: FnOnce(&mut &[u8]) -> Result<R, BinaryReaderError>,
+{
+    let upper = std::cmp::min(*max, buf.remaining());
+    let temp = *buf;
+    let mut buf_slice = safe!(buf, upper, {
+        let (slice, remaining) = buf.split_at(upper);
+        *buf = remaining;
+        slice
+    });
+    let res = f(&mut buf_slice);
+    if !buf_slice.is_empty() {
+        let initial_length = temp.len();
+        let new_length = buf_slice.len() + (*buf).len();
+        // assume `buf_slice` can only shrink, not grow
+        debug_assert!(initial_length >= new_length);
+        *buf = &temp[(initial_length - new_length)..];
+    }
+    res
 }
 
 /// Converts Tezos binary form into rust types.
@@ -178,7 +207,8 @@ impl BinaryReader {
         } else {
             Err(BinaryReaderErrorKind::Overflow {
                 bytes: buf.remaining(),
-            })?
+            }
+            .into())
         }
     }
 
@@ -231,7 +261,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Vas expecting 0xFF or 0x00 but instead got {:X}",
                         b
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::String => {
@@ -253,7 +284,8 @@ impl BinaryReader {
                         name: "Encoding::BoundedString".to_string(),
                         boundary: *bytes_max,
                         actual: ActualSize::Exact(bytes_sz),
-                    })?
+                    }
+                    .into())
                 } else {
                     let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                     let mut str_buf = Vec::with_capacity(bytes_sz);
@@ -283,14 +315,10 @@ impl BinaryReader {
                         name: "Encoding::BoundedDynamic".to_string(),
                         boundary: *max,
                         actual: ActualSize::Exact(bytes_sz),
-                    })?
+                    }
+                    .into())
                 } else {
-                    let mut buf_slice = safe!(buf, bytes_sz, {
-                        let (slice, remaining) = buf.split_at(bytes_sz);
-                        *buf = remaining;
-                        slice
-                    });
-                    self.decode_value(&mut buf_slice, dynamic_encoding)
+                    take_slice(buf, &bytes_sz, |slice| self.decode_value(slice, dynamic_encoding))
                 }
             }
             Encoding::Sized(sized_size, sized_encoding) => {
@@ -303,19 +331,14 @@ impl BinaryReader {
             }
             Encoding::Bounded(max, inner_encoding) => {
                 let upper = std::cmp::min(*max, buf.remaining());
-                let mut buf_slice = safe!(buf, upper, {
-                    let (slice, remaining) = buf.split_at(upper);
-                    *buf = remaining;
-                    slice
-                });
-                let res = self.decode_value(&mut buf_slice, inner_encoding);
+                let res = take_slice(buf, max, |slice| self.decode_value(slice, inner_encoding));
                 match res {
                     // if underlying encoding requires more data than we have,
                     // and it is limited to maximal possible size, that means
                     // that this is bounded constraint violation.
                     Err(e) => match e.kind() {
                         BinaryReaderErrorKind::Underflow { bytes } if upper == *max => {
-                            let act_size = bytes.checked_add(*max).ok_or_else(|| {
+                            let act_size = bytes.checked_add(*max).ok_or({
                                 BinaryReaderErrorKind::ArithmeticOverflow {
                                     encoding: "Encoding::Bounded",
                                 }
@@ -324,7 +347,8 @@ impl BinaryReader {
                                 name: "Encoding::Bounded".to_string(),
                                 boundary: *max,
                                 actual: ActualSize::Exact(act_size),
-                            })?
+                            }
+                            .into())
                         }
                         _ => Err(e),
                     },
@@ -358,7 +382,7 @@ impl BinaryReader {
                             Box::new(tag_value),
                         ))
                     }
-                    None => Err(BinaryReaderErrorKind::UnsupportedTag { tag: tag_id })?,
+                    None => Err(BinaryReaderErrorKind::UnsupportedTag { tag: tag_id }.into()),
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -396,7 +420,8 @@ impl BinaryReader {
                             name: "Encoding::List".to_string(),
                             boundary: *max,
                             actual: ActualSize::GreaterThan(values.len()),
-                        })?;
+                        }
+                        .into());
                     }
                     values.push(
                         self.decode_value(&mut buf_slice, encoding_inner)
@@ -417,7 +442,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::OptionalField(inner_encoding) => {
@@ -431,7 +457,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::Obj(_, schema_inner) => Ok(self.decode_record(buf, schema_inner)?),
@@ -544,9 +571,9 @@ impl BinaryReader {
                 self.decode_value(buf, &inner_encoding)
             }
             Encoding::Custom(codec) => codec.decode(buf, encoding),
-            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => Err(
-                de::Error::custom(format!("Unsupported encoding {:?}", encoding)),
-            )?,
+            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => {
+                Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
+            }
         }
     }
 }
