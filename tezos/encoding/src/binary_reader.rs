@@ -318,7 +318,9 @@ impl BinaryReader {
                     }
                     .into())
                 } else {
-                    take_slice(buf, &bytes_sz, |slice| self.decode_value(slice, dynamic_encoding))
+                    take_slice(buf, &bytes_sz, |slice| {
+                        self.decode_value(slice, dynamic_encoding)
+                    })
                 }
             }
             Encoding::Sized(sized_size, sized_encoding) => {
