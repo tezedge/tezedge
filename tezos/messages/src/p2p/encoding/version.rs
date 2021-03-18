@@ -12,6 +12,8 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+use super::limits::CHAIN_NAME_MAX_LENGTH;
+
 /// Holds informations about chain compatibility, features compatibility...
 #[derive(Serialize, Deserialize, Getters, Clone)]
 pub struct NetworkVersion {
@@ -53,7 +55,7 @@ impl NetworkVersion {
 cached_data!(NetworkVersion, body);
 has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
     Encoding::Obj(vec![
-        Field::new("chain_name", Encoding::String),
+        Field::new("chain_name", Encoding::BoundedString(CHAIN_NAME_MAX_LENGTH)),
         Field::new("distributed_db_version", Encoding::Uint16),
         Field::new("p2p_version", Encoding::Uint16),
     ])

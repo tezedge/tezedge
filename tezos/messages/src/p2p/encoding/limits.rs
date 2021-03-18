@@ -213,3 +213,10 @@ pub const GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH: usize = 10;
 ///  let operation_list_max_size = ref (Some (1024 * 1024)) (* FIXME: arbitrary *)
 /// ```
 pub const OPERATION_LIST_MAX_SIZE: usize = 1024 * 1024;
+
+/// Maximal lenght for Tezos chain name.
+///
+/// Currently the longest one is the `TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z`.
+/// It should be pretty safe to have the length greater than that.
+///
+pub const CHAIN_NAME_MAX_LENGTH: usize = 128;
