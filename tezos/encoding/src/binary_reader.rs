@@ -240,9 +240,14 @@ impl BinaryReader {
             }
             Encoding::String => {
                 let bytes_sz = safe!(buf, get_u32, u32) as usize;
-                let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
-                safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
-                let str_buf = str_buf.into_vec();
+                let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                let mut str_buf = Vec::with_capacity(bytes_sz);
+                while buf_slice.has_remaining() {
+                    let chunk = buf_slice.chunk();
+                    let len = chunk.len();
+                    str_buf.extend_from_slice(chunk);
+                    buf_slice.advance(len);
+                }
                 Ok(Value::String(String::from_utf8(str_buf)?))
             }
             Encoding::BoundedString(bytes_max) => {
@@ -254,9 +259,14 @@ impl BinaryReader {
                         actual: ActualSize::Exact(bytes_sz),
                     })?
                 } else {
-                    let mut str_buf = vec![0u8; bytes_sz].into_boxed_slice();
-                    safe!(buf, bytes_sz, buf.copy_to_slice(&mut str_buf));
-                    let str_buf = str_buf.into_vec();
+                    let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
+                    let mut str_buf = Vec::with_capacity(bytes_sz);
+                    while buf_slice.has_remaining() {
+                        let chunk = buf_slice.chunk();
+                        let len = chunk.len();
+                        str_buf.extend_from_slice(chunk);
+                        buf_slice.advance(len);
+                    }
                     Ok(Value::String(String::from_utf8(str_buf)?))
                 }
             }

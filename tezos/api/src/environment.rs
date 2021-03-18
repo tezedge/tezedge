@@ -770,7 +770,7 @@ impl ZcashParams {
 
 #[cfg(test)]
 mod tests {
-    use tezos_messages::ts_to_rfc3339;
+    use tezos_messages::{p2p::encoding::limits::CHAIN_NAME_MAX_LENGTH, ts_to_rfc3339};
 
     use super::*;
 
@@ -823,6 +823,22 @@ mod tests {
                 .bootstrap_lookup_addresses
                 .iter()
                 .for_each(|addr| assert!(parse_bootstrap_addr_port(addr, 1111).is_ok()));
+        });
+    }
+
+    #[test]
+    fn test_network_version_length() {
+        TezosEnvironment::iter().for_each(|net| {
+            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                .get(&net)
+                .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
+
+            assert!(
+                tezos_env.version.len() <= CHAIN_NAME_MAX_LENGTH,
+                "The chain version {} does not fit into the CHAIN_NAME_MAX_LENGTH value {}",
+                tezos_env.version.len(),
+                CHAIN_NAME_MAX_LENGTH
+            );
         });
     }
 }
