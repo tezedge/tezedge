@@ -11,11 +11,12 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
+use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location, PersistentStorage, StorageType,
+    Location,
 };
-use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
+use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
@@ -145,11 +146,9 @@ pub trait BlockStorageReader: Sync + Send {
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.kv(StorageType::Database)),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.kv(StorageType::Database)),
-            by_context_hash_index: BlockByContextHashIndex::new(
-                persistent_storage.kv(StorageType::Database),
-            ),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.db()),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.db()),
+            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.db()),
             clog: persistent_storage.clog(),
         }
     }
@@ -515,7 +514,9 @@ impl BlockPrimaryIndex {
 impl KeyValueSchema for BlockPrimaryIndex {
     type Key = BlockHash;
     type Value = BlockStorageColumnsLocation;
+}
 
+impl RocksDbKeyValueSchema for BlockPrimaryIndex {
     #[inline]
     fn name() -> &'static str {
         "block_storage"
@@ -587,7 +588,9 @@ impl BlockByLevelIndex {
 impl KeyValueSchema for BlockByLevelIndex {
     type Key = BlockLevel;
     type Value = BlockStorageColumnsLocation;
+}
 
+impl RocksDbKeyValueSchema for BlockByLevelIndex {
     #[inline]
     fn name() -> &'static str {
         "block_by_level_storage"
@@ -633,7 +636,9 @@ impl BlockByContextHashIndex {
 impl KeyValueSchema for BlockByContextHashIndex {
     type Key = ContextHash;
     type Value = BlockStorageColumnsLocation;
+}
 
+impl RocksDbKeyValueSchema for BlockByContextHashIndex {
     #[inline]
     fn name() -> &'static str {
         "block_by_context_hash_storage"
@@ -646,9 +651,10 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{open_kv, DbConfiguration};
+    use crate::persistent::DbConfiguration;
 
     use super::*;
+    use crate::persistent::database::open_kv;
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {

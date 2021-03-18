@@ -1,15 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::{Path, PathBuf};
+use std::convert::{TryFrom, TryInto};
 use std::sync::Arc;
-use std::{
-    convert::{TryFrom, TryInto},
-    env,
-};
 
 use crypto::hash::ContextHash;
-use storage::context::{ContextApi, TezedgeContext};
+use storage::context::tezedge_context::TezedgeContext;
+use storage::context::ContextApi;
 use storage::tests_common::TmpStorage;
 use storage::{context_key, BlockHeaderWithHash, BlockStorage};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
@@ -17,10 +14,8 @@ use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 #[test]
 pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     // prepare temp storage
-    let tmp_storage = TmpStorage::create(test_storage_dir_path(
-        "__context:test_context_set_get_commit",
-    ))
-    .expect("Storage error");
+    let tmp_storage = TmpStorage::create_to_out_dir("__context:test_context_set_get_commit")
+        .expect("Storage error");
     let persistent_storage = tmp_storage.storage();
 
     // init block storage (because of commit)
@@ -69,10 +64,8 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
 #[test]
 pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     // prepare temp storage
-    let tmp_storage = TmpStorage::create(test_storage_dir_path(
-        "__context:test_context_delete_and_remove",
-    ))
-    .expect("Storage error");
+    let tmp_storage = TmpStorage::create_to_out_dir("__context:test_context_delete_and_remove")
+        .expect("Storage error");
     let persistent_storage = tmp_storage.storage();
 
     // init block with level 0 (because of commit)
@@ -250,7 +243,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
 pub fn test_context_copy() -> Result<(), failure::Error> {
     // prepare temp storage
     let tmp_storage =
-        TmpStorage::create(test_storage_dir_path("__context:context_copy")).expect("Storage error");
+        TmpStorage::create_to_out_dir("__context:context_copy").expect("Storage error");
     let persistent_storage = tmp_storage.storage();
 
     // init block with level 0 (because of commit)
@@ -475,12 +468,4 @@ macro_rules! assert_data_deleted {
         assert!(data.is_ok());
         assert!(data.unwrap().is_none());
     }};
-}
-
-pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    let path = Path::new(out_dir.as_str())
-        .join(Path::new(dir_name))
-        .to_path_buf();
-    path
 }

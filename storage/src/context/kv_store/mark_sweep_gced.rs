@@ -3,18 +3,20 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::merkle_storage::Entry;
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::{
+use crate::context::kv_store::storage_backend::{
     collect_hashes, fetch_entry_from_store, GarbageCollector, StorageBackendError,
 };
+use crate::context::merkle::hash::EntryHash;
+use crate::context::merkle::Entry;
+use crate::context::ContextValue;
+use crate::persistent::database::{DBError, KeyValueStoreBackend};
 use crate::MerkleStorage;
 use crypto::hash::HashType;
 use std::collections::HashMap;
 
 /// Garbage Collected Key Value Store
 pub struct MarkSweepGCed<T: KeyValueStoreBackend<MerkleStorage>> {
+    // TODO: store musi ist do new(..
     store: T,
     cycles_limit: usize,
     cycles: VecDeque<HashSet<EntryHash>>,
@@ -31,6 +33,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
         }
 
         Self {
+            // TODO: zrusti default
             store: Default::default(),
             cycles_limit: cycle_count + 1,
             cycles,
@@ -160,9 +163,9 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::InMemoryBackend;
-    use crate::context::hash::hash_entry;
-    use crate::merkle_storage::Entry;
+    use crate::context::kv_store::in_memory_backend::InMemoryBackend;
+    use crate::context::merkle::hash::hash_entry;
+    use crate::context::merkle::Entry;
 
     #[test]
     fn test_mark_sweep_gc() {

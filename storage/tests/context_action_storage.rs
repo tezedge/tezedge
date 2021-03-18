@@ -5,13 +5,13 @@ use std::convert::TryInto;
 
 use failure::Error;
 
+use storage::context::actions::context_action_storage::ContextActionStorage;
 use storage::tests_common::TmpStorage;
-use storage::*;
 use tezos_context::channel::ContextAction;
 
 #[test]
 fn context_get_values_by_block_hash() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create("__ctx_storage_get_by_block_hash")?;
+    let tmp_storage = TmpStorage::create_to_out_dir("__ctx_storage_get_by_block_hash")?;
 
     let str_block_hash_1 = "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET";
     let block_hash_1 = str_block_hash_1.try_into()?;
@@ -82,10 +82,7 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
     storage.put_action(&block_hash_2, value_2_0)?;
     storage.put_action(&block_hash_1, value_1_1)?;
     storage.put_action(&block_hash_2, value_2_1)?;
-    tmp_storage
-        .storage()
-        .kv(persistent::StorageType::ContextAction)
-        .flush()?;
+    tmp_storage.storage().db_context_actions().flush()?;
 
     // block hash 1
     let values = storage.get_by_block_hash(&block_hash_1)?;

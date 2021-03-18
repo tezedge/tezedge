@@ -12,13 +12,12 @@ use slog::{warn, Logger};
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-use crate::persistent::{
-    default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage, SchemaError,
+use crate::persistent::database::{
+    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
-use crate::{num_from_slice, persistent::StorageType};
+use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
@@ -56,7 +55,7 @@ impl BlockMetaStorage {
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
             predecessors_index: PredecessorStorage::new(persistent_storage),
         }
     }
@@ -511,7 +510,9 @@ impl Encoder for Meta {
 impl KeyValueSchema for BlockMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
+}
 
+impl RocksDbKeyValueSchema for BlockMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
@@ -590,10 +591,11 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::{open_kv, DbConfiguration};
+    use crate::persistent::DbConfiguration;
     use crate::tests_common::TmpStorage;
 
     use super::*;
+    use crate::persistent::database::open_kv;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -612,7 +614,7 @@ mod tests {
 
     #[test]
     fn genesis_block_initialized_success() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__blockmeta_genesistest")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__blockmeta_genesistest")?;
 
         let k = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?;
         let chain_id = "NetXgtSLGNJvNye".try_into()?;
@@ -638,7 +640,7 @@ mod tests {
 
     #[test]
     fn block_meta_storage_test() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__blockmeta_storagetest")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__blockmeta_storagetest")?;
 
         let k = vec![44; 32].try_into().unwrap();
         let mut v = Meta {
@@ -780,7 +782,7 @@ mod tests {
         number_of_blocks: usize,
         storage_name: &str,
     ) -> Result<(BlockMetaStorage, BlockHash, Vec<BlockHash>), Error> {
-        let tmp_storage = TmpStorage::create(storage_name)?;
+        let tmp_storage = TmpStorage::create_to_out_dir(storage_name)?;
         let storage = BlockMetaStorage::new(tmp_storage.storage());
         let mut block_hash_set = HashSet::new();
         let mut rng = rand::thread_rng();
@@ -843,7 +845,7 @@ mod tests {
 
     #[test]
     fn find_block_at_distance_test() -> Result<(), Error> {
-        const BLOCK_COUNT: usize = 100_000;
+        const BLOCK_COUNT: usize = 33_000;
 
         // block_hashes starts with level 1 (genesis not included)
         let (storage, last_block_hash, block_hashes) =

@@ -8,14 +8,18 @@ use std::convert::TryFrom;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{env, fs};
-use storage::backend::{
-    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
-};
-use storage::merkle_storage::{Entry, EntryHash};
-use storage::merkle_storage::{MerkleStorage, MerkleStorageKV};
-use storage::persistent::database::KeyValueStoreBackend;
-use storage::persistent::KeyValueSchema;
-use storage::storage_backend::size_of_vec;
+use storage::context::kv_store::btree_map::BTreeMapBackend;
+use storage::context::kv_store::in_memory_backend::InMemoryBackend;
+// use storage::context::kv_store::mark_move_gced::MarkMoveGCed;
+// use storage::context::kv_store::mark_sweep_gced::MarkSweepGCed;
+use storage::context::kv_store::rocksdb_backend::RocksDBBackend;
+use storage::context::kv_store::sled_backend::SledBackend;
+use storage::context::kv_store::storage_backend::size_of_vec;
+use storage::context::merkle::hash::EntryHash;
+use storage::context::merkle::merkle_storage::MerkleStorageKV;
+use storage::context::merkle::Entry;
+use storage::persistent::database::RocksDbKeyValueSchema;
+use storage::persistent::KeyValueStoreBackend;
 
 /// Open DB at path, used in tests
 fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
@@ -23,7 +27,7 @@ fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
     db_opts.create_if_missing(true);
     db_opts.create_missing_column_families(true);
 
-    DB::open_cf_descriptors(&db_opts, path, vec![MerkleStorage::descriptor(&cache)]).unwrap()
+    DB::open_cf_descriptors(&db_opts, path, vec![RocksDBBackend::descriptor(&cache)]).unwrap()
 }
 
 pub fn out_dir_path(dir_name: &str) -> PathBuf {
@@ -50,8 +54,8 @@ fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> Box<MerkleStorage
         )),
         "btree" => Box::new(BTreeMapBackend::new()),
         "inmem" => Box::new(InMemoryBackend::new()),
-        "mark_move" => Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5)),
-        "mark_sweep" => Box::new(MarkSweepGCed::<InMemoryBackend>::new(5)),
+        // "mark_move" => Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5)),
+        // "mark_sweep" => Box::new(MarkSweepGCed::<InMemoryBackend>::new(5)),
         _ => {
             panic!("unknown backend set")
         }
@@ -365,5 +369,5 @@ test_with_backend!(rocksdb_tests, "rocksdb");
 test_with_backend!(sled_tests, "sled");
 test_with_backend!(btree_tests, "btree");
 test_with_backend!(inmem_tests, "inmem");
-test_with_backend!(mark_move_test, "mark_move");
-test_with_backend!(mark_sweep_tests, "mark_sweep");
+// test_with_backend!(mark_move_test, "mark_move");
+// test_with_backend!(mark_sweep_tests, "mark_sweep");

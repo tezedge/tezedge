@@ -14,7 +14,7 @@ use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
 use storage::context::TezedgeContext;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;

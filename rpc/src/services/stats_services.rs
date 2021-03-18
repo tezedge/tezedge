@@ -10,12 +10,13 @@ use rayon::iter::ParallelIterator;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
-use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, ContextActionStorage};
+use storage::PersistentStorage;
+use storage::{BlockStorage, BlockStorageReader};
 use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::dev_services::get_block_actions_by_hash;
+use storage::context::actions::context_action_storage::ContextActionStorage;
 
 #[derive(Serialize, Deserialize)]
 pub struct ActionTypeStats {

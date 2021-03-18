@@ -1,26 +1,30 @@
-use std::{fs, path::PathBuf, sync::Arc};
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
-use storage::backend::{
-    BTreeMapBackend, InMemoryBackend, MarkMoveGCed, MarkSweepGCed, RocksDBBackend, SledBackend,
-};
-
-use clap::{App, Arg};
-use failure::Error;
-use rocksdb::Cache;
-use shell::context_listener::get_new_tree_hash;
-use shell::context_listener::perform_context_action;
-use slog::{debug, info, warn, Drain, Level, Logger};
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::sync::RwLock;
-use storage::action_file::ActionsFileReader;
-use storage::context::{ContextApi, TezedgeContext};
-use storage::merkle_storage::MerkleStorage;
-use storage::merkle_storage_stats::{MerkleStorageAction, OperationLatencyStats};
-use storage::persistent::KeyValueSchema;
+use std::{fs, path::PathBuf, sync::Arc};
 
+use clap::{App, Arg};
+use failure::Error;
+use rocksdb::Cache;
+use slog::{debug, info, warn, Drain, Level, Logger};
+
+use shell::context_listener::get_new_tree_hash;
+use shell::context_listener::perform_context_action;
+use storage::context::actions::action_file::ActionsFileReader;
+use storage::context::kv_store::btree_map::BTreeMapBackend;
+use storage::context::kv_store::in_memory_backend::InMemoryBackend;
+use storage::context::kv_store::rocksdb_backend::RocksDBBackend;
+use storage::context::kv_store::sled_backend::SledBackend;
+use storage::context::merkle::merkle_storage::MerkleStorage;
+use storage::context::merkle::merkle_storage_stats::MerkleStorageAction;
+use storage::context::merkle::merkle_storage_stats::OperationLatencyStats;
+use storage::context::{ContextApi, TezedgeContext};
+use storage::persistent::database::RocksDbKeyValueSchema;
 use tezos_context::channel::ContextAction;
 
 struct Args {
@@ -150,11 +154,11 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
         storage::BlockMetaStorage::descriptor(&cache),
         storage::OperationsStorage::descriptor(&cache),
         storage::OperationsMetaStorage::descriptor(&cache),
-        storage::context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-        storage::context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-        storage::context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-        storage::ContextActionStorage::descriptor(&cache),
-        storage::merkle_storage::MerkleStorage::descriptor(&cache),
+        storage::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
+        storage::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(&cache),
+        storage::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+        storage::context::actions::context_action_storage::ContextActionStorage::descriptor(&cache),
+        storage::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(&cache),
         storage::SystemStorage::descriptor(&cache),
         storage::persistent::sequence::Sequences::descriptor(&cache),
         storage::MempoolStorage::descriptor(&cache),
@@ -163,7 +167,7 @@ fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
     ];
 
     let db_config = storage::persistent::DbConfiguration::default();
-    storage::persistent::open_kv(path, schemas, &db_config)
+    storage::persistent::database::open_kv(path, schemas, &db_config)
         .map(Arc::new)
         .unwrap()
 }
@@ -354,8 +358,8 @@ fn main() -> Result<(), Error> {
             MerkleStorage::new(Box::new(SledBackend::new(sled)))
         }
         "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
-        "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(7))),
-        "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(7))),
+        // "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(7))),
+        // "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(7))),
         _ => panic!("unknown backend"),
     };
 

@@ -7,9 +7,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
+use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
 
-/// Provider a system wide unique sequence generators backed by a permanent storage.
+/// Provider a system wide unique sequence generators backed by a permanent RocksDB storage.
 /// This struct can be safely shared by a multiple threads.
 /// Because sequence number is stored into eventually consistent key-value store it is not
 /// safe to create multiple instances of this struct.
@@ -59,7 +60,9 @@ impl Sequences {
 impl KeyValueSchema for Sequences {
     type Key = String;
     type Value = SequenceNumber;
+}
 
+impl RocksDbKeyValueSchema for Sequences {
     fn name() -> &'static str {
         "sequence"
     }

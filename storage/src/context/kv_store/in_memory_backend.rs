@@ -1,14 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::NotGarbageCollected;
-use crate::storage_backend::StorageBackendStats;
-use crate::MerkleStorage;
-use std::collections::HashMap;
+use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::kv_store::storage_backend::StorageBackendStats;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
+use crate::persistent::database::DBError;
+use crate::persistent::KeyValueStoreBackend;
 
 #[derive(Default)]
 pub struct HashMapWithStats {
@@ -74,7 +75,7 @@ impl InMemoryBackend {
 
 impl NotGarbageCollected for InMemoryBackend {}
 
-impl KeyValueStoreBackend<MerkleStorage> for InMemoryBackend {
+impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for InMemoryBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner

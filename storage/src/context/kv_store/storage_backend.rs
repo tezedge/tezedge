@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::persistent::database::DBError;
-use crate::persistent::database::KeyValueStoreBackend;
-use crate::MerkleStorage;
+use crate::persistent::KeyValueStoreBackend;
 use blake2::digest::InvalidOutputSize;
 use crypto::hash::FromBytesError;
 use crypto::hash::HashType;
@@ -15,8 +14,9 @@ use std::collections::HashSet;
 use std::mem;
 use std::sync::PoisonError;
 
-use crate::context::hash::{hash_entry, EntryHash, HashingError};
-use crate::merkle_storage::{ContextValue, Entry};
+use crate::context::merkle::hash::{hash_entry, EntryHash, HashingError};
+use crate::context::merkle::Entry;
+use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
 
 pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
@@ -42,7 +42,7 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
 /// helper function for fetching and deserializing entry from the store
 pub fn fetch_entry_from_store(
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<MerkleKeyValueStoreSchema>,
     hash: EntryHash,
 ) -> Result<Entry, StorageBackendError> {
     match store.get(&hash)? {
@@ -56,7 +56,7 @@ pub fn fetch_entry_from_store(
 pub fn collect_hashes_recursively(
     entry: &Entry,
     cache: HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<MerkleKeyValueStoreSchema>,
 ) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, StorageBackendError> {
     let mut entries = HashSet::new();
     let mut c = cache;
@@ -69,7 +69,7 @@ pub fn collect_hashes(
     entry: &Entry,
     batch: &mut HashSet<EntryHash>,
     cache: &mut HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<MerkleStorage>,
+    store: &dyn KeyValueStoreBackend<MerkleKeyValueStoreSchema>,
 ) -> Result<(), StorageBackendError> {
     batch.insert(hash_entry(entry)?);
 

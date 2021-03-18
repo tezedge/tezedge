@@ -1,13 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::NotGarbageCollected;
-use crate::MerkleStorage;
-use bytes::Buf;
 use std::io::Read;
 use std::ops::Deref;
+
+use bytes::Buf;
+
+use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
+use crate::persistent::database::DBError;
+use crate::persistent::KeyValueStoreBackend;
 
 pub struct SledBackend {
     db: sled::Db,
@@ -25,7 +28,7 @@ impl SledBackend {
 
 impl NotGarbageCollected for SledBackend {}
 
-impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
+impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for SledBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner
@@ -88,6 +91,6 @@ impl KeyValueStoreBackend<MerkleStorage> for SledBackend {
     }
 
     fn is_persistent(&self) -> bool {
-        true
+        false
     }
 }

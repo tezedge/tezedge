@@ -1,15 +1,39 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::storage_backend::NotGarbageCollected;
-use crate::MerkleStorage;
-use rocksdb::DB;
-use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 use std::sync::Arc;
+
+use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
+use serde::{Deserialize, Serialize};
+
+use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{
+    ContextValue, MerkleKeyValueStoreSchema, MerkleKeyValueStoreSchemaKeyType,
+    MerkleKeyValueStoreSchemaValueType,
+};
+use crate::persistent::database::{default_table_options, DBError, RocksDbKeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreBackend};
+
+impl BincodeEncoded for EntryHash {}
+
+impl KeyValueSchema for RocksDBBackend {
+    type Key = MerkleKeyValueStoreSchemaKeyType;
+    type Value = MerkleKeyValueStoreSchemaValueType;
+}
+
+impl RocksDbKeyValueSchema for RocksDBBackend {
+    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
+        let cf_opts = default_table_options(cache);
+        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
+    }
+
+    #[inline]
+    fn name() -> &'static str {
+        "merkle_storage"
+    }
+}
 
 pub struct RocksDBBackend {
     inner: Arc<DB>,
@@ -20,9 +44,9 @@ impl RocksDBBackend {
         RocksDBBackend { inner: db }
     }
 
-    //TODO TE-437 - get rid of deref call
-    fn merkle_ref(&self) -> &dyn KeyValueStoreBackend<MerkleStorage> {
-        self.inner.deref() as &dyn KeyValueStoreBackend<MerkleStorage>
+    // TODO TE-437 - get rid of deref call
+    fn merkle_ref(&self) -> &dyn KeyValueStoreBackend<RocksDBBackend> {
+        self.inner.deref() as &dyn KeyValueStoreBackend<RocksDBBackend>
     }
 }
 
@@ -36,7 +60,7 @@ pub struct RocksDBBackendStats {
 
 impl NotGarbageCollected for RocksDBBackend {}
 
-impl KeyValueStoreBackend<MerkleStorage> for RocksDBBackend {
+impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for RocksDBBackend {
     fn is_persistent(&self) -> bool {
         self.merkle_ref().is_persistent()
     }

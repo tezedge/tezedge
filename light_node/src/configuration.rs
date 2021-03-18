@@ -24,8 +24,13 @@ use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage::persistent::KeyValueSchema;
-use storage::KeyValueStoreBackend;
+use storage::context::actions::action_file_storage::ActionFileStorage;
+use storage::context::actions::context_action_storage::ContextActionStorage;
+use storage::context::actions::ContextActionStoreBackend;
+use storage::context::kv_store::SupportedContextKeyValueStore;
+use storage::context::ActionRecorder;
+use storage::persistent::database::RocksDbKeyValueSchema;
+use storage::PersistentStorage;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::PatchContext;
@@ -92,23 +97,6 @@ pub struct Logging {
     pub file: Option<PathBuf>,
 }
 
-#[derive(PartialEq, Debug, Clone, EnumIter)]
-pub enum ContextActionStoreBackend {
-    NoneBackend,
-    RocksDB,
-    FileStorage,
-}
-
-impl MultipleValueArg for ContextActionStoreBackend {
-    fn supported_values(&self) -> Vec<&'static str> {
-        match self {
-            ContextActionStoreBackend::RocksDB => vec!["rocksdb"],
-            ContextActionStoreBackend::FileStorage { .. } => vec!["file"],
-            ContextActionStoreBackend::NoneBackend => vec!["none"],
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ParseLoggerTypeError(String);
 
@@ -142,30 +130,9 @@ impl MultipleValueArg for LoggerType {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ParseContextActionStoreBackendError(String);
-
 #[derive(Debug, Fail)]
 #[fail(display = "No logger target was provided")]
 pub struct NoDrainError;
-
-impl FromStr for ContextActionStoreBackend {
-    type Err = ParseContextActionStoreBackendError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        for sp in ContextActionStoreBackend::iter() {
-            if sp.supported_values().contains(&s.as_str()) {
-                return Ok(sp);
-            }
-        }
-
-        Err(ParseContextActionStoreBackendError(format!(
-            "Invalid variant name: {}",
-            s
-        )))
-    }
-}
 
 pub trait MultipleValueArg: IntoEnumIterator {
     fn possible_values() -> Vec<&'static str> {
@@ -183,15 +150,15 @@ pub trait ColumnFactory {
 }
 
 #[derive(Debug, Clone)]
-pub struct DBTableInitializer {}
+pub struct RocksDbTableInitializer;
 
 #[derive(Debug, Clone)]
-pub struct ContextTableInitializer {}
+pub struct ContextRocksDbTableInitializer;
 
 #[derive(Debug, Clone)]
-pub struct ContextActionsTableInitializer {}
+pub struct ContextActionsRocksDbTableInitializer;
 
-impl ColumnFactory for DBTableInitializer {
+impl ColumnFactory for RocksDbTableInitializer {
     fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
         vec![
             storage::block_storage::BlockPrimaryIndex::descriptor(cache),
@@ -209,23 +176,23 @@ impl ColumnFactory for DBTableInitializer {
     }
 }
 
-impl ColumnFactory for ContextTableInitializer {
+impl ColumnFactory for ContextRocksDbTableInitializer {
     fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
         vec![
             storage::SystemStorage::descriptor(cache),
-            storage::merkle_storage::MerkleStorage::descriptor(cache),
+            storage::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
         ]
     }
 }
 
-impl ColumnFactory for ContextActionsTableInitializer {
+impl ColumnFactory for ContextActionsRocksDbTableInitializer {
     fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
         vec![
             storage::SystemStorage::descriptor(cache),
-            storage::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
-            storage::context_action_storage::ContextActionByContractIndex::descriptor(cache),
-            storage::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
-            storage::context_action_storage::ContextActionStorage::descriptor(cache),
+            storage::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
+            storage::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
+            storage::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
+            storage::context::actions::context_action_storage::ContextActionStorage::descriptor(cache),
         ]
     }
 }
@@ -241,15 +208,24 @@ pub struct RocksDBConfig<C: ColumnFactory> {
 
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub db: RocksDBConfig<DBTableInitializer>,
-    pub db_context: RocksDBConfig<ContextTableInitializer>,
-    pub db_context_actions: RocksDBConfig<ContextActionsTableInitializer>,
+    pub db: RocksDBConfig<RocksDbTableInitializer>,
+    pub db_context_actions: RocksDBConfig<ContextActionsRocksDbTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub action_store_backend: Vec<ContextActionStoreBackend>,
-    pub kv_store_backend: KeyValueStoreBackend,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
+
+    // merkle cfg
+    pub context_kv_store: ContextKvStoreConfiguration,
+}
+
+#[derive(Debug, Clone)]
+pub enum ContextKvStoreConfiguration {
+    RocksDb(RocksDBConfig<ContextRocksDbTableInitializer>),
+    Sled { path: PathBuf },
+    InMem,
+    BTreeMap,
 }
 
 impl Storage {
@@ -264,7 +240,8 @@ impl Storage {
     const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
     const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 
-    const DEFAULT_KV_STORE_BACKEND: KeyValueStoreBackend = KeyValueStoreBackend::RocksDB;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::ROCKSDB;
+    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::ROCKSDB;
 }
 
 #[derive(Debug, Clone)]
@@ -652,8 +629,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .long("kv-store-backend")
             .takes_value(true)
             .value_name("STRING")
-            .possible_values(&KeyValueStoreBackend::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree', 'mark_sweep', 'mark_move'"))
+            .possible_values(&SupportedContextKeyValueStore::possible_values())
+            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
             .takes_value(true)
@@ -1037,74 +1014,91 @@ impl Environment {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
                     expected_db_version: Storage::DB_STORAGE_VERSION,
                     db_path: db_path.join("db"),
-                    columns: DBTableInitializer {},
+                    columns: RocksDbTableInitializer {},
                     threads: db_threads_count,
-                };
-                let db_context = RocksDBConfig {
-                    cache_size: Storage::LRU_CACHE_SIZE_64MB,
-                    expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
-                    db_path: db_path.join("context"),
-                    columns: ContextTableInitializer {},
-                    threads: db_context_threads_count,
                 };
                 let db_context_actions = RocksDBConfig {
                     cache_size: Storage::LRU_CACHE_SIZE_16MB,
                     expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
                     db_path: db_path.join("context_actions"),
-                    columns: ContextActionsTableInitializer {},
+                    columns: ContextActionsRocksDbTableInitializer {},
                     threads: db_context_actions_threads_count,
                 };
+                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
+                    Some(v) => v.map(String::from).collect(),
+                    None => std::iter::once(Storage::DEFAULT_CONTEXT_ACTIONS_RECORDER.to_string())
+                        .collect(),
+                };
+
+                let action_store_backend = backends
+                    .iter()
+                    .map(|v| match v.parse::<ContextActionStoreBackend>() {
+                        Ok(ContextActionStoreBackend::RocksDB) => {
+                            ContextActionStoreBackend::RocksDB
+                        }
+                        Ok(ContextActionStoreBackend::NoneBackend) => {
+                            ContextActionStoreBackend::NoneBackend
+                        }
+                        Ok(ContextActionStoreBackend::FileStorage { .. }) => {
+                            ContextActionStoreBackend::FileStorage {
+                                path: db_path.join("actionfile.bin"),
+                            }
+                        }
+                        Err(e) => panic!(
+                            "Invalid value: '{}', expecting one value from {:?}, error: {:?}",
+                            v,
+                            SupportedContextKeyValueStore::possible_values(),
+                            e
+                        ),
+                    })
+                    .collect::<Vec<_>>();
+
+                let context_kv_store = args
+                    .value_of("kv-store-backend")
+                    .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
+                    .parse::<SupportedContextKeyValueStore>()
+                    .map(|v| match v {
+                        SupportedContextKeyValueStore::RocksDB { .. } => {
+                            ContextKvStoreConfiguration::RocksDb(RocksDBConfig {
+                                cache_size: Storage::LRU_CACHE_SIZE_64MB,
+                                expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
+                                db_path: db_path.join("context"),
+                                columns: ContextRocksDbTableInitializer,
+                                threads: db_context_threads_count,
+                            })
+                        }
+                        SupportedContextKeyValueStore::Sled { .. } => {
+                            ContextKvStoreConfiguration::Sled {
+                                path: db_path.join("context_sled"),
+                            }
+                        }
+                        SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                        SupportedContextKeyValueStore::BTreeMap => {
+                            ContextKvStoreConfiguration::BTreeMap
+                        }
+                    })
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Expecting one value from {:?}, error: {:?}",
+                            SupportedContextKeyValueStore::possible_values(),
+                            e
+                        )
+                    });
+
                 let compute_context_action_tree_hashes = args
                     .value_of("compute-context-action-tree-hashes")
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
 
-                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
-                    Some(v) => v.map(String::from).collect(),
-                    None => std::iter::once("rocksdb".to_string()).collect(),
-                };
-
-                let action_store_backend = backends
-                    .iter()
-                    .map(|name| {
-                        ContextActionStoreBackend::from_str(name).unwrap_or_else(|_| {
-                            panic!(
-                                "Unknown backend {} - supported backends are: {:?}",
-                                &name,
-                                ContextActionStoreBackend::possible_values()
-                            )
-                        })
-                    })
-                    .collect();
-
-                let kv_store_backend = args.value_of("kv-store-backend").map_or(
-                    Storage::DEFAULT_KV_STORE_BACKEND,
-                    |value| {
-                        value
-                            .parse::<KeyValueStoreBackend>()
-                            .map(|v| {
-                                if let KeyValueStoreBackend::Sled { .. } = v {
-                                    KeyValueStoreBackend::Sled {
-                                        path: db_path.join("sled"),
-                                    }
-                                } else {
-                                    v
-                                }
-                            })
-                            .expect("Was expecting one value from KeyValueStoreBackend")
-                    },
-                );
-
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
-                    db_context,
                     db_context_actions,
                     db_path,
                     compute_context_action_tree_hashes,
                     action_store_backend,
-                    kv_store_backend,
+                    context_kv_store,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
@@ -1258,5 +1252,26 @@ impl Environment {
                 slog::o!(),
             ))
         }
+    }
+
+    pub(crate) fn build_recorders(
+        &self,
+        storage: &PersistentStorage,
+    ) -> Vec<Box<dyn ActionRecorder + Send>> {
+        self.storage
+            .action_store_backend
+            .iter()
+            .filter_map(|backend| match backend {
+                storage::context::actions::ContextActionStoreBackend::RocksDB => {
+                    Some(Box::new(ContextActionStorage::new(&storage))
+                        as Box<dyn ActionRecorder + Send>)
+                }
+                storage::context::actions::ContextActionStoreBackend::FileStorage { path } => {
+                    Some(Box::new(ActionFileStorage::new(path.to_path_buf()))
+                        as Box<dyn ActionRecorder + Send>)
+                }
+                storage::context::actions::ContextActionStoreBackend::NoneBackend => None,
+            })
+            .collect::<Vec<_>>()
     }
 }

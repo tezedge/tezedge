@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use storage::{BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader};
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 
 /// We need to access block validation process from three different places/cases:
 ///

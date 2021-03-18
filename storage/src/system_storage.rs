@@ -8,9 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
-use crate::persistent::{
-    default_table_options, BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema,
-};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::StorageError;
 
 pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
@@ -111,7 +110,9 @@ impl SystemStorage {
 impl KeyValueSchema for SystemStorage {
     type Key = String;
     type Value = SystemValue;
+}
 
+impl RocksDbKeyValueSchema for SystemStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)

@@ -14,9 +14,9 @@ use tezos_context::channel::ContextAction;
 pub enum ActionFileError {
     #[fail(display = "Blocks out of sequence")]
     BlocksOutOfSequence,
-    #[fail(display = "Failed to convert hash to array: {}", error)]
+    #[fail(display = "IOError detected, reason: {}", error)]
     IOError { error: std::io::Error },
-    #[fail(display = "Serialization error : {}", error)]
+    #[fail(display = "Serialization error, reason: {}", error)]
     SerializeError { error: bincode::Error },
 }
 

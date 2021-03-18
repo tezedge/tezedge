@@ -5,18 +5,17 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::context::{ContextApi, TezedgeContext};
-use storage::context_action_storage::ContextActionBlockDetails;
-use storage::context_action_storage::{
-    contract_id_to_contract_address_for_index, ContextActionFilters, ContextActionJson,
+use storage::context::actions::context_action_storage::{
+    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
+    ContextActionJson, ContextActionRecordValue, ContextActionStorage, ContextActionType,
 };
-use storage::merkle_storage_stats::MerkleStoragePerfReport;
-use storage::persistent::PersistentStorage;
-use storage::{ContextActionRecordValue, ContextActionStorage};
+use storage::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
+use storage::context::{ContextApi, TezedgeContext};
+use storage::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
 
-use crate::helpers::{get_action_types, PagedResult};
+use crate::helpers::PagedResult;
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
 
@@ -165,4 +164,12 @@ pub(crate) fn get_dev_version() -> String {
     let version_env: &'static str = env!("CARGO_PKG_VERSION");
 
     format!("v{}", version_env.to_string())
+}
+
+#[inline]
+pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
+    action_types
+        .split(',')
+        .filter_map(|x: &str| x.parse().ok())
+        .collect()
 }

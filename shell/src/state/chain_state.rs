@@ -12,7 +12,7 @@ use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, StorageError,

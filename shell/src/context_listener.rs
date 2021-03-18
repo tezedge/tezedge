@@ -16,10 +16,9 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
-use storage::context::{ContextApi, TezedgeContext, TreeId};
-use storage::merkle_storage::EntryHash;
-use storage::persistent::{ActionRecorder, PersistentStorage};
+use storage::context::{ActionRecorder, ContextApi, EntryHash, TezedgeContext, TreeId};
 use storage::BlockStorage;
+use storage::PersistentStorage;
 use tezos_context::channel::ContextAction;
 use tezos_wrapper::service::IpcEvtServer;
 

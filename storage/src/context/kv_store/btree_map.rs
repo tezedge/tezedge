@@ -1,29 +1,30 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::MerkleStorage;
 use std::collections::BTreeMap;
 use std::ops::{AddAssign, DerefMut, SubAssign};
 use std::sync::RwLock;
 
-use crate::merkle_storage::{ContextValue, EntryHash};
-use crate::storage_backend::{NotGarbageCollected, StorageBackendStats};
+use crate::context::kv_store::storage_backend::{NotGarbageCollected, StorageBackendStats};
+use crate::context::merkle::hash::EntryHash;
+use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
+use crate::persistent::database::DBError;
+use crate::persistent::KeyValueStoreBackend;
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
-pub struct KVStore<K: Ord, V> {
+pub struct BTreeMapBackend<K: Ord, V> {
     kv_map: RwLock<BTreeMap<K, V>>,
     stats: RwLock<StorageBackendStats>,
 }
 
-impl<K: Ord, V> Default for KVStore<K, V> {
+impl<K: Ord, V> Default for BTreeMapBackend<K, V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<K: Ord, V> KVStore<K, V> {
+impl<K: Ord, V> BTreeMapBackend<K, V> {
     pub fn new() -> Self {
         Self {
             kv_map: RwLock::new(BTreeMap::new()),
@@ -32,9 +33,9 @@ impl<K: Ord, V> KVStore<K, V> {
     }
 }
 
-impl NotGarbageCollected for KVStore<EntryHash, ContextValue> {}
+impl NotGarbageCollected for BTreeMapBackend<EntryHash, ContextValue> {}
 
-impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
+impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for BTreeMapBackend<EntryHash, ContextValue> {
     fn is_persistent(&self) -> bool {
         false
     }
@@ -125,5 +126,3 @@ impl KeyValueStoreBackend<MerkleStorage> for KVStore<EntryHash, ContextValue> {
         Ok(())
     }
 }
-
-pub type BTreeMapBackend = KVStore<EntryHash, ContextValue>;
