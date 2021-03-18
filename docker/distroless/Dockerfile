@@ -27,15 +27,15 @@ COPY --from=build-env /home/appuser/tezedge/sandbox/artifacts/tezos-client /
 COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 
 # Copy shared libraries
-COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/libtezos.so /
+COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsodium.so.23 /usr/lib/x86_64-linux-gnu/libsodium.so.23
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libgmp.so.10 /usr/lib/x86_64-linux-gnu/libgmp.so.10
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
 
 # Copy zcash-params init files for sapling
-COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/sapling-spend.params /
-COPY --from=build-env /home/appuser/tezedge/tezos/interop/lib_tezos/artifacts/sapling-output.params /
+COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-spend.params /
+COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-output.params /
 
 ENV LD_LIBRARY_PATH="/"
 # Default entry point runs node with default config + several default values, which can be overriden by CMD

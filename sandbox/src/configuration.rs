@@ -8,9 +8,9 @@ use clap::{App, Arg};
 use tezos_api::environment::ZcashParams;
 
 pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &str =
-    "tezos/interop/lib_tezos/artifacts/sapling-spend.params";
+    "tezos/sys/lib_tezos/artifacts/sapling-spend.params";
 pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &str =
-    "tezos/interop/lib_tezos/artifacts/sapling-output.params";
+    "tezos/sys/lib_tezos/artifacts/sapling-output.params";
 
 pub struct LauncherEnvironment {
     pub light_node_path: PathBuf,

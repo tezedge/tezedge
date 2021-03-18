@@ -1868,20 +1868,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 
 [[package]]
-name = "ocaml-interop"
-version = "0.5.3"
+name = "ocaml-boxroot-sys"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0badad57a5788d0a7be367be6e378ed52dbc8020c4f3672b59212b5de7f35a72"
+checksum = "5186393bfbee4ce2bc5bbb82beafb77e85c1d0a557e3cfc8c8a0d63d7845fed5"
 dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "ocaml-interop"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a0e44117d2dca8eda1e04735260a0f017eba98abf898d14f3de2fe5d2804ef4"
+dependencies = [
+ "ocaml-boxroot-sys",
  "ocaml-sys",
  "static_assertions",
 ]
 
 [[package]]
 name = "ocaml-sys"
-version = "0.19.1"
+version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e9b086eb8c44207cb190c8c511ffc6e164e29f6e6b04f2f5464b0ea2c00e230"
+checksum = "7e7dee4179690e6af128fce2fab845ab45a833d04e117f5fdcafab1ba26ce518"
 dependencies = [
  "cty",
 ]
@@ -2734,11 +2744,11 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezos-sys",
  "tezos_api",
  "tezos_context",
  "tezos_encoding",
  "tezos_identity",
- "tezos_interop",
  "tezos_messages",
  "tezos_wrapper",
  "tokio",
@@ -3068,6 +3078,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos-sys"
+version = "1.2.0"
+dependencies = [
+ "colored",
+ "fs_extra",
+ "hex",
+ "os_type",
+ "serde 1.0.123",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "tezos_api"
 version = "1.2.0"
 dependencies = [
@@ -3084,6 +3107,7 @@ dependencies = [
  "slog",
  "strum",
  "strum_macros",
+ "tezos-sys",
  "tezos_messages",
 ]
 
@@ -3111,6 +3135,7 @@ dependencies = [
  "lazy_static",
  "ocaml-interop",
  "serde 1.0.123",
+ "tezos-sys",
 ]
 
 [[package]]
@@ -3146,20 +3171,16 @@ dependencies = [
 name = "tezos_interop"
 version = "1.2.0"
 dependencies = [
- "colored",
  "criterion",
  "crypto",
  "failure",
- "fs_extra",
  "futures",
  "hex",
  "lazy_static",
  "ocaml-interop",
- "os_type",
- "serde 1.0.123",
  "serde_json",
  "serial_test",
- "sha2",
+ "tezos-sys",
  "tezos_api",
  "tezos_context",
  "tezos_interop_callback",
@@ -3171,6 +3192,7 @@ name = "tezos_interop_callback"
 version = "1.2.0"
 dependencies = [
  "ocaml-interop",
+ "tezos-sys",
  "tezos_context",
 ]
 

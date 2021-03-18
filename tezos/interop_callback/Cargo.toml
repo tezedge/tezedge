@@ -4,10 +4,8 @@ version = "1.2.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
-[lib]
-crate-type = ["dylib", "rlib"]
-
 [dependencies]
-ocaml-interop = { version = "0.5.3", features = ["without-ocamlopt"] }
+ocaml-interop = { version = "0.7.2", features = ["without-ocamlopt"] }
 # local dependencies
+tezos-sys = { path = "../sys" }
 tezos_context = { path = "../context" }
