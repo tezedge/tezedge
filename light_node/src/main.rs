@@ -26,6 +26,15 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
+use storage::context::merkle::merkle_storage::MerkleStorage;
+use storage::context::TezedgeContext;
+use storage::persistent::database::open_kv;
+use storage::persistent::sequence::Sequences;
+use storage::persistent::{open_cl, CommitLogSchema, DBError, DbConfiguration};
+use storage::{
+    check_database_compatibility, resolve_storage_init_chain_data, BlockStorage, PersistentStorage,
+    StorageInitInfo,
+};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -36,15 +45,6 @@ use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::{ContextKvStoreConfiguration, Environment};
-use storage::context::merkle::merkle_storage::MerkleStorage;
-use storage::context::TezedgeContext;
-use storage::persistent::database::open_kv;
-use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, CommitLogSchema, DBError, DbConfiguration};
-use storage::{
-    check_database_compatibility, resolve_storage_init_chain_data, BlockStorage, PersistentStorage,
-    StorageInitInfo,
-};
 
 mod configuration;
 mod identity;
@@ -176,6 +176,10 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
+    let context_action_recorders = env
+        .build_recorders(&persistent_storage)
+        .expect("Failed to configure context action recorders");
+
     info!(log, "Initializing protocol runners... (4/5)");
 
     // create pool for ffi protocol runner connections (used just for readonly context)
@@ -256,7 +260,7 @@ fn block_on_actors(
         &actor_system,
         shell_channel.clone(),
         &persistent_storage,
-        env.build_recorders(&persistent_storage),
+        context_action_recorders,
         context_actions_event_server,
         log.clone(),
     )
@@ -562,20 +566,32 @@ fn main() {
         },
     )));
 
-    let kv_actions_cache = Cache::new_lru_cache(env.storage.db_context_actions.cache_size)
-        .expect("Failed to initialize RocksDB cache (db_context_actions)");
-    let kv_actions = initialize_db(
-        &log,
-        &kv_actions_cache,
-        &env.storage.db_context_actions,
-        &tezos_env,
-    )
-    .expect("Failed to create/initialize RocksDB database (db_context_actions)");
-    caches.push(kv_actions_cache);
+    // context actions persistent db (optional)
+    let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {
+        Some(merkle_context_actions_store) => {
+            let kv_actions_cache = Cache::new_lru_cache(merkle_context_actions_store.cache_size)
+                .expect("Failed to initialize RocksDB cache (db_context_actions)");
+            let kv_actions = initialize_db(
+                &log,
+                &kv_actions_cache,
+                &merkle_context_actions_store,
+                &tezos_env,
+            )
+            .expect("Failed to create/initialize RocksDB database (db_context_actions)");
+            caches.push(kv_actions_cache);
+            Some(kv_actions)
+        }
+        None => None,
+    };
 
     {
-        let persistent_storage =
-            PersistentStorage::new(kv, commit_logs, sequences, merkle, kv_actions);
+        let persistent_storage = PersistentStorage::new(
+            kv,
+            commit_logs,
+            sequences,
+            merkle,
+            merkle_context_actions_store,
+        );
 
         let tezedge_context = TezedgeContext::new(
             Some(BlockStorage::new(&persistent_storage)),

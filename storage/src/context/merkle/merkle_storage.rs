@@ -48,7 +48,7 @@
 use std::array::TryFromSliceError;
 use std::collections::HashMap;
 
-use failure::Fail;
+use failure::{Error, Fail};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -65,7 +65,7 @@ use crate::context::{
     ContextKey, ContextValue, MerkleKeyValueStoreSchema, StringTreeEntry, StringTreeMap, TreeId,
 };
 use crate::persistent;
-use crate::persistent::KeyValueStoreBackend;
+use crate::persistent::{Flushable, KeyValueStoreBackend};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SetAction {
@@ -92,11 +92,11 @@ enum Action {
 }
 
 pub trait MerkleStorageBackendWithGC:
-    KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector
+    KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector + Flushable
 {
 }
 
-impl<T: KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector>
+impl<T: KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector + Flushable>
     MerkleStorageBackendWithGC for T
 {
 }
@@ -1001,6 +1001,16 @@ impl MerkleStorage {
 
     pub fn get_block_latency(&self, offset_from_last_applied: usize) -> Option<u64> {
         self.stats.block_latencies.get(offset_from_last_applied)
+    }
+
+    fn flush_db(&self) -> Result<(), Error> {
+        self.db.flush()
+    }
+}
+
+impl Flushable for MerkleStorage {
+    fn flush(&self) -> Result<(), Error> {
+        self.flush_db()
     }
 }
 

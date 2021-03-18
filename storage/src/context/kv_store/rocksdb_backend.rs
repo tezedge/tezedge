@@ -14,7 +14,7 @@ use crate::context::{
     MerkleKeyValueStoreSchemaValueType,
 };
 use crate::persistent::database::{default_table_options, DBError, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreBackend};
+use crate::persistent::{BincodeEncoded, Flushable, KeyValueSchema, KeyValueStoreBackend};
 
 impl BincodeEncoded for EntryHash {}
 
@@ -95,5 +95,17 @@ impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for RocksDBBackend {
 
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
         self.merkle_ref().total_get_mem_usage()
+    }
+}
+
+impl Flushable for RocksDBBackend {
+    fn flush(&self) -> Result<(), failure::Error> {
+        match self.inner.flush() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(failure::format_err!(
+                "Failed to flush rocksdb for context, reason: {:?}",
+                e
+            )),
+        }
     }
 }

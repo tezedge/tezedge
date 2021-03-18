@@ -5,12 +5,13 @@ use std::io::Read;
 use std::ops::Deref;
 
 use bytes::Buf;
+use failure::Error;
 
 use crate::context::kv_store::storage_backend::NotGarbageCollected;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
 use crate::persistent::database::DBError;
-use crate::persistent::KeyValueStoreBackend;
+use crate::persistent::{Flushable, KeyValueStoreBackend};
 
 pub struct SledBackend {
     db: sled::Db,
@@ -19,6 +20,7 @@ pub struct SledBackend {
 
 impl SledBackend {
     pub fn new(db: sled::Db) -> Self {
+        // TODO TE-437 - get rid of deref call
         SledBackend {
             inner: db.deref().clone(),
             db,
@@ -92,5 +94,17 @@ impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for SledBackend {
 
     fn is_persistent(&self) -> bool {
         false
+    }
+}
+
+impl Flushable for SledBackend {
+    fn flush(&self) -> Result<(), Error> {
+        match self.db.flush() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(failure::format_err!(
+                "Failed to flush sled db for context, reason: {:?}",
+                e
+            )),
+        }
     }
 }

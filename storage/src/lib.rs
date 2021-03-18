@@ -39,7 +39,9 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
-use crate::persistent::{CommitLogError, CommitLogs, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::{
+    CommitLogError, CommitLogs, DBError, Decoder, Encoder, Flushable, SchemaError,
+};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
@@ -459,8 +461,8 @@ pub struct PersistentStorage {
     seq: Arc<Sequences>,
     /// merkle-tree based context storage
     merkle: Arc<RwLock<MerkleStorage>>,
-    /// context actions store
-    db_context_actions: Arc<DB>,
+    /// persistent context actions storage
+    merkle_context_actions: Option<Arc<DB>>,
 }
 
 impl PersistentStorage {
@@ -469,25 +471,20 @@ impl PersistentStorage {
         clog: Arc<CommitLogs>,
         seq: Arc<Sequences>,
         merkle: Arc<RwLock<MerkleStorage>>,
-        db_context_actions: Arc<DB>,
+        merkle_context_actions: Option<Arc<DB>>,
     ) -> Self {
         Self {
             clog,
             db,
-            db_context_actions,
             seq,
             merkle,
+            merkle_context_actions,
         }
     }
 
     #[inline]
     pub fn db(&self) -> Arc<DB> {
         self.db.clone()
-    }
-
-    #[inline]
-    pub fn db_context_actions(&self) -> Arc<DB> {
-        self.db_context_actions.clone()
     }
 
     #[inline]
@@ -505,18 +502,30 @@ impl PersistentStorage {
         self.merkle.clone()
     }
 
+    #[inline]
+    pub fn merkle_context_actions(&self) -> Option<Arc<DB>> {
+        self.merkle_context_actions.clone()
+    }
+
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
         let db = self.db.flush();
-        let db_context_actions = self.db_context_actions.flush();
+        let merkle = match self.merkle.write() {
+            Ok(merkle) => merkle.flush(),
+            Err(e) => Err(failure::format_err!(
+                "Failed to write/lock for flush, reason: {:?}",
+                e
+            )),
+        };
+        let merkle_context_actions = match self.merkle_context_actions.as_ref() {
+            Some(merkle_context_actions) => merkle_context_actions.flush(),
+            None => Ok(()),
+        };
 
-        // TODO: merkle flush
-        // let db_context = self.db_context.flush();
-
-        if clog.is_err() || db.is_err() || db_context_actions.is_err() {
+        if clog.is_err() || db.is_err() || merkle.is_err() || merkle_context_actions.is_err() {
             println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, kv_context_actions: {:?}",
-                clog, db, db_context_actions
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, merkle_err: {:?}, merkle_context_actions_err: {:?}",
+                clog, db, merkle, merkle_context_actions
             );
         }
     }
@@ -541,11 +550,11 @@ pub mod tests_common {
     use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
     use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::mempool_storage::MempoolStorage;
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
-    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -638,7 +647,7 @@ pub mod tests_common {
                     Arc::new(clog),
                     Arc::new(Sequences::new(kv, 1000)),
                     Arc::new(RwLock::new(merkle)),
-                    Arc::new(kv_context_action),
+                    Some(Arc::new(kv_context_action)),
                 ),
                 path,
                 remove_on_destroy,

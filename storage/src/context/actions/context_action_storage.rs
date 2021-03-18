@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
 
 use failure::Fail;
-use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
+use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform, DB};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{
@@ -23,11 +23,11 @@ use crate::context::actions::{ActionRecorder, ActionRecorderError};
 use crate::num_from_slice;
 use crate::persistent::codec::range_from_idx_len;
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::sequence::{SequenceGenerator, SequenceNumber};
+use crate::persistent::sequence::{SequenceGenerator, SequenceNumber, Sequences};
 use crate::persistent::{
     BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
-use crate::{PersistentStorage, StorageError};
+use crate::StorageError;
 
 pub enum ContextHashType {
     Block,
@@ -69,10 +69,11 @@ pub type ContextActionStorageKV = dyn KeyValueStoreWithSchema<ContextActionStora
 /// Holds all actions received from a tezos context.
 /// Action is created every time a context is modified.
 pub struct ContextActionStorage {
+    kv: Arc<ContextActionStorageKV>,
     context_by_block_index: ContextActionByBlockHashIndex,
     context_by_contract_index: ContextActionByContractIndex,
     context_by_type_index: ContextActionByTypeIndex,
-    kv: Arc<ContextActionStorageKV>,
+
     generator: Arc<SequenceGenerator>,
     // Used to detect block change. Actions flow by one in order so when the last block changes
     // we can reset the block_action_id (Not persisted)
@@ -82,11 +83,10 @@ pub struct ContextActionStorage {
 }
 
 impl ContextActionStorage {
-    pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        let storage = persistent_storage.db_context_actions();
+    pub fn new(storage: Arc<DB>, sequences: Arc<Sequences>) -> Self {
         Self {
             kv: storage.clone(),
-            generator: persistent_storage.seq().generator(Self::name()),
+            generator: sequences.generator(Self::name()),
             context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
             context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
             context_by_type_index: ContextActionByTypeIndex::new(storage),
@@ -140,6 +140,25 @@ impl ContextActionStorage {
                 self.context_by_contract_index
                     .put(&ContextActionByContractIndexKey::new(contract_address, id))
             })
+    }
+}
+
+/// Holds/manipulates indexes - used for reading
+pub struct ContextActionStorageReader {
+    kv: Arc<ContextActionStorageKV>,
+    context_by_block_index: ContextActionByBlockHashIndex,
+    context_by_contract_index: ContextActionByContractIndex,
+    context_by_type_index: ContextActionByTypeIndex,
+}
+
+impl ContextActionStorageReader {
+    pub fn new(storage: Arc<DB>) -> Self {
+        Self {
+            kv: storage.clone(),
+            context_by_block_index: ContextActionByBlockHashIndex::new(storage.clone()),
+            context_by_contract_index: ContextActionByContractIndex::new(storage.clone()),
+            context_by_type_index: ContextActionByTypeIndex::new(storage),
+        }
     }
 
     #[inline]

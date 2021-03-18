@@ -5,7 +5,9 @@ use std::convert::TryInto;
 
 use failure::Error;
 
-use storage::context::actions::context_action_storage::ContextActionStorage;
+use storage::context::actions::context_action_storage::{
+    ContextActionStorage, ContextActionStorageReader,
+};
 use storage::tests_common::TmpStorage;
 use tezos_context::channel::ContextAction;
 
@@ -77,15 +79,27 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         end_time: 0.0,
     };
 
-    let mut storage = ContextActionStorage::new(tmp_storage.storage());
-    storage.put_action(&block_hash_1, value_1_0)?;
-    storage.put_action(&block_hash_2, value_2_0)?;
-    storage.put_action(&block_hash_1, value_1_1)?;
-    storage.put_action(&block_hash_2, value_2_1)?;
-    tmp_storage.storage().db_context_actions().flush()?;
+    // store actions
+    {
+        let mut storage = ContextActionStorage::new(
+            tmp_storage.storage().merkle_context_actions().unwrap(),
+            tmp_storage.storage().seq(),
+        );
+        storage.put_action(&block_hash_1, value_1_0)?;
+        storage.put_action(&block_hash_2, value_2_0)?;
+        storage.put_action(&block_hash_1, value_1_1)?;
+        storage.put_action(&block_hash_2, value_2_1)?;
+        tmp_storage
+            .storage()
+            .merkle_context_actions()
+            .unwrap()
+            .flush()?;
+    }
 
     // block hash 1
-    let values = storage.get_by_block_hash(&block_hash_1)?;
+    let storage_reader =
+        ContextActionStorageReader::new(tmp_storage.storage().merkle_context_actions().unwrap());
+    let values = storage_reader.get_by_block_hash(&block_hash_1)?;
     assert_eq!(
         2,
         values.len(),
@@ -104,7 +118,7 @@ fn context_get_values_by_block_hash() -> Result<(), Error> {
         panic!("Was expecting ContextAction::Set");
     }
     // block hash 2
-    let values = storage.get_by_block_hash(&block_hash_2)?;
+    let values = storage_reader.get_by_block_hash(&block_hash_2)?;
     assert_eq!(
         2,
         values.len(),
@@ -159,11 +173,18 @@ fn context_get_values_by_contract_address() -> Result<(), Error> {
         end_time: 0.0,
     };
 
-    let mut storage = ContextActionStorage::new(tmp_storage.storage());
-    storage.put_action(&block_hash, value)?;
+    {
+        let mut storage = ContextActionStorage::new(
+            tmp_storage.storage().merkle_context_actions().unwrap(),
+            tmp_storage.storage().seq(),
+        );
+        storage.put_action(&block_hash, value)?;
+    }
 
     // block hash 1
-    let values = storage.get_by_contract_address(
+    let storage_reader =
+        ContextActionStorageReader::new(tmp_storage.storage().merkle_context_actions().unwrap());
+    let values = storage_reader.get_by_contract_address(
         &hex::decode("000003cb7d7842406496fc07288635562bfd17e176c4")?,
         None,
         10,

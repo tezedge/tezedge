@@ -1,97 +1,18 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use rocksdb::Cache;
-use rocksdb::{Options, DB};
 use std::collections::HashSet;
-use std::convert::TryFrom;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::{env, fs};
-use storage::context::kv_store::btree_map::BTreeMapBackend;
-use storage::context::kv_store::in_memory_backend::InMemoryBackend;
-// use storage::context::kv_store::mark_move_gced::MarkMoveGCed;
-// use storage::context::kv_store::mark_sweep_gced::MarkSweepGCed;
-use storage::context::kv_store::rocksdb_backend::RocksDBBackend;
-use storage::context::kv_store::sled_backend::SledBackend;
-use storage::context::kv_store::storage_backend::size_of_vec;
-use storage::context::merkle::hash::EntryHash;
-use storage::context::merkle::merkle_storage::MerkleStorageKV;
-use storage::context::merkle::Entry;
-use storage::persistent::database::RocksDbKeyValueSchema;
-use storage::persistent::KeyValueStoreBackend;
+use std::env;
+use std::path::PathBuf;
 
-/// Open DB at path, used in tests
-fn open_db<P: AsRef<Path>>(path: P, cache: &Cache) -> DB {
-    let mut db_opts = Options::default();
-    db_opts.create_if_missing(true);
-    db_opts.create_missing_column_families(true);
+use storage::context::kv_store::test_support::{
+    blob_serialized, entry_hash, TestContextKvStoreFactoryInstance,
+};
+use storage::context::kv_store::SupportedContextKeyValueStore;
 
-    DB::open_cf_descriptors(&db_opts, path, vec![RocksDBBackend::descriptor(&cache)]).unwrap()
-}
 
-pub fn out_dir_path(dir_name: &str) -> PathBuf {
-    let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    Path::new(out_dir.as_str()).join(Path::new(dir_name))
-}
-
-fn get_db_name(db_name: &str) -> PathBuf {
-    out_dir_path(db_name)
-}
-
-fn get_db(db_name: &str, cache: &Cache) -> DB {
-    open_db(get_db_name(db_name), &cache)
-}
-
-fn get_storage(backend: &str, db_name: &str, cache: &Cache) -> Box<MerkleStorageKV> {
-    match backend {
-        "rocksdb" => Box::new(RocksDBBackend::new(Arc::new(get_db(db_name, &cache)))),
-        "sled" => Box::new(SledBackend::new(
-            sled::Config::new()
-                .path(get_db_name(db_name))
-                .open()
-                .unwrap(),
-        )),
-        "btree" => Box::new(BTreeMapBackend::new()),
-        "inmem" => Box::new(InMemoryBackend::new()),
-        // "mark_move" => Box::new(MarkMoveGCed::<BTreeMapBackend>::new(5)),
-        // "mark_sweep" => Box::new(MarkSweepGCed::<InMemoryBackend>::new(5)),
-        _ => {
-            panic!("unknown backend set")
-        }
-    }
-}
-
-fn blob(value: Vec<u8>) -> Entry {
-    Entry::Blob(value)
-}
-
-fn entry_hash(key: &[u8]) -> EntryHash {
-    assert!(key.len() < 32);
-    let bytes: Vec<u8> = key
-        .iter()
-        .chain(std::iter::repeat(&0u8))
-        .take(32)
-        .cloned()
-        .collect();
-
-    EntryHash::try_from(bytes).unwrap()
-}
-
-fn blob_serialized(value: Vec<u8>) -> Vec<u8> {
-    bincode::serialize(&blob(value)).unwrap()
-}
-
-fn clean_db(db_name: &str) {
-    let _ = DB::destroy(&Options::default(), get_db_name(db_name));
-    let _ = fs::remove_dir_all(get_db_name(db_name));
-}
-
-fn test_put_get(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_put_get_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_put_get(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_put_get").unwrap();
 
     let kv1 = (entry_hash(&[1]), blob_serialized(vec![1]));
     storage.put(&kv1.0, &kv1.1).unwrap();
@@ -99,11 +20,8 @@ fn test_put_get(backend: &str) {
     assert_eq!(value, kv1.1);
 }
 
-fn test_put_twice(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_put_twice_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_put_twice(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_put_twice").unwrap();
 
     storage
         .put(&entry_hash(&[1]), &blob_serialized(vec![11]))
@@ -117,11 +35,8 @@ fn test_put_twice(backend: &str) {
     );
 }
 
-fn test_put_delete_get(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_put_delete_get_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_put_delete_get(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_put_delete_get").unwrap();
 
     let key = entry_hash(&[1]);
     let val1 = blob_serialized(vec![1]);
@@ -132,11 +47,8 @@ fn test_put_delete_get(backend: &str) {
     assert!(storage.get(&key).unwrap().is_none());
 }
 
-fn test_contains(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_contains_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_contains(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_contains").unwrap();
 
     let key = entry_hash(&[1]);
     let val1 = blob_serialized(vec![1]);
@@ -146,42 +58,37 @@ fn test_contains(backend: &str) {
     assert!(storage.contains(&key).unwrap());
 }
 
-fn test_delete_non_existing_key(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_delete_non_existing_key_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_delete_non_existing_key(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory
+        .create("test_delete_non_existing_key")
+        .unwrap();
 
     let key = entry_hash(&[1]);
     assert!(storage.delete(&key).is_ok());
 }
 
-fn test_try_delete_non_existing_key(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_try_delete_non_existing_key_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_try_delete_non_existing_key(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory
+        .create("test_try_delete_non_existing_key")
+        .unwrap();
 
     let key = entry_hash(&[1]);
     assert!(storage.try_delete(&key).unwrap().is_none());
 }
 
-fn test_try_delete_existing_key(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_try_delete_non_existing_key_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_try_delete_existing_key(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory
+        .create("test_try_delete_existing_key")
+        .unwrap();
+
     let key = entry_hash(&[1]);
     let val1 = blob_serialized(vec![1]);
     storage.put(&key, &val1).unwrap();
     assert_eq!(val1, storage.try_delete(&key).unwrap().unwrap());
 }
 
-fn test_write_batch(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_write_batch_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_write_batch(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_write_batch").unwrap();
 
     let batch = vec![
         (entry_hash(&[1]), blob_serialized(vec![11])),
@@ -207,11 +114,8 @@ fn test_write_batch(backend: &str) {
     );
 }
 
-fn test_retain(backend: &str) {
-    let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-    let db_name = &format!("test_retain_{}", backend);
-    clean_db(db_name);
-    let storage = get_storage(backend, db_name, &cache);
+fn test_retain(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    let storage = kv_store_factory.create("test_retain").unwrap();
 
     storage
         .put(&entry_hash(&[1]), &blob_serialized(vec![11]))
@@ -227,147 +131,94 @@ fn test_retain(backend: &str) {
     assert!(storage.get(&entry_hash(&[2])).unwrap().is_none());
 }
 
-#[test]
-fn test_memory_consumption_btree() {
-    let entry1 = entry_hash(&[1]);
-    let value1 = blob_serialized(vec![1, 2, 3, 3, 5]);
-    let entry2 = entry_hash(&[2]);
-    let value2 = blob_serialized(vec![11, 22, 33]);
-
-    let storage = BTreeMapBackend::default();
-    assert_eq!(0, storage.total_get_mem_usage().unwrap());
-
-    // insert first entry
-    storage.put(&entry1, &value1).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value1),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    // change value under key
-    storage.merge(&entry1, &value2).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    storage.put(&entry2, &value2).unwrap();
-    assert_eq!(
-        2 * std::mem::size_of::<EntryHash>() + size_of_vec(&value2) + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    //remove first entry
-    storage.delete(&entry1).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    //remove second entry
-    storage.delete(&entry2).unwrap();
-    assert_eq!(0, storage.total_get_mem_usage().unwrap());
-}
-
-#[test]
-fn test_memory_consumption_in_memory() {
-    let entry1 = entry_hash(&[1]);
-    let value1 = blob_serialized(vec![1, 2, 3, 3, 5]);
-    let entry2 = entry_hash(&[2]);
-    let value2 = blob_serialized(vec![11, 22, 33]);
-
-    let storage = InMemoryBackend::default();
-    assert_eq!(0, storage.total_get_mem_usage().unwrap());
-
-    // insert first entry
-    storage.put(&entry1, &value1).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value1),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    // change value under key
-    storage.merge(&entry1, &value2).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    storage.put(&entry2, &value2).unwrap();
-    assert_eq!(
-        2 * std::mem::size_of::<EntryHash>() + size_of_vec(&value2) + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    //remove first entry
-    storage.delete(&entry1).unwrap();
-    assert_eq!(
-        std::mem::size_of::<EntryHash>() + size_of_vec(&value2),
-        storage.total_get_mem_usage().unwrap()
-    );
-
-    //remove second entry
-    storage.delete(&entry2).unwrap();
-    assert_eq!(0, storage.total_get_mem_usage().unwrap());
-}
-
-macro_rules! test_with_backend {
-    ($storage_name:ident, $name_str:expr) => {
-        mod $storage_name {
-            use serial_test::serial;
+macro_rules! tests_with_storage {
+    ($storage_tests_name:ident, $kv_store_factory:expr) => {
+        mod $storage_tests_name {
             #[test]
-            #[serial]
             fn test_put_get() {
-                super::test_put_get($name_str)
+                super::test_put_get($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_put_twice() {
-                super::test_put_twice($name_str)
+                super::test_put_twice($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_put_delete_get() {
-                super::test_put_delete_get($name_str)
+                super::test_put_delete_get($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_contains() {
-                super::test_contains($name_str)
+                super::test_contains($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_delete_non_existing_key() {
-                super::test_delete_non_existing_key($name_str)
+                super::test_delete_non_existing_key($kv_store_factory)
             }
-
             #[test]
-            #[serial]
             fn test_try_delete_non_existing_key() {
-                super::test_try_delete_non_existing_key($name_str)
+                super::test_try_delete_non_existing_key($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_try_delete_existing_key() {
-                super::test_try_delete_existing_key($name_str)
+                super::test_try_delete_existing_key($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_write_batch() {
-                super::test_write_batch($name_str)
+                super::test_write_batch($kv_store_factory)
             }
             #[test]
-            #[serial]
             fn test_retain() {
-                super::test_retain($name_str)
+                super::test_retain($kv_store_factory)
             }
         }
     };
 }
 
-test_with_backend!(rocksdb_tests, "rocksdb");
-test_with_backend!(sled_tests, "sled");
-test_with_backend!(btree_tests, "btree");
-test_with_backend!(inmem_tests, "inmem");
-// test_with_backend!(mark_move_test, "mark_move");
-// test_with_backend!(mark_sweep_tests, "mark_sweep");
+lazy_static::lazy_static! {
+    static ref SUPPORTED_KV_STORES: std::collections::HashMap<SupportedContextKeyValueStore, TestContextKvStoreFactoryInstance> = storage::context::kv_store::test_support::all_kv_stores(out_dir_path());
+}
+
+fn out_dir_path() -> PathBuf {
+    let out_dir = env::var("OUT_DIR")
+        .expect("OUT_DIR is not defined - please add build.rs to root or set env variable OUT_DIR");
+    out_dir.as_str().into()
+}
+
+macro_rules! tests_with_all_kv_stores {
+    () => {
+        tests_with_storage!(
+            kv_store_inmemory_tests,
+            super::SUPPORTED_KV_STORES
+                .get(&storage::context::kv_store::SupportedContextKeyValueStore::InMem)
+                .unwrap()
+        );
+        tests_with_storage!(
+            kv_store_btree_tests,
+            super::SUPPORTED_KV_STORES
+                .get(&storage::context::kv_store::SupportedContextKeyValueStore::BTreeMap)
+                .unwrap()
+        );
+        tests_with_storage!(
+            kv_store_rocksdb_tests,
+            super::SUPPORTED_KV_STORES
+                .get(
+                    &storage::context::kv_store::SupportedContextKeyValueStore::RocksDB {
+                        path: super::out_dir_path()
+                    }
+                )
+                .unwrap()
+        );
+        tests_with_storage!(
+            kv_store_sled_tests,
+            super::SUPPORTED_KV_STORES
+                .get(
+                    &storage::context::kv_store::SupportedContextKeyValueStore::Sled {
+                        path: super::out_dir_path()
+                    }
+                )
+                .unwrap()
+        );
+    };
+}
+
+tests_with_all_kv_stores!();

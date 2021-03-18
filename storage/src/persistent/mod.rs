@@ -46,6 +46,10 @@ pub trait KeyValueSchema {
     type Value: Codec;
 }
 
+pub trait Flushable {
+    fn flush(&self) -> Result<(), failure::Error>;
+}
+
 /// Custom trait to unify any kv-store schema access
 pub trait KeyValueStoreBackend<S: KeyValueSchema> {
     /// Provides informatio if backend is persistent

@@ -76,12 +76,35 @@ pub mod test_support {
     use strum::IntoEnumIterator;
 
     use crate::context::merkle::merkle_storage::MerkleStorageKV;
+    use crate::context::merkle::Entry;
+    use crate::context::EntryHash;
     use crate::persistent::database::RocksDbKeyValueSchema;
 
     use super::SupportedContextKeyValueStore;
+    use std::convert::TryFrom;
 
     pub type TestKeyValueStoreError = failure::Error;
     pub type TestContextKvStoreFactoryInstance = Box<dyn TestContextKvStoreFactory>;
+
+    pub fn blob(value: Vec<u8>) -> Entry {
+        Entry::Blob(value)
+    }
+
+    pub fn entry_hash(key: &[u8]) -> EntryHash {
+        assert!(key.len() < 32);
+        let bytes: Vec<u8> = key
+            .iter()
+            .chain(std::iter::repeat(&0u8))
+            .take(32)
+            .cloned()
+            .collect();
+
+        EntryHash::try_from(bytes).unwrap()
+    }
+
+    pub fn blob_serialized(value: Vec<u8>) -> Vec<u8> {
+        bincode::serialize(&blob(value)).unwrap()
+    }
 
     pub fn all_kv_stores(
         base_dir: PathBuf,

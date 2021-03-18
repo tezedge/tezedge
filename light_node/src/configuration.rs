@@ -209,7 +209,6 @@ pub struct RocksDBConfig<C: ColumnFactory> {
 #[derive(Debug, Clone)]
 pub struct Storage {
     pub db: RocksDBConfig<RocksDbTableInitializer>,
-    pub db_context_actions: RocksDBConfig<ContextActionsRocksDbTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub action_store_backend: Vec<ContextActionStoreBackend>,
@@ -218,6 +217,8 @@ pub struct Storage {
 
     // merkle cfg
     pub context_kv_store: ContextKvStoreConfiguration,
+    // context actions cfg
+    pub merkle_context_actions_store: Option<RocksDBConfig<ContextActionsRocksDbTableInitializer>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1014,26 +1015,28 @@ impl Environment {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
                     expected_db_version: Storage::DB_STORAGE_VERSION,
                     db_path: db_path.join("db"),
-                    columns: RocksDbTableInitializer {},
+                    columns: RocksDbTableInitializer,
                     threads: db_threads_count,
                 };
-                let db_context_actions = RocksDBConfig {
-                    cache_size: Storage::LRU_CACHE_SIZE_16MB,
-                    expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
-                    db_path: db_path.join("context_actions"),
-                    columns: ContextActionsRocksDbTableInitializer {},
-                    threads: db_context_actions_threads_count,
-                };
+
                 let backends: HashSet<String> = match args.values_of("actions-store-backend") {
                     Some(v) => v.map(String::from).collect(),
                     None => std::iter::once(Storage::DEFAULT_CONTEXT_ACTIONS_RECORDER.to_string())
                         .collect(),
                 };
 
+                let mut merkle_context_actions_store = None;
                 let action_store_backend = backends
                     .iter()
                     .map(|v| match v.parse::<ContextActionStoreBackend>() {
                         Ok(ContextActionStoreBackend::RocksDB) => {
+                            merkle_context_actions_store = Some(RocksDBConfig {
+                                cache_size: Storage::LRU_CACHE_SIZE_16MB,
+                                expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
+                                db_path: db_path.join("context_actions"),
+                                columns: ContextActionsRocksDbTableInitializer,
+                                threads: db_context_actions_threads_count,
+                            });
                             ContextActionStoreBackend::RocksDB
                         }
                         Ok(ContextActionStoreBackend::NoneBackend) => {
@@ -1094,11 +1097,11 @@ impl Environment {
                 crate::configuration::Storage {
                     tezos_data_dir: data_dir.clone(),
                     db,
-                    db_context_actions,
                     db_path,
                     compute_context_action_tree_hashes,
                     action_store_backend,
                     context_kv_store,
+                    merkle_context_actions_store,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
@@ -1237,8 +1240,7 @@ impl Environment {
                 Box::new(Duplicate::new(drains[0].clone(), drains[1].clone()).fuse());
 
             // collect the leftover drains
-            let leftover_drains: Vec<Arc<slog_async::Async>> =
-                drains.clone().into_iter().skip(2).collect();
+            let leftover_drains: Vec<Arc<slog_async::Async>> = drains.into_iter().skip(2).collect();
 
             // fold the drains into one Duplicate struct
             let merged_drains: Box<
@@ -1257,21 +1259,59 @@ impl Environment {
     pub(crate) fn build_recorders(
         &self,
         storage: &PersistentStorage,
-    ) -> Vec<Box<dyn ActionRecorder + Send>> {
-        self.storage
-            .action_store_backend
-            .iter()
-            .filter_map(|backend| match backend {
-                storage::context::actions::ContextActionStoreBackend::RocksDB => {
-                    Some(Box::new(ContextActionStorage::new(&storage))
-                        as Box<dyn ActionRecorder + Send>)
-                }
-                storage::context::actions::ContextActionStoreBackend::FileStorage { path } => {
-                    Some(Box::new(ActionFileStorage::new(path.to_path_buf()))
-                        as Box<dyn ActionRecorder + Send>)
-                }
-                storage::context::actions::ContextActionStoreBackend::NoneBackend => None,
+    ) -> Result<Vec<Box<dyn ActionRecorder + Send>>, InvalidRecorderConfigurationError> {
+        // filter all configurations and split to valid and ok
+        let (oks, errors): (Vec<_>, Vec<_>) =
+            self.storage
+                .action_store_backend
+                .iter()
+                .map(|backend| match backend {
+                    storage::context::actions::ContextActionStoreBackend::RocksDB => {
+                        match storage.merkle_context_actions() {
+                            Some(merkle_context_actions) => Ok(Some(Box::new(
+                                ContextActionStorage::new(merkle_context_actions, storage.seq()),
+                            )
+                                as Box<dyn ActionRecorder + Send>)),
+                            None => Err(InvalidRecorderConfigurationError(
+                                "Missing RocksDB source 'storage.merkle_context_actions()'"
+                                    .to_string(),
+                            )),
+                        }
+                    }
+                    storage::context::actions::ContextActionStoreBackend::FileStorage { path } => {
+                        Ok(Some(Box::new(ActionFileStorage::new(path.to_path_buf()))
+                            as Box<dyn ActionRecorder + Send>))
+                    }
+                    storage::context::actions::ContextActionStoreBackend::NoneBackend => Ok(None),
+                })
+                .partition(Result::is_ok);
+
+        // collect all invalid
+        if !errors.is_empty() {
+            let errors = errors
+                .iter()
+                .filter_map(|e| match e {
+                    Ok(_) => None,
+                    Err(e) => Some(format!("{:?}", e)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Err(InvalidRecorderConfigurationError(format!(
+                "errors: {:?}",
+                errors
+            )));
+        }
+
+        // return just oks
+        Ok(oks
+            .into_iter()
+            .filter_map(|e| match e {
+                Ok(Some(recorder)) => Some(recorder),
+                _ => None,
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>())
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct InvalidRecorderConfigurationError(String);

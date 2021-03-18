@@ -155,7 +155,5 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
 
 fn out_dir_path(dir_name: &str) -> PathBuf {
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-    Path::new(out_dir.as_str())
-        .join(Path::new(dir_name))
-        .to_path_buf()
+    Path::new(out_dir.as_str()).join(Path::new(dir_name))
 }
