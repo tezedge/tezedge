@@ -11,7 +11,7 @@ use crate::context::kv_store::storage_backend::StorageBackendStats;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
 use crate::persistent::database::DBError;
-use crate::persistent::{Flushable, KeyValueStoreBackend};
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 #[derive(Default)]
 pub struct HashMapWithStats {
@@ -138,15 +138,23 @@ impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for InMemoryBackend {
         let r = self.inner.read()?;
         Ok(r.get_memory_usage().total_as_bytes())
     }
-
-    fn is_persistent(&self) -> bool {
-        false
-    }
 }
 
 impl Flushable for InMemoryBackend {
     fn flush(&self) -> Result<(), Error> {
         Ok(())
+    }
+}
+
+impl MultiInstanceable for InMemoryBackend {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for InMemoryBackend {
+    fn is_persistent(&self) -> bool {
+        false
     }
 }
 

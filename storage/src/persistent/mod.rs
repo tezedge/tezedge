@@ -50,11 +50,39 @@ pub trait Flushable {
     fn flush(&self) -> Result<(), failure::Error>;
 }
 
+pub trait Persistable {
+    fn is_persistent(&self) -> bool;
+}
+
+/// Provides information if backend can be opened for multi-instance access
+pub trait MultiInstanceable {
+    fn supports_multiple_opened_instances(&self) -> bool;
+
+    // TODO: TE-150 - real support mutliprocess
+    fn sync_with_primary(&self) -> Result<(), MultiInstanceableSyncError> {
+        if self.supports_multiple_opened_instances() {
+            Err(MultiInstanceableSyncError::new(
+                "Not implemented yet, please implement correctly!".to_string(),
+            ))
+        } else {
+            Err(MultiInstanceableSyncError::new(
+                "Not supported - supports_multiple_opened_instances is false".to_string(),
+            ))
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MultiInstanceableSyncError(String);
+
+impl MultiInstanceableSyncError {
+    pub fn new(error_message: String) -> Self {
+        MultiInstanceableSyncError(error_message)
+    }
+}
+
 /// Custom trait to unify any kv-store schema access
 pub trait KeyValueStoreBackend<S: KeyValueSchema> {
-    /// Provides informatio if backend is persistent
-    fn is_persistent(&self) -> bool;
-
     /// Insert new key value pair into the database.
     ///
     /// # Arguments

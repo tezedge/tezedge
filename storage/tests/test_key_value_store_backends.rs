@@ -131,6 +131,59 @@ fn test_retain(kv_store_factory: &TestContextKvStoreFactoryInstance) {
     assert!(storage.get(&entry_hash(&[2])).unwrap().is_none());
 }
 
+// TODO: TE-150 - real support mutliprocess
+fn test_multiple_open_instances(kv_store_factory: &TestContextKvStoreFactoryInstance) {
+    if !kv_store_factory.supports_multiple_opened_instances() {
+        return;
+    }
+
+    // create main storage instance
+    let storage_instance_main = kv_store_factory
+        .create("test_multiple_open_instances")
+        .unwrap();
+
+    // open second another instances for read
+    let storage_instance_1 = kv_store_factory
+        .open_readonly_instance("test_multiple_open_instances")
+        .unwrap();
+    let storage_instance_2 = kv_store_factory
+        .open_readonly_instance("test_multiple_open_instances")
+        .unwrap();
+
+    // insert data to main
+    storage_instance_main
+        .put(&entry_hash(&[1]), &blob_serialized(vec![11]))
+        .unwrap();
+    storage_instance_main
+        .put(&entry_hash(&[2]), &blob_serialized(vec![22]))
+        .unwrap();
+
+    // read data from main - ok
+    assert!(storage_instance_main
+        .get(&entry_hash(&[1]))
+        .unwrap()
+        .is_some());
+    assert!(storage_instance_main
+        .get(&entry_hash(&[2]))
+        .unwrap()
+        .is_some());
+
+    // TODO: TE-150 - real support mutliprocess
+    // we need to sync with primary
+    storage_instance_1
+        .sync_with_primary()
+        .expect("Failed to sync with primary");
+    storage_instance_2
+        .sync_with_primary()
+        .expect("Failed to sync with primary");
+
+    // read from instance 1/2
+    assert!(storage_instance_1.get(&entry_hash(&[1])).unwrap().is_some());
+    assert!(storage_instance_1.get(&entry_hash(&[2])).unwrap().is_some());
+    assert!(storage_instance_2.get(&entry_hash(&[1])).unwrap().is_some());
+    assert!(storage_instance_2.get(&entry_hash(&[2])).unwrap().is_some());
+}
+
 macro_rules! tests_with_storage {
     ($storage_tests_name:ident, $kv_store_factory:expr) => {
         mod $storage_tests_name {
@@ -169,6 +222,10 @@ macro_rules! tests_with_storage {
             #[test]
             fn test_retain() {
                 super::test_retain($kv_store_factory)
+            }
+            #[test]
+            fn test_multiple_open_instances() {
+                super::test_multiple_open_instances($kv_store_factory)
             }
         }
     };

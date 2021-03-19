@@ -11,7 +11,7 @@ use crate::context::kv_store::storage_backend::NotGarbageCollected;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
 use crate::persistent::database::DBError;
-use crate::persistent::{Flushable, KeyValueStoreBackend};
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 pub struct SledBackend {
     db: sled::Db,
@@ -91,10 +91,6 @@ impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for SledBackend {
             .map(|size| size as usize)
             .map_err(|e| DBError::SledDBError { error: e })
     }
-
-    fn is_persistent(&self) -> bool {
-        false
-    }
 }
 
 impl Flushable for SledBackend {
@@ -106,5 +102,17 @@ impl Flushable for SledBackend {
                 e
             )),
         }
+    }
+}
+
+impl MultiInstanceable for SledBackend {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for SledBackend {
+    fn is_persistent(&self) -> bool {
+        true
     }
 }

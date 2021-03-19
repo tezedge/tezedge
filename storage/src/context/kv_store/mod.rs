@@ -66,9 +66,8 @@ impl FromStr for SupportedContextKeyValueStore {
 }
 
 pub mod test_support {
-    extern crate proc_macro;
-
     use std::collections::HashMap;
+    use std::convert::TryFrom;
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
@@ -79,9 +78,9 @@ pub mod test_support {
     use crate::context::merkle::Entry;
     use crate::context::EntryHash;
     use crate::persistent::database::RocksDbKeyValueSchema;
+    use crate::persistent::{MultiInstanceable, Persistable};
 
     use super::SupportedContextKeyValueStore;
-    use std::convert::TryFrom;
 
     pub type TestKeyValueStoreError = failure::Error;
     pub type TestContextKvStoreFactoryInstance = Box<dyn TestContextKvStoreFactory>;
@@ -152,14 +151,25 @@ pub mod test_support {
         store_factories
     }
 
-    pub trait TestContextKvStoreFactory: 'static + Send + Sync {
+    pub trait TestContextKvStoreFactory:
+        'static + Send + Sync + MultiInstanceable + Persistable
+    {
         /// Creates new storage and also clean all existing data
         fn create(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError>;
 
-        // TODO: open new instance
-
         /// Just opens a storage, does not clean anything
-        fn open(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError>;
+        fn open_readonly_instance(
+            &self,
+            _: &str,
+        ) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+            if self.supports_multiple_opened_instances() {
+                Err(failure::format_err!(
+                    "not implemented yet, please implement"
+                ))
+            } else {
+                Err(failure::format_err!("not supported"))
+            }
+        }
     }
 
     /// In-memory kv-store
@@ -170,10 +180,17 @@ pub mod test_support {
             use crate::context::kv_store::in_memory_backend::InMemoryBackend;
             Ok(Box::new(InMemoryBackend::new()))
         }
+    }
 
-        fn open(&self, _: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
-            use crate::context::kv_store::in_memory_backend::InMemoryBackend;
-            Ok(Box::new(InMemoryBackend::new()))
+    impl MultiInstanceable for InMemoryBackendTestContextKvStoreFactory {
+        fn supports_multiple_opened_instances(&self) -> bool {
+            false
+        }
+    }
+
+    impl Persistable for InMemoryBackendTestContextKvStoreFactory {
+        fn is_persistent(&self) -> bool {
+            false
         }
     }
 
@@ -185,10 +202,17 @@ pub mod test_support {
             use crate::context::kv_store::btree_map::BTreeMapBackend;
             Ok(Box::new(BTreeMapBackend::new()))
         }
+    }
 
-        fn open(&self, _: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
-            use crate::context::kv_store::btree_map::BTreeMapBackend;
-            Ok(Box::new(BTreeMapBackend::new()))
+    impl MultiInstanceable for BTreeMapBackendTestContextKvStoreFactory {
+        fn supports_multiple_opened_instances(&self) -> bool {
+            false
+        }
+    }
+
+    impl Persistable for BTreeMapBackendTestContextKvStoreFactory {
+        fn is_persistent(&self) -> bool {
+            false
         }
     }
 
@@ -227,13 +251,17 @@ pub mod test_support {
 
             Ok(Box::new(SledBackend::new(db)))
         }
+    }
 
-        fn open(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
-            use crate::context::kv_store::sled_backend::SledBackend;
+    impl MultiInstanceable for SledBackendTestContextKvStoreFactory {
+        fn supports_multiple_opened_instances(&self) -> bool {
+            false
+        }
+    }
 
-            // just open db
-            let db = self.db(name, false)?;
-            Ok(Box::new(SledBackend::new(db)))
+    impl Persistable for SledBackendTestContextKvStoreFactory {
+        fn is_persistent(&self) -> bool {
+            true
         }
     }
 
@@ -268,6 +296,26 @@ pub mod test_support {
                 vec![RocksDBBackend::descriptor(&cache)],
             )?)
         }
+
+        fn db_readonly(&self, db_name: &str) -> Result<rocksdb::DB, TestKeyValueStoreError> {
+            use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
+            use rocksdb::{Options, DB};
+
+            let mut db_opts = Options::default();
+            db_opts.create_if_missing(false);
+            db_opts.create_missing_column_families(false);
+
+            let db_path = self.db_path(db_name);
+            let db_path_secondary_log = db_path.join("secondary");
+
+            // TODO: TE-150 - real support mutliprocess
+            Ok(DB::open_cf_as_secondary(
+                &db_opts,
+                db_path,
+                db_path_secondary_log,
+                vec![RocksDBBackend::name()],
+            )?)
+        }
     }
 
     impl TestContextKvStoreFactory for RocksDbBackendTestContextKvStoreFactory {
@@ -287,12 +335,27 @@ pub mod test_support {
             Ok(Box::new(RocksDBBackend::new(Arc::new(db))))
         }
 
-        fn open(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        fn open_readonly_instance(
+            &self,
+            name: &str,
+        ) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
             use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
 
             // just open db
-            let db = self.db(name, false)?;
+            let db = self.db_readonly(name)?;
             Ok(Box::new(RocksDBBackend::new(Arc::new(db))))
+        }
+    }
+
+    impl MultiInstanceable for RocksDbBackendTestContextKvStoreFactory {
+        fn supports_multiple_opened_instances(&self) -> bool {
+            true
+        }
+    }
+
+    impl Persistable for RocksDbBackendTestContextKvStoreFactory {
+        fn is_persistent(&self) -> bool {
+            true
         }
     }
 }

@@ -236,10 +236,6 @@ impl<S: RocksDbKeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
 impl<S: RocksDbKeyValueSchema> KeyValueStoreWithSchema<S> for DB {}
 
 impl<S: RocksDbKeyValueSchema> KeyValueStoreBackend<S> for DB {
-    fn is_persistent(&self) -> bool {
-        true
-    }
-
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError> {
         let key = key.encode()?;
         let value = value.encode()?;

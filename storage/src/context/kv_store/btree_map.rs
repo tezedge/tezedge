@@ -9,7 +9,7 @@ use crate::context::kv_store::storage_backend::{NotGarbageCollected, StorageBack
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
 use crate::persistent::database::DBError;
-use crate::persistent::{Flushable, KeyValueStoreBackend};
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 /// In Memory Key Value Store implemented with [BTreeMap](std::collections::BTreeMap)
 #[derive(Debug)]
@@ -36,10 +36,6 @@ impl<K: Ord, V> BTreeMapBackend<K, V> {
 impl NotGarbageCollected for BTreeMapBackend<EntryHash, ContextValue> {}
 
 impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for BTreeMapBackend<EntryHash, ContextValue> {
-    fn is_persistent(&self) -> bool {
-        false
-    }
-
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
         Ok(self.stats.read()?.total_as_bytes())
     }
@@ -130,6 +126,18 @@ impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for BTreeMapBackend<EntryHa
 impl Flushable for BTreeMapBackend<EntryHash, ContextValue> {
     fn flush(&self) -> Result<(), failure::Error> {
         Ok(())
+    }
+}
+
+impl MultiInstanceable for BTreeMapBackend<EntryHash, ContextValue> {
+    fn supports_multiple_opened_instances(&self) -> bool {
+        false
+    }
+}
+
+impl Persistable for BTreeMapBackend<EntryHash, ContextValue> {
+    fn is_persistent(&self) -> bool {
+        false
     }
 }
 

@@ -65,7 +65,7 @@ use crate::context::{
     ContextKey, ContextValue, MerkleKeyValueStoreSchema, StringTreeEntry, StringTreeMap, TreeId,
 };
 use crate::persistent;
-use crate::persistent::{Flushable, KeyValueStoreBackend};
+use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SetAction {
@@ -92,12 +92,21 @@ enum Action {
 }
 
 pub trait MerkleStorageBackendWithGC:
-    KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector + Flushable
+    KeyValueStoreBackend<MerkleKeyValueStoreSchema>
+    + GarbageCollector
+    + Flushable
+    + MultiInstanceable
+    + Persistable
 {
 }
 
-impl<T: KeyValueStoreBackend<MerkleKeyValueStoreSchema> + GarbageCollector + Flushable>
-    MerkleStorageBackendWithGC for T
+impl<
+        T: KeyValueStoreBackend<MerkleKeyValueStoreSchema>
+            + GarbageCollector
+            + Flushable
+            + MultiInstanceable
+            + Persistable,
+    > MerkleStorageBackendWithGC for T
 {
 }
 
@@ -288,10 +297,6 @@ impl MerkleStorage {
             last_commit_hash: None,
             stats: MerkleStorageStatistics::default(),
         }
-    }
-
-    pub fn has_persistent_backend(&self) -> bool {
-        self.db.is_persistent()
     }
 
     /// Get value from current staged root
@@ -1224,38 +1229,29 @@ mod tests {
         let key_az: &ContextKey = &vec!["a".to_string(), "z".to_string()];
         let key_d: &ContextKey = &vec!["d".to_string()];
 
-        let (commit1, commit2) = {
-            let mut storage = MerkleStorage::new(kv_store_factory.create(db_name).unwrap());
+        let kv_store = kv_store_factory.create(db_name).unwrap();
+        let mut storage = MerkleStorage::new(kv_store);
 
-            let res = storage.get(&vec![]);
-            assert_eq!(res.unwrap().is_empty(), true);
-            let res = storage.get(&vec!["a".to_string()]);
-            assert_eq!(res.unwrap().is_empty(), true);
+        let res = storage.get(&vec![]);
+        assert_eq!(res.unwrap().is_empty(), true);
+        let res = storage.get(&vec!["a".to_string()]);
+        assert_eq!(res.unwrap().is_empty(), true);
 
-            storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
-            storage.set(2, key_abx, &vec![3u8]).unwrap();
-            assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
-            assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
-            let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
+        storage.set(2, key_abx, &vec![3u8]).unwrap();
+        assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
+        assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
+        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(3, key_az, &vec![4u8]).unwrap();
-            storage.set(4, key_abx, &vec![5u8]).unwrap();
-            storage.set(5, key_d, &vec![6u8]).unwrap();
-            storage.set(6, key_eab, &vec![7u8]).unwrap();
-            assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
-            assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
-            assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
-            assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
-            let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-
-            (commit1, commit2)
-        };
-
-        // reopen kv-store
-        let mut storage = MerkleStorage::new(kv_store_factory.open(db_name).unwrap());
-        if !storage.has_persistent_backend() {
-            return;
-        }
+        storage.set(3, key_az, &vec![4u8]).unwrap();
+        storage.set(4, key_abx, &vec![5u8]).unwrap();
+        storage.set(5, key_d, &vec![6u8]).unwrap();
+        storage.set(6, key_eab, &vec![7u8]).unwrap();
+        assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
+        assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
+        assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
+        assert_eq!(storage.get(key_eab).unwrap(), vec![7u8]);
+        let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         assert_eq!(
             storage.get_history(&commit1, key_abc).unwrap(),
@@ -1374,28 +1370,19 @@ mod tests {
     }
 
     fn test_checkout(kv_store_factory: &TestContextKvStoreFactoryInstance) {
-        let db_name = "test_checkout";
-
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
 
-        let (commit1, commit2) = {
-            let mut storage = MerkleStorage::new(kv_store_factory.create(db_name).unwrap());
+        let mut storage = MerkleStorage::new(kv_store_factory.create("test_checkout").unwrap());
 
-            storage.set(1, key_abc, &vec![1u8]).unwrap();
-            storage.set(2, key_abx, &vec![2u8]).unwrap();
-            let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
+        storage.set(1, key_abc, &vec![1u8]).unwrap();
+        storage.set(2, key_abx, &vec![2u8]).unwrap();
+        let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-            storage.set(1, key_abc, &vec![3u8]).unwrap();
-            storage.set(2, key_abx, &vec![4u8]).unwrap();
-            let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
-            (commit1, commit2)
-        };
+        storage.set(1, key_abc, &vec![3u8]).unwrap();
+        storage.set(2, key_abx, &vec![4u8]).unwrap();
+        let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        let mut storage = MerkleStorage::new(kv_store_factory.open(db_name).unwrap());
-        if !storage.has_persistent_backend() {
-            return;
-        }
         storage.checkout(&commit1).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
@@ -1405,26 +1392,6 @@ mod tests {
         storage.checkout(&commit2).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![4u8]);
-    }
-
-    fn test_persistence_over_reopens(kv_store_factory: &TestContextKvStoreFactoryInstance) {
-        let db_name = "test_persistence_over_reopens";
-
-        let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        let commit1 = {
-            let mut storage = MerkleStorage::new(kv_store_factory.create(db_name).unwrap());
-
-            let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-            storage.set(1, key_abc, &vec![2_u8]).unwrap();
-            storage.set(2, key_abx, &vec![3_u8]).unwrap();
-            storage.commit(0, "".to_string(), "".to_string()).unwrap()
-        };
-
-        let mut storage = MerkleStorage::new(kv_store_factory.open(db_name).unwrap());
-        if !storage.has_persistent_backend() {
-            return;
-        }
-        assert_eq!(vec![2_u8], storage.get_history(&commit1, &key_abc).unwrap());
     }
 
     /// Test getting entire tree in string format for JSON RPC
@@ -1718,10 +1685,6 @@ mod tests {
                 #[test]
                 fn test_checkout() {
                     super::test_checkout($kv_store_factory)
-                }
-                #[test]
-                fn test_persistence_over_reopens() {
-                    super::test_persistence_over_reopens($kv_store_factory)
                 }
                 #[test]
                 fn test_get_context_tree_by_prefix() {
