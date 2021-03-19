@@ -482,6 +482,9 @@ impl Receive<DeadLetter> for PeerManager {
             if self.shutting_down {
                 return;
             }
+            // kick peeer immediatelly
+            ctx.system.stop(msg.recipient);
+
             self.trigger_check_peer_count(ctx);
         }
     }
