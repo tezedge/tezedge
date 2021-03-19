@@ -30,6 +30,7 @@ pub struct DeployMonitor {
     docker: Docker,
     slack: SlackServer,
     log: Logger,
+    cleanup: bool,
 }
 
 impl DeployMonitor {
@@ -38,12 +39,14 @@ impl DeployMonitor {
         docker: Docker,
         slack: SlackServer,
         log: Logger,
+        cleanup: bool,
     ) -> Self {
         Self {
             compose_file_path,
             docker,
             slack,
             log,
+            cleanup,
         }
     }
 
@@ -135,7 +138,7 @@ impl DeployMonitor {
             // if node updated, need to restart tezedge node and tezedge debugger
             // and recreate tezedge volume, but not need to restart tezos and explorer
             if node_updated || debugger_updated || explorer_updated {
-                shutdown_and_update(&compose_file_path, log).await;
+                shutdown_and_update(&compose_file_path, log, self.cleanup).await;
 
                 // send node info after update
                 let info_monitor = InfoMonitor::new(slack.clone(), self.log.clone());
@@ -151,7 +154,7 @@ impl DeployMonitor {
                 .await?;
 
             self.send_log_dump().await?;
-            restart_stack(&compose_file_path, log).await;
+            restart_stack(&compose_file_path, log, self.cleanup).await;
         };
 
         Ok(())
@@ -167,7 +170,7 @@ impl DeployMonitor {
 
         if self.is_sandbox_container_running().await {
             if self.changed::<Sandbox>().await? {
-                shutdown_and_update_sandbox(&compose_file_path, log).await;
+                shutdown_and_update_sandbox(&compose_file_path, log, self.cleanup).await;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");

@@ -34,9 +34,10 @@ pub fn start_deploy_monitoring(
     interval: u64,
     log: Logger,
     running: Arc<AtomicBool>,
+    cleanup_data: bool,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone());
+    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone(), cleanup_data);
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_stack().await {
@@ -53,9 +54,10 @@ pub fn start_sandbox_monitoring(
     interval: u64,
     log: Logger,
     running: Arc<AtomicBool>,
+    cleanup_data: bool,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone());
+    let deploy_monitor = DeployMonitor::new(compose_file_path, docker, slack, log.clone(), cleanup_data);
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_sandbox_launcher().await {
@@ -109,12 +111,13 @@ pub async fn shutdown_and_cleanup(
     compose_file_path: &PathBuf,
     slack: SlackServer,
     log: &Logger,
+    cleanup_data: bool,
 ) -> Result<(), failure::Error> {
     slack.send_message("Manual shuttdown ").await?;
     info!(log, "Manual shutdown");
 
     stop_with_compose(compose_file_path);
-    cleanup_docker();
+    cleanup_docker(cleanup_data);
 
     Ok(())
 }
@@ -123,11 +126,12 @@ pub async fn start_stack(
     compose_file_path: &PathBuf,
     slack: SlackServer,
     log: &Logger,
+    cleanup_data: bool,
 ) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
     // cleanup possible dangling containers/volumes and start the stack
-    restart_stack(compose_file_path, log).await;
+    restart_stack(compose_file_path, log, cleanup_data).await;
     slack.send_message("Tezedge stack started").await?;
     Ok(())
 }

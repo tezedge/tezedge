@@ -35,6 +35,9 @@ pub struct WatchdogEnvironment {
 
     // Path for the compose file needed to manage the deployed containers
     pub compose_file_path: PathBuf,
+
+    // Do not cleanup the volumes
+    pub cleanup_volumes: bool,
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -132,6 +135,9 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("sandbox")
                 .help("Watch only the sandbox launcher and a debugger"),
         )
+        .arg(Arg::with_name("cleanup-volumes")
+            .long("cleanup-volumes")
+            .help("Enable and dissable volume cleanup"))
         .arg(
             Arg::with_name("info-interval")
                 .long("info-interval")
@@ -204,6 +210,7 @@ impl WatchdogEnvironment {
                 .parse::<u64>()
                 .expect("Expected u64 value of seconds"),
             is_sandbox: args.is_present("sandbox"),
+            cleanup_volumes: args.is_present("cleanup-volumes"),
         }
     }
 }
