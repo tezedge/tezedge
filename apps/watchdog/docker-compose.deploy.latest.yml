@@ -13,7 +13,7 @@ services:
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
       - "/tmp/report:/tmp/report:rw"
     #entrypoint: sh -c "./bpf-sniffer & sleep 0.5 && ./tezedge-debugger"
-    entrypoint: sh -c "./bpf-sniffer & sleep 0.5 ; ./tezedge-debugger-db & sleep 1 ; heaptrack ./tezedge-debugger-parser; cp heaptrack.*.gz /tmp/report"
+    entrypoint: sh -c "./bpf-sniffer & sleep 0.5 ; ./tezedge-debugger-db & sleep 1 ; ./tezedge-debugger-parser; sleep inf"
     ports:
       - "17732:17732"      # debugger RPC port
       - "10001:10001/udp"  # debugger syslog port for tezedge node
