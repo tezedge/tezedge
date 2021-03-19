@@ -33,8 +33,6 @@ pub enum PeerMessage {
     Operation(OperationMessage),
     GetProtocols(GetProtocolsMessage),
     Protocol(ProtocolMessage),
-    GetOperationHashesForBlocks(GetOperationHashesForBlocksMessage),
-    OperationHashesForBlock(OperationHashesForBlocksMessage),
     GetOperationsForBlocks(GetOperationsForBlocksMessage),
     OperationsForBlocks(OperationsForBlocksMessage),
 }
@@ -96,16 +94,6 @@ has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
                         GetProtocolsMessage::encoding().clone(),
                     ),
                     Tag::new(0x41, "Protocol", ProtocolMessage::encoding().clone()),
-                    Tag::new(
-                        0x50,
-                        "GetOperationHashesForBlocks",
-                        GetOperationHashesForBlocksMessage::encoding().clone(),
-                    ),
-                    Tag::new(
-                        0x51,
-                        "OperationHashesForBlocks",
-                        OperationHashesForBlocksMessage::encoding().clone(),
-                    ),
                     Tag::new(
                         0x60,
                         "GetOperationsForBlocks",

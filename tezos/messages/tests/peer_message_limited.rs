@@ -1,12 +1,21 @@
 use failure::Error;
-use std::fmt;
+use std::fmt::{self, Write};
 use tezos_encoding::encoding::{Encoding, SchemaType};
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 enum Limit {
     Some(usize),
     Unlimited,
+}
+
+impl Limit {
+    fn is_limited(&self) -> bool {
+        match self {
+            Limit::Some(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Limit {
@@ -15,6 +24,12 @@ impl fmt::Display for Limit {
             Limit::Some(size) => write!(f, "{}", size),
             Limit::Unlimited => write!(f, "unlimited"),
         }
+    }
+}
+
+impl Default for Limit {
+    fn default() -> Self {
+        0.into()
     }
 }
 
@@ -36,6 +51,15 @@ impl ops::Add<usize> for Limit {
         match self {
             Limit::Some(a) => (a + other).into(),
             _ => Limit::Unlimited,
+        }
+    }
+}
+
+impl ops::AddAssign<usize> for Limit {
+    fn add_assign(&mut self, other: usize) {
+        match self {
+            Limit::Some(ref mut a) => *a += other,
+            _ => (),
         }
     }
 }
@@ -101,15 +125,11 @@ impl From<&usize> for Limit {
     }
 }
 
-fn message(msg: String) {
-    println!("{}", msg)
-}
-
 fn append<T: AsRef<str> + ?Sized>(path: &String, suffix: &T) -> String {
     format!("{}.{}", path, suffix.as_ref())
 }
 
-fn visit_encoding(encoding: &Encoding, path: String) -> Limit {
+fn visit_encoding(encoding: &Encoding, path: String, out: &mut dyn Write) -> Limit {
     use Encoding::*;
     use Limit::Unlimited;
     match encoding {
@@ -129,83 +149,90 @@ fn visit_encoding(encoding: &Encoding, path: String) -> Limit {
             let mut tags = map.tags().collect::<Vec<&tezos_encoding::encoding::Tag>>();
             tags.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
             for tag in tags {
-                let tag_id = format!("{:#04X}", tag.get_id());
+                let tag_id = format!("{}({:#04X})", tag.get_variant(), tag.get_id());
                 let tag_path = append(&path, &tag_id);
-                let size = visit_encoding(tag.get_encoding(), tag_path);
-                message(format!("{}: variant {} size: {}", path, tag_id, size));
+                let size = visit_encoding(tag.get_encoding(), tag_path, out);
+                writeln!(out, "{}: variant {} size: {}", path, tag_id, size).unwrap();
                 max = cmp::max(max, size);
             }
             max + *size
         }
         List(encoding) => {
-            let element_size = visit_encoding(encoding, append(&path, "[]"));
-            message(format!("{}: list element size: {}", path, element_size));
+            let element_size = visit_encoding(encoding, append(&path, "[]"), out);
+            writeln!(
+                out,
+                "{}: unlimited list, max element size: {}",
+                path, element_size
+            )
+            .unwrap();
             Unlimited
         }
         BoundedList(max, encoding) => {
-            let element_size = visit_encoding(encoding, append(&path, "[]"));
-            message(format!("{}: list element size: {}", path, element_size));
-            message(format!("{}: max elements: {}", path, max));
-            let size = element_size * max;
-            size
+            let element_size = visit_encoding(encoding, append(&path, "[]"), out);
+            writeln!(
+                out,
+                "{}: list with max {} elements, max element size: {}",
+                path, max, element_size
+            )
+            .unwrap();
+            element_size * max
         }
         Enum => 1.into(),
-        Option(encoding) => visit_encoding(encoding, path) + 1,
-        OptionalField(encoding) => visit_encoding(encoding, path),
+        Option(encoding) => visit_encoding(encoding, path, out) + 1,
+        OptionalField(encoding) => visit_encoding(encoding, path, out),
         Obj(fields) => {
             let mut sum = 0.into();
             for field in fields {
                 let field_path = append(&path, field.get_name());
-                let size = visit_encoding(field.get_encoding(), field_path);
-                message(format!(
-                    "{}: field {}: size {}",
-                    path,
-                    field.get_name(),
-                    size
-                ));
+                let size = visit_encoding(field.get_encoding(), field_path, out);
+                writeln!(out, "{}: field {}: size {}", path, field.get_name(), size).unwrap();
                 sum = sum + size;
             }
             sum
         }
         Dynamic(encoding) => {
-            let size = visit_encoding(encoding, path.clone());
-            message(format!(
+            let size = visit_encoding(encoding, path.clone(), out);
+            writeln!(
+                out,
                 "{}: dynamic encoding, enclosing encoding size: {}",
                 path, size
-            ));
+            )
+            .unwrap();
             size + 4
         }
         BoundedDynamic(max, encoding) => {
-            let size = visit_encoding(encoding, path.clone());
-            message(format!(
-                "{}: dynamic encoding, enclosing encoding size: {}",
-                path, size
-            ));
-            message(format!("{}: max size: {}", path, max));
+            let size = visit_encoding(encoding, path.clone(), out);
+            writeln!(
+                out,
+                "{}: dynamic encoding bounded by {}, enclosing encoding size: {}",
+                path, max, size
+            )
+            .unwrap();
             cmp::min(max.into(), size) + 4
         }
-        Sized(size, encoding) => {
-            {
-                let size = visit_encoding(encoding, path.clone());
-                message(format!(
-                    "{}: fixing size for encoding of size: {}",
-                    path, size
-                ));
-            }
-            message(format!("{}: sized encoding, size: {}", path, size));
-            size.into()
+        Sized(fixed_size, encoding) => {
+            let size = visit_encoding(encoding, path.clone(), out);
+            writeln!(
+                out,
+                "{}: fixed size encoding: {} enclosing encoding size: {}",
+                path, fixed_size, size
+            )
+            .unwrap();
+            fixed_size.into()
         }
-        Bounded(size, encoding) => {
-            {
-                let size = visit_encoding(encoding, path.clone());
-                message(format!("{}: encoding size: {}", path, size));
-            }
-            message(format!("{}: bounded encoding, max size: {}", path, size));
-            size.into()
+        Bounded(bounded_size, encoding) => {
+            let size = visit_encoding(encoding, path.clone(), out);
+            writeln!(
+                out,
+                "{}: encoding bounded by {}, enclosing encoding size: {}",
+                path, bounded_size, size
+            )
+            .unwrap();
+            bounded_size.into()
         }
-        Split(func) => visit_encoding(&(func)(SchemaType::Binary), path),
-        Lazy(func) => visit_encoding(&(func)(), path),
-        Custom(_) => 100.into(),
+        Split(func) => visit_encoding(&(func)(SchemaType::Binary), path, out),
+        Lazy(func) => visit_encoding(&(func)(), path, out),
+        Custom(_) => 100.into(), // 3 hashes, three left/right tags, one op tag, 3 * (32 + 1) + 1
         _ => unimplemented!(),
     }
 }
@@ -214,11 +241,46 @@ use tezos_encoding::encoding::HasEncoding;
 
 #[test]
 fn peer_message_limited() -> Result<(), Error> {
-    let limit = visit_encoding(
-        &PeerMessageResponse::encoding(),
-        String::from("PeerMessageResponse"),
-    );
-    message(format!("PeerMessageResponse: max size is {}", limit));
-    assert!(limit != Limit::Unlimited);
-    Ok(())
+    use Encoding::*;
+    let path = "PeerMessageResponse".to_string();
+    let mut pre_size = Limit::default();
+    if let BoundedDynamic(total_size, obj_encoding) = PeerMessageResponse::encoding() {
+        pre_size += 4; // Dynamic encoding size, 4 bytes
+        if let Obj(ref fields) = **obj_encoding {
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].get_name(), &"message".to_string());
+            if let Tags(tag_size, tag_map) = fields[0].get_encoding() {
+                pre_size += *tag_size; // number of bytes used to encode a tag
+
+                let mut details = std::string::String::new();
+                let mut max = Limit::default();
+                let mut tags = tag_map
+                    .tags()
+                    .collect::<Vec<&tezos_encoding::encoding::Tag>>();
+                tags.sort_by(|a, b| a.get_id().cmp(&b.get_id()));
+                for tag in tags {
+                    let tag_id = format!("{}({:#04X})", tag.get_variant(), tag.get_id());
+                    let tag_path = append(&path, &tag_id);
+                    let size = visit_encoding(tag.get_encoding(), tag_path.clone(), &mut details);
+                    assert!(size.is_limited(), "Size for {} should be limited", tag_path);
+                    println!("{}: maximum size: {}", tag_path, pre_size + size);
+                    max = cmp::max(max, size);
+                }
+
+                if let Limit::Some(limit) = pre_size + max {
+                    assert!(limit <= *total_size, "PeerMessageResponse is limited to {} and cannot contain message of size {}", total_size, limit);
+                }
+
+                println!("\nPeerMessageResponse's content maximum size is {}", max);
+                println!(
+                    "PeerMessageResponse's encoding is limited to {}",
+                    total_size
+                );
+                println!("\nDetails on inner encodings:\n\n{}", details);
+
+                return Ok(());
+            }
+        }
+    }
+    unreachable!("Unexpected encoding for PeerMessageResponse");
 }
