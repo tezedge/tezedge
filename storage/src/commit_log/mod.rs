@@ -1,5 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+/// ## Commit Log
+/// append only - adds data in a file then returns the data size and location in  file
+/// use zstd to compress and decompress data before appending to file
 
 mod compression;
 
@@ -30,6 +33,9 @@ pub struct CommitLog {
 }
 
 impl CommitLog {
+    /// *dir* - log directory
+    /// *use_compression* - when enabled compresses data when `append_msg()` is called
+    /// > Using compression decrease read and write speed
     pub fn new<P: AsRef<Path>>(dir: P, use_compression: bool) -> Result<Self, CommitLogError> {
         if !dir.as_ref().exists() {
             std::fs::create_dir_all(dir.as_ref())?;
@@ -48,6 +54,7 @@ impl CommitLog {
             use_compression,
         })
     }
+    /// appends bytes of data to file
     pub fn append_msg<B: AsRef<[u8]>>(
         &mut self,
         payload: B,
@@ -66,8 +73,10 @@ impl CommitLog {
         writer.flush()?;
         Ok((offset, buf_size))
     }
-
+    /// `offset` - location of data in log file
+    /// `buf_size` - exact data size to be read
     pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, CommitLogError> {
+
         let mut buf = vec![0_u8; buf_size];
         let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
         reader.seek(SeekFrom::Start(offset))?;
@@ -82,6 +91,7 @@ impl CommitLog {
         };
     }
 
+    /// Flushes data to disc
     pub fn flush(&mut self) -> Result<(), CommitLogError> {
         self.data_file.flush()?;
         Ok(())
@@ -101,6 +111,8 @@ pub enum CommitLogError {
     ReadError { location: Location },
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
+    #[fail(display = "RwLock Poison Error {}", error)]
+    RWLockPoisonError { error : String },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -164,9 +176,13 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     fn append(&self, value: &S::Value) -> Result<Location, CommitLogError> {
         let cl = self
-            .cl_handle(S::name())
+            .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let mut cl = cl.write().expect("Write lock failed");
+        let mut cl = cl.write().map_err(|e|{
+            CommitLogError::RWLockPoisonError {
+                error: e.to_string()
+            }
+        })?;
         let bytes = value.encode()?;
         let out = cl.append_msg(&bytes)?;
 
@@ -175,9 +191,13 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
 
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError> {
         let cl = self
-            .cl_handle(S::name())
+            .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().expect("Read lock failed");
+        let cl = cl.read().map_err(|e|{
+            CommitLogError::RWLockPoisonError {
+                error: e.to_string()
+            }
+        })?;
         let bytes = cl.read(location.0, location.1)?;
         let value = S::Value::decode(&bytes)?;
         Ok(value)
@@ -188,7 +208,7 @@ pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
     if locations.is_empty() {
         Vec::with_capacity(0)
     } else {
-        let mut ranges = vec![];
+        let mut ranges = Vec::with_capacity(locations.len());
 
         let mut prev = locations[0];
         let mut range = Range(prev.0, prev.1, 1);
@@ -226,7 +246,7 @@ impl CommitLogs {
         };
 
         for descriptor in cfs.into_iter() {
-            Self::register(&myself, descriptor.name())?;
+            myself.register(descriptor.name())?;
         }
 
         Ok(myself)
@@ -240,7 +260,11 @@ impl CommitLogs {
         }
         let log = CommitLog::new(path, true)?;
 
-        let mut commit_log_map = self.commit_log_map.write().unwrap();
+        let mut commit_log_map = self.commit_log_map.write().map_err(|e|{
+            CommitLogError::RWLockPoisonError {
+                error: e.to_string()
+            }
+        })?;
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
 
         Ok(())
@@ -248,16 +272,28 @@ impl CommitLogs {
 
     /// Retrieve handle to a registered commit log.
     #[inline]
-    fn cl_handle(&self, name: &str) -> Option<CommitLogRef> {
-        let commit_log_map = self.commit_log_map.read().unwrap();
-        commit_log_map.get(name).cloned()
+    fn cl_handle(&self, name: &str) -> Result<Option<CommitLogRef>, CommitLogError> {
+        let commit_log_map = self.commit_log_map.read().map_err(|e|{
+            CommitLogError::RWLockPoisonError {
+                error: e.to_string()
+            }
+        })?;
+        Ok(commit_log_map.get(name).cloned())
     }
 
     /// Flush all registered commit logs.
     pub fn flush(&self) -> Result<(), CommitLogError> {
-        let commit_log_map = self.commit_log_map.read().unwrap();
+        let commit_log_map = self.commit_log_map.read().map_err(|e|{
+            CommitLogError::RWLockPoisonError {
+                error: e.to_string()
+            }
+        })?;
         for commit_log in commit_log_map.values() {
-            let mut commit_log = commit_log.write().unwrap();
+            let mut commit_log = commit_log.write().map_err(|e|{
+                CommitLogError::RWLockPoisonError {
+                    error: e.to_string()
+                }
+            })?;
             commit_log.flush()?;
         }
 
@@ -267,7 +303,9 @@ impl CommitLogs {
 
 impl Drop for CommitLogs {
     fn drop(&mut self) {
-        let _ = self.flush().expect("Failed to flush commit logs");
+        if let Err(e) = self.flush() {
+            println!("Failed to flush commit logs, reason: {:?}", e);
+        }
     }
 }
 
