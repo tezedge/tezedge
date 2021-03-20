@@ -3,7 +3,6 @@
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
 /// use zstd to compress and decompress data before appending to file
-
 mod compression;
 
 use failure::Fail;
@@ -280,17 +279,19 @@ impl CommitLogs {
 
     /// Flush all registered commit logs.
     pub fn flush(&self) -> Result<(), CommitLogError> {
-        let commit_log_map = self.commit_log_map.read().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
-        })?;
+        let commit_log_map =
+            self.commit_log_map
+                .read()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         for commit_log in commit_log_map.values() {
-            let mut commit_log = commit_log.write().map_err(|e|{
-                CommitLogError::RWLockPoisonError {
-                    error: e.to_string()
-                }
-            })?;
+            let mut commit_log =
+                commit_log
+                    .write()
+                    .map_err(|e| CommitLogError::RWLockPoisonError {
+                        error: e.to_string(),
+                    })?;
             commit_log.flush()?;
         }
 
