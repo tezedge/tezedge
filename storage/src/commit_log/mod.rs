@@ -3,6 +3,7 @@
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
 /// uses zstd as a compression library
+
 mod compression;
 
 use failure::Fail;
@@ -75,6 +76,7 @@ impl CommitLog {
     /// `offset` - location of data in log file
     /// `buf_size` - exact data size to be read
     pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, CommitLogError> {
+
         let mut buf = vec![0_u8; buf_size];
         let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
         reader.seek(SeekFrom::Start(offset))?;
