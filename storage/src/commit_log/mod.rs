@@ -3,7 +3,6 @@
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
 /// use zstd to compress and decompress data before appending to file
-
 mod compression;
 
 use failure::Fail;
@@ -76,7 +75,6 @@ impl CommitLog {
     /// `offset` - location of data in log file
     /// `buf_size` - exact data size to be read
     pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, CommitLogError> {
-
         let mut buf = vec![0_u8; buf_size];
         let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
         reader.seek(SeekFrom::Start(offset))?;
@@ -112,7 +110,7 @@ pub enum CommitLogError {
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
     #[fail(display = "RwLock Poison Error {}", error)]
-    RWLockPoisonError { error : String },
+    RWLockPoisonError { error: String },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -178,10 +176,8 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = self
             .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let mut cl = cl.write().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
+        let mut cl = cl.write().map_err(|e| CommitLogError::RWLockPoisonError {
+            error: e.to_string(),
         })?;
         let bytes = value.encode()?;
         let out = cl.append_msg(&bytes)?;
@@ -193,10 +189,8 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = self
             .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
+        let cl = cl.read().map_err(|e| CommitLogError::RWLockPoisonError {
+            error: e.to_string(),
         })?;
         let bytes = cl.read(location.0, location.1)?;
         let value = S::Value::decode(&bytes)?;
@@ -260,11 +254,12 @@ impl CommitLogs {
         }
         let log = CommitLog::new(path, true)?;
 
-        let mut commit_log_map = self.commit_log_map.write().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
-        })?;
+        let mut commit_log_map =
+            self.commit_log_map
+                .write()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
 
         Ok(())
@@ -273,27 +268,30 @@ impl CommitLogs {
     /// Retrieve handle to a registered commit log.
     #[inline]
     fn cl_handle(&self, name: &str) -> Result<Option<CommitLogRef>, CommitLogError> {
-        let commit_log_map = self.commit_log_map.read().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
-        })?;
+        let commit_log_map =
+            self.commit_log_map
+                .read()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         Ok(commit_log_map.get(name).cloned())
     }
 
     /// Flush all registered commit logs.
     pub fn flush(&self) -> Result<(), CommitLogError> {
-        let commit_log_map = self.commit_log_map.read().map_err(|e|{
-            CommitLogError::RWLockPoisonError {
-                error: e.to_string()
-            }
-        })?;
+        let commit_log_map =
+            self.commit_log_map
+                .read()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         for commit_log in commit_log_map.values() {
-            let mut commit_log = commit_log.write().map_err(|e|{
-                CommitLogError::RWLockPoisonError {
-                    error: e.to_string()
-                }
-            })?;
+            let mut commit_log =
+                commit_log
+                    .write()
+                    .map_err(|e| CommitLogError::RWLockPoisonError {
+                        error: e.to_string(),
+                    })?;
             commit_log.flush()?;
         }
 
