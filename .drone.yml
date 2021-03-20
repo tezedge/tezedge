@@ -2023,8 +2023,8 @@ clone:
 environment:
   NETWORK: mainnet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 10000 # also check parameter --stop=
-  TO_BLOCK_HEADER_FOR_RPC: 1000
+  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
   # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
   LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
@@ -2146,7 +2146,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=10001"]
+    command: ["tzindex", "run", "--stop=131"]
 
   - name: tz-indexer-ocaml
     image: blockwatch/tzindex:latest
@@ -2164,7 +2164,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=10001"]
+    command: ["tzindex", "run", "--stop=131"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
