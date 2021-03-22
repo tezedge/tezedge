@@ -54,7 +54,7 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::context::kv_store::storage_backend::{GarbageCollector, StorageBackendError};
+use crate::context::kv_store::storage_backend::StorageBackendError;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::merkle::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError};
 use crate::context::merkle::merkle_storage_stats::{
@@ -62,10 +62,10 @@ use crate::context::merkle::merkle_storage_stats::{
 };
 use crate::context::merkle::{Commit, Entry, Node, NodeKind, Tree};
 use crate::context::{
-    ContextKey, ContextValue, MerkleKeyValueStoreSchema, StringTreeEntry, StringTreeMap, TreeId,
+    ContextKey, ContextKeyValueStore, ContextValue, StringTreeEntry, StringTreeMap, TreeId,
 };
 use crate::persistent;
-use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
+use crate::persistent::Flushable;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SetAction {
@@ -91,32 +91,11 @@ enum Action {
     Remove(RemoveAction),
 }
 
-pub trait MerkleStorageBackendWithGC:
-    KeyValueStoreBackend<MerkleKeyValueStoreSchema>
-    + GarbageCollector
-    + Flushable
-    + MultiInstanceable
-    + Persistable
-{
-}
-
-impl<
-        T: KeyValueStoreBackend<MerkleKeyValueStoreSchema>
-            + GarbageCollector
-            + Flushable
-            + MultiInstanceable
-            + Persistable,
-    > MerkleStorageBackendWithGC for T
-{
-}
-
-pub type MerkleStorageKV = dyn MerkleStorageBackendWithGC + Sync + Send;
-
 pub struct MerkleStorage {
     /// tree with current staging area (currently checked out context)
     current_stage_tree: (Tree, TreeId),
     /// key value storage backend
-    db: Box<MerkleStorageKV>,
+    db: Box<ContextKeyValueStore>,
     /// all entries in current staging area
     staged: HashMap<EntryHash, Entry>,
     /// all different versions of the staging tree
@@ -221,48 +200,6 @@ impl From<FromBytesError> for MerkleError {
     }
 }
 
-/// Latency statistics for each action (in nanoseconds)
-#[derive(Serialize, Debug, Clone, Copy)]
-pub struct OperationLatencies {
-    /// divide this by the next field to get avg (mean) time spent in operation
-    cumul_op_exec_time: f64,
-    pub op_exec_times: u64,
-    pub avg_exec_time: f64,
-    /// lowest time spent in operation
-    pub op_exec_time_min: f64,
-    /// highest time spent in operation
-    pub op_exec_time_max: f64,
-}
-
-impl Default for OperationLatencies {
-    fn default() -> Self {
-        OperationLatencies {
-            cumul_op_exec_time: 0.0,
-            op_exec_times: 0,
-            avg_exec_time: 0.0,
-            op_exec_time_min: f64::MAX,
-            op_exec_time_max: f64::MIN,
-        }
-    }
-}
-
-// Latency statistics indexed by operation name (e.g. "Set")
-pub type OperationLatencyStats = HashMap<String, OperationLatencies>;
-
-// Latency statistics per path indexed by first chunk of path (under /data/)
-pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerklePerfStats {
-    pub global: OperationLatencyStats,
-    pub perpath: PerPathOperationStats,
-}
-
-#[derive(Serialize, Debug, Clone)]
-pub struct MerkleStorageStats {
-    pub perf_stats: MerklePerfStats,
-}
-
 #[derive(Debug, Fail)]
 pub enum CheckEntryHashError {
     #[fail(display = "MerkleError error: {:?}", error)]
@@ -279,7 +216,7 @@ pub enum CheckEntryHashError {
 }
 
 impl MerkleStorage {
-    pub fn new(db: Box<MerkleStorageKV>) -> Self {
+    pub fn new(db: Box<ContextKeyValueStore>) -> Self {
         let tree = Tree::new();
         let tree_hash = hash_tree(&tree).unwrap();
         let tree_id = 0;

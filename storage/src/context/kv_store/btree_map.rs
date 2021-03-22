@@ -7,7 +7,7 @@ use std::sync::RwLock;
 
 use crate::context::kv_store::storage_backend::{NotGarbageCollected, StorageBackendStats};
 use crate::context::merkle::hash::EntryHash;
-use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 use crate::persistent::database::DBError;
 use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
@@ -35,7 +35,7 @@ impl<K: Ord, V> BTreeMapBackend<K, V> {
 
 impl NotGarbageCollected for BTreeMapBackend<EntryHash, ContextValue> {}
 
-impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for BTreeMapBackend<EntryHash, ContextValue> {
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for BTreeMapBackend<EntryHash, ContextValue> {
     fn total_get_mem_usage(&self) -> Result<usize, DBError> {
         Ok(self.stats.read()?.total_as_bytes())
     }

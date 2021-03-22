@@ -10,16 +10,18 @@ use failure::Fail;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crypto::hash::{BlockHash, ContextHash, FromBytesError};
-
-use crate::context::merkle::merkle_storage::MerkleError;
-use crate::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
-use crate::persistent::KeyValueSchema;
-use crate::StorageError;
-
 pub use actions::ActionRecorder;
+use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 pub use merkle::hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
+
+use crate::context::kv_store::storage_backend::GarbageCollector;
+use crate::context::merkle::merkle_storage::MerkleError;
+use crate::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
+use crate::persistent::{
+    Flushable, KeyValueSchema, KeyValueStoreBackend, MultiInstanceable, Persistable,
+};
+use crate::StorageError;
 
 pub mod actions;
 pub mod kv_store;
@@ -42,19 +44,6 @@ pub enum StringTreeEntry {
     Tree(StringTreeMap),
     Blob(String),
     Null,
-}
-
-/// Common serialization prescript for K-V
-// keys is hash of Entry
-pub type MerkleKeyValueStoreSchemaKeyType = EntryHash;
-// Entry (serialized) - watch out, this is not the same as ContextValue
-pub type MerkleKeyValueStoreSchemaValueType = Vec<u8>;
-
-pub struct MerkleKeyValueStoreSchema;
-
-impl KeyValueSchema for MerkleKeyValueStoreSchema {
-    type Key = MerkleKeyValueStoreSchemaKeyType;
-    type Value = MerkleKeyValueStoreSchemaValueType;
 }
 
 /// Abstraction on context manipulation
@@ -210,6 +199,41 @@ impl<T> From<PoisonError<T>> for ContextError {
             error: format!("{}", pe),
         }
     }
+}
+
+// keys is hash of Entry
+pub type ContextKeyValueStoreSchemaKeyType = EntryHash;
+// Entry (serialized) - watch out, this is not the same as ContextValue
+pub type MerkleKeyValueStoreSchemaValueType = Vec<u8>;
+
+/// Common serialization prescript for K-V
+pub struct ContextKeyValueStoreSchema;
+
+impl KeyValueSchema for ContextKeyValueStoreSchema {
+    type Key = ContextKeyValueStoreSchemaKeyType;
+    type Value = MerkleKeyValueStoreSchemaValueType;
+}
+
+/// Base trait for kv-store to be used with merkle
+pub type ContextKeyValueStore = dyn ContextKeyValueStoreWithGargbageCollection + Sync + Send;
+
+pub trait ContextKeyValueStoreWithGargbageCollection:
+    KeyValueStoreBackend<ContextKeyValueStoreSchema>
+    + GarbageCollector
+    + Flushable
+    + MultiInstanceable
+    + Persistable
+{
+}
+
+impl<
+        T: KeyValueStoreBackend<ContextKeyValueStoreSchema>
+            + GarbageCollector
+            + Flushable
+            + MultiInstanceable
+            + Persistable,
+    > ContextKeyValueStoreWithGargbageCollection for T
+{
 }
 
 /// Marco that simplifies and unificates ContextKey creation

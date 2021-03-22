@@ -74,8 +74,8 @@ pub mod test_support {
 
     use strum::IntoEnumIterator;
 
-    use crate::context::merkle::merkle_storage::MerkleStorageKV;
     use crate::context::merkle::Entry;
+    use crate::context::ContextKeyValueStore;
     use crate::context::EntryHash;
     use crate::persistent::database::RocksDbKeyValueSchema;
     use crate::persistent::{MultiInstanceable, Persistable};
@@ -155,13 +155,13 @@ pub mod test_support {
         'static + Send + Sync + MultiInstanceable + Persistable
     {
         /// Creates new storage and also clean all existing data
-        fn create(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError>;
+        fn create(&self, name: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError>;
 
         /// Just opens a storage, does not clean anything
         fn open_readonly_instance(
             &self,
             _: &str,
-        ) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        ) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             if self.supports_multiple_opened_instances() {
                 Err(failure::format_err!(
                     "not implemented yet, please implement"
@@ -176,7 +176,7 @@ pub mod test_support {
     pub struct InMemoryBackendTestContextKvStoreFactory;
 
     impl TestContextKvStoreFactory for InMemoryBackendTestContextKvStoreFactory {
-        fn create(&self, _: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::context::kv_store::in_memory_backend::InMemoryBackend;
             Ok(Box::new(InMemoryBackend::new()))
         }
@@ -198,7 +198,7 @@ pub mod test_support {
     pub struct BTreeMapBackendTestContextKvStoreFactory;
 
     impl TestContextKvStoreFactory for BTreeMapBackendTestContextKvStoreFactory {
-        fn create(&self, _: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::context::kv_store::btree_map::BTreeMapBackend;
             Ok(Box::new(BTreeMapBackend::new()))
         }
@@ -235,7 +235,7 @@ pub mod test_support {
     }
 
     impl TestContextKvStoreFactory for SledBackendTestContextKvStoreFactory {
-        fn create(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        fn create(&self, name: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::context::kv_store::sled_backend::SledBackend;
 
             // clear files
@@ -319,7 +319,7 @@ pub mod test_support {
     }
 
     impl TestContextKvStoreFactory for RocksDbBackendTestContextKvStoreFactory {
-        fn create(&self, name: &str) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        fn create(&self, name: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
 
             // clear files
@@ -338,7 +338,7 @@ pub mod test_support {
         fn open_readonly_instance(
             &self,
             name: &str,
-        ) -> Result<Box<MerkleStorageKV>, TestKeyValueStoreError> {
+        ) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
 
             // just open db

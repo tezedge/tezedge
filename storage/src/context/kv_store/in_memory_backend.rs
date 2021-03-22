@@ -9,7 +9,7 @@ use failure::Error;
 use crate::context::kv_store::storage_backend::NotGarbageCollected;
 use crate::context::kv_store::storage_backend::StorageBackendStats;
 use crate::context::merkle::hash::EntryHash;
-use crate::context::{ContextValue, MerkleKeyValueStoreSchema};
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 use crate::persistent::database::DBError;
 use crate::persistent::{Flushable, KeyValueStoreBackend, MultiInstanceable, Persistable};
 
@@ -77,7 +77,7 @@ impl InMemoryBackend {
 
 impl NotGarbageCollected for InMemoryBackend {}
 
-impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for InMemoryBackend {
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for InMemoryBackend {
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         let garbage_keys: Vec<_> = self
             .inner

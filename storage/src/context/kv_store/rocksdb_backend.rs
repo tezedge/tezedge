@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::context::kv_store::storage_backend::NotGarbageCollected;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{
-    ContextValue, MerkleKeyValueStoreSchema, MerkleKeyValueStoreSchemaKeyType,
+    ContextKeyValueStoreSchema, ContextKeyValueStoreSchemaKeyType, ContextValue,
     MerkleKeyValueStoreSchemaValueType,
 };
 use crate::persistent::database::{default_table_options, DBError, RocksDbKeyValueSchema};
@@ -22,7 +22,7 @@ use crate::persistent::{
 impl BincodeEncoded for EntryHash {}
 
 impl KeyValueSchema for RocksDBBackend {
-    type Key = MerkleKeyValueStoreSchemaKeyType;
+    type Key = ContextKeyValueStoreSchemaKeyType;
     type Value = MerkleKeyValueStoreSchemaValueType;
 }
 
@@ -63,7 +63,7 @@ pub struct RocksDBBackendStats {
 
 impl NotGarbageCollected for RocksDBBackend {}
 
-impl KeyValueStoreBackend<MerkleKeyValueStoreSchema> for RocksDBBackend {
+impl KeyValueStoreBackend<ContextKeyValueStoreSchema> for RocksDBBackend {
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.merkle_ref().put(key, value)
     }
