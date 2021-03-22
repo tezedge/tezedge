@@ -67,6 +67,7 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod storage_backend;
 pub mod system_storage;
+mod compression;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]

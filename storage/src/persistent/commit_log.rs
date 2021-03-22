@@ -1,38 +1,115 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+/// ## Commit Log
+/// append only - adds data in a file then returns the data size and location in  file
+/// uses zstd as a compression library
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
-use std::{fmt, io};
-
-use commitlog::message::MessageSet;
-use commitlog::{AppendError, CommitLog, LogOptions, Offset, ReadError, ReadLimit};
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
 use crate::persistent::codec::{Decoder, Encoder, SchemaError};
 use crate::persistent::schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::persistent::BincodeEncoded;
+use std::{fmt, io};
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+
+use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
+use crate::compression::{zstd_compress, zstd_decompress};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
+
+const DATA_FILE_NAME: &str = "table.data";
+
+pub struct CommitLog {
+    data_file: File,
+    data_file_path: PathBuf,
+    use_compression: bool,
+}
+
+impl CommitLog {
+    /// *dir* - log directory
+    /// *use_compression* - when enabled compresses data when `append_msg()` is called
+    /// > Using compression decrease read and write speed
+    pub fn new<P: AsRef<Path>>(dir: P, use_compression: bool) -> Result<Self, CommitLogError> {
+        if !dir.as_ref().exists() {
+            std::fs::create_dir_all(dir.as_ref())?;
+        }
+        let mut data_file_path = PathBuf::new();
+        data_file_path.push(dir.as_ref());
+        data_file_path.push(DATA_FILE_NAME);
+        let data_file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .read(true)
+            .open(data_file_path.clone())?;
+        Ok(Self {
+            data_file,
+            data_file_path,
+            use_compression,
+        })
+    }
+    /// appends bytes of data to file
+    pub fn append_msg<B: AsRef<[u8]>>(
+        &mut self,
+        payload: B,
+    ) -> Result<(u64, usize), CommitLogError> {
+        let mut writer = BufWriter::new(&mut self.data_file);
+        let offset = writer.seek(SeekFrom::End(0))?;
+        let buf_size = if self.use_compression {
+            let mut compressed_payload = Vec::new();
+            zstd_compress(payload, &mut compressed_payload)?;
+            writer.write_all(compressed_payload.as_slice())?;
+            compressed_payload.len()
+        } else {
+            writer.write_all(payload.as_ref())?;
+            payload.as_ref().len()
+        };
+        writer.flush()?;
+        Ok((offset, buf_size))
+    }
+    /// `offset` - location of data in log file
+    /// `buf_size` - exact data size to be read
+    pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, CommitLogError> {
+        let mut buf = vec![0_u8; buf_size];
+        let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
+        reader.seek(SeekFrom::Start(offset))?;
+        reader.read_exact(&mut buf)?;
+
+        return if self.use_compression {
+            let mut uncompressed_payload = Vec::new();
+            zstd_decompress(buf.as_slice(), &mut uncompressed_payload)?;
+            Ok(uncompressed_payload)
+        } else {
+            Ok(buf)
+        };
+    }
+
+    /// Flushes data to disc
+    pub fn flush(&mut self) -> Result<(), CommitLogError> {
+        self.data_file.flush()?;
+        Ok(())
+    }
+}
 
 /// Possible errors for commit log
 #[derive(Debug, Fail)]
 pub enum CommitLogError {
     #[fail(display = "Schema error: {}", error)]
     SchemaError { error: SchemaError },
-    #[fail(display = "Failed to append record: {}", error)]
-    AppendError { error: AppendError },
-    #[fail(display = "Failed to read record at {}: {}", location, error)]
-    ReadError {
-        error: ReadError,
-        location: Location,
-    },
     #[fail(display = "Commit log I/O error {}", error)]
     IOError { error: io::Error },
     #[fail(display = "Commit log {} is missing", name)]
     MissingCommitLog { name: &'static str },
+    #[fail(display = "Failed to read record at {}", location)]
+    ReadError { location: Location },
+    #[fail(display = "Failed to read record data corrupted")]
+    CorruptData,
+    #[fail(display = "RwLock Poison Error {}", error)]
+    RWLockPoisonError { error: String },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -63,7 +140,7 @@ type ItemCount = u32;
 
 /// Precisely identifies location of a record in a commit log.
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
-pub struct Location(pub Offset, pub ByteLimit);
+pub struct Location(pub u64, pub ByteLimit);
 
 impl Location {
     #[inline]
@@ -82,7 +159,7 @@ impl BincodeEncoded for Location {}
 
 /// Range of values to get from a commit log
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct Range(pub Offset, pub ByteLimit, pub ItemCount);
+pub struct Range(pub u64, pub ByteLimit, pub ItemCount);
 
 /// Implement this trait for a commit log engine.
 pub trait CommitLogWithSchema<S: CommitLogSchema> {
@@ -91,84 +168,40 @@ pub trait CommitLogWithSchema<S: CommitLogSchema> {
 
     /// Retrieve a stored record.
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError>;
-
-    /// Retrieve stored records stored in a single range.
-    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError>;
 }
 
 impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
     fn append(&self, value: &S::Value) -> Result<Location, CommitLogError> {
         let cl = self
-            .cl_handle(S::name())
+            .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let mut cl = cl.write().expect("Write lock failed");
+        let mut cl = cl.write().map_err(|e| CommitLogError::RWLockPoisonError {
+            error: e.to_string(),
+        })?;
         let bytes = value.encode()?;
-        let offset = cl
-            .append_msg(&bytes)
-            .map_err(|error| CommitLogError::AppendError { error })?;
+        let out = cl.append_msg(&bytes)?;
 
-        Ok(Location(offset, bytes.len()))
+        Ok(Location(out.0, out.1))
     }
 
     fn get(&self, location: &Location) -> Result<S::Value, CommitLogError> {
         let cl = self
-            .cl_handle(S::name())
+            .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl
-            .read(location.0, fit_read_limit(location.1))
-            .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: *location,
-            })?;
-        let bytes = msg_buf.iter().next().ok_or(CommitLogError::ReadError {
-            error: ReadError::CorruptLog,
-            location: *location,
+        let cl = cl.read().map_err(|e| CommitLogError::RWLockPoisonError {
+            error: e.to_string(),
         })?;
-        let value = S::Value::decode(bytes.payload())?;
-
+        let bytes = cl.read(location.0, location.1)?;
+        let value = S::Value::decode(&bytes)?;
         Ok(value)
     }
-
-    fn get_range(&self, range: &Range) -> Result<Vec<S::Value>, CommitLogError> {
-        let cl = self
-            .cl_handle(S::name())
-            .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().expect("Read lock failed");
-        let msg_buf = cl
-            .read(range.0, fit_batch_read_limit(range.1, range.2))
-            .map_err(|error| CommitLogError::ReadError {
-                error,
-                location: Location(range.0, range.1),
-            })?;
-        msg_buf
-            .iter()
-            .take(range.2 as usize)
-            .map(|message| {
-                S::Value::decode(message.payload()).map_err(|_| CommitLogError::ReadError {
-                    error: ReadError::CorruptLog,
-                    location: Location(message.offset(), message.size() as usize),
-                })
-            })
-            .collect()
-    }
-}
-
-#[inline]
-fn fit_read_limit(limit: ByteLimit) -> ReadLimit {
-    ReadLimit::max_bytes(limit + 32)
-}
-
-#[inline]
-fn fit_batch_read_limit(limit: ByteLimit, items: ItemCount) -> ReadLimit {
-    ReadLimit::max_bytes(limit + (32 * items as usize))
 }
 
 pub fn fold_consecutive_locations(locations: &[Location]) -> Vec<Range> {
     if locations.is_empty() {
         Vec::with_capacity(0)
     } else {
-        let mut ranges = vec![];
+        let mut ranges = Vec::with_capacity(locations.len());
 
         let mut prev = locations[0];
         let mut range = Range(prev.0, prev.1, 1);
@@ -196,9 +229,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item = CommitLogDescriptor>,
+        where
+            P: AsRef<Path>,
+            I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -206,7 +239,7 @@ impl CommitLogs {
         };
 
         for descriptor in cfs.into_iter() {
-            Self::register(&myself, descriptor.name())?;
+            myself.register(descriptor.name())?;
         }
 
         Ok(myself)
@@ -218,13 +251,14 @@ impl CommitLogs {
         if !Path::new(&path).exists() {
             std::fs::create_dir_all(&path)?;
         }
+        let log = CommitLog::new(path, true)?;
 
-        let mut opts = LogOptions::new(&path);
-        // TODO: TE-396 - rework
-        opts.message_max_bytes(15_000_000);
-        let log = CommitLog::new(opts)?;
-
-        let mut commit_log_map = self.commit_log_map.write().unwrap();
+        let mut commit_log_map =
+            self.commit_log_map
+                .write()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
 
         Ok(())
@@ -232,16 +266,31 @@ impl CommitLogs {
 
     /// Retrieve handle to a registered commit log.
     #[inline]
-    fn cl_handle(&self, name: &str) -> Option<CommitLogRef> {
-        let commit_log_map = self.commit_log_map.read().unwrap();
-        commit_log_map.get(name).cloned()
+    fn cl_handle(&self, name: &str) -> Result<Option<CommitLogRef>, CommitLogError> {
+        let commit_log_map =
+            self.commit_log_map
+                .read()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
+        Ok(commit_log_map.get(name).cloned())
     }
 
     /// Flush all registered commit logs.
     pub fn flush(&self) -> Result<(), CommitLogError> {
-        let commit_log_map = self.commit_log_map.read().unwrap();
+        let commit_log_map =
+            self.commit_log_map
+                .read()
+                .map_err(|e| CommitLogError::RWLockPoisonError {
+                    error: e.to_string(),
+                })?;
         for commit_log in commit_log_map.values() {
-            let mut commit_log = commit_log.write().unwrap();
+            let mut commit_log =
+                commit_log
+                    .write()
+                    .map_err(|e| CommitLogError::RWLockPoisonError {
+                        error: e.to_string(),
+                    })?;
             commit_log.flush()?;
         }
 
@@ -251,26 +300,34 @@ impl CommitLogs {
 
 impl Drop for CommitLogs {
     fn drop(&mut self) {
-        let _ = self.flush().expect("Failed to flush commit logs");
+        if let Err(e) = self.flush() {
+            println!("Failed to flush commit logs, reason: {:?}", e);
+        }
     }
 }
 
 #[cfg(test)]
 impl Location {
-    pub fn new(offset: Offset) -> Self {
+    pub fn new(offset: u64) -> Self {
         Self(offset, 0)
     }
 
-    pub(crate) fn offset(&self) -> Offset {
+    pub(crate) fn offset(&self) -> u64 {
         self.0
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::persistent::commit_log::fold_consecutive_locations;
+    use crate::commit_log::fold_consecutive_locations;
+    use commitlog::message::MessageSet;
+    use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
+    use rand::{thread_rng, Rng};
+    use std::time::Instant;
 
     use super::*;
+    use fs_extra::error::Error;
+    use rand::prelude::SliceRandom;
 
     #[test]
     fn test_fold_consecutive_locations_empty() {
@@ -307,5 +364,102 @@ mod tests {
             ],
             ranges
         );
+    }
+
+    fn generate_random_data(
+        data_size: usize,
+        min_message_size: usize,
+        max_message_size: usize,
+    ) -> Vec<Vec<u8>> {
+        let mut rand_messages = vec![];
+        let mut rng = rand::thread_rng();
+        for _ in 0..data_size {
+            let random_data_size = rng.gen_range(min_message_size, max_message_size);
+            let random_bytes: Vec<u8> = (0..random_data_size).map(|_| 2_u8).collect();
+            rand_messages.push(random_bytes);
+        }
+        rand_messages
+    }
+
+    #[test]
+    fn compare_with_old_log_compression_enabled() {
+        let data_size = 10_000;
+        let new_commit_log_dir = "./testdir/bench/new_log";
+        let old_commit_log_dir = "./testdir/bench/old_log";
+
+        match fs_extra::remove_items(&vec![new_commit_log_dir, old_commit_log_dir]) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
+
+        let messages = generate_random_data(data_size, 10_000, 10_900);
+        let mut options = LogOptions::new(old_commit_log_dir);
+        options.message_max_bytes(15_000_000);
+        let mut old_commit_log = OldCommitLog::new(options).unwrap();
+        let mut new_commit_log = CommitLog::new(new_commit_log_dir, true).unwrap();
+        let mut locations = Vec::new();
+
+        println!("-------------------------------------------------------");
+        println!("Write Read Benchmark");
+        println!("-------------------------------------------------------");
+        let mut timer = Instant::now();
+        for msg in &messages {
+            let offset = old_commit_log.append_msg(msg).unwrap();
+            locations.push(Location(offset, msg.len()))
+        }
+        println!(
+            "Old CommitLog Write [{}] items Took {}ms",
+            messages.len(),
+            timer.elapsed().as_millis()
+        );
+        locations.shuffle(&mut thread_rng());
+        let mut timer = Instant::now();
+        for location in locations.iter().take(locations.len() / 2) {
+            old_commit_log
+                .read(location.0, ReadLimit::max_bytes(location.1 + 32))
+                .unwrap();
+        }
+        println!(
+            "Old CommitLog Read [{}] items Took {}ms",
+            locations.len() / 2,
+            timer.elapsed().as_millis()
+        );
+
+        locations = Vec::new();
+        timer = Instant::now();
+        for msg in &messages {
+            let out = new_commit_log.append_msg(msg).unwrap();
+            locations.push(Location(out.0, out.1));
+        }
+        println!(
+            "New CommitLog Write [{}] items Took {}ms",
+            messages.len(),
+            timer.elapsed().as_millis()
+        );
+        locations.shuffle(&mut thread_rng());
+        let mut timer = Instant::now();
+        for location in locations.iter().take(locations.len() / 2) {
+            new_commit_log.read(location.0, location.1).unwrap();
+        }
+        println!(
+            "New CommitLog Read [{}] items Took {}ms",
+            locations.len() / 2,
+            timer.elapsed().as_millis()
+        );
+
+        let old_commit_folder_size =
+            fs_extra::dir::get_size(old_commit_log_dir).unwrap_or_default();
+        let new_commit_folder_size =
+            fs_extra::dir::get_size(new_commit_log_dir).unwrap_or_default();
+        println!("-------------------------------------------------------");
+        println!("Size Benchmark");
+        println!("-------------------------------------------------------");
+        println!("OldCommitLog {}", old_commit_folder_size);
+        println!("NewCommitLog {}", new_commit_folder_size);
+
+        match fs_extra::remove_items(&vec![new_commit_log_dir, old_commit_log_dir]) {
+            Ok(_) => {}
+            Err(_) => {}
+        };
     }
 }
