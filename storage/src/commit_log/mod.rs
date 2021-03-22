@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
-/// use zstd to compress and decompress data before appending to file
+/// uses zstd as a compression library
 mod compression;
 
 use failure::Fail;
