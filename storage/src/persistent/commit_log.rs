@@ -3,7 +3,6 @@
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
 /// uses zstd as a compression library
-
 use failure::Fail;
 use serde::{Deserialize, Serialize};
 
@@ -15,10 +14,10 @@ use std::{fmt, io};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
+use crate::compression::{zstd_compress, zstd_decompress};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use crate::compression::{zstd_compress, zstd_decompress};
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
@@ -229,9 +228,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-        where
-            P: AsRef<Path>,
-            I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),

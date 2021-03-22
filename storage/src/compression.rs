@@ -1,4 +1,3 @@
-
 const COMPRESSION_LEVEL: i32 = 2;
 pub fn zstd_compress<B: AsRef<[u8]>>(input: B, output: &mut Vec<u8>) -> std::io::Result<()> {
     zstd::stream::copy_encode(input.as_ref(), output, COMPRESSION_LEVEL)
