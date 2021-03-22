@@ -318,7 +318,6 @@ impl Location {
 
 #[cfg(test)]
 mod tests {
-    use crate::commit_log::fold_consecutive_locations;
     use commitlog::message::MessageSet;
     use commitlog::{CommitLog as OldCommitLog, LogOptions, ReadLimit};
     use rand::{thread_rng, Rng};
