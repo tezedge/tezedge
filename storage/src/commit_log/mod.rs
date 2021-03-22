@@ -3,6 +3,7 @@
 /// ## Commit Log
 /// append only - adds data in a file then returns the data size and location in  file
 /// uses zstd as a compression library
+
 mod compression;
 
 use failure::Fail;
@@ -75,6 +76,7 @@ impl CommitLog {
     /// `offset` - location of data in log file
     /// `buf_size` - exact data size to be read
     pub fn read(&self, offset: u64, buf_size: usize) -> Result<Vec<u8>, CommitLogError> {
+
         let mut buf = vec![0_u8; buf_size];
         let mut reader = BufReader::new(File::open(self.data_file_path.as_path())?);
         reader.seek(SeekFrom::Start(offset))?;
@@ -110,7 +112,7 @@ pub enum CommitLogError {
     #[fail(display = "Failed to read record data corrupted")]
     CorruptData,
     #[fail(display = "RwLock Poison Error {}", error)]
-    RWLockPoisonError { error: String },
+    RwLockPoisonError { error: String },
 }
 
 impl From<SchemaError> for CommitLogError {
@@ -176,7 +178,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = self
             .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let mut cl = cl.write().map_err(|e| CommitLogError::RWLockPoisonError {
+        let mut cl = cl.write().map_err(|e| CommitLogError::RwLockPoisonError {
             error: e.to_string(),
         })?;
         let bytes = value.encode()?;
@@ -189,7 +191,7 @@ impl<S: CommitLogSchema> CommitLogWithSchema<S> for CommitLogs {
         let cl = self
             .cl_handle(S::name())?
             .ok_or(CommitLogError::MissingCommitLog { name: S::name() })?;
-        let cl = cl.read().map_err(|e| CommitLogError::RWLockPoisonError {
+        let cl = cl.read().map_err(|e| CommitLogError::RwLockPoisonError {
             error: e.to_string(),
         })?;
         let bytes = cl.read(location.0, location.1)?;
@@ -257,7 +259,7 @@ impl CommitLogs {
         let mut commit_log_map =
             self.commit_log_map
                 .write()
-                .map_err(|e| CommitLogError::RWLockPoisonError {
+                .map_err(|e| CommitLogError::RwLockPoisonError {
                     error: e.to_string(),
                 })?;
         commit_log_map.insert(name.into(), Arc::new(RwLock::new(log)));
@@ -271,7 +273,7 @@ impl CommitLogs {
         let commit_log_map =
             self.commit_log_map
                 .read()
-                .map_err(|e| CommitLogError::RWLockPoisonError {
+                .map_err(|e| CommitLogError::RwLockPoisonError {
                     error: e.to_string(),
                 })?;
         Ok(commit_log_map.get(name).cloned())
@@ -282,17 +284,22 @@ impl CommitLogs {
         let commit_log_map =
             self.commit_log_map
                 .read()
-                .map_err(|e| CommitLogError::RWLockPoisonError {
+                .map_err(|e| CommitLogError::RwLockPoisonError {
                     error: e.to_string(),
                 })?;
         for commit_log in commit_log_map.values() {
             let mut commit_log =
                 commit_log
                     .write()
-                    .map_err(|e| CommitLogError::RWLockPoisonError {
+                    .map_err(|e| CommitLogError::RwLockPoisonError {
                         error: e.to_string(),
                     })?;
-            commit_log.flush()?;
+            match commit_log.flush() {
+                Ok(_) => {}
+                Err(error) => {
+                    println!("Failed to flush commit logs, reason: {:?}",error)
+                }
+            }
         }
 
         Ok(())
