@@ -141,7 +141,7 @@ fn create_tezos_writeable_api_pool(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
                 compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
-                debug_mode: !env.storage.action_store_backend.is_empty(),
+                debug_mode: !env.storage.context_action_recorders.is_empty(),
             },
             tezos_env,
             env.enable_testchain,

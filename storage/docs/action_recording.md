@@ -29,7 +29,7 @@ once set ContextActions will include `new_tree_hash` field which is expected con
 
 File with already recorded actions can be found in 
 ```
-/mnt/light_node/tezedge/actionfile.bin
+/tmp/light_node/tezedge/actionfile.bin
 ```
 With every processed block its appended at the end of the file - there is no rewriting  of already existing data.
 

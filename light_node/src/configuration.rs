@@ -152,7 +152,7 @@ pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
-    pub action_store_backend: Vec<ContextActionStoreBackend>,
+    pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
 
@@ -959,7 +959,7 @@ impl Environment {
                 };
 
                 let mut merkle_context_actions_store = None;
-                let action_store_backend = backends
+                let context_action_recorders = backends
                     .iter()
                     .map(|v| match v.parse::<ContextActionStoreBackend>() {
                         Ok(ContextActionStoreBackend::RocksDB) => {
@@ -1032,7 +1032,7 @@ impl Environment {
                     db,
                     db_path,
                     compute_context_action_tree_hashes,
-                    action_store_backend,
+                    context_action_recorders,
                     context_kv_store,
                     merkle_context_actions_store,
                     patch_context: {
@@ -1196,7 +1196,7 @@ impl Environment {
         // filter all configurations and split to valid and ok
         let (oks, errors): (Vec<_>, Vec<_>) =
             self.storage
-                .action_store_backend
+                .context_action_recorders
                 .iter()
                 .map(|backend| match backend {
                     storage::context::actions::ContextActionStoreBackend::RocksDB => {

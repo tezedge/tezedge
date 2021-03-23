@@ -328,6 +328,28 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
 
+- name: record/replay-context-action-file-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    TARGET_ACTION_FILE: /tmp/tezedge-cache/generated-1324-context-action-file.data
+    OUT_DIR: .
+  commands:
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
+    - ls /tmp/tezedge-cache/generated-1324-context-action-file.data
+
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
