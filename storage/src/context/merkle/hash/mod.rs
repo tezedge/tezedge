@@ -34,6 +34,8 @@ pub enum HashingError {
     ValueExpected(&'static str),
     #[fail(display = "Got an unexpected empty inode")]
     UnexpectedEmptyInode,
+    #[fail(display = "Invalid hash value, reason: {}", _0)]
+    InvalidHash(String),
 }
 
 impl From<InvalidOutputSize> for HashingError {

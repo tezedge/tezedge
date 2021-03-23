@@ -14,6 +14,7 @@ pub use actions::ActionRecorder;
 use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 pub use merkle::hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
+use tezos_context::channel::ContextAction;
 
 use crate::context::gc::GarbageCollector;
 use crate::context::merkle::merkle_storage::MerkleError;
@@ -133,6 +134,8 @@ pub trait ContextApi {
     fn cycle_started(&self) -> Result<(), ContextError>;
 
     fn get_memory_usage(&self) -> Result<usize, ContextError>;
+
+    fn perform_context_action(&mut self, action: &ContextAction) -> Result<(), failure::Error>;
 }
 
 /// Possible errors for context
