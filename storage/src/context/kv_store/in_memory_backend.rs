@@ -6,8 +6,8 @@ use std::sync::{Arc, RwLock};
 
 use failure::Error;
 
-use crate::context::kv_store::storage_backend::NotGarbageCollected;
-use crate::context::kv_store::storage_backend::StorageBackendStats;
+use crate::context::gc::NotGarbageCollected;
+use crate::context::kv_store::stats::StorageBackendStats;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 use crate::persistent::database::DBError;
@@ -161,7 +161,7 @@ impl Persistable for InMemoryBackend {
 #[cfg(test)]
 mod tests {
     use crate::context::kv_store::in_memory_backend::InMemoryBackend;
-    use crate::context::kv_store::storage_backend::size_of_vec;
+    use crate::context::kv_store::stats::size_of_vec;
     use crate::context::kv_store::test_support::{blob_serialized, entry_hash};
     use crate::context::EntryHash;
     use crate::persistent::KeyValueStoreBackend;

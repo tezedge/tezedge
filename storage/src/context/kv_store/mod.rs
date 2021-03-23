@@ -13,7 +13,7 @@ pub mod btree_map;
 pub mod in_memory_backend;
 pub mod rocksdb_backend;
 pub mod sled_backend;
-pub mod storage_backend;
+pub mod stats;
 
 pub const ROCKSDB: &str = "rocksdb";
 

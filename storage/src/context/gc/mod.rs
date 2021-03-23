@@ -1,41 +1,39 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::persistent::database::DBError;
-use crate::persistent::KeyValueStoreBackend;
-use blake2::digest::InvalidOutputSize;
-use crypto::hash::FromBytesError;
-use crypto::hash::HashType;
-use failure::Fail;
-use serde::Serialize;
+//! This sub module provides different KV alternatives for context persistence
+
 use std::array::TryFromSliceError;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::mem;
+use std::collections::{HashMap, HashSet};
 use std::sync::PoisonError;
 
-use crate::context::merkle::hash::{hash_entry, EntryHash, HashingError};
-use crate::context::merkle::Entry;
-use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use blake2::digest::InvalidOutputSize;
+use failure::Fail;
 
-pub fn size_of_vec<T>(v: &Vec<T>) -> usize {
-    mem::size_of::<Vec<T>>() + mem::size_of::<T>() * v.capacity()
-}
+use crypto::hash::{FromBytesError, HashType};
+
+use crate::context::merkle::hash::{hash_entry, HashingError};
+use crate::context::merkle::Entry;
+use crate::context::{ContextKeyValueStoreSchema, EntryHash};
+use crate::persistent::{DBError, KeyValueStoreBackend};
+
+pub mod mark_move_gced;
+pub mod mark_sweep_gced;
 
 pub trait GarbageCollector {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError>;
+    fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError>;
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError>;
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError>;
 }
 
 pub trait NotGarbageCollected {}
 
 impl<T: NotGarbageCollected> GarbageCollector for T {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+    fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
 
-    fn block_applied(&mut self, _commit: EntryHash) -> Result<(), StorageBackendError> {
+    fn block_applied(&mut self, _commit: EntryHash) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
 }
@@ -44,9 +42,9 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 pub fn fetch_entry_from_store(
     store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     hash: EntryHash,
-) -> Result<Entry, StorageBackendError> {
+) -> Result<Entry, GarbageCollectionError> {
     match store.get(&hash)? {
-        None => Err(StorageBackendError::EntryNotFound {
+        None => Err(GarbageCollectionError::EntryNotFound {
             hash: HashType::ContextHash.hash_to_b58check(&hash)?,
         }),
         Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
@@ -57,7 +55,7 @@ pub fn collect_hashes_recursively(
     entry: &Entry,
     cache: HashMap<EntryHash, HashSet<EntryHash>>,
     store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, StorageBackendError> {
+) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, GarbageCollectionError> {
     let mut entries = HashSet::new();
     let mut c = cache;
     collect_hashes(entry, &mut entries, &mut c, store)?;
@@ -70,7 +68,7 @@ pub fn collect_hashes(
     batch: &mut HashSet<EntryHash>,
     cache: &mut HashMap<EntryHash, HashSet<EntryHash>>,
     store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-) -> Result<(), StorageBackendError> {
+) -> Result<(), GarbageCollectionError> {
     batch.insert(hash_entry(entry)?);
 
     match cache.get(&hash_entry(entry)?) {
@@ -104,7 +102,7 @@ pub fn collect_hashes(
 }
 
 #[derive(Debug, Fail)]
-pub enum StorageBackendError {
+pub enum GarbageCollectionError {
     #[fail(display = "RocksDB error: {}", error)]
     RocksDBError { error: rocksdb::Error },
     #[fail(display = "Column family {} is missing", name)]
@@ -137,63 +135,63 @@ pub enum StorageBackendError {
     ValueExpected(&'static str),
 }
 
-impl From<rocksdb::Error> for StorageBackendError {
+impl From<rocksdb::Error> for GarbageCollectionError {
     fn from(error: rocksdb::Error) -> Self {
-        StorageBackendError::RocksDBError { error }
+        GarbageCollectionError::RocksDBError { error }
     }
 }
 
-impl From<sled::Error> for StorageBackendError {
+impl From<sled::Error> for GarbageCollectionError {
     fn from(error: sled::Error) -> Self {
-        StorageBackendError::SledDBError { error }
+        GarbageCollectionError::SledDBError { error }
     }
 }
 
-impl From<DBError> for StorageBackendError {
+impl From<DBError> for GarbageCollectionError {
     fn from(error: DBError) -> Self {
-        StorageBackendError::DBError { error }
+        GarbageCollectionError::DBError { error }
     }
 }
 
-impl From<bincode::Error> for StorageBackendError {
+impl From<bincode::Error> for GarbageCollectionError {
     fn from(error: bincode::Error) -> Self {
-        StorageBackendError::SerializationError { error }
+        GarbageCollectionError::SerializationError { error }
     }
 }
 
-impl From<TryFromSliceError> for StorageBackendError {
+impl From<TryFromSliceError> for GarbageCollectionError {
     fn from(error: TryFromSliceError) -> Self {
-        StorageBackendError::HashConversionError { error }
+        GarbageCollectionError::HashConversionError { error }
     }
 }
 
-impl<T> From<PoisonError<T>> for StorageBackendError {
+impl<T> From<PoisonError<T>> for GarbageCollectionError {
     fn from(pe: PoisonError<T>) -> Self {
-        StorageBackendError::LockError {
+        GarbageCollectionError::LockError {
             reason: format!("{}", pe),
         }
     }
 }
 
-impl From<FromBytesError> for StorageBackendError {
+impl From<FromBytesError> for GarbageCollectionError {
     fn from(error: FromBytesError) -> Self {
-        StorageBackendError::HashToStringError { error }
+        GarbageCollectionError::HashToStringError { error }
     }
 }
 
-impl From<InvalidOutputSize> for StorageBackendError {
+impl From<InvalidOutputSize> for GarbageCollectionError {
     fn from(_: InvalidOutputSize) -> Self {
-        StorageBackendError::InvalidOutputSize
+        GarbageCollectionError::InvalidOutputSize
     }
 }
 
-impl From<HashingError> for StorageBackendError {
+impl From<HashingError> for GarbageCollectionError {
     fn from(error: HashingError) -> Self {
         Self::HashingError { error }
     }
 }
 
-impl slog::Value for StorageBackendError {
+impl slog::Value for GarbageCollectionError {
     fn serialize(
         &self,
         _record: &slog::Record,
@@ -201,103 +199,5 @@ impl slog::Value for StorageBackendError {
         serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, Serialize)]
-pub struct StorageBackendStats {
-    pub key_bytes: usize,
-    pub value_bytes: usize,
-    pub reused_keys_bytes: usize,
-}
-
-impl StorageBackendStats {
-    /// increases `reused_keys_bytes` based on `key`
-    pub fn update_reused_keys(&mut self, list: &HashSet<EntryHash>) {
-        self.reused_keys_bytes = list.capacity() * mem::size_of::<EntryHash>();
-    }
-
-    pub fn total_as_bytes(&self) -> usize {
-        self.key_bytes + self.value_bytes + self.reused_keys_bytes
-    }
-}
-
-impl<'a> std::ops::Add<&'a Self> for StorageBackendStats {
-    type Output = Self;
-
-    fn add(self, other: &'a Self) -> Self::Output {
-        Self {
-            key_bytes: self.key_bytes + other.key_bytes,
-            value_bytes: self.value_bytes + other.value_bytes,
-            reused_keys_bytes: self.reused_keys_bytes + other.reused_keys_bytes,
-        }
-    }
-}
-
-impl std::ops::Add for StorageBackendStats {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self::Output {
-        self + &other
-    }
-}
-
-impl<'a> std::ops::AddAssign<&'a Self> for StorageBackendStats {
-    fn add_assign(&mut self, other: &'a Self) {
-        *self = *self + other;
-    }
-}
-
-impl std::ops::AddAssign for StorageBackendStats {
-    fn add_assign(&mut self, other: Self) {
-        *self = *self + other;
-    }
-}
-
-impl<'a> std::ops::Sub<&'a Self> for StorageBackendStats {
-    type Output = Self;
-
-    fn sub(self, other: &'a Self) -> Self::Output {
-        Self {
-            key_bytes: self.key_bytes - other.key_bytes,
-            value_bytes: self.value_bytes - other.value_bytes,
-            reused_keys_bytes: self.reused_keys_bytes - other.reused_keys_bytes,
-        }
-    }
-}
-
-impl std::ops::Sub for StorageBackendStats {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self::Output {
-        self - &other
-    }
-}
-
-impl<'a> std::ops::SubAssign<&'a Self> for StorageBackendStats {
-    fn sub_assign(&mut self, other: &'a Self) {
-        *self = *self - other;
-    }
-}
-
-impl std::ops::SubAssign for StorageBackendStats {
-    fn sub_assign(&mut self, other: Self) {
-        *self = *self - other;
-    }
-}
-
-impl<'a> std::iter::Sum<&'a StorageBackendStats> for StorageBackendStats {
-    fn sum<I: Iterator<Item = &'a Self>>(iter: I) -> Self {
-        iter.fold(StorageBackendStats::default(), |acc, cur| acc + cur)
-    }
-}
-
-impl From<(&EntryHash, &ContextValue)> for StorageBackendStats {
-    fn from((_, value): (&EntryHash, &ContextValue)) -> Self {
-        StorageBackendStats {
-            key_bytes: mem::size_of::<EntryHash>(),
-            value_bytes: size_of_vec(&value),
-            reused_keys_bytes: 0,
-        }
     }
 }

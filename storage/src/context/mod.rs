@@ -15,7 +15,7 @@ use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 pub use merkle::hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
 
-use crate::context::kv_store::storage_backend::GarbageCollector;
+use crate::context::gc::GarbageCollector;
 use crate::context::merkle::merkle_storage::MerkleError;
 use crate::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::persistent::{
@@ -24,6 +24,7 @@ use crate::persistent::{
 use crate::StorageError;
 
 pub mod actions;
+pub mod gc;
 pub mod kv_store;
 pub mod merkle;
 pub mod tezedge_context;
