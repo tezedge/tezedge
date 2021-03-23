@@ -39,27 +39,27 @@ const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
 impl Args {
     pub fn read_args() -> Self {
         let app = App::new("storage-stats")
-            .about("Generate statistics for storage")
+            .about("Replay context action file and generate statistics for merkle storage")
             .arg(Arg::with_name("input")
                 .long("input")
                 .takes_value(true)
                 .required(true)
-                .help("path to the actions.bin"))
+                .help("Path to the actions.bin"))
             .arg(Arg::with_name("cycle-size")
                 .long("cycle_size")
                 .takes_value(true)
                 .required(true)
                 .default_value("2048")
-                .help("number of blocks in cycle"))
+                .help("Number of blocks in cycle"))
             .arg(Arg::with_name("blocks_limit")
                 .takes_value(true)
                 .long("blocks_limit")
-                .help("limits number of processed blocks"))
+                .help("Limits number of processed blocks"))
             .arg(Arg::with_name("output")
                 .takes_value(true)
                 .long("output")
-                .default_value("/tmp/context-actions-replayer-stats")
-                .help("output path for statistics"))
+                .required(true)
+                .help("Output path for temp data and generated result statistics"))
             .arg(Arg::with_name("context-kv-store")
                 .long("context-kv-store")
                 .takes_value(true)
@@ -91,7 +91,7 @@ impl Args {
                         ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
                             cache_size: LRU_CACHE_SIZE_64MB,
                             expected_db_version: 0,
-                            db_path: out_dir.join("replayed_context"),
+                            db_path: out_dir.join("replayed_context_rocksdb"),
                             columns: ContextRocksDbTableInitializer,
                             threads: None,
                         })
@@ -159,19 +159,17 @@ fn create_logger() -> Logger {
 
 // process actionfile without deselializing blocks
 // in order to get count of blocks
-fn get_blocks_count(log: &Logger, path: PathBuf) -> u32 {
-    let mut counter = 0;
+fn get_blocks_count(log: &Logger, path: PathBuf) -> Result<u32, Error> {
     let file = OpenOptions::new()
         .write(false)
         .create(false)
         .read(true)
-        .open(path)
-        .unwrap();
+        .open(path)?;
+
     let mut reader = BufReader::new(file);
     let mut pos = 0_u64;
-
     let mut block_size = [0_u8; 4];
-
+    let mut counter = 0;
     loop {
         if reader.seek(SeekFrom::Start(pos)).is_err() {
             warn!(log, "missing block operations information");
@@ -186,7 +184,8 @@ fn get_blocks_count(log: &Logger, path: PathBuf) -> u32 {
         pos += u32::from_be_bytes(block_size) as u64;
         counter += 1;
     }
-    counter
+
+    Ok(counter)
 }
 
 struct StatsWriter {
@@ -347,28 +346,61 @@ impl StatsWriter {
     }
 }
 
+/// Resolve name and store path (if supports)
+fn resolve_context_kv_store(
+    context_kv_store_configuration: &ContextKvStoreConfiguration,
+) -> (String, Option<PathBuf>) {
+    match context_kv_store_configuration {
+        ContextKvStoreConfiguration::RocksDb(cfg) => {
+            ("rocksdb".to_string(), Some(cfg.db_path.clone()))
+        }
+        ContextKvStoreConfiguration::Sled { path } => ("sled".to_string(), Some(path.clone())),
+        ContextKvStoreConfiguration::InMem => ("inmem".to_string(), None),
+        ContextKvStoreConfiguration::BTreeMap => ("btree".to_string(), None),
+    }
+}
+
 fn main() -> Result<(), Error> {
     let params = Args::read_args();
     let log = create_logger();
 
-    info!(log, "Context actions replayer starts...");
+    // prepare files
+    let (context_kv_storage_name, context_kv_storage_path) =
+        resolve_context_kv_store(&params.context_kv_store);
 
-    let _ = fs::remove_dir_all(&params.output)?;
-    let _ = fs::create_dir(&params.output)?;
+    // check actions file
+    let actions_file_path = params.input;
+    if !actions_file_path.exists() {
+        return Err(failure::format_err!(
+            "Input action file does not exists: {:?}",
+            actions_file_path.to_str().unwrap(),
+        ));
+    }
 
-    let actions_storage_path = params.input;
-    let context_kv_storage_name: &'static str = params.context_kv_store.clone().into();
-    let stats_output_file = params.output.join(context_kv_storage_name).join(".txt");
+    // prepare storage path (if needed)
+    if let Some(context_kv_storage_path) = context_kv_storage_path {
+        if context_kv_storage_path.exists() {
+            let _ = fs::remove_dir_all(&context_kv_storage_path)?;
+        }
+        let _ = fs::create_dir_all(&context_kv_storage_path)?;
+    }
 
-    info!(
-        log,
-        "Reading info from action file: {} and generating stats to file: {}",
-        actions_storage_path.to_str().unwrap(),
-        stats_output_file.to_str().unwrap(),
-    );
+    // prepare stats output file
+    let stats_output_file = params
+        .output
+        .join(&format!("{}.stats.txt", context_kv_storage_name));
+    if stats_output_file.exists() {
+        let _ = fs::remove_file(&stats_output_file)?;
+    }
+
+    info!(log, "Context actions replayer starts...";
+               "input_file" => actions_file_path.to_str().unwrap(),
+               "output_stats_file" => stats_output_file.to_str().unwrap(),
+               "target_context_kv_store_path" => params.output.to_str().unwrap(),
+               "target_context_kv_store" => context_kv_storage_name);
 
     let mocked_test_main_chain = MainChain::new(
-        ChainId::from_base58_check("NetXguSLFNJvNyf").expect("Failed to create chainId"),
+        ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
         "TEST_CHAIN_FOR_CONTEXT_ACTION_REPLAYER".to_string(),
     );
 
@@ -385,11 +417,11 @@ fn main() -> Result<(), Error> {
 
     let mut counter = 0;
     let mut cycle_counter = 0;
-    let blocks_count = get_blocks_count(&log, actions_storage_path.clone());
+    let blocks_count = get_blocks_count(&log, actions_file_path.clone())?;
 
     info!(log, "{} blocks found", blocks_count);
 
-    let actions_reader = ActionsFileReader::new(&actions_storage_path)?;
+    let actions_reader = ActionsFileReader::new(&actions_file_path)?;
 
     for messages in actions_reader.take(params.blocks_limit.unwrap_or(blocks_count as usize)) {
         counter += 1;
@@ -460,5 +492,8 @@ fn main() -> Result<(), Error> {
         }
         stat_writer.update(counter, merkle.clone());
     }
+
+    info!(log, "Context was successfully evaluated");
+
     Ok(())
 }

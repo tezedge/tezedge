@@ -196,7 +196,6 @@ pub trait KeyValueStoreWithSchemaIterator<S: RocksDbKeyValueSchema> {
     fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError>;
 }
 
-
 pub trait KeyValueStoreWithSchema<S: RocksDbKeyValueSchema>:
     KeyValueStoreBackend<S> + KeyValueStoreWithSchemaIterator<S>
 {

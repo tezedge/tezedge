@@ -1567,7 +1567,6 @@ mod tests {
         assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
 
-
     macro_rules! tests_with_storage {
         ($storage_tests_name:ident, $kv_store_factory:expr) => {
             mod $storage_tests_name {

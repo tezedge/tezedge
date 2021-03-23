@@ -50,7 +50,7 @@ impl ContextListener {
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
         persistent_storage: &PersistentStorage,
-        action_store_backend: Vec<Box<dyn ActionRecorder + Send>>,
+        context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
         mut event_server: IpcEvtServer,
         log: Logger,
     ) -> Result<ContextListenerRef, CreateError> {
@@ -65,14 +65,14 @@ impl ContextListener {
                     persistent_storage.merkle(),
                 ));
 
-                let mut action_store_backend = action_store_backend;
+                let mut context_action_recorders = context_action_recorders;
 
                 while listener_run.load(Ordering::Acquire) {
                     match listen_protocol_events(
                         &listener_run,
                         &mut event_server,
                         Self::IPC_ACCEPT_TIMEOUT,
-                        &mut action_store_backend,
+                        &mut context_action_recorders,
                         &mut context,
                         &log,
                     ) {
@@ -164,7 +164,7 @@ fn listen_protocol_events(
     apply_block_run: &AtomicBool,
     event_server: &mut IpcEvtServer,
     event_server_accept_timeout: Duration,
-    action_store_backend: &mut Vec<Box<dyn ActionRecorder + Send>>,
+    context_action_recorders: &mut Vec<Box<dyn ActionRecorder + Send>>,
     context: &mut Box<dyn ContextApi>,
     log: &Logger,
 ) -> Result<(), Error> {
@@ -189,7 +189,7 @@ fn listen_protocol_events(
             }
             Ok(action) => {
                 // record actions
-                for recorder in action_store_backend.iter_mut() {
+                for recorder in context_action_recorders.iter_mut() {
                     if let Err(error) = recorder.record(&action) {
                         warn!(log, "Failed to store context action"; "action" => format!("{:?}", &action), "reason" => format!("{}", error));
                     }
