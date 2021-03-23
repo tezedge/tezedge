@@ -1,14 +1,19 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::io::Read;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+use bytes::Buf;
 use failure::Fail;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-use std::path::PathBuf;
 use tezos_context::channel::ContextAction;
+
+use crate::context::merkle::hash::HashingError;
+use crate::context::{EntryHash, TreeId};
 
 pub mod action_file;
 pub mod action_file_storage;
@@ -72,4 +77,44 @@ pub enum ActionRecorderError {
     StoreError { reason: String },
     #[fail(display = "Missing actions for block {}.", hash)]
     MissingActions { hash: String },
+}
+
+pub fn get_new_tree_hash(action: &ContextAction) -> Result<Option<EntryHash>, HashingError> {
+    match &action {
+        ContextAction::Set { new_tree_hash, .. }
+        | ContextAction::Copy { new_tree_hash, .. }
+        | ContextAction::Delete { new_tree_hash, .. }
+        | ContextAction::RemoveRecursively { new_tree_hash, .. } => match new_tree_hash.as_ref() {
+            Some(hash) => {
+                let mut buffer: EntryHash = [0; 32];
+                hash.reader()
+                    .read_exact(&mut buffer)
+                    .map_err(|e| HashingError::InvalidHash(format!("{}", e)))?;
+                Ok(Some(buffer))
+            }
+            None => Ok(None),
+        },
+        ContextAction::Get { .. }
+        | ContextAction::Mem { .. }
+        | ContextAction::DirMem { .. }
+        | ContextAction::Commit { .. }
+        | ContextAction::Fold { .. }
+        | ContextAction::Checkout { .. }
+        | ContextAction::Shutdown => Ok(None),
+    }
+}
+
+pub fn get_tree_id(action: &ContextAction) -> Option<TreeId> {
+    match &action {
+        ContextAction::Get { tree_id, .. }
+        | ContextAction::Mem { tree_id, .. }
+        | ContextAction::DirMem { tree_id, .. }
+        | ContextAction::Set { tree_id, .. }
+        | ContextAction::Copy { tree_id, .. }
+        | ContextAction::Delete { tree_id, .. }
+        | ContextAction::RemoveRecursively { tree_id, .. }
+        | ContextAction::Commit { tree_id, .. }
+        | ContextAction::Fold { tree_id, .. } => Some(*tree_id),
+        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
+    }
 }

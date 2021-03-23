@@ -5,14 +5,17 @@ use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::sync::{Arc, RwLock};
 
-use crypto::hash::{BlockHash, ContextHash};
+use failure::Error;
 
-use crate::{BlockStorage, BlockStorageReader, StorageError};
+use crypto::hash::{BlockHash, ContextHash, FromBytesError};
 
+use crate::context::actions::context_action_storage::ContextAction;
+use crate::context::actions::{get_new_tree_hash, get_tree_id};
 use crate::context::merkle::hash::EntryHash;
 use crate::context::merkle::merkle_storage::{MerkleError, MerkleStorage};
 use crate::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
 use crate::context::{ContextApi, ContextError, ContextKey, ContextValue, StringTreeEntry, TreeId};
+use crate::{BlockStorage, BlockStorageReader, StorageError};
 
 impl ContextApi for TezedgeContext {
     fn set(
@@ -190,6 +193,123 @@ impl ContextApi for TezedgeContext {
         let merkle = self.merkle.write()?;
         Ok(merkle.get_memory_usage()?)
     }
+
+    fn perform_context_action(&mut self, action: &ContextAction) -> Result<(), Error> {
+        if let Some(tree_id) = get_tree_id(&action) {
+            self.set_merkle_root(tree_id)?;
+        }
+
+        match action {
+            ContextAction::Get { key, .. } => {
+                self.get_key(key)?;
+            }
+            ContextAction::Mem { key, .. } => {
+                self.mem(key)?;
+            }
+            ContextAction::DirMem { key, .. } => {
+                self.dirmem(key)?;
+            }
+            ContextAction::Set {
+                key,
+                value,
+                new_tree_id,
+                context_hash,
+                ..
+            } => {
+                let context_hash = try_from_untyped_option(context_hash)?;
+                self.set(&context_hash, *new_tree_id, key, value)?;
+            }
+            ContextAction::Copy {
+                to_key: key,
+                from_key,
+                new_tree_id,
+                context_hash,
+                ..
+            } => {
+                let context_hash = try_from_untyped_option(context_hash)?;
+                self.copy_to_diff(&context_hash, *new_tree_id, from_key, key)?;
+            }
+            ContextAction::Delete {
+                key,
+                new_tree_id,
+                context_hash,
+                ..
+            } => {
+                let context_hash = try_from_untyped_option(context_hash)?;
+                self.delete_to_diff(&context_hash, *new_tree_id, key)?;
+            }
+            ContextAction::RemoveRecursively {
+                key,
+                new_tree_id,
+                context_hash,
+                ..
+            } => {
+                let context_hash = try_from_untyped_option(context_hash)?;
+                self.remove_recursively_to_diff(&context_hash, *new_tree_id, key)?;
+            }
+            ContextAction::Commit {
+                parent_context_hash,
+                new_context_hash,
+                block_hash: Some(block_hash),
+                author,
+                message,
+                date,
+                ..
+            } => {
+                let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
+                let block_hash = BlockHash::try_from(block_hash.clone())?;
+                let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
+                let hash = self.commit(
+                    &block_hash,
+                    &parent_context_hash,
+                    author.to_string(),
+                    message.to_string(),
+                    *date,
+                )?;
+                assert_eq!(
+                    &hash,
+                    &new_context_hash,
+                    "Invalid context_hash for block: {}, expected: {}, but was: {}",
+                    block_hash.to_base58_check(),
+                    new_context_hash.to_base58_check(),
+                    hash.to_base58_check(),
+                );
+            }
+
+            ContextAction::Checkout { context_hash, .. } => {
+                self.checkout(&ContextHash::try_from(context_hash.clone())?)?;
+            }
+
+            ContextAction::Commit { .. } => (), // Ignored (no block_hash)
+
+            ContextAction::Fold { .. } => (), // Ignored
+
+            ContextAction::Shutdown => (), // Ignored
+        };
+
+        if let Some(post_hash) = get_new_tree_hash(&action)? {
+            assert_eq!(
+                self.get_merkle_root(),
+                post_hash,
+                "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
+                self.get_merkle_root(),
+                post_hash,
+                get_tree_id(&action),
+                action,
+            );
+        }
+
+        Ok(())
+    }
+}
+
+fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
+where
+    H: TryFrom<Vec<u8>, Error = FromBytesError>,
+{
+    h.as_ref()
+        .map(|h| H::try_from(h.clone()))
+        .map_or(Ok(None), |r| r.map(Some))
 }
 
 // context implementation using merkle-tree-like storage
@@ -235,7 +355,7 @@ impl TezedgeContext {
                             block_hash: block_hash.to_base58_check(),
                             context_hash: commit_hash.to_base58_check(),
                             error: e,
-                        })
+                        });
                     }
                 };
             }

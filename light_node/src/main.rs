@@ -7,10 +7,8 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use riker::actors::*;
-use rocksdb::{Cache, DB};
 use slog::{debug, error, info, warn, Logger};
 
-use configuration::{ColumnFactory, RocksDBConfig};
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
@@ -26,15 +24,13 @@ use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
-use storage::context::merkle::merkle_storage::MerkleStorage;
 use storage::context::TezedgeContext;
-use storage::persistent::database::open_kv;
-use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, CommitLogSchema, DBError, DbConfiguration};
-use storage::{
-    check_database_compatibility, resolve_storage_init_chain_data, BlockStorage, PersistentStorage,
-    StorageInitInfo,
+use storage::initializer::{
+    initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
 };
+use storage::persistent::sequence::Sequences;
+use storage::persistent::{open_cl, CommitLogSchema};
+use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
@@ -44,7 +40,7 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
-use crate::configuration::{ContextKvStoreConfiguration, Environment};
+use crate::configuration::Environment;
 
 mod configuration;
 mod identity;
@@ -415,35 +411,6 @@ fn block_on_actors(
     });
 }
 
-fn initialize_db<Factory: ColumnFactory>(
-    log: &Logger,
-    cache: &Cache,
-    config: &RocksDBConfig<Factory>,
-    env: &TezosEnvironmentConfiguration,
-) -> Result<Arc<DB>, DBError> {
-    let db = open_kv(
-        &config.db_path,
-        config.columns.create(cache),
-        &DbConfiguration {
-            max_threads: config.threads,
-        },
-    )
-    .map(Arc::new)?;
-
-    match check_database_compatibility(db.clone(), config.expected_db_version, &env, &log) {
-        Ok(false) => Err(DBError::DatabaseIncompatibility {
-            name: format!(
-                "Database is incompatible with version {}",
-                config.expected_db_version
-            ),
-        }),
-        Err(e) => Err(DBError::DatabaseIncompatibility {
-            name: format!("Failed to verify database compatibility reason: '{}'", e),
-        }),
-        _ => Ok(db),
-    }
-}
-
 fn check_deprecated_network(env: &Environment, log: &Logger) {
     if let Some(deprecation_notice) = env.tezos_network.check_deprecated_network() {
         warn!(log, "Deprecated network: {}", deprecation_notice);
@@ -520,14 +487,19 @@ fn main() {
 
     // create/initialize databases
     info!(log, "Loading databases... (3/5)");
+
     // create common RocksDB block cache to be shared among column families
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
-    let mut caches = vec![];
+    let mut caches = GlobalRocksDbCacheHolder::with_capacity(3);
+    let main_chain = MainChain::new(
+        tezos_env.main_chain_id().expect("Failed to decode chainId"),
+        tezos_env.version.clone(),
+    );
 
     // initialize dbs
-    let kv_cache = Cache::new_lru_cache(env.storage.db.cache_size)
+    let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
-    let kv = initialize_db(&log, &kv_cache, &env.storage.db, &tezos_env)
+    let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
         .expect("Failed to create/initialize RocksDB database (db)");
     caches.push(kv_cache);
 
@@ -538,46 +510,27 @@ fn main() {
     let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
 
     // initialize merkle context
-    let merkle = Arc::new(RwLock::new(MerkleStorage::new(
-        match &env.storage.context_kv_store {
-            ContextKvStoreConfiguration::RocksDb(cfg) => {
-                let kv_context_cache = Cache::new_lru_cache(cfg.cache_size)
-                    .expect("Failed to initialize RocksDB cache (db_context)");
-                let kv_context = initialize_db(&log, &kv_context_cache, cfg, &tezos_env)
-                    .expect("Failed to create/initialize RocksDB database (db_context)");
-                caches.push(kv_context_cache);
-                Box::new(
-                    storage::context::kv_store::rocksdb_backend::RocksDBBackend::new(kv_context),
-                )
-            }
-            ContextKvStoreConfiguration::Sled { path } => {
-                let sled = sled::Config::new()
-                    .path(path)
-                    .open()
-                    .expect("Failed to create/initialize Sled database (db_context)");
-                Box::new(storage::context::kv_store::sled_backend::SledBackend::new(
-                    sled,
-                ))
-            }
-            ContextKvStoreConfiguration::InMem => {
-                Box::new(storage::context::kv_store::in_memory_backend::InMemoryBackend::new())
-            }
-            ContextKvStoreConfiguration::BTreeMap => {
-                Box::new(storage::context::kv_store::btree_map::BTreeMapBackend::new())
-            }
-        },
-    )));
+    let merkle = Arc::new(RwLock::new(
+        initialize_merkle(
+            &env.storage.context_kv_store,
+            &main_chain,
+            &log,
+            &mut caches,
+        )
+        .expect("Failed to initialize merkle storage"),
+    ));
 
     // context actions persistent db (optional)
     let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {
         Some(merkle_context_actions_store) => {
-            let kv_actions_cache = Cache::new_lru_cache(merkle_context_actions_store.cache_size)
-                .expect("Failed to initialize RocksDB cache (db_context_actions)");
-            let kv_actions = initialize_db(
+            let kv_actions_cache =
+                RocksDbCache::new_lru_cache(merkle_context_actions_store.cache_size)
+                    .expect("Failed to initialize RocksDB cache (db_context_actions)");
+            let kv_actions = initialize_rocksdb(
                 &log,
                 &kv_actions_cache,
                 &merkle_context_actions_store,
-                &tezos_env,
+                &main_chain,
             )
             .expect("Failed to create/initialize RocksDB database (db_context_actions)");
             caches.push(kv_actions_cache);

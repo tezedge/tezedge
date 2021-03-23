@@ -3,20 +3,16 @@
 
 //! Listens for events from the `protocol_runner`.
 
-use bytes::Buf;
 use failure::Error;
 use riker::actors::*;
 use slog::{crit, info, warn, Logger};
-use std::convert::TryFrom;
-use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crypto::hash::{BlockHash, ContextHash, FromBytesError};
-use storage::context::{ActionRecorder, ContextApi, EntryHash, TezedgeContext, TreeId};
+use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
 use storage::BlockStorage;
 use storage::PersistentStorage;
 use tezos_context::channel::ContextAction;
@@ -192,184 +188,21 @@ fn listen_protocol_events(
                 break;
             }
             Ok(action) => {
+                // record actions
                 for recorder in action_store_backend.iter_mut() {
                     if let Err(error) = recorder.record(&action) {
                         warn!(log, "Failed to store context action"; "action" => format!("{:?}", &action), "reason" => format!("{}", error));
                     }
                 }
 
-                perform_context_action(&action, context)?;
-
-                // TODO TE-440 subscribe to commit event
-                if let ContextAction::Commit { .. } = &action {
-                    context.block_applied()?;
-                    // if event_count > 0 && event_count % 2048 == 0 {
-                    context.cycle_started()?;
-                    // }
-                }
+                // evaluate context
+                context.perform_context_action(&action)?;
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));
                 break;
             }
         }
-    }
-
-    Ok(())
-}
-
-pub fn get_tree_id(action: &ContextAction) -> Option<TreeId> {
-    match &action {
-        ContextAction::Get { tree_id, .. }
-        | ContextAction::Mem { tree_id, .. }
-        | ContextAction::DirMem { tree_id, .. }
-        | ContextAction::Set { tree_id, .. }
-        | ContextAction::Copy { tree_id, .. }
-        | ContextAction::Delete { tree_id, .. }
-        | ContextAction::RemoveRecursively { tree_id, .. }
-        | ContextAction::Commit { tree_id, .. }
-        | ContextAction::Fold { tree_id, .. } => Some(*tree_id),
-        ContextAction::Checkout { .. } | ContextAction::Shutdown => None,
-    }
-}
-
-pub fn get_new_tree_hash(action: &ContextAction) -> Option<EntryHash> {
-    match &action {
-        ContextAction::Set { new_tree_hash, .. }
-        | ContextAction::Copy { new_tree_hash, .. }
-        | ContextAction::Delete { new_tree_hash, .. }
-        | ContextAction::RemoveRecursively { new_tree_hash, .. } => {
-            new_tree_hash.clone().map(|hash| {
-                let mut buffer: EntryHash = [0; 32];
-                hash.reader().read_exact(&mut buffer).unwrap();
-                Some(buffer)
-            })?
-        }
-        ContextAction::Get { .. }
-        | ContextAction::Mem { .. }
-        | ContextAction::DirMem { .. }
-        | ContextAction::Commit { .. }
-        | ContextAction::Fold { .. }
-        | ContextAction::Checkout { .. }
-        | ContextAction::Shutdown => None,
-    }
-}
-
-fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
-where
-    H: TryFrom<Vec<u8>, Error = FromBytesError>,
-{
-    h.as_ref()
-        .map(|h| H::try_from(h.clone()))
-        .map_or(Ok(None), |r| r.map(Some))
-}
-
-pub fn perform_context_action(
-    action: &ContextAction,
-    context: &mut Box<dyn ContextApi>,
-) -> Result<(), Error> {
-    if let Some(tree_id) = get_tree_id(&action) {
-        context.set_merkle_root(tree_id)?;
-    }
-
-    match action {
-        ContextAction::Get { key, .. } => {
-            context.get_key(key)?;
-        }
-        ContextAction::Mem { key, .. } => {
-            context.mem(key)?;
-        }
-        ContextAction::DirMem { key, .. } => {
-            context.dirmem(key)?;
-        }
-        ContextAction::Set {
-            key,
-            value,
-            new_tree_id,
-            context_hash,
-            ..
-        } => {
-            let context_hash = try_from_untyped_option(context_hash)?;
-            context.set(&context_hash, *new_tree_id, key, value)?;
-        }
-        ContextAction::Copy {
-            to_key: key,
-            from_key,
-            new_tree_id,
-            context_hash,
-            ..
-        } => {
-            let context_hash = try_from_untyped_option(context_hash)?;
-            context.copy_to_diff(&context_hash, *new_tree_id, from_key, key)?;
-        }
-        ContextAction::Delete {
-            key,
-            new_tree_id,
-            context_hash,
-            ..
-        } => {
-            let context_hash = try_from_untyped_option(context_hash)?;
-            context.delete_to_diff(&context_hash, *new_tree_id, key)?;
-        }
-        ContextAction::RemoveRecursively {
-            key,
-            new_tree_id,
-            context_hash,
-            ..
-        } => {
-            let context_hash = try_from_untyped_option(context_hash)?;
-            context.remove_recursively_to_diff(&context_hash, *new_tree_id, key)?;
-        }
-        ContextAction::Commit {
-            parent_context_hash,
-            new_context_hash,
-            block_hash: Some(block_hash),
-            author,
-            message,
-            date,
-            ..
-        } => {
-            let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
-            let block_hash = BlockHash::try_from(block_hash.clone())?;
-            let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
-            let hash = context.commit(
-                &block_hash,
-                &parent_context_hash,
-                author.to_string(),
-                message.to_string(),
-                *date,
-            )?;
-            assert_eq!(
-                &hash,
-                &new_context_hash,
-                "Invalid context_hash for block: {}, expected: {}, but was: {}",
-                block_hash.to_base58_check(),
-                new_context_hash.to_base58_check(),
-                hash.to_base58_check(),
-            );
-        }
-
-        ContextAction::Checkout { context_hash, .. } => {
-            context.checkout(&ContextHash::try_from(context_hash.clone())?)?;
-        }
-
-        ContextAction::Commit { .. } => (), // Ignored (no block_hash)
-
-        ContextAction::Fold { .. } => (), // Ignored
-
-        ContextAction::Shutdown => (), // Ignored
-    };
-
-    if let Some(post_hash) = get_new_tree_hash(&action) {
-        assert_eq!(
-            context.get_merkle_root(),
-            post_hash,
-            "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
-            context.get_merkle_root(),
-            post_hash,
-            get_tree_id(&action),
-            action,
-        );
     }
 
     Ok(())
