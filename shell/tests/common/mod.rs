@@ -94,7 +94,7 @@ pub mod infra {
     use shell::stats::apply_block_stats::init_empty_apply_block_stats;
     use shell::PeerConnectionThreshold;
     use storage::chain_meta_storage::ChainMetaStorageReader;
-    use storage::context::{ContextApi, TezedgeContext};
+    use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
     use storage::tests_common::TmpStorage;
     use storage::{resolve_storage_init_chain_data, BlockStorage, ChainMetaStorage};
     use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -132,6 +132,8 @@ pub mod infra {
             p2p: Option<(P2p, ShellCompatibilityVersion)>,
             identity: Identity,
             (log, log_level): (Logger, Level),
+            context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
+            (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
         ) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -198,8 +200,8 @@ pub mod infra {
                 ProtocolEndpointConfiguration::new(
                     TezosRuntimeConfiguration {
                         log_enabled: common::is_ocaml_log_enabled(),
-                        debug_mode: false,
-                        compute_context_action_tree_hashes: false,
+                        debug_mode: record_also_readonly_context_action,
+                        compute_context_action_tree_hashes: compute_context_action_tree_hashes,
                     },
                     tezos_env.clone(),
                     false,
@@ -236,7 +238,7 @@ pub mod infra {
                 &actor_system,
                 shell_channel.clone(),
                 &persistent_storage,
-                vec![],
+                context_action_recorders,
                 apply_protocol_events,
                 log.clone(),
             )

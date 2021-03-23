@@ -30,7 +30,6 @@ impl Default for DbConfiguration {
     }
 }
 
-
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 where
