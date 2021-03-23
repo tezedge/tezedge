@@ -1,14 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO: move to separate subdir with GarbageCollector
-
-use std::collections::HashSet;
-
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::MerkleStorage;
-use crypto::hash::HashType;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -16,19 +10,23 @@ use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::context::kv_store::storage_backend::{
-    collect_hashes_recursively, fetch_entry_from_store, GarbageCollector, StorageBackendError,
+use crypto::hash::HashType;
+
+use crate::context::gc::{
+    collect_hashes_recursively, fetch_entry_from_store, GarbageCollectionError, GarbageCollector,
 };
 use crate::context::merkle::hash::EntryHash;
 use crate::context::merkle::Entry;
-use crate::context::ContextValue;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use crate::persistent::database::DBError;
+use crate::persistent::KeyValueStoreBackend;
 
 const COUNT_OF_KEYS_TO_CLEANUP_IN_SINGLE_GC_ITERATION: usize = 2048;
 
 /// Finds the value with hash `key` in one of the cycle stores (trying from newest to oldest)
 fn stores_get<T, S>(stores: &S, key: &EntryHash) -> Option<ContextValue>
 where
-    T: KeyValueStoreBackend<MerkleStorage>,
+    T: KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -40,7 +38,7 @@ where
 /// Returns store index containing the entry with hash `key`  (trying from newest to oldest)
 fn stores_containing<T, S>(stores: &S, key: &EntryHash) -> Option<usize>
 where
-    T: KeyValueStoreBackend<MerkleStorage>,
+    T: KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -53,7 +51,7 @@ where
 /// Returns `true` if any of the stores contains an entry with hash `key`, and `false` otherwise
 fn stores_contains<T, S>(stores: &S, key: &EntryHash) -> bool
 where
-    T: KeyValueStoreBackend<MerkleStorage>,
+    T: KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     S: Deref<Target = Vec<T>>,
 {
     stores
@@ -67,7 +65,7 @@ where
 /// The return value is `None` if the value was not found, or Some((store_idx, value)) otherwise.
 fn stores_delete<T, S>(stores: &mut S, key: &EntryHash) -> Option<(usize, ContextValue)>
 where
-    T: KeyValueStoreBackend<MerkleStorage>,
+    T: KeyValueStoreBackend<ContextKeyValueStoreSchema>,
     S: DerefMut<Target = Vec<T>>,
 {
     stores
@@ -90,7 +88,7 @@ pub enum CmdMsg {
 }
 
 /// Garbage Collected Key Value Store
-pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
+pub struct MarkMoveGCed<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>> {
     /// Stores for each cycle, older to newer
     stores: Arc<RwLock<Vec<T>>>,
     /// Current in-process cycle store
@@ -104,7 +102,9 @@ pub struct MarkMoveGCed<T: KeyValueStoreBackend<MerkleStorage>> {
     cache: HashMap<EntryHash, HashSet<EntryHash>>,
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> MarkMoveGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync + Default>
+    MarkMoveGCed<T>
+{
     pub fn new(cycle_count: usize) -> Self {
         assert!(
             cycle_count > 1,
@@ -147,17 +147,20 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     ///
     /// Entries that are reused/referenced in current cycle
     /// will be preserved after garbage collection.
-    fn mark_single_reused(&mut self, key: EntryHash) -> Result<(), StorageBackendError> {
+    fn mark_single_reused(&mut self, key: EntryHash) -> Result<(), GarbageCollectionError> {
         self.msg_cnt.fetch_add(1, Ordering::Acquire);
 
         self.msg.lock()?.send(CmdMsg::MarkReused(key)).map_err(|_| {
-            StorageBackendError::GarbageCollectorError {
+            GarbageCollectionError::GarbageCollectorError {
                 error: "cannot send message to GC thread".to_string(),
             }
         })
     }
 
-    fn mark_reused(&mut self, reused_keys: &HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+    fn mark_reused(
+        &mut self,
+        reused_keys: &HashSet<EntryHash>,
+    ) -> Result<(), GarbageCollectionError> {
         for i in reused_keys.iter() {
             self.mark_single_reused(*i)?;
         }
@@ -167,11 +170,11 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     /// Starts a new cycle.
     ///
     /// Garbage collector will start collecting the oldest cycle.
-    pub fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+    pub fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.msg_cnt.fetch_add(1, Ordering::Acquire);
         self.stores.write()?.push(mem::take(&mut self.current));
         self.msg.lock()?.send(CmdMsg::StartNewCycle).map_err(|_| {
-            StorageBackendError::GarbageCollectorError {
+            GarbageCollectionError::GarbageCollectorError {
                 error: "cannot send message to GC thread".to_string(),
             }
         })
@@ -187,8 +190,8 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> M
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
-    KeyValueStoreBackend<MerkleStorage> for MarkMoveGCed<T>
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync + Default>
+    KeyValueStoreBackend<ContextKeyValueStoreSchema> for MarkMoveGCed<T>
 {
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.current.put(key, value)
@@ -231,19 +234,15 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default>
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         self.current.retain(predicate)
     }
-
-    fn is_persistent(&self) -> bool {
-        self.current.is_persistent()
-    }
 }
 
 /// Garbage collector main function
-fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
+fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>>(
     stores: Arc<RwLock<Vec<T>>>,
     rx: mpsc::Receiver<CmdMsg>,
     is_busy: Arc<AtomicBool>,
     msg_cnt: Arc<AtomicUsize>,
-) -> Result<(), StorageBackendError> {
+) -> Result<(), GarbageCollectionError> {
     // number of preserved archived cycles
     let len = stores.read().unwrap().len();
     // maintains incoming references (hashes) for each archived cycle store.
@@ -392,16 +391,16 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<MerkleStorage>>(
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> GarbageCollector
-    for MarkMoveGCed<T>
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync + Default>
+    GarbageCollector for MarkMoveGCed<T>
 {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+    fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.new_cycle_started()
     }
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError> {
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError> {
         let commit_entry = fetch_entry_from_store(
-            self.deref() as &dyn KeyValueStoreBackend<MerkleStorage>,
+            self.deref() as &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
             commit,
         )?;
 
@@ -410,7 +409,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> G
                 let cache = collect_hashes_recursively(
                     &commit_entry,
                     std::mem::take(&mut self.cache),
-                    self.deref() as &dyn KeyValueStoreBackend<MerkleStorage>,
+                    self.deref() as &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
                 )?;
 
                 let reused = cache.get(&commit);
@@ -420,7 +419,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> G
                 self.cache = cache.clone();
                 Ok(())
             }
-            _ => Err(StorageBackendError::GarbageCollectorError {
+            _ => Err(GarbageCollectionError::GarbageCollectorError {
                 error: format!(
                     "{} is not a commit",
                     HashType::ContextHash.hash_to_b58check(&commit)?
@@ -432,13 +431,17 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Send + Sync + Default> G
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::context::kv_store::btree_map::BTreeMapBackend;
-    use crate::context::kv_store::storage_backend::size_of_vec;
-    use crate::context::merkle::Entry;
     use std::convert::TryFrom;
 
-    fn empty_kvstore_gced(cycle_count: usize) -> MarkMoveGCed<BTreeMapBackend> {
+    use crate::context::kv_store::btree_map::BTreeMapBackend;
+    use crate::context::kv_store::stats::size_of_vec;
+    use crate::context::merkle::Entry;
+
+    use super::*;
+
+    fn empty_kvstore_gced(
+        cycle_count: usize,
+    ) -> MarkMoveGCed<BTreeMapBackend<EntryHash, ContextValue>> {
         MarkMoveGCed::new(cycle_count)
     }
 
@@ -462,7 +465,9 @@ mod tests {
         bincode::serialize(&blob(value)).unwrap()
     }
 
-    fn get<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+    fn get<
+        T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Sync + Send + Default,
+    >(
         store: &MarkMoveGCed<T>,
         key: &[u8],
     ) -> Option<Entry> {
@@ -472,7 +477,9 @@ mod tests {
             .map(|x| bincode::deserialize(&x[..]).unwrap())
     }
 
-    fn put<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+    fn put<
+        T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Sync + Send + Default,
+    >(
         store: &mut MarkMoveGCed<T>,
         key: &[u8],
         value: Entry,
@@ -482,7 +489,9 @@ mod tests {
             .unwrap();
     }
 
-    fn mark_reused<T: 'static + KeyValueStoreBackend<MerkleStorage> + Sync + Send + Default>(
+    fn mark_reused<
+        T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Sync + Send + Default,
+    >(
         store: &mut MarkMoveGCed<T>,
         key: &[u8],
     ) {
@@ -569,9 +578,9 @@ mod tests {
         store.new_cycle_started().unwrap();
         store.wait_for_gc_finish();
         assert_eq!(
-            2* std::mem::size_of::<EntryHash>()
-            + size_of_vec(&kv1.1) // inserted
-            + size_of_vec(&kv4.1), // reused
+            2 * std::mem::size_of::<EntryHash>()
+                + size_of_vec(&kv1.1) // inserted
+                + size_of_vec(&kv4.1), // reused
             store.total_get_mem_usage().unwrap()
         );
 

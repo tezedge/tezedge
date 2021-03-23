@@ -7,7 +7,7 @@ use std::ops::Deref;
 use bytes::Buf;
 use failure::Error;
 
-use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::gc::NotGarbageCollected;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 use crate::persistent::database::DBError;

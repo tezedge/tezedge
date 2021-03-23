@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use std::ops::{AddAssign, DerefMut, SubAssign};
 use std::sync::RwLock;
 
-use crate::context::kv_store::storage_backend::{NotGarbageCollected, StorageBackendStats};
+use crate::context::gc::NotGarbageCollected;
+use crate::context::kv_store::stats::StorageBackendStats;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{ContextKeyValueStoreSchema, ContextValue};
 use crate::persistent::database::DBError;
@@ -144,7 +145,7 @@ impl Persistable for BTreeMapBackend<EntryHash, ContextValue> {
 #[cfg(test)]
 mod tests {
     use crate::context::kv_store::btree_map::BTreeMapBackend;
-    use crate::context::kv_store::storage_backend::size_of_vec;
+    use crate::context::kv_store::stats::size_of_vec;
     use crate::context::kv_store::test_support::{blob_serialized, entry_hash};
     use crate::context::EntryHash;
     use crate::persistent::KeyValueStoreBackend;
