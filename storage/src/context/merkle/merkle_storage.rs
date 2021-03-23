@@ -54,7 +54,7 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::context::kv_store::storage_backend::StorageBackendError;
+use crate::context::gc::GarbageCollectionError;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::merkle::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError};
 use crate::context::merkle::merkle_storage_stats::{
@@ -114,11 +114,11 @@ pub enum MerkleError {
         error: persistent::database::DBError,
     },
     #[fail(display = "KVStore error: {:?}", error)]
-    KVBackendError { error: StorageBackendError },
+    KVBackendError { error: GarbageCollectionError },
     #[fail(display = "Serialization error: {:?}", error)]
     SerializationError { error: bincode::Error },
     #[fail(display = "Backend error: {:?}", error)]
-    StorageBackendError { error: StorageBackendError },
+    GarbageCollectionError { error: GarbageCollectionError },
 
     /// Internal unrecoverable bugs that should never occur
     #[fail(display = "No root retrieved for this commit!")]
@@ -176,9 +176,9 @@ impl From<HashingError> for MerkleError {
     }
 }
 
-impl From<StorageBackendError> for MerkleError {
-    fn from(error: StorageBackendError) -> Self {
-        Self::StorageBackendError { error }
+impl From<GarbageCollectionError> for MerkleError {
+    fn from(error: GarbageCollectionError) -> Self {
+        Self::GarbageCollectionError { error }
     }
 }
 

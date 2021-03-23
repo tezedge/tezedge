@@ -7,7 +7,7 @@ use std::sync::Arc;
 use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
 use serde::{Deserialize, Serialize};
 
-use crate::context::kv_store::storage_backend::NotGarbageCollected;
+use crate::context::gc::NotGarbageCollected;
 use crate::context::merkle::hash::EntryHash;
 use crate::context::{
     ContextKeyValueStoreSchema, ContextKeyValueStoreSchemaKeyType, ContextValue,

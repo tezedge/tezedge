@@ -1,29 +1,30 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::collections::{HashSet, VecDeque};
 
-use crate::context::kv_store::storage_backend::{
-    collect_hashes, fetch_entry_from_store, GarbageCollector, StorageBackendError,
+use crypto::hash::HashType;
+
+use crate::context::gc::{
+    collect_hashes, fetch_entry_from_store, GarbageCollectionError, GarbageCollector,
 };
 use crate::context::merkle::hash::EntryHash;
 use crate::context::merkle::Entry;
-use crate::context::ContextValue;
-use crate::persistent::database::{DBError, KeyValueStoreBackend};
-use crate::MerkleStorage;
-use crypto::hash::HashType;
-use std::collections::HashMap;
+use crate::context::{ContextKeyValueStoreSchema, ContextValue};
+use crate::persistent::database::DBError;
+use crate::persistent::KeyValueStoreBackend;
 
 /// Garbage Collected Key Value Store
-pub struct MarkSweepGCed<T: KeyValueStoreBackend<MerkleStorage>> {
-    // TODO: store musi ist do new(..
+pub struct MarkSweepGCed<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>> {
+    // TODO: rework gc store must be passed as argument, and not to create default here
     store: T,
     cycles_limit: usize,
     cycles: VecDeque<HashSet<EntryHash>>,
     cache: HashMap<EntryHash, HashSet<EntryHash>>,
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T> {
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Default> MarkSweepGCed<T> {
     pub fn new(cycle_count: usize) -> Self {
         let mut cycles = VecDeque::new();
 
@@ -47,7 +48,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
         }
     }
 
-    pub fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+    pub fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.cycles.push_back(HashSet::new());
 
         while self.cycles.len() > self.cycles_limit {
@@ -64,7 +65,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
         Ok(())
     }
 
-    fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), StorageBackendError> {
+    fn sweep_entries(&mut self, todo: HashSet<EntryHash>) -> Result<(), GarbageCollectionError> {
         self.retain(&|x| todo.contains(x))?;
         Ok(())
     }
@@ -72,7 +73,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
     fn store_entries_referenced_by_commit(
         &mut self,
         commit: EntryHash,
-    ) -> Result<(), StorageBackendError> {
+    ) -> Result<(), GarbageCollectionError> {
         let commit_entry = fetch_entry_from_store(&self.store, commit)?;
 
         match commit_entry {
@@ -85,7 +86,7 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
                 self.mark_reused(entries.into_iter().collect());
                 Ok(())
             }
-            _ => Err(StorageBackendError::GarbageCollectorError {
+            _ => Err(GarbageCollectionError::GarbageCollectorError {
                 error: format!(
                     "{} is not a commit",
                     HashType::ContextHash.hash_to_b58check(&commit)?
@@ -95,20 +96,20 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> MarkSweepGCed<T
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> GarbageCollector
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Default> GarbageCollector
     for MarkSweepGCed<T>
 {
-    fn new_cycle_started(&mut self) -> Result<(), StorageBackendError> {
+    fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.new_cycle_started()
     }
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), StorageBackendError> {
+    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError> {
         self.store_entries_referenced_by_commit(commit)
     }
 }
 
-impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBackend<MerkleStorage>
-    for MarkSweepGCed<T>
+impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Default>
+    KeyValueStoreBackend<ContextKeyValueStoreSchema> for MarkSweepGCed<T>
 {
     fn put(&self, key: &EntryHash, value: &ContextValue) -> Result<(), DBError> {
         self.store.put(key, value)
@@ -154,18 +155,15 @@ impl<T: 'static + KeyValueStoreBackend<MerkleStorage> + Default> KeyValueStoreBa
     fn retain(&self, predicate: &dyn Fn(&EntryHash) -> bool) -> Result<(), DBError> {
         self.store.retain(predicate)
     }
-
-    fn is_persistent(&self) -> bool {
-        self.store.is_persistent()
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::context::kv_store::in_memory_backend::InMemoryBackend;
     use crate::context::merkle::hash::hash_entry;
     use crate::context::merkle::Entry;
+
+    use super::*;
 
     #[test]
     fn test_mark_sweep_gc() {
