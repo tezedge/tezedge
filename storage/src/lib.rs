@@ -11,7 +11,7 @@ use std::sync::{Arc, RwLock};
 use failure::Fail;
 use rocksdb::{Cache, DB};
 use serde::{Deserialize, Serialize};
-use slog::{error, info, Logger};
+use slog::{info, Logger};
 
 use crypto::{
     base58::FromBase58CheckError,
@@ -395,60 +395,234 @@ pub fn initialize_storage_with_genesis_block(
     Ok(genesis_with_hash)
 }
 
-pub fn check_database_compatibility(
-    db: Arc<rocksdb::DB>,
-    expected_database_version: i64,
-    tezos_env: &TezosEnvironmentConfiguration,
-    log: &Logger,
-) -> Result<bool, StorageError> {
-    let mut system_info = SystemStorage::new(db);
-    let db_version_ok = match system_info.get_db_version()? {
-        Some(db_version) => db_version == expected_database_version,
-        None => {
-            system_info.set_db_version(expected_database_version)?;
-            true
-        }
-    };
-    if !db_version_ok {
-        error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
+/// Helper module to easily initialize databases
+pub mod initializer {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
+    use slog::{error, Logger};
+    use strum_macros::IntoStaticStr;
+
+    use crypto::hash::ChainId;
+
+    use crate::context::merkle::merkle_storage::MerkleStorage;
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
+    use crate::persistent::{DBError, DbConfiguration};
+    use crate::{StorageError, SystemStorage};
+
+    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
+    pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
+    pub type RocksDbCache = Cache;
+
+    /// Factory for creation of grouped column family descriptors
+    pub trait RocksDbColumnFactory {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor>;
     }
 
-    let tezos_env_main_chain_id = tezos_env
-        .main_chain_id()
-        .map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
-    let tezos_env_main_chain_name = &tezos_env.version;
+    /// Tables initializer for all operational datbases
+    #[derive(Debug, Clone)]
+    pub struct DbsRocksDbTableInitializer;
 
-    let (chain_id_ok, previous_chain_name, requested_chain_name) =
-        match system_info.get_chain_id()? {
-            Some(chain_id) => {
-                let previous_chain_name = match system_info.get_chain_name()? {
-                    Some(chn) => chn,
-                    None => "-unknown-".to_string(),
-                };
+    /// Tables initializer for Context Rocksdb k-v store (if configured)
+    #[derive(Debug, Clone)]
+    pub struct ContextRocksDbTableInitializer;
 
-                if chain_id == tezos_env_main_chain_id
-                    && previous_chain_name.eq(tezos_env_main_chain_name.as_str())
-                {
-                    (true, previous_chain_name, tezos_env_main_chain_name)
-                } else {
-                    (false, previous_chain_name, tezos_env_main_chain_name)
-                }
+    /// Tables initializer for context action rocksdb k-v store (if configured)
+    #[derive(Debug, Clone)]
+    pub struct ContextActionsRocksDbTableInitializer;
+
+    impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::SystemStorage::descriptor(cache),
+                crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
+            ]
+        }
+    }
+
+    impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::block_storage::BlockPrimaryIndex::descriptor(cache),
+                crate::block_storage::BlockByLevelIndex::descriptor(cache),
+                crate::block_storage::BlockByContextHashIndex::descriptor(cache),
+                crate::BlockMetaStorage::descriptor(cache),
+                crate::OperationsStorage::descriptor(cache),
+                crate::OperationsMetaStorage::descriptor(cache),
+                crate::SystemStorage::descriptor(cache),
+                crate::persistent::sequence::Sequences::descriptor(cache),
+                crate::MempoolStorage::descriptor(cache),
+                crate::ChainMetaStorage::descriptor(cache),
+                crate::PredecessorStorage::descriptor(cache),
+            ]
+        }
+    }
+
+    impl RocksDbColumnFactory for ContextActionsRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::SystemStorage::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionStorage::descriptor(cache),
+            ]
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct RocksDbConfig<C: RocksDbColumnFactory> {
+        pub cache_size: usize,
+        pub expected_db_version: i64,
+        pub db_path: PathBuf,
+        pub columns: C,
+        pub threads: Option<usize>,
+    }
+
+    #[derive(Debug, Clone, IntoStaticStr)]
+    pub enum ContextKvStoreConfiguration {
+        RocksDb(RocksDbConfig<ContextRocksDbTableInitializer>),
+        Sled { path: PathBuf },
+        InMem,
+        BTreeMap,
+    }
+
+    pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
+        log: &Logger,
+        cache: &Cache,
+        config: &RocksDbConfig<Factory>,
+        expected_main_chain: &MainChain,
+    ) -> Result<Arc<DB>, DBError> {
+        let db = open_kv(
+            &config.db_path,
+            config.columns.create(cache),
+            &DbConfiguration {
+                max_threads: config.threads,
+            },
+        )
+        .map(Arc::new)?;
+
+        match check_database_compatibility(
+            db.clone(),
+            config.expected_db_version,
+            expected_main_chain,
+            &log,
+        ) {
+            Ok(false) => Err(DBError::DatabaseIncompatibility {
+                name: format!(
+                    "Database is incompatible with version {}",
+                    config.expected_db_version
+                ),
+            }),
+            Err(e) => Err(DBError::DatabaseIncompatibility {
+                name: format!("Failed to verify database compatibility reason: '{}'", e),
+            }),
+            _ => Ok(db),
+        }
+    }
+
+    pub struct MainChain {
+        chain_id: ChainId,
+        chain_name: String,
+    }
+
+    impl MainChain {
+        pub fn new(chain_id: ChainId, chain_name: String) -> Self {
+            Self {
+                chain_id,
+                chain_name,
             }
+        }
+    }
+
+    fn check_database_compatibility(
+        db: Arc<DB>,
+        expected_database_version: i64,
+        expected_main_chain: &MainChain,
+        log: &Logger,
+    ) -> Result<bool, StorageError> {
+        let mut system_info = SystemStorage::new(db);
+        let db_version_ok = match system_info.get_db_version()? {
+            Some(db_version) => db_version == expected_database_version,
             None => {
-                system_info.set_chain_id(&tezos_env_main_chain_id)?;
-                system_info.set_chain_name(&tezos_env_main_chain_name)?;
-                (true, "-none-".to_string(), tezos_env_main_chain_name)
+                system_info.set_db_version(expected_database_version)?;
+                true
             }
         };
+        if !db_version_ok {
+            error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
+        }
 
-    if !chain_id_ok {
-        error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
-                    "requested_chain" => requested_chain_name,
-                    "previous_chain" => previous_chain_name
-        );
+        let tezos_env_main_chain_id = &expected_main_chain.chain_id;
+        let tezos_env_main_chain_name = &expected_main_chain.chain_name;
+
+        let (chain_id_ok, previous_chain_name, requested_chain_name) =
+            match system_info.get_chain_id()? {
+                Some(chain_id) => {
+                    let previous_chain_name = match system_info.get_chain_name()? {
+                        Some(chn) => chn,
+                        None => "-unknown-".to_string(),
+                    };
+
+                    if chain_id == *tezos_env_main_chain_id
+                        && previous_chain_name.eq(tezos_env_main_chain_name.as_str())
+                    {
+                        (true, previous_chain_name, tezos_env_main_chain_name)
+                    } else {
+                        (false, previous_chain_name, tezos_env_main_chain_name)
+                    }
+                }
+                None => {
+                    system_info.set_chain_id(&tezos_env_main_chain_id)?;
+                    system_info.set_chain_name(&tezos_env_main_chain_name)?;
+                    (true, "-none-".to_string(), tezos_env_main_chain_name)
+                }
+            };
+
+        if !chain_id_ok {
+            error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
+                        "requested_chain" => requested_chain_name,
+                        "previous_chain" => previous_chain_name
+            );
+        }
+
+        Ok(db_version_ok && chain_id_ok)
     }
 
-    Ok(db_version_ok && chain_id_ok)
+    pub fn initialize_merkle(
+        context_kv_store: &ContextKvStoreConfiguration,
+        expected_main_chain: &MainChain,
+        log: &Logger,
+        caches: &mut GlobalRocksDbCacheHolder,
+    ) -> Result<MerkleStorage, failure::Error> {
+        Ok(MerkleStorage::new(match context_kv_store {
+            ContextKvStoreConfiguration::RocksDb(cfg) => {
+                let kv_context_cache = Cache::new_lru_cache(cfg.cache_size)
+                    .expect("Failed to initialize RocksDB cache (db_context)");
+                let kv_context =
+                    initialize_rocksdb(&log, &kv_context_cache, cfg, expected_main_chain)
+                        .expect("Failed to create/initialize RocksDB database (db_context)");
+                caches.push(kv_context_cache);
+                Box::new(crate::context::kv_store::rocksdb_backend::RocksDBBackend::new(kv_context))
+            }
+            ContextKvStoreConfiguration::Sled { path } => {
+                let sled = sled::Config::new()
+                    .path(path)
+                    .open()
+                    .expect("Failed to create/initialize Sled database (db_context)");
+                Box::new(crate::context::kv_store::sled_backend::SledBackend::new(
+                    sled,
+                ))
+            }
+            ContextKvStoreConfiguration::InMem => {
+                Box::new(crate::context::kv_store::in_memory_backend::InMemoryBackend::new())
+            }
+            ContextKvStoreConfiguration::BTreeMap => {
+                Box::new(crate::context::kv_store::btree_map::BTreeMapBackend::new())
+            }
+        }))
+    }
 }
 
 #[derive(Clone)]

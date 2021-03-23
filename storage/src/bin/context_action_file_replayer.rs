@@ -10,75 +10,118 @@ use std::{fs, path::PathBuf, sync::Arc};
 
 use clap::{App, Arg};
 use failure::Error;
-use rocksdb::Cache;
 use slog::{debug, info, warn, Drain, Level, Logger};
 
-use shell::context_listener::get_new_tree_hash;
-use shell::context_listener::perform_context_action;
+use crypto::hash::ChainId;
 use storage::context::actions::action_file::ActionsFileReader;
-use storage::context::kv_store::btree_map::BTreeMapBackend;
-use storage::context::kv_store::in_memory_backend::InMemoryBackend;
-use storage::context::kv_store::rocksdb_backend::RocksDBBackend;
-use storage::context::kv_store::sled_backend::SledBackend;
+use storage::context::actions::get_new_tree_hash;
+use storage::context::kv_store::SupportedContextKeyValueStore;
 use storage::context::merkle::merkle_storage::MerkleStorage;
 use storage::context::merkle::merkle_storage_stats::MerkleStorageAction;
 use storage::context::merkle::merkle_storage_stats::OperationLatencyStats;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::persistent::database::RocksDbKeyValueSchema;
+use storage::initializer::{
+    initialize_merkle, ContextKvStoreConfiguration, ContextRocksDbTableInitializer,
+    GlobalRocksDbCacheHolder, MainChain, RocksDbConfig,
+};
 use tezos_context::channel::ContextAction;
 
 struct Args {
     blocks_per_cycle: usize,
     blocks_limit: Option<usize>,
-    input: String,
-    output: String,
-    backend: String,
+    input: PathBuf,
+    output: PathBuf,
+    context_kv_store: ContextKvStoreConfiguration,
 }
+
+const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
 
 impl Args {
     pub fn read_args() -> Self {
         let app = App::new("storage-stats")
             .about("Generate statistics for storage")
             .arg(Arg::with_name("input")
-                 .long("input")
-                 .takes_value(true)
-                 .required(true)
-                 .help("path to the actions.bin"))
+                .long("input")
+                .takes_value(true)
+                .required(true)
+                .help("path to the actions.bin"))
             .arg(Arg::with_name("cycle-size")
-                 .long("cycle_size")
-                 .takes_value(true)
-                 .required(true)
-                 .default_value("2048")
-                 .help("number of blocks in cycle"))
+                .long("cycle_size")
+                .takes_value(true)
+                .required(true)
+                .default_value("2048")
+                .help("number of blocks in cycle"))
             .arg(Arg::with_name("blocks_limit")
-                 .takes_value(true)
-                 .long("blocks_limit")
-                 .help("limits number of processed blocks"))
+                .takes_value(true)
+                .long("blocks_limit")
+                .help("limits number of processed blocks"))
             .arg(Arg::with_name("output")
-                 .takes_value(true)
-                 .long("output")
-                 .default_value("/tmp/storage-stats")
-                 .help("output path for statistics"))
-            .arg(Arg::with_name("backend")
-                 .takes_value(true)
-                 .long("backend")
-                 .required(true)
-                 .default_value("in-memory-gced")
-                 .help("backend to use for storing merkle storage. Possible values: 'inmem', 'rocksdb', 'sled', 'mark_sweep', 'mark-move'"));
+                .takes_value(true)
+                .long("output")
+                .default_value("/tmp/context-actions-replayer-stats")
+                .help("output path for statistics"))
+            .arg(Arg::with_name("context-kv-store")
+                .long("context-kv-store")
+                .takes_value(true)
+                .value_name("STRING")
+                .required(true)
+                .default_value("rocksdb")
+                .possible_values(&SupportedContextKeyValueStore::possible_values())
+                .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"));
 
         let matches = app.get_matches();
+
+        let out_dir = matches
+            .value_of("output")
+            .unwrap()
+            .parse::<PathBuf>()
+            .expect("Provided value cannot be converted to path");
 
         Self {
             blocks_per_cycle: matches
                 .value_of("cycle-size")
                 .map(|s| s.parse::<usize>().unwrap())
                 .unwrap(),
-            backend: matches.value_of("backend").unwrap().to_string(),
+            context_kv_store: matches
+                .value_of("context-kv-store")
+                .unwrap()
+                .parse::<SupportedContextKeyValueStore>()
+                .map(|v| match v {
+                    SupportedContextKeyValueStore::RocksDB { .. } => {
+                        ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
+                            cache_size: LRU_CACHE_SIZE_64MB,
+                            expected_db_version: 0,
+                            db_path: out_dir.join("replayed_context"),
+                            columns: ContextRocksDbTableInitializer,
+                            threads: None,
+                        })
+                    }
+                    SupportedContextKeyValueStore::Sled { .. } => {
+                        ContextKvStoreConfiguration::Sled {
+                            path: out_dir.join("replayed_context_sled"),
+                        }
+                    }
+                    SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                    SupportedContextKeyValueStore::BTreeMap => {
+                        ContextKvStoreConfiguration::BTreeMap
+                    }
+                })
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "Expecting one value from {:?}, error: {:?}",
+                        SupportedContextKeyValueStore::possible_values(),
+                        e
+                    )
+                }),
             blocks_limit: matches
                 .value_of("blocks_limit")
                 .map(|s| s.parse::<usize>().unwrap()),
-            output: matches.value_of("output").unwrap().to_string(),
-            input: matches.value_of("input").unwrap().to_string(),
+            output: out_dir,
+            input: matches
+                .value_of("input")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path"),
         }
     }
 }
@@ -144,32 +187,6 @@ fn get_blocks_count(log: &Logger, path: PathBuf) -> u32 {
         counter += 1;
     }
     counter
-}
-
-fn create_key_value_store(path: &PathBuf, cache: &Cache) -> Arc<rocksdb::DB> {
-    let schemas = vec![
-        storage::block_storage::BlockPrimaryIndex::descriptor(&cache),
-        storage::block_storage::BlockByLevelIndex::descriptor(&cache),
-        storage::block_storage::BlockByContextHashIndex::descriptor(&cache),
-        storage::BlockMetaStorage::descriptor(&cache),
-        storage::OperationsStorage::descriptor(&cache),
-        storage::OperationsMetaStorage::descriptor(&cache),
-        storage::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-        storage::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-        storage::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
-        storage::context::actions::context_action_storage::ContextActionStorage::descriptor(&cache),
-        storage::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(&cache),
-        storage::SystemStorage::descriptor(&cache),
-        storage::persistent::sequence::Sequences::descriptor(&cache),
-        storage::MempoolStorage::descriptor(&cache),
-        storage::ChainMetaStorage::descriptor(&cache),
-        storage::PredecessorStorage::descriptor(&cache),
-    ];
-
-    let db_config = storage::persistent::DbConfiguration::default();
-    storage::persistent::database::open_kv(path, schemas, &db_config)
-        .map(Arc::new)
-        .unwrap()
 }
 
 struct StatsWriter {
@@ -270,59 +287,59 @@ impl StatsWriter {
             self.block_latencies_total,
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Set,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Get,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::GetByPrefix,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::GetKeyValuesByPrefix,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::GetContextTreeByPrefix,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::GetHistory,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Mem,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::DirMem,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Copy,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Delete,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::DeleteRecursively,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Commit,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::Checkout,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             ),
             self.generate_stats_for_merkle_action(
                 MerkleStorageAction::BlockApplied,
-                &report.perf_stats.global
+                &report.perf_stats.global,
             )
         );
 
@@ -332,80 +349,55 @@ impl StatsWriter {
 
 fn main() -> Result<(), Error> {
     let params = Args::read_args();
+    let log = create_logger();
 
-    let out_dir = PathBuf::from(params.output.as_str());
-    let key_value_db_path = out_dir.join("key_value_store");
+    info!(log, "Context actions replayer starts...");
 
-    let actions_storage_path = PathBuf::from(params.input.as_str());
+    let _ = fs::remove_dir_all(&params.output)?;
+    let _ = fs::create_dir(&params.output)?;
 
-    let _ = fs::remove_dir_all(&out_dir)?;
-    let _ = fs::create_dir(&out_dir)?;
-
-    let logger = create_logger();
-
-    let kvbackend = match params.backend.as_str() {
-        "rocksdb" => {
-            let cache = Cache::new_lru_cache(128 * 1024 * 1024).unwrap(); // 128 MB
-            let kv = create_key_value_store(&key_value_db_path, &cache);
-            MerkleStorage::new(Box::new(RocksDBBackend::new(kv)))
-        }
-        "inmem" => MerkleStorage::new(Box::new(InMemoryBackend::new())),
-        "sled" => {
-            let sled = sled::Config::new()
-                .path(out_dir.join("sled"))
-                .open()
-                .unwrap();
-            MerkleStorage::new(Box::new(SledBackend::new(sled)))
-        }
-        "btree" => MerkleStorage::new(Box::new(BTreeMapBackend::new())),
-        // "mark_sweep" => MerkleStorage::new(Box::new(MarkSweepGCed::<InMemoryBackend>::new(7))),
-        // "mark_move" => MerkleStorage::new(Box::new(MarkMoveGCed::<BTreeMapBackend>::new(7))),
-        _ => panic!("unknown backend"),
-    };
-
-    let merkle = Arc::new(RwLock::new(kvbackend));
-
-    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(None, merkle.clone()));
-
-    let mut stat_writer = StatsWriter::new(out_dir.join(params.backend + ".txt"));
+    let actions_storage_path = params.input;
+    let context_kv_storage_name: &'static str = params.context_kv_store.clone().into();
+    let stats_output_file = params.output.join(context_kv_storage_name).join(".txt");
 
     info!(
-        logger,
-        "Reading info from file {}",
-        actions_storage_path.to_str().unwrap()
+        log,
+        "Reading info from action file: {} and generating stats to file: {}",
+        actions_storage_path.to_str().unwrap(),
+        stats_output_file.to_str().unwrap(),
     );
+
+    let mocked_test_main_chain = MainChain::new(
+        ChainId::from_base58_check("NetXguSLFNJvNyf").expect("Failed to create chainId"),
+        "TEST_CHAIN_FOR_CONTEXT_ACTION_REPLAYER".to_string(),
+    );
+
+    let mut global_cache_holder = GlobalRocksDbCacheHolder::with_capacity(1);
+    // create merkle storage
+    let merkle = Arc::new(RwLock::new(initialize_merkle(
+        &params.context_kv_store,
+        &mocked_test_main_chain,
+        &log,
+        &mut global_cache_holder,
+    )?));
+    let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(None, merkle.clone()));
+    let mut stat_writer = StatsWriter::new(stats_output_file);
 
     let mut counter = 0;
     let mut cycle_counter = 0;
-    let blocks_count = get_blocks_count(&logger, actions_storage_path.clone());
+    let blocks_count = get_blocks_count(&log, actions_storage_path.clone());
 
-    info!(logger, "{} blocks found", blocks_count);
+    info!(log, "{} blocks found", blocks_count);
 
-    let actions_reader = ActionsFileReader::new(&actions_storage_path).unwrap();
+    let actions_reader = ActionsFileReader::new(&actions_storage_path)?;
 
     for messages in actions_reader.take(params.blocks_limit.unwrap_or(blocks_count as usize)) {
         counter += 1;
         let progress = counter as f64 / blocks_count as f64 * 100.0;
 
         for action in messages.iter() {
-            match action {
-                // actions that does not mutate staging area can be ommited here
-                ContextAction::Set { .. }
-                | ContextAction::Copy { .. }
-                | ContextAction::Delete { .. }
-                | ContextAction::RemoveRecursively { .. }
-                | ContextAction::Commit { .. }
-                | ContextAction::Checkout { .. }
-                | ContextAction::Get { .. }
-                | ContextAction::Mem { .. }
-                | ContextAction::DirMem { .. }
-                | ContextAction::Fold { .. } => {
-                    if let Err(e) = perform_context_action(&action, &mut context) {
-                        panic!("cannot perform action error: '{}'", e);
-                    }
-                }
-                ContextAction::Shutdown { .. } => {}
-            };
+            // evaluate context action to context
+            context.perform_context_action(&action)?;
 
             // verify state of the storage after action has been applied
             match action {
@@ -437,27 +429,27 @@ fn main() -> Result<(), Error> {
             };
 
             // verify context hashes after each block
-            if let Some(expected_hash) = get_new_tree_hash(&action) {
+            if let Some(expected_hash) = get_new_tree_hash(&action)? {
                 assert_eq!(context.get_merkle_root(), expected_hash);
             }
 
             if let ContextAction::Commit { block_hash, .. } = &action {
                 debug!(
-                        logger,
-                        "progress {:.7}% - cycle nr: {} block nr {} [{}] with {} messages processed - {} mb",
-                        progress,
-                        cycle_counter,
-                        counter,
-                        hex::encode(&block_hash.clone().unwrap().clone()),
-                        messages.len(),
-                            merkle.clone()
-                            .read()
-                            .unwrap()
-                            .get_memory_usage()
-                            .unwrap()
-                            / 1024
-                            / 1024
-                    );
+                    log,
+                    "progress {:.7}% - cycle nr: {} block nr {} [{}] with {} messages processed - {} mb",
+                    progress,
+                    cycle_counter,
+                    counter,
+                    hex::encode(&block_hash.clone().unwrap().clone()),
+                    messages.len(),
+                    merkle.clone()
+                        .read()
+                        .unwrap()
+                        .get_memory_usage()
+                        .unwrap()
+                        / 1024
+                        / 1024
+                );
 
                 context.block_applied().unwrap();
                 if counter > 0 && counter % params.blocks_per_cycle == 0 {

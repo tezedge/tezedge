@@ -10,7 +10,6 @@ use storage::context::kv_store::test_support::{
 };
 use storage::context::kv_store::SupportedContextKeyValueStore;
 
-
 fn test_put_get(kv_store_factory: &TestContextKvStoreFactoryInstance) {
     let storage = kv_store_factory.create("test_put_get").unwrap();
 

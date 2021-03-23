@@ -15,7 +15,6 @@ use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
 use failure::Fail;
-use rocksdb::ColumnFamilyDescriptor;
 use slog::{Drain, Duplicate, Logger, Never, SendSyncRefUnwindSafeDrain};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -29,7 +28,10 @@ use storage::context::actions::context_action_storage::ContextActionStorage;
 use storage::context::actions::ContextActionStoreBackend;
 use storage::context::kv_store::SupportedContextKeyValueStore;
 use storage::context::ActionRecorder;
-use storage::persistent::database::RocksDbKeyValueSchema;
+use storage::initializer::{
+    ContextActionsRocksDbTableInitializer, ContextKvStoreConfiguration,
+    ContextRocksDbTableInitializer, DbsRocksDbTableInitializer, RocksDbConfig,
+};
 use storage::PersistentStorage;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
@@ -145,70 +147,9 @@ pub trait MultipleValueArg: IntoEnumIterator {
     fn supported_values(&self) -> Vec<&'static str>;
 }
 
-pub trait ColumnFactory {
-    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor>;
-}
-
-#[derive(Debug, Clone)]
-pub struct RocksDbTableInitializer;
-
-#[derive(Debug, Clone)]
-pub struct ContextRocksDbTableInitializer;
-
-#[derive(Debug, Clone)]
-pub struct ContextActionsRocksDbTableInitializer;
-
-impl ColumnFactory for RocksDbTableInitializer {
-    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
-        vec![
-            storage::block_storage::BlockPrimaryIndex::descriptor(cache),
-            storage::block_storage::BlockByLevelIndex::descriptor(cache),
-            storage::block_storage::BlockByContextHashIndex::descriptor(cache),
-            storage::BlockMetaStorage::descriptor(cache),
-            storage::OperationsStorage::descriptor(cache),
-            storage::OperationsMetaStorage::descriptor(cache),
-            storage::SystemStorage::descriptor(cache),
-            storage::persistent::sequence::Sequences::descriptor(cache),
-            storage::MempoolStorage::descriptor(cache),
-            storage::ChainMetaStorage::descriptor(cache),
-            storage::PredecessorStorage::descriptor(cache),
-        ]
-    }
-}
-
-impl ColumnFactory for ContextRocksDbTableInitializer {
-    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
-        vec![
-            storage::SystemStorage::descriptor(cache),
-            storage::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
-        ]
-    }
-}
-
-impl ColumnFactory for ContextActionsRocksDbTableInitializer {
-    fn create(&self, cache: &rocksdb::Cache) -> Vec<ColumnFamilyDescriptor> {
-        vec![
-            storage::SystemStorage::descriptor(cache),
-            storage::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
-            storage::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
-            storage::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
-            storage::context::actions::context_action_storage::ContextActionStorage::descriptor(cache),
-        ]
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct RocksDBConfig<C: ColumnFactory> {
-    pub cache_size: usize,
-    pub expected_db_version: i64,
-    pub db_path: PathBuf,
-    pub columns: C,
-    pub threads: Option<usize>,
-}
-
 #[derive(Debug, Clone)]
 pub struct Storage {
-    pub db: RocksDBConfig<RocksDbTableInitializer>,
+    pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
     pub tezos_data_dir: PathBuf,
     pub action_store_backend: Vec<ContextActionStoreBackend>,
@@ -218,15 +159,7 @@ pub struct Storage {
     // merkle cfg
     pub context_kv_store: ContextKvStoreConfiguration,
     // context actions cfg
-    pub merkle_context_actions_store: Option<RocksDBConfig<ContextActionsRocksDbTableInitializer>>,
-}
-
-#[derive(Debug, Clone)]
-pub enum ContextKvStoreConfiguration {
-    RocksDb(RocksDBConfig<ContextRocksDbTableInitializer>),
-    Sled { path: PathBuf },
-    InMem,
-    BTreeMap,
+    pub merkle_context_actions_store: Option<RocksDbConfig<ContextActionsRocksDbTableInitializer>>,
 }
 
 impl Storage {
@@ -626,8 +559,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("STRING")
             .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
-        .arg(Arg::with_name("kv-store-backend")
-            .long("kv-store-backend")
+        .arg(Arg::with_name("context-kv-store")
+            .long("context-kv-store")
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
@@ -1011,11 +944,11 @@ impl Environment {
                             .expect("Provided value cannot be converted to number")
                     });
 
-                let db = RocksDBConfig {
+                let db = RocksDbConfig {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
                     expected_db_version: Storage::DB_STORAGE_VERSION,
                     db_path: db_path.join("db"),
-                    columns: RocksDbTableInitializer,
+                    columns: DbsRocksDbTableInitializer,
                     threads: db_threads_count,
                 };
 
@@ -1030,7 +963,7 @@ impl Environment {
                     .iter()
                     .map(|v| match v.parse::<ContextActionStoreBackend>() {
                         Ok(ContextActionStoreBackend::RocksDB) => {
-                            merkle_context_actions_store = Some(RocksDBConfig {
+                            merkle_context_actions_store = Some(RocksDbConfig {
                                 cache_size: Storage::LRU_CACHE_SIZE_16MB,
                                 expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
                                 db_path: db_path.join("context_actions"),
@@ -1057,12 +990,12 @@ impl Environment {
                     .collect::<Vec<_>>();
 
                 let context_kv_store = args
-                    .value_of("kv-store-backend")
+                    .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
                         SupportedContextKeyValueStore::RocksDB { .. } => {
-                            ContextKvStoreConfiguration::RocksDb(RocksDBConfig {
+                            ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
                                 cache_size: Storage::LRU_CACHE_SIZE_64MB,
                                 expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
                                 db_path: db_path.join("context"),
