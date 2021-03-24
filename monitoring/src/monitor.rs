@@ -75,14 +75,11 @@ impl Monitor {
         use std::mem::size_of_val;
         use tezos_messages::p2p::encoding::peer::PeerMessage;
 
-        match msg.message.message() {
-            PeerMessage::CurrentBranch(msg) => {
-                if msg.current_branch().current_head().level() > 0 {
-                    self.bootstrap_monitor
-                        .set_level(msg.current_branch().current_head().level() as usize);
-                }
+        if let PeerMessage::CurrentBranch(msg) = msg.message.message() {
+            if msg.current_branch().current_head().level() > 0 {
+                self.bootstrap_monitor
+                    .set_level(msg.current_branch().current_head().level() as usize);
             }
-            _ => (),
         }
 
         if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
@@ -118,9 +115,7 @@ impl
         ),
     ) -> Self {
         
-        let chain_monitor = initialize_chain_monitor(&persistent_storage, &main_chain_id);
-
-        let (bootstrap_monitor, blocks_monitor) = initialize_bootstrap_monitor(&persistent_storage);
+        let (chain_monitor, blocks_monitor, bootstrap_monitor) = initialize_monitors(&persistent_storage, &main_chain_id);
 
         Self {
             network_channel: event_channel,
@@ -296,33 +291,30 @@ impl Receive<ShellChannelMsg> for Monitor {
     }
 }
 
-fn initialize_chain_monitor(persistent_storage: &PersistentStorage, main_chain_id: &ChainId) -> ChainMonitor {
+fn initialize_monitors(persistent_storage: &PersistentStorage, main_chain_id: &ChainId) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
     let mut chain_monitor = ChainMonitor::new();
 
     let block_storage = BlockStorage::new(&persistent_storage);
     let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
 
+    let mut downloaded_headers = 0;
+    let mut downloaded_blocks = 0;
+
+    // populate the monitors with the data from storage
     if let Ok(iter) = block_storage.iterator() {
-        iter.for_each(|(k, _)| match k {
-            Ok(key) => {
-                match block_storage.get(&key) {
-                    Ok(Some(header_with_hash)) => {
-                        chain_monitor.process_block_header(header_with_hash.header.level())
-                    }
-                    _ => ()
-                }
+        iter.for_each(|(k, _)| if let Ok(key) = k {
+            if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
+                chain_monitor.process_block_header(header_with_hash.header.level());
+                downloaded_headers += 1;
             }
-            _ => ()
         })
     }
     if let Ok(iter) = operations_meta_storage.iter(IteratorMode::Start) {
-        iter.for_each(|(_, v)| match v {
-            Ok(v) => {
-                if v.is_complete() {
-                    chain_monitor.process_block_operations(v.level())
-                }
+        iter.for_each(|(_, v)| if let Ok(v) = v {
+            if v.is_complete() {
+                chain_monitor.process_block_operations(v.level());
+                downloaded_blocks += 1;
             }
-            _ => ()
         })
     }
 
@@ -336,22 +328,8 @@ fn initialize_chain_monitor(persistent_storage: &PersistentStorage, main_chain_i
         chain_monitor.process_block_application(level)
     }
 
-    chain_monitor
-}
+    let bootstrap_monitor = BootstrapMonitor::initialize(downloaded_blocks, downloaded_headers);
+    let block_monitor = BlocksMonitor::new(4096, downloaded_blocks);
 
-fn initialize_bootstrap_monitor(persistent_storage: &PersistentStorage) -> (BootstrapMonitor, BlocksMonitor) {
-    let block_storage = BlockStorage::new(&persistent_storage);
-    let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
-    
-    let downloaded_blocks = match operations_meta_storage.downloaded_block_count() {
-        Ok(storage_length) => storage_length,
-        Err(_) => 0,
-    };
-
-    let downloaded_headers = match block_storage.header_count() {
-        Ok(storage_length) => storage_length,
-        Err(_) => 0,
-    };
-
-    (BootstrapMonitor::initialize(downloaded_blocks, downloaded_headers), BlocksMonitor::new(4096, downloaded_blocks))
+    (chain_monitor, block_monitor, bootstrap_monitor)
 }

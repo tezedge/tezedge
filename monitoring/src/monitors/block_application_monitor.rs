@@ -8,8 +8,8 @@ use tezos_messages::Head;
 use crate::websocket::handler_messages::{BlockApplicationMessage, BlockInfo};
 
 pub struct ApplicationMonitor {
-    total_applied: i32,
-    current_applied: i32,
+    total_applied: usize,
+    current_applied: usize,
     last_applied_block: Option<Head>,
     first_update: Instant,
     last_update: Instant,
@@ -28,7 +28,7 @@ impl ApplicationMonitor {
     }
 
     pub fn block_was_applied(&mut self, block_info: Head) {
-        self.total_applied = *block_info.level();
+        self.total_applied = *block_info.level() as usize;
         self.current_applied += 1;
         self.last_applied_block = Some(block_info);
     }

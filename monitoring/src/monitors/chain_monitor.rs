@@ -7,13 +7,13 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct Cycle {
     // cycle id
-    id: i32,
+    id: usize,
     // number of downloaded block headers per cycle
-    headers: i32,
+    headers: usize,
     // number of downloaded block operatios per cycle
-    operations: i32,
+    operations: usize,
     // number of applied blocks
-    applications: i32,
+    applications: usize,
     // skip serialization to JSON for ws
     #[serde(skip_serializing)]
     // timestamp for fisrt block header occurrence
@@ -23,7 +23,7 @@ pub struct Cycle {
 }
 
 impl Cycle {
-    pub fn new(id: i32, headers: i32, operations: i32, applications: i32) -> Self {
+    pub fn new(id: usize, headers: usize, operations: usize, applications: usize) -> Self {
         Self {
             id,
             headers,
@@ -43,20 +43,22 @@ pub struct ChainMonitor {
     chain: Vec<Cycle>,
 }
 
+impl Default for ChainMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ChainMonitor {
-    const BLOCKS_PER_CYCLE: i32 = 4096;
+    const BLOCKS_PER_CYCLE: usize = 4096;
 
     pub fn new() -> Self {
         Self { chain: Vec::new() }
     }
-    
-    // pub fn initialize() -> Self {
-
-    // }
 
     // get cycle id number
-    fn cycle_id(&self, block_level: i32) -> i32 {
-        block_level / Self::BLOCKS_PER_CYCLE
+    fn cycle_id(&self, block_level: i32) -> usize {
+        block_level as usize / Self::BLOCKS_PER_CYCLE
     }
 
     // extend chain to support new cycles
@@ -64,7 +66,7 @@ impl ChainMonitor {
         // cycle number
         let cycle_id = self.cycle_id(block_level);
         // get number of cycles in chain
-        let chain_len = self.chain.len() as i32;
+        let chain_len = self.chain.len();
         // create all missing cycles for chain stats
         if cycle_id >= chain_len {
             let mut chain_append = (chain_len..=cycle_id)

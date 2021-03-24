@@ -115,14 +115,6 @@ impl OperationsMetaStorage {
     pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
-
-    #[inline]
-    pub fn downloaded_block_count(&self) -> Result<usize, StorageError> {
-        Ok(self.kv.iterator(IteratorMode::Start)?.filter(|(_, v)| match v {
-            Ok(v) => v.is_complete,
-            _ => false
-        }).count())
-    }
 }
 
 impl KeyValueSchema for OperationsMetaStorage {

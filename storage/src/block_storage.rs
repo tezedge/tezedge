@@ -142,8 +142,6 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 
-    fn header_count(&self) -> Result<usize, StorageError>;
-
     fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
 }
 
@@ -450,11 +448,6 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn header_count(&self) -> Result<usize, StorageError> {
-        self.primary_index.header_count()
-    }
-
-    #[inline]
     fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
         self.primary_index.iterator()
     }
@@ -524,11 +517,6 @@ impl BlockPrimaryIndex {
     #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
-    }
-
-    #[inline]
-    fn header_count(&self) -> Result<usize, StorageError> {
-        Ok(self.kv.iterator(IteratorMode::Start)?.count())
     }
 
     #[inline]
