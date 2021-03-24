@@ -15,7 +15,7 @@ use storage::{
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
-    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, BlockOperations,
+    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, BlockOperations, BlockOperation,
     FullBlockInfo, NodeVersion, Protocols,
 };
 use crate::server::RpcServiceEnvironment;
@@ -197,6 +197,32 @@ pub(crate) fn get_block_operations(
     } else {
         bail!(
             "Cannot retrieve operations, block_hash {} not found!",
+            block_hash.to_base58_check()
+        )
+    }
+}
+
+/// Extract a specific operation included in one of the block's validation pass.
+pub(crate) fn get_block_operation(
+    chain_id: &ChainId,
+    block_hash: &BlockHash,
+    persistent_storage: &PersistentStorage,
+    validation_pass: usize,
+    operation_index: usize,
+) -> Result<BlockOperation, failure::Error> {
+    if let Some(block_info) = get_block(chain_id, &block_hash, persistent_storage)? {
+        if let Some(block_validation_pass) = block_info.operations.get(validation_pass) {
+            if let Some(operation) = block_validation_pass.get(operation_index) {
+                Ok(operation.clone())
+            } else {
+                bail!("Cannot retrieve operation {} from validation pass {} from block {}", operation_index, validation_pass, block_hash.to_base58_check())
+            }
+        } else {
+            bail!("Cannot retrieve validation pass {} from block {}", validation_pass, block_hash.to_base58_check())
+        }
+    } else {
+        bail!(
+            "Cannot retrieve operation block, block_hash {} not found!",
             block_hash.to_base58_check()
         )
     }

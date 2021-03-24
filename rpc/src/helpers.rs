@@ -49,6 +49,7 @@ macro_rules! required_param {
 
 pub type BlockMetadata = HashMap<String, Value>;
 pub type BlockOperations = Vec<Vec<HashMap<String, Value>>>;
+pub type BlockOperation = HashMap<String, Value>;
 
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
