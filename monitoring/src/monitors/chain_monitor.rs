@@ -7,19 +7,32 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct Cycle {
     // cycle id
-    id: usize,
+    id: i32,
     // number of downloaded block headers per cycle
-    headers: usize,
+    headers: i32,
     // number of downloaded block operatios per cycle
-    operations: usize,
+    operations: i32,
     // number of applied blocks
-    applications: usize,
+    applications: i32,
     // skip serialization to JSON for ws
     #[serde(skip_serializing)]
     // timestamp for fisrt block header occurrence
     start: Instant,
     // time to download headers and operations for cycle
     duration: Option<f32>,
+}
+
+impl Cycle {
+    pub fn new(id: i32, headers: i32, operations: i32, applications: i32) -> Self {
+        Self {
+            id,
+            headers,
+            operations,
+            applications,
+            start: Instant::now(),
+            duration: None,
+        }
+    }
 }
 
 // monitoring statistics for bootraping
@@ -31,23 +44,27 @@ pub struct ChainMonitor {
 }
 
 impl ChainMonitor {
-    const BLOCKS_PER_CYCLE: usize = 4096;
+    const BLOCKS_PER_CYCLE: i32 = 4096;
 
     pub fn new() -> Self {
         Self { chain: Vec::new() }
     }
+    
+    // pub fn initialize() -> Self {
+
+    // }
 
     // get cycle id number
-    fn cycle_id(&self, block_level: usize) -> usize {
+    fn cycle_id(&self, block_level: i32) -> i32 {
         block_level / Self::BLOCKS_PER_CYCLE
     }
 
     // extend chain to support new cycles
-    fn update_chain(&mut self, block_level: usize) {
+    fn update_chain(&mut self, block_level: i32) {
         // cycle number
         let cycle_id = self.cycle_id(block_level);
         // get number of cycles in chain
-        let chain_len = self.chain.len();
+        let chain_len = self.chain.len() as i32;
         // create all missing cycles for chain stats
         if cycle_id >= chain_len {
             let mut chain_append = (chain_len..=cycle_id)
@@ -68,13 +85,13 @@ impl ChainMonitor {
     }
 
     // process block header
-    pub fn process_block_header(&mut self, block_level: usize) {
+    pub fn process_block_header(&mut self, block_level: i32) {
         // increment block headers value
         self.get_cycle_for_block_mut(block_level).headers += 1;
     }
 
     // process block operations
-    pub fn process_block_operations(&mut self, block_level: usize) {
+    pub fn process_block_operations(&mut self, block_level: i32) {
         // increment block operations value
         let cycle = self.get_cycle_for_block_mut(block_level);
         cycle.operations += 1;
@@ -86,19 +103,19 @@ impl ChainMonitor {
     }
 
     // process block applications
-    pub fn process_block_application(&mut self, block_level: usize) {
+    pub fn process_block_application(&mut self, block_level: i32) {
         // increment block applications value
         self.get_cycle_for_block_mut(block_level).applications += 1;
     }
 
     #[inline]
-    pub fn get_cycle_for_block_mut(&mut self, block_level: usize) -> &mut Cycle {
+    pub fn get_cycle_for_block_mut(&mut self, block_level: i32) -> &mut Cycle {
         // extend chain to support new cycles
         self.update_chain(block_level);
         // cycle number
         let cycle_id = self.cycle_id(block_level);
         // use reference to update cycle stats
-        &mut self.chain[cycle_id]
+        &mut self.chain[cycle_id as usize]
     }
 
     // snapshot for chain stats
@@ -113,9 +130,9 @@ mod tests {
     use rand::Rng;
 
     // number of block
-    const NUMBER_OF_BLOCKS: usize = 5000;
+    const NUMBER_OF_BLOCKS: i32 = 5000;
     // number of shell events
-    const NUMBER_OF_BLOCK_EVENTS: usize = 10000;
+    const NUMBER_OF_BLOCK_EVENTS: i32 = 10000;
 
     fn generate_blocks() -> ChainMonitor {
         // start random number generator
@@ -127,7 +144,7 @@ mod tests {
         // generate blocks with random level
         for _index in 0..NUMBER_OF_BLOCK_EVENTS {
             // generate block level
-            let block_level: usize = rng.gen_range(0, NUMBER_OF_BLOCKS);
+            let block_level: i32 = rng.gen_range(0, NUMBER_OF_BLOCKS);
 
             // process new block header
             chain_monitor.process_block_header(block_level);

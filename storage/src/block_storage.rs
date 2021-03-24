@@ -15,6 +15,7 @@ use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
     Location, PersistentStorage, StorageType,
 };
+use crate::persistent::database::IteratorWithSchema;
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
@@ -140,6 +141,10 @@ pub trait BlockStorageReader: Sync + Send {
     ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
+
+    fn header_count(&self) -> Result<usize, StorageError>;
+
+    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
 }
 
 impl BlockStorage {
@@ -443,6 +448,16 @@ impl BlockStorageReader for BlockStorage {
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.by_context_hash_index.contains(context_hash)
     }
+
+    #[inline]
+    fn header_count(&self) -> Result<usize, StorageError> {
+        self.primary_index.header_count()
+    }
+
+    #[inline]
+    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
+        self.primary_index.iterator()
+    }
 }
 
 impl CommitLogSchema for BlockStorage {
@@ -509,6 +524,16 @@ impl BlockPrimaryIndex {
     #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn header_count(&self) -> Result<usize, StorageError> {
+        Ok(self.kv.iterator(IteratorMode::Start)?.count())
+    }
+
+    #[inline]
+    fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.kv.iterator(IteratorMode::Start).map_err(StorageError::from)
     }
 }
 
