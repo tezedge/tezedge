@@ -3,7 +3,6 @@
 
 use crate::persistent::codec::Codec;
 
-
 pub struct CommitLogDescriptor {
     name: String,
 }

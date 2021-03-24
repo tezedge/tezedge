@@ -133,6 +133,7 @@ pub mod infra {
             identity: Identity,
             (log, log_level): (Logger, Level),
             context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
+            (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
         ) -> Result<Self, failure::Error> {
             warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -199,8 +200,8 @@ pub mod infra {
                 ProtocolEndpointConfiguration::new(
                     TezosRuntimeConfiguration {
                         log_enabled: common::is_ocaml_log_enabled(),
-                        debug_mode: false,
-                        compute_context_action_tree_hashes: false,
+                        debug_mode: record_also_readonly_context_action,
+                        compute_context_action_tree_hashes: compute_context_action_tree_hashes,
                     },
                     tezos_env.clone(),
                     false,

@@ -77,6 +77,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         NODE_IDENTITY.clone(),
         (log, log_level),
         vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -178,6 +179,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         NODE_IDENTITY.clone(),
         (log, log_level),
         vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -322,6 +324,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         NODE_IDENTITY.clone(),
         (log, log_level),
         vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -430,6 +433,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
         NODE_IDENTITY.clone(),
         (log, log_level),
         vec![],
+        (false, false),
     )?;
 
     // register network channel listener
@@ -584,6 +588,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         NODE_IDENTITY.clone(),
         (log, log_level),
         context_action_recorders,
+        (true, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -812,6 +817,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
         NODE_IDENTITY.clone(),
         (log, log_level),
         context_action_recorders,
+        (true, true),
     )?;
 
     // wait for storage initialization to genesis
@@ -836,7 +842,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
         test_cases_data::current_branch_on_level_1324::serve_data,
     );
     // wait for current head on level 1324
-    let current_head_wait_timeout = (Duration::from_secs(90), Duration::from_millis(500));
+    let current_head_wait_timeout = (Duration::from_secs(120), Duration::from_millis(500));
     node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
     let current_head_reached = SystemTime::now();
     println!(

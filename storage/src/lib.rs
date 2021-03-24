@@ -402,7 +402,6 @@ pub mod initializer {
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
     use slog::{error, Logger};
-    use strum_macros::IntoStaticStr;
 
     use crypto::hash::ChainId;
 
@@ -480,7 +479,7 @@ pub mod initializer {
         pub threads: Option<usize>,
     }
 
-    #[derive(Debug, Clone, IntoStaticStr)]
+    #[derive(Debug, Clone)]
     pub enum ContextKvStoreConfiguration {
         RocksDb(RocksDbConfig<ContextRocksDbTableInitializer>),
         Sled { path: PathBuf },
