@@ -39,27 +39,27 @@ const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
 impl Args {
     pub fn read_args() -> Self {
         let app = App::new("storage-stats")
-            .about("Generate statistics for storage")
+            .about("Replay context action file and generate statistics for merkle storage")
             .arg(Arg::with_name("input")
                 .long("input")
                 .takes_value(true)
                 .required(true)
-                .help("path to the actions.bin"))
+                .help("Path to the actions.bin"))
             .arg(Arg::with_name("cycle-size")
                 .long("cycle_size")
                 .takes_value(true)
                 .required(true)
                 .default_value("2048")
-                .help("number of blocks in cycle"))
+                .help("Number of blocks in cycle"))
             .arg(Arg::with_name("blocks_limit")
                 .takes_value(true)
                 .long("blocks_limit")
-                .help("limits number of processed blocks"))
+                .help("Limits number of processed blocks"))
             .arg(Arg::with_name("output")
                 .takes_value(true)
                 .long("output")
-                .default_value("/tmp/context-actions-replayer-stats")
-                .help("output path for statistics"))
+                .required(true)
+                .help("Output path for temp data and generated result statistics"))
             .arg(Arg::with_name("context-kv-store")
                 .long("context-kv-store")
                 .takes_value(true)
@@ -91,7 +91,7 @@ impl Args {
                         ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
                             cache_size: LRU_CACHE_SIZE_64MB,
                             expected_db_version: 0,
-                            db_path: out_dir.join("replayed_context"),
+                            db_path: out_dir.join("replayed_context_rocksdb"),
                             columns: ContextRocksDbTableInitializer,
                             threads: None,
                         })
@@ -351,24 +351,26 @@ fn main() -> Result<(), Error> {
     let params = Args::read_args();
     let log = create_logger();
 
-    info!(log, "Context actions replayer starts...");
-
-    let _ = fs::remove_dir_all(&params.output)?;
+    // prepare output dir
+    if params.output.exists() {
+        let _ = fs::remove_dir_all(&params.output)?;
+    }
     let _ = fs::create_dir(&params.output)?;
 
-    let actions_storage_path = params.input;
+    let actions_file_path = params.input;
     let context_kv_storage_name: &'static str = params.context_kv_store.clone().into();
-    let stats_output_file = params.output.join(context_kv_storage_name).join(".txt");
+    let stats_output_file = params
+        .output
+        .join(&format!("{}.stats.txt", context_kv_storage_name));
 
-    info!(
-        log,
-        "Reading info from action file: {} and generating stats to file: {}",
-        actions_storage_path.to_str().unwrap(),
-        stats_output_file.to_str().unwrap(),
-    );
+    info!(log, "Context actions replayer starts...";
+               "input_file" => actions_file_path.to_str().unwrap(),
+               "output_stats_file" => stats_output_file.to_str().unwrap(),
+               "output_kv_store_dir" => params.output.to_str().unwrap(),
+               "target_context_kv_store" => context_kv_storage_name);
 
     let mocked_test_main_chain = MainChain::new(
-        ChainId::from_base58_check("NetXguSLFNJvNyf").expect("Failed to create chainId"),
+        ChainId::from_base58_check("NetXgtSLGNJvNye").expect("Failed to create chainId"),
         "TEST_CHAIN_FOR_CONTEXT_ACTION_REPLAYER".to_string(),
     );
 
@@ -385,11 +387,11 @@ fn main() -> Result<(), Error> {
 
     let mut counter = 0;
     let mut cycle_counter = 0;
-    let blocks_count = get_blocks_count(&log, actions_storage_path.clone());
+    let blocks_count = get_blocks_count(&log, actions_file_path.clone());
 
     info!(log, "{} blocks found", blocks_count);
 
-    let actions_reader = ActionsFileReader::new(&actions_storage_path)?;
+    let actions_reader = ActionsFileReader::new(&actions_file_path)?;
 
     for messages in actions_reader.take(params.blocks_limit.unwrap_or(blocks_count as usize)) {
         counter += 1;

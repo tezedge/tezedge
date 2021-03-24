@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Context actions record/replay feature
 - Flag `--actions-store-backend <BACKEND1> <BACKEND2> ...`. When enabled the node stores incomming actions in one of the selected backends. Possible values are: `rocksdb`, `file`
 - Flag `--context-kv-store=STRING`. Chooses backend for data related to merkle storage. By default rocksdb database is used, possible values are :
     - `rocksdb` - persistent [RocksDB](https://rocksdb.org/) database
@@ -17,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Nothing.
+- Storage module refactor
 
 ### Deprecated
 

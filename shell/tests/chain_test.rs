@@ -864,6 +864,16 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     Ok(())
 }
 
+fn ensure_target_action_file() -> Result<PathBuf, failure::Error> {
+    let action_file_path = env::var("TARGET_ACTION_FILE")
+        .unwrap_or_else(|_| panic!("This test requires environment parameter: 'TARGET_ACTION_FILE' to point to the file, where to store recorded context action"));
+    let path = PathBuf::from(action_file_path);
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(path)
+}
+
 /// Stored first cca first 1300 apply block data
 mod test_data {
     use std::collections::HashMap;
@@ -1040,16 +1050,6 @@ mod test_data {
             .try_into()
             .expect("Failed to convert index to Level")
     }
-}
-
-fn ensure_target_action_file() -> Result<PathBuf, failure::Error> {
-    let action_file_path = env::var("TARGET_ACTION_FILE")
-        .unwrap_or_else(|_| panic!("This test requires environment parameter: 'TARGET_ACTION_FILE' to point to the file, where to store recorded context action"));
-    let path = PathBuf::from(action_file_path);
-    if path.exists() {
-        std::fs::remove_file(&path)?;
-    }
-    Ok(path)
 }
 
 /// Predefined data sets as callback functions for test node peer
