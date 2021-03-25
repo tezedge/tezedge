@@ -48,6 +48,9 @@ macro_rules! required_param {
 }
 
 pub type BlockMetadata = HashMap<String, Value>;
+pub type BlockOperations = Vec<BlockValidationPass>;
+pub type BlockValidationPass = Vec<BlockOperation>;
+pub type BlockOperation = HashMap<String, Value>;
 
 /// Object containing information to recreate the full block information
 #[derive(Serialize, Debug, Clone)]
@@ -56,7 +59,7 @@ pub struct FullBlockInfo {
     pub chain_id: String,
     pub header: InnerBlockHeader,
     pub metadata: BlockMetadata,
-    pub operations: Vec<Vec<HashMap<String, Value>>>,
+    pub operations: BlockOperations,
 }
 
 /// Object containing all block header information
@@ -407,10 +410,15 @@ fn split_block_id_param(
     Ok(match splits.len() {
         1 => (splits[0], None),
         2 => {
-            if negate {
-                (splits[0], Some(splits[1].parse::<i32>()?.neg()))
+            // handles cases like /chains/main/blocks/head~, where '~' is included without a value
+            if splits[1].is_empty() {
+                (splits[0], Some(0))
             } else {
-                (splits[0], Some(splits[1].parse::<i32>()?))
+                if negate {
+                    (splits[0], Some(splits[1].parse::<i32>()?.neg()))
+                } else {
+                    (splits[0], Some(splits[1].parse::<i32>()?))
+                }
             }
         }
         _ => bail!("Invalid block_id parameter: {}", block_id_param),

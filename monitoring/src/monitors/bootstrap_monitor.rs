@@ -49,6 +49,14 @@ impl BootstrapMonitor {
         }
     }
 
+    pub fn initialize(downloaded_blocks: usize, downloaded_headers: usize) -> Self {
+        Self {
+            downloaded_blocks,
+            downloaded_headers,
+            ..Self::default()
+        }
+    }
+
     #[inline]
     pub fn missing_blocks(&self) -> usize {
         if self.level >= self.downloaded_per_session {

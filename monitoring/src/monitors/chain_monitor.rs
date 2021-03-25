@@ -22,12 +22,31 @@ pub struct Cycle {
     duration: Option<f32>,
 }
 
+impl Cycle {
+    pub fn new(id: usize, headers: usize, operations: usize, applications: usize) -> Self {
+        Self {
+            id,
+            headers,
+            operations,
+            applications,
+            start: Instant::now(),
+            duration: None,
+        }
+    }
+}
+
 // monitoring statistics for bootraping
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChainMonitor {
     // cycle is used to measure time
     chain: Vec<Cycle>,
+}
+
+impl Default for ChainMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ChainMonitor {
@@ -38,12 +57,12 @@ impl ChainMonitor {
     }
 
     // get cycle id number
-    fn cycle_id(&self, block_level: usize) -> usize {
-        block_level / Self::BLOCKS_PER_CYCLE
+    fn cycle_id(&self, block_level: i32) -> usize {
+        block_level as usize / Self::BLOCKS_PER_CYCLE
     }
 
     // extend chain to support new cycles
-    fn update_chain(&mut self, block_level: usize) {
+    fn update_chain(&mut self, block_level: i32) {
         // cycle number
         let cycle_id = self.cycle_id(block_level);
         // get number of cycles in chain
@@ -68,13 +87,13 @@ impl ChainMonitor {
     }
 
     // process block header
-    pub fn process_block_header(&mut self, block_level: usize) {
+    pub fn process_block_header(&mut self, block_level: i32) {
         // increment block headers value
         self.get_cycle_for_block_mut(block_level).headers += 1;
     }
 
     // process block operations
-    pub fn process_block_operations(&mut self, block_level: usize) {
+    pub fn process_block_operations(&mut self, block_level: i32) {
         // increment block operations value
         let cycle = self.get_cycle_for_block_mut(block_level);
         cycle.operations += 1;
@@ -86,19 +105,19 @@ impl ChainMonitor {
     }
 
     // process block applications
-    pub fn process_block_application(&mut self, block_level: usize) {
+    pub fn process_block_application(&mut self, block_level: i32) {
         // increment block applications value
         self.get_cycle_for_block_mut(block_level).applications += 1;
     }
 
     #[inline]
-    pub fn get_cycle_for_block_mut(&mut self, block_level: usize) -> &mut Cycle {
+    pub fn get_cycle_for_block_mut(&mut self, block_level: i32) -> &mut Cycle {
         // extend chain to support new cycles
         self.update_chain(block_level);
         // cycle number
         let cycle_id = self.cycle_id(block_level);
         // use reference to update cycle stats
-        &mut self.chain[cycle_id]
+        &mut self.chain[cycle_id as usize]
     }
 
     // snapshot for chain stats
@@ -113,9 +132,9 @@ mod tests {
     use rand::Rng;
 
     // number of block
-    const NUMBER_OF_BLOCKS: usize = 5000;
+    const NUMBER_OF_BLOCKS: i32 = 5000;
     // number of shell events
-    const NUMBER_OF_BLOCK_EVENTS: usize = 10000;
+    const NUMBER_OF_BLOCK_EVENTS: i32 = 10000;
 
     fn generate_blocks() -> ChainMonitor {
         // start random number generator
@@ -127,7 +146,7 @@ mod tests {
         // generate blocks with random level
         for _index in 0..NUMBER_OF_BLOCK_EVENTS {
             // generate block level
-            let block_level: usize = rng.gen_range(0, NUMBER_OF_BLOCKS);
+            let block_level: i32 = rng.gen_range(0, NUMBER_OF_BLOCKS);
 
             // process new block header
             chain_monitor.process_block_header(block_level);

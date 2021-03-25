@@ -124,6 +124,21 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
     );
     routes.handle(
         hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operations",
+        shell_handler::get_block_operations,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index",
+        shell_handler::get_block_operations_validation_pass,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index/:operation_index",
+        shell_handler::get_block_operation,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
         shell_handler::context_raw_bytes,
     );

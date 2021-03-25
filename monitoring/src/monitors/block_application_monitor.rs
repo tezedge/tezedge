@@ -28,7 +28,7 @@ impl ApplicationMonitor {
     }
 
     pub fn block_was_applied(&mut self, block_info: Head) {
-        self.total_applied += 1;
+        self.total_applied = *block_info.level() as usize;
         self.current_applied += 1;
         self.last_applied_block = Some(block_info);
     }
