@@ -11,11 +11,11 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
+use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
     Location, PersistentStorage, StorageType,
 };
-use crate::persistent::database::IteratorWithSchema;
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
@@ -521,7 +521,9 @@ impl BlockPrimaryIndex {
 
     #[inline]
     fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(IteratorMode::Start).map_err(StorageError::from)
+        self.kv
+            .iterator(IteratorMode::Start)
+            .map_err(StorageError::from)
     }
 }
 

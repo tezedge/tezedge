@@ -426,7 +426,13 @@ pub async fn get_block_operation(
     let operation_order: usize = required_param!(params, "operation_index")?.parse()?;
 
     result_to_json_response(
-        base_services::get_block_operation(&chain_id, &block_hash, env.persistent_storage(), validation_pass, operation_order),
+        base_services::get_block_operation(
+            &chain_id,
+            &block_hash,
+            env.persistent_storage(),
+            validation_pass,
+            operation_order,
+        ),
         env.log(),
     )
 }

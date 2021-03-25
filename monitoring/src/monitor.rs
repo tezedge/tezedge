@@ -7,17 +7,19 @@ use std::time::Duration;
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{warn, Logger};
 
+use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::{
     subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
     subscribe_to_shell_new_current_head,
 };
-use storage::persistent::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, OperationsMetaStorage, IteratorMode, ChainMetaStorage};
 use storage::chain_meta_storage::ChainMetaStorageReader;
+use storage::persistent::PersistentStorage;
+use storage::{
+    BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, OperationsMetaStorage,
+};
 use tezos_messages::p2p::binary_message::BinaryMessage;
-use crypto::hash::ChainId;
 
 use crate::websocket::handler_messages::HandlerMessage;
 use crate::{
@@ -114,8 +116,8 @@ impl
             ChainId,
         ),
     ) -> Self {
-        
-        let (chain_monitor, blocks_monitor, bootstrap_monitor) = initialize_monitors(&persistent_storage, &main_chain_id);
+        let (chain_monitor, blocks_monitor, bootstrap_monitor) =
+            initialize_monitors(&persistent_storage, &main_chain_id);
 
         Self {
             network_channel: event_channel,
@@ -272,8 +274,7 @@ impl Receive<ShellChannelMsg> for Monitor {
             }
             ShellChannelMsg::NewCurrentHead(head, ..) => {
                 // update stats for block applications
-                self.chain_monitor
-                    .process_block_application(*head.level());
+                self.chain_monitor.process_block_application(*head.level());
 
                 self.blocks_monitor.block_was_applied_by_protocol();
                 self.block_application_monitor.block_was_applied(head);
@@ -283,15 +284,17 @@ impl Receive<ShellChannelMsg> for Monitor {
                 self.blocks_monitor.block_finished_downloading_operations();
 
                 // update stats for block operations
-                self.chain_monitor
-                    .process_block_operations(msg.level);
+                self.chain_monitor.process_block_operations(msg.level);
             }
             _ => (),
         }
     }
 }
 
-fn initialize_monitors(persistent_storage: &PersistentStorage, main_chain_id: &ChainId) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
+fn initialize_monitors(
+    persistent_storage: &PersistentStorage,
+    main_chain_id: &ChainId,
+) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
     let mut chain_monitor = ChainMonitor::new();
 
     let block_storage = BlockStorage::new(&persistent_storage);
@@ -302,23 +305,29 @@ fn initialize_monitors(persistent_storage: &PersistentStorage, main_chain_id: &C
 
     // populate the monitors with the data from storage
     if let Ok(iter) = block_storage.iterator() {
-        iter.for_each(|(k, _)| if let Ok(key) = k {
-            if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
-                chain_monitor.process_block_header(header_with_hash.header.level());
-                downloaded_headers += 1;
+        iter.for_each(|(k, _)| {
+            if let Ok(key) = k {
+                if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
+                    chain_monitor.process_block_header(header_with_hash.header.level());
+                    downloaded_headers += 1;
+                }
             }
         })
     }
     if let Ok(iter) = operations_meta_storage.iter(IteratorMode::Start) {
-        iter.for_each(|(_, v)| if let Ok(v) = v {
-            if v.is_complete() {
-                chain_monitor.process_block_operations(v.level());
-                downloaded_blocks += 1;
+        iter.for_each(|(_, v)| {
+            if let Ok(v) = v {
+                if v.is_complete() {
+                    chain_monitor.process_block_operations(v.level());
+                    downloaded_blocks += 1;
+                }
             }
         })
     }
 
-    let current_head_level = if let Ok(Some(head)) = ChainMetaStorage::new(&persistent_storage).get_current_head(&main_chain_id) {
+    let current_head_level = if let Ok(Some(head)) =
+        ChainMetaStorage::new(&persistent_storage).get_current_head(&main_chain_id)
+    {
         *head.level()
     } else {
         0
