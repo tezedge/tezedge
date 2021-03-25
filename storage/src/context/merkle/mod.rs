@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 
 use crate::context::merkle::hash::EntryHash;
@@ -24,7 +26,7 @@ pub enum NodeKind {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node {
     pub node_kind: NodeKind,
-    pub entry_hash: EntryHash,
+    pub entry_hash: Arc<EntryHash>,
 }
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize, Eq, PartialEq)]

@@ -217,7 +217,7 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let context_hash = try_from_untyped_option(context_hash)?;
-                self.set(&context_hash, *new_tree_id, key, value)?;
+                self.set(&context_hash, *new_tree_id, key, &value)?;
             }
             ContextAction::Copy {
                 to_key: key,

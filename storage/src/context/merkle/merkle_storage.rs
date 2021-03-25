@@ -45,8 +45,8 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::array::TryFromSliceError;
 use std::collections::HashMap;
+use std::{array::TryFromSliceError, sync::Arc};
 
 use failure::{Error, Fail};
 use serde::Deserialize;
@@ -97,7 +97,7 @@ pub struct MerkleStorage {
     /// key value storage backend
     db: Box<ContextKeyValueStore>,
     /// all entries in current staging area
-    staged: HashMap<EntryHash, Entry>,
+    staged: HashMap<Arc<EntryHash>, Entry>,
     /// all different versions of the staging tree
     trees: HashMap<TreeId, Tree>,
     /// HashMap for looking up entry index in self.staged by hash
@@ -220,10 +220,10 @@ impl MerkleStorage {
         let tree = Tree::new();
         let tree_hash = hash_tree(&tree).unwrap();
         let tree_id = 0;
-        let mut entries_map: HashMap<EntryHash, Entry> = HashMap::new();
+        let mut entries_map: HashMap<Arc<EntryHash>, Entry> = HashMap::new();
         let mut trees_map: HashMap<TreeId, Tree> = HashMap::new();
 
-        entries_map.insert(tree_hash, Entry::Tree(tree.clone()));
+        entries_map.insert(Arc::new(tree_hash), Entry::Tree(tree.clone()));
         trees_map.insert(tree_id, tree.clone());
 
         MerkleStorage {
@@ -373,7 +373,7 @@ impl MerkleStorage {
         match entry {
             Entry::Blob(blob) => {
                 // push key-value pair
-                entries.push((self.string_to_key(path), blob.to_vec()));
+                entries.push((self.string_to_key(path), blob.clone()));
                 Ok(())
             }
             Entry::Tree(tree) => {
@@ -414,7 +414,10 @@ impl MerkleStorage {
         }
 
         match entry {
-            Entry::Blob(blob) => Ok(StringTreeEntry::Blob(hex::encode(blob))),
+            Entry::Blob(blob) => {
+                let blob: Vec<u8> = blob.iter().cloned().collect();
+                Ok(StringTreeEntry::Blob(hex::encode(blob)))
+            }
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
@@ -557,7 +560,7 @@ impl MerkleStorage {
             message,
         };
         let entry = Entry::Commit(new_commit.clone());
-        self.put_to_staging_area(&hash_commit(&new_commit)?, entry.clone());
+        self.put_to_staging_area(Arc::new(hash_commit(&new_commit)?), entry.clone());
 
         // persist staged entries to db
         let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
@@ -598,9 +601,9 @@ impl MerkleStorage {
         root: &Tree,
         key: &ContextKey,
         value: &ContextValue,
-    ) -> Result<EntryHash, MerkleError> {
-        let blob_hash = hash_blob(&value)?;
-        self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
+    ) -> Result<Arc<EntryHash>, MerkleError> {
+        let blob_hash = Arc::new(hash_blob(&value)?);
+        self.put_to_staging_area(blob_hash.clone(), Entry::Blob(value.clone()));
         let new_node = Node {
             entry_hash: blob_hash,
             node_kind: NodeKind::Leaf,
@@ -618,9 +621,9 @@ impl MerkleStorage {
         Ok(())
     }
 
-    fn _delete(&mut self, root: &Tree, key: &ContextKey) -> Result<EntryHash, MerkleError> {
+    fn _delete(&mut self, root: &Tree, key: &ContextKey) -> Result<Arc<EntryHash>, MerkleError> {
         if key.is_empty() {
-            return Ok(hash_tree(root)?);
+            return Ok(Arc::new(hash_tree(root)?));
         }
         self.compute_new_root_with_change(root, &key, None)
     }
@@ -645,9 +648,9 @@ impl MerkleStorage {
         root: &Tree,
         from_key: &ContextKey,
         to_key: &ContextKey,
-    ) -> Result<EntryHash, MerkleError> {
+    ) -> Result<Arc<EntryHash>, MerkleError> {
         let source_tree = self.find_tree(root, &from_key)?;
-        let source_tree_hash = hash_tree(&source_tree)?;
+        let source_tree_hash = Arc::new(hash_tree(&source_tree)?);
         Ok(self.compute_new_root_with_change(
             &root,
             &to_key,
@@ -669,7 +672,7 @@ impl MerkleStorage {
         root: &Tree,
         key: &[String],
         new_node: Option<Node>,
-    ) -> Result<EntryHash, MerkleError> {
+    ) -> Result<Arc<EntryHash>, MerkleError> {
         let last = match key.last() {
             Some(last) => last,
             None => match new_node {
@@ -684,8 +687,8 @@ impl MerkleStorage {
                     // so set merkle storage root to empty dir and place
                     // it in staging area
                     let tree = Tree::new();
-                    let new_tree_hash = hash_tree(&tree)?;
-                    self.put_to_staging_area(&new_tree_hash, Entry::Tree(tree));
+                    let new_tree_hash = Arc::new(hash_tree(&tree)?);
+                    self.put_to_staging_area(new_tree_hash.clone(), Entry::Tree(tree));
                     return Ok(new_tree_hash);
                 }
             },
@@ -702,8 +705,8 @@ impl MerkleStorage {
         if tree.is_empty() {
             self.compute_new_root_with_change(root, path, None)
         } else {
-            let new_tree_hash = hash_tree(&tree)?;
-            self.put_to_staging_area(&new_tree_hash, Entry::Tree(tree));
+            let new_tree_hash = Arc::new(hash_tree(&tree)?);
+            self.put_to_staging_area(new_tree_hash.clone(), Entry::Tree(tree));
             self.compute_new_root_with_change(root, path, Some(self.get_non_leaf(new_tree_hash)))
         }
     }
@@ -767,8 +770,8 @@ impl MerkleStorage {
     }
 
     /// Put entry in staging area
-    fn put_to_staging_area(&mut self, key: &EntryHash, value: Entry) {
-        self.staged.insert(*key, value);
+    fn put_to_staging_area(&mut self, key: Arc<EntryHash>, value: Entry) {
+        self.staged.insert(key, value);
     }
 
     /// Marks all the entries from last commit as used
@@ -866,7 +869,7 @@ impl MerkleStorage {
         }
     }
 
-    fn get_non_leaf(&self, hash: EntryHash) -> Node {
+    fn get_non_leaf(&self, hash: Arc<EntryHash>) -> Node {
         Node {
             node_kind: NodeKind::NonLeaf,
             entry_hash: hash,
@@ -1566,7 +1569,6 @@ mod tests {
         assert_eq!(storage.staged.is_empty(), false);
         assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
-
 
     macro_rules! tests_with_storage {
         ($storage_tests_name:ident, $kv_store_factory:expr) => {
