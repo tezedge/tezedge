@@ -196,7 +196,7 @@ fn listen_protocol_events(
                 }
 
                 // evaluate context
-                context.perform_context_action(&action)?;
+                context.perform_context_action(action)?;
             }
             Err(err) => {
                 warn!(log, "Failed to receive event from protocol runner"; "reason" => format!("{:?}", err));

@@ -575,7 +575,7 @@ impl MerkleStorage {
         &mut self,
         new_tree_id: TreeId,
         key: &ContextKey,
-        value: &ContextValue,
+        value: ContextValue,
     ) -> Result<(), MerkleError> {
         let stat_updater = StatUpdater::new(MerkleStorageAction::Set, Some(key));
         let root = self.get_staged_root();
@@ -589,10 +589,10 @@ impl MerkleStorage {
         &mut self,
         root: &Tree,
         key: &ContextKey,
-        value: &ContextValue,
+        value: ContextValue,
     ) -> Result<EntryHash, MerkleError> {
         let blob_hash = hash_blob(&value)?;
-        self.put_to_staging_area(&blob_hash, Entry::Blob(value.clone()));
+        self.put_to_staging_area(&blob_hash, Entry::Blob(value));
         let new_node = Node {
             entry_hash: blob_hash,
             node_kind: NodeKind::Leaf,
@@ -738,6 +738,7 @@ impl MerkleStorage {
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
     fn get_staged_root(&self) -> Tree {
         self.current_stage_tree.0.clone()
+    }
 
     fn get_staged_root_ref(&self) -> &Tree {
         &self.current_stage_tree.0
@@ -985,13 +986,13 @@ mod tests {
         let a_foo: &ContextKey = &vec!["a".to_string(), "foo".to_string()];
         let c_foo: &ContextKey = &vec!["c".to_string(), "foo".to_string()];
         storage
-            .set(1, &vec!["a".to_string(), "foo".to_string()], &vec![97, 98])
+            .set(1, &vec!["a".to_string(), "foo".to_string()], vec![97, 98])
             .unwrap();
         storage
-            .set(2, &vec!["c".to_string(), "zoo".to_string()], &vec![1, 2])
+            .set(2, &vec!["c".to_string(), "zoo".to_string()], vec![1, 2])
             .unwrap();
         storage
-            .set(3, &vec!["c".to_string(), "foo".to_string()], &vec![97, 98])
+            .set(3, &vec!["c".to_string(), "foo".to_string()], vec![97, 98])
             .unwrap();
         storage
             .delete(4, &vec!["c".to_string(), "zoo".to_string()])
@@ -999,7 +1000,7 @@ mod tests {
         // now c/ is the same tree as a/ - which means there are two references to single entry in staging area
         // modify the tree and check that the other one was kept intact
         storage
-            .set(5, &vec!["c".to_string(), "foo".to_string()], &vec![3, 4])
+            .set(5, &vec!["c".to_string(), "foo".to_string()], vec![3, 4])
             .unwrap();
         let commit = storage
             .commit(0, "Tezos".to_string(), "Genesis".to_string())
@@ -1015,25 +1016,25 @@ mod tests {
             .set(
                 1,
                 &vec!["a".to_string(), "foo".to_string()],
-                &vec![97, 98, 99],
+                vec![97, 98, 99],
             )
             .unwrap(); // abc
         storage
-            .set(2, &vec!["b".to_string(), "boo".to_string()], &vec![97, 98])
+            .set(2, &vec!["b".to_string(), "boo".to_string()], vec![97, 98])
             .unwrap();
         storage
             .set(
                 3,
                 &vec!["a".to_string(), "aaa".to_string()],
-                &vec![97, 98, 99, 100],
+                vec![97, 98, 99, 100],
             )
             .unwrap();
-        storage.set(4, &vec!["x".to_string()], &vec![97]).unwrap();
+        storage.set(4, &vec!["x".to_string()], vec![97]).unwrap();
         storage
             .set(
                 5,
                 &vec!["one".to_string(), "two".to_string(), "three".to_string()],
-                &vec![97],
+                vec![97],
             )
             .unwrap();
         storage
@@ -1049,7 +1050,7 @@ mod tests {
         let mut storage = MerkleStorage::new(kv_store_factory.create("test_commit_hash").unwrap());
 
         storage
-            .set(1, &vec!["a".to_string()], &vec![97, 98, 99])
+            .set(1, &vec!["a".to_string()], vec![97, 98, 99])
             .unwrap();
 
         let commit = storage.commit(0, "Tezos".to_string(), "Genesis".to_string());
@@ -1057,7 +1058,7 @@ mod tests {
         assert_eq!([0xCF, 0x95, 0x18, 0x33], commit.unwrap()[0..4]);
 
         storage
-            .set(1, &vec!["data".to_string(), "x".to_string()], &vec![97])
+            .set(1, &vec!["data".to_string(), "x".to_string()], vec![97])
             .unwrap();
         let commit = storage.commit(0, "Tezos".to_string(), "".to_string());
 
@@ -1074,14 +1075,14 @@ mod tests {
                 .unwrap(),
         );
 
-        storage.set(1, &vec!["a".to_string()], &vec![1]).unwrap();
+        storage.set(1, &vec!["a".to_string()], vec![1]).unwrap();
         let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("SET [a] = 1\nROOT: {}", root);
         println!("CONTENT {}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "d49a53".to_string());
 
         storage
-            .set(2, &vec!["b".to_string(), "c".to_string()], &vec![1])
+            .set(2, &vec!["b".to_string(), "c".to_string()], vec![1])
             .unwrap();
         let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [b,c] = 1\nROOT: {}", root);
@@ -1089,14 +1090,14 @@ mod tests {
         assert_eq!(root, "ed8adf".to_string());
 
         storage
-            .set(3, &vec!["b".to_string(), "d".to_string()], &vec![2])
+            .set(3, &vec!["b".to_string(), "d".to_string()], vec![2])
             .unwrap();
         let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [b,d] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "437186".to_string());
 
-        storage.set(4, &vec!["a".to_string()], &vec![2]).unwrap();
+        storage.set(4, &vec!["a".to_string()], vec![2]).unwrap();
         let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [a] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
@@ -1128,7 +1129,7 @@ mod tests {
             .set(
                 1,
                 &vec!["data".to_string(), "a".to_string(), "x".to_string()],
-                &vec![97],
+                vec![97],
             )
             .unwrap();
         storage
@@ -1166,16 +1167,16 @@ mod tests {
         let res = storage.get(&vec!["a".to_string()]);
         assert_eq!(res.unwrap().is_empty(), true);
 
-        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
-        storage.set(2, key_abx, &vec![3u8]).unwrap();
+        storage.set(1, key_abc, vec![1u8, 2u8]).unwrap();
+        storage.set(2, key_abx, vec![3u8]).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8, 2u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![3u8]);
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        storage.set(3, key_az, &vec![4u8]).unwrap();
-        storage.set(4, key_abx, &vec![5u8]).unwrap();
-        storage.set(5, key_d, &vec![6u8]).unwrap();
-        storage.set(6, key_eab, &vec![7u8]).unwrap();
+        storage.set(3, key_az, vec![4u8]).unwrap();
+        storage.set(4, key_abx, vec![5u8]).unwrap();
+        storage.set(5, key_d, vec![6u8]).unwrap();
+        storage.set(6, key_eab, vec![7u8]).unwrap();
         assert_eq!(storage.get(key_az).unwrap(), vec![4u8]);
         assert_eq!(storage.get(key_abx).unwrap(), vec![5u8]);
         assert_eq!(storage.get(key_d).unwrap(), vec![6u8]);
@@ -1201,10 +1202,10 @@ mod tests {
 
         assert_eq!(storage.mem(&key_abc).unwrap(), false);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
+        storage.set(1, key_abc, vec![1u8, 2u8]).unwrap();
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), false);
-        storage.set(2, key_abx, &vec![3u8]).unwrap();
+        storage.set(2, key_abx, vec![3u8]).unwrap();
         assert_eq!(storage.mem(&key_abc).unwrap(), true);
         assert_eq!(storage.mem(&key_abx).unwrap(), true);
         storage.delete(3, key_abx).unwrap();
@@ -1222,7 +1223,7 @@ mod tests {
         assert_eq!(storage.dirmem(&key_a).unwrap(), false);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), false);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
-        storage.set(1, key_abc, &vec![1u8, 2u8]).unwrap();
+        storage.set(1, key_abc, vec![1u8, 2u8]).unwrap();
         assert_eq!(storage.dirmem(&key_a).unwrap(), true);
         assert_eq!(storage.dirmem(&key_ab).unwrap(), true);
         assert_eq!(storage.dirmem(&key_abc).unwrap(), false);
@@ -1236,7 +1237,7 @@ mod tests {
         let mut storage = MerkleStorage::new(kv_store_factory.create("test_copy").unwrap());
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(1, key_abc, &vec![1_u8]).unwrap();
+        storage.set(1, key_abc, vec![1_u8]).unwrap();
         storage
             .copy(2, &vec!["a".to_string()], &vec!["z".to_string()])
             .unwrap();
@@ -1255,8 +1256,8 @@ mod tests {
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(1, key_abc, &vec![2_u8]).unwrap();
-        storage.set(2, key_abx, &vec![3_u8]).unwrap();
+        storage.set(1, key_abc, vec![2_u8]).unwrap();
+        storage.set(2, key_abx, vec![3_u8]).unwrap();
         storage.delete(3, key_abx).unwrap();
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
@@ -1271,7 +1272,7 @@ mod tests {
         );
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
-        storage.set(1, key_abc, &vec![2_u8]).unwrap();
+        storage.set(1, key_abc, vec![2_u8]).unwrap();
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
         storage.delete(2, key_abc).unwrap();
         let _commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
@@ -1288,8 +1289,8 @@ mod tests {
 
         let key_abc: &ContextKey = &vec!["a".to_string(), "b".to_string(), "c".to_string()];
         let key_abx: &ContextKey = &vec!["a".to_string(), "b".to_string(), "x".to_string()];
-        storage.set(1, key_abc, &vec![2_u8]).unwrap();
-        storage.set(2, key_abx, &vec![3_u8]).unwrap();
+        storage.set(1, key_abc, vec![2_u8]).unwrap();
+        storage.set(2, key_abx, vec![3_u8]).unwrap();
         storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         storage.delete(1, key_abx).unwrap();
@@ -1304,19 +1305,19 @@ mod tests {
 
         let mut storage = MerkleStorage::new(kv_store_factory.create("test_checkout").unwrap());
 
-        storage.set(1, key_abc, &vec![1u8]).unwrap();
-        storage.set(2, key_abx, &vec![2u8]).unwrap();
+        storage.set(1, key_abc, vec![1u8]).unwrap();
+        storage.set(2, key_abx, vec![2u8]).unwrap();
         let commit1 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
-        storage.set(1, key_abc, &vec![3u8]).unwrap();
-        storage.set(2, key_abx, &vec![4u8]).unwrap();
+        storage.set(1, key_abc, vec![3u8]).unwrap();
+        storage.set(2, key_abx, vec![4u8]).unwrap();
         let commit2 = storage.commit(0, "".to_string(), "".to_string()).unwrap();
 
         storage.checkout(&commit1).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![1u8]);
         assert_eq!(storage.get(&key_abx).unwrap(), vec![2u8]);
         // this set be wiped by checkout
-        storage.set(1, key_abc, &vec![8u8]).unwrap();
+        storage.set(1, key_abc, vec![8u8]).unwrap();
 
         storage.checkout(&commit2).unwrap();
         assert_eq!(storage.get(&key_abc).unwrap(), vec![3u8]);
@@ -1379,11 +1380,11 @@ mod tests {
             .set(
                 1,
                 &vec!["data".to_string(), "a".to_string(), "x".to_string()],
-                &vec![3, 4],
+                vec![3, 4],
             )
             .unwrap();
         storage
-            .set(2, &vec!["data".to_string(), "a".to_string()], &vec![1, 2])
+            .set(2, &vec!["data".to_string(), "a".to_string()], vec![1, 2])
             .unwrap();
         storage
             .set(
@@ -1394,7 +1395,7 @@ mod tests {
                     "x".to_string(),
                     "y".to_string(),
                 ],
-                &vec![5, 6],
+                vec![5, 6],
             )
             .unwrap();
         storage
@@ -1406,11 +1407,11 @@ mod tests {
                     "x".to_string(),
                     "y".to_string(),
                 ],
-                &vec![7, 8],
+                vec![7, 8],
             )
             .unwrap();
         storage
-            .set(5, &vec!["data".to_string(), "c".to_string()], &vec![1, 2])
+            .set(5, &vec!["data".to_string(), "c".to_string()], vec![1, 2])
             .unwrap();
         storage
             .set(
@@ -1421,7 +1422,7 @@ mod tests {
                     "x".to_string(),
                     "y".to_string(),
                 ],
-                &vec![9, 10],
+                vec![9, 10],
             )
             .unwrap();
         //data-a[1,2]
@@ -1497,8 +1498,8 @@ mod tests {
             MerkleStorage::new(kv_store_factory.create("test_backtracking_on_set").unwrap());
 
         let dummy_key = &vec!["a".to_string()];
-        storage.set(1, dummy_key, &vec![1u8]).unwrap();
-        storage.set(2, dummy_key, &vec![2u8]).unwrap();
+        storage.set(1, dummy_key, vec![1u8]).unwrap();
+        storage.set(2, dummy_key, vec![2u8]).unwrap();
 
         // get recent value
         assert_eq!(storage.get(dummy_key).unwrap(), vec![2u8]);
@@ -1523,7 +1524,7 @@ mod tests {
         let value = vec![1u8];
         let empty_response: ContextValue = Vec::new();
 
-        storage.set(1, key, &value).unwrap();
+        storage.set(1, key, value.clone()).unwrap();
         storage.delete(2, key).unwrap();
 
         assert_eq!(storage.get(key).unwrap(), empty_response);
@@ -1549,8 +1550,8 @@ mod tests {
         );
 
         let key = &vec!["a".to_string()];
-        storage.set(1, key, &vec![1u8]).unwrap();
-        storage.set(2, key, &vec![2u8]).unwrap();
+        storage.set(1, key, vec![1u8]).unwrap();
+        storage.set(2, key, vec![2u8]).unwrap();
         storage
             .commit(0, "author".to_string(), "message".to_string())
             .unwrap();

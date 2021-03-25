@@ -195,9 +195,9 @@ struct StatsWriter {
 }
 
 impl StatsWriter {
-    fn new(output: PathBuf) -> Self {
+    fn new(output: File) -> Self {
         let mut rv = Self {
-            output: File::create(output.to_str().unwrap()).unwrap(),
+            output,
             block_latencies_total: 0,
             merkle_actions: vec![
                 MerkleStorageAction::Set,
@@ -386,12 +386,18 @@ fn main() -> Result<(), Error> {
     }
 
     // prepare stats output file
-    let stats_output_file = params
-        .output
-        .join(&format!("{}.stats.txt", context_kv_storage_name));
-    if stats_output_file.exists() {
-        let _ = fs::remove_file(&stats_output_file)?;
-    }
+    let stats_output_file = {
+        if !params.output.exists() {
+            let _ = fs::create_dir_all(&params.output)?;
+        }
+        let stats_output_file = params
+            .output
+            .join(&format!("{}.stats.txt", context_kv_storage_name));
+        if stats_output_file.exists() {
+            let _ = fs::remove_file(&stats_output_file)?;
+        }
+        stats_output_file
+    };
 
     info!(log, "Context actions replayer starts...";
                "input_file" => actions_file_path.to_str().unwrap(),
@@ -413,7 +419,7 @@ fn main() -> Result<(), Error> {
         &mut global_cache_holder,
     )?));
     let mut context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(None, merkle.clone()));
-    let mut stat_writer = StatsWriter::new(stats_output_file);
+    let mut stat_writer = StatsWriter::new(File::create(stats_output_file)?);
 
     let mut counter = 0;
     let mut cycle_counter = 0;
@@ -429,7 +435,7 @@ fn main() -> Result<(), Error> {
 
         for action in messages.iter() {
             // evaluate context action to context
-            context.perform_context_action(&action)?;
+            context.perform_context_action(action.clone())?;
 
             // verify state of the storage after action has been applied
             match action {
@@ -438,14 +444,14 @@ fn main() -> Result<(), Error> {
                 } => {
                     assert_eq!(
                         new_context_hash.clone(),
-                        context.get_last_commit_hash().unwrap()
+                        context.get_last_commit_hash()?.unwrap()
                     );
                 }
                 ContextAction::Checkout { context_hash, .. } => {
                     assert!(!context_hash.is_empty());
                     assert_eq!(
                         context_hash.clone(),
-                        context.get_last_commit_hash().unwrap()
+                        context.get_last_commit_hash()?.unwrap()
                     );
                 }
                 ContextAction::Get { key, value, .. } => {

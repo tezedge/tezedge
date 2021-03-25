@@ -23,9 +23,9 @@ impl ContextApi for TezedgeContext {
         _context_hash: &Option<ContextHash>,
         new_tree_id: TreeId,
         key: &ContextKey,
-        value: &ContextValue,
+        value: ContextValue,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         merkle.set(new_tree_id, key, value)?;
 
         Ok(())
@@ -33,7 +33,7 @@ impl ContextApi for TezedgeContext {
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         merkle.checkout(&context_hash_arr)?;
 
         Ok(())
@@ -47,7 +47,7 @@ impl ContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
@@ -64,7 +64,7 @@ impl ContextApi for TezedgeContext {
         new_tree_id: TreeId,
         key_prefix_to_delete: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         merkle.delete(new_tree_id, key_prefix_to_delete)?;
         Ok(())
     }
@@ -75,7 +75,7 @@ impl ContextApi for TezedgeContext {
         new_tree_id: TreeId,
         key_prefix_to_remove: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         merkle.delete(new_tree_id, key_prefix_to_remove)?;
         Ok(())
     }
@@ -87,25 +87,25 @@ impl ContextApi for TezedgeContext {
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         merkle.copy(new_tree_id, from_key, to_key)?;
         Ok(())
     }
 
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         let val = merkle.get(key)?;
         Ok(val)
     }
 
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         let val = merkle.mem(key)?;
         Ok(val)
     }
 
     fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         let val = merkle.dirmem(key)?;
         Ok(val)
     }
@@ -116,7 +116,7 @@ impl ContextApi for TezedgeContext {
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write().expect("lock poisoning");
+        let mut merkle = self.merkle.write()?;
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
@@ -133,10 +133,12 @@ impl ContextApi for TezedgeContext {
         &self,
         context_hash: &ContextHash,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.get_key_values_by_prefix(&context_hash_arr, prefix)
+        let mut merkle = self.merkle.write()?;
+        merkle
+            .get_key_values_by_prefix(&context_hash_arr, prefix)
+            .map_err(ContextError::from)
     }
 
     fn get_context_tree_by_prefix(
@@ -144,19 +146,21 @@ impl ContextApi for TezedgeContext {
         context_hash: &ContextHash,
         prefix: &ContextKey,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, MerkleError> {
+    ) -> Result<StringTreeEntry, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
+        let mut merkle = self.merkle.write()?;
+        merkle
+            .get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
+            .map_err(ContextError::from)
     }
 
-    fn get_last_commit_hash(&self) -> Option<Vec<u8>> {
-        let merkle = self.merkle.read().expect("lock poisoning");
-        merkle.get_last_commit_hash().map(|x| x.to_vec())
+    fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError> {
+        let merkle = self.merkle.read()?;
+        Ok(merkle.get_last_commit_hash().map(|x| x.to_vec()))
     }
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
-        let merkle = self.merkle.read().expect("lock poisoning");
+        let merkle = self.merkle.read()?;
         Ok(merkle.get_merkle_stats()?)
     }
 
@@ -169,14 +173,14 @@ impl ContextApi for TezedgeContext {
         }
     }
 
-    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError> {
-        let mut merkle = self.merkle.write().expect("lock poisoning");
-        merkle.stage_checkout(tree_id)
+    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), ContextError> {
+        let mut merkle = self.merkle.write()?;
+        merkle.stage_checkout(tree_id).map_err(ContextError::from)
     }
 
-    fn get_merkle_root(&mut self) -> Result<EntryHash, MerkleError> {
-        let merkle = self.merkle.read().expect("lock poisoning");
-        merkle.get_staged_root_hash()
+    fn get_merkle_root(&mut self) -> Result<EntryHash, ContextError> {
+        let merkle = self.merkle.read()?;
+        merkle.get_staged_root_hash().map_err(ContextError::from)
     }
 
     fn block_applied(&self) -> Result<(), ContextError> {
@@ -194,20 +198,23 @@ impl ContextApi for TezedgeContext {
         Ok(merkle.get_memory_usage()?)
     }
 
-    fn perform_context_action(&mut self, action: &ContextAction) -> Result<(), Error> {
-        if let Some(tree_id) = get_tree_id(&action) {
+    fn perform_context_action(&mut self, action: ContextAction) -> Result<(), Error> {
+        let new_tree_id = get_tree_id(&action);
+        let new_tree_hash = get_new_tree_hash(&action)?;
+
+        if let Some(tree_id) = new_tree_id {
             self.set_merkle_root(tree_id)?;
         }
 
         match action {
             ContextAction::Get { key, .. } => {
-                self.get_key(key)?;
+                self.get_key(&key)?;
             }
             ContextAction::Mem { key, .. } => {
-                self.mem(key)?;
+                self.mem(&key)?;
             }
             ContextAction::DirMem { key, .. } => {
-                self.dirmem(key)?;
+                self.dirmem(&key)?;
             }
             ContextAction::Set {
                 key,
@@ -217,7 +224,7 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let context_hash = try_from_untyped_option(context_hash)?;
-                self.set(&context_hash, *new_tree_id, key, value)?;
+                self.set(&context_hash, new_tree_id, &key, value)?;
             }
             ContextAction::Copy {
                 to_key: key,
@@ -227,7 +234,7 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let context_hash = try_from_untyped_option(context_hash)?;
-                self.copy_to_diff(&context_hash, *new_tree_id, from_key, key)?;
+                self.copy_to_diff(&context_hash, new_tree_id, &from_key, &key)?;
             }
             ContextAction::Delete {
                 key,
@@ -236,7 +243,7 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let context_hash = try_from_untyped_option(context_hash)?;
-                self.delete_to_diff(&context_hash, *new_tree_id, key)?;
+                self.delete_to_diff(&context_hash, new_tree_id, &key)?;
             }
             ContextAction::RemoveRecursively {
                 key,
@@ -245,7 +252,7 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let context_hash = try_from_untyped_option(context_hash)?;
-                self.remove_recursively_to_diff(&context_hash, *new_tree_id, key)?;
+                self.remove_recursively_to_diff(&context_hash, new_tree_id, &key)?;
             }
             ContextAction::Commit {
                 parent_context_hash,
@@ -257,15 +264,10 @@ impl ContextApi for TezedgeContext {
                 ..
             } => {
                 let parent_context_hash = try_from_untyped_option(parent_context_hash)?;
-                let block_hash = BlockHash::try_from(block_hash.clone())?;
-                let new_context_hash = ContextHash::try_from(new_context_hash.clone())?;
-                let hash = self.commit(
-                    &block_hash,
-                    &parent_context_hash,
-                    author.to_string(),
-                    message.to_string(),
-                    *date,
-                )?;
+                // TODO: not necessery clone, remove here when disconnect from block_storage
+                let block_hash = BlockHash::try_from(block_hash)?;
+                let hash = self.commit(&block_hash, &parent_context_hash, author, message, date)?;
+                let new_context_hash = ContextHash::try_from(new_context_hash)?;
                 assert_eq!(
                     &hash,
                     &new_context_hash,
@@ -277,7 +279,7 @@ impl ContextApi for TezedgeContext {
             }
 
             ContextAction::Checkout { context_hash, .. } => {
-                self.checkout(&ContextHash::try_from(context_hash.clone())?)?;
+                self.checkout(&ContextHash::try_from(context_hash)?)?;
             }
 
             ContextAction::Commit { .. } => (), // Ignored (no block_hash)
@@ -287,15 +289,14 @@ impl ContextApi for TezedgeContext {
             ContextAction::Shutdown => (), // Ignored
         };
 
-        if let Some(post_hash) = get_new_tree_hash(&action)? {
+        if let Some(post_hash) = new_tree_hash {
             assert_eq!(
                 self.get_merkle_root()?,
                 post_hash,
-                "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
+                "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }",
                 self.get_merkle_root()?,
                 post_hash,
-                get_tree_id(&action),
-                action,
+                new_tree_id,
             );
         }
 
@@ -303,13 +304,11 @@ impl ContextApi for TezedgeContext {
     }
 }
 
-fn try_from_untyped_option<H>(h: &Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
+fn try_from_untyped_option<H>(h: Option<Vec<u8>>) -> Result<Option<H>, FromBytesError>
 where
     H: TryFrom<Vec<u8>, Error = FromBytesError>,
 {
-    h.as_ref()
-        .map(|h| H::try_from(h.clone()))
-        .map_or(Ok(None), |r| r.map(Some))
+    h.map(H::try_from).map_or(Ok(None), |r| r.map(Some))
 }
 
 // context implementation using merkle-tree-like storage
