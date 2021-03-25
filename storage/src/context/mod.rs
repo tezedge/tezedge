@@ -127,7 +127,7 @@ pub trait ContextApi {
 
     fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError>;
 
-    fn get_merkle_root(&mut self) -> EntryHash;
+    fn get_merkle_root(&mut self) -> Result<EntryHash, MerkleError>;
 
     fn block_applied(&self) -> Result<(), ContextError>;
 

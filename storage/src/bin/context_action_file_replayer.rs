@@ -462,7 +462,7 @@ fn main() -> Result<(), Error> {
 
             // verify context hashes after each block
             if let Some(expected_hash) = get_new_tree_hash(&action)? {
-                assert_eq!(context.get_merkle_root(), expected_hash);
+                assert_eq!(context.get_merkle_root()?, expected_hash);
             }
 
             if let ContextAction::Commit { block_hash, .. } = &action {

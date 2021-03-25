@@ -174,7 +174,7 @@ impl ContextApi for TezedgeContext {
         merkle.stage_checkout(tree_id)
     }
 
-    fn get_merkle_root(&mut self) -> EntryHash {
+    fn get_merkle_root(&mut self) -> Result<EntryHash, MerkleError> {
         let merkle = self.merkle.read().expect("lock poisoning");
         merkle.get_staged_root_hash()
     }
@@ -289,10 +289,10 @@ impl ContextApi for TezedgeContext {
 
         if let Some(post_hash) = get_new_tree_hash(&action)? {
             assert_eq!(
-                self.get_merkle_root(),
+                self.get_merkle_root()?,
                 post_hash,
                 "Invalid tree_hash context: {:?}, post_hash: {:?}, tree_id: {:? }, action: {:?}",
-                self.get_merkle_root(),
+                self.get_merkle_root()?,
                 post_hash,
                 get_tree_id(&action),
                 action,

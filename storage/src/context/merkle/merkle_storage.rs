@@ -239,10 +239,8 @@ impl MerkleStorage {
     /// Get value from current staged root
     pub fn get(&mut self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
         let stat_updater = StatUpdater::new(MerkleStorageAction::Get, Some(key));
-        // build staging tree from saved list of actions (set/copy/delete)
-        // note: this can be slow if there are a lot of actions
-        let root = &self.get_staged_root();
-        let root_hash = hash_tree(&root)?;
+
+        let root_hash = self.get_staged_root_hash()?;
 
         let rv = self
             .get_from_tree(&root_hash, key)
@@ -255,8 +253,7 @@ impl MerkleStorage {
     pub fn mem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
         let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
 
-        let root = &self.get_staged_root();
-        let root_hash = hash_tree(&root)?;
+        let root_hash = self.get_staged_root_hash()?;
 
         let rv = self.value_exists(&root_hash, key);
         stat_updater.update_execution_stats(&mut self.stats);
@@ -266,11 +263,8 @@ impl MerkleStorage {
     /// Check if directory exists in current staged root
     pub fn dirmem(&mut self, key: &ContextKey) -> Result<bool, MerkleError> {
         let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
-        // build staging tree from saved list of actions (set/copy/delete)
-        // note: this can be slow if there are a lot of actions
 
-        let root = &self.get_staged_root();
-        let root_hash = hash_tree(&root)?;
+        let root_hash = self.get_staged_root_hash()?;
 
         let rv = self.directory_exists(&root_hash, key);
         stat_updater.update_execution_stats(&mut self.stats);
@@ -282,8 +276,7 @@ impl MerkleStorage {
         &mut self,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let root = self.get_staged_root();
-        self._get_key_values_by_prefix(root, prefix)
+        self._get_key_values_by_prefix(self.get_staged_root_ref(), prefix)
     }
 
     /// Get value from historical context identified by commit hash.
@@ -488,17 +481,17 @@ impl MerkleStorage {
             StatUpdater::new(MerkleStorageAction::GetKeyValuesByPrefix, Some(prefix));
         let commit = self.get_commit(context_hash)?;
         let root_tree = self.get_tree(&commit.root_hash)?;
-        let rv = self._get_key_values_by_prefix(root_tree, prefix);
+        let rv = self._get_key_values_by_prefix(&root_tree, prefix);
         stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
     fn _get_key_values_by_prefix(
         &self,
-        root_tree: Tree,
+        root_tree: &Tree,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        let prefixed_tree = self.find_tree(&root_tree, prefix)?;
+        let prefixed_tree = self.find_tree(root_tree, prefix)?;
         let mut keyvalues: Vec<(ContextKey, ContextValue)> = Vec::new();
 
         for (key, child_node) in prefixed_tree.iter() {
@@ -545,8 +538,7 @@ impl MerkleStorage {
         message: String,
     ) -> Result<EntryHash, MerkleError> {
         let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
-        let staged_root = self.get_staged_root();
-        let staged_root_hash = hash_tree(&staged_root)?;
+        let staged_root_hash = self.get_staged_root_hash()?;
         let parent_commit_hash = self.last_commit_hash;
 
         let new_commit = Commit {
@@ -746,10 +738,14 @@ impl MerkleStorage {
     /// Get latest staged tree. If it's empty, init genesis  and return genesis root.
     fn get_staged_root(&self) -> Tree {
         self.current_stage_tree.0.clone()
+
+    fn get_staged_root_ref(&self) -> &Tree {
+        &self.current_stage_tree.0
     }
 
-    pub fn get_staged_root_hash(&self) -> EntryHash {
-        hash_tree(&self.current_stage_tree.0).unwrap()
+    pub fn get_staged_root_hash(&self) -> Result<EntryHash, MerkleError> {
+        // TOOD: unnecessery recalculation, should be one when set_staged_root
+        hash_tree(&self.current_stage_tree.0).map_err(MerkleError::from)
     }
 
     pub fn stage_checkout(&mut self, tree_id: TreeId) -> Result<(), MerkleError> {
@@ -966,7 +962,6 @@ mod tests {
 
     use crate::context::kv_store::test_support::TestContextKvStoreFactoryInstance;
     use crate::context::kv_store::SupportedContextKeyValueStore;
-    use crate::context::merkle::hash::hash_tree;
     use crate::context::ContextValue;
 
     use super::*;
@@ -975,10 +970,9 @@ mod tests {
         hex::encode(&hash[0..3])
     }
 
-    fn get_staged_root_short_hash(storage: &mut MerkleStorage) -> String {
-        let tree = storage.get_staged_root();
-        let hash = hash_tree(&tree).unwrap();
-        get_short_hash(&hash)
+    fn get_staged_root_short_hash(storage: &mut MerkleStorage) -> Result<String, MerkleError> {
+        let hash = storage.get_staged_root_hash()?;
+        Ok(get_short_hash(&hash))
     }
 
     fn test_duplicate_entry_in_staging(kv_store_factory: &TestContextKvStoreFactoryInstance) {
@@ -1046,9 +1040,7 @@ mod tests {
             .commit(0, "Tezos".to_string(), "Genesis".to_string())
             .unwrap();
 
-        let tree = storage.get_staged_root();
-
-        let hash = hash_tree(&tree).unwrap();
+        let hash = storage.get_staged_root_hash().unwrap();
 
         assert_eq!([0xDB, 0xAE, 0xD7, 0xB6], hash[0..4]);
     }
@@ -1083,7 +1075,7 @@ mod tests {
         );
 
         storage.set(1, &vec!["a".to_string()], &vec![1]).unwrap();
-        let root = get_staged_root_short_hash(&mut storage);
+        let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("SET [a] = 1\nROOT: {}", root);
         println!("CONTENT {}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "d49a53".to_string());
@@ -1091,7 +1083,7 @@ mod tests {
         storage
             .set(2, &vec!["b".to_string(), "c".to_string()], &vec![1])
             .unwrap();
-        let root = get_staged_root_short_hash(&mut storage);
+        let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [b,c] = 1\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "ed8adf".to_string());
@@ -1099,13 +1091,13 @@ mod tests {
         storage
             .set(3, &vec!["b".to_string(), "d".to_string()], &vec![2])
             .unwrap();
-        let root = get_staged_root_short_hash(&mut storage);
+        let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [b,d] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "437186".to_string());
 
         storage.set(4, &vec!["a".to_string()], &vec![2]).unwrap();
-        let root = get_staged_root_short_hash(&mut storage);
+        let root = get_staged_root_short_hash(&mut storage).expect("hash error");
         println!("\nSET [a] = 2\nROOT: {}", root);
         print!("{}", storage.get_staged_entries().unwrap());
         assert_eq!(root, "0d78b3".to_string());
@@ -1566,7 +1558,6 @@ mod tests {
         assert_eq!(storage.staged.is_empty(), false);
         assert_eq!(storage.stage_checkout(1).is_err(), false);
     }
-
 
     macro_rules! tests_with_storage {
         ($storage_tests_name:ident, $kv_store_factory:expr) => {
