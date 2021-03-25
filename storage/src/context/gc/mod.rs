@@ -86,7 +86,7 @@ pub fn collect_hashes(
                     let mut b = HashSet::new();
                     for (_, child_node) in tree.iter() {
                         let entry =
-                            fetch_entry_from_store(store, child_node.entry_hash.as_ref().clone())?;
+                            fetch_entry_from_store(store, *child_node.entry_hash)?;
                         collect_hashes(&entry, &mut b, cache, store)?;
                     }
                     cache.insert(hash_entry(entry)?, b.clone());
