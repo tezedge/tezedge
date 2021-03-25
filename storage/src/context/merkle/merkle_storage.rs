@@ -691,7 +691,7 @@ impl MerkleStorage {
 
         match new_node {
             None => tree.remove(last),
-            Some(new_node) => tree.insert(last.clone(), new_node),
+            Some(new_node) => tree.insert(last.clone(), Arc::new(new_node)),
         };
 
         if tree.is_empty() {

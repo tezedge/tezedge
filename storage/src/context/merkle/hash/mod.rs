@@ -224,7 +224,7 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
-        let entries: Vec<(&String, &Node)> = tree.iter().collect();
+        let entries: Vec<(&String, &Node)> = tree.iter().map(|(s, n)| (s, n.as_ref())).collect();
         let inode = partition_entries(0, &entries)?;
         hash_long_inode(&inode)
     } else {
@@ -404,7 +404,7 @@ mod tests {
             node_kind: NodeKind::Leaf,
             entry_hash: Arc::new(hash_blob(&vec![1]).unwrap()), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
         };
-        dummy_tree.insert("a".to_string(), node);
+        dummy_tree.insert("a".to_string(), Arc::new(node));
 
         // hexademical representation of above tree:
         //
@@ -515,7 +515,7 @@ mod tests {
                     node_kind,
                     entry_hash,
                 };
-                tree = tree.update(binding.name, node);
+                tree = tree.update(binding.name, Arc::new(node));
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
