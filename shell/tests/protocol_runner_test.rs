@@ -19,7 +19,7 @@ use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
-mod common;
+pub mod common;
 
 #[ignore]
 #[test]
