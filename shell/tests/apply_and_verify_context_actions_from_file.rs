@@ -20,6 +20,8 @@ use storage::{
 use tezos_context::channel::ContextAction;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
+pub mod common;
+
 pub fn get_tree_action(action: &ContextAction) -> String {
     match action {
         ContextAction::Get { .. } => "ContextAction::Get".to_string(),

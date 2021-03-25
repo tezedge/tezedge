@@ -425,7 +425,12 @@ pub async fn get_block_operations_validation_pass(
     let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
 
     result_to_json_response(
-        base_services::get_block_operations_validation_pass(&chain_id, &block_hash, env.persistent_storage(), validation_pass),
+        base_services::get_block_operations_validation_pass(
+            &chain_id,
+            &block_hash,
+            env.persistent_storage(),
+            validation_pass,
+        ),
         env.log(),
     )
 }
