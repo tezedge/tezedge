@@ -690,6 +690,13 @@ async fn test_all_operations_for_block(level: i64) {
         .expect("Failed to parse block operations (validation passes)");
 
     for (vlaidation_pass_index, validation_pass) in vlaidation_passes.iter().enumerate() {
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}/{}",
+            "chains/main/blocks", level, "operations", vlaidation_pass_index,
+        ))
+        .await
+        .expect("test failed");
+
         let operations = validation_pass
             .as_array()
             .expect("Failed to parse validation pass operations");
