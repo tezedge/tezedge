@@ -247,7 +247,7 @@ pub enum Encoding {
     OptionalField(Box<Encoding>),
     /// Is the collection of fields.
     /// not prefixed by anything in binary, encoded as the concatenation of all the element in binary
-    Obj(Schema),
+    Obj(&'static str, Schema),
     /// Heterogeneous collection of values.
     /// Similar to [Encoding::Obj], but schema can be any types, not just fields.
     /// Encoded as continuous binary representation.
@@ -401,10 +401,13 @@ mod tests {
 
     #[test]
     fn bounded_with_bytes() {
-        let encoding = Encoding::Obj(vec![
-            Field::new("f1", Encoding::bounded(10, Encoding::Uint8)),
-            Field::new("f2", Encoding::bounded(10, Encoding::Uint8)),
-        ]);
+        let encoding = Encoding::Obj(
+            "Rec",
+            vec![
+                Field::new("f1", Encoding::bounded(10, Encoding::Uint8)),
+                Field::new("f2", Encoding::bounded(10, Encoding::Uint8)),
+            ],
+        );
 
         let value = Value::Record(vec![
             ("f1".to_string(), Value::Uint8(1)),
@@ -419,10 +422,13 @@ mod tests {
 
     #[test]
     fn bounded_with_strings() {
-        let encoding = Encoding::Obj(vec![
-            Field::new("f1", Encoding::bounded(10, Encoding::String)),
-            Field::new("f2", Encoding::bounded(10, Encoding::String)),
-        ]);
+        let encoding = Encoding::Obj(
+            "Rec",
+            vec![
+                Field::new("f1", Encoding::bounded(10, Encoding::String)),
+                Field::new("f2", Encoding::bounded(10, Encoding::String)),
+            ],
+        );
 
         let value = Value::Record(vec![
             ("f1".to_string(), Value::String("A".to_string())),

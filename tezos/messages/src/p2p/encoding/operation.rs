@@ -31,7 +31,10 @@ pub struct OperationMessage {
 
 cached_data!(OperationMessage, body);
 has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![Field::new("operation", Operation::encoding().clone())])
+    Encoding::Obj(
+        "OperationMessage",
+        vec![Field::new("operation", Operation::encoding().clone())],
+    )
 });
 
 impl From<Operation> for OperationMessage {
@@ -102,16 +105,21 @@ impl TryFrom<DecodedOperation> for Operation {
 
 cached_data!(Operation, body);
 has_encoding!(Operation, OPERATION_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("branch", Encoding::Hash(HashType::BlockHash)),
-        Field::new(
-            "data",
-            Encoding::Split(Arc::new(|schema_type| match schema_type {
-                SchemaType::Json => Encoding::Bytes,
-                SchemaType::Binary => Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8),
-            })),
-        ),
-    ])
+    Encoding::Obj(
+        "Operation",
+        vec![
+            Field::new("branch", Encoding::Hash(HashType::BlockHash)),
+            Field::new(
+                "data",
+                Encoding::Split(Arc::new(|schema_type| match schema_type {
+                    SchemaType::Json => Encoding::Bytes,
+                    SchemaType::Binary => {
+                        Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8)
+                    }
+                })),
+            ),
+        ],
+    )
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -151,11 +159,14 @@ impl GetOperationsMessage {
 
 cached_data!(GetOperationsMessage, body);
 has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![Field::new(
-        "get_operations",
-        Encoding::dynamic(Encoding::bounded_list(
-            GET_OPERATIONS_MAX_LENGTH,
-            Encoding::Hash(HashType::OperationHash),
-        )),
-    )])
+    Encoding::Obj(
+        "GetOperationsMessage",
+        vec![Field::new(
+            "get_operations",
+            Encoding::dynamic(Encoding::bounded_list(
+                GET_OPERATIONS_MAX_LENGTH,
+                Encoding::Hash(HashType::OperationHash),
+            )),
+        )],
+    )
 });

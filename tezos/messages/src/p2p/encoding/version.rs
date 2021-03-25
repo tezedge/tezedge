@@ -54,11 +54,14 @@ impl NetworkVersion {
 
 cached_data!(NetworkVersion, body);
 has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("chain_name", Encoding::BoundedString(CHAIN_NAME_MAX_LENGTH)),
-        Field::new("distributed_db_version", Encoding::Uint16),
-        Field::new("p2p_version", Encoding::Uint16),
-    ])
+    Encoding::Obj(
+        "NetworkVersion",
+        vec![
+            Field::new("chain_name", Encoding::BoundedString(CHAIN_NAME_MAX_LENGTH)),
+            Field::new("distributed_db_version", Encoding::Uint16),
+            Field::new("p2p_version", Encoding::Uint16),
+        ],
+    )
 });
 
 impl Eq for NetworkVersion {}

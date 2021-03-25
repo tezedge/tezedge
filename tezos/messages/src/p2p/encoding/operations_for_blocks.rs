@@ -64,10 +64,13 @@ impl OperationsForBlock {
 
 cached_data!(OperationsForBlock, body);
 has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("hash", Encoding::Hash(HashType::BlockHash)),
-        Field::new("validation_pass", Encoding::Int8),
-    ])
+    Encoding::Obj(
+        "OperationsForBlock",
+        vec![
+            Field::new("hash", Encoding::Hash(HashType::BlockHash)),
+            Field::new("validation_pass", Encoding::Int8),
+        ],
+    )
 });
 // -----------------------------------------------------------------------------------------------
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
@@ -102,20 +105,23 @@ has_encoding!(
     OperationsForBlocksMessage,
     OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
     {
-        Encoding::Obj(vec![
-            Field::new(
-                "operations_for_block",
-                OperationsForBlock::encoding().clone(),
-            ),
-            Field::new("operation_hashes_path", PathCodec::get_encoding()),
-            Field::new(
-                "operations",
-                Encoding::bounded(
-                    OPERATION_LIST_MAX_SIZE,
-                    Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+        Encoding::Obj(
+            "OperationsForBlocksMessage",
+            vec![
+                Field::new(
+                    "operations_for_block",
+                    OperationsForBlock::encoding().clone(),
                 ),
-            ),
-        ])
+                Field::new("operation_hashes_path", PathCodec::get_encoding()),
+                Field::new(
+                    "operations",
+                    Encoding::bounded(
+                        OPERATION_LIST_MAX_SIZE,
+                        Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+                    ),
+                ),
+            ],
+        )
     }
 );
 
@@ -235,13 +241,16 @@ has_encoding!(
     GetOperationsForBlocksMessage,
     GET_OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
     {
-        Encoding::Obj(vec![Field::new(
-            "get_operations_for_blocks",
-            Encoding::dynamic(Encoding::bounded_list(
-                GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH,
-                OperationsForBlock::encoding().clone(),
-            )),
-        )])
+        Encoding::Obj(
+            "GetOperationsForBlocksMessage",
+            vec![Field::new(
+                "get_operations_for_blocks",
+                Encoding::dynamic(Encoding::bounded_list(
+                    GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH,
+                    OperationsForBlock::encoding().clone(),
+                )),
+            )],
+        )
     }
 );
 

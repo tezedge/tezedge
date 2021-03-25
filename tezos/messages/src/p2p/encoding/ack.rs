@@ -81,29 +81,32 @@ impl fmt::Debug for NackInfo {
 
 impl NackInfo {
     fn encoding() -> Encoding {
-        Encoding::Obj(vec![
-            Field::new(
-                "motive",
-                Encoding::Tags(
-                    size_of::<u16>(),
-                    TagMap::new(vec![
-                        Tag::new(0, "NoMotive", Encoding::Unit),
-                        Tag::new(1, "TooManyConnections", Encoding::Unit),
-                        Tag::new(2, "UnknownChainName", Encoding::Unit),
-                        Tag::new(3, "DeprecatedP2pVersion", Encoding::Unit),
-                        Tag::new(4, "DeprecatedDistributedDbVersion", Encoding::Unit),
-                        Tag::new(5, "AlreadyConnected", Encoding::Unit),
-                    ]),
+        Encoding::Obj(
+            "NackInfo",
+            vec![
+                Field::new(
+                    "motive",
+                    Encoding::Tags(
+                        size_of::<u16>(),
+                        TagMap::new(vec![
+                            Tag::new(0, "NoMotive", Encoding::Unit),
+                            Tag::new(1, "TooManyConnections", Encoding::Unit),
+                            Tag::new(2, "UnknownChainName", Encoding::Unit),
+                            Tag::new(3, "DeprecatedP2pVersion", Encoding::Unit),
+                            Tag::new(4, "DeprecatedDistributedDbVersion", Encoding::Unit),
+                            Tag::new(5, "AlreadyConnected", Encoding::Unit),
+                        ]),
+                    ),
                 ),
-            ),
-            Field::new(
-                "potential_peers_to_connect",
-                Encoding::dynamic(Encoding::bounded_list(
-                    NACK_PEERS_MAX_LENGTH,
-                    Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
-                )),
-            ),
-        ])
+                Field::new(
+                    "potential_peers_to_connect",
+                    Encoding::dynamic(Encoding::bounded_list(
+                        NACK_PEERS_MAX_LENGTH,
+                        Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
+                    )),
+                ),
+            ],
+        )
     }
 }
 

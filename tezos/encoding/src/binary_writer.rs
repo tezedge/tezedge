@@ -38,7 +38,7 @@ pub type BinaryWriterError = super::error_context::EncodingError<Error>;
 /// }
 /// let version = Version { name: "v1.0".into(), major: 1, minor: 0 };
 ///
-/// let version_schema = Encoding::Obj(vec![
+/// let version_schema = Encoding::Obj("Rec", vec![
 ///     Field::new("name", Encoding::String),
 ///     Field::new("major", Encoding::Uint16),
 ///     Field::new("minor", Encoding::Uint16)
@@ -67,7 +67,7 @@ fn encode_any(
     value: &Value,
     encoding: &Encoding,
 ) -> Result<usize, BinaryWriterError> {
-    if let Encoding::Obj(ref schema) = encoding {
+    if let Encoding::Obj(_, ref schema) = encoding {
         encode_record(data, value, schema)
     } else if let Encoding::Tup(ref encodings) = encoding {
         encode_tuple(data, value, encodings)
@@ -103,7 +103,7 @@ fn encode_record(
             Ok(bytes_sz)
         }
         _ => Err(Error::encoding_mismatch(
-            &Encoding::Obj(schema.to_vec()),
+            &Encoding::Obj("", schema.to_vec()), // TODO have whole Obj encoding
             value,
         ))?,
     }
@@ -551,7 +551,7 @@ fn encode_value(
             encode_value(data, value, &inner_encoding)
         }
         Encoding::Custom(codec) => Ok(codec.encode(data, value, encoding)?),
-        Encoding::Obj(obj_schema) => encode_record(data, value, obj_schema),
+        Encoding::Obj(_, obj_schema) => encode_record(data, value, obj_schema),
         Encoding::Tup(tup_encodings) => encode_tuple(data, value, tup_encodings),
     }
 }
@@ -665,7 +665,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Z)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Obj", record_schema);
 
         {
             let record = Record {
@@ -693,7 +693,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Mutez)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Obj", record_schema);
 
         {
             let record = Record {
@@ -721,7 +721,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Z)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Obj", record_schema);
 
         let record = Record {
             a: num_bigint::BigInt::from(-100_000).into(),
@@ -738,7 +738,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Z)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Obj", record_schema);
 
         let record = Record {
             a: num_bigint::BigInt::from(63).into(),
@@ -755,7 +755,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Z)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Obj", record_schema);
 
         let record = Record {
             a: num_bigint::BigInt::from(-23).into(),
@@ -794,11 +794,11 @@ mod tests {
                 TagMap::new(vec![Tag::new(
                     0x10,
                     "GetHead",
-                    Encoding::Obj(get_head_record_schema),
+                    Encoding::Obj("GetHead", get_head_record_schema),
                 )]),
             ))),
         )];
-        let response_encoding = Encoding::Obj(response_schema);
+        let response_encoding = Encoding::Obj("Obj", response_schema);
 
         let response = Response {
             messages: vec![Message::GetHead(GetHeadRecord {
@@ -890,16 +890,16 @@ mod tests {
         let record_schema = vec![
             Field::new("a", Encoding::Int31),
             Field::new("b", Encoding::Bool),
-            Field::new("s", Encoding::Obj(sub_record_schema)),
+            Field::new("s", Encoding::Obj("Sub", sub_record_schema)),
             Field::new("c", Encoding::Option(Box::new(Encoding::Z))),
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
             Field::new(
                 "f",
-                Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))),
+                Encoding::dynamic(Encoding::list(Encoding::Obj("Version", version_schema))),
             ),
         ];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Rec", record_schema);
 
         let writer_result = write(&record, &record_encoding);
         assert!(writer_result.is_ok());
@@ -937,9 +937,13 @@ mod tests {
             Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
             Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
             Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema))),
+            Field::new(
+                "versions",
+                Encoding::list(Encoding::Obj("Version", version_schema)),
+            ),
         ];
-        let connection_message_encoding = Encoding::Obj(connection_message_schema);
+        let connection_message_encoding =
+            Encoding::Obj("ConnectionMessage", connection_message_schema);
 
         let connection_message = ConnectionMessage {
             port: 3001,
@@ -982,7 +986,7 @@ mod tests {
             "forking_block_hash",
             Encoding::list(Encoding::Uint8),
         )];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Rec", record_schema);
 
         let record = Some(Record {
             forking_block_hash: hex::decode(
@@ -1008,7 +1012,7 @@ mod tests {
             "forking_block_hash",
             Encoding::list(Encoding::Uint8),
         )];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Rec", record_schema);
 
         let record: Option<Record> = None;
         let writer_result = write(&record, &Encoding::option(record_encoding)).unwrap();
@@ -1024,7 +1028,7 @@ mod tests {
         }
 
         let record_schema = vec![Field::new("arg", Encoding::option_field(Encoding::String))];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Rec", record_schema);
 
         let record = Record {
             arg: Some("arg".to_string()),
@@ -1042,7 +1046,7 @@ mod tests {
         }
 
         let record_schema = vec![Field::new("arg", Encoding::option_field(Encoding::String))];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("Rec", record_schema);
 
         let record = Record { arg: None };
         let writer_result = write(&record, &record_encoding).unwrap();
@@ -1129,7 +1133,7 @@ mod encode_tests {
     #[test]
     fn serialize_bounds_error_location_string() {
         let value = Value::Record(vec![("xxx".to_string(), Value::String("zz".to_string()))]);
-        let schema = Encoding::Obj(vec![Field::new("xxx", Encoding::BoundedString(1))]);
+        let schema = Encoding::Obj("Rec", vec![Field::new("xxx", Encoding::BoundedString(1))]);
         let err = encode_value(&mut Vec::new(), &value, &schema)
             .expect_err("Error is expected")
             .to_string();
@@ -1143,10 +1147,13 @@ mod encode_tests {
             "xxx".to_string(),
             Value::List(vec![Value::Uint8(0), Value::Uint8(1)]),
         )]);
-        let schema = Encoding::Obj(vec![Field::new(
-            "xxx",
-            Encoding::bounded_list(1, Encoding::Uint8),
-        )]);
+        let schema = Encoding::Obj(
+            "Rec",
+            vec![Field::new(
+                "xxx",
+                Encoding::bounded_list(1, Encoding::Uint8),
+            )],
+        );
         let err = encode_value(&mut Vec::new(), &value, &schema)
             .expect_err("Error is expected")
             .to_string();
@@ -1160,10 +1167,13 @@ mod encode_tests {
             "xxx".to_string(),
             Value::List(vec![Value::String("zz".to_string())]),
         )]);
-        let schema = Encoding::Obj(vec![Field::new(
-            "xxx",
-            Encoding::list(Encoding::BoundedString(1)),
-        )]);
+        let schema = Encoding::Obj(
+            "Rec",
+            vec![Field::new(
+                "xxx",
+                Encoding::list(Encoding::BoundedString(1)),
+            )],
+        );
         let err = encode_value(&mut Vec::new(), &value, &schema)
             .expect_err("Error is expected")
             .to_string();

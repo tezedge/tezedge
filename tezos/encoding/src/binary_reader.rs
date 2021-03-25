@@ -144,7 +144,7 @@ impl BinaryReader {
     ///    minor: u16,
     /// }
     ///
-    /// let version_schema = Encoding::Obj(vec![
+    /// let version_schema = Encoding::Obj("Rec", vec![
     ///     Field::new("name", Encoding::String),
     ///     Field::new("major", Encoding::Uint16),
     ///     Field::new("minor", Encoding::Uint16)
@@ -168,7 +168,7 @@ impl BinaryReader {
         let mut buf = buf.as_ref();
 
         let result = match encoding {
-            Encoding::Obj(schema) => self.decode_record(&mut buf, schema),
+            Encoding::Obj(_, schema) => self.decode_record(&mut buf, schema),
             Encoding::Tup(encodings) => self.decode_tuple(&mut buf, encodings),
             _ => self.decode_value(&mut buf, encoding),
         }?;
@@ -410,7 +410,7 @@ impl BinaryReader {
                     )))?,
                 }
             }
-            Encoding::Obj(schema_inner) => Ok(self.decode_record(buf, schema_inner)?),
+            Encoding::Obj(_, schema_inner) => Ok(self.decode_record(buf, schema_inner)?),
             Encoding::Tup(encodings_inner) => Ok(self.decode_tuple(buf, encodings_inner)?),
             Encoding::Z => {
                 // read first byte
@@ -551,7 +551,7 @@ mod tests {
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader
-            .read(record_buf, &Encoding::Obj(record_schema))
+            .read(record_buf, &Encoding::Obj("", record_schema))
             .unwrap();
         assert_eq!(
             Value::Record(vec![(
@@ -573,7 +573,7 @@ mod tests {
         let record_buf = hex::decode("9e9ed49d01").unwrap();
         let reader = BinaryReader::new();
         let value = reader
-            .read(record_buf, &Encoding::Obj(record_schema))
+            .read(record_buf, &Encoding::Obj("", record_schema))
             .unwrap();
         assert_eq!(
             Value::Record(vec![(
@@ -613,7 +613,7 @@ mod tests {
                 TagMap::new(vec![Tag::new(
                     0x10,
                     "GetHead",
-                    Encoding::Obj(get_head_record_schema),
+                    Encoding::Obj("GetHead", get_head_record_schema),
                 )]),
             ))),
         )];
@@ -622,7 +622,7 @@ mod tests {
         let record_buf = hex::decode("0000000600108eceda2f").unwrap();
         let reader = BinaryReader::new();
         let value = reader
-            .read(record_buf, &Encoding::Obj(response_schema))
+            .read(record_buf, &Encoding::Obj("", response_schema))
             .unwrap();
         // convert value to actual data structure
         let value: Response = de::from_value(&value).unwrap();
@@ -641,7 +641,7 @@ mod tests {
             a: BigInt,
         }
         let record_schema = vec![Field::new("a", Encoding::Z)];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("", record_schema);
 
         for num in -100..=100 {
             let num_mul = num * 1000;
@@ -690,9 +690,12 @@ mod tests {
             Field::new("public_key", Encoding::sized(32, Encoding::Bytes)),
             Field::new("proof_of_work_stamp", Encoding::sized(24, Encoding::Bytes)),
             Field::new("message_nonce", Encoding::sized(24, Encoding::Bytes)),
-            Field::new("versions", Encoding::list(Encoding::Obj(version_schema))),
+            Field::new(
+                "versions",
+                Encoding::list(Encoding::Obj("", version_schema)),
+            ),
         ];
-        let connection_message_encoding = Encoding::Obj(connection_message_schema);
+        let connection_message_encoding = Encoding::Obj("", connection_message_schema);
 
         let connection_message = ConnectionMessage {
             port: 3001,
@@ -738,7 +741,7 @@ mod tests {
             "forking_block_hash",
             Encoding::list(Encoding::Uint8),
         )];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("", record_schema);
 
         let record = Some(Record {
             forking_block_hash: hex::decode(
@@ -770,7 +773,7 @@ mod tests {
             "forking_block_hash",
             Encoding::list(Encoding::Uint8),
         )];
-        let record_encoding = Encoding::Obj(record_schema);
+        let record_encoding = Encoding::Obj("", record_schema);
 
         let record: Option<Record> = None;
 
@@ -786,7 +789,7 @@ mod tests {
 
     #[test]
     fn deserialize_bounds_error_location_string() {
-        let schema = Encoding::Obj(vec![Field::new("xxx", Encoding::BoundedString(1))]);
+        let schema = Encoding::Obj("", vec![Field::new("xxx", Encoding::BoundedString(1))]);
         let data = hex::decode("000000020000").unwrap();
         let err = BinaryReader::new()
             .read(data, &schema)
@@ -806,10 +809,13 @@ mod tests {
 
     #[test]
     fn deserialize_bounds_error_location_list() {
-        let schema = Encoding::Obj(vec![Field::new(
-            "xxx",
-            Encoding::bounded_list(1, Encoding::Uint8),
-        )]);
+        let schema = Encoding::Obj(
+            "",
+            vec![Field::new(
+                "xxx",
+                Encoding::bounded_list(1, Encoding::Uint8),
+            )],
+        );
         let data = hex::decode("0000").unwrap();
         let err = BinaryReader::new()
             .read(data, &schema)
@@ -829,10 +835,13 @@ mod tests {
 
     #[test]
     fn deserialize_bounds_error_location_element_of() {
-        let schema = Encoding::Obj(vec![Field::new(
-            "xxx",
-            Encoding::list(Encoding::BoundedString(1)),
-        )]);
+        let schema = Encoding::Obj(
+            "",
+            vec![Field::new(
+                "xxx",
+                Encoding::list(Encoding::BoundedString(1)),
+            )],
+        );
         let data = hex::decode("000000020000").unwrap();
         let err = BinaryReader::new()
             .read(data, &schema)
