@@ -15,7 +15,7 @@ pub mod merkle_storage_stats;
 // Tree must be an ordered structure for consistent hash in hash_tree.
 // The entry names *must* be in lexicographical order, as required by the hashing algorithm.
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead.
-pub type Tree = im::OrdMap<String, Node>;
+pub type Tree = im::OrdMap<String, Arc<Node>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum NodeKind {
