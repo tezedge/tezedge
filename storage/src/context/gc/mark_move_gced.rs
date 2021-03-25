@@ -374,9 +374,7 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>>(
                 match entry {
                     Entry::Blob(_) => {}
                     Entry::Tree(tree) => {
-                        let children = tree
-                            .into_iter()
-                            .map(|(_, node)| node.entry_hash.as_ref().clone());
+                        let children = tree.into_iter().map(|(_, node)| *node.entry_hash);
                         todo_keys.extend(children);
                     }
                     Entry::Commit(commit) => {
