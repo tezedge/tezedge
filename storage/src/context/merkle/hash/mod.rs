@@ -150,7 +150,7 @@ fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
                     NodeKind::Leaf => hasher.update(&[1u8]),
                     NodeKind::NonLeaf => hasher.update(&[0u8]),
                 };
-                hasher.update(node.entry_hash);
+                hasher.update(node.entry_hash.as_ref());
             }
         }
         Inode::Tree {
@@ -213,7 +213,7 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
         leb128::write::unsigned(&mut hasher, k.len() as u64)?;
         hasher.update(k.as_bytes());
         hasher.update(&(ENTRY_HASH_LEN as u64).to_be_bytes());
-        hasher.update(&v.entry_hash);
+        hasher.update(&v.entry_hash.as_ref());
     }
 
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
@@ -286,7 +286,7 @@ pub(crate) fn hash_entry(entry: &Entry) -> Result<EntryHash, HashingError> {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::{env, fs::File, io::Read, path::Path};
+    use std::{env, fs::File, io::Read, path::Path, sync::Arc};
 
     use flate2::read::GzDecoder;
 
@@ -402,7 +402,7 @@ mod tests {
         let mut dummy_tree = Tree::new();
         let node = Node {
             node_kind: NodeKind::Leaf,
-            entry_hash: hash_blob(&vec![1]).unwrap(), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
+            entry_hash: Arc::new(hash_blob(&vec![1]).unwrap()), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
         };
         dummy_tree.insert("a".to_string(), node);
 
@@ -509,7 +509,8 @@ mod tests {
                     other => panic!("Got unexpected binding kind: {}", other),
                 };
                 let entry_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
-                let entry_hash: EntryHash = entry_hash.as_ref().as_slice().try_into().unwrap();
+                let entry_hash: Arc<EntryHash> =
+                    Arc::new(entry_hash.as_ref().as_slice().try_into().unwrap());
                 let node = Node {
                     node_kind,
                     entry_hash,
