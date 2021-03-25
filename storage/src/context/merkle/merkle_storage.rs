@@ -407,10 +407,7 @@ impl MerkleStorage {
         }
 
         match entry {
-            Entry::Blob(blob) => {
-                let blob: Vec<u8> = blob.iter().cloned().collect();
-                Ok(StringTreeEntry::Blob(hex::encode(blob)))
-            }
+            Entry::Blob(blob) => Ok(StringTreeEntry::Blob(hex::encode(blob))),
             Entry::Tree(tree) => {
                 // Go through all descendants and gather errors. Remap error if there is a failure
                 // anywhere in the recursion paths. TODO: is revert possible?
