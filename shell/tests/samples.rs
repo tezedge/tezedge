@@ -20,24 +20,27 @@ use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
 
 lazy_static! {
-    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(vec![
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new(
-            "block_header",
-            Encoding::dynamic(BlockHeader::encoding().clone())
-        ),
-        Field::new(
-            "pred_header",
-            Encoding::dynamic(BlockHeader::encoding().clone())
-        ),
-        Field::new("max_operations_ttl", Encoding::Int31),
-        Field::new(
-            "operations",
-            Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(
-                Encoding::dynamic(Operation::encoding().clone())
-            ))))
-        ),
-    ]);
+    pub static ref APPLY_BLOCK_REQUEST_ENCODING: Encoding = Encoding::Obj(
+        "ApplyBlockRequest",
+        vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new(
+                "block_header",
+                Encoding::dynamic(BlockHeader::encoding().clone())
+            ),
+            Field::new(
+                "pred_header",
+                Encoding::dynamic(BlockHeader::encoding().clone())
+            ),
+            Field::new("max_operations_ttl", Encoding::Int31),
+            Field::new(
+                "operations",
+                Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(
+                    Encoding::dynamic(Operation::encoding().clone())
+                ))))
+            ),
+        ]
+    );
 }
 
 /// Create new struct from bytes.

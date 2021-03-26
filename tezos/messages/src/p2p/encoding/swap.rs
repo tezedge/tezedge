@@ -36,11 +36,14 @@ impl SwapMessage {
 
 cached_data!(SwapMessage, body);
 has_encoding!(SwapMessage, SWAP_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new(
-            "point",
-            Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
-        ),
-        Field::new("peer_id", Encoding::Hash(HashType::CryptoboxPublicKeyHash)),
-    ])
+    Encoding::Obj(
+        "SwapMessage",
+        vec![
+            Field::new(
+                "point",
+                Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
+            ),
+            Field::new("peer_id", Encoding::Hash(HashType::CryptoboxPublicKeyHash)),
+        ],
+    )
 });
