@@ -184,7 +184,7 @@ mod tests {
         Some(match decoded {
             SignaturePublicKey::Ed25519(PublicKeyEd25519(hash))
             | SignaturePublicKey::P256(PublicKeyP256(hash))
-            | SignaturePublicKey::Secp256k1(PublicKeySecp256k1(hash)) => hash,
+            | SignaturePublicKey::Secp256k1(PublicKeySecp256k1(hash)) => (*hash).clone(),
         })
     }
 }

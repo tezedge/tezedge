@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use crate::{
     base58::{FromBase58Check, FromBase58CheckError, ToBase58Check},
@@ -56,16 +57,18 @@ macro_rules! define_hash {
             std::cmp::Ord,
             std::hash::Hash,
         )]
-        pub struct $name(pub Hash);
+        pub struct $name(pub Arc<Hash>);
 
         impl $name {
             pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-                HashType::$name.b58check_to_hash(data).map(|h| Self(h))
+                HashType::$name
+                    .b58check_to_hash(data)
+                    .map(|h| Self(h.into()))
             }
 
             fn from_bytes(data: &[u8]) -> Result<Self, FromBytesError> {
                 if data.len() == HashType::$name.size() {
-                    Ok($name(data.into()))
+                    Ok($name(Arc::new(data.into())))
                 } else {
                     Err(FromBytesError::InvalidSize)
                 }
@@ -73,7 +76,7 @@ macro_rules! define_hash {
 
             fn from_vec(hash: Vec<u8>) -> Result<Self, FromBytesError> {
                 if hash.len() == HashType::$name.size() {
-                    Ok($name(hash))
+                    Ok($name(hash.into()))
                 } else {
                     Err(FromBytesError::InvalidSize)
                 }
@@ -103,7 +106,7 @@ macro_rules! define_hash {
 
         impl std::convert::Into<Hash> for $name {
             fn into(self) -> Hash {
-                self.0
+                (*self.0).clone().into()
             }
         }
 
