@@ -15,11 +15,12 @@ use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use url::Url;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
-    static ref NODE_RPC_CONTEXT_ROOT_1: String = node_rpc_context_root_1();
-    static ref NODE_RPC_CONTEXT_ROOT_2: String = node_rpc_context_root_2();
+    static ref NODE_RPC_CONTEXT_ROOT_1: (String, String) = node_rpc_context_root_1();
+    static ref NODE_RPC_CONTEXT_ROOT_2: (String, String) = node_rpc_context_root_2();
     // one hyper client instance
     static ref HTTP_CLIENT: Client<hyper::client::HttpConnector, hyper::Body> = Client::new();
 }
@@ -551,8 +552,12 @@ async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     }
 
     println!(
-        "Checked OK: {} (Node1: {:?} vs Node2: {:?}",
-        rpc_path, node1_response_time, node2_response_time
+        "Checked OK: {}, {}: {:?} vs {}: {:?}",
+        rpc_path,
+        node_name(NodeType::Node1),
+        node1_response_time,
+        node_name(NodeType::Node2),
+        node2_response_time,
     );
 
     Ok(())
@@ -609,8 +614,15 @@ async fn get_rpc_as_json(
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
     match node {
-        NodeType::Node1 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_1.as_str(), rpc_path),
-        NodeType::Node2 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_2.as_str(), rpc_path),
+        NodeType::Node1 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_1.0.as_str(), rpc_path),
+        NodeType::Node2 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_2.0.as_str(), rpc_path),
+    }
+}
+
+fn node_name(node: NodeType) -> &'static str {
+    match node {
+        NodeType::Node1 => &NODE_RPC_CONTEXT_ROOT_1.1,
+        NodeType::Node2 => &NODE_RPC_CONTEXT_ROOT_1.1,
     }
 }
 
@@ -661,14 +673,22 @@ fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
         .any(|ignored| rpc_path.contains(ignored))
 }
 
-fn node_rpc_context_root_1() -> String {
-    env::var("NODE_RPC_CONTEXT_ROOT_1")
-        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set")
+fn node_rpc_context_root_1() -> (String, String) {
+    let node_url = env::var("NODE_RPC_CONTEXT_ROOT_1")
+        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set");
+    println!("Node1 url: {}", &node_url);
+
+    let url = Url::parse(&node_url).expect("invalid url");
+    (node_url, url.host_str().unwrap_or("node2").to_string())
 }
 
-fn node_rpc_context_root_2() -> String {
-    env::var("NODE_RPC_CONTEXT_ROOT_2")
-        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set")
+fn node_rpc_context_root_2() -> (String, String) {
+    let node_url = env::var("NODE_RPC_CONTEXT_ROOT_2")
+        .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set");
+    println!("Node2 url: {}", &node_url);
+
+    let url = Url::parse(&node_url).expect("invalid url");
+    (node_url, url.host_str().unwrap_or("node1").to_string())
 }
 
 #[test]

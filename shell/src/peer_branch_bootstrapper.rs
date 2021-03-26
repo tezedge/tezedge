@@ -461,6 +461,9 @@ impl Receive<SystemEvent> for PeerBranchBootstrapper {
             if self.peer.peer_ref.uri().eq(evt.actor.uri()) {
                 warn!(ctx.system.log(), "Stopping peer's branch bootstrapper, because peer is terminated";
                                         "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string());
+                // release lock
+                self.release_block_batch_apply_try_lock();
+                // stop actor
                 ctx.stop(ctx.myself());
             }
         }
