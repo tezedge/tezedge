@@ -152,7 +152,7 @@ impl EncodingExplorer {
                 let path = NodePath::child(&path, NodeKind::List(None));
                 self.get_paths(path, encoding);
             }
-            Encoding::Obj(fields) => {
+            Encoding::Obj(_, fields) => {
                 for field in fields {
                     let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
                     self.get_paths(path, field.get_encoding());
@@ -457,7 +457,7 @@ impl EncodedDataGenerator {
                 let path = NodePath::child(&path, NodeKind::String(None));
                 self.string(&path, None)
             }
-            Encoding::Obj(fields) => self.obj(path, fields),
+            Encoding::Obj(_, fields) => self.obj(path, fields),
             Encoding::OptionalField(_) => self.byte(0x00),
             Encoding::Unit => self.bytes(0),
             Encoding::Int8 | Encoding::Uint8 => self.bytes(1),
@@ -574,16 +574,6 @@ mod tests {
     #[test]
     fn decode_generated_data_protocol() {
         test_decoding_generated_data::<ProtocolMessage>();
-    }
-
-    #[test]
-    fn decode_generated_data_get_operation_hashes_for_blocks() {
-        test_decoding_generated_data::<GetOperationHashesForBlocksMessage>();
-    }
-
-    #[test]
-    fn decode_generated_data_operation_hashes_for_blocks() {
-        test_decoding_generated_data::<OperationHashesForBlocksMessage>();
     }
 
     #[test]

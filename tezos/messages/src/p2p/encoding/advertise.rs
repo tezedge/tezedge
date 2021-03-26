@@ -36,11 +36,14 @@ impl AdvertiseMessage {
 
 cached_data!(AdvertiseMessage, body);
 has_encoding!(AdvertiseMessage, ADVERTISE_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![Field::new(
-        "id",
-        Encoding::bounded_list(
-            ADVERTISE_ID_LIST_MAX_LENGTH,
-            Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
-        ),
-    )])
+    Encoding::Obj(
+        "AdvertiseMessage",
+        vec![Field::new(
+            "id",
+            Encoding::bounded_list(
+                ADVERTISE_ID_LIST_MAX_LENGTH,
+                Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
+            ),
+        )],
+    )
 });

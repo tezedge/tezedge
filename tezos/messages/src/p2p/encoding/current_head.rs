@@ -44,14 +44,17 @@ impl CurrentHeadMessage {
 
 cached_data!(CurrentHeadMessage, body);
 has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new(
-            "current_block_header",
-            Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding().clone()),
-        ),
-        Field::new("current_mempool", Mempool::encoding().clone()),
-    ])
+    Encoding::Obj(
+        "CurrentHeadMessage",
+        vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new(
+                "current_block_header",
+                Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding().clone()),
+            ),
+            Field::new("current_mempool", Mempool::encoding().clone()),
+        ],
+    )
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -75,8 +78,8 @@ impl GetCurrentHeadMessage {
 
 cached_data!(GetCurrentHeadMessage, body);
 has_encoding!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![Field::new(
-        "chain_id",
-        Encoding::Hash(HashType::ChainId),
-    )])
+    Encoding::Obj(
+        "GetCurrentHeadMessage",
+        vec![Field::new("chain_id", Encoding::Hash(HashType::ChainId))],
+    )
 });

@@ -15,7 +15,7 @@ use riker::actors::*;
 use slog::{debug, info, warn};
 
 use crypto::hash::{BlockHash, ChainId};
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, StorageInitInfo};
 
 use crate::mempool::CurrentMempoolStateStorageRef;

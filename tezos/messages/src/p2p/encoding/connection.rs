@@ -61,20 +61,23 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 
 non_cached_data!(ConnectionMessage);
 has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("port", Encoding::Uint16),
-        Field::new(
-            "public_key",
-            Encoding::sized(CRYPTO_KEY_SIZE, Encoding::Bytes),
-        ),
-        Field::new(
-            "proof_of_work_stamp",
-            Encoding::sized(POW_SIZE, Encoding::Bytes),
-        ),
-        Field::new(
-            "message_nonce",
-            Encoding::sized(NONCE_SIZE, Encoding::Bytes),
-        ),
-        Field::new("version", NetworkVersion::encoding().clone()),
-    ])
+    Encoding::Obj(
+        "ConnectionMessage",
+        vec![
+            Field::new("port", Encoding::Uint16),
+            Field::new(
+                "public_key",
+                Encoding::sized(CRYPTO_KEY_SIZE, Encoding::Bytes),
+            ),
+            Field::new(
+                "proof_of_work_stamp",
+                Encoding::sized(POW_SIZE, Encoding::Bytes),
+            ),
+            Field::new(
+                "message_nonce",
+                Encoding::sized(NONCE_SIZE, Encoding::Bytes),
+            ),
+            Field::new("version", NetworkVersion::encoding().clone()),
+        ],
+    )
 });

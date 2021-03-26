@@ -8,7 +8,7 @@ use std::sync::{Arc, RwLock};
 
 use crypto::hash::{BlockHash, ChainId};
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, ChainMetaStorage};
 use tezos_messages::Head;
 

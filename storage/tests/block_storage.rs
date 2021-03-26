@@ -13,7 +13,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]
 fn block_storage_read_write() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create("__block_basictest")?;
+    let tmp_storage = TmpStorage::create_to_out_dir("__block_basictest")?;
     let storage = BlockStorage::new(tmp_storage.storage());
 
     let block_header = make_test_block_header()?;
@@ -27,7 +27,7 @@ fn block_storage_read_write() -> Result<(), Error> {
 
 #[test]
 fn test_put_block_header_twice() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create("__block_storage_write_twice")?;
+    let tmp_storage = TmpStorage::create_to_out_dir("__block_storage_write_twice")?;
     let storage = BlockStorage::new(tmp_storage.storage());
 
     // test block
@@ -59,7 +59,7 @@ fn test_put_block_header_twice() -> Result<(), Error> {
 
 #[test]
 fn block_storage_assign_context() -> Result<(), Error> {
-    let tmp_storage = TmpStorage::create("__block_assign_to_context")?;
+    let tmp_storage = TmpStorage::create_to_out_dir("__block_assign_to_context")?;
     let storage = BlockStorage::new(tmp_storage.storage());
 
     let block_header = make_test_block_header()?;

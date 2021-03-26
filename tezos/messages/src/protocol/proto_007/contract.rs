@@ -26,5 +26,5 @@ impl Counter {
 
 non_cached_data!(Counter);
 has_encoding!(Counter, COUNTER_ENCODING, {
-    Encoding::Obj(vec![Field::new("counter", Encoding::Z)])
+    Encoding::Obj("Counter", vec![Field::new("counter", Encoding::Z)])
 });

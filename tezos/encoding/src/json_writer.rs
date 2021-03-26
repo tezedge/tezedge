@@ -30,14 +30,19 @@ impl JsonWriter {
         let value = data.serialize(&mut serializer)?;
 
         match encoding {
-            Encoding::Obj(schema) => self.encode_record(&value, schema),
+            Encoding::Obj(name, schema) => self.encode_record(&value, name, schema),
             _ => self.encode_value(&value, encoding),
         }?;
 
         Ok(self.data.clone())
     }
 
-    fn encode_record(&mut self, value: &Value, schema: &[Field]) -> Result<(), Error> {
+    fn encode_record(
+        &mut self,
+        value: &Value,
+        name: &'static str,
+        schema: &[Field],
+    ) -> Result<(), Error> {
         match value {
             Value::Record(ref values) => {
                 self.open_record();
@@ -53,8 +58,8 @@ impl JsonWriter {
                     }
                     self.push_key(&name);
 
-                    if let Encoding::Obj(ref schema) = encoding {
-                        self.encode_record(value, schema)?
+                    if let Encoding::Obj(name, ref schema) = encoding {
+                        self.encode_record(value, name, schema)?
                     } else {
                         self.encode_value(value, encoding)?
                     }
@@ -63,7 +68,7 @@ impl JsonWriter {
                 Ok(())
             }
             _ => Err(Error::encoding_mismatch(
-                &Encoding::Obj(schema.to_vec()),
+                &Encoding::Obj(name, schema.to_vec()),
                 value,
             )),
         }
@@ -263,7 +268,7 @@ impl JsonWriter {
                     _ => Err(Error::encoding_mismatch(encoding, value)),
                 }
             }
-            Encoding::Obj(obj_schema) => self.encode_record(value, obj_schema),
+            Encoding::Obj(name, obj_schema) => self.encode_record(value, name, obj_schema),
             Encoding::Tup(tup_encodings) => self.encode_tuple(value, tup_encodings),
             Encoding::Dynamic(dynamic_encoding) | Encoding::BoundedDynamic(_, dynamic_encoding) => {
                 self.encode_value(value, dynamic_encoding)
@@ -394,21 +399,21 @@ mod tests {
             Field::new("a", Encoding::Int31),
             Field::new("b", Encoding::Bool),
             Field::new("t", Encoding::Timestamp),
-            Field::new("s", Encoding::Obj(sub_record_schema)),
+            Field::new("s", Encoding::Obj("Sub", sub_record_schema)),
             Field::new("p", Encoding::sized(32, Encoding::Bytes)),
             Field::new("c", Encoding::Option(Box::new(Encoding::Z))),
             Field::new("d", Encoding::Float),
             Field::new("e", Encoding::Enum),
             Field::new(
                 "f",
-                Encoding::dynamic(Encoding::list(Encoding::Obj(version_schema))),
+                Encoding::dynamic(Encoding::list(Encoding::Obj("DynRec", version_schema))),
             ),
             Field::new("h", Encoding::Hash(HashType::ChainId)),
             Field::new("ofs", Encoding::OptionalField(Box::new(Encoding::String))),
         ];
 
         let mut writer = JsonWriter::new();
-        let writer_result = writer.write(&record, &Encoding::Obj(record_schema));
+        let writer_result = writer.write(&record, &Encoding::Obj("Rec", record_schema));
         assert!(writer_result.is_ok());
 
         let expected_writer_result = r#"{ "a": 32, "b": true, "t": "2019-03-21T00:10:11+00:00", "s": { "x": 5, "y": 32, "v": [12, 34] }, "p": "6cf20139cedef0ed52395a327ad13390d9e8c1e999339a24f8513fe513ed689a", "c": "5c4d4aa1", "d": 12.34, "e": "Disconnected", "f": [{ "name": "A", "major": 1, "minor": 1 }, { "name": "B", "major": 2, "minor": 0 }], "h": "NetXgtSLGNJvNye", "ofs": "ofs" }"#;

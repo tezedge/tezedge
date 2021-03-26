@@ -114,12 +114,12 @@ steps:
     - cp ./target/release/light-node /artifacts
     - cp ./target/release/sandbox /artifacts
     - cp ./target/release/protocol-runner /artifacts
-    - cp ./target/release/libtezos_interop_callback.so /artifacts/ffi
-    - cp ./tezos/interop/lib_tezos/artifacts/libtezos.so /artifacts/ffi
+    - cp ./target/release/context-actions-replayer /artifacts
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so /artifacts/ffi
     - cp ./sandbox/artifacts/tezos-client /artifacts
     # copy sapling init files
-    - cp ./tezos/interop/lib_tezos/artifacts/sapling-spend.params /artifacts/ffi
-    - cp ./tezos/interop/lib_tezos/artifacts/sapling-output.params /artifacts/ffi
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params /artifacts/ffi
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params /artifacts/ffi
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
@@ -347,6 +347,45 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/p2p_test --nocapture --ignored test_peer_threshold
+
+- name: record/replay-context-action-file-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    TARGET_ACTION_FILE: /tmp/tezedge-cache/context-replay/generated-1324-context-action-file.data
+    OUT_DIR: .
+  commands:
+    # cleanup
+    - rm -rf /tmp/tezedge-cache/context-replay/*
+    - mkdir -p /tmp/tezedge-cache/context-replay
+    # generate action file for 1324 blocks
+    - echo "... generating context action file ..."
+    - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
+    - ls -lrt $${TARGET_ACTION_FILE}
+    # replay action file with rocksdb
+    - echo "... replay context action file with rocksdb..."
+    - /artifacts/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store rocksdb
+    # replay action file with inmemory
+    - echo "... replay context action file with in-memory..."
+    - /artifacts/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store inmem
+    # replay action file with btree
+    - echo "... replay context action file with in-memory..."
+    - /artifacts/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store btree
+    # replay action file with sled
+    - echo "... replay context action file with sled..."
+    - /artifacts/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store sled
 
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -1340,7 +1379,8 @@ environment:
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   MAX_LATENCY_THRESHOLD: 100 # in %
   THROUGHPUTL_THRESHOLD: 10 # in %
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
@@ -1626,7 +1666,8 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -1834,7 +1875,8 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -2043,7 +2085,8 @@ environment:
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
-  LD_LIBRARY_PATH: ./tezos/interop/lib_tezos/artifacts:./target/release
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
@@ -2304,7 +2347,7 @@ steps:
     settings:
       repo: simplestakingcom/tezedge
       target: light-node
-      tags: 
+      tags:
         - ${DRONE_TAG}
         - latest-release
       dockerfile: docker/distroless/Dockerfile
@@ -2320,7 +2363,7 @@ steps:
     settings:
       repo: simplestakingcom/tezedge
       target: sandbox
-      tags: 
+      tags:
         - sandbox-${DRONE_TAG}
         - sandbox-latest-release
       dockerfile: docker/distroless/Dockerfile

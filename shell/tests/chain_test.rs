@@ -8,7 +8,9 @@ extern crate test;
 /// (Tests are ignored, because they need protocol-runner binary)
 /// Runs like: `PROTOCOL_RUNNER=./target/release/protocol-runner cargo test --release -- --ignored`
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::iter::FromIterator;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -19,6 +21,9 @@ use crypto::hash::OperationHash;
 use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use storage::context::actions::action_file_storage::ActionFileStorage;
+use storage::context::actions::context_action_storage::ContextActionStorage;
+use storage::context::ActionRecorder;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
@@ -70,6 +75,8 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -170,6 +177,8 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -313,6 +322,8 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -420,6 +431,8 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        vec![],
+        (false, false),
     )?;
 
     // register network channel listener
@@ -540,6 +553,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 ) -> Result<(), failure::Error> {
     let root_dir_temp_storage_path = common::prepare_empty_dir("__test_05");
     let root_context_db_path = &common::prepare_empty_dir("__test_05_context");
+
     // logger
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
@@ -549,9 +563,24 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
+    // storage for test
+    let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
+
+    // context action recorders
+    let context_action_recorders = vec![
+        // rocksdb recorder
+        Box::new(ContextActionStorage::new(
+            storage
+                .storage()
+                .merkle_context_actions()
+                .expect("Expecting configured merkle context actions rocksdb"),
+            storage.storage().seq(),
+        )) as Box<dyn ActionRecorder + Send>,
+    ];
+
     // start node
     let node = common::infra::NodeInfrastructure::start(
-        TmpStorage::create(&root_dir_temp_storage_path)?,
+        storage,
         root_context_db_path,
         name,
         &tezos_env,
@@ -559,6 +588,8 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        context_action_recorders,
+        (true, false),
     )?;
 
     // wait for storage initialization to genesis
@@ -749,6 +780,107 @@ fn test_process_bootstrap_level1324_and_mempool_for_level1325() -> Result<(), fa
     )
 }
 
+#[ignore]
+#[test]
+#[serial]
+fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), failure::Error> {
+    let root_dir_temp_storage_path = common::prepare_empty_dir("__test_06");
+    let root_context_db_path = &common::prepare_empty_dir("__test_06_context");
+    let target_action_file = ensure_target_action_file()?;
+
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level);
+
+    let db = common::test_cases_data::current_branch_on_level_1324::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
+
+    // storage for test
+    let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
+
+    // context action recorders
+    let context_action_recorders = vec![
+        // action file recorder
+        Box::new(ActionFileStorage::new(target_action_file.clone()))
+            as Box<dyn ActionRecorder + Send>,
+    ];
+
+    // start node
+    let node = common::infra::NodeInfrastructure::start(
+        storage,
+        root_context_db_path,
+        "test_process_bootstrap_level1324_and_generate_action_file",
+        &tezos_env,
+        None,
+        Some(NODE_P2P_CFG.clone()),
+        NODE_IDENTITY.clone(),
+        (log, log_level),
+        context_action_recorders,
+        (true, true),
+    )?;
+
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head(
+        "genesis",
+        node.tezos_env.genesis_header_hash()?,
+        (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+
+    ///////////////////////
+    // BOOOSTRAP to 1324 //
+    ///////////////////////
+    // connect mocked node peer with test data set
+    let clocks = Instant::now();
+    let _ = common::test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE",
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
+        tezos_identity::Identity::generate(0f64)?,
+        node.log.clone(),
+        &node.tokio_runtime,
+        common::test_cases_data::current_branch_on_level_1324::serve_data,
+    );
+    // wait for current head on level 1324
+    let current_head_wait_timeout = (Duration::from_secs(120), Duration::from_millis(500));
+    node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
+    let current_head_reached = SystemTime::now();
+    println!(
+        "\nProcessed current_branch[1324] in {:?}!\n",
+        clocks.elapsed()
+    );
+
+    // check context stored for all blocks
+    node.wait_for_context(
+        "ctx_1324",
+        db.context_hash(1324)?,
+        (Duration::from_secs(30), Duration::from_millis(150)),
+    )?;
+    println!(
+        "\nApplied current_head[1324] vs finished context[1324] diff {:?}!\n",
+        current_head_reached.elapsed()
+    );
+
+    println!();
+    println!();
+    println!("Action file generated: {:?}", target_action_file);
+    println!();
+    println!();
+
+    Ok(())
+}
+
+fn ensure_target_action_file() -> Result<PathBuf, failure::Error> {
+    let action_file_path = env::var("TARGET_ACTION_FILE")
+        .unwrap_or_else(|_| panic!("This test requires environment parameter: 'TARGET_ACTION_FILE' to point to the file, where to store recorded context action"));
+    let path = PathBuf::from(action_file_path);
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(path)
+}
+
 mod test_actor {
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
@@ -917,7 +1049,8 @@ mod stats {
     use std::path::Path;
 
     use fs_extra::dir::{get_dir_content2, get_size, DirOptions};
-    use storage::persistent::PersistentStorage;
+
+    use storage::PersistentStorage;
 
     pub fn generate_dir_stats<P: AsRef<Path>>(
         marker: &str,

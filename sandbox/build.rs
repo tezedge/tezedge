@@ -14,7 +14,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str =
-    "../tezos/interop/lib_tezos/libtezos-ffi-distribution-summary.json";
+    "../tezos/sys/lib_tezos/libtezos-ffi-distribution-summary.json";
 const ARTIFACTS_DIR: &str = "artifacts";
 
 #[derive(Debug)]

@@ -11,12 +11,11 @@ use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-use crate::persistent::{
-    default_table_options, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage, SchemaError,
+use crate::persistent::database::{
+    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
-use crate::{num_from_slice, persistent::StorageType};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
 /// Convenience type for operation meta storage database
@@ -31,7 +30,7 @@ pub struct OperationsMetaStorage {
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
         }
     }
 
@@ -120,7 +119,9 @@ impl OperationsMetaStorage {
 impl KeyValueSchema for OperationsMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
+}
 
+impl RocksDbKeyValueSchema for OperationsMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator(
@@ -323,10 +324,11 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{open_kv, DbConfiguration};
+    use crate::persistent::DbConfiguration;
     use crate::tests_common::TmpStorage;
 
     use super::*;
+    use crate::persistent::database::open_kv;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
         let mut vec = bytes.to_vec();
@@ -351,7 +353,7 @@ mod tests {
 
     #[test]
     fn genesis_ops_initialized_success() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__opmeta_genesistest")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__opmeta_genesistest")?;
 
         let k = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?;
         let v = Meta::genesis_meta(&vec![44; 4].try_into()?);
@@ -376,7 +378,7 @@ mod tests {
 
     #[test]
     fn operations_meta_storage_test() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__opmeta_storagetest")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__opmeta_storagetest")?;
 
         let t = true as u8;
         let f = false as u8;
@@ -471,7 +473,7 @@ mod tests {
 
     #[test]
     fn operations_meta_storage_test_contains() -> Result<(), Error> {
-        let tmp_storage = TmpStorage::create("__opmeta_storage_test_contains")?;
+        let tmp_storage = TmpStorage::create_to_out_dir("__opmeta_storage_test_contains")?;
 
         let k = block_hash(&[3, 1, 3, 3, 7]);
         let v = Meta {

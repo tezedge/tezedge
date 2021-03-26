@@ -41,7 +41,7 @@ fn generate_random_encoding() -> Encoding {
         for _ in 0..10 {
             fields.push(gen_random_field());
         }
-        Encoding::Obj(fields)
+        Encoding::Obj("", fields)
     }
 }
 

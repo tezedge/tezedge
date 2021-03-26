@@ -325,8 +325,6 @@ fn msg_type(msg: &PeerMessageResponse) -> String {
         PeerMessage::Operation(_) => "Operation",
         PeerMessage::GetProtocols(_) => "GetProtocols",
         PeerMessage::Protocol(_) => "Protocol",
-        PeerMessage::GetOperationHashesForBlocks(_) => "GetOperationHashesForBlocks",
-        PeerMessage::OperationHashesForBlock(_) => "OperationHashesForBlock",
         PeerMessage::GetOperationsForBlocks(_) => "GetOperationsForBlocks",
         PeerMessage::OperationsForBlocks(_) => "OperationsForBlocks",
     }

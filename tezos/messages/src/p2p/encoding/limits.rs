@@ -3,7 +3,7 @@ use crypto::hash::HashType;
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-/// P2P message encoding maximal size
+/// P2P message encoding maximal size in OCaml
 ///
 /// OCaml refs:
 ///
@@ -15,7 +15,19 @@ use crypto::hash::HashType;
 ///  (*Very high, arbitrary upper bound for message encodings  *)
 ///  ...
 /// ```
-pub const MESSAGE_MAX_SIZE: usize = 100 * 1024 * 1024;
+pub const OCAML_MESSAGE_MAX_SIZE: usize = 100 * 1024 * 1024;
+
+/// P2P message encoding maximal size.
+///
+/// This is calculated from encoding schema as a maximal possible size of all message variants.
+/// The biggest one happens to be a `PeerResponseMessage::CurrentHead`.
+pub const MESSAGE_MAX_SIZE: usize = 4 +         // dynamic block size
+    2 +                                         // tag size
+    (                                           // CurrentHeadMessage
+        HashType::ChainId.size() +              //   chain_id: ChainId
+        4 + BLOCK_HEADER_MAX_SIZE +                 //   current_block_header: BlockHeader
+        MEMPOOL_MAX_SIZE                        //   current_mempool: Mempool,
+    );
 
 /// P2P Point ID encoding maximal size
 ///
@@ -213,3 +225,10 @@ pub const GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH: usize = 10;
 ///  let operation_list_max_size = ref (Some (1024 * 1024)) (* FIXME: arbitrary *)
 /// ```
 pub const OPERATION_LIST_MAX_SIZE: usize = 1024 * 1024;
+
+/// Maximal lenght for Tezos chain name.
+///
+/// Currently the longest one is the `TEZOS_ALPHANET_CARTHAGE_2019-11-28T13:02:13Z`.
+/// It should be pretty safe to have the length greater than that.
+///
+pub const CHAIN_NAME_MAX_LENGTH: usize = 128;

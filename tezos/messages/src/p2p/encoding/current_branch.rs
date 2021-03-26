@@ -38,10 +38,13 @@ impl CurrentBranchMessage {
 
 cached_data!(CurrentBranchMessage, body);
 has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
-        Field::new("current_branch", CurrentBranch::encoding().clone()),
-    ])
+    Encoding::Obj(
+        "CurrentBranchMessage",
+        vec![
+            Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
+            Field::new("current_branch", CurrentBranch::encoding().clone()),
+        ],
+    )
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -68,25 +71,28 @@ impl CurrentBranch {
 
 cached_data!(CurrentBranch, body);
 has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
-    Encoding::Obj(vec![
-        Field::new(
-            "current_head",
-            Encoding::bounded_dynamic(
-                super::limits::BLOCK_HEADER_MAX_SIZE,
-                BlockHeader::encoding().clone(),
-            ),
-        ),
-        Field::new(
-            "history",
-            Encoding::Split(Arc::new(|schema_type| match schema_type {
-                SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
-                SchemaType::Binary => Encoding::bounded_list(
-                    CURRENT_BRANCH_HISTORY_MAX_LENGTH,
-                    Encoding::Hash(HashType::BlockHash),
+    Encoding::Obj(
+        "CurrentBranch",
+        vec![
+            Field::new(
+                "current_head",
+                Encoding::bounded_dynamic(
+                    super::limits::BLOCK_HEADER_MAX_SIZE,
+                    BlockHeader::encoding().clone(),
                 ),
-            })),
-        ),
-    ])
+            ),
+            Field::new(
+                "history",
+                Encoding::Split(Arc::new(|schema_type| match schema_type {
+                    SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
+                    SchemaType::Binary => Encoding::bounded_list(
+                        CURRENT_BRANCH_HISTORY_MAX_LENGTH,
+                        Encoding::Hash(HashType::BlockHash),
+                    ),
+                })),
+            ),
+        ],
+    )
 });
 
 // -----------------------------------------------------------------------------------------------
@@ -112,9 +118,9 @@ has_encoding!(
     GetCurrentBranchMessage,
     GET_CURRENT_BRANCH_MESSAGE_ENCODING,
     {
-        Encoding::Obj(vec![Field::new(
-            "chain_id",
-            Encoding::Hash(HashType::ChainId),
-        )])
+        Encoding::Obj(
+            "GetCurrentBranchMessage",
+            vec![Field::new("chain_id", Encoding::Hash(HashType::ChainId))],
+        )
     }
 );
