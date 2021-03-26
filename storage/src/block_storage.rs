@@ -11,6 +11,7 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
+use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
     Location, PersistentStorage, StorageType,
@@ -140,6 +141,8 @@ pub trait BlockStorageReader: Sync + Send {
     ) -> Result<Option<BlockHeaderWithHash>, StorageError>;
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
+
+    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
 }
 
 impl BlockStorage {
@@ -443,6 +446,11 @@ impl BlockStorageReader for BlockStorage {
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError> {
         self.by_context_hash_index.contains(context_hash)
     }
+
+    #[inline]
+    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
+        self.primary_index.iterator()
+    }
 }
 
 impl CommitLogSchema for BlockStorage {
@@ -509,6 +517,13 @@ impl BlockPrimaryIndex {
     #[inline]
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
+    }
+
+    #[inline]
+    fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
+        self.kv
+            .iterator(IteratorMode::Start)
+            .map_err(StorageError::from)
     }
 }
 

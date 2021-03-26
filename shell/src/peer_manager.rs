@@ -482,6 +482,9 @@ impl Receive<DeadLetter> for PeerManager {
             if self.shutting_down {
                 return;
             }
+            // kick peeer immediatelly
+            ctx.system.stop(msg.recipient);
+
             self.trigger_check_peer_count(ctx);
         }
     }
@@ -586,9 +589,27 @@ impl Receive<NetworkChannelMsg> for PeerManager {
                 self.blacklist_peer(peer_id, reason, &ctx.system);
             }
             NetworkChannelMsg::ProcessSuccessBootstrapAddress(peer_id) => {
-                let _ = self
-                    .peers
-                    .insert(peer_id.peer_ref.uri().clone(), PeerState { peer_id });
+                if self.peers.len() < self.threshold.high {
+                    info!(
+                        ctx.system.log(),
+                        "Adding peer";
+                        "peer_id" => peer_id.peer_id_marker.clone(),
+                        "actual_peer_count" => self.peers.len(),
+                        "threshold" => self.threshold.high,
+                    );
+                    let _ = self
+                        .peers
+                        .insert(peer_id.peer_ref.uri().clone(), PeerState { peer_id });
+                } else {
+                    info!(
+                        ctx.system.log(),
+                        "Threshold reached, removing peer";
+                        "peer_id" => peer_id.peer_id_marker.clone(),
+                        "actual_peer_count" => self.peers.len(),
+                        "threshold" => self.threshold.high,
+                    );
+                    ctx.system.stop(peer_id.peer_ref.clone());
+                }
             }
             _ => (),
         }

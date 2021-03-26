@@ -151,6 +151,15 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         .await
         .expect("test failed");
 
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "operations"
+        ))
+        .await
+        .expect("test failed");
+
+        test_all_operations_for_block(level).await;
+
         // --------------------------- Tests for each block_id - protocol rpcs ---------------------------
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
@@ -669,6 +678,37 @@ fn node_rpc_context_root_1() -> String {
 fn node_rpc_context_root_2() -> String {
     env::var("NODE_RPC_CONTEXT_ROOT_2")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set")
+}
+
+async fn test_all_operations_for_block(level: i64) {
+    let block = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level))
+        .await
+        .expect("Failed to get block");
+
+    let vlaidation_passes = block["operations"]
+        .as_array()
+        .expect("Failed to parse block operations (validation passes)");
+
+    for (vlaidation_pass_index, validation_pass) in vlaidation_passes.iter().enumerate() {
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}/{}",
+            "chains/main/blocks", level, "operations", vlaidation_pass_index,
+        ))
+        .await
+        .expect("test failed");
+
+        let operations = validation_pass
+            .as_array()
+            .expect("Failed to parse validation pass operations");
+        for (operation_index, _) in operations.iter().enumerate() {
+            test_rpc_compare_json(&format!(
+                "{}/{}/{}/{}/{}",
+                "chains/main/blocks", level, "operations", vlaidation_pass_index, operation_index,
+            ))
+            .await
+            .expect("test failed");
+        }
+    }
 }
 
 #[test]

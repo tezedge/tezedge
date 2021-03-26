@@ -123,6 +123,7 @@ steps:
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` /artifacts/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` /artifacts/shell_chain_test
     - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` /artifacts/protocol_runner_test
+    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` /artifacts/p2p_test
     # copy test resources
     - cp ./shell/tests/resources/apply_block_request_until_1326.zip /artifacts/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox_branch_1_level3.zip /artifacts/test_data/tests/resources
@@ -327,6 +328,24 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
+
+- name: p2p-threshold-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/p2p_test --nocapture --ignored test_peer_threshold
 
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
