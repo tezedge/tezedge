@@ -6,8 +6,8 @@ use failure::bail;
 use crypto::hash::{BlockHash, ChainId};
 use storage::block_storage::BlockJsonData;
 use storage::context::ContextApi;
-use storage::merkle_storage::StringTreeEntry;
-use storage::persistent::PersistentStorage;
+use storage::context::StringTreeEntry;
+use storage::PersistentStorage;
 use storage::{
     context_key, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader,

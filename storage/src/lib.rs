@@ -5,15 +5,13 @@
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::Path;
+use std::sync::{Arc, RwLock};
 
 use failure::Fail;
-use rocksdb::Cache;
+use rocksdb::{Cache, DB};
 use serde::{Deserialize, Serialize};
-use slog::{error, info, Logger};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use slog::{info, Logger};
 
 use crypto::{
     base58::FromBase58CheckError,
@@ -33,39 +31,29 @@ pub use crate::block_storage::{
     BlockStorage, BlockStorageReader,
 };
 pub use crate::chain_meta_storage::ChainMetaStorage;
-pub use crate::context_action_storage::{
-    ContextActionByBlockHashKey, ContextActionRecordValue, ContextActionStorage,
-};
+use crate::context::merkle::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
-use crate::merkle_storage::MerkleStorage;
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
     OperationKey, OperationsStorage, OperationsStorageKV, OperationsStorageReader,
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
-use crate::persistent::sequence::SequenceError;
-use crate::persistent::ActionRecordError;
-use crate::persistent::{CommitLogError, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::sequence::{SequenceError, Sequences};
+use crate::persistent::{
+    CommitLogError, CommitLogs, DBError, Decoder, Encoder, Flushable, SchemaError,
+};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
-pub use action_file_storage::ActionFileStorage;
-use std::str::FromStr;
 
-pub mod action_file;
-pub mod action_file_storage;
-pub mod backend;
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod context;
-pub mod context_action_storage;
 pub mod mempool_storage;
-pub mod merkle_storage;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
-pub mod storage_backend;
 pub mod system_storage;
 
 /// Extension of block header with block hash
@@ -136,8 +124,6 @@ pub enum StorageError {
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError { error: SequenceError },
-    #[fail(display = "Action record error: {}", error)]
-    ActionRecordError { error: ActionRecordError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
     TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
@@ -197,12 +183,6 @@ impl From<FromBytesError> for StorageError {
 impl From<FromBase58CheckError> for StorageError {
     fn from(error: FromBase58CheckError) -> Self {
         StorageError::HashDecodeError { error }
-    }
-}
-
-impl From<ActionRecordError> for StorageError {
-    fn from(error: ActionRecordError) -> Self {
-        StorageError::ActionRecordError { error }
     }
 }
 
@@ -415,107 +395,318 @@ pub fn initialize_storage_with_genesis_block(
     Ok(genesis_with_hash)
 }
 
-pub fn check_database_compatibility(
-    db: Arc<rocksdb::DB>,
-    expected_database_version: i64,
-    tezos_env: &TezosEnvironmentConfiguration,
-    log: &Logger,
-) -> Result<bool, StorageError> {
-    let mut system_info = SystemStorage::new(db);
-    let db_version_ok = match system_info.get_db_version()? {
-        Some(db_version) => db_version == expected_database_version,
-        None => {
-            system_info.set_db_version(expected_database_version)?;
-            true
-        }
-    };
-    if !db_version_ok {
-        error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
+/// Helper module to easily initialize databases
+pub mod initializer {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
+    use slog::{error, Logger};
+
+    use crypto::hash::ChainId;
+
+    use crate::context::merkle::merkle_storage::MerkleStorage;
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
+    use crate::persistent::{DBError, DbConfiguration};
+    use crate::{StorageError, SystemStorage};
+
+    // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
+    pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
+    pub type RocksDbCache = Cache;
+
+    /// Factory for creation of grouped column family descriptors
+    pub trait RocksDbColumnFactory {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor>;
     }
 
-    let tezos_env_main_chain_id = tezos_env
-        .main_chain_id()
-        .map_err(|e| StorageError::TezosEnvironmentError { error: e })?;
-    let tezos_env_main_chain_name = &tezos_env.version;
+    /// Tables initializer for all operational datbases
+    #[derive(Debug, Clone)]
+    pub struct DbsRocksDbTableInitializer;
 
-    let (chain_id_ok, previous_chain_name, requested_chain_name) =
-        match system_info.get_chain_id()? {
-            Some(chain_id) => {
-                let previous_chain_name = match system_info.get_chain_name()? {
-                    Some(chn) => chn,
-                    None => "-unknown-".to_string(),
-                };
+    /// Tables initializer for Context Rocksdb k-v store (if configured)
+    #[derive(Debug, Clone)]
+    pub struct ContextRocksDbTableInitializer;
 
-                if chain_id == tezos_env_main_chain_id
-                    && previous_chain_name.eq(tezos_env_main_chain_name.as_str())
-                {
-                    (true, previous_chain_name, tezos_env_main_chain_name)
-                } else {
-                    (false, previous_chain_name, tezos_env_main_chain_name)
-                }
+    /// Tables initializer for context action rocksdb k-v store (if configured)
+    #[derive(Debug, Clone)]
+    pub struct ContextActionsRocksDbTableInitializer;
+
+    impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::SystemStorage::descriptor(cache),
+                crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
+            ]
+        }
+    }
+
+    impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::block_storage::BlockPrimaryIndex::descriptor(cache),
+                crate::block_storage::BlockByLevelIndex::descriptor(cache),
+                crate::block_storage::BlockByContextHashIndex::descriptor(cache),
+                crate::BlockMetaStorage::descriptor(cache),
+                crate::OperationsStorage::descriptor(cache),
+                crate::OperationsMetaStorage::descriptor(cache),
+                crate::SystemStorage::descriptor(cache),
+                crate::persistent::sequence::Sequences::descriptor(cache),
+                crate::MempoolStorage::descriptor(cache),
+                crate::ChainMetaStorage::descriptor(cache),
+                crate::PredecessorStorage::descriptor(cache),
+            ]
+        }
+    }
+
+    impl RocksDbColumnFactory for ContextActionsRocksDbTableInitializer {
+        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+            vec![
+                crate::SystemStorage::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
+                crate::context::actions::context_action_storage::ContextActionStorage::descriptor(cache),
+            ]
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct RocksDbConfig<C: RocksDbColumnFactory> {
+        pub cache_size: usize,
+        pub expected_db_version: i64,
+        pub db_path: PathBuf,
+        pub columns: C,
+        pub threads: Option<usize>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum ContextKvStoreConfiguration {
+        RocksDb(RocksDbConfig<ContextRocksDbTableInitializer>),
+        Sled { path: PathBuf },
+        InMem,
+        BTreeMap,
+    }
+
+    pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
+        log: &Logger,
+        cache: &Cache,
+        config: &RocksDbConfig<Factory>,
+        expected_main_chain: &MainChain,
+    ) -> Result<Arc<DB>, DBError> {
+        let db = open_kv(
+            &config.db_path,
+            config.columns.create(cache),
+            &DbConfiguration {
+                max_threads: config.threads,
+            },
+        )
+        .map(Arc::new)?;
+
+        match check_database_compatibility(
+            db.clone(),
+            config.expected_db_version,
+            expected_main_chain,
+            &log,
+        ) {
+            Ok(false) => Err(DBError::DatabaseIncompatibility {
+                name: format!(
+                    "Database is incompatible with version {}",
+                    config.expected_db_version
+                ),
+            }),
+            Err(e) => Err(DBError::DatabaseIncompatibility {
+                name: format!("Failed to verify database compatibility reason: '{}'", e),
+            }),
+            _ => Ok(db),
+        }
+    }
+
+    pub struct MainChain {
+        chain_id: ChainId,
+        chain_name: String,
+    }
+
+    impl MainChain {
+        pub fn new(chain_id: ChainId, chain_name: String) -> Self {
+            Self {
+                chain_id,
+                chain_name,
             }
+        }
+    }
+
+    fn check_database_compatibility(
+        db: Arc<DB>,
+        expected_database_version: i64,
+        expected_main_chain: &MainChain,
+        log: &Logger,
+    ) -> Result<bool, StorageError> {
+        let mut system_info = SystemStorage::new(db);
+        let db_version_ok = match system_info.get_db_version()? {
+            Some(db_version) => db_version == expected_database_version,
             None => {
-                system_info.set_chain_id(&tezos_env_main_chain_id)?;
-                system_info.set_chain_name(&tezos_env_main_chain_name)?;
-                (true, "-none-".to_string(), tezos_env_main_chain_name)
+                system_info.set_db_version(expected_database_version)?;
+                true
             }
         };
-
-    if !chain_id_ok {
-        error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
-                    "requested_chain" => requested_chain_name,
-                    "previous_chain" => previous_chain_name
-        );
-    }
-
-    Ok(db_version_ok && chain_id_ok)
-}
-
-#[derive(PartialEq, Debug, Clone, EnumIter)]
-pub enum KeyValueStoreBackend {
-    RocksDB,
-    InMem,
-    Sled { path: PathBuf },
-    BTreeMap,
-}
-
-impl KeyValueStoreBackend {
-    pub fn possible_values() -> Vec<&'static str> {
-        let mut possible_values = Vec::new();
-        for sp in KeyValueStoreBackend::iter() {
-            possible_values.extend(sp.supported_values());
+        if !db_version_ok {
+            error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
         }
-        possible_values
-    }
 
-    fn supported_values(&self) -> Vec<&'static str> {
-        match self {
-            KeyValueStoreBackend::RocksDB => vec!["rocksdb"],
-            KeyValueStoreBackend::InMem => vec!["inmem"],
-            KeyValueStoreBackend::Sled { .. } => vec!["sled"],
-            KeyValueStoreBackend::BTreeMap => vec!["btree"],
+        let tezos_env_main_chain_id = &expected_main_chain.chain_id;
+        let tezos_env_main_chain_name = &expected_main_chain.chain_name;
+
+        let (chain_id_ok, previous_chain_name, requested_chain_name) =
+            match system_info.get_chain_id()? {
+                Some(chain_id) => {
+                    let previous_chain_name = match system_info.get_chain_name()? {
+                        Some(chn) => chn,
+                        None => "-unknown-".to_string(),
+                    };
+
+                    if chain_id == *tezos_env_main_chain_id
+                        && previous_chain_name.eq(tezos_env_main_chain_name.as_str())
+                    {
+                        (true, previous_chain_name, tezos_env_main_chain_name)
+                    } else {
+                        (false, previous_chain_name, tezos_env_main_chain_name)
+                    }
+                }
+                None => {
+                    system_info.set_chain_id(&tezos_env_main_chain_id)?;
+                    system_info.set_chain_name(&tezos_env_main_chain_name)?;
+                    (true, "-none-".to_string(), tezos_env_main_chain_name)
+                }
+            };
+
+        if !chain_id_ok {
+            error!(log, "Current database was previously created for another chain. Please re-sync your node to empty storage - see configuration!";
+                        "requested_chain" => requested_chain_name,
+                        "previous_chain" => previous_chain_name
+            );
         }
+
+        Ok(db_version_ok && chain_id_ok)
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct ParseKeyValueStoreBackendError(String);
-
-impl FromStr for KeyValueStoreBackend {
-    type Err = ParseKeyValueStoreBackendError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        for sp in KeyValueStoreBackend::iter() {
-            if sp.supported_values().contains(&s.as_str()) {
-                return Ok(sp);
+    pub fn initialize_merkle(
+        context_kv_store: &ContextKvStoreConfiguration,
+        expected_main_chain: &MainChain,
+        log: &Logger,
+        caches: &mut GlobalRocksDbCacheHolder,
+    ) -> Result<MerkleStorage, failure::Error> {
+        Ok(MerkleStorage::new(match context_kv_store {
+            ContextKvStoreConfiguration::RocksDb(cfg) => {
+                let kv_context_cache = Cache::new_lru_cache(cfg.cache_size)
+                    .expect("Failed to initialize RocksDB cache (db_context)");
+                let kv_context =
+                    initialize_rocksdb(&log, &kv_context_cache, cfg, expected_main_chain)
+                        .expect("Failed to create/initialize RocksDB database (db_context)");
+                caches.push(kv_context_cache);
+                Box::new(crate::context::kv_store::rocksdb_backend::RocksDBBackend::new(kv_context))
             }
-        }
+            ContextKvStoreConfiguration::Sled { path } => {
+                let sled = sled::Config::new()
+                    .path(path)
+                    .open()
+                    .expect("Failed to create/initialize Sled database (db_context)");
+                Box::new(crate::context::kv_store::sled_backend::SledBackend::new(
+                    sled,
+                ))
+            }
+            ContextKvStoreConfiguration::InMem => {
+                Box::new(crate::context::kv_store::in_memory_backend::InMemoryBackend::new())
+            }
+            ContextKvStoreConfiguration::BTreeMap => {
+                Box::new(crate::context::kv_store::btree_map::BTreeMapBackend::new())
+            }
+        }))
+    }
+}
 
-        Err(ParseKeyValueStoreBackendError(format!(
-            "Invalid variant name: {}",
-            s
-        )))
+#[derive(Clone)]
+pub struct PersistentStorage {
+    /// key-value store for operational database
+    db: Arc<DB>,
+    /// commit log store for storing plain block header data
+    clog: Arc<CommitLogs>,
+    /// autoincrement  id generators
+    seq: Arc<Sequences>,
+    /// merkle-tree based context storage
+    merkle: Arc<RwLock<MerkleStorage>>,
+    /// persistent context actions storage
+    merkle_context_actions: Option<Arc<DB>>,
+}
+
+impl PersistentStorage {
+    pub fn new(
+        db: Arc<DB>,
+        clog: Arc<CommitLogs>,
+        seq: Arc<Sequences>,
+        merkle: Arc<RwLock<MerkleStorage>>,
+        merkle_context_actions: Option<Arc<DB>>,
+    ) -> Self {
+        Self {
+            clog,
+            db,
+            seq,
+            merkle,
+            merkle_context_actions,
+        }
+    }
+
+    #[inline]
+    pub fn db(&self) -> Arc<DB> {
+        self.db.clone()
+    }
+
+    #[inline]
+    pub fn clog(&self) -> Arc<CommitLogs> {
+        self.clog.clone()
+    }
+
+    #[inline]
+    pub fn seq(&self) -> Arc<Sequences> {
+        self.seq.clone()
+    }
+
+    #[inline]
+    pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
+        self.merkle.clone()
+    }
+
+    #[inline]
+    pub fn merkle_context_actions(&self) -> Option<Arc<DB>> {
+        self.merkle_context_actions.clone()
+    }
+
+    pub fn flush_dbs(&mut self) {
+        let clog = self.clog.flush();
+        let db = self.db.flush();
+        let merkle = match self.merkle.write() {
+            Ok(merkle) => merkle.flush(),
+            Err(e) => Err(failure::format_err!(
+                "Failed to write/lock for flush, reason: {:?}",
+                e
+            )),
+        };
+        let merkle_context_actions = match self.merkle_context_actions.as_ref() {
+            Some(merkle_context_actions) => merkle_context_actions.flush(),
+            None => Ok(()),
+        };
+
+        if clog.is_err() || db.is_err() || merkle.is_err() || merkle_context_actions.is_err() {
+            println!(
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, merkle_err: {:?}, merkle_context_actions_err: {:?}",
+                clog, db, merkle, merkle_context_actions
+            );
+        }
+    }
+}
+
+impl Drop for PersistentStorage {
+    fn drop(&mut self) {
+        self.flush_dbs();
     }
 }
 
@@ -528,9 +719,13 @@ pub mod tests_common {
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
+    use crate::context::actions::context_action_storage;
+    use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
+    use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::mempool_storage::MempoolStorage;
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
-    use crate::persistent::*;
+    use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
 
@@ -565,51 +760,67 @@ pub mod tests_common {
             let cfg = DbConfiguration::default();
 
             // create common RocksDB block cache to be shared among column families
-            let cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
+            let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
-            let kv = open_kv(
+            // db storage - is used for db and sequences
+            let kv = Arc::new(open_kv(
                 path.join("db"),
                 vec![
-                    block_storage::BlockPrimaryIndex::descriptor(&cache),
-                    block_storage::BlockByLevelIndex::descriptor(&cache),
-                    block_storage::BlockByContextHashIndex::descriptor(&cache),
-                    BlockMetaStorage::descriptor(&cache),
-                    OperationsStorage::descriptor(&cache),
-                    OperationsMetaStorage::descriptor(&cache),
-                    SystemStorage::descriptor(&cache),
-                    Sequences::descriptor(&cache),
-                    MempoolStorage::descriptor(&cache),
-                    ChainMetaStorage::descriptor(&cache),
-                    PredecessorStorage::descriptor(&cache),
+                    block_storage::BlockPrimaryIndex::descriptor(&db_cache),
+                    block_storage::BlockByLevelIndex::descriptor(&db_cache),
+                    block_storage::BlockByContextHashIndex::descriptor(&db_cache),
+                    BlockMetaStorage::descriptor(&db_cache),
+                    OperationsStorage::descriptor(&db_cache),
+                    OperationsMetaStorage::descriptor(&db_cache),
+                    SystemStorage::descriptor(&db_cache),
+                    Sequences::descriptor(&db_cache),
+                    MempoolStorage::descriptor(&db_cache),
+                    ChainMetaStorage::descriptor(&db_cache),
+                    PredecessorStorage::descriptor(&db_cache),
                 ],
                 &cfg,
-            )?;
+            )?);
 
-            let kv_context = open_kv(
+            // context
+            let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
+            let context_kv_store = RocksDBBackend::new(Arc::new(open_kv(
                 path.join("context"),
-                vec![MerkleStorage::descriptor(&cache)],
+                vec![RocksDBBackend::descriptor(&db_context_cache)],
                 &cfg,
-            )?;
+            )?));
+            let merkle = MerkleStorage::new(Box::new(context_kv_store));
 
+            // context actions storage
+            let db_context_actions_cache = Cache::new_lru_cache(16 * 1024 * 1024)?; // 16 MB
             let kv_context_action = open_kv(
                 path.join("context_actions"),
                 vec![
-                    ContextActionStorage::descriptor(&cache),
-                    context_action_storage::ContextActionByBlockHashIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByContractIndex::descriptor(&cache),
-                    context_action_storage::ContextActionByTypeIndex::descriptor(&cache),
+                    context_action_storage::ContextActionStorage::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByBlockHashIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByContractIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
+                    context_action_storage::ContextActionByTypeIndex::descriptor(
+                        &db_context_actions_cache,
+                    ),
                 ],
                 &cfg,
             )?;
+
+            // commit log storage
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
-                    Arc::new(kv),
-                    Arc::new(kv_context),
-                    Arc::new(kv_context_action),
+                    kv.clone(),
                     Arc::new(clog),
-                    KeyValueStoreBackend::RocksDB,
+                    Arc::new(Sequences::new(kv, 1000)),
+                    Arc::new(RwLock::new(merkle)),
+                    Some(Arc::new(kv_context_action)),
                 ),
                 path,
                 remove_on_destroy,

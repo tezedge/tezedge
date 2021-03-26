@@ -5,20 +5,22 @@
 //!
 //! A document describing the algorithm can be found [here](https://github.com/tarides/tezos-context-hash).
 
-mod ocaml;
-
 use std::{array::TryFromSliceError, convert::TryInto, io};
 
 use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
 use failure::Fail;
+
 use ocaml::ocaml_hash_string;
 
-use crate::merkle_storage::{Commit, ContextValue, Entry, Node, NodeKind, Tree};
+use crate::context::merkle::{Commit, Entry, Node, NodeKind, Tree};
+use crate::context::ContextValue;
 
-pub const HASH_LEN: usize = 32;
+mod ocaml;
 
-pub type EntryHash = [u8; HASH_LEN];
+pub const ENTRY_HASH_LEN: usize = 32;
+
+pub type EntryHash = [u8; ENTRY_HASH_LEN];
 
 #[derive(Debug, Fail)]
 pub enum HashingError {
@@ -32,6 +34,8 @@ pub enum HashingError {
     ValueExpected(&'static str),
     #[fail(display = "Got an unexpected empty inode")]
     UnexpectedEmptyInode,
+    #[fail(display = "Invalid hash value, reason: {}", _0)]
+    InvalidHash(String),
 }
 
 impl From<InvalidOutputSize> for HashingError {
@@ -116,7 +120,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
 }
 
 fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN)?;
+    let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN)?;
 
     match inode {
         Inode::Empty => return Err(HashingError::UnexpectedEmptyInode),
@@ -146,7 +150,7 @@ fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
                     NodeKind::Leaf => hasher.update(&[1u8]),
                     NodeKind::NonLeaf => hasher.update(&[0u8]),
                 };
-                hasher.update(node.entry_hash);
+                hasher.update(node.entry_hash.as_ref());
             }
         }
         Inode::Tree {
@@ -187,7 +191,7 @@ fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
 // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
 // - NODE TYPE - leaf node(0xff0000000000000000) or internal node (0x0000000000000000)
 fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN)?;
+    let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN)?;
 
     // Node list:
     //
@@ -208,8 +212,8 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
         // Key length is written in LEB128 encoding
         leb128::write::unsigned(&mut hasher, k.len() as u64)?;
         hasher.update(k.as_bytes());
-        hasher.update(&(HASH_LEN as u64).to_be_bytes());
-        hasher.update(&v.entry_hash);
+        hasher.update(&(ENTRY_HASH_LEN as u64).to_be_bytes());
+        hasher.update(&v.entry_hash.as_ref());
     }
 
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
@@ -220,7 +224,7 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
-        let entries: Vec<(&String, &Node)> = tree.iter().collect();
+        let entries: Vec<(&String, &Node)> = tree.iter().map(|(s, n)| (s, n.as_ref())).collect();
         let inode = partition_entries(0, &entries)?;
         hash_long_inode(&inode)
     } else {
@@ -232,7 +236,7 @@ pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
 // uses BLAKE2 binary 256 length hash function
 // hash is calculated as <length of data (8 bytes)><data>
 pub(crate) fn hash_blob(blob: &ContextValue) -> Result<EntryHash, HashingError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN)?;
+    let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN)?;
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
 
@@ -248,8 +252,8 @@ pub(crate) fn hash_blob(blob: &ContextValue) -> Result<EntryHash, HashingError> 
 // <commit author name length (8bytes)><commit author name bytes>
 // <commit message length (8bytes)><commit message bytes>
 pub(crate) fn hash_commit(commit: &Commit) -> Result<EntryHash, HashingError> {
-    let mut hasher = VarBlake2b::new(HASH_LEN)?;
-    hasher.update(&(HASH_LEN as u64).to_be_bytes());
+    let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN)?;
+    hasher.update(&(ENTRY_HASH_LEN as u64).to_be_bytes());
     hasher.update(&commit.root_hash);
 
     if commit.parent_commit_hash.is_none() {
@@ -282,6 +286,14 @@ pub(crate) fn hash_entry(entry: &Entry) -> Result<EntryHash, HashingError> {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
+    use std::{env, fs::File, io::Read, path::Path, sync::Arc};
+
+    use flate2::read::GzDecoder;
+
+    use crypto::hash::{ContextHash, HashTrait};
+
+    use crate::context::merkle::{Node, NodeKind, Tree};
+
     use super::*;
 
     #[test]
@@ -357,7 +369,7 @@ mod tests {
             bytes
         );
 
-        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN).unwrap();
         hasher.update(hex::decode(bytes).unwrap());
         let calculated_commit_hash = hasher.finalize_boxed();
 
@@ -390,9 +402,9 @@ mod tests {
         let mut dummy_tree = Tree::new();
         let node = Node {
             node_kind: NodeKind::Leaf,
-            entry_hash: hash_blob(&vec![1]).unwrap(), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
+            entry_hash: Arc::new(hash_blob(&vec![1]).unwrap()), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
         };
-        dummy_tree.insert("a".to_string(), node);
+        dummy_tree.insert("a".to_string(), Arc::new(node));
 
         // hexademical representation of above tree:
         //
@@ -431,7 +443,7 @@ mod tests {
             bytes
         );
 
-        let mut hasher = VarBlake2b::new(HASH_LEN).unwrap();
+        let mut hasher = VarBlake2b::new(ENTRY_HASH_LEN).unwrap();
         hasher.update(hex::decode(bytes).unwrap());
         let calculated_tree_hash = hasher.finalize_boxed();
 
@@ -451,11 +463,6 @@ mod tests {
     }
 
     // Tests from Tarides json dataset
-
-    use super::{hash_tree, Tree};
-    use crypto::hash::{ContextHash, HashTrait};
-    use flate2::read::GzDecoder;
-    use std::{env, fs::File, io::Read, path::Path};
 
     #[derive(serde::Deserialize)]
     struct NodeHashTest {
@@ -502,12 +509,13 @@ mod tests {
                     other => panic!("Got unexpected binding kind: {}", other),
                 };
                 let entry_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
-                let entry_hash: EntryHash = entry_hash.as_ref().as_slice().try_into().unwrap();
+                let entry_hash: Arc<EntryHash> =
+                    Arc::new(entry_hash.as_ref().as_slice().try_into().unwrap());
                 let node = Node {
                     node_kind,
                     entry_hash,
                 };
-                tree = tree.update(binding.name, node);
+                tree = tree.update(binding.name, Arc::new(node));
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();

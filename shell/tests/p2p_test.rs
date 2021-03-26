@@ -67,6 +67,8 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         Some(NODE_P2P_CFG.clone()),
         NODE_IDENTITY.clone(),
         (log, log_level),
+        vec![],
+        (false, false),
     )?;
 
     // wait for storage initialization to genesis

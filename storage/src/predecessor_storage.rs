@@ -8,13 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
-use crate::persistent::database::{IteratorMode, IteratorWithSchema};
-use crate::persistent::{
-    default_table_options, BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema,
-    PersistentStorage,
+use crate::block_meta_storage::Meta;
+use crate::persistent::database::{
+    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
-use crate::StorageError;
-use crate::{block_meta_storage::Meta, persistent::StorageType};
+use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::{PersistentStorage, StorageError};
 
 pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
 
@@ -41,7 +40,7 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.kv(StorageType::Database),
+            kv: persistent_storage.db(),
         }
     }
 
@@ -109,7 +108,9 @@ impl BincodeEncoded for PredecessorKey {}
 impl KeyValueSchema for PredecessorStorage {
     type Key = PredecessorKey;
     type Value = BlockHash;
+}
 
+impl RocksDbKeyValueSchema for PredecessorStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)

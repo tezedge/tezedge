@@ -1,28 +1,30 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::Path;
+use std::env;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use failure::Error;
-
 use rocksdb::Cache;
+
+use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_kv, DbConfiguration, KeyValueSchema};
+use storage::persistent::DbConfiguration;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
-    let path = "__sequence_multigen";
-    if Path::new(path).exists() {
-        std::fs::remove_dir_all(path).unwrap();
+    let path = out_dir_path("__sequence_multigen");
+    if path.exists() {
+        std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = open_kv(
-            path,
+            &path,
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )
@@ -37,7 +39,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
         assert_eq!(3, gen_1.next()?);
         assert_eq!(1, gen_2.next()?);
     }
-    assert!(DB::destroy(&Options::default(), path).is_ok());
+    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -45,15 +47,15 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 fn generator_test_cloned_gen() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
-    let path = "__sequence_multiseq";
-    if Path::new(path).exists() {
-        std::fs::remove_dir_all(path).unwrap();
+    let path = out_dir_path("__sequence_multiseq");
+    if path.exists() {
+        std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = open_kv(
-            path,
+            &path,
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )
@@ -70,7 +72,7 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
         assert_eq!(6, gen_b.next()?);
         assert_eq!(7, gen_a.next()?);
     }
-    assert!(DB::destroy(&Options::default(), path).is_ok());
+    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -78,15 +80,15 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
 fn generator_test_batch() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
-    let path = "__sequence_batch";
-    if Path::new(path).exists() {
-        std::fs::remove_dir_all(path).unwrap();
+    let path = out_dir_path("__sequence_batch");
+    if path.exists() {
+        std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = open_kv(
-            path,
+            &path,
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )?;
@@ -96,7 +98,7 @@ fn generator_test_batch() -> Result<(), Error> {
             assert_eq!(i, gen.next()?);
         }
     }
-    assert!(DB::destroy(&Options::default(), path).is_ok());
+    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -104,15 +106,15 @@ fn generator_test_batch() -> Result<(), Error> {
 fn generator_test_continuation_after_persist() -> Result<(), Error> {
     use rocksdb::{Options, DB};
 
-    let path = "__sequence_continuation";
-    if Path::new(path).exists() {
-        std::fs::remove_dir_all(path).unwrap();
+    let path = out_dir_path("__sequence_continuation");
+    if path.exists() {
+        std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = Arc::new(open_kv(
-            path,
+            &path,
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )?);
@@ -147,6 +149,11 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             }
         }
     }
-    assert!(DB::destroy(&Options::default(), path).is_ok());
+    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
+}
+
+fn out_dir_path(dir_name: &str) -> PathBuf {
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+    Path::new(out_dir.as_str()).join(Path::new(dir_name))
 }

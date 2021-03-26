@@ -23,7 +23,7 @@ use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
 use storage::mempool_storage::MempoolOperationType;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, MempoolStorage, OperationsMetaStorage, OperationsStorage,

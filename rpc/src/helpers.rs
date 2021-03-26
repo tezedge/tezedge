@@ -13,7 +13,6 @@ use serde_json::Value;
 use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::context_action_storage::ContextActionType;
 use storage::{
     BlockHeaderWithHash, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, ChainMetaStorage,
@@ -536,14 +535,6 @@ pub(crate) fn parse_block_hash(
     };
 
     Ok(block_hash)
-}
-
-#[inline]
-pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
-    action_types
-        .split(',')
-        .filter_map(|x: &str| x.parse().ok())
-        .collect()
 }
 
 /// TODO: TE-238 - optimize context_hash/level index, not do deserialize whole header
