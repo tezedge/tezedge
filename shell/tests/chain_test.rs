@@ -792,7 +792,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     let log_level = common::log_level();
     let log = common::create_logger(log_level);
 
-    let db = test_cases_data::current_branch_on_level_1324::init_data(&log);
+    let db = common::test_cases_data::current_branch_on_level_1324::init_data(&log);
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
@@ -833,14 +833,14 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     ///////////////////////
     // connect mocked node peer with test data set
     let clocks = Instant::now();
-    let _ = test_node_peer::TestNodePeer::connect(
+    let _ = common::test_node_peer::TestNodePeer::connect(
         "TEST_PEER_NODE",
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
         node.log.clone(),
         &node.tokio_runtime,
-        test_cases_data::current_branch_on_level_1324::serve_data,
+        common::test_cases_data::current_branch_on_level_1324::serve_data,
     );
     // wait for current head on level 1324
     let current_head_wait_timeout = (Duration::from_secs(120), Duration::from_millis(500));

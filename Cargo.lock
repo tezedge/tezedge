@@ -2423,6 +2423,7 @@ dependencies = [
  "tezos_messages",
  "tezos_wrapper",
  "tokio",
+ "url",
 ]
 
 [[package]]

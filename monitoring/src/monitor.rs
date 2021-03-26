@@ -15,7 +15,7 @@ use shell::subscription::{
     subscribe_to_shell_new_current_head,
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::persistent::PersistentStorage;
+use storage::PersistentStorage;
 use storage::{
     BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, OperationsMetaStorage,
 };

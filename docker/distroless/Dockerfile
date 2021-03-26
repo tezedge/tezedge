@@ -27,7 +27,7 @@ COPY --from=build-env /home/appuser/tezedge/sandbox/artifacts/tezos-client /
 COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 
 # Copy shared libraries
-COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /
+COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /usr/lib/x86_64-linux-gnu/libtezos.so
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsodium.so.23 /usr/lib/x86_64-linux-gnu/libsodium.so.23
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libgmp.so.10 /usr/lib/x86_64-linux-gnu/libgmp.so.10
@@ -37,13 +37,11 @@ COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linu
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-spend.params /
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-output.params /
 
-ENV LD_LIBRARY_PATH="/"
 # Default entry point runs node with default config + several default values, which can be overriden by CMD
 ENTRYPOINT [ "/light-node", "--config-file=/tezedge.config", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--init-sapling-spend-params-file=/sapling-spend.params", "--init-sapling-output-params-file=/sapling-output.params"]
 
 FROM light-node as sandbox
 
-ENV LD_LIBRARY_PATH="/"
 # Add aditional libs used by the sandbox module
 # Libs required by tezos-client
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libhidapi-libusb.so.0 /usr/lib/x86_64-linux-gnu/libhidapi-libusb.so.0
