@@ -34,7 +34,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
         &None,
         1,
         &context_key!("data/rolls/owner/current/index/123"),
-        &vec![1, 2, 3, 4, 5, 6],
+        vec![1, 2, 3, 4, 5, 6],
     )?;
 
     // commit
@@ -84,37 +84,37 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
         &None,
         1,
         &context_key!("data/rolls/owner/current/cpu/0"),
-        &vec![1, 2, 3, 4],
+        vec![1, 2, 3, 4],
     )?;
     context.set(
         &None,
         2,
         &context_key!("data/rolls/owner/current/cpu/1/a"),
-        &vec![1, 2, 3, 4, 5],
+        vec![1, 2, 3, 4, 5],
     )?;
     context.set(
         &None,
         3,
         &context_key!("data/rolls/owner/current/cpu/1/b"),
-        &vec![1, 2, 3, 4, 5],
+        vec![1, 2, 3, 4, 5],
     )?;
     context.set(
         &None,
         4,
         &context_key!("data/rolls/owner/current/cpu/2/a"),
-        &vec![1, 2, 3, 4, 5, 61],
+        vec![1, 2, 3, 4, 5, 61],
     )?;
     context.set(
         &None,
         5,
         &context_key!("data/rolls/owner/current/cpu/2/b"),
-        &vec![1, 2, 3, 4, 5, 62],
+        vec![1, 2, 3, 4, 5, 62],
     )?;
     context.set(
         &None,
         6,
         &context_key!("data/rolls/owner/current/index/123"),
-        &vec![1, 2, 3, 4, 5, 6, 7],
+        vec![1, 2, 3, 4, 5, 6, 7],
     )?;
 
     // commit
@@ -262,31 +262,31 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
         &None,
         1,
         &context_key!("data/rolls/owner/current/cpu/0"),
-        &vec![1, 2, 3, 4],
+        vec![1, 2, 3, 4],
     )?;
     context.set(
         &None,
         2,
         &context_key!("data/rolls/owner/current/cpu/1"),
-        &vec![1, 2, 3, 4, 5],
+        vec![1, 2, 3, 4, 5],
     )?;
     context.set(
         &None,
         3,
         &context_key!("data/rolls/owner/current/cpu/2/a"),
-        &vec![1, 2, 3, 4, 5, 61],
+        vec![1, 2, 3, 4, 5, 61],
     )?;
     context.set(
         &None,
         4,
         &context_key!("data/rolls/owner/current/cpu/2/b"),
-        &vec![1, 2, 3, 4, 5, 62],
+        vec![1, 2, 3, 4, 5, 62],
     )?;
     context.set(
         &None,
         5,
         &context_key!("data/rolls/owner/current/index/123"),
-        &vec![1, 2, 3, 4, 5, 6, 7],
+        vec![1, 2, 3, 4, 5, 6, 7],
     )?;
 
     // commit

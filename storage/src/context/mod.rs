@@ -56,7 +56,7 @@ pub trait ContextApi {
         context_hash: &Option<ContextHash>,
         new_tree_id: TreeId,
         key: &ContextKey,
-        value: &ContextValue,
+        value: ContextValue,
     ) -> Result<(), ContextError>;
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError>;
@@ -107,17 +107,17 @@ pub trait ContextApi {
         &self,
         context_hash: &ContextHash,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError>;
+    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError>;
     // get entire context tree in string form for JSON RPC
     fn get_context_tree_by_prefix(
         &self,
         context_hash: &ContextHash,
         prefix: &ContextKey,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, MerkleError>;
+    ) -> Result<StringTreeEntry, ContextError>;
 
     // get currently checked out hash
-    fn get_last_commit_hash(&self) -> Option<Vec<u8>>;
+    fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError>;
     // get stats from merkle storage
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
 
@@ -125,9 +125,9 @@ pub trait ContextApi {
     // check if context_hash is committed
     fn is_committed(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
 
-    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), MerkleError>;
+    fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), ContextError>;
 
-    fn get_merkle_root(&mut self) -> EntryHash;
+    fn get_merkle_root(&mut self) -> Result<EntryHash, ContextError>;
 
     fn block_applied(&self) -> Result<(), ContextError>;
 
@@ -135,7 +135,7 @@ pub trait ContextApi {
 
     fn get_memory_usage(&self) -> Result<usize, ContextError>;
 
-    fn perform_context_action(&mut self, action: &ContextAction) -> Result<(), failure::Error>;
+    fn perform_context_action(&mut self, action: ContextAction) -> Result<(), failure::Error>;
 }
 
 /// Possible errors for context
