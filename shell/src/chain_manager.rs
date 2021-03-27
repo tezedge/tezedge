@@ -313,6 +313,13 @@ impl ChainManager {
                     );
                 }
             }
+            NetworkChannelMsg::PeerStalled(actor_uri) => {
+                if let Some(peer_state) = self.peers.remove(&actor_uri) {
+                    if let Some(peer_branch_bootstrapper) = peer_state.peer_branch_bootstrapper {
+                        ctx.system.stop(peer_branch_bootstrapper);
+                    }
+                }
+            }
             NetworkChannelMsg::PeerMessageReceived(received) => {
                 match peers.get_mut(received.peer.uri()) {
                     Some(peer) => {

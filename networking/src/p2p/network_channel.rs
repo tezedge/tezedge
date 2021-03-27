@@ -39,6 +39,7 @@ pub enum NetworkChannelMsg {
     PeerBootstrapped(Arc<PeerId>, Arc<MetadataMessage>, Arc<NetworkVersion>),
     PeerBlacklisted(Arc<PeerId>),
     PeerMessageReceived(PeerMessageReceived),
+    PeerStalled(Arc<ActorUri>),
     /// Commands (dedicated to peer_manager)
     /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
     BlacklistPeer(Arc<PeerId>, String),

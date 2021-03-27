@@ -251,6 +251,9 @@ impl Receive<NetworkChannelMsg> for Monitor {
             NetworkChannelMsg::PeerMessageReceived(msg) => {
                 self.process_peer_message(msg, &ctx.system.log())
             }
+            NetworkChannelMsg::PeerStalled(actor_uri) => {
+                let _ = self.peer_monitors.remove(&actor_uri);
+            }
             _ => (),
         }
     }
