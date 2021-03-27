@@ -486,6 +486,20 @@ impl Receive<DeadLetter> for PeerManager {
             ctx.system.stop(msg.recipient);
 
             self.trigger_check_peer_count(ctx);
+        } else {
+            // send message to clear data for the peer
+            if msg.recipient.name().starts_with("peer-")
+                && !msg.recipient.name().ends_with("-branch-bootstrap")
+            {
+                // send message
+                self.network_channel.tell(
+                    Publish {
+                        msg: NetworkChannelMsg::PeerStalled(Arc::new(msg.recipient.uri().clone())),
+                        topic: NetworkChannelTopic::NetworkEvents.into(),
+                    },
+                    None,
+                );
+            }
         }
     }
 }
