@@ -26,8 +26,8 @@ use storage::mempool_storage::MempoolOperationType;
 use storage::PersistentStorage;
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, MempoolStorage, OperationsMetaStorage, OperationsStorage,
-    OperationsStorageReader, StorageError, StorageInitInfo,
+    BlockStorageReader, MempoolStorage, OperationsStorage, OperationsStorageReader, StorageError,
+    StorageInitInfo,
 };
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
@@ -44,7 +44,6 @@ use crate::shell_channel::{
     ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
-use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::head_state::CurrentHeadRef;
 use crate::state::peer_state::{tell_peer, PeerState};
 use crate::state::synchronization_state::{
@@ -1331,11 +1330,7 @@ impl
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
             mempool_storage: MempoolStorage::new(&persistent_storage),
             chain_state: BlockchainState::new(
-                DataRequesterRef::new(DataRequester::new(
-                    BlockMetaStorage::new(&persistent_storage),
-                    OperationsMetaStorage::new(&persistent_storage),
-                    block_applier,
-                )),
+                block_applier,
                 &persistent_storage,
                 shell_channel,
                 Arc::new(init_storage_data.chain_id),
