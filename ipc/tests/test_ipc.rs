@@ -67,6 +67,8 @@ fn ipc_fork_and_client_exchange() -> Result<(), failure::Error> {
 
 #[test]
 #[serial]
+// TODO: TE-218, ignored in PR #521, re-enable once TE-218 has been solved
+#[cfg_attr(target_os = "macos", ignore)]
 fn ipc_fork_and_try_read_with_timeout() -> Result<(), failure::Error> {
     let sock_path = temp_sock();
     assert!(!sock_path.exists());
