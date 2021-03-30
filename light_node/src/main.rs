@@ -46,6 +46,11 @@ mod configuration;
 mod identity;
 mod system;
 
+extern crate jemallocator;
+
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 fn create_tokio_runtime(
     env: &crate::configuration::Environment,
 ) -> std::io::Result<tokio::runtime::Runtime> {
