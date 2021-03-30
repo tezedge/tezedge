@@ -192,6 +192,7 @@ impl PeerManager {
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
+        pow_target: f64,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
             PeerManager::name(),
@@ -202,6 +203,7 @@ impl PeerManager {
                 identity,
                 shell_compatibility_version,
                 p2p_config,
+                pow_target,
             )),
         )
     }
@@ -491,6 +493,7 @@ impl
         Arc<Identity>,
         Arc<ShellCompatibilityVersion>,
         P2p,
+        f64,
     )> for PeerManager
 {
     fn create_args(
@@ -501,6 +504,7 @@ impl
             identity,
             shell_compatibility_version,
             p2p_config,
+            pow_target,
         ): (
             NetworkChannelRef,
             ShellChannelRef,
@@ -508,6 +512,7 @@ impl
             Arc<Identity>,
             Arc<ShellCompatibilityVersion>,
             P2p,
+            f64,
         ),
     ) -> Self {
         // resolve all bootstrap addresses
@@ -536,6 +541,7 @@ impl
                 p2p_config.listener_port,
                 identity,
                 shell_compatibility_version,
+                pow_target,
             )),
             listener_address: p2p_config.listener_address,
             disable_mempool: p2p_config.disable_mempool,

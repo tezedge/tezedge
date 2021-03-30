@@ -68,6 +68,7 @@ impl NodeInfrastructure {
         patch_context: Option<PatchContext>,
         p2p: Option<(P2p, ShellCompatibilityVersion)>,
         identity: Identity,
+        pow_target: f64,
         (log, log_level): (Logger, Level),
         context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
         (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
@@ -243,6 +244,7 @@ impl NodeInfrastructure {
                 identity,
                 Arc::new(shell_compatibility_version),
                 p2p_config,
+                pow_target,
             )
             .expect("Failed to create peer manager");
             Some(peer_manager)

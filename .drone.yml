@@ -354,6 +354,42 @@ steps:
   commands:
     - /artifacts/p2p_test --nocapture --ignored test_peer_threshold
 
+- name: p2p-pow-test-ok
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/p2p_test --nocapture --ignored test_proof_of_work_ok
+
+- name: p2p-pow-test-fail
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+  environment:
+    RUST_BACKTRACE: 1
+    LOG_LEVEL: debug
+    OCAML_LOG_ENABLED: false
+    LD_LIBRARY_PATH: /artifacts/ffi
+    PROTOCOL_RUNNER: /artifacts/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/test_data
+    OUT_DIR: .
+  commands:
+    - /artifacts/p2p_test --nocapture --ignored test_proof_of_work_fail
+
 - name: record/replay-context-action-file-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
