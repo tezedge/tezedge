@@ -16,7 +16,7 @@ mod prefix_bytes {
     pub const CONTEXT_HASH: [u8; 2] = [79, 199];
     pub const OPERATION_HASH: [u8; 2] = [5, 116];
     pub const OPERATION_LIST_LIST_HASH: [u8; 3] = [29, 159, 109];
-    pub const OPERATION_METADATA_HASH: [u8; 2] = [005, 183];
+    pub const OPERATION_METADATA_HASH: [u8; 2] = [5, 183];
     pub const OPERATION_METADATA_LIST_LIST_HASH: [u8; 3] = [29, 159, 182];
     pub const PROTOCOL_HASH: [u8; 2] = [2, 170];
     pub const CRYPTOBOX_PUBLIC_KEY_HASH: [u8; 2] = [153, 103];
@@ -60,7 +60,7 @@ macro_rules! define_hash {
 
         impl $name {
             pub fn from_base58_check(data: &str) -> Result<Self, FromBase58CheckError> {
-                HashType::$name.b58check_to_hash(data).map(|h| Self(h))
+                HashType::$name.b58check_to_hash(data).map(Self)
             }
 
             fn from_bytes(data: &[u8]) -> Result<Self, FromBytesError> {

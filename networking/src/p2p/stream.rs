@@ -12,7 +12,9 @@ use bytes::Buf;
 use failure::_core::time::Duration;
 use failure::{Error, Fail};
 use slog::{trace, FnValue, Logger};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{
+    AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, ReadHalf, WriteHalf,
+};
 use tokio::net::TcpStream;
 
 use crypto::crypto_box::PrecomputedKey;
@@ -99,7 +101,9 @@ impl MessageStream {
 
         let (rx, tx) = tokio::io::split(stream);
         MessageStream {
-            reader: MessageReader { stream: rx },
+            reader: MessageReaderBase {
+                stream: BufReader::new(rx),
+            },
             writer: MessageWriter { stream: tx },
         }
     }
@@ -116,13 +120,52 @@ impl From<TcpStream> for MessageStream {
     }
 }
 
-/// Reader of the TCP/IP connection.
-pub struct MessageReader {
-    /// reader part or the TCP/IP network stream
-    stream: ReadHalf<TcpStream>,
+pub struct Crypto {
+    /// Precomputed key is created from merge of peer public key and our secret key.
+    /// It's used to speedup of crypto operations.
+    precomputed_key: PrecomputedKey,
+    /// Nonce used to encrypt outgoing messages
+    nonce: Nonce,
 }
 
-impl MessageReader {
+impl Crypto {
+    #[inline]
+    pub fn new(precomputed_key: PrecomputedKey, nonce: Nonce) -> Self {
+        Self {
+            precomputed_key,
+            nonce,
+        }
+    }
+
+    #[inline]
+    fn nonce_fetch_increment(&mut self) -> Nonce {
+        let nonce = self.nonce.increment();
+        std::mem::replace(&mut self.nonce, nonce)
+    }
+
+    #[inline]
+    pub fn encrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
+        let nonce = self.nonce_fetch_increment();
+        self.precomputed_key.encrypt(data.as_ref(), &nonce)
+    }
+
+    #[inline]
+    pub fn decrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
+        let nonce = self.nonce_fetch_increment();
+        self.precomputed_key.decrypt(data.as_ref(), &nonce)
+    }
+}
+
+/// Reader of a TCP/IP connection.
+type MessageReader = MessageReaderBase<BufReader<ReadHalf<TcpStream>>>;
+
+/// Reader of an async stream
+pub struct MessageReaderBase<R> {
+    /// reader part or the TCP/IP network stream
+    pub stream: R,
+}
+
+impl<R: AsyncRead + Unpin + Send> MessageReaderBase<R> {
     /// Read message from network and return message contents in a form of bytes.
     /// Each message is prefixed by a 2 bytes indicating total length of the message.
     pub async fn read_message(&mut self) -> Result<BinaryChunk, StreamError> {
@@ -150,11 +193,13 @@ impl MessageReader {
     }
 }
 
-pub struct MessageWriter {
-    stream: WriteHalf<TcpStream>,
+pub type MessageWriter = MessageWriterBase<WriteHalf<TcpStream>>;
+
+pub struct MessageWriterBase<W> {
+    pub stream: W,
 }
 
-impl MessageWriter {
+impl<W: AsyncWrite + Unpin> MessageWriterBase<W> {
     /// Construct and write message to network stream.
     ///
     /// # Arguments
@@ -170,29 +215,30 @@ impl MessageWriter {
 
 /// The `EncryptedMessageWriter` encapsulates process of the encrypted outgoing message transmission.
 /// This process involves (not only) nonce increment, encryption and network transmission.
-pub struct EncryptedMessageWriter {
-    /// Precomputed key is created from merge of peer public key and our secret key.
-    /// It's used to speedup of crypto operations.
-    precomputed_key: PrecomputedKey,
-    /// Nonce used to encrypt outgoing messages
-    nonce_local: Nonce,
+pub type EncryptedMessageWriter = EncryptedMessageWriterBase<WriteHalf<TcpStream>>;
+
+pub struct EncryptedMessageWriterBase<W> {
     /// Outgoing message writer
-    tx: MessageWriter,
+    tx: MessageWriterBase<W>,
+    /// To encrypt data
+    crypto: Crypto,
     /// Logger
     log: Logger,
 }
 
-impl EncryptedMessageWriter {
+impl<W: AsyncWrite + Unpin> EncryptedMessageWriterBase<W> {
     pub fn new(
-        tx: MessageWriter,
+        tx: MessageWriterBase<W>,
         precomputed_key: PrecomputedKey,
         nonce_local: Nonce,
         log: Logger,
     ) -> Self {
-        EncryptedMessageWriter {
+        EncryptedMessageWriterBase {
             tx,
-            precomputed_key,
-            nonce_local,
+            crypto: Crypto {
+                precomputed_key,
+                nonce: nonce_local,
+            },
             log,
         }
     }
@@ -205,13 +251,10 @@ impl EncryptedMessageWriter {
         trace!(self.log, "Writing message"; "message" => FnValue(|_| hex::encode(&message_bytes)));
 
         for chunk_content_bytes in message_bytes.chunks(CONTENT_LENGTH_MAX) {
-            // encrypt
-            let nonce = self.nonce_fetch_increment();
-            let message_bytes_encrypted =
-                match self.precomputed_key.encrypt(chunk_content_bytes, &nonce) {
-                    Ok(msg) => msg,
-                    Err(error) => return Err(StreamError::FailedToEncryptMessage { error }),
-                };
+            let message_bytes_encrypted = match self.crypto.encrypt(&chunk_content_bytes) {
+                Ok(msg) => msg,
+                Err(error) => return Err(StreamError::FailedToEncryptMessage { error }),
+            };
 
             // send
             let chunk = BinaryChunk::from_content(&message_bytes_encrypted)?;
@@ -220,40 +263,35 @@ impl EncryptedMessageWriter {
 
         Ok(())
     }
-
-    #[inline]
-    fn nonce_fetch_increment(&mut self) -> Nonce {
-        let incremented = self.nonce_local.increment();
-        std::mem::replace(&mut self.nonce_local, incremented)
-    }
 }
 
 /// The `MessageReceiver` encapsulates process of the encrypted incoming message transmission.
 /// This process involves (not only) nonce increment, encryption and network transmission.
-pub struct EncryptedMessageReader {
-    /// Precomputed key is created from merge of peer public key and our secret key.
-    /// It's used to speedup of crypto operations.
-    precomputed_key: PrecomputedKey,
-    /// Nonce used to decrypt received messages
-    nonce_remote: Nonce,
+pub type EncryptedMessageReader = EncryptedMessageReaderBase<BufReader<ReadHalf<TcpStream>>>;
+
+pub struct EncryptedMessageReaderBase<A> {
+    /// To encrypt data
+    crypto: Crypto,
     /// Incoming message reader
-    rx: MessageReader,
+    rx: MessageReaderBase<A>,
     /// Logger
     log: Logger,
 }
 
-impl EncryptedMessageReader {
+impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
     /// Create new encrypted message from async reader and peer data
     pub fn new(
-        rx: MessageReader,
+        rx: MessageReaderBase<A>,
         precomputed_key: PrecomputedKey,
         nonce_remote: Nonce,
         log: Logger,
     ) -> Self {
-        EncryptedMessageReader {
+        EncryptedMessageReaderBase {
             rx,
-            precomputed_key,
-            nonce_remote,
+            crypto: Crypto {
+                precomputed_key,
+                nonce: nonce_remote,
+            },
             log,
         }
     }
@@ -271,11 +309,7 @@ impl EncryptedMessageReader {
             let message_encrypted = self.rx.read_message().await?;
 
             // decrypt
-            let nonce = self.nonce_fetch_increment();
-            match self
-                .precomputed_key
-                .decrypt(message_encrypted.content(), &nonce)
-            {
+            match self.crypto.decrypt(&message_encrypted.content()) {
                 Ok(mut message_decrypted) => {
                     trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
                     if input_remaining >= message_decrypted.len() {
@@ -304,14 +338,10 @@ impl EncryptedMessageReader {
             }
         }
     }
+}
 
-    #[inline]
-    fn nonce_fetch_increment(&mut self) -> Nonce {
-        let incremented = self.nonce_remote.increment();
-        std::mem::replace(&mut self.nonce_remote, incremented)
-    }
-
+impl EncryptedMessageReaderBase<BufReader<ReadHalf<TcpStream>>> {
     pub fn unsplit(self, tx: EncryptedMessageWriter) -> TcpStream {
-        self.rx.stream.unsplit(tx.tx.stream)
+        self.rx.stream.into_inner().unsplit(tx.tx.stream)
     }
 }
