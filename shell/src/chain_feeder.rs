@@ -784,7 +784,7 @@ fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(60 * 60), Duration::from_millis(15));
+    (Duration::from_secs(60 * 60 * 2), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 

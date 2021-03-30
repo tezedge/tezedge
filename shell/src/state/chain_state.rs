@@ -52,7 +52,7 @@ pub(crate) mod bootstrap_constants {
     /// We tries to apply downloaded blocks in batch to speedup and save resources
     pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 1000;
     /// We controll frequecncy of holding lock too long, just in case peers is stucked, this is the maximum deadline
-    pub(crate) const BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT: Duration = Duration::from_secs(60 * 15);
+    pub(crate) const BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT: Duration = Duration::from_secs(60 * 20);
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
