@@ -376,6 +376,14 @@ pub(crate) fn get_votes_listings(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Option<serde_json::Value>, VotesError> {
+
+    // TODO: one context
+    if true {
+        return Err(VotesError::UnsupportedProtocolError {
+            protocol: "TODO:one-context-not-supported-now".to_string(),
+        });
+    }
+
     let context_hash = get_context_hash(block_hash, env)?;
 
     // get protocol version
@@ -646,6 +654,13 @@ pub(crate) fn get_context_protocol_params(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<ContextProtocolParam, ContextParamsError> {
+    // TODO: one context
+    if true {
+        return Err(ContextParamsError::UnsupportedProtocolError {
+            protocol: "TODO:one-context-not-supported-now".to_string(),
+        });
+    }
+
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,

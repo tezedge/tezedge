@@ -154,7 +154,8 @@ fn create_tezos_writeable_api_pool(
             &env.storage.tezos_data_dir,
             &env.ffi.protocol_runner,
             env.logging.level,
-            Some(event_server_path),
+            // TODO: disable event server Some(event_server_path),
+            None,
         ),
         log,
     )
@@ -258,15 +259,16 @@ fn block_on_actors(
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
-    let _ = ContextListener::actor(
-        &actor_system,
-        shell_channel.clone(),
-        &persistent_storage,
-        context_action_recorders,
-        context_actions_event_server,
-        log.clone(),
-    )
-    .expect("Failed to create context event listener");
+    // TODO: one context, disable context-listener
+    // let _ = ContextListener::actor(
+    //     &actor_system,
+    //     shell_channel.clone(),
+    //     &persistent_storage,
+    //     context_action_recorders,
+    //     context_actions_event_server,
+    //     log.clone(),
+    // )
+    // .expect("Failed to create context event listener");
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),

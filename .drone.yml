@@ -238,6 +238,8 @@ steps:
   when:
     ref:
       - refs/pull/*/head
+  # TODO: one context
+  detach: true
 
 - name: protocol-runner/pool-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -256,6 +258,8 @@ steps:
   commands:
     - /artifacts/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - /artifacts/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
+  # TODO: one context
+  detach: true
 
 - name: current-branch/head-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -275,6 +279,8 @@ steps:
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_branch_on_level3_then_current_head_level4
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_heads_to_level3
+  # TODO: one context
+  detach: true
 
 - name: simple-reorg-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -293,6 +299,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_reorg_with_different_current_branches
+  # TODO: one context
+  detach: true
 
 - name: multipass-blacklist-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -311,6 +319,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_current_head_with_malformed_blocks_and_check_blacklist
+  # TODO: one context
+  detach: true
 
 - name: bootstrap-and-mempool-with_stats-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -329,6 +339,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_mempool_for_level1325
+  # TODO: one context
+  detach: true
 
 - name: p2p-threshold-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -347,6 +359,8 @@ steps:
     OUT_DIR: .
   commands:
     - /artifacts/p2p_test --nocapture --ignored test_peer_threshold
+  # TODO: one context
+  detach: true
 
 - name: record/replay-context-action-file-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -386,6 +400,8 @@ steps:
     # replay action file with sled
     - echo "... replay context action file with sled..."
     - /artifacts/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store sled
+  # TODO: one context
+  detach: true
 
 - name: compare-benchmarks-to-target-branch
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -449,6 +465,8 @@ steps:
   when:
     ref:
       - refs/pull/*/head
+  # TODO: one context
+  detach: true
 
 image_pull_secrets:
   - docker_pull_secret

@@ -793,6 +793,11 @@ pub fn wait_for_context(
     context: &Box<dyn ContextApi>,
     context_hash: &ContextHash,
 ) -> Result<(), FeedChainError> {
+    // TODO: one context, we dont need to wait for tezedge context listener
+    if true {
+        return Ok(());
+    }
+
     let (timeout, delay): (Duration, Duration) = CONTEXT_WAIT_DURATION;
     let start = SystemTime::now();
 
