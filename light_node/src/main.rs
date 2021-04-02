@@ -3,7 +3,7 @@
 // #![forbid(unsafe_code)]
 
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use riker::actors::*;
@@ -524,7 +524,7 @@ fn main() {
     let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
 
     // initialize merkle context
-    let merkle = Arc::new(RwLock::new(
+    let merkle = Arc::new(Mutex::new(
         initialize_merkle(
             &env.storage.context_kv_store,
             &main_chain,
