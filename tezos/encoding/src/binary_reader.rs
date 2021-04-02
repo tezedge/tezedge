@@ -136,7 +136,7 @@ where
     let upper = std::cmp::min(*max, buf.remaining());
     let temp = *buf;
     // cut `upper` number of bytes from the `buf` into `buf_slice`
-    // before: 
+    // before:
     // |-------------`buf`------------|
     // after:
     // |     upper     ||  remaining  |
@@ -157,7 +157,7 @@ where
     };
 
     // if `buf_slice` was not consumer entirely, put the remaining to the `buf`
-    // before: 
+    // before:
     // |---consumed----||---`buf_slice`----||---`buf`---|
     // after:
     // .................|--------------`buf`------------|
@@ -337,6 +337,11 @@ impl BinaryReader {
                         name: "Encoding::BoundedDynamic".to_string(),
                         boundary: *max,
                         actual: ActualSize::Exact(bytes_sz),
+                    }
+                    .into())
+                } else if buf.remaining() < bytes_sz {
+                    Err(BinaryReaderErrorKind::Underflow {
+                        bytes: bytes_sz - buf.remaining(),
                     }
                     .into())
                 } else {
