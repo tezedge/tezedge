@@ -1062,10 +1062,8 @@ mod encode_tests {
         let mut data = Vec::new();
         let value = Value::Enum(None, None);
         let encoding = Encoding::Enum;
-        match encode_value(&mut data, &value, &encoding) {
-            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
-            Err(_) => (),
-        }
+        encode_value(&mut data, &value, &encoding)
+            .expect_err("Encoding an empty enum value should not succeed");
     }
 
     #[test]
@@ -1090,20 +1088,16 @@ mod encode_tests {
             size_of::<u8>(),
             TagMap::new(vec![Tag::new(0x0, "Unused", Encoding::Unit)]),
         );
-        match encode_value(&mut data, &value, &encoding) {
-            Ok(_) => panic!("Encoding an empty enum value should not succeed"),
-            Err(_) => (),
-        }
+        encode_value(&mut data, &value, &encoding)
+            .expect_err("Encoding an empty enum value should not succeed");
     }
 
     #[test]
     fn error_encode_record_with_missing_field() {
         let value = Value::Record(vec![("missing".to_string(), Value::Unit)]);
         let schema = [Field::new("field", Encoding::Unit)];
-        match encode_record(&mut Vec::new(), &value, &schema) {
-            Ok(_) => panic!("Encoding a missing field should not succeed"),
-            Err(_) => (),
-        }
+        encode_record(&mut Vec::new(), &value, &schema)
+            .expect_err("Encoding a missing field should not succeed");
     }
 
     #[test]
