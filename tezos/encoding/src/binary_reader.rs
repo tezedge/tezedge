@@ -68,6 +68,9 @@ pub enum BinaryReaderErrorKind {
     /// Arithmetic overflow
     #[fail(display = "Arithmetic overflow while encoding {:?}", encoding)]
     ArithmeticOverflow { encoding: &'static str },
+    /// Reader growing the buffer instead of shrinking
+    #[fail(display = "Read must only consume bytes, not write")]
+    ImproperReader,
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -124,25 +127,44 @@ macro_rules! safe {
     }};
 }
 
-/// With bound
+/// Ensure that `f` does not use more then `max` number of bytes from the `buf`
+/// `f` can shrink the buffer provided as a parameter, and `buf` will be shrink correspondingly
 fn take_slice<R, F>(buf: &mut &[u8], max: &usize, f: F) -> Result<R, BinaryReaderError>
 where
     F: FnOnce(&mut &[u8]) -> Result<R, BinaryReaderError>,
 {
     let upper = std::cmp::min(*max, buf.remaining());
     let temp = *buf;
+    // cut `upper` number of bytes from the `buf` into `buf_slice`
+    // before: 
+    // |-------------`buf`------------|
+    // after:
+    // |     upper     ||  remaining  |
+    // |--`buf_slice`--||----`buf`----|
     let mut buf_slice = safe!(buf, upper, {
         let (slice, remaining) = buf.split_at(upper);
         *buf = remaining;
         slice
     });
+
+    let buf_slice_len_initial = buf_slice.len();
     let res = f(&mut buf_slice);
+    // assume `buf_slice` inside `f` can only shrink, not grow
+    let buf_slice_len_diff = if buf_slice.len() > buf_slice_len_initial {
+        return Err(BinaryReaderErrorKind::ImproperReader.into());
+    } else {
+        buf_slice_len_initial - buf_slice.len()
+    };
+
+    // if `buf_slice` was not consumer entirely, put the remaining to the `buf`
+    // before: 
+    // |---consumed----||---`buf_slice`----||---`buf`---|
+    // after:
+    // .................|--------------`buf`------------|
     if !buf_slice.is_empty() {
-        let initial_length = temp.len();
-        let new_length = buf_slice.len() + (*buf).len();
-        // assume `buf_slice` can only shrink, not grow
-        debug_assert!(initial_length >= new_length);
-        *buf = &temp[(initial_length - new_length)..];
+        // here buf_slice_len_diff cannot be bigger then initial `buf_slice` length
+        // hence it cannot be bigger then `temp` length
+        *buf = &temp[buf_slice_len_diff..];
     }
     res
 }
