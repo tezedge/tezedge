@@ -20,7 +20,7 @@ num_cpus = "1.13"
 rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
-sled = "0.34.6"
+sled = {version = "0.34.6", feature=["compression"]}
 snap = "1.0.4"
 strum = "0.20"
 strum_macros = "0.20"
