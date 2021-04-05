@@ -1,5 +1,7 @@
 # TezEdge [![Docs Status]][docs Link] [![Changelog][changelog-badge]][changelog] [![release-badge]][release-link] [![docker-badge]][docker-link] [![MIT licensed]][MIT link]
 
+
+
 ---
 The purpose of this project is to implement a secure, trustworthy and open-source Tezos node in Rust.
 
