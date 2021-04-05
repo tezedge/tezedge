@@ -8,9 +8,9 @@ use std::sync::Arc;
 use failure::Error;
 use rocksdb::Cache;
 
-use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
+use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+use storage::persistent::open_main_db;
 use storage::persistent::sequence::Sequences;
-use storage::persistent::DbConfiguration;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
@@ -22,13 +22,8 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
-            &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
+        let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let db = open_main_db(&path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -45,21 +40,13 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
 #[test]
 fn generator_test_cloned_gen() -> Result<(), Error> {
-    use rocksdb::{Options, DB};
-
     let path = out_dir_path("__sequence_multiseq");
     if path.exists() {
         std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
-            &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
+        let db = open_main_db(&path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -72,33 +59,24 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
         assert_eq!(6, gen_b.next()?);
         assert_eq!(7, gen_a.next()?);
     }
-    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
 #[test]
 fn generator_test_batch() -> Result<(), Error> {
-    use rocksdb::{Options, DB};
-
     let path = out_dir_path("__sequence_batch");
     if path.exists() {
         std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
-            &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )?;
+        let db = open_main_db(&path, TezedgeDatabaseBackendConfiguration::Sled)?;
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
             assert_eq!(i, gen.next()?);
         }
     }
-    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -112,11 +90,9 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = Arc::new(open_kv(
+        let db = Arc::new(open_main_db(
             &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
+            TezedgeDatabaseBackendConfiguration::Sled,
         )?);
 
         // First run

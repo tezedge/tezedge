@@ -5,6 +5,12 @@ use std::path::Path;
 
 use derive_builder::Builder;
 
+use crate::database::error::Error as DatabaseError;
+use crate::database::notus_backend::NotusDBBackend;
+use crate::database::sled_backend::SledDBBackend;
+use crate::database::tezedge_database::{
+    TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
+};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
@@ -37,6 +43,27 @@ where
     I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
+}
+
+/// Open commit log at a given path.
+pub fn open_main_db<P>(
+    path: P,
+    backend_config: TezedgeDatabaseBackendConfiguration,
+) -> Result<TezedgeDatabase, DatabaseError>
+where
+    P: AsRef<Path>,
+{
+    let path = path.as_ref().to_path_buf();
+    let path = path.join("database");
+    let backend = match backend_config {
+        TezedgeDatabaseBackendConfiguration::Sled => {
+            TezedgeDatabaseBackendOptions::SledDB(SledDBBackend::new(path.as_path())?)
+        }
+        TezedgeDatabaseBackendConfiguration::Notus => {
+            TezedgeDatabaseBackendOptions::NotusDB(NotusDBBackend::new(path.as_path())?)
+        }
+    };
+    Ok(TezedgeDatabase::new(backend))
 }
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement

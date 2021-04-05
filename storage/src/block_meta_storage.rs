@@ -5,7 +5,6 @@ use std::convert::TryFrom;
 use std::{convert::TryInto, sync::Arc};
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use serde::{Deserialize, Serialize};
 use slog::{warn, Logger};
 
@@ -15,19 +14,21 @@ use crypto::hash::{
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
+use crate::database::tezedge_database::{
+    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
 };
+use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
 };
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
+use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
-pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
+pub type BlockMetaStorageKV = dyn TezedgeDatabaseWithIterator<BlockMetaStorage> + Sync + Send;
 pub type BlockAdditionalDataStorageKV =
-    dyn KeyValueStoreWithSchema<BlockAdditionalData> + Sync + Send;
+dyn TezedgeDatabaseWithIterator<BlockAdditionalData> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
@@ -68,7 +69,7 @@ impl BlockMetaStorage {
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
             predecessors_index: PredecessorStorage::new(persistent_storage),
             additional_data_index: persistent_storage.db(),
         }
@@ -208,7 +209,10 @@ impl BlockMetaStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -551,10 +555,20 @@ impl KeyValueSchema for BlockMetaStorage {
     type Value = Meta;
 }
 
+impl KVStoreKeyValueSchema for BlockMetaStorage {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 impl RocksDbKeyValueSchema for BlockMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
-        cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
+        cf_opts.set_merge_operator(
+            "block_meta_storage_merge_operator",
+            merge_meta_value_rocks_db,
+            None,
+        );
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
@@ -564,7 +578,7 @@ impl RocksDbKeyValueSchema for BlockMetaStorage {
     }
 }
 
-fn merge_meta_value(
+fn merge_meta_value_rocks_db(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
     operands: &mut MergeOperands,
@@ -618,6 +632,125 @@ fn merge_meta_value(
         }
     }
 
+    result
+}
+
+pub fn merge_meta_value(
+    _new_key: &[u8],
+    existing_val: Option<&[u8]>,
+    merge_val: &[u8],
+) -> Option<Vec<u8>> {
+    if let Some(val) = existing_val {
+        if val.len() < LEN_FIXED_META {
+            return None;
+        }
+    }
+
+    let mut result = existing_val.map(|v| v.to_vec());
+
+    match result {
+        Some(ref mut val) => {
+            if merge_val.len() < LEN_FIXED_META {
+                return None;
+            }
+
+            let mask_val = val[IDX_MASK];
+            let mask_op = merge_val[IDX_MASK];
+
+            // merge `mask(1)`
+            val[IDX_MASK] = mask_val | mask_op;
+
+            // if op has predecessor and val has not, copy it from op to val
+            if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
+                val.splice(
+                    IDX_PREDECESSOR..IDX_LEVEL,
+                    merge_val[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
+                );
+            }
+
+            // replace op (successors count + successors) to val
+            let val_successors_count = successors_count!(val);
+            let op_successors_count = successors_count!(merge_val);
+            if (has_successor!(mask_op) && !has_successor!(mask_val))
+                || (val_successors_count != op_successors_count)
+            {
+                val.truncate(LEN_FIXED_META);
+                val.splice(
+                    IDX_SUCCESSOR_COUNT..,
+                    merge_val[IDX_SUCCESSOR_COUNT..].iter().cloned(),
+                );
+            }
+
+            let total_len = total_len(op_successors_count);
+            debug_assert_eq!(
+                total_len,
+                val.len(),
+                "Invalid length after merge operator was applied. Was expecting {} but found {}.",
+                total_len,
+                val.len()
+            );
+        }
+        None => result = Some(merge_val.to_vec()),
+    }
+    result
+}
+pub fn merge_meta_value_notus(
+    _new_key: &[u8],
+    existing_val: Option<Vec<u8>>,
+    merge_val: &[u8],
+) -> Option<Vec<u8>> {
+    if let Some(val) = &existing_val {
+        if val.len() < LEN_FIXED_META {
+            return None;
+        }
+    }
+
+    let mut result = existing_val;
+
+    match result {
+        Some(ref mut val) => {
+            if merge_val.len() < LEN_FIXED_META {
+                return None;
+            }
+
+            let mask_val = val[IDX_MASK];
+            let mask_op = merge_val[IDX_MASK];
+
+            // merge `mask(1)`
+            val[IDX_MASK] = mask_val | mask_op;
+
+            // if op has predecessor and val has not, copy it from op to val
+            if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
+                val.splice(
+                    IDX_PREDECESSOR..IDX_LEVEL,
+                    merge_val[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
+                );
+            }
+
+            // replace op (successors count + successors) to val
+            let val_successors_count = successors_count!(val);
+            let op_successors_count = successors_count!(merge_val);
+            if (has_successor!(mask_op) && !has_successor!(mask_val))
+                || (val_successors_count != op_successors_count)
+            {
+                val.truncate(LEN_FIXED_META);
+                val.splice(
+                    IDX_SUCCESSOR_COUNT..,
+                    merge_val[IDX_SUCCESSOR_COUNT..].iter().cloned(),
+                );
+            }
+
+            let total_len = total_len(op_successors_count);
+            debug_assert_eq!(
+                total_len,
+                val.len(),
+                "Invalid length after merge operator was applied. Was expecting {} but found {}.",
+                total_len,
+                val.len()
+            );
+        }
+        None => result = Some(merge_val.to_vec()),
+    }
     result
 }
 
@@ -728,11 +861,11 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::database::open_kv;
-    use crate::persistent::DbConfiguration;
+    use crate::persistent::open_main_db;
     use crate::tests_common::TmpStorage;
 
     use super::*;
+    use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -858,7 +991,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() {
-        use rocksdb::{Cache, Options, DB};
+        use rocksdb::{Options, DB};
 
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
@@ -866,13 +999,7 @@ mod tests {
         }
 
         {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let db = open_kv(
-                path,
-                vec![BlockMetaStorage::descriptor(&cache)],
-                &DbConfiguration::default(),
-            )
-            .unwrap();
+            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
@@ -911,7 +1038,6 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
     }
 
     /// Create and return a storage with [number_of_blocks] blocks and the last BlockHash in it

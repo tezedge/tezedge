@@ -22,6 +22,7 @@ use tezos_messages::base::rpc_support::UniversalValue;
 use crate::helpers::{BlockMetadata, PagedResult};
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
+use storage::database::tezedge_database::RWStat;
 
 /// Get actions for a specific block in ascending order.
 #[allow(dead_code)]
@@ -81,6 +82,12 @@ pub(crate) fn get_block_action_details(
     Ok(ContextActionBlockDetails::calculate_block_action_details(
         actions,
     ))
+}
+
+pub(crate) fn get_storage_rw_stats(
+    persistent_storage: &PersistentStorage,
+) -> Result<RWStat, failure::Error> {
+    Ok(persistent_storage.main_db().get_rw_stats())
 }
 
 pub(crate) fn get_contract_actions_cursor(

@@ -28,6 +28,7 @@ use storage::context::actions::context_action_storage::ContextActionStorage;
 use storage::context::actions::ContextActionStoreBackend;
 use storage::context::kv_store::SupportedContextKeyValueStore;
 use storage::context::ActionRecorder;
+use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{
     ContextActionsRocksDbTableInitializer, ContextKvStoreConfiguration,
     ContextRocksDbTableInitializer, DbsRocksDbTableInitializer, RocksDbConfig,
@@ -155,7 +156,7 @@ pub struct Storage {
     pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
-
+    pub main_db: TezedgeDatabaseBackendConfiguration,
     // merkle cfg
     pub context_kv_store: ContextKvStoreConfiguration,
     // context actions cfg
@@ -177,8 +178,8 @@ impl Storage {
     const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
     const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::ROCKSDB;
-    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::ROCKSDB;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::SLEDDB;
+    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::FILE;
 }
 
 #[derive(Debug, Clone)]
@@ -563,6 +564,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("STRING")
             .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
+        .arg(Arg::with_name("maindb-backend")
+            .long("maindb-backend")
+            .takes_value(true)
+            .value_name("STRING")
+            .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
+            .default_value("sled")
+            .help("Options fo main database backend"))
         .arg(Arg::with_name("one-context")
             .long("one-context")
             .takes_value(false)
@@ -961,6 +969,7 @@ impl Environment {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
                     expected_db_version: Storage::DB_STORAGE_VERSION,
                     db_path: db_path.join("db"),
+                    system_storage_path: db_path.join("sys"),
                     columns: DbsRocksDbTableInitializer,
                     threads: db_threads_count,
                 };
@@ -971,6 +980,12 @@ impl Environment {
                         .collect(),
                 };
 
+                let maindb_backend: TezedgeDatabaseBackendConfiguration = args
+                    .value_of("maindb-backend")
+                    .unwrap_or("sled")
+                    .parse::<TezedgeDatabaseBackendConfiguration>()
+                    .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
+
                 let mut merkle_context_actions_store = None;
                 let context_action_recorders = backends
                     .iter()
@@ -980,6 +995,7 @@ impl Environment {
                                 cache_size: Storage::LRU_CACHE_SIZE_16MB,
                                 expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
                                 db_path: db_path.join("context_actions"),
+                                system_storage_path: db_path.join("sys"),
                                 columns: ContextActionsRocksDbTableInitializer,
                                 threads: db_context_actions_threads_count,
                             });
@@ -1012,6 +1028,7 @@ impl Environment {
                                 cache_size: Storage::LRU_CACHE_SIZE_64MB,
                                 expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
                                 db_path: db_path.join("context"),
+                                system_storage_path: db_path.join("sys"),
                                 columns: ContextRocksDbTableInitializer,
                                 threads: db_context_threads_count,
                             })
@@ -1093,6 +1110,7 @@ impl Environment {
                     // TODO: TE-447 - we will support just one context
                     // one_context: args.is_present("one-context"),
                     one_context: true,
+                    main_db: maindb_backend,
                 }
             },
             identity: crate::configuration::Identity {

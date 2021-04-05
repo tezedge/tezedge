@@ -12,14 +12,13 @@ use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, IteratorMode, PersistentStorage, StorageError};
 
 /// Convenience type for operation meta storage database
-pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
+pub type MempoolStorageKV = dyn TezedgeDatabaseWithIterator<MempoolStorage> + Sync + Send;
 
 /// TODO: do we need this?
 /// Distinct
@@ -64,7 +63,7 @@ pub struct MempoolStorage {
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -168,6 +167,12 @@ impl RocksDbKeyValueSchema for MempoolStorage {
     #[inline]
     fn name() -> &'static str {
         "mempool_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for MempoolStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 

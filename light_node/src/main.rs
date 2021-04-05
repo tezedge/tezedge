@@ -26,7 +26,8 @@ use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use storage::context::TezedgeContext;
 use storage::initializer::{
-    initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
+    initialize_maindb, initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain,
+    RocksDbCache,
 };
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
@@ -518,17 +519,23 @@ fn main() {
     );
 
     // initialize dbs
+    let maindb = initialize_maindb(
+        &log,
+        &env.storage.db_path,
+        env.storage.db.expected_db_version,
+        &main_chain,
+        env.storage.main_db,
+    )
+    .expect("Failed to initialize main db (sled) storage");
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
-    let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
-        .expect("Failed to create/initialize RocksDB database (db)");
     caches.push(kv_cache);
 
     let commit_logs = Arc::new(
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),
     );
-    let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
+    let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
     // initialize merkle context
     let merkle = Arc::new(Mutex::new(
@@ -562,7 +569,7 @@ fn main() {
 
     {
         let persistent_storage = PersistentStorage::new(
-            kv,
+            maindb,
             commit_logs,
             sequences,
             merkle,

@@ -5,19 +5,18 @@ use std::sync::Arc;
 
 use std::convert::TryFrom;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
 use tezos_messages::Head;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 
-pub type ChainMetaStorageKv = dyn KeyValueStoreWithSchema<ChainMetaStorage> + Sync + Send;
+pub type ChainMetaStorageKv = dyn TezedgeDatabaseWithIterator<ChainMetaStorage> + Sync + Send;
 
 pub trait ChainMetaStorageReader: Sync + Send {
     /// Load current head for chain_id from dedicated storage
@@ -59,7 +58,7 @@ pub struct ChainMetaStorage {
 impl ChainMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -175,6 +174,12 @@ impl RocksDbKeyValueSchema for ChainMetaStorage {
     #[inline]
     fn name() -> &'static str {
         "chain_meta_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for ChainMetaStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 

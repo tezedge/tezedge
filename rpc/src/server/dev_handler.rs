@@ -169,6 +169,21 @@ pub async fn dev_stats_memory(
     }
 }
 
+pub async fn dev_stats_rw(
+    _: Request<Body>,
+    _: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    match dev_services::get_storage_rw_stats(&env.persistent_storage) {
+        Ok(resp) => make_json_response(&resp),
+        Err(e) => {
+            warn!(env.log(), "Failed to get storage stats"; "reason" => format!("{}", e));
+            empty()
+        }
+    }
+}
+
 pub async fn dev_stats_memory_protocol_runners(
     _: Request<Body>,
     _: Params,

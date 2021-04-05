@@ -50,12 +50,15 @@ pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod context;
+pub mod database;
 pub mod mempool_storage;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod system_storage;
+
+use crate::database::tezedge_database::TezedgeDatabase;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -117,12 +120,16 @@ impl Decoder for BlockHeaderWithHash {
 pub enum StorageError {
     #[fail(display = "Database error: {}", error)]
     DBError { error: DBError },
+    #[fail(display = "Database error: {}", error)]
+    MainDBError { error: database::error::Error },
     #[fail(display = "Commit log error: {}", error)]
     CommitLogError { error: CommitLogError },
     #[fail(display = "Key is missing in storage")]
     MissingKey,
     #[fail(display = "Column is not valid")]
     InvalidColumn,
+    #[fail(display = "Guard poison {}", error)]
+    GuardPoisonError { error: String },
     #[fail(display = "Sequence generator failed: {}", error)]
     SequenceError { error: SequenceError },
     #[fail(display = "Tezos environment configuration error: {}", error)]
@@ -140,6 +147,12 @@ pub enum StorageError {
 impl From<DBError> for StorageError {
     fn from(error: DBError) -> Self {
         StorageError::DBError { error }
+    }
+}
+
+impl From<database::error::Error> for StorageError {
+    fn from(error: database::error::Error) -> Self {
+        StorageError::MainDBError { error }
     }
 }
 
@@ -409,7 +422,7 @@ pub fn initialize_storage_with_genesis_block(
 
 /// Helper module to easily initialize databases
 pub mod initializer {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
@@ -418,8 +431,10 @@ pub mod initializer {
     use crypto::hash::ChainId;
 
     use crate::context::merkle::merkle_storage::MerkleStorage;
+    use crate::database::error::Error as DatabaseError;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendConfiguration};
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration};
+    use crate::persistent::{open_main_db, DBError, DbConfiguration};
     use crate::{StorageError, SystemStorage};
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
@@ -445,10 +460,7 @@ pub mod initializer {
 
     impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
-            vec![
-                crate::SystemStorage::descriptor(cache),
-                crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
-            ]
+            vec![crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache)]
         }
     }
 
@@ -474,7 +486,6 @@ pub mod initializer {
     impl RocksDbColumnFactory for ContextActionsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
-                crate::SystemStorage::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
@@ -488,6 +499,7 @@ pub mod initializer {
         pub cache_size: usize,
         pub expected_db_version: i64,
         pub db_path: PathBuf,
+        pub system_storage_path: PathBuf,
         pub columns: C,
         pub threads: Option<usize>,
     }
@@ -501,33 +513,36 @@ pub mod initializer {
     }
 
     pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
-        log: &Logger,
+        _log: &Logger,
         cache: &Cache,
         config: &RocksDbConfig<Factory>,
-        expected_main_chain: &MainChain,
+        _expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
-            &config.db_path,
+            &config.system_storage_path,
             config.columns.create(cache),
             &DbConfiguration {
                 max_threads: config.threads,
             },
         )
         .map(Arc::new)?;
+        Ok(db)
+    }
 
-        match check_database_compatibility(
-            db.clone(),
-            config.expected_db_version,
-            expected_main_chain,
-            &log,
-        ) {
-            Ok(false) => Err(DBError::DatabaseIncompatibility {
-                name: format!(
-                    "Database is incompatible with version {}",
-                    config.expected_db_version
-                ),
+    pub fn initialize_maindb<P: AsRef<Path>>(
+        log: &Logger,
+        path: P,
+        db_version: i64,
+        expected_main_chain: &MainChain,
+        backend_config: TezedgeDatabaseBackendConfiguration,
+    ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
+        let db = Arc::new(open_main_db(path.as_ref(), backend_config)?);
+
+        match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
+            Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
+                name: format!("Database is incompatible with version {}", db_version),
             }),
-            Err(e) => Err(DBError::DatabaseIncompatibility {
+            Err(e) => Err(DatabaseError::DatabaseIncompatibility {
                 name: format!("Failed to verify database compatibility reason: '{}'", e),
             }),
             _ => Ok(db),
@@ -549,7 +564,7 @@ pub mod initializer {
     }
 
     fn check_database_compatibility(
-        db: Arc<DB>,
+        db: Arc<TezedgeDatabase>,
         expected_database_version: i64,
         expected_main_chain: &MainChain,
         log: &Logger,
@@ -639,8 +654,8 @@ pub mod initializer {
 
 #[derive(Clone)]
 pub struct PersistentStorage {
-    /// key-value store for operational database
-    db: Arc<DB>,
+    /// key-value store for main db
+    main_db: Arc<TezedgeDatabase>,
     /// commit log store for storing plain block header data
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
@@ -653,7 +668,7 @@ pub struct PersistentStorage {
 
 impl PersistentStorage {
     pub fn new(
-        db: Arc<DB>,
+        main_db: Arc<TezedgeDatabase>,
         clog: Arc<CommitLogs>,
         seq: Arc<Sequences>,
         merkle: Arc<Mutex<MerkleStorage>>,
@@ -661,16 +676,16 @@ impl PersistentStorage {
     ) -> Self {
         Self {
             clog,
-            db,
             seq,
             merkle,
             merkle_context_actions,
+            main_db,
         }
     }
 
     #[inline]
-    pub fn db(&self) -> Arc<DB> {
-        self.db.clone()
+    pub fn main_db(&self) -> Arc<TezedgeDatabase> {
+        self.main_db.clone()
     }
 
     #[inline]
@@ -695,7 +710,7 @@ impl PersistentStorage {
 
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
-        let db = self.db.flush();
+        let db = self.main_db.flush();
         let merkle = match self.merkle.lock() {
             Ok(merkle) => merkle.flush(),
             Err(e) => Err(failure::format_err!(
@@ -730,17 +745,17 @@ pub mod tests_common {
 
     use failure::Error;
 
-    use crate::block_storage;
-    use crate::chain_meta_storage::ChainMetaStorage;
     use crate::context::actions::context_action_storage;
     use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
     use crate::context::merkle::merkle_storage::MerkleStorage;
-    use crate::mempool_storage::MempoolStorage;
+
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
+    use crate::database::notus_backend::NotusDBBackend;
+    use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -773,27 +788,12 @@ pub mod tests_common {
             let cfg = DbConfiguration::default();
 
             // create common RocksDB block cache to be shared among column families
-            let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
-            // db storage - is used for db and sequences
-            let kv = Arc::new(open_kv(
-                path.join("db"),
-                vec![
-                    block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                    block_storage::BlockByLevelIndex::descriptor(&db_cache),
-                    block_storage::BlockByContextHashIndex::descriptor(&db_cache),
-                    BlockMetaStorage::descriptor(&db_cache),
-                    OperationsStorage::descriptor(&db_cache),
-                    OperationsMetaStorage::descriptor(&db_cache),
-                    SystemStorage::descriptor(&db_cache),
-                    Sequences::descriptor(&db_cache),
-                    MempoolStorage::descriptor(&db_cache),
-                    ChainMetaStorage::descriptor(&db_cache),
-                    PredecessorStorage::descriptor(&db_cache),
-                    BlockAdditionalData::descriptor(&db_cache),
-                ],
-                &cfg,
-            )?);
+            //Sled DB storage
+            let backend = NotusDBBackend::new(path.as_path())?;
+            let maindb = Arc::new(TezedgeDatabase::new(
+                TezedgeDatabaseBackendOptions::NotusDB(backend),
+            ));
 
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
@@ -830,9 +830,9 @@ pub mod tests_common {
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
-                    kv.clone(),
+                    maindb.clone(),
                     Arc::new(clog),
-                    Arc::new(Sequences::new(kv, 1000)),
+                    Arc::new(Sequences::new(maindb, 1000)),
                     Arc::new(Mutex::new(merkle)),
                     Some(Arc::new(kv_context_action)),
                 ),

@@ -4,18 +4,18 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
-
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
 };
 use crate::{PersistentStorage, StorageError};
+use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 
-pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
+pub type OperationsStorageKV = dyn TezedgeDatabaseWithIterator<OperationsStorage> + Sync + Send;
 
 pub trait OperationsStorageReader: Sync + Send {
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
@@ -33,9 +33,8 @@ pub struct OperationsStorage {
 
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
-        Self {
-            kv: persistent_storage.db(),
-        }
+        let kv = persistent_storage.main_db();
+        Self { kv }
     }
 
     #[inline]
@@ -74,7 +73,7 @@ impl OperationsStorageReader for OperationsStorage {
         };
 
         let mut operations = vec![];
-        for (_key, value) in self.kv.prefix_iterator(&key)? {
+        for (_key, value) in self.kv.prefix_iterator(&key, HashType::BlockHash.size())? {
             operations.push(value?);
         }
 
@@ -102,6 +101,12 @@ impl RocksDbKeyValueSchema for OperationsStorage {
     #[inline]
     fn name() -> &'static str {
         "operations_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for OperationsStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 

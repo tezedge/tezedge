@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
+use crate::database::error::Error as DatabaseError;
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::KeyValueSchema;
 
 /// Provider a system wide unique sequence generators backed by a permanent RocksDB storage.
 /// This struct can be safely shared by a multiple threads.
@@ -26,7 +28,7 @@ pub struct Sequences {
 }
 
 pub type SequenceNumber = u64;
-pub type SequencerDatabase = dyn KeyValueStoreWithSchema<Sequences> + Sync + Send;
+pub type SequencerDatabase = dyn TezedgeDatabaseWithIterator<Sequences> + Sync + Send;
 
 impl Sequences {
     pub fn new(db: Arc<SequencerDatabase>, seq_batch_size: u16) -> Self {
@@ -65,6 +67,11 @@ impl KeyValueSchema for Sequences {
 impl RocksDbKeyValueSchema for Sequences {
     fn name() -> &'static str {
         "sequence"
+    }
+}
+impl KVStoreKeyValueSchema for Sequences {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 
@@ -143,13 +150,13 @@ impl SequenceGenerator {
 #[derive(Debug, Fail)]
 pub enum SequenceError {
     #[fail(display = "Persistent storage error: {}", error)]
-    PersistentStorageError { error: DBError },
+    PersistentStorageError { error: DatabaseError },
     #[fail(display = "Thread synchronization error")]
     SynchronizationError,
 }
 
-impl From<DBError> for SequenceError {
-    fn from(error: DBError) -> Self {
+impl From<DatabaseError> for SequenceError {
+    fn from(error: DatabaseError) -> Self {
         SequenceError::PersistentStorageError { error }
     }
 }

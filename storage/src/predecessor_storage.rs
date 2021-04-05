@@ -3,19 +3,21 @@
 
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
+use crate::database::tezedge_database::{
+    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
 };
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 
-pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
+pub type PredecessorsIndexStorageKV =
+    dyn TezedgeDatabaseWithIterator<PredecessorStorage> + Sync + Send;
 
 #[derive(Serialize, Deserialize)]
 pub struct PredecessorKey {
@@ -40,7 +42,7 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -98,7 +100,10 @@ impl PredecessorStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -119,5 +124,11 @@ impl RocksDbKeyValueSchema for PredecessorStorage {
     #[inline]
     fn name() -> &'static str {
         "predecessor_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for PredecessorStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }

@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash};
 
-use crate::persistent::database::IteratorWithSchema;
+use crate::database::tezedge_database::{
+    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
+};
 use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{
-    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location,
+    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location,
 };
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 
@@ -103,15 +104,15 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
+    fn iterator(&self) -> Result<TezedgeDatabaseIterator<BlockPrimaryIndex>, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.db()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.db()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.db()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.main_db()),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
+            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
     }
@@ -376,7 +377,7 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
+    fn iterator(&self) -> Result<TezedgeDatabaseIterator<BlockPrimaryIndex>, StorageError> {
         self.primary_index.iterator()
     }
 }
@@ -414,7 +415,7 @@ pub struct BlockPrimaryIndex {
     kv: Arc<BlockPrimaryIndexKV>,
 }
 
-pub type BlockPrimaryIndexKV = dyn KeyValueStoreWithSchema<BlockPrimaryIndex> + Sync + Send;
+pub type BlockPrimaryIndexKV = dyn TezedgeDatabaseWithIterator<BlockPrimaryIndex> + Sync + Send;
 
 impl BlockPrimaryIndex {
     fn new(kv: Arc<BlockPrimaryIndexKV>) -> Self {
@@ -446,7 +447,7 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
+    fn iterator(&self) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
         self.kv
             .iterator(IteratorMode::Start)
             .map_err(StorageError::from)
@@ -465,13 +466,19 @@ impl RocksDbKeyValueSchema for BlockPrimaryIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockPrimaryIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByLevelIndex {
     kv: Arc<BlockByLevelIndexKV>,
 }
 
-pub type BlockByLevelIndexKV = dyn KeyValueStoreWithSchema<BlockByLevelIndex> + Sync + Send;
+pub type BlockByLevelIndexKV = dyn TezedgeDatabaseWithIterator<BlockByLevelIndex> + Sync + Send;
 pub type BlockLevel = i32;
 
 impl BlockByLevelIndex {
@@ -539,6 +546,12 @@ impl RocksDbKeyValueSchema for BlockByLevelIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockByLevelIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByContextHashIndex {
@@ -546,7 +559,7 @@ pub struct BlockByContextHashIndex {
 }
 
 pub type BlockByContextHashIndexKV =
-    dyn KeyValueStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
+    dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -587,16 +600,21 @@ impl RocksDbKeyValueSchema for BlockByContextHashIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockByContextHashIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
     use failure::Error;
 
-    use crate::persistent::database::open_kv;
+    use crate::persistent::open_main_db;
     use crate::persistent::DbConfiguration;
-
     use super::*;
+    use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
@@ -607,15 +625,8 @@ mod tests {
             std::fs::remove_dir_all(path).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-
         {
-            let db = open_kv(
-                path,
-                vec![BlockByLevelIndex::descriptor(&cache)],
-                &DbConfiguration::default(),
-            )
-            .unwrap();
+            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
@@ -641,7 +652,6 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
         Ok(())
     }
 }

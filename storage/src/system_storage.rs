@@ -3,16 +3,17 @@
 
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::StorageError;
+use rocksdb::{Cache, ColumnFamilyDescriptor};
 
-pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
+pub type SystemStorageKv = dyn TezedgeDatabaseWithIterator<SystemStorage> + Sync + Send;
 pub type DbVersion = i64;
 
 /// Represents storage of the system settings.
@@ -111,7 +112,6 @@ impl KeyValueSchema for SystemStorage {
     type Key = String;
     type Value = SystemValue;
 }
-
 impl RocksDbKeyValueSchema for SystemStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let cf_opts = default_table_options(cache);
@@ -121,6 +121,12 @@ impl RocksDbKeyValueSchema for SystemStorage {
     #[inline]
     fn name() -> &'static str {
         "system_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for SystemStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 

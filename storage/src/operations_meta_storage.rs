@@ -2,33 +2,40 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::sync::Arc;
-
-use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
+use std::sync::{Arc, RwLock};
 
 use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
+use crate::database::tezedge_database::{
+    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
 };
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::PersistentStorage;
 use crate::{BlockHeaderWithHash, StorageError};
+use bloomfilter::Bloom;
+use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
 /// Convenience type for operation meta storage database
-pub type OperationsMetaStorageKV = dyn KeyValueStoreWithSchema<OperationsMetaStorage> + Sync + Send;
+pub type OperationsMetaStorageKV =
+    dyn TezedgeDatabaseWithIterator<OperationsMetaStorage> + Sync + Send;
 
 /// Operation metadata storage
 #[derive(Clone)]
 pub struct OperationsMetaStorage {
     kv: Arc<OperationsMetaStorageKV>,
+    //bloom filter
+    bloom_filter: Arc<RwLock<Bloom<BlockHash>>>,
 }
 
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
+        let kv = persistent_storage.main_db();
         Self {
-            kv: persistent_storage.db(),
+            kv,
+            //Create bloom filter with estimated size of 1 MiB and Block count of 1.5m
+            bloom_filter: Arc::new(RwLock::new(Bloom::new(1_000_000, 1_500_000))),
         }
     }
 
@@ -61,7 +68,6 @@ impl OperationsMetaStorage {
         message: &OperationsForBlocksMessage,
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         let block_hash = message.operations_for_block().hash();
-
         match self.get(&block_hash)? {
             Some(mut meta) => {
                 let validation_pass = message.operations_for_block().validation_pass() as u8;
@@ -72,6 +78,19 @@ impl OperationsMetaStorage {
                     .is_validation_pass_present
                     .iter()
                     .all(|v| *v == (true as u8));
+
+                if meta.is_complete {
+                    let bloom_filter = self.bloom_filter.clone();
+
+                    let mut bloom_filter =
+                        bloom_filter
+                            .write()
+                            .map_err(|e| StorageError::GuardPoisonError {
+                                error: e.to_string(),
+                            })?;
+
+                    bloom_filter.set(&block_hash)
+                }
 
                 self.put(&block_hash, &meta)
                     .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
@@ -86,6 +105,20 @@ impl OperationsMetaStorage {
             Some(Meta { is_complete, .. }) => Ok(is_complete),
             None => Ok(false),
         }
+    }
+
+    #[inline]
+    pub fn is_complete_with_bloom_filters(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<bool, StorageError> {
+        let filter = self
+            .bloom_filter
+            .read()
+            .map_err(|e| StorageError::GuardPoisonError {
+                error: e.to_string(),
+            })?;
+        Ok(filter.check(block_hash))
     }
 
     #[inline]
@@ -104,7 +137,10 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -114,12 +150,18 @@ impl KeyValueSchema for OperationsMetaStorage {
     type Value = Meta;
 }
 
+impl KVStoreKeyValueSchema for OperationsMetaStorage {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 impl RocksDbKeyValueSchema for OperationsMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
         cf_opts.set_merge_operator(
             "operations_meta_storage_merge_operator",
-            merge_meta_value,
+            merge_meta_value_rocks_db,
             None,
         );
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
@@ -131,7 +173,7 @@ impl RocksDbKeyValueSchema for OperationsMetaStorage {
     }
 }
 
-fn merge_meta_value(
+fn merge_meta_value_rocks_db(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
     operands: &mut MergeOperands,
@@ -167,10 +209,93 @@ fn merge_meta_value(
             None => result = Some(op.to_vec()),
         }
     }
+    result
+}
+
+/*
+_key: &[u8],               // the key being merged
+    _old_value: Option<&[u8]>,  // the previous value, if one existed
+    merged_bytes: &[u8]
+ */
+pub fn merge_meta_value(
+    _new_key: &[u8],
+    existing_val: Option<&[u8]>,
+    merged_bytes: &[u8],
+) -> Option<Vec<u8>> {
+    let mut result = existing_val.map(|v| v.to_vec());
+    match result {
+        None => return Some(merged_bytes.to_vec()),
+        Some(ref mut val) => {
+            debug_assert_eq!(
+                val.len(),
+                merged_bytes.len(),
+                "Value length is fixed. expected={}, found={}",
+                val.len(),
+                merged_bytes.len()
+            );
+            debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+            debug_assert_eq!(
+                val[0], merged_bytes[0],
+                "Value of validation passes cannot change"
+            );
+            // in case of inconsistency, return `None`
+            if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
+                return None;
+            }
+
+            let validation_passes = val[0] as usize;
+            // merge `is_validation_pass_present`
+            for i in 1..=validation_passes {
+                val[i] |= merged_bytes[i]
+            }
+            // merge `is_complete`
+            let is_complete_idx = validation_passes + 1;
+            val[is_complete_idx] |= merged_bytes[is_complete_idx];
+        }
+    }
 
     result
 }
 
+pub fn merge_meta_value_notus(
+    _new_key: &[u8],
+    existing_val: Option<Vec<u8>>,
+    merged_bytes: &[u8],
+) -> Option<Vec<u8>> {
+    let mut result = existing_val;
+    match result {
+        None => return Some(merged_bytes.to_vec()),
+        Some(ref mut val) => {
+            debug_assert_eq!(
+                val.len(),
+                merged_bytes.len(),
+                "Value length is fixed. expected={}, found={}",
+                val.len(),
+                merged_bytes.len()
+            );
+            debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+            debug_assert_eq!(
+                val[0], merged_bytes[0],
+                "Value of validation passes cannot change"
+            );
+            // in case of inconsistency, return `None`
+            if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
+                return None;
+            }
+
+            let validation_passes = val[0] as usize;
+            // merge `is_validation_pass_present`
+            for i in 1..=validation_passes {
+                val[i] |= merged_bytes[i]
+            }
+            // merge `is_complete`
+            let is_complete_idx = validation_passes + 1;
+            val[is_complete_idx] |= merged_bytes[is_complete_idx];
+        }
+    }
+
+    result
+}
 /// Block operations metadata
 #[derive(PartialEq, Debug)]
 pub struct Meta {
@@ -284,11 +409,11 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::DbConfiguration;
+    use crate::persistent::open_main_db;
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    use crate::persistent::database::open_kv;
+    use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
     use crypto::hash::HashType;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
@@ -380,13 +505,8 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-            let db = open_kv(
-                path,
-                vec![OperationsMetaStorage::descriptor(&cache)],
-                &DbConfiguration::default(),
-            )?;
+            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled)?;
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,
@@ -414,7 +534,6 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
         Ok(())
     }
 

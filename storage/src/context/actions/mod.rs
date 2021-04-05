@@ -20,6 +20,7 @@ pub mod action_file_storage;
 pub mod context_action_storage;
 
 pub const ROCKSDB: &str = "rocksdb";
+pub const FILE: &str = "file";
 
 #[derive(PartialEq, Debug, Clone, EnumIter)]
 pub enum ContextActionStoreBackend {
