@@ -55,6 +55,7 @@ pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod system_storage;
+pub mod database;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
