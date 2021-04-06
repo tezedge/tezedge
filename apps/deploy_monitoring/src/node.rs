@@ -7,10 +7,12 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use failure::{bail, format_err};
 use fs_extra::dir;
+use itertools::Itertools;
+use merge::Merge;
 
 use sysinfo::{ProcessExt, System, SystemExt};
 
-use shell::stats::memory::{MemoryData, ProcessMemoryStats};
+use shell::stats::memory::{MemoryData, ProcessMemoryStats, ProcessMemoryStatsMaxMerge};
 
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
@@ -56,7 +58,7 @@ impl DeployMonitoringContainer for TezedgeNode {
 impl TezedgeNode {
     pub async fn collect_protocol_runners_memory_stats(
         port: u16,
-    ) -> Result<Vec<ProcessMemoryStats>, failure::Error> {
+    ) -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
         let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
             "http://localhost:{}/stats/memory/protocol_runners",
             port
@@ -67,10 +69,10 @@ impl TezedgeNode {
             Err(e) => bail!("GET memory error: {}", e),
         };
 
-        let memory_stats: Vec<ProcessMemoryStats> = protocol_runners
+        let memory_stats: ProcessMemoryStatsMaxMerge = protocol_runners
             .into_iter()
             .map(|v| v.try_into().unwrap())
-            .collect();
+            .fold1(|mut m1: ProcessMemoryStats, m2| {m1.merge(m2); m1}).unwrap_or_default().into();
 
         Ok(memory_stats)
     }
@@ -96,7 +98,7 @@ impl DeployMonitoringContainer for OcamlNode {
 }
 
 impl OcamlNode {
-    pub fn collect_validator_memory_stats() -> Result<Vec<ProcessMemoryStats>, failure::Error> {
+    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -111,7 +113,7 @@ impl OcamlNode {
             .collect();
 
         // collect all processes that is the child of the main process and sum up the memory usage
-        let valaidators: Vec<ProcessMemoryStats> = system_processes
+        let valaidators: ProcessMemoryStatsMaxMerge = system_processes
             .iter()
             .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
             .map(|(_, process)| {
@@ -120,7 +122,7 @@ impl OcamlNode {
                     process.memory().try_into().unwrap_or_default(),
                 )
             })
-            .collect();
+            .fold1(|mut m1, m2| {m1.merge(m2); m1}).unwrap_or_default().into();
 
         Ok(valaidators)
     }
@@ -157,7 +159,7 @@ pub trait Node {
         Ok(head_data)
     }
 
-    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
+    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
         let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,
@@ -165,7 +167,7 @@ pub trait Node {
             };
         let memory_stats: ProcessMemoryStats = tezedge_raw_memory_info.try_into()?;
 
-        Ok(memory_stats)
+        Ok(memory_stats.into())
     }
 
     async fn collect_commit_hash(port: u16) -> Result<String, failure::Error> {
