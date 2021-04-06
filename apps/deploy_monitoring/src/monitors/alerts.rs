@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::convert::TryInto;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -228,17 +227,19 @@ impl Alerts {
         time: i64,
         last_measurement: ResourceUtilization,
     ) -> Result<(), failure::Error> {
-        let ram_total = last_measurement.memory().node().resident_mem()
+        let ram_total: usize = last_measurement.memory().node().resident_mem()
             + last_measurement
                 .memory()
                 .protocol_runners()
                 .as_ref()
-                .unwrap_or(&ProcessMemoryStats::default())
-                .resident_mem();
+                .unwrap_or(&Vec::<ProcessMemoryStats>::default())
+                .iter()
+                .map(|val| val.resident_mem())
+                .sum::<usize>();
         let res = self.assign_resource_alert(
             AlertKind::Memory,
             self.memory_threshold,
-            ram_total.try_into().unwrap_or(0),
+            ram_total as u64,
             Some(time),
         );
 

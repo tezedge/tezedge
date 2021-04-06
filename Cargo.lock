@@ -889,6 +889,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "deploy-monitoring"
+version = "1.2.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clap",
+ "failure",
+ "fs2",
+ "fs_extra",
+ "getset",
+ "http",
+ "itertools 0.10.0",
+ "libflate",
+ "merge",
+ "percentage",
+ "reqwest",
+ "serde 1.0.123",
+ "serde_json",
+ "shell",
+ "shiplift",
+ "slog",
+ "slog-async",
+ "slog-term",
+ "sysinfo",
+ "tokio",
+ "wait-timeout",
+ "warp",
+ "zip",
+]
+
+[[package]]
 name = "derive_builder"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4470,36 +4501,6 @@ name = "wasm-bindgen-shared"
 version = "0.2.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f8ec44822dd71f5f221a5847fb34acd9060535c1211b70a05844c0f6383b1"
-
-[[package]]
-name = "watchdog"
-version = "1.2.0"
-dependencies = [
- "async-trait",
- "chrono",
- "clap",
- "failure",
- "fs2",
- "fs_extra",
- "getset",
- "http",
- "libflate",
- "merge",
- "percentage",
- "reqwest",
- "serde 1.0.123",
- "serde_json",
- "shell",
- "shiplift",
- "slog",
- "slog-async",
- "slog-term",
- "sysinfo",
- "tokio",
- "wait-timeout",
- "warp",
- "zip",
-]
 
 [[package]]
 name = "web-sys"

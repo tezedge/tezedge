@@ -42,11 +42,11 @@ pub struct MemoryStats {
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    protocol_runners: Option<ProcessMemoryStats>,
+    protocol_runners: Option<Vec<ProcessMemoryStats>>,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    validators: Option<ProcessMemoryStats>,
+    validators: Option<Vec<ProcessMemoryStats>>,
 }
 
 #[derive(Clone, Debug, Serialize, Getters)]

@@ -9,7 +9,7 @@ use crate::display_info::{
     CommitHashes, CpuData, DiskSpaceData, HeadData, ImagesInfo, MemoryData,
     TezedgeSpecificMemoryData,
 };
-use crate::image::{Explorer, TezedgeDebugger, WatchdogContainer};
+use crate::image::{Explorer, TezedgeDebugger, DeployMonitoringContainer};
 use crate::node::{Node, OcamlNode, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 use crate::slack::SlackServer;
 

@@ -4,7 +4,7 @@ members = [
     "logging",
     "crypto",
     "tezos/sys",
-    "apps/watchdog",
+    "apps/deploy_monitoring",
     "tezos/api",
     "tezos/messages",
     "tezos/identity",

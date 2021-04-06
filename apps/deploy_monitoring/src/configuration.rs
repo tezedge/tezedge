@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
-pub struct WatchdogEnvironment {
+pub struct DeployMonitoringEnvironment {
     // logging level
     pub log_level: slog::Level,
 
@@ -48,7 +48,7 @@ pub struct AlertThresholds {
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
-    let app = App::new("Tezedge watchdog app")
+    let app = App::new("Tezedge deploy monitoring app")
         .version("0.10.0")
         .author("SimpleStaking and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
@@ -135,7 +135,7 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("rpc-port")
                 .takes_value(true)
                 .value_name("RPC-PORT")
-                .help("Port number to open the watchdog rpc server on"),
+                .help("Port number to open the monitoring rpc server on"),
         )
         .arg(
             Arg::with_name("sandbox")
@@ -191,7 +191,7 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "compose-file-path");
 }
 
-impl WatchdogEnvironment {
+impl DeployMonitoringEnvironment {
     pub fn from_args() -> Self {
         let app = deploy_monitoring_app();
         let args = app.clone().get_matches();
@@ -216,7 +216,7 @@ impl WatchdogEnvironment {
                 .expect("Was seconds [i64]"),
         };
 
-        WatchdogEnvironment {
+        DeployMonitoringEnvironment {
             log_level: args
                 .value_of("log-level")
                 .unwrap_or("info")

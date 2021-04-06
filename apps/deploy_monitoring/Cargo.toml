@@ -1,9 +1,9 @@
 [package]
-name = "watchdog"
+name = "deploy-monitoring"
 version = "1.2.0"
 authors = ["Adrian Nagy <adrian.nagy@simplestaking.com>"]
 edition = "2018"
-default-run = "watchdog"
+default-run = "deploy-monitoring"
 
 [dependencies]
 async-trait = "0.1"
@@ -12,6 +12,7 @@ chrono = "0.4"
 failure = "0.1"
 fs2 = "0.4"
 fs_extra = "1.2"
+itertools = "0.10"
 getset = "0.1"
 libflate = "1"
 merge = "0.1"
