@@ -7,6 +7,7 @@ use crate::node::OcamlNode;
 use crate::slack::SlackServer;
 use chrono::Utc;
 
+use merge::Merge;
 use serde::Serialize;
 use slog::Logger;
 use std::collections::VecDeque;
@@ -15,7 +16,7 @@ use std::sync::{Arc, RwLock};
 use getset::Getters;
 use sysinfo::{System, SystemExt};
 
-use shell::stats::memory::ProcessMemoryStats;
+use shell::stats::memory::ProcessMemoryStatsMaxMerge;
 
 use crate::display_info::DiskData;
 use crate::node::{Node, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
@@ -35,42 +36,49 @@ pub struct ResourceMonitor {
     system: System,
 }
 
-#[derive(Clone, Debug, Default, Serialize, Getters)]
+#[derive(Clone, Debug, Serialize, Getters, Merge, Default)]
 pub struct MemoryStats {
     #[get = "pub(crate)"]
-    node: ProcessMemoryStats,
+    #[merge(strategy = merge::ord::max)]
+    node: ProcessMemoryStatsMaxMerge,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    protocol_runners: Option<Vec<ProcessMemoryStats>>,
+    #[merge(strategy = merge::ord::max)]
+    protocol_runners: Option<ProcessMemoryStatsMaxMerge>,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    validators: Option<Vec<ProcessMemoryStats>>,
+    #[merge(strategy = merge::ord::max)]
+    validators: Option<ProcessMemoryStatsMaxMerge>,
 }
 
-#[derive(Clone, Debug, Serialize, Getters)]
+#[derive(Clone, Debug, Serialize, Getters, Merge)]
 pub struct ResourceUtilization {
     #[get = "pub(crate)"]
+    #[merge(strategy = merge::ord::max)]
     timestamp: i64,
 
     #[get = "pub(crate)"]
     memory: MemoryStats,
 
     #[get = "pub(crate)"]
+    #[merge(strategy = merge::ord::max)]
     disk: DiskData,
 
     #[get = "pub(crate)"]
     cpu: CpuStats,
 }
 
-#[derive(Clone, Debug, Serialize, Getters)]
+#[derive(Clone, Debug, Serialize, Getters, Merge, Default)]
 pub struct CpuStats {
     #[get = "pub(crate)"]
+    #[merge(strategy = merge::ord::max)]
     node: i32,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[merge(strategy = merge::ord::max)]
     protocol_runners: Option<i32>,
 }
 

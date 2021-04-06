@@ -49,6 +49,35 @@ pub struct ProcessMemoryStats {
     resident_mem: usize,
 }
 
+#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq, CopyGetters, Ord, PartialOrd, Eq)]
+pub struct ProcessMemoryStatsMaxMerge {
+    #[get_copy = "pub"]
+    #[merge(strategy = merge::ord::max)]
+    virtual_mem: usize,
+
+    #[get_copy = "pub"]
+    #[merge(strategy = merge::ord::max)]
+    resident_mem: usize,
+}
+
+impl From<ProcessMemoryStats> for ProcessMemoryStatsMaxMerge {
+    fn from(data: ProcessMemoryStats) -> Self {
+        Self {
+            virtual_mem: data.virtual_mem,
+            resident_mem: data.resident_mem,
+        }
+    }
+}
+
+impl From<ProcessMemoryStatsMaxMerge> for ProcessMemoryStats {
+    fn from(data: ProcessMemoryStatsMaxMerge) -> Self {
+        Self {
+            virtual_mem: data.virtual_mem,
+            resident_mem: data.resident_mem,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum MemoryData {

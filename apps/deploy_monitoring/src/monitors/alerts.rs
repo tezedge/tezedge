@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
-use shell::stats::memory::ProcessMemoryStats;
+use shell::stats::memory::ProcessMemoryStatsMaxMerge;
 
 use crate::configuration::AlertThresholds;
 use crate::monitors::TEZEDGE_VOLUME_PATH;
@@ -232,10 +232,8 @@ impl Alerts {
                 .memory()
                 .protocol_runners()
                 .as_ref()
-                .unwrap_or(&Vec::<ProcessMemoryStats>::default())
-                .iter()
-                .map(|val| val.resident_mem())
-                .sum::<usize>();
+                .unwrap_or(&ProcessMemoryStatsMaxMerge::default())
+                .resident_mem();
         let res = self.assign_resource_alert(
             AlertKind::Memory,
             self.memory_threshold,
