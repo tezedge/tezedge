@@ -855,7 +855,9 @@ impl Environment {
                     .unwrap_or("false")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                disable_mempool: args.is_present("disable-mempool"),
+                // TODO: temporary disable mempool
+                // disable_mempool: args.is_present("disable-mempool"),
+                disable_mempool: true,
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
