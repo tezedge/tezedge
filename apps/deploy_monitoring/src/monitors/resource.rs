@@ -183,9 +183,7 @@ impl ResourceMonitor {
         // current time timestamp
         let current_time = Utc::now().timestamp();
 
-        let current_head_level = *TezedgeNode::collect_head_data(TEZEDGE_PORT)
-            .await?
-            .level();
+        let current_head_level = *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
 
         alerts.check_disk_alert(&slack, current_time).await?;
         alerts

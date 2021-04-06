@@ -157,9 +157,7 @@ pub trait Node {
         Ok(head_data)
     }
 
-    async fn collect_memory_data(
-        port: u16,
-    ) -> Result<ProcessMemoryStats, failure::Error> {
+    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
         let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,

@@ -26,8 +26,10 @@ pub mod resource;
 
 // TODO: get this info from docker (shiplift needs to implement docker volume inspect)
 // path to the volumes
-pub const TEZEDGE_VOLUME_PATH: &str = "/var/lib/docker/volumes/deploy_monitoring_tezedge-shared-data/_data";
-pub const OCAML_VOLUME_PATH: &str = "/var/lib/docker/volumes/deploy_monitoring_ocaml-shared-data/_data";
+pub const TEZEDGE_VOLUME_PATH: &str =
+    "/var/lib/docker/volumes/deploy_monitoring_tezedge-shared-data/_data";
+pub const OCAML_VOLUME_PATH: &str =
+    "/var/lib/docker/volumes/deploy_monitoring_ocaml-shared-data/_data";
 
 pub fn start_deploy_monitoring(
     compose_file_path: PathBuf,

@@ -8,8 +8,8 @@ use std::process::{Command, Output};
 use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
-use crate::image::{Explorer, Sandbox, TezedgeDebugger, DeployMonitoringContainer};
-use crate::node::{OcamlNode, TezedgeNode, TEZEDGE_PORT, OCAML_PORT};
+use crate::image::{DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger};
+use crate::node::{OcamlNode, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
 
 pub const DEBUGGER_PORT: u16 = 17732;
 
@@ -19,16 +19,22 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
     start_with_compose(compose_file_path, Explorer::NAME, "explorer");
     start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     // debugger healthcheck
-    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await.is_err() {
+    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT))
+        .await
+        .is_err()
+    {
         sleep(Duration::from_millis(1000)).await;
     }
     info!(log, "Debugger for tezedge node is running");
 
     start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
     // node healthcheck
-    while reqwest::get(&format!("http://localhost:{}/chains/main/blocks/head/header", TEZEDGE_PORT))
-        .await
-        .is_err()
+    while reqwest::get(&format!(
+        "http://localhost:{}/chains/main/blocks/head/header",
+        TEZEDGE_PORT
+    ))
+    .await
+    .is_err()
     {
         sleep(Duration::from_millis(1000)).await;
     }
@@ -36,9 +42,12 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
 
     start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
     // node healthcheck
-    while reqwest::get(&format!("http://localhost:{}/chains/main/blocks/head/header", OCAML_PORT))
-        .await
-        .is_err()
+    while reqwest::get(&format!(
+        "http://localhost:{}/chains/main/blocks/head/header",
+        OCAML_PORT
+    ))
+    .await
+    .is_err()
     {
         sleep(Duration::from_millis(1000)).await;
     }
@@ -48,7 +57,10 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
 pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     // debugger healthcheck
-    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await.is_err() {
+    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT))
+        .await
+        .is_err()
+    {
         sleep(Duration::from_millis(1000)).await;
     }
     info!(log, "Debugger for sandboxed tezedge node is running");

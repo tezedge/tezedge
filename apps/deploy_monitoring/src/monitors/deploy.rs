@@ -18,7 +18,7 @@ use crate::deploy_with_compose::{
     restart_sandbox, restart_stack, shutdown_and_update, shutdown_and_update_sandbox,
 };
 use crate::image::{
-    local_hash, remote_hash, Explorer, Sandbox, TezedgeDebugger, DeployMonitoringContainer,
+    local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger,
 };
 
 use crate::monitors::TEZEDGE_VOLUME_PATH;
@@ -208,7 +208,9 @@ impl DeployMonitor {
         Ok(())
     }
 
-    async fn changed<T: DeployMonitoringContainer + Sync + Send>(&self) -> Result<bool, failure::Error> {
+    async fn changed<T: DeployMonitoringContainer + Sync + Send>(
+        &self,
+    ) -> Result<bool, failure::Error> {
         let DeployMonitor {
             docker, slack, log, ..
         } = self;

@@ -17,7 +17,8 @@ pub trait DeployMonitoringContainer {
     }
 }
 
-pub async fn remote_hash<T: DeployMonitoringContainer + Sync + Send>() -> Result<String, failure::Error> {
+pub async fn remote_hash<T: DeployMonitoringContainer + Sync + Send>(
+) -> Result<String, failure::Error> {
     let image = T::image().await?;
     let image_split: Vec<&str> = image.split(':').collect();
     let repo = image_split.get(0).unwrap_or(&"");

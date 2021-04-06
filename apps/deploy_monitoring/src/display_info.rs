@@ -173,7 +173,7 @@ impl TezedgeDiskData {
             block_storage,
             context_actions,
             main_db,
-            debugger
+            debugger,
         }
     }
 

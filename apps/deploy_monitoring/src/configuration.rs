@@ -142,9 +142,11 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .long("sandbox")
                 .help("Watch only the sandbox launcher and a debugger"),
         )
-        .arg(Arg::with_name("cleanup-volumes")
-            .long("cleanup-volumes")
-            .help("Enable and dissable volume cleanup"))
+        .arg(
+            Arg::with_name("cleanup-volumes")
+                .long("cleanup-volumes")
+                .help("Enable and dissable volume cleanup"),
+        )
         .arg(
             Arg::with_name("alert-threshold-disk")
                 .long("alert-threshold-disk")

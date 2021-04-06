@@ -20,8 +20,8 @@ mod slack;
 
 use crate::monitors::resource::{ResourceUtilization, MEASUREMENTS_MAX_CAPACITY};
 use crate::monitors::{
-    shutdown_and_cleanup, start_deploy_monitoring,
-    start_resource_monitoring, start_sandbox, start_sandbox_monitoring, start_stack,
+    shutdown_and_cleanup, start_deploy_monitoring, start_resource_monitoring, start_sandbox,
+    start_sandbox_monitoring, start_stack,
 };
 
 #[tokio::main]
