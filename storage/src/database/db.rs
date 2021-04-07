@@ -15,7 +15,7 @@ pub struct DB {
 }
 
 impl DB {
-    pub fn initialize<P: AsRef<Path>>(db_path: P, subs_trees: Vec<String>) -> Result<Self, Error> {
+    pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>) -> Result<Self, Error> {
         let db = sled::Config::new()
             .path(db_path)
             .use_compression(true)
@@ -25,14 +25,14 @@ impl DB {
             .map_err(Error::from)?;
 
 
-        let mut trees = HashMap::new();
+        let mut tree_map = HashMap::new();
 
-        for name in subs_trees {
-            trees.insert(name.to_owned(), db.open_tree(name.as_str()).map_err(Error::from)?);
+        for name in trees {
+            tree_map.insert(name.to_owned(), db.open_tree(name.as_str()).map_err(Error::from)?);
         }
 
         let db = DB {
-            inner: Arc::new(trees)
+            inner: Arc::new(tree_map)
         };
         Ok(db)
     }

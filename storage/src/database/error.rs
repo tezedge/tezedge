@@ -31,8 +31,6 @@ impl From<sled::Error> for Error {
         Error::SledDBError { error }
     }
 }
-
-
 impl From<FromBytesError> for Error {
     fn from(error: FromBytesError) -> Self {
         Error::HashEncodeError { error }

@@ -67,6 +67,7 @@ pub trait KVDatabaseWithSchemaIterator<S: DBSubtreeKeyValueSchema> {
     ///
     /// # Arguments
     /// * `key` - Key (specified by schema), from which to start reading entries
+    /// * `max_key_len` - max prefix key length
     fn prefix_iterator(&self, key: &S::Key, max_key_len: usize) -> Result<KVDBIteratorWithSchema<S>, Error>;
 }
 
