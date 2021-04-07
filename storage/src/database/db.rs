@@ -112,17 +112,17 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabaseWithSchemaIterator<S> for DB {
             IteratorMode::Start => SledIteratorWrapper::new(SledIteratorWrapperMode::Start, tree),
             IteratorMode::End => SledIteratorWrapper::new(SledIteratorWrapperMode::End, tree),
             IteratorMode::From(key, direction) => {
-                SledIteratorWrapper::new(SledIteratorWrapperMode::From(IVec::from(&key.encode()?), direction), tree)
+                SledIteratorWrapper::new(SledIteratorWrapperMode::From(IVec::from(key.encode()?), direction), tree)
             }
         };
-        Ok(KVDatabaseWithSchemaIterator(iter, PhantomData))
+        Ok(KVDBIteratorWithSchema(iter, PhantomData))
     }
 
     fn prefix_iterator(&self, key: &<S as KeyValueSchema>::Key, max_key_len: usize) -> Result<KVDBIteratorWithSchema<S>, Error> {
         let tree = self.get_tree(S::sub_tree_name())?;
         let key = key.encode()?;
-        let prefix_key = key[..max_key_len];
-        let iter = tree.scan_prefix(prefix_key);
-        Ok(KVDatabaseWithSchemaIterator(iter, PhantomData))
+        let prefix_key = key[..max_key_len].to_vec();
+        let iter = SledIteratorWrapper::new(SledIteratorWrapperMode::Prefix(IVec::from(prefix_key)), tree);
+        Ok(KVDBIteratorWithSchema(iter, PhantomData))
     }
 }

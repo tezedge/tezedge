@@ -77,6 +77,7 @@ pub enum SledIteratorWrapperMode {
     Start,
     End,
     From(IVec, Direction),
+    Prefix(IVec),
 }
 pub struct SledIteratorWrapper {
     mode : SledIteratorWrapperMode,
@@ -89,13 +90,13 @@ impl SledIteratorWrapper {
             SledIteratorWrapperMode::Start => {
                 Self{
                     mode,
-                    iter : tree.range(..)
+                    iter : tree.iter()
                 }
             }
             SledIteratorWrapperMode::End => {
                 Self{
                     mode,
-                    iter : tree.range(..)
+                    iter : tree.iter()
                 }
             }
             SledIteratorWrapperMode::From(key, direction) => {
@@ -113,6 +114,12 @@ impl SledIteratorWrapper {
                     iter
                 }
 
+            }
+            SledIteratorWrapperMode::Prefix(key) => {
+                Self {
+                    mode,
+                    iter: tree.scan_prefix(key)
+                }
             }
         }
     }
@@ -138,6 +145,9 @@ impl Iterator for SledIteratorWrapper {
                         self.iter.next_back()
                     }
                 }
+            }
+            SledIteratorWrapperMode::Prefix(_) => {
+                self.iter.next()
             }
         }
     }

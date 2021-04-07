@@ -368,6 +368,7 @@ impl<'a, S: KeyValueSchema> Iterator for IteratorWithSchema<'a, S> {
 }
 
 /// Database iterator direction
+#[derive(Clone)]
 pub enum Direction {
     Forward,
     Reverse,
