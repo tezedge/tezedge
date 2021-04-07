@@ -175,36 +175,3 @@ impl<S: KeyValueSchema> Iterator for KVDBIteratorWithSchema<S> {
     }
 
 }
-
-/*
-impl<S: RocksDbKeyValueSchema> KeyValueStoreWithSchemaIterator<S> for DB {
-    fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, DBError> {
-        let cf = self
-            .cf_handle(S::name())
-            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
-
-        let iter = match mode {
-            IteratorMode::Start => self.iterator_cf(cf, rocksdb::IteratorMode::Start),
-            IteratorMode::End => self.iterator_cf(cf, rocksdb::IteratorMode::End),
-            IteratorMode::From(key, direction) => self.iterator_cf(
-                cf,
-                rocksdb::IteratorMode::From(&key.encode()?, direction.into()),
-            ),
-        };
-
-        Ok(IteratorWithSchema(iter, PhantomData))
-    }
-
-    fn prefix_iterator(&self, key: &S::Key) -> Result<IteratorWithSchema<S>, DBError> {
-        let key = key.encode()?;
-        let cf = self
-            .cf_handle(S::name())
-            .ok_or(DBError::MissingColumnFamily { name: S::name() })?;
-
-        Ok(IteratorWithSchema(
-            self.prefix_iterator_cf(cf, key),
-            PhantomData,
-        ))
-    }
-}
- */
