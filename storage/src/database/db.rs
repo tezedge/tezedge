@@ -1,11 +1,14 @@
 use im::HashMap;
 use std::sync::Arc;
-use sled::Tree;
+use sled::{Tree, IVec};
 use std::path::Path;
 use crate::database::error::Error;
-use crate::database::{KVDatabase, DBSubtreeKeyValueSchema};
+use crate::database::{KVDatabase, DBSubtreeKeyValueSchema, KVDatabaseWithSchemaIterator, KVDBIteratorWithSchema, SledIteratorWrapper, SledIteratorWrapperMode};
 use crate::persistent::{KeyValueSchema, Encoder, Decoder};
 use std::alloc::Global;
+use crate::IteratorMode;
+use crate::persistent::database::IteratorWithSchema;
+use std::marker::PhantomData;
 
 pub struct DB {
     inner: Arc<HashMap<String, Tree>>
@@ -74,7 +77,7 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for DB {
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, Error> {
         let key = key.encode()?;
         let tree = self.get_tree(S::sub_tree_name())?;
-        tree.get(key).map_err(Error::from)?.map(|value|S::Value::decode(value.as_ref()))
+        tree.get(key).map_err(Error::from)?.map(|value| S::Value::decode(value.as_ref()))
             .transpose()
             .map_err(Error::from)
     }
@@ -93,10 +96,33 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for DB {
         for (k, v) in batch.iter() {
             let key = k.encode()?;
             let value = v.encode()?;
-            sled_batch.insert(key,value);
+            sled_batch.insert(key, value);
         }
 
         let _ = tree.apply_batch(sled_batch).map_err(Error::from)?;
         Ok(())
+    }
+}
+
+impl<S: DBSubtreeKeyValueSchema> KVDatabaseWithSchemaIterator<S> for DB {
+    fn iterator(&self, mode: IteratorMode<S>) -> Result<KVDBIteratorWithSchema<S>, Error> {
+        let tree = self.get_tree(S::sub_tree_name())?;
+
+        let iter = match mode {
+            IteratorMode::Start => SledIteratorWrapper::new(SledIteratorWrapperMode::Start, tree),
+            IteratorMode::End => SledIteratorWrapper::new(SledIteratorWrapperMode::End, tree),
+            IteratorMode::From(key, direction) => {
+                SledIteratorWrapper::new(SledIteratorWrapperMode::From(IVec::from(&key.encode()?), direction), tree)
+            }
+        };
+        Ok(KVDatabaseWithSchemaIterator(iter, PhantomData))
+    }
+
+    fn prefix_iterator(&self, key: &<S as KeyValueSchema>::Key, max_key_len: usize) -> Result<KVDBIteratorWithSchema<S>, Error> {
+        let tree = self.get_tree(S::sub_tree_name())?;
+        let key = key.encode()?;
+        let prefix_key = key[..max_key_len];
+        let iter = tree.scan_prefix(prefix_key);
+        Ok(KVDatabaseWithSchemaIterator(iter, PhantomData))
     }
 }
