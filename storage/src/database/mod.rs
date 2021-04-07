@@ -1,7 +1,11 @@
-use crate::persistent::{KeyValueSchema};
+use crate::persistent::{KeyValueSchema, SchemaError};
 use crate::database::error::Error;
-use crate::IteratorMode;
+use crate::{IteratorMode, Direction};
 use crate::persistent::database::IteratorWithSchema;
+use sled::IVec;
+use std::marker::PhantomData;
+use crate::persistent::codec::Decoder;
+use crate::database::db::DB;
 
 mod db;
 mod error;
@@ -45,26 +49,121 @@ pub trait KVDatabase<S: KeyValueSchema> {
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
     fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), Error>;
-
 }
 
-pub trait DBSubtreeKeyValueSchema : KeyValueSchema {
+pub trait DBSubtreeKeyValueSchema: KeyValueSchema {
     fn sub_tree_name() -> &'static str;
 }
 
-pub trait KeyValueStoreWithSchemaIterator<S: DBSubtreeKeyValueSchema> {
+pub trait KVDatabaseWithSchemaIterator<S: DBSubtreeKeyValueSchema> {
     /// Read all entries in database.
     ///
     /// # Arguments
     /// * `mode` - Reading mode, specified by RocksDB, From start to end, from end to start, or from
     /// arbitrary position to end.
-    fn iterator(&self, mode: IteratorMode<S>) -> Result<IteratorWithSchema<S>, Error>;
+    fn iterator(&self, mode: IteratorMode<S>) -> Result<KVDBIteratorWithSchema<S>, Error>;
 
     /// Starting from given key, read all entries to the end.
     ///
     /// # Arguments
     /// * `key` - Key (specified by schema), from which to start reading entries
-    fn prefix_iterator(&self, key: &S::Key, max_key_len : usize) -> Result<IteratorWithSchema<S>, Error>;
+    fn prefix_iterator(&self, key: &S::Key, max_key_len: usize) -> Result<KVDBIteratorWithSchema<S>, Error>;
+}
+
+pub struct KVDBIteratorWithSchema<S: KeyValueSchema>(SledIteratorWrapper, PhantomData<S>);
+
+#[derive(Clone)]
+pub enum SledIteratorWrapperMode {
+    Start,
+    End,
+    From(IVec, Direction),
+}
+pub struct SledIteratorWrapper {
+    mode : SledIteratorWrapperMode,
+    iter : sled::Iter
+}
+
+impl SledIteratorWrapper {
+    fn new(mode : SledIteratorWrapperMode, tree : sled::Tree) -> Self {
+        match mode.clone() {
+            SledIteratorWrapperMode::Start => {
+                Self{
+                    mode,
+                    iter : tree.range(..)
+                }
+            }
+            SledIteratorWrapperMode::End => {
+                Self{
+                    mode,
+                    iter : tree.range(..)
+                }
+            }
+            SledIteratorWrapperMode::From(key, direction) => {
+                let iter = match direction {
+                    Direction::Forward => {
+                        tree.range(key..)
+                    }
+                    Direction::Reverse => {
+                        tree.range(..key)
+                    }
+                };
+
+                Self {
+                    mode,
+                    iter
+                }
+
+            }
+        }
+    }
+}
+
+impl Iterator for SledIteratorWrapper {
+    type Item = Result<(IVec, IVec), sled::Error>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &self.mode {
+            SledIteratorWrapperMode::Start => {
+                self.iter.next()
+            }
+            SledIteratorWrapperMode::End => {
+                self.iter.next_back()
+            }
+            SledIteratorWrapperMode::From(_, direction) => {
+                match direction {
+                    Direction::Forward => {
+                        self.iter.next()
+                    }
+                    Direction::Reverse => {
+                        self.iter.next_back()
+                    }
+                }
+            }
+        }
+    }
+}
+impl<S: KeyValueSchema> Iterator for KVDBIteratorWithSchema<S> {
+    type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.0.next() {
+            Some(i) => {
+                match i {
+                    Ok((k, v)) => {
+                        Some((S::Key::decode(&k), S::Value::decode(&v)))
+                    }
+                    Err(_) => {
+                        return None;
+                    }
+                }
+            }
+            None => {
+                return None;
+            }
+        }
+    }
+
 }
 
 /*
