@@ -13,8 +13,10 @@ use tezos_messages::p2p::encoding::prelude::*;
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
+use crate::database::{DBSubtreeKeyValueSchema, KVDatabase, KVDatabaseWithSchemaIterator, KVDBStoreWithSchema};
+use crate::database::db::MainDB;
 
-pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
+pub type OperationsStorageKV = dyn KVDBStoreWithSchema<OperationsStorage> + Sync + Send;
 
 pub trait OperationsStorageReader: Sync + Send {
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
@@ -33,7 +35,7 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -73,7 +75,7 @@ impl OperationsStorageReader for OperationsStorage {
         };
 
         let mut operations = vec![];
-        for (_key, value) in self.kv.prefix_iterator(&key)? {
+        for (_key, value) in self.kv.prefix_iterator(&key, HashType::BlockHash.size())? {
             operations.push(value?);
         }
 
@@ -88,6 +90,7 @@ impl KeyValueSchema for OperationsStorage {
     type Value = OperationsForBlocksMessage;
 }
 
+/*
 impl RocksDbKeyValueSchema for OperationsStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
@@ -102,6 +105,10 @@ impl RocksDbKeyValueSchema for OperationsStorage {
     fn name() -> &'static str {
         "operations_storage"
     }
+}
+*/
+impl DBSubtreeKeyValueSchema for OperationsStorage {
+    fn sub_tree_name() -> &'static str {"operations_storage"}
 }
 
 #[derive(Debug, PartialEq)]

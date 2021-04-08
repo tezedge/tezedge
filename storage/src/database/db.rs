@@ -3,18 +3,18 @@ use std::sync::Arc;
 use sled::{Tree, IVec};
 use std::path::Path;
 use crate::database::error::Error;
-use crate::database::{KVDatabase, DBSubtreeKeyValueSchema, KVDatabaseWithSchemaIterator, KVDBIteratorWithSchema, SledIteratorWrapper, SledIteratorWrapperMode};
+use crate::database::{KVDatabase, DBSubtreeKeyValueSchema, KVDatabaseWithSchemaIterator, KVDBIteratorWithSchema, SledIteratorWrapper, SledIteratorWrapperMode, KVDBStoreWithSchema};
 use crate::persistent::{KeyValueSchema, Encoder, Decoder};
 use std::alloc::Global;
 use crate::IteratorMode;
 use crate::persistent::database::IteratorWithSchema;
 use std::marker::PhantomData;
 
-pub struct DB {
+pub struct MainDB {
     inner: Arc<HashMap<String, Tree>>
 }
 
-impl DB {
+impl MainDB {
     pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>) -> Result<Self, Error> {
         let db = sled::Config::new()
             .path(db_path)
@@ -31,7 +31,7 @@ impl DB {
             tree_map.insert(name.to_owned(), db.open_tree(name.as_str()).map_err(Error::from)?);
         }
 
-        let db = DB {
+        let db = MainDB {
             inner: Arc::new(tree_map)
         };
         Ok(db)
@@ -50,7 +50,7 @@ impl DB {
     }
 }
 
-impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for DB {
+impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
@@ -103,8 +103,9 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for DB {
         Ok(())
     }
 }
+impl<S: DBSubtreeKeyValueSchema> KVDBStoreWithSchema<S> for MainDB {}
 
-impl<S: DBSubtreeKeyValueSchema> KVDatabaseWithSchemaIterator<S> for DB {
+impl<S: DBSubtreeKeyValueSchema> KVDatabaseWithSchemaIterator<S> for MainDB {
     fn iterator(&self, mode: IteratorMode<S>) -> Result<KVDBIteratorWithSchema<S>, Error> {
         let tree = self.get_tree(S::sub_tree_name())?;
 
