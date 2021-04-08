@@ -106,7 +106,7 @@ impl Alerts {
             if let Some(previous_alert) = self.inner.get(&alert) {
                 if alert.level == AlertLevel::NonAlert {
                     self.inner.remove(&alert);
-                    AlertResult::Unchanged
+                    AlertResult::Decreased(alert)
                 } else if alert.level > previous_alert.level {
                     self.inner.replace(alert.clone());
                     AlertResult::Incresed(alert)
@@ -178,7 +178,9 @@ impl Alerts {
                     }
                 } else {
                     // When the node apploies the next block, it becomes unstuck, report this
-                    crit!(log, "Node unstuck. Level: {}", current_head_level);
+                    if alert.reported {
+                        crit!(log, "Node unstuck. Level: {}", current_head_level);
+                    }
                     self.inner.remove(&head_alert);
                     return AlertResult::Decreased(head_alert);
                 }
@@ -269,12 +271,14 @@ impl Alerts {
                     .await?;
             }
             AlertResult::Decreased(alert) => {
-                slack
-                    .send_message(&format!(
-                        ":information_source: Node is back to applying blocks on level: {}",
-                        alert.value
-                    ))
-                    .await?;
+                if alert.reported {
+                    slack
+                        .send_message(&format!(
+                            ":information_source: Node is back to applying blocks on level: {}",
+                            alert.value
+                        ))
+                        .await?;
+                }
             }
             AlertResult::Unchanged => (/* Do not alert on unchanged */),
         }

@@ -16,6 +16,8 @@ use crate::monitors::resource::{
     ResourceUtilization, ResourceUtilizationStorage, MEASUREMENTS_MAX_CAPACITY,
 };
 
+const FE_CAPACITY: usize = 1000;
+
 #[derive(Debug, Deserialize)]
 pub struct MeasurementOptions {
     limit: Option<usize>,
@@ -51,11 +53,33 @@ pub async fn get_measurements(
             .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
             .collect()
     } else {
-        storage
-            .clone()
-            .into_iter()
-            .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
-            .collect()
+        if storage.len() > FE_CAPACITY {
+            let chunk_by = storage.len() / FE_CAPACITY + 1;
+            info!(log, "LEN: {}, CHUNKING_BY: {}", storage.len(), chunk_by);
+            storage
+                .clone()
+                .into_iter()
+                .chunks(chunk_by)
+                .into_iter()
+                .map(|chunk| {
+                    chunk
+                        .fold1(|mut m1, m2| {
+                            // merge strategy is set to ord::max, meaning folding the ResourceUtilization struxt efectivelly gets 
+                            // the maximum possible value for each struct field
+                            m1.merge(m2);
+                            m1
+                        })
+                        .unwrap()
+                })
+                .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
+                .collect()
+        } else {
+            storage
+                .clone()
+                .into_iter()
+                .take(options.limit.unwrap_or(MEASUREMENTS_MAX_CAPACITY))
+                .collect()
+        }
     };
 
     Ok(warp::reply::with_status(
