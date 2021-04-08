@@ -8,9 +8,9 @@ use std::sync::Arc;
 use failure::Error;
 use rocksdb::Cache;
 
-use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
+
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
+use storage::persistent::{open_main_db_with_trees};
 use storage::database::DBSubtreeKeyValueSchema;
 
 #[test]
@@ -23,7 +23,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
         let db = open_main_db_with_trees(
             &path,
             true,
@@ -45,7 +45,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
 #[test]
 fn generator_test_cloned_gen() -> Result<(), Error> {
-    use rocksdb::{Options, DB};
+    
 
     let path = out_dir_path("__sequence_multiseq");
     if path.exists() {
