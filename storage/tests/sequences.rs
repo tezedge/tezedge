@@ -10,7 +10,8 @@ use rocksdb::Cache;
 
 use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
 use storage::persistent::sequence::Sequences;
-use storage::persistent::DbConfiguration;
+use storage::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
+use storage::database::DBSubtreeKeyValueSchema;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
@@ -53,11 +54,10 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
+        let db = open_main_db_with_trees(
             &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
+            true,
+            vec![Sequences::sub_tree_name().to_string()]
         )
         .unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
@@ -72,7 +72,6 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
         assert_eq!(6, gen_b.next()?);
         assert_eq!(7, gen_a.next()?);
     }
-    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -86,11 +85,10 @@ fn generator_test_batch() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
+        let db = open_main_db_with_trees(
             &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
+            true,
+            vec![Sequences::sub_tree_name().to_string()]
         )?;
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
@@ -98,7 +96,6 @@ fn generator_test_batch() -> Result<(), Error> {
             assert_eq!(i, gen.next()?);
         }
     }
-    assert!(DB::destroy(&Options::default(), &path).is_ok());
     Ok(())
 }
 
@@ -112,11 +109,10 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = Arc::new(open_kv(
+        let db = Arc::new(open_main_db_with_trees(
             &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
+            true,
+            vec![Sequences::sub_tree_name().to_string()]
         )?);
 
         // First run

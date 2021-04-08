@@ -663,10 +663,10 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
+    use crate::persistent::{open_main_db_with_trees};
 
     use super::*;
-    use crate::persistent::database::open_kv;
+    
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
@@ -677,7 +677,7 @@ mod tests {
             std::fs::remove_dir_all(path).unwrap();
         }
 
-        let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+        let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
         {
             let db = open_main_db_with_trees(
