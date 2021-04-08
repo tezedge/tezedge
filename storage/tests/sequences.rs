@@ -10,7 +10,7 @@ use rocksdb::Cache;
 
 
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_main_db_with_trees};
+use storage::persistent::{open_sled_db_with_trees};
 use storage::database::DBSubtreeKeyValueSchema;
 
 #[test]
@@ -24,7 +24,7 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
     {
         let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_main_db_with_trees(
+        let db = open_sled_db_with_trees(
             &path,
             true,
             vec![Sequences::sub_tree_name().to_string()]
@@ -53,7 +53,7 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
     }
 
     {
-        let db = open_main_db_with_trees(
+        let db = open_sled_db_with_trees(
             &path,
             true,
             vec![Sequences::sub_tree_name().to_string()]
@@ -83,7 +83,7 @@ fn generator_test_batch() -> Result<(), Error> {
     }
 
     {
-        let db = open_main_db_with_trees(
+        let db = open_sled_db_with_trees(
             &path,
             true,
             vec![Sequences::sub_tree_name().to_string()]
@@ -107,7 +107,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
     }
 
     {
-        let db = Arc::new(open_main_db_with_trees(
+        let db = Arc::new(open_sled_db_with_trees(
             &path,
             true,
             vec![Sequences::sub_tree_name().to_string()]

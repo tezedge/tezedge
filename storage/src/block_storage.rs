@@ -663,7 +663,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{open_main_db_with_trees};
+    use crate::persistent::{open_sled_db_with_trees};
 
     use super::*;
     
@@ -680,7 +680,7 @@ mod tests {
         let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
         {
-            let db = open_main_db_with_trees(
+            let db = open_sled_db_with_trees(
                 path,
                 true,
                 vec![BlockByLevelIndex::sub_tree_name().to_string()],
