@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
 use std::convert::TryInto;
 
@@ -14,14 +13,10 @@ use sysinfo::{ProcessExt, System, SystemExt};
 
 use shell::stats::memory::{MemoryData, ProcessMemoryStats, ProcessMemoryStatsMaxMerge};
 
+use crate::constants::{DEBUGGER_VOLUME_PATH, OCAML_VOLUME_PATH, TEZEDGE_VOLUME_PATH};
 use crate::display_info::NodeInfo;
 use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
 use crate::image::DeployMonitoringContainer;
-use crate::monitors::OCAML_VOLUME_PATH;
-use crate::monitors::TEZEDGE_VOLUME_PATH;
-
-pub const TEZEDGE_PORT: u16 = 18732;
-pub const OCAML_PORT: u16 = 18733;
 
 pub struct TezedgeNode;
 
@@ -29,8 +24,7 @@ pub struct TezedgeNode;
 impl Node for TezedgeNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         let disk_data = TezedgeDiskData::new(
-            // dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "debugger_db"))?,
-            0,
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge"))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
             dir::get_size(&format!(
                 "{}/{}",
@@ -72,7 +66,12 @@ impl TezedgeNode {
         let memory_stats: ProcessMemoryStatsMaxMerge = protocol_runners
             .into_iter()
             .map(|v| v.try_into().unwrap())
-            .fold1(|mut m1: ProcessMemoryStats, m2| {m1.merge(m2); m1}).unwrap_or_default().into();
+            .fold1(|mut m1: ProcessMemoryStats, m2| {
+                m1.merge(m2);
+                m1
+            })
+            .unwrap_or_default()
+            .into();
 
         Ok(memory_stats)
     }
@@ -84,8 +83,7 @@ pub struct OcamlNode;
 impl Node for OcamlNode {
     fn collect_disk_data() -> Result<DiskData, failure::Error> {
         Ok(OcamlDiskData::new(
-            // dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "debugger_db"))?,
-            0,
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezos"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
             dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
         )
@@ -122,7 +120,12 @@ impl OcamlNode {
                     process.memory().try_into().unwrap_or_default(),
                 )
             })
-            .fold1(|mut m1, m2| {m1.merge(m2); m1}).unwrap_or_default().into();
+            .fold1(|mut m1, m2| {
+                m1.merge(m2);
+                m1
+            })
+            .unwrap_or_default()
+            .into();
 
         Ok(valaidators)
     }

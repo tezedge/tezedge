@@ -1,17 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
 use slog::Logger;
 use warp::Filter;
 
-use crate::monitors::resource::ResourceUtilizationStorage;
+use crate::monitors::resource::{ResourceUtilizationStorage, ResourceUtilizationStorageMap};
 use crate::rpc::handlers::{get_measurements, MeasurementOptions};
 
 pub fn filters(
     log: Logger,
-    ocaml_resource_utilization_storage: ResourceUtilizationStorage,
-    tezedge_resource_utilization_storage: ResourceUtilizationStorage,
+    resource_utilization_storage: ResourceUtilizationStorageMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     // Allow cors from any origin
     let cors = warp::cors()
@@ -19,10 +17,14 @@ pub fn filters(
         .allow_headers(vec!["content-type"])
         .allow_methods(vec!["GET"]);
 
-    get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage)
+    // TODO: TE-499 - (multiple nodes) rework this to load from a config, where all the nodes all defined
+    let ocaml_resource_utilization_storage = resource_utilization_storage.get("ocaml").unwrap();
+    let tezedge_resource_utilization_storage = resource_utilization_storage.get("tezedge").unwrap();
+
+    get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage.clone())
         .or(get_tezedge_measurements_filter(
             log,
-            tezedge_resource_utilization_storage,
+            tezedge_resource_utilization_storage.clone(),
         ))
         .with(cors)
 }

@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -8,73 +7,50 @@ use std::process::{Command, Output};
 use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
+use crate::constants::{DEBUGGER_PORT, EXPLORER_PORT, OCAML_PORT, TEZEDGE_PORT};
 use crate::image::{DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger};
-use crate::node::{OcamlNode, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
+use crate::node::{OcamlNode, TezedgeNode};
 
-pub const DEBUGGER_PORT: u16 = 17732;
-
-// TODO: use external docker-compose for now, should we manage the images/containers directly?
 pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
     info!(log, "Tezedge explorer is starting");
     start_with_compose(compose_file_path, Explorer::NAME, "explorer");
-    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
-    // debugger healthcheck
-    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT))
-        .await
-        .is_err()
-    {
-        sleep(Duration::from_millis(1000)).await;
-    }
-    info!(log, "Debugger for tezedge node is running");
+    wait_for_start(&format!("http://localhost:{}", EXPLORER_PORT)).await;
+    info!(log, "Tezedge explorer is running");
 
+    info!(log, "Debugger is starting");
+    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
+    info!(log, "Debugger is running");
+
+    info!(log, "Tezedge node is starting");
     start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
-    // node healthcheck
-    while reqwest::get(&format!(
+    wait_for_start(&format!(
         "http://localhost:{}/chains/main/blocks/head/header",
         TEZEDGE_PORT
     ))
-    .await
-    .is_err()
-    {
-        sleep(Duration::from_millis(1000)).await;
-    }
+    .await;
     info!(log, "Tezedge node is running");
 
+    info!(log, "Ocaml node is starting");
     start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
-    // node healthcheck
-    while reqwest::get(&format!(
+    wait_for_start(&format!(
         "http://localhost:{}/chains/main/blocks/head/header",
         OCAML_PORT
     ))
-    .await
-    .is_err()
-    {
-        sleep(Duration::from_millis(1000)).await;
-    }
+    .await;
     info!(log, "Ocaml node is running");
 }
 
 pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
+    info!(log, "Debugger is running");
     start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
-    // debugger healthcheck
-    while reqwest::get(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT))
-        .await
-        .is_err()
-    {
-        sleep(Duration::from_millis(1000)).await;
-    }
-    info!(log, "Debugger for sandboxed tezedge node is running");
+    wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
+    info!(log, "Debugger is running");
 
-    // start sandbox launcher
+    info!(log, "Sandbox launcher starting");
     start_with_compose(compose_file_path, Sandbox::NAME, "tezedge-sandbox");
-    // sandbox launcher healthcheck
-    while reqwest::get("http://localhost:3030/list_nodes")
-        .await
-        .is_err()
-    {
-        sleep(Duration::from_millis(1000)).await;
-    }
-    info!(log, "Debugger for sandboxed tezedge node is running");
+    wait_for_start("http://localhost:3030/list_nodes").await;
+    info!(log, "Sandbox launcher running");
 }
 
 pub async fn restart_stack(compose_file_path: &PathBuf, log: &Logger, cleanup_data: bool) {
@@ -170,4 +146,10 @@ pub fn cleanup_docker_system() -> Output {
         .args(&["system", "prune", "-a", "-f"])
         .output()
         .expect("failed to execute docker command")
+}
+
+async fn wait_for_start(url: &str) {
+    while reqwest::get(url).await.is_err() {
+        sleep(Duration::from_millis(1000)).await;
+    }
 }

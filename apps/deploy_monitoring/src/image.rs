@@ -1,9 +1,11 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use async_trait::async_trait;
 use shiplift::{
     rep::{ContainerDetails, ImageDetails},
     Docker,
 };
-
-use async_trait::async_trait;
 
 #[async_trait]
 pub trait DeployMonitoringContainer {

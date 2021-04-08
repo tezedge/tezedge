@@ -12,6 +12,7 @@ services:
       - "./debugger-config.toml:/home/appuser/config.toml:ro"
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
       - "/tmp/report:/tmp/report:rw"
+      - "debugger-data:/tmp/debugger_database"
     ports:
       - "17732:17732"      # debugger RPC port
       - "10001:10001/udp"  # debugger syslog port for tezedge node
@@ -86,4 +87,6 @@ volumes:
   tezedge-shared-data:
     external: false
   ocaml-shared-data:
+    external: false
+  debugger-data:
     external: false

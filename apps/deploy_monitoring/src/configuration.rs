@@ -1,22 +1,15 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use clap::{App, Arg};
 
+#[derive(Clone, Debug)]
 pub struct DeployMonitoringEnvironment {
     // logging level
     pub log_level: slog::Level,
-
-    // slack bot token
-    pub slack_token: String,
-
-    // slack channel url
-    pub slack_url: String,
-
-    // slack channel name
-    pub slack_channel_name: String,
 
     // interval in seconds to check for new remote image
     pub image_monitor_interval: u64,
@@ -38,13 +31,41 @@ pub struct DeployMonitoringEnvironment {
 
     // flag for volume cleanup mode
     pub cleanup_volumes: bool,
+
+    pub slack_configuration: Option<SlackConfiguration>,
 }
 
 #[derive(Clone, Copy, Debug)]
 pub struct AlertThresholds {
-    pub ram: u64,
+    pub memory: u64,
     pub disk: u64,
-    pub head: i64,
+    pub synchronization: i64,
+    pub cpu: u64,
+}
+
+impl fmt::Display for AlertThresholds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "\n\tMemory: {}MB\n\tTotal disk space: {}%\n\tCpu: {}%\n\tSynchronization: {}s\n",
+            self.memory / 1024 / 1024,
+            self.disk,
+            self.cpu,
+            self.synchronization,
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SlackConfiguration {
+    // slack bot token
+    pub slack_token: String,
+
+    // slack channel url
+    pub slack_url: String,
+
+    // slack channel name
+    pub slack_channel_name: String,
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
@@ -162,6 +183,13 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Thershold in bytes for critical alerts - memory"),
         )
         .arg(
+            Arg::with_name("alert-threshold-cpu")
+                .long("alert-threshold-cpu")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-CPU")
+                .help("Thershold in % for critical alerts - cpu"),
+        )
+        .arg(
             Arg::with_name("alert-threshold-synchronization")
                 .long("alert-threshold-synchronization")
                 .takes_value(true)
@@ -185,12 +213,30 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 
 fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "image-monitor-interval");
-    // validate_required_arg(args, "resource-monitor-interval");
-    // validate_required_arg(args, "info-interval");
-    validate_required_arg(args, "slack-token");
-    validate_required_arg(args, "slack-channel-name");
-    validate_required_arg(args, "slack-url");
     validate_required_arg(args, "compose-file-path");
+}
+
+fn check_slack_args(args: &clap::ArgMatches) -> Option<SlackConfiguration> {
+    // if any of the slack args are present, all 3 of them must be present
+    if args.is_present("slack-token")
+        || args.is_present("slack-channel-name")
+        || args.is_present("slack-url")
+    {
+        validate_required_arg(args, "slack-token");
+        validate_required_arg(args, "slack-channel-name");
+        validate_required_arg(args, "slack-url");
+
+        Some(SlackConfiguration {
+            slack_token: args.value_of("slack-token").unwrap_or("").to_string(),
+            slack_url: args.value_of("slack-url").unwrap_or("").to_string(),
+            slack_channel_name: args
+                .value_of("slack-channel-name")
+                .unwrap_or("")
+                .to_string(),
+        })
+    } else {
+        None
+    }
 }
 
 impl DeployMonitoringEnvironment {
@@ -199,9 +245,10 @@ impl DeployMonitoringEnvironment {
         let args = app.clone().get_matches();
 
         validate_required_args(&args);
+        let slack_configuration = check_slack_args(&args);
 
         let alert_thresholds = AlertThresholds {
-            ram: args
+            memory: args
                 .value_of("alert-threshold-memory")
                 .unwrap_or("10737418240")
                 .parse::<u64>()
@@ -211,11 +258,16 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("95")
                 .parse::<u64>()
                 .expect("Was expecting percentage [u64]"),
-            head: args
+            synchronization: args
                 .value_of("alert-threshold-synchronization")
                 .unwrap_or("300")
                 .parse::<i64>()
                 .expect("Was seconds [i64]"),
+            cpu: args
+                .value_of("alert-threshold-cpu")
+                .unwrap_or("1000")
+                .parse::<u64>()
+                .expect("Was expecting percentage [u64]"),
         };
 
         DeployMonitoringEnvironment {
@@ -224,12 +276,6 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("info")
                 .parse::<slog::Level>()
                 .expect("Was expecting one value from slog::Level"),
-            slack_token: args.value_of("slack-token").unwrap_or("").to_string(),
-            slack_url: args.value_of("slack-url").unwrap_or("").to_string(),
-            slack_channel_name: args
-                .value_of("slack-channel-name")
-                .unwrap_or("")
-                .to_string(),
             compose_file_path: args
                 .value_of("compose-file-path")
                 .unwrap_or("")
@@ -253,6 +299,7 @@ impl DeployMonitoringEnvironment {
             is_sandbox: args.is_present("sandbox"),
             cleanup_volumes: args.is_present("cleanup-volumes"),
             alert_thresholds,
+            slack_configuration,
         }
     }
 }

@@ -1,38 +1,35 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
-use crate::monitors::Alerts;
-use crate::node::OcamlNode;
-use crate::slack::SlackServer;
-use chrono::Utc;
-
-use merge::Merge;
-use serde::Serialize;
-use slog::Logger;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
+use chrono::Utc;
 use getset::Getters;
+use merge::Merge;
+use serde::Serialize;
+use slog::{error, Logger};
 use sysinfo::{System, SystemExt};
 
 use shell::stats::memory::ProcessMemoryStatsMaxMerge;
 
+use crate::constants::{MEASUREMENTS_MAX_CAPACITY, OCAML_PORT, TEZEDGE_PORT};
 use crate::display_info::DiskData;
-use crate::node::{Node, TezedgeNode, OCAML_PORT, TEZEDGE_PORT};
+use crate::monitors::Alerts;
+use crate::node::OcamlNode;
+use crate::node::{Node, TezedgeNode};
+use crate::slack::SlackServer;
 
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
-
-/// The max capacity of the VecDeque holding the measurements
-pub const MEASUREMENTS_MAX_CAPACITY: usize = 40320;
+pub type ResourceUtilizationStorageMap = HashMap<&'static str, ResourceUtilizationStorage>;
 
 pub struct ResourceMonitor {
-    ocaml_resource_utilization: ResourceUtilizationStorage,
-    tezedge_resource_utilization: ResourceUtilizationStorage,
+    resource_utilization: ResourceUtilizationStorageMap,
     last_checked_head_level: Option<u64>,
     alerts: Alerts,
     log: Logger,
-    slack: SlackServer,
+    slack: Option<SlackServer>,
     system: System,
 }
 
@@ -42,6 +39,7 @@ pub struct MemoryStats {
     #[merge(strategy = merge::ord::max)]
     node: ProcessMemoryStatsMaxMerge,
 
+    // TODO: TE-499 remove protocol_runners and use validators for ocaml and tezedge type
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
     #[merge(strategy = merge::ord::max)]
@@ -84,16 +82,14 @@ pub struct CpuStats {
 
 impl ResourceMonitor {
     pub fn new(
-        ocaml_resource_utilization: ResourceUtilizationStorage,
-        tezedge_resource_utilization: ResourceUtilizationStorage,
+        resource_utilization: ResourceUtilizationStorageMap,
         last_checked_head_level: Option<u64>,
         alerts: Alerts,
         log: Logger,
-        slack: SlackServer,
+        slack: Option<SlackServer>,
     ) -> Self {
         Self {
-            ocaml_resource_utilization,
-            tezedge_resource_utilization,
+            resource_utilization,
             last_checked_head_level,
             alerts,
             log,
@@ -103,84 +99,9 @@ impl ResourceMonitor {
     }
 
     pub async fn take_measurement(&mut self) -> Result<(), failure::Error> {
-        // memory rpc
-        let tezedge_node = TezedgeNode::collect_memory_data(TEZEDGE_PORT).await?;
-        let ocaml_node = OcamlNode::collect_memory_data(OCAML_PORT).await?;
-
-        // protocol runner memory rpc
-        let protocol_runners =
-            TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
-
-        // tezos validators memory data
-        let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
-
-        // collect disk stats
-        let tezedge_disk = TezedgeNode::collect_disk_data()?;
-        let ocaml_disk = OcamlNode::collect_disk_data()?;
-
-        // cpu stats
-        self.system.refresh_all();
-        let tezedge_cpu = TezedgeNode::collect_cpu_data(&mut self.system, "light-node")?;
-        let protocol_runners_cpu =
-            TezedgeNode::collect_cpu_data(&mut self.system, "protocol-runner")?;
-        let ocaml_cpu = OcamlNode::collect_cpu_data(&mut self.system, "tezos-node")?;
-
-        let tezedge_resources = ResourceUtilization {
-            timestamp: chrono::Local::now().timestamp(),
-            memory: MemoryStats {
-                node: tezedge_node,
-                protocol_runners: Some(protocol_runners),
-                validators: None,
-            },
-            disk: tezedge_disk,
-            cpu: CpuStats {
-                node: tezedge_cpu,
-                protocol_runners: Some(protocol_runners_cpu),
-            },
-        };
-
-        let ocaml_resources = ResourceUtilization {
-            timestamp: chrono::Local::now().timestamp(),
-            memory: MemoryStats {
-                node: ocaml_node,
-                protocol_runners: None,
-                validators: Some(tezos_validators),
-            },
-            disk: ocaml_disk,
-            cpu: CpuStats {
-                node: ocaml_cpu,
-                protocol_runners: None,
-            },
-        };
-
-        // custom block to drop the write lock as soon as possible
-        {
-            let ocaml_resources_ref = &mut *self.ocaml_resource_utilization.write().unwrap();
-            let tezedge_resources_ref = &mut *self.tezedge_resource_utilization.write().unwrap();
-
-            // if we are about to exceed the max capacity, remove the last element in the VecDeque
-            if ocaml_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY
-                && tezedge_resources_ref.len() == MEASUREMENTS_MAX_CAPACITY
-            {
-                ocaml_resources_ref.pop_back();
-                tezedge_resources_ref.pop_back();
-            }
-
-            tezedge_resources_ref.push_front(tezedge_resources.clone());
-            ocaml_resources_ref.push_front(ocaml_resources);
-        }
-
-        // handle alerts
-        self.handle_alerts(tezedge_resources).await?;
-
-        Ok(())
-    }
-
-    async fn handle_alerts(
-        &mut self,
-        last_measurement: ResourceUtilization,
-    ) -> Result<(), failure::Error> {
         let ResourceMonitor {
+            system,
+            resource_utilization,
             log,
             last_checked_head_level,
             alerts,
@@ -188,25 +109,136 @@ impl ResourceMonitor {
             ..
         } = self;
 
-        // current time timestamp
-        let current_time = Utc::now().timestamp();
+        system.refresh_all();
 
-        let current_head_level = *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
+        for (node_tag, resource_storage) in resource_utilization {
+            let node_resource_measurement = if node_tag == &"tezedge" {
+                let tezedge_node = TezedgeNode::collect_memory_data(TEZEDGE_PORT).await?;
+                let protocol_runners =
+                    TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
+                let tezedge_disk = TezedgeNode::collect_disk_data()?;
 
-        alerts.check_disk_alert(&slack, current_time).await?;
-        alerts
-            .check_memory_alert(&slack, current_time, last_measurement.clone())
-            .await?;
-        alerts
-            .check_node_stuck_alert(
-                last_checked_head_level,
-                current_head_level,
-                current_time,
-                &slack,
-                log,
-            )
-            .await?;
+                let tezedge_cpu = TezedgeNode::collect_cpu_data(system, "light-node")?;
+                let protocol_runners_cpu =
+                    TezedgeNode::collect_cpu_data(system, "protocol-runner")?;
+                let resources = ResourceUtilization {
+                    timestamp: chrono::Local::now().timestamp(),
+                    memory: MemoryStats {
+                        node: tezedge_node,
+                        protocol_runners: Some(protocol_runners),
+                        validators: None,
+                    },
+                    disk: tezedge_disk,
+                    cpu: CpuStats {
+                        node: tezedge_cpu,
+                        protocol_runners: Some(protocol_runners_cpu),
+                    },
+                };
+                let current_head_level =
+                    *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
+                handle_alerts(
+                    node_tag,
+                    resources.clone(),
+                    current_head_level,
+                    last_checked_head_level,
+                    slack.clone(),
+                    alerts,
+                    log,
+                )
+                .await?;
+                resources
+            } else {
+                let ocaml_node = OcamlNode::collect_memory_data(OCAML_PORT).await?;
+                let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
+                let ocaml_disk = OcamlNode::collect_disk_data()?;
+                let ocaml_cpu = OcamlNode::collect_cpu_data(system, "tezos-node")?;
 
+                let resources = ResourceUtilization {
+                    timestamp: chrono::Local::now().timestamp(),
+                    memory: MemoryStats {
+                        node: ocaml_node,
+                        protocol_runners: None,
+                        validators: Some(tezos_validators),
+                    },
+                    disk: ocaml_disk,
+                    cpu: CpuStats {
+                        node: ocaml_cpu,
+                        protocol_runners: None,
+                    },
+                };
+                let current_head_level = *OcamlNode::collect_head_data(OCAML_PORT).await?.level();
+                handle_alerts(
+                    node_tag,
+                    resources.clone(),
+                    current_head_level,
+                    last_checked_head_level,
+                    slack.clone(),
+                    alerts,
+                    log,
+                )
+                .await?;
+                resources
+            };
+
+            match &mut resource_storage.write() {
+                Ok(resources_locked) => {
+                    if resources_locked.len() == MEASUREMENTS_MAX_CAPACITY {
+                        resources_locked.pop_back();
+                    }
+
+                    resources_locked.push_front(node_resource_measurement.clone());
+                }
+                Err(e) => error!(log, "Resource lock poisoned, reason => {}", e),
+            }
+        }
         Ok(())
     }
+}
+
+async fn handle_alerts(
+    node_tag: &str,
+    last_measurement: ResourceUtilization,
+    current_head_level: u64,
+    last_checked_head_level: &mut Option<u64>,
+    slack: Option<SlackServer>,
+    alerts: &mut Alerts,
+    log: &Logger,
+) -> Result<(), failure::Error> {
+    // current time timestamp
+    let current_time = Utc::now().timestamp();
+
+    // let current_head_level = *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
+
+    alerts
+        .check_disk_alert(node_tag, slack.as_ref(), current_time)
+        .await?;
+    alerts
+        .check_memory_alert(
+            node_tag,
+            slack.as_ref(),
+            current_time,
+            last_measurement.clone(),
+        )
+        .await?;
+    alerts
+        .check_node_stuck_alert(
+            node_tag,
+            last_checked_head_level,
+            current_head_level,
+            current_time,
+            slack.as_ref(),
+            log,
+        )
+        .await?;
+
+    alerts
+        .check_cpu_alert(
+            node_tag,
+            slack.as_ref(),
+            current_time,
+            last_measurement.clone(),
+        )
+        .await?;
+    *last_checked_head_level = Some(current_head_level);
+    Ok(())
 }

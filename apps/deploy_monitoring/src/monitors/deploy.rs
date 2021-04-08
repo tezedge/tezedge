@@ -1,6 +1,5 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
 
 use std::fs::File;
 use std::io::Write;
@@ -21,14 +20,14 @@ use crate::image::{
     local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger,
 };
 
-use crate::monitors::TEZEDGE_VOLUME_PATH;
+use crate::constants::{DEBUGGER_PORT, TEZEDGE_NODE_P2P_PORT, TEZEDGE_VOLUME_PATH};
 use crate::node::TezedgeNode;
 use crate::slack::SlackServer;
 
 pub struct DeployMonitor {
     compose_file_path: PathBuf,
     docker: Docker,
-    slack: SlackServer,
+    slack: Option<SlackServer>,
     log: Logger,
     cleanup: bool,
 }
@@ -37,7 +36,7 @@ impl DeployMonitor {
     pub fn new(
         compose_file_path: PathBuf,
         docker: Docker,
-        slack: SlackServer,
+        slack: Option<SlackServer>,
         log: Logger,
         cleanup: bool,
     ) -> Self {
@@ -72,22 +71,26 @@ impl DeployMonitor {
         zip_file.write_all("[".as_bytes())?;
 
         // last log, get its cursor_id
-        let mut cursor_id: Option<usize> =
-            match reqwest::get("http://localhost:17732/v2/log?limit=1").await {
-                Ok(result) => {
-                    let res_json = result.json::<serde_json::Value>().await?;
-                    res_json[0]["id"].as_u64().map(|val| val as usize)
-                }
-                Err(e) => {
-                    bail!("Error collecting last: {:?}", e);
-                }
-            };
+        let mut cursor_id: Option<usize> = match reqwest::get(&format!(
+            "http://localhost:{}/v2/log?node_name={}limit=1",
+            DEBUGGER_PORT, TEZEDGE_NODE_P2P_PORT
+        ))
+        .await
+        {
+            Ok(result) => {
+                let res_json = result.json::<serde_json::Value>().await?;
+                res_json[0]["id"].as_u64().map(|val| val as usize)
+            }
+            Err(e) => {
+                bail!("Error collecting last: {:?}", e);
+            }
+        };
 
         // "move" trough all the possible cursor_ids with a LIMIT step
         while let Some(cursor) = cursor_id {
             match reqwest::get(&format!(
-                "http://localhost:17732/v2/log?node_name=9732&limit={}&cursor_id={}",
-                LIMIT, cursor
+                "http://localhost:{}/v2/log?node_name={}&limit={}&cursor_id={}",
+                DEBUGGER_PORT, TEZEDGE_NODE_P2P_PORT, LIMIT, cursor
             ))
             .await
             {
@@ -131,11 +134,9 @@ impl DeployMonitor {
             let node_updated = self.changed::<TezedgeNode>().await?;
             let debugger_updated = self.changed::<TezedgeDebugger>().await?;
             let explorer_updated = self.changed::<Explorer>().await?;
-            // TODO: here restart everything,
-            // but if debugger updated not need to restart explorer
-            // if explorer updated, only need to restart explorer
-            // if node updated, need to restart tezedge node and tezedge debugger
-            // and recreate tezedge volume, but not need to restart tezos and explorer
+            // TODO: TE-499 here restart individually,
+            // if debugger updated not need to restart explorer
+            // if explorer updated, only need to restart explorer and so on...
             if node_updated || debugger_updated || explorer_updated {
                 shutdown_and_update(&compose_file_path, log, self.cleanup).await;
             } else {
@@ -144,9 +145,11 @@ impl DeployMonitor {
             }
         } else {
             warn!(self.log, "Node not running. Restarting stack");
-            slack
-                .send_message("Node not running. Restarting stack")
-                .await?;
+            if let Some(slack_server) = slack {
+                slack_server
+                    .send_message("Node not running. Restarting stack")
+                    .await?;
+            }
 
             self.send_log_dump().await?;
             restart_stack(&compose_file_path, log, self.cleanup).await;
@@ -172,9 +175,11 @@ impl DeployMonitor {
             }
         } else {
             warn!(self.log, "Sandbox launcher not running. Restarting");
-            slack
-                .send_message("Sandbox launcher not running. Restarting")
-                .await?;
+            if let Some(slack_server) = slack {
+                slack_server
+                    .send_message("Sandbox launcher not running. Restarting")
+                    .await?;
+            }
             restart_sandbox(&compose_file_path, log).await;
         }
 
@@ -202,9 +207,11 @@ impl DeployMonitor {
     async fn send_log_dump(&self) -> Result<(), failure::Error> {
         let logs = serde_json::to_string(&self.collect_node_logs().await?)?;
 
-        self.slack
-            .upload_file(":warning: Logs from debugger :warning:", &logs)
-            .await?;
+        if let Some(slack_server) = &self.slack {
+            slack_server
+                .upload_file(":warning: Logs from debugger :warning:", &logs)
+                .await?;
+        }
         Ok(())
     }
 
@@ -226,12 +233,14 @@ impl DeployMonitor {
                 local_image_hash,
                 remote_image_hash
             );
-            slack
-                .send_message(&format!(
-                    "{} image changing {} -> {}",
-                    image, local_image_hash, remote_image_hash
-                ))
-                .await?;
+            if let Some(slack_server) = slack {
+                slack_server
+                    .send_message(&format!(
+                        "{} image changing {} -> {}",
+                        image, local_image_hash, remote_image_hash
+                    ))
+                    .await?;
+            }
             Ok(true)
         } else {
             Ok(false)

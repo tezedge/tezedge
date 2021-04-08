@@ -1,12 +1,10 @@
-db_path = "/tmp/volume/debugger_db"
 rpc_port = 17732
-p2p_message_limit = 10_000_000
-log_message_limit = 10_000_000
-bpf_sniffer = "/tmp/bpf-sniffer.sock"
-keep_db = false
+bpf_sniffer_path = "/tmp/bpf-sniffer.sock"
 
 [[nodes]]
-name = "tezedge"
+db_path = "/tmp/debugger_database/tezedge"
+# new server (optional)
+rpc_port = 17742
 # path to search identity at
 identity_path = "/tmp/volume/tezedge/identity.json"
 # debugger expect the node will listen its p2p incoming connections on this port
@@ -18,7 +16,8 @@ p2p_port = 9732
 syslog_port = 10001
 
 [[nodes]]
-name = "tezos"
+db_path = "/tmp/debugger_database/tezos"
+rpc_port = 17743
 identity_path = "/tmp/volume/tezos/data/identity.json"
 p2p_port = 9733
 syslog_port = 11001
