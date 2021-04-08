@@ -11,8 +11,10 @@ pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIter
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::database::db::{MainDB};
 use crate::database::error::{Error as DatabaseError};
-use crate::{OperationsStorage, OperationsMetaStorage};
+use crate::{OperationsStorage, OperationsMetaStorage, BlockMetaStorage};
 use crate::database::DBSubtreeKeyValueSchema;
+use crate::block_storage;
+use crate::persistent::sequence::Sequences;
 
 pub mod codec;
 pub mod commit_log;
@@ -52,7 +54,20 @@ pub fn open_main_db<P>(path: P) -> Result<MainDB, DatabaseError>
     MainDB::initialize(path.join("database"), vec![
         OperationsStorage::sub_tree_name().to_string(),
         OperationsMetaStorage::sub_tree_name().to_string(),
-    ])
+        block_storage::BlockByLevelIndex::sub_tree_name().to_string(),
+        block_storage::BlockPrimaryIndex::sub_tree_name().to_string(),
+        block_storage::BlockByContextHashIndex::sub_tree_name().to_string(),
+        BlockMetaStorage::sub_tree_name().to_string(),
+        Sequences::sub_tree_name().to_string()
+    ], false)
+}
+
+pub fn open_main_db_with_trees<P>(path: P, is_temporary : bool, trees : Vec<String>) -> Result<MainDB, DatabaseError>
+    where
+        P: AsRef<Path>,
+{
+    let path = path.as_ref().to_path_buf();
+    MainDB::initialize(path.join("database"), trees,is_temporary)
 }
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement

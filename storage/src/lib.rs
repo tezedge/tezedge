@@ -44,7 +44,7 @@ use crate::persistent::{
 };
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
-use crate::database::db::MainDB;
+
 
 pub mod block_meta_storage;
 pub mod block_storage;
@@ -57,6 +57,9 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod system_storage;
 pub mod database;
+
+use crate::database::db::MainDB;
+use crate::database::error::Error as DatabaseError;
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -413,7 +416,7 @@ pub fn initialize_storage_with_genesis_block(
 
 /// Helper module to easily initialize databases
 pub mod initializer {
-    use std::path::PathBuf;
+    use std::path::{PathBuf, Path};
     use std::sync::Arc;
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
@@ -423,8 +426,10 @@ pub mod initializer {
 
     use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration};
+    use crate::persistent::{DBError, DbConfiguration, open_main_db};
     use crate::{StorageError, SystemStorage};
+    use crate::database::db::{MainDB};
+    use crate::database::error::Error as DatabaseError;
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
@@ -459,14 +464,14 @@ pub mod initializer {
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
-                crate::block_storage::BlockPrimaryIndex::descriptor(cache),
-                crate::block_storage::BlockByLevelIndex::descriptor(cache),
-                crate::block_storage::BlockByContextHashIndex::descriptor(cache),
-                crate::BlockMetaStorage::descriptor(cache),
+                //crate::block_storage::BlockPrimaryIndex::descriptor(cache),
+                //crate::block_storage::BlockByLevelIndex::descriptor(cache),
+                //crate::block_storage::BlockByContextHashIndex::descriptor(cache),
+                //crate::BlockMetaStorage::descriptor(cache),
                 //crate::OperationsStorage::descriptor(cache),
                 //crate::OperationsMetaStorage::descriptor(cache),
                 crate::SystemStorage::descriptor(cache),
-                crate::persistent::sequence::Sequences::descriptor(cache),
+                //crate::persistent::sequence::Sequences::descriptor(cache),
                 crate::MempoolStorage::descriptor(cache),
                 crate::ChainMetaStorage::descriptor(cache),
                 crate::PredecessorStorage::descriptor(cache),
@@ -536,7 +541,36 @@ pub mod initializer {
             _ => Ok(db),
         }
     }
+    /*
+    pub fn initialize_maindb<P : AsRef<Path>>(
+        log: &Logger,
+        path : P,
+        db_version: i64,
+        expected_main_chain: &MainChain,
+    ) -> Result<Arc<MainDB>, DatabaseError> {
+        let db = Arc::new(open_main_db(
+            path.as_ref()
+        )?);
 
+        match check_database_compatibility(
+            db.clone(),
+            db_version,
+            expected_main_chain,
+            &log,
+        ) {
+            Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
+                name: format!(
+                    "Database is incompatible with version {}",
+                    db_version
+                ),
+            }),
+            Err(e) => Err(DatabaseError::DatabaseIncompatibility {
+                name: format!("Failed to verify database compatibility reason: '{}'", e),
+            }),
+            _ => Ok(db),
+        }
+    }
+     */
     pub struct MainChain {
         chain_id: ChainId,
         chain_name: String,
@@ -604,6 +638,8 @@ pub mod initializer {
 
         Ok(db_version_ok && chain_id_ok)
     }
+
+
 
     pub fn initialize_merkle(
         context_kv_store: &ContextKvStoreConfiguration,
@@ -793,14 +829,14 @@ pub mod tests_common {
             let kv = Arc::new(open_kv(
                 path.join("db"),
                 vec![
-                    block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                    block_storage::BlockByLevelIndex::descriptor(&db_cache),
-                    block_storage::BlockByContextHashIndex::descriptor(&db_cache),
-                    BlockMetaStorage::descriptor(&db_cache),
+                    //block_storage::BlockPrimaryIndex::descriptor(&db_cache),
+                    //block_storage::BlockByLevelIndex::descriptor(&db_cache),
+                    //block_storage::BlockByContextHashIndex::descriptor(&db_cache),
+                    //BlockMetaStorage::descriptor(&db_cache),
                     //OperationsStorage::descriptor(&db_cache),
                     //OperationsMetaStorage::descriptor(&db_cache),
                     SystemStorage::descriptor(&db_cache),
-                    Sequences::descriptor(&db_cache),
+                    //Sequences::descriptor(&db_cache),
                     MempoolStorage::descriptor(&db_cache),
                     ChainMetaStorage::descriptor(&db_cache),
                     PredecessorStorage::descriptor(&db_cache),
@@ -812,7 +848,7 @@ pub mod tests_common {
             let maindb = Arc::new(MainDB::initialize(path.join("database"), vec![
                 OperationsStorage::sub_tree_name().to_string(),
                 OperationsMetaStorage::sub_tree_name().to_string(),
-            ])?);
+            ],true)?);
 
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
@@ -852,7 +888,7 @@ pub mod tests_common {
                     kv.clone(),
                     maindb.clone(),
                     Arc::new(clog),
-                    Arc::new(Sequences::new(kv, 1000)),
+                    Arc::new(Sequences::new(maindb, 1000)),
                     Arc::new(RwLock::new(merkle)),
                     Some(Arc::new(kv_context_action)),
                 ),
