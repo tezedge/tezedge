@@ -314,11 +314,11 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{DbConfiguration, open_main_db_with_trees};
+    use crate::persistent::{open_main_db_with_trees};
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    use crate::persistent::database::open_kv;
+    
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
         let mut vec = bytes.to_vec();
@@ -418,7 +418,7 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
             let db = open_main_db_with_trees(
                 path,

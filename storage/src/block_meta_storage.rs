@@ -585,11 +585,11 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
+    use crate::persistent::{open_main_db_with_trees};
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    use crate::persistent::database::open_kv;
+    
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -715,7 +715,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() {
-        use rocksdb::{Cache, Options, DB};
+        use rocksdb::{Options, DB};
 
         let path = "__blockmeta_mergetest";
         if Path::new(path).exists() {
