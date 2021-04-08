@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 
-use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{ KeyValueSchema};
 use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema, error::Error as DatabaseError};
 /// Provider a system wide unique sequence generators backed by a permanent RocksDB storage.
 /// This struct can be safely shared by a multiple threads.

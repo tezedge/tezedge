@@ -10,7 +10,7 @@ use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
 use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
+    IteratorMode
 };
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};

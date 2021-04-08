@@ -13,9 +13,9 @@ use crypto::hash::{
 
 
 
-use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location, KeyValueStoreWithSchemaIterator};
+use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
-use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema, KVDatabaseWithSchemaIterator};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema};
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
