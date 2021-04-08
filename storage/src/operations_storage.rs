@@ -13,7 +13,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
-use crate::database::{DBSubtreeKeyValueSchema, KVDatabase, KVDatabaseWithSchemaIterator, KVDBStoreWithSchema};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
 
 
 pub type OperationsStorageKV = dyn KVDBStoreWithSchema<OperationsStorage> + Sync + Send;
