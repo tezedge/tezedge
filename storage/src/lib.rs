@@ -59,7 +59,7 @@ pub mod system_storage;
 pub mod database;
 
 use crate::database::db::MainDB;
-use crate::database::error::Error as DatabaseError;
+
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -416,7 +416,7 @@ pub fn initialize_storage_with_genesis_block(
 
 /// Helper module to easily initialize databases
 pub mod initializer {
-    use std::path::{PathBuf, Path};
+    use std::path::{PathBuf};
     use std::sync::Arc;
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
@@ -426,10 +426,10 @@ pub mod initializer {
 
     use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration, open_main_db};
+    use crate::persistent::{DBError, DbConfiguration};
     use crate::{StorageError, SystemStorage};
-    use crate::database::db::{MainDB};
-    use crate::database::error::Error as DatabaseError;
+    
+    
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
@@ -778,12 +778,12 @@ pub mod tests_common {
 
     use failure::Error;
 
-    use crate::block_storage;
-    use crate::chain_meta_storage::ChainMetaStorage;
+    
+    
     use crate::context::actions::context_action_storage;
     use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
     use crate::context::merkle::merkle_storage::MerkleStorage;
-    use crate::mempool_storage::MempoolStorage;
+    
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};

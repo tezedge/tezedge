@@ -1,11 +1,11 @@
 use crate::persistent::{KeyValueSchema, SchemaError};
 use crate::database::error::Error;
 use crate::{IteratorMode, Direction};
-use crate::persistent::database::IteratorWithSchema;
+
 use sled::IVec;
 use std::marker::PhantomData;
 use crate::persistent::codec::Decoder;
-use crate::database::db::MainDB;
+
 
 pub mod db;
 pub mod error;

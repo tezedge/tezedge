@@ -6,7 +6,7 @@ use std::{convert::TryInto, sync::Arc};
 use std::convert::TryFrom;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
+use rocksdb::{MergeOperands};
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
@@ -15,7 +15,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use crate::persistent::database::{
     default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
@@ -585,7 +585,7 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::DbConfiguration;
+    use crate::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -723,11 +723,10 @@ mod tests {
         }
 
         {
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-            let db = open_kv(
+            let db = open_main_db_with_trees(
                 path,
-                vec![BlockMetaStorage::descriptor(&cache)],
-                &DbConfiguration::default(),
+                true,
+                vec![BlockMetaStorage::sub_tree_name().to_string()]
             )
             .unwrap();
             let k: BlockHash = vec![44; 32].try_into().unwrap();

@@ -4,17 +4,17 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
+
 
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
 use crate::database::{DBSubtreeKeyValueSchema, KVDatabase, KVDatabaseWithSchemaIterator, KVDBStoreWithSchema};
-use crate::database::db::MainDB;
+
 
 pub type OperationsStorageKV = dyn KVDBStoreWithSchema<OperationsStorage> + Sync + Send;
 

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
-use crate::persistent::database::RocksDbKeyValueSchema;
+
 use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema, error::Error as DatabaseError};
 /// Provider a system wide unique sequence generators backed by a permanent RocksDB storage.

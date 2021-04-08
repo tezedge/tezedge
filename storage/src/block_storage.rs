@@ -11,9 +11,9 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
-use crate::persistent::database::IteratorWithSchema;
-use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, KeyValueStoreWithSchemaIterator};
+
+
+use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location, KeyValueStoreWithSchemaIterator};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema, KVDatabaseWithSchemaIterator};
 

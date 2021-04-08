@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use std::convert::TryFrom;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
 use tezos_messages::Head;
 
-use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+
 use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
 };
 use crate::{PersistentStorage, StorageError};
 use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
