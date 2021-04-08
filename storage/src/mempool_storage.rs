@@ -18,9 +18,10 @@ use crate::persistent::{
     BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
 use crate::{num_from_slice, IteratorMode, PersistentStorage, StorageError};
+use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
 
 /// Convenience type for operation meta storage database
-pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
+pub type MempoolStorageKV = dyn KVDBStoreWithSchema<MempoolStorage> + Sync + Send;
 
 /// TODO: do we need this?
 /// Distinct
@@ -65,7 +66,7 @@ pub struct MempoolStorage {
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -177,9 +178,8 @@ impl KeyValueSchema for MempoolStorage {
     type Value = MempoolValue;
 }
 
-impl RocksDbKeyValueSchema for MempoolStorage {
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for MempoolStorage {
+    fn sub_tree_name() -> &'static str {
         "mempool_storage"
     }
 }

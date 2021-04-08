@@ -14,8 +14,9 @@ use crate::persistent::database::{
 };
 use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::{PersistentStorage, StorageError};
+use crate::database::{KVDBStoreWithSchema, KVDBIteratorWithSchema, DBSubtreeKeyValueSchema};
 
-pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
+pub type PredecessorsIndexStorageKV = dyn KVDBStoreWithSchema<PredecessorStorage> + Sync + Send;
 
 #[derive(Serialize, Deserialize)]
 pub struct PredecessorKey {
@@ -40,7 +41,7 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -98,7 +99,7 @@ impl PredecessorStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -110,14 +111,8 @@ impl KeyValueSchema for PredecessorStorage {
     type Value = BlockHash;
 }
 
-impl RocksDbKeyValueSchema for PredecessorStorage {
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for PredecessorStorage {
+    fn sub_tree_name() -> &'static str {
         "predecessor_storage"
     }
 }

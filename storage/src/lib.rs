@@ -472,9 +472,9 @@ pub mod initializer {
                 //crate::OperationsMetaStorage::descriptor(cache),
                 crate::SystemStorage::descriptor(cache),
                 //crate::persistent::sequence::Sequences::descriptor(cache),
-                crate::MempoolStorage::descriptor(cache),
-                crate::ChainMetaStorage::descriptor(cache),
-                crate::PredecessorStorage::descriptor(cache),
+                //crate::MempoolStorage::descriptor(cache),
+                //crate::ChainMetaStorage::descriptor(cache),
+                //crate::PredecessorStorage::descriptor(cache),
             ]
         }
     }
@@ -640,7 +640,6 @@ pub mod initializer {
     }
 
 
-
     pub fn initialize_merkle(
         context_kv_store: &ContextKvStoreConfiguration,
         expected_main_chain: &MainChain,
@@ -707,7 +706,7 @@ impl PersistentStorage {
             seq,
             merkle,
             merkle_context_actions,
-            main_db
+            main_db,
         }
     }
 
@@ -837,9 +836,9 @@ pub mod tests_common {
                     //OperationsMetaStorage::descriptor(&db_cache),
                     SystemStorage::descriptor(&db_cache),
                     //Sequences::descriptor(&db_cache),
-                    MempoolStorage::descriptor(&db_cache),
-                    ChainMetaStorage::descriptor(&db_cache),
-                    PredecessorStorage::descriptor(&db_cache),
+                    //MempoolStorage::descriptor(&db_cache),
+                    //ChainMetaStorage::descriptor(&db_cache),
+                    //PredecessorStorage::descriptor(&db_cache),
                 ],
                 &cfg,
             )?);
@@ -848,7 +847,7 @@ pub mod tests_common {
             let maindb = Arc::new(MainDB::initialize(path.join("database"), vec![
                 OperationsStorage::sub_tree_name().to_string(),
                 OperationsMetaStorage::sub_tree_name().to_string(),
-            ],true)?);
+            ], true)?);
 
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
