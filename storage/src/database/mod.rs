@@ -5,10 +5,10 @@ use crate::persistent::database::IteratorWithSchema;
 use sled::IVec;
 use std::marker::PhantomData;
 use crate::persistent::codec::Decoder;
-use crate::database::db::DB;
+use crate::database::db::MainDB;
 
-mod db;
-mod error;
+pub mod db;
+pub mod error;
 
 /// Custom trait to unify any kv-store schema access
 pub trait KVDatabase<S: KeyValueSchema> {
@@ -72,6 +72,12 @@ pub trait KVDatabaseWithSchemaIterator<S: DBSubtreeKeyValueSchema> {
 }
 
 pub struct KVDBIteratorWithSchema<S: KeyValueSchema>(SledIteratorWrapper, PhantomData<S>);
+
+pub trait KVDBStoreWithSchema<S: DBSubtreeKeyValueSchema>:
+KVDatabase<S> + KVDatabaseWithSchemaIterator<S>
+{
+}
+
 
 #[derive(Clone)]
 pub enum SledIteratorWrapperMode {

@@ -44,6 +44,7 @@ use crate::persistent::{
 };
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
+use crate::database::db::MainDB;
 
 pub mod block_meta_storage;
 pub mod block_storage;
@@ -117,6 +118,8 @@ impl Decoder for BlockHeaderWithHash {
 pub enum StorageError {
     #[fail(display = "Database error: {}", error)]
     DBError { error: DBError },
+    #[fail(display = "Database error: {}", error)]
+    MainDBError { error: database::error::Error },
     #[fail(display = "Commit log error: {}", error)]
     CommitLogError { error: CommitLogError },
     #[fail(display = "Key is missing in storage")]
@@ -140,6 +143,12 @@ pub enum StorageError {
 impl From<DBError> for StorageError {
     fn from(error: DBError) -> Self {
         StorageError::DBError { error }
+    }
+}
+
+impl From<database::error::Error> for StorageError {
+    fn from(error: database::error::Error) -> Self {
+        StorageError::MainDBError { error }
     }
 }
 
@@ -454,7 +463,7 @@ pub mod initializer {
                 crate::block_storage::BlockByLevelIndex::descriptor(cache),
                 crate::block_storage::BlockByContextHashIndex::descriptor(cache),
                 crate::BlockMetaStorage::descriptor(cache),
-                crate::OperationsStorage::descriptor(cache),
+                //crate::OperationsStorage::descriptor(cache),
                 crate::OperationsMetaStorage::descriptor(cache),
                 crate::SystemStorage::descriptor(cache),
                 crate::persistent::sequence::Sequences::descriptor(cache),
@@ -507,7 +516,7 @@ pub mod initializer {
                 max_threads: config.threads,
             },
         )
-        .map(Arc::new)?;
+            .map(Arc::new)?;
 
         match check_database_compatibility(
             db.clone(),
@@ -635,6 +644,8 @@ pub mod initializer {
 pub struct PersistentStorage {
     /// key-value store for operational database
     db: Arc<DB>,
+    /// key-value store for main db
+    main_db: Arc<MainDB>,
     /// commit log store for storing plain block header data
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
@@ -648,6 +659,7 @@ pub struct PersistentStorage {
 impl PersistentStorage {
     pub fn new(
         db: Arc<DB>,
+        main_db: Arc<MainDB>,
         clog: Arc<CommitLogs>,
         seq: Arc<Sequences>,
         merkle: Arc<RwLock<MerkleStorage>>,
@@ -659,12 +671,18 @@ impl PersistentStorage {
             seq,
             merkle,
             merkle_context_actions,
+            main_db
         }
     }
 
     #[inline]
     pub fn db(&self) -> Arc<DB> {
         self.db.clone()
+    }
+
+    #[inline]
+    pub fn main_db(&self) -> Arc<MainDB> {
+        self.main_db.clone()
     }
 
     #[inline]
@@ -735,6 +753,8 @@ pub mod tests_common {
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
+    use crate::database::db::MainDB;
+    use crate::database::DBSubtreeKeyValueSchema;
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -777,7 +797,7 @@ pub mod tests_common {
                     block_storage::BlockByLevelIndex::descriptor(&db_cache),
                     block_storage::BlockByContextHashIndex::descriptor(&db_cache),
                     BlockMetaStorage::descriptor(&db_cache),
-                    OperationsStorage::descriptor(&db_cache),
+                    //OperationsStorage::descriptor(&db_cache),
                     OperationsMetaStorage::descriptor(&db_cache),
                     SystemStorage::descriptor(&db_cache),
                     Sequences::descriptor(&db_cache),
@@ -787,6 +807,12 @@ pub mod tests_common {
                 ],
                 &cfg,
             )?);
+
+            //Sled DB storage
+            let maindb = Arc::new(MainDB::initialize(path.join("database"), vec![
+                OperationsStorage::sub_tree_name().to_string(),
+                OperationsMetaStorage::sub_tree_name().to_string(),
+            ])?);
 
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
@@ -824,6 +850,7 @@ pub mod tests_common {
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
                     kv.clone(),
+                    maindb.clone(),
                     Arc::new(clog),
                     Arc::new(Sequences::new(kv, 1000)),
                     Arc::new(RwLock::new(merkle)),

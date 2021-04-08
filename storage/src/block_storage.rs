@@ -18,6 +18,7 @@ use crate::persistent::{
     Location,
 };
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
+use crate::database::DBSubtreeKeyValueSchema;
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
@@ -534,6 +535,12 @@ impl KeyValueSchema for BlockPrimaryIndex {
 impl RocksDbKeyValueSchema for BlockPrimaryIndex {
     #[inline]
     fn name() -> &'static str {
+        "block_storage"
+    }
+}
+
+impl DBSubtreeKeyValueSchema for BlockPrimaryIndex {
+    fn sub_tree_name() -> &'static str {
         "block_storage"
     }
 }

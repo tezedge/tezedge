@@ -9,6 +9,10 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
+use crate::database::db::{MainDB};
+use crate::database::error::{Error as DatabaseError};
+use crate::{OperationsStorage, OperationsMetaStorage};
+use crate::database::DBSubtreeKeyValueSchema;
 
 pub mod codec;
 pub mod commit_log;
@@ -37,6 +41,18 @@ where
     I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
+}
+
+/// Open commit log at a given path.
+pub fn open_main_db<P>(path: P) -> Result<MainDB, DatabaseError>
+    where
+        P: AsRef<Path>,
+{
+    let path = path.as_ref().to_path_buf();
+    MainDB::initialize(path.join("database"), vec![
+        OperationsStorage::sub_tree_name().to_string(),
+        OperationsMetaStorage::sub_tree_name().to_string(),
+    ])
 }
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement

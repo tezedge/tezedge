@@ -17,6 +17,7 @@ use crate::persistent::database::{
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
+use crate::database::DBSubtreeKeyValueSchema;
 
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageKV = dyn KeyValueStoreWithSchema<OperationsMetaStorage> + Sync + Send;
@@ -134,6 +135,12 @@ impl RocksDbKeyValueSchema for OperationsMetaStorage {
 
     #[inline]
     fn name() -> &'static str {
+        "operations_meta_storage"
+    }
+}
+
+impl DBSubtreeKeyValueSchema for OperationsMetaStorage {
+    fn sub_tree_name() -> &'static str {
         "operations_meta_storage"
     }
 }
