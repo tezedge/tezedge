@@ -7,7 +7,7 @@ use crate::database::{KVDatabase, DBSubtreeKeyValueSchema, KVDatabaseWithSchemaI
 use crate::persistent::{KeyValueSchema, Encoder, Decoder};
 use std::alloc::Global;
 use crate::IteratorMode;
-use crate::persistent::database::IteratorWithSchema;
+
 use std::marker::PhantomData;
 
 pub struct MainDB {

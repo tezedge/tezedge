@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
+
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
@@ -12,7 +12,7 @@ use crate::block_meta_storage::Meta;
 use crate::persistent::database::{
     default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
 use crate::database::{KVDBStoreWithSchema, KVDBIteratorWithSchema, DBSubtreeKeyValueSchema};
 
