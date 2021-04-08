@@ -16,8 +16,9 @@ use crate::persistent::{
     BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
 };
 use crate::{PersistentStorage, StorageError};
+use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
 
-pub type ChainMetaStorageKv = dyn KeyValueStoreWithSchema<ChainMetaStorage> + Sync + Send;
+pub type ChainMetaStorageKv = dyn KVDBStoreWithSchema<ChainMetaStorage> + Sync + Send;
 
 pub trait ChainMetaStorageReader: Sync + Send {
     /// Load current head for chain_id from dedicated storage
@@ -59,7 +60,7 @@ pub struct ChainMetaStorage {
 impl ChainMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -166,18 +167,11 @@ impl KeyValueSchema for ChainMetaStorage {
     type Value = MetadataValue;
 }
 
-impl RocksDbKeyValueSchema for ChainMetaStorage {
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for ChainMetaStorage {
+    fn sub_tree_name() -> &'static str {
         "chain_meta_storage"
     }
 }
-
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MetaKey {
     chain_id: ChainId,
