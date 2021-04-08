@@ -15,9 +15,10 @@ pub struct MainDB {
 }
 
 impl MainDB {
-    pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>) -> Result<Self, Error> {
+    pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>, is_temporary : bool) -> Result<Self, Error> {
         let db = sled::Config::new()
             .path(db_path)
+            .temporary(is_temporary)
             .use_compression(true)
             .mode(sled::Mode::LowSpace)
             .cache_capacity(200_000_000)
@@ -47,6 +48,18 @@ impl MainDB {
             }
         };
         Ok(tree.clone())
+    }
+
+    pub fn flush(&self) -> Result<(), Error> {
+        for tree in self.inner.values() {
+            match tree.flush(){
+                Ok(_) => {}
+                Err(error) => {
+                    println!("Flush failed {}", error)
+                }
+            }
+        }
+        Ok(())
     }
 }
 

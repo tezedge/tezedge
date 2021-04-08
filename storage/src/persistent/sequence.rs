@@ -9,7 +9,7 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 
 use crate::persistent::database::RocksDbKeyValueSchema;
 use crate::persistent::{DBError, KeyValueSchema, KeyValueStoreWithSchema};
-
+use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema, error::Error as DatabaseError};
 /// Provider a system wide unique sequence generators backed by a permanent RocksDB storage.
 /// This struct can be safely shared by a multiple threads.
 /// Because sequence number is stored into eventually consistent key-value store it is not
@@ -26,7 +26,7 @@ pub struct Sequences {
 }
 
 pub type SequenceNumber = u64;
-pub type SequencerDatabase = dyn KeyValueStoreWithSchema<Sequences> + Sync + Send;
+pub type SequencerDatabase = dyn KVDBStoreWithSchema<Sequences> + Sync + Send;
 
 impl Sequences {
     pub fn new(db: Arc<SequencerDatabase>, seq_batch_size: u16) -> Self {
@@ -62,8 +62,8 @@ impl KeyValueSchema for Sequences {
     type Value = SequenceNumber;
 }
 
-impl RocksDbKeyValueSchema for Sequences {
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for Sequences {
+    fn sub_tree_name() -> &'static str {
         "sequence"
     }
 }
@@ -143,13 +143,14 @@ impl SequenceGenerator {
 #[derive(Debug, Fail)]
 pub enum SequenceError {
     #[fail(display = "Persistent storage error: {}", error)]
-    PersistentStorageError { error: DBError },
+    PersistentStorageError { error: DatabaseError },
     #[fail(display = "Thread synchronization error")]
     SynchronizationError,
 }
 
-impl From<DBError> for SequenceError {
-    fn from(error: DBError) -> Self {
+
+impl From<DatabaseError> for SequenceError {
+    fn from(error: DatabaseError) -> Self {
         SequenceError::PersistentStorageError { error }
     }
 }

@@ -13,12 +13,9 @@ use crypto::hash::{
 
 use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{
-    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location,
-};
+use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema, Location, KeyValueStoreWithSchemaIterator};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
-use crate::database::DBSubtreeKeyValueSchema;
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema, KVDatabaseWithSchemaIterator};
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
@@ -144,15 +141,15 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
+    fn iterator(&self) -> Result<KVDBIteratorWithSchema<BlockPrimaryIndex>, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.db()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.db()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.db()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.main_db()),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
+            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
     }
@@ -448,7 +445,7 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
+    fn iterator(&self) -> Result<KVDBIteratorWithSchema<BlockPrimaryIndex>, StorageError> {
         self.primary_index.iterator()
     }
 }
@@ -461,6 +458,7 @@ impl CommitLogSchema for BlockStorage {
         "block_storage"
     }
 }
+
 
 /// This mimics columns in a classic relational database.
 #[derive(Serialize, Deserialize)]
@@ -488,7 +486,7 @@ pub struct BlockPrimaryIndex {
     kv: Arc<BlockPrimaryIndexKV>,
 }
 
-pub type BlockPrimaryIndexKV = dyn KeyValueStoreWithSchema<BlockPrimaryIndex> + Sync + Send;
+pub type BlockPrimaryIndexKV = dyn KVDBStoreWithSchema<BlockPrimaryIndex> + Sync + Send;
 
 impl BlockPrimaryIndex {
     fn new(kv: Arc<BlockPrimaryIndexKV>) -> Self {
@@ -520,7 +518,7 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
+    fn iterator(&self) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv
             .iterator(IteratorMode::Start)
             .map_err(StorageError::from)
@@ -530,13 +528,6 @@ impl BlockPrimaryIndex {
 impl KeyValueSchema for BlockPrimaryIndex {
     type Key = BlockHash;
     type Value = BlockStorageColumnsLocation;
-}
-
-impl RocksDbKeyValueSchema for BlockPrimaryIndex {
-    #[inline]
-    fn name() -> &'static str {
-        "block_storage"
-    }
 }
 
 impl DBSubtreeKeyValueSchema for BlockPrimaryIndex {
@@ -551,7 +542,7 @@ pub struct BlockByLevelIndex {
     kv: Arc<BlockByLevelIndexKV>,
 }
 
-pub type BlockByLevelIndexKV = dyn KeyValueStoreWithSchema<BlockByLevelIndex> + Sync + Send;
+pub type BlockByLevelIndexKV = dyn KVDBStoreWithSchema<BlockByLevelIndex> + Sync + Send;
 pub type BlockLevel = i32;
 
 impl BlockByLevelIndex {
@@ -612,12 +603,12 @@ impl KeyValueSchema for BlockByLevelIndex {
     type Value = BlockStorageColumnsLocation;
 }
 
-impl RocksDbKeyValueSchema for BlockByLevelIndex {
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for BlockByLevelIndex {
+    fn sub_tree_name() -> &'static str {
         "block_by_level_storage"
     }
 }
+
 
 /// Index block data as `level -> location`.
 #[derive(Clone)]
@@ -626,7 +617,7 @@ pub struct BlockByContextHashIndex {
 }
 
 pub type BlockByContextHashIndexKV =
-    dyn KeyValueStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
+    dyn KVDBStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -660,9 +651,8 @@ impl KeyValueSchema for BlockByContextHashIndex {
     type Value = BlockStorageColumnsLocation;
 }
 
-impl RocksDbKeyValueSchema for BlockByContextHashIndex {
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for BlockByContextHashIndex {
+    fn sub_tree_name() -> &'static str {
         "block_by_context_hash_storage"
     }
 }
@@ -673,7 +663,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::DbConfiguration;
+    use crate::persistent::{DbConfiguration, open_main_db, open_main_db_with_trees};
 
     use super::*;
     use crate::persistent::database::open_kv;
@@ -690,10 +680,10 @@ mod tests {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
         {
-            let db = open_kv(
+            let db = open_main_db_with_trees(
                 path,
-                vec![BlockByLevelIndex::descriptor(&cache)],
-                &DbConfiguration::default(),
+                true,
+                vec![BlockByLevelIndex::sub_tree_name().to_string()],
             )
             .unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));

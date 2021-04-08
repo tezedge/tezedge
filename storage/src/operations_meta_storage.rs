@@ -314,7 +314,7 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::DbConfiguration;
+    use crate::persistent::{DbConfiguration, open_main_db_with_trees};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -420,10 +420,10 @@ mod tests {
             let f = false as u8;
             let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-            let db = open_kv(
+            let db = open_main_db_with_trees(
                 path,
-                vec![OperationsMetaStorage::descriptor(&cache)],
-                &DbConfiguration::default(),
+                true,
+                vec![OperationsMetaStorage::sub_tree_name().to_string()],
             )?;
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {

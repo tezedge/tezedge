@@ -511,6 +511,7 @@ fn main() {
     );
 
     // initialize dbs
+    let maindb = Arc::new(open_main_db(&env.storage.db_path).expect("Failed to initialize main db (sled) storage"));
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
     let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
@@ -521,7 +522,7 @@ fn main() {
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),
     );
-    let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
+    let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
     // initialize merkle context
     let merkle = Arc::new(RwLock::new(
@@ -534,7 +535,7 @@ fn main() {
         .expect("Failed to initialize merkle storage"),
     ));
 
-    let maindb = Arc::new(open_main_db(&env.storage.db_path).expect("Failed to initialize main db (sled) storage"));
+
 
     // context actions persistent db (optional)
     let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {

@@ -18,6 +18,8 @@ pub enum Error {
     SchemaError { error: SchemaError },
     #[fail(display = "Hash encode error : {}", error)]
     HashEncodeError { error: FromBytesError },
+    #[fail(display = "Database incompatibility {}", name)]
+    DatabaseIncompatibility { name: String },
 }
 
 
