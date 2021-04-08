@@ -585,7 +585,7 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::{open_main_db_with_trees};
+    use crate::persistent::{open_sled_db_with_trees};
     use crate::tests_common::TmpStorage;
 
     use super::*;
@@ -723,7 +723,7 @@ mod tests {
         }
 
         {
-            let db = open_main_db_with_trees(
+            let db = open_sled_db_with_trees(
                 path,
                 true,
                 vec![BlockMetaStorage::sub_tree_name().to_string()]

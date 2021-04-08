@@ -46,7 +46,7 @@ where
 }
 
 /// Open commit log at a given path.
-pub fn open_main_db<P>(path: P) -> Result<MainDB, DatabaseError>
+pub fn open_sled_db<P>(path: P) -> Result<MainDB, DatabaseError>
     where
         P: AsRef<Path>,
 {
@@ -65,7 +65,7 @@ pub fn open_main_db<P>(path: P) -> Result<MainDB, DatabaseError>
     ], false)
 }
 
-pub fn open_main_db_with_trees<P>(path: P, is_temporary : bool, trees : Vec<String>) -> Result<MainDB, DatabaseError>
+pub fn open_sled_db_with_trees<P>(path: P, is_temporary : bool, trees : Vec<String>) -> Result<MainDB, DatabaseError>
     where
         P: AsRef<Path>,
 {

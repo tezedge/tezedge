@@ -29,7 +29,7 @@ use storage::initializer::{
     initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
 };
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, CommitLogSchema, open_main_db};
+use storage::persistent::{open_cl, CommitLogSchema, open_sled_db};
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -511,7 +511,7 @@ fn main() {
     );
 
     // initialize dbs
-    let maindb = Arc::new(open_main_db(&env.storage.db_path).expect("Failed to initialize main db (sled) storage"));
+    let maindb = Arc::new(open_sled_db(&env.storage.db_path).expect("Failed to initialize main db (sled) storage"));
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
     let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
