@@ -17,10 +17,10 @@ use crate::persistent::database::{
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::database::DBSubtreeKeyValueSchema;
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema};
 
 /// Convenience type for operation meta storage database
-pub type OperationsMetaStorageKV = dyn KeyValueStoreWithSchema<OperationsMetaStorage> + Sync + Send;
+pub type OperationsMetaStorageKV = dyn KVDBStoreWithSchema<OperationsMetaStorage> + Sync + Send;
 
 /// Operation metadata storage
 #[derive(Clone)]
@@ -31,7 +31,7 @@ pub struct OperationsMetaStorage {
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -112,7 +112,7 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
+    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -120,23 +120,6 @@ impl OperationsMetaStorage {
 impl KeyValueSchema for OperationsMetaStorage {
     type Key = BlockHash;
     type Value = Meta;
-}
-
-impl RocksDbKeyValueSchema for OperationsMetaStorage {
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let mut cf_opts = default_table_options(cache);
-        cf_opts.set_merge_operator(
-            "operations_meta_storage_merge_operator",
-            merge_meta_value,
-            None,
-        );
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
-        "operations_meta_storage"
-    }
 }
 
 impl DBSubtreeKeyValueSchema for OperationsMetaStorage {
