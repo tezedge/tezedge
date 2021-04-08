@@ -92,6 +92,7 @@ impl Args {
                             cache_size: LRU_CACHE_SIZE_64MB,
                             expected_db_version: 0,
                             db_path: out_dir.join("replayed_context_rocksdb"),
+                            system_storage_path: out_dir.join("sys"),
                             columns: ContextRocksDbTableInitializer,
                             threads: None,
                         })

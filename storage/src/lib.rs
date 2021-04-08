@@ -496,6 +496,7 @@ pub mod initializer {
         pub cache_size: usize,
         pub expected_db_version: i64,
         pub db_path: PathBuf,
+        pub system_storage_path : PathBuf,
         pub columns: C,
         pub threads: Option<usize>,
     }
@@ -515,7 +516,7 @@ pub mod initializer {
         expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
-            &config.db_path,
+            &config.system_storage_path,
             config.columns.create(cache),
             &DbConfiguration {
                 max_threads: config.threads,
