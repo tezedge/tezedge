@@ -516,7 +516,7 @@ pub mod initializer {
         expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
-            &config.system_storage_path,
+            &config.db_path,
             config.columns.create(cache),
             &DbConfiguration {
                 max_threads: config.threads,
@@ -829,17 +829,7 @@ pub mod tests_common {
             let kv = Arc::new(open_kv(
                 path.join("db"),
                 vec![
-                    //block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                    //block_storage::BlockByLevelIndex::descriptor(&db_cache),
-                    //block_storage::BlockByContextHashIndex::descriptor(&db_cache),
-                    //BlockMetaStorage::descriptor(&db_cache),
-                    //OperationsStorage::descriptor(&db_cache),
-                    //OperationsMetaStorage::descriptor(&db_cache),
                     SystemStorage::descriptor(&db_cache),
-                    //Sequences::descriptor(&db_cache),
-                    //MempoolStorage::descriptor(&db_cache),
-                    //ChainMetaStorage::descriptor(&db_cache),
-                    //PredecessorStorage::descriptor(&db_cache),
                 ],
                 &cfg,
             )?);
