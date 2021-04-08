@@ -24,12 +24,11 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
     {
         let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_kv(
+        let db = open_main_db_with_trees(
             &path,
-            vec![Sequences::descriptor(&cache)],
-            &DbConfiguration::default(),
-        )
-        .unwrap();
+            true,
+            vec![Sequences::sub_tree_name().to_string()]
+        ).unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -77,7 +76,6 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
 
 #[test]
 fn generator_test_batch() -> Result<(), Error> {
-    use rocksdb::{Options, DB};
 
     let path = out_dir_path("__sequence_batch");
     if path.exists() {
