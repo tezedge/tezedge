@@ -15,11 +15,9 @@ use crate::context::{
 };
 use crate::persistent::database::{default_table_options, DBError, RocksDbKeyValueSchema};
 use crate::persistent::{
-    BincodeEncoded, Flushable, KeyValueSchema, KeyValueStoreBackend, MultiInstanceable,
-    MultiInstanceableSyncError, Persistable,
+    Flushable, KeyValueSchema, KeyValueStoreBackend, MultiInstanceable, MultiInstanceableSyncError,
+    Persistable,
 };
-
-impl BincodeEncoded for EntryHash {}
 
 impl KeyValueSchema for RocksDBBackend {
     type Key = ContextKeyValueStoreSchemaKeyType;
