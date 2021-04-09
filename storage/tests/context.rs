@@ -11,6 +11,8 @@ use storage::tests_common::TmpStorage;
 use storage::{context_key, BlockHeaderWithHash, BlockStorage};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 
+// TODO - TE-261: all these should be removed, now part of tezos/context
+
 #[test]
 pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     // prepare temp storage
