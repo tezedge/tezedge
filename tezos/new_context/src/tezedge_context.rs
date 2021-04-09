@@ -1,14 +1,20 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, convert::TryInto};
+use std::{
+    cell::{Ref, RefCell},
+    convert::TryInto,
+};
 use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 
-use crate::hash::EntryHash;
 use crate::working_tree::working_tree::{MerkleError, WorkingTree};
 use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
+use crate::{
+    hash::EntryHash,
+    working_tree::{Commit, Entry, Tree},
+};
 use crate::{
     ContextError, ContextKey, ContextValue, ProtocolContextApi, ShellContextApi, StringTreeEntry,
     TreeId,
@@ -75,11 +81,25 @@ impl ShellContextApi for TezedgeContext {
     fn checkout(
         db: Rc<RefCell<ContextKeyValueStore>>,
         context_hash: &ContextHash,
-    ) -> Result<Self, ContextError> {
+    ) -> Result<Option<Self>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let tree = WorkingTree::checkout(Rc::clone(&db), &context_hash_arr)?;
 
-        Ok(Self::new(db, Some(context_hash_arr), Some(Rc::new(tree))))
+        if let Some(commit) = db_get_commit(db.borrow(), &context_hash_arr)? {
+            if let Some(tree) = db_get_tree(db.borrow(), &commit.root_hash)? {
+                let staged_cache = Rc::new(RefCell::new(StagedCache::new(db.clone())));
+                let tree = WorkingTree::new_with_tree(staged_cache, tree);
+
+                Ok(Some(Self::new(
+                    db,
+                    Some(context_hash_arr),
+                    Some(Rc::new(tree)),
+                )))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     fn commit(
@@ -92,7 +112,7 @@ impl ShellContextApi for TezedgeContext {
         let date: u64 = date.try_into()?;
         let (commit_hash, batch) =
             self.tree
-                .commit(date, author, message, self.parent_commit_hash)?;
+                .prepare_commit(date, author, message, self.parent_commit_hash)?;
         self.repository.borrow_mut().write_batch(batch)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
 
@@ -223,5 +243,58 @@ impl TezedgeContext {
             tree_id_generator: Rc::clone(&self.tree_id_generator),
             ..*self
         }
+    }
+}
+
+fn db_get_entry(
+    db: Ref<ContextKeyValueStore>,
+    hash: &EntryHash,
+) -> Result<Option<Entry>, ContextError> {
+    let entry_bytes = db.get(hash)?;
+    match entry_bytes {
+        None => Ok(None),
+        Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
+    }
+}
+
+fn db_get_commit(
+    db: Ref<ContextKeyValueStore>,
+    hash: &EntryHash,
+) -> Result<Option<Commit>, ContextError> {
+    if let Some(entry) = db_get_entry(db, hash)? {
+        match entry {
+            Entry::Commit(commit) => Ok(Some(commit)),
+            Entry::Tree(_) => Err(ContextError::FoundUnexpectedStructure {
+                sought: "commit".to_string(),
+                found: "tree".to_string(),
+            }),
+            Entry::Blob(_) => Err(ContextError::FoundUnexpectedStructure {
+                sought: "commit".to_string(),
+                found: "blob".to_string(),
+            }),
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+fn db_get_tree(
+    db: Ref<ContextKeyValueStore>,
+    hash: &EntryHash,
+) -> Result<Option<Tree>, ContextError> {
+    if let Some(entry) = db_get_entry(db, hash)? {
+        match entry {
+            Entry::Tree(tree) => Ok(Some(tree)),
+            Entry::Blob(_) => Err(ContextError::FoundUnexpectedStructure {
+                sought: "tree".to_string(),
+                found: "blob".to_string(),
+            }),
+            Entry::Commit { .. } => Err(ContextError::FoundUnexpectedStructure {
+                sought: "tree".to_string(),
+                found: "commit".to_string(),
+            }),
+        }
+    } else {
+        Ok(None)
     }
 }
