@@ -3,6 +3,8 @@
 #![feature(test)]
 extern crate test;
 
+// TODO - TE-281: some tests here use wait_for_context, fix that once not required anymore
+
 /// Simple integration test for chain actors
 ///
 ///(Tests are ignored, because they need protocol-runner binary)
