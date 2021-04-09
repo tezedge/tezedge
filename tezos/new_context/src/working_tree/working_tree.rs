@@ -47,11 +47,7 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::{
-    array::TryFromSliceError,
-    cell::{Ref, RefCell},
-    sync::Arc,
-};
+use std::{array::TryFromSliceError, cell::RefCell, sync::Arc};
 use std::{collections::HashMap, rc::Rc};
 
 use failure::Fail;
@@ -157,11 +153,6 @@ pub enum MerkleError {
     )]
     ValueIsNotABlob { key: String },
     #[fail(
-        display = "There is a blob or commit under key {:?}, but not a tree!",
-        key
-    )]
-    ValueIsNotATree { key: String },
-    #[fail(
         display = "Found wrong structure. Was looking for {}, but found {}",
         sought, found
     )]
@@ -239,7 +230,10 @@ pub enum CheckEntryHashError {
 
 impl WorkingTree {
     pub fn new(staged_cache: Rc<RefCell<StagedCache>>) -> Self {
-        let tree = Tree::new();
+        Self::new_with_tree(staged_cache, Tree::new())
+    }
+
+    pub fn new_with_tree(staged_cache: Rc<RefCell<StagedCache>>, tree: Tree) -> Self {
         let tree_hash = hash_tree(&tree).unwrap();
 
         staged_cache
@@ -531,68 +525,10 @@ impl WorkingTree {
         }
     }
 
-    fn db_get_entry(db: Ref<ContextKeyValueStore>, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        let entry_bytes = db.get(hash)?;
-        match entry_bytes {
-            None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            }),
-            Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-        }
-    }
-
-    fn db_get_commit(
-        db: Ref<ContextKeyValueStore>,
-        hash: &EntryHash,
-    ) -> Result<Commit, MerkleError> {
-        match Self::db_get_entry(db, hash)? {
-            Entry::Commit(commit) => Ok(commit),
-            Entry::Tree(_) => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "commit".to_string(),
-                found: "tree".to_string(),
-            }),
-            Entry::Blob(_) => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "commit".to_string(),
-                found: "blob".to_string(),
-            }),
-        }
-    }
-
-    fn db_get_tree(db: Ref<ContextKeyValueStore>, hash: &EntryHash) -> Result<Tree, MerkleError> {
-        match Self::db_get_entry(db, hash)? {
-            Entry::Tree(tree) => Ok(tree),
-            Entry::Blob(_) => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "tree".to_string(),
-                found: "blob".to_string(),
-            }),
-            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
-                sought: "tree".to_string(),
-                found: "commit".to_string(),
-            }),
-        }
-    }
-
-    /// Flush the staging area and and move to work on a certain commit from history.
-    pub fn checkout(
-        db: Rc<RefCell<ContextKeyValueStore>>,
-        context_hash: &EntryHash,
-    ) -> Result<Self, MerkleError> {
-        //let stat_updater = StatUpdater::new(MerkleStorageAction::Checkout, None);
-        let commit = Self::db_get_commit(db.borrow(), &context_hash)?;
-        let tree = Self::db_get_tree(db.borrow(), &commit.root_hash)?;
-        let staged_cache = Rc::new(RefCell::new(StagedCache::new(db))); // NOTE: created here, then shared
-
-        Ok(Self {
-            staged_cache,
-            tree,
-            stats: TezedgeContextStatistics::default(), // TODO: created on each checkout? no, must come from the outside
-        })
-    }
-
     /// Take the current changes in the staging area, create a commit and persist all changes
     /// to database under the new commit. Return last commit if there are no changes, that is
     /// empty commits are not allowed.
-    pub fn commit(
+    pub fn prepare_commit(
         &self,
         time: u64,
         author: String,
