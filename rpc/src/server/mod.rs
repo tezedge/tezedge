@@ -43,6 +43,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
+    // TODO - TE-261: this will not be available anymore
     tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
@@ -83,6 +84,7 @@ impl RpcServiceEnvironment {
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
+        // TODO - TE-261: this will not be available anymore
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,

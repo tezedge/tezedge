@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO - TE-261: remove all mentions of context from here
+
 //! Sends blocks to the `protocol_runner`.
 //! This actor is responsible for correct applying of blocks with Tezos protocol in context
 //! This actor is aslo responsible for correct initialization of genesis in storage.
@@ -887,6 +889,7 @@ fn _apply_block(
 
     // we need to check and wait for context_hash to be 100% sure, that everything is ok
     let context_wait_timer = Instant::now();
+    // TODO - TE-261: wait_for_context will not be needed anymore
     wait_for_context(context, &apply_block_result.context_hash, one_context)?;
     let context_wait_elapsed = context_wait_timer.elapsed();
     if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
@@ -1079,6 +1082,7 @@ pub(crate) fn initialize_protocol_context(
             )?;
 
             let context_wait_timer = Instant::now();
+            // TODO - TE-261: wait_for_context will not be needed anymore
             wait_for_context(
                 context,
                 &genesis_context_hash,
@@ -1143,6 +1147,7 @@ const CONTEXT_WAIT_DURATION: (Duration, Duration) =
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
+// TODO - TE-261: remove after integration, will not be needed
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(
     context: &Box<dyn ContextApi>,

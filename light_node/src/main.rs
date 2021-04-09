@@ -527,6 +527,7 @@ fn main() {
     );
     let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
 
+    // TODO - TE-261: after the integration remove all the merkle stuff
     // initialize merkle context
     let merkle = Arc::new(Mutex::new(
         initialize_merkle(
