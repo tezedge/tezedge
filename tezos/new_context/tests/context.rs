@@ -149,7 +149,10 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = TezedgeContext::checkout(context.repository, &context_hash_1)?;
+    context = TezedgeContext::checkout(context.repository, &context_hash_1)?.expect(&format!(
+        "Commit not found: {}",
+        context_hash_1.to_base58_check()
+    ));
 
     // 1. remove rec
     context = context.delete(&context_key!("data/rolls/owner/current/cpu/2"))?;
@@ -285,7 +288,10 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = TezedgeContext::checkout(context.repository, &context_hash_1)?;
+    context = TezedgeContext::checkout(context.repository, &context_hash_1)?.expect(&format!(
+        "Commit not found: {}",
+        context_hash_1.to_base58_check()
+    ));
 
     // 1. copy
     if let Some(new_context) = context.copy(
