@@ -6,6 +6,8 @@
 #![feature(const_fn)]
 #![feature(allocator_api)]
 
+// TODO - TE-261: from this crate, remove everything related to "context"
+
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -640,6 +642,7 @@ pub struct PersistentStorage {
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
     seq: Arc<Sequences>,
+    // TODO - TE-261: this will not be here
     /// merkle-tree based context storage
     merkle: Arc<Mutex<MerkleStorage>>,
     /// persistent context actions storage

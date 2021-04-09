@@ -25,6 +25,11 @@ pub enum NodeKind {
     Leaf,
 }
 
+// TODO: the value is serialized like this,
+// but it is not the most convenient representation for working with the tree
+// because it requires a hashmap to be able to retrieve objects by hash.
+// If nodes contain inline values, serialization must not be direct but instead
+// conversion into this representation must happen first.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node {
     pub node_kind: NodeKind,

@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO - TE-261: there is a bunch of context stuff here, remove
+
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -931,6 +933,7 @@ impl Environment {
                         })
                         .expect("Provided value cannot be converted to number")
                 });
+                // TODO - TE-261: remove these
                 let db_context_threads_count =
                     args.value_of("db-context-cfg-max-threads").map(|value| {
                         value
@@ -971,6 +974,7 @@ impl Environment {
                         .collect(),
                 };
 
+                // TODO - TE-261: remove the merkle and context stuff
                 let mut merkle_context_actions_store = None;
                 let context_action_recorders = backends
                     .iter()
@@ -1203,6 +1207,7 @@ impl Environment {
         }
     }
 
+    // TODO - TE-261 this will be handled in the protocol runner
     pub(crate) fn build_recorders(
         &self,
         storage: &PersistentStorage,
