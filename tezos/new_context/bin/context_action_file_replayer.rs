@@ -571,8 +571,9 @@ fn perform_context_action(
         ContextAction::Checkout { context_hash, .. } => (
             TezedgeContext::checkout(
                 Rc::clone(&context.repository),
-                &ContextHash::try_from(context_hash)?,
-            )?,
+                &ContextHash::try_from(context_hash.clone())?,
+            )?
+            .expect(&format!("Failed checkout of commit: {:?}", context_hash)),
             Some(0),
         ),
 
