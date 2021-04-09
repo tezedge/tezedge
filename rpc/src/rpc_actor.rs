@@ -59,6 +59,7 @@ impl RpcServer {
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
+        // TODO - TE-261: this will not be available anymore
         tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,

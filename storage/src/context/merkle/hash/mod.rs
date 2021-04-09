@@ -13,14 +13,19 @@ use failure::Fail;
 
 use ocaml::ocaml_hash_string;
 
-use crate::context::merkle::{Commit, Entry, Node, NodeKind, Tree};
 use crate::context::ContextValue;
+use crate::{
+    context::merkle::{Commit, Entry, Node, NodeKind, Tree},
+    persistent::BincodeEncoded,
+};
 
 mod ocaml;
 
 pub const ENTRY_HASH_LEN: usize = 32;
 
 pub type EntryHash = [u8; ENTRY_HASH_LEN];
+
+impl BincodeEncoded for EntryHash {}
 
 #[derive(Debug, Fail)]
 pub enum HashingError {
