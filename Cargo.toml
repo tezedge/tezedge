@@ -14,6 +14,8 @@ members = [
     "tezos/encoding-derive",
     "tezos/client",
     "tezos/wrapper",
+    "tezos/context",
+    "tezos/new_context",
     "networking",
     "shell",
     "storage",
