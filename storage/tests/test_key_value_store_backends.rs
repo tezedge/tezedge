@@ -254,6 +254,7 @@ macro_rules! tests_with_all_kv_stores {
                 .get(&storage::context::kv_store::SupportedContextKeyValueStore::BTreeMap)
                 .unwrap()
         );
+        // TODO - TE-261: remove this one
         tests_with_storage!(
             kv_store_rocksdb_tests,
             super::SUPPORTED_KV_STORES
