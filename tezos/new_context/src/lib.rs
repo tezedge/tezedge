@@ -101,7 +101,7 @@ where
     fn checkout(
         db: Rc<RefCell<ContextKeyValueStore>>,
         context_hash: &ContextHash,
-    ) -> Result<Self, ContextError>;
+    ) -> Result<Option<Self>, ContextError>;
     // commit current context diff to storage
     fn commit(
         &mut self,
@@ -157,6 +157,13 @@ pub enum ContextError {
     GarbageCollectionError { error: GarbageCollectionError },
     #[fail(display = "Database error error {:?}", error)]
     DBError { error: DBError },
+    #[fail(display = "Serialization error: {:?}", error)]
+    SerializationError { error: bincode::Error },
+    #[fail(
+        display = "Found wrong structure. Was looking for {}, but found {}",
+        sought, found
+    )]
+    FoundUnexpectedStructure { sought: String, found: String },
 }
 
 impl From<MerkleError> for ContextError {
@@ -192,6 +199,12 @@ impl From<GarbageCollectionError> for ContextError {
 impl From<DBError> for ContextError {
     fn from(error: DBError) -> Self {
         ContextError::DBError { error }
+    }
+}
+
+impl From<bincode::Error> for ContextError {
+    fn from(error: bincode::Error) -> Self {
+        Self::SerializationError { error }
     }
 }
 
