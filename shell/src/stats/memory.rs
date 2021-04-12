@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
 use std::fs::{read_dir, File};

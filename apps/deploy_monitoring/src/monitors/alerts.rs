@@ -5,10 +5,11 @@ use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+// use itertools::Itertools;
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
-use shell::stats::memory::ProcessMemoryStatsMaxMerge;
+// use shell::stats::memory::{ProcessMemoryStats, ProcessMemoryStatsMaxMerge};
 
 use crate::configuration::AlertThresholds;
 use crate::constants::TEZEDGE_VOLUME_PATH;
@@ -240,21 +241,33 @@ impl Alerts {
         last_measurement: ResourceUtilization,
     ) -> Result<(), failure::Error> {
         let ram_total = if node_tag == "tezedge" {
-            last_measurement.memory().node().resident_mem()
-                + last_measurement
-                    .memory()
-                    .protocol_runners()
-                    .as_ref()
-                    .unwrap_or(&ProcessMemoryStatsMaxMerge::default())
-                    .resident_mem()
+            let protocol_runners_total =
+                if let Some(protocol_runners) = last_measurement.memory().protocol_runners() {
+                    protocol_runners
+                        .clone()
+                        .get_mut_map()
+                        .iter()
+                        .map(|(_, runner)| runner.resident_mem())
+                        .sum()
+                } else {
+                    0
+                };
+
+            last_measurement.memory().node().resident_mem() + protocol_runners_total
         } else {
-            last_measurement.memory().node().resident_mem()
-                + last_measurement
-                    .memory()
-                    .validators()
-                    .as_ref()
-                    .unwrap_or(&ProcessMemoryStatsMaxMerge::default())
-                    .resident_mem()
+            let validators_total = if let Some(validators) = last_measurement.memory().validators()
+            {
+                validators
+                    .clone()
+                    .get_mut_map()
+                    .iter()
+                    .map(|(_, runner)| runner.resident_mem())
+                    .sum()
+            } else {
+                0
+            };
+
+            last_measurement.memory().node().resident_mem() + validators_total
         };
         let res = self.assign_resource_alert(
             node_tag,
@@ -276,8 +289,26 @@ impl Alerts {
         time: i64,
         last_measurement: ResourceUtilization,
     ) -> Result<(), failure::Error> {
-        let cpu_total: i32 =
-            last_measurement.cpu().node() + last_measurement.cpu().protocol_runners().unwrap_or(0);
+        let subprocesses = if let Some(protocol_runners) = last_measurement.cpu().protocol_runners()
+        {
+            protocol_runners
+                .clone()
+                .get_mut_map()
+                .iter()
+                .map(|(_, usage)| usage)
+                .sum()
+        } else if let Some(validators) = last_measurement.cpu().validators() {
+            validators
+                .clone()
+                .get_mut_map()
+                .iter()
+                .map(|(_, usage)| usage)
+                .sum()
+        } else {
+            0
+        };
+
+        let cpu_total: i32 = last_measurement.cpu().node() + subprocesses;
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Cpu,

@@ -1,15 +1,16 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 use async_trait::async_trait;
 use failure::{bail, format_err};
 use fs_extra::dir;
-use itertools::Itertools;
-use merge::Merge;
+// use itertools::Itertools;
+// use merge::Merge;
 
-use sysinfo::{ProcessExt, System, SystemExt};
+use sysinfo::{Process, ProcessExt, System, SystemExt};
 
 use shell::stats::memory::{MemoryData, ProcessMemoryStats, ProcessMemoryStatsMaxMerge};
 
@@ -43,37 +44,101 @@ impl Node for TezedgeNode {
 
         Ok(disk_data.into())
     }
+
+    // fn collect_protocol_runners_cpu_stats(system: &mut System, process_name: &str) -> Result<HashMap<String, i32>> {
+
+    // }
+
+    fn collect_cpu_data(system: &mut System, _process_name: &str) -> Result<i32, failure::Error> {
+        let light_node_process_vec: Vec<i32> = system
+            .get_processes()
+            .iter()
+            .filter(|(_, process)| process.name().contains("light-node"))
+            .map(|(_, process)| process.cpu_usage() as i32)
+            .collect();
+
+        if light_node_process_vec.len() == 1 {
+            Ok(light_node_process_vec[0])
+        } else {
+            bail!("Multiple light-node processes: TODO - TE-499")
+        }
+    }
 }
 
 impl DeployMonitoringContainer for TezedgeNode {
     const NAME: &'static str = "deploy-monitoring-tezedge-node";
 }
 
+fn extract_protocol_runner_endpoint(proc: &Process) -> String {
+    let cmd = proc.cmd();
+
+    let endpoint_index = cmd
+        .iter()
+        .position(|r| r == "--endpoint")
+        .unwrap_or_default()
+        + 1;
+
+    if endpoint_index > 1 {
+        // cmd[endpoint_index + 1]
+        cmd.get(endpoint_index)
+            .unwrap_or(&String::default())
+            .clone()
+    } else {
+        // TODO: handle this properly?
+        String::default()
+    }
+}
+
 impl TezedgeNode {
     pub async fn collect_protocol_runners_memory_stats(
-        port: u16,
-    ) -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
-        let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
-            "http://localhost:{}/stats/memory/protocol_runners",
-            port
-        ))
-        .await
-        {
-            Ok(result) => result.json().await?,
-            Err(e) => bail!("GET memory error: {}", e),
-        };
+        _port: u16, // TODO: remove
+        system: &mut System,
+    ) -> Result<HashMap<String, ProcessMemoryStatsMaxMerge>, failure::Error> {
+        // collect all processes from the system
+        let system_processes = system.get_processes();
 
-        let memory_stats: ProcessMemoryStatsMaxMerge = protocol_runners
-            .into_iter()
-            .map(|v| v.try_into().unwrap())
-            .fold1(|mut m1: ProcessMemoryStats, m2| {
-                m1.merge(m2);
-                m1
+        // collect all PIDs from process called tezos-node (ocaml node)
+        let tezedge_processes: Vec<Option<i32>> = system_processes
+            .iter()
+            .filter(|(_, process)| process.name().contains("light-node"))
+            .map(|(pid, _)| Some(*pid))
+            .collect();
+
+        // collect all processes that is the child of the main process and sum up the memory usage
+        let protocol_runners: HashMap<String, ProcessMemoryStatsMaxMerge> = system_processes
+            .iter()
+            .filter(|(_, process)| tezedge_processes.contains(&process.parent()))
+            .map(|(_, process)| {
+                (
+                    extract_protocol_runner_endpoint(process),
+                    ProcessMemoryStats::new(
+                        process.virtual_memory().try_into().unwrap_or_default(),
+                        process.memory().try_into().unwrap_or_default(),
+                    )
+                    .into(),
+                )
             })
-            .unwrap_or_default()
-            .into();
+            .collect();
 
-        Ok(memory_stats)
+        // println!("Proto. runners: {:?}", protocol_runners);
+
+        Ok(protocol_runners)
+    }
+
+    pub fn collect_protocol_runners_cpu_data(
+        system: &mut System,
+    ) -> Result<HashMap<String, i32>, failure::Error> {
+        Ok(system
+            .get_processes()
+            .iter()
+            .filter(|(_, process)| process.name().contains("protocol-runner"))
+            .map(|(_, process)| {
+                (
+                    extract_protocol_runner_endpoint(process),
+                    process.cpu_usage() as i32,
+                )
+            })
+            .collect())
     }
 }
 
@@ -89,16 +154,79 @@ impl Node for OcamlNode {
         )
         .into())
     }
+
+    fn collect_cpu_data(system: &mut System, _process_name: &str) -> Result<i32, failure::Error> {
+        let (main_process_pid, _) = split_ocaml_processes(system)?;
+        system
+            .get_process(main_process_pid)
+            .map(|proc| proc.cpu_usage() as i32)
+            .ok_or(format_err!("Main ocaml process not found"))
+    }
 }
 
 impl DeployMonitoringContainer for OcamlNode {
     const NAME: &'static str = "deploy-monitoring-ocaml-node";
 }
 
+fn split_ocaml_processes(system: &mut System) -> Result<(i32, Vec<i32>), failure::Error> {
+    let system_processes = system.get_processes();
+
+    // collect all PIDs from process called tezos-node (ocaml node)
+    let tezos_ocaml_processes: Vec<(&i32, &Process)> = system_processes
+        .iter()
+        .filter(|(_, process)| process.name().contains("tezos-node"))
+        .collect();
+
+    let tezos_ocaml_processes_pids: Vec<Option<i32>> = system_processes
+        .iter()
+        .filter(|(_, process)| process.name().contains("tezos-node"))
+        .map(|(pid, _)| Some(*pid))
+        .collect();
+
+    let validators = tezos_ocaml_processes
+        .clone()
+        .into_iter()
+        .filter(|(_, process)| tezos_ocaml_processes_pids.contains(&process.parent()))
+        .map(|(pid, _)| *pid)
+        .collect();
+    let main_process_vec: Vec<(&i32, &Process)> = tezos_ocaml_processes
+        .into_iter()
+        .filter(|(_, process)| !tezos_ocaml_processes_pids.contains(&process.parent()))
+        .collect();
+
+    // this should be 1 for now, see TE-499
+    let (main_process_pid, _) = if main_process_vec.len() == 1 {
+        main_process_vec[0]
+    } else {
+        bail!("Multiple main processe: TODO - TE-499")
+    };
+    Ok((*main_process_pid, validators))
+}
+
 impl OcamlNode {
-    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
-        let mut system = System::new_all();
-        system.refresh_all();
+    pub fn collect_validator_cpu_data(
+        system: &mut System,
+        _process_name: &str,
+    ) -> Result<HashMap<String, i32>, failure::Error> {
+        let (_, validators) = split_ocaml_processes(system)?;
+        Ok(validators
+            .iter()
+            .map(|pid| {
+                (
+                    pid.to_string(),
+                    system.get_process(*pid).unwrap().cpu_usage() as i32,
+                )
+            })
+            .collect())
+
+        // system.get_process(main_process_pid).map(|proc| proc.cpu_usage() as i32).ok_or(format_err!("Main ocaml process not found"))
+    }
+
+    pub fn collect_validator_memory_stats(
+        system: &mut System,
+    ) -> Result<HashMap<String, ProcessMemoryStatsMaxMerge>, failure::Error> {
+        // let mut system = System::new_all();
+        // system.refresh_all();
 
         // collect all processes from the system
         let system_processes = system.get_processes();
@@ -111,21 +239,38 @@ impl OcamlNode {
             .collect();
 
         // collect all processes that is the child of the main process and sum up the memory usage
-        let valaidators: ProcessMemoryStatsMaxMerge = system_processes
+        let valaidators: HashMap<String, ProcessMemoryStatsMaxMerge> = system_processes
             .iter()
             .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
-            .map(|(_, process)| {
-                ProcessMemoryStats::new(
-                    process.virtual_memory().try_into().unwrap_or_default(),
-                    process.memory().try_into().unwrap_or_default(),
+            .map(|(pid, process)| {
+                (
+                    pid.to_string(),
+                    ProcessMemoryStats::new(
+                        process.virtual_memory().try_into().unwrap_or_default(),
+                        process.memory().try_into().unwrap_or_default(),
+                    )
+                    .into(),
                 )
             })
-            .fold1(|mut m1, m2| {
-                m1.merge(m2);
-                m1
-            })
-            .unwrap_or_default()
-            .into();
+            .collect();
+        // .fold1(|mut m1, m2| {
+        //     m1.merge(m2);
+        //     m1
+        // })
+        // .unwrap_or_default()
+        // .into();
+
+        // debug: TODO: remove
+        // for (pid, process) in system_processes
+        //     .iter()
+        //     .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
+        // {
+        //     println!("PID: {}", pid);
+        //     println!("Name: {}", process.name());
+        //     println!("CMD: {:?}", process.cmd());
+        //     println!("Exe: {:?}", process.exe());
+        //     println!();
+        // }
 
         Ok(valaidators)
     }
@@ -183,15 +328,7 @@ pub trait Node {
         Ok(commit_hash.trim_matches('"').trim_matches('\n').to_string())
     }
 
-    fn collect_cpu_data(system: &mut System, process_name: &str) -> Result<i32, failure::Error> {
-        // get node process
-        Ok(system
-            .get_processes()
-            .iter()
-            .filter(|(_, process)| process.name().contains(process_name))
-            .map(|(_, process)| process.cpu_usage())
-            .sum::<f32>() as i32)
-    }
+    fn collect_cpu_data(system: &mut System, process_name: &str) -> Result<i32, failure::Error>;
 
     fn collect_disk_data() -> Result<DiskData, failure::Error>;
 }

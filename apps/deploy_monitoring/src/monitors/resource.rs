@@ -24,6 +24,68 @@ use crate::slack::SlackServer;
 pub type ResourceUtilizationStorage = Arc<RwLock<VecDeque<ResourceUtilization>>>;
 pub type ResourceUtilizationStorageMap = HashMap<&'static str, ResourceUtilizationStorage>;
 
+#[derive(Clone, Debug, Serialize)]
+pub struct ProcessMemoryMap {
+    #[serde(flatten)]
+    inner: HashMap<String, ProcessMemoryStatsMaxMerge>,
+}
+
+impl ProcessMemoryMap {
+    pub fn new(map: HashMap<String, ProcessMemoryStatsMaxMerge>) -> Self {
+        Self { inner: map }
+    }
+
+    pub fn get_mut_map(&mut self) -> &mut HashMap<String, ProcessMemoryStatsMaxMerge> {
+        &mut self.inner
+    }
+}
+
+/// Custom merge strategy that merges 2 struct with a Hashmap using maximum of each keys
+impl Merge for ProcessMemoryMap {
+    fn merge(&mut self, other: Self) {
+        // merge the values individually
+        for (key, right_value) in other.inner {
+            if let Some(left_value) = self.inner.get_mut(&key) {
+                left_value.merge(right_value.clone());
+            } else {
+                self.inner.insert(key, right_value);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ProcessCpuMap {
+    #[serde(flatten)]
+    inner: HashMap<String, i32>,
+}
+
+impl ProcessCpuMap {
+    pub fn new(map: HashMap<String, i32>) -> Self {
+        Self { inner: map }
+    }
+
+    pub fn get_mut_map(&mut self) -> &mut HashMap<String, i32> {
+        &mut self.inner
+    }
+}
+
+/// Custom merge strategy that merges 2 struct with a Hashmap using maximum of each keys
+impl Merge for ProcessCpuMap {
+    fn merge(&mut self, other: Self) {
+        // merge the values individually
+        for (key, right_value) in other.inner {
+            if let Some(left_value) = self.inner.get_mut(&key) {
+                if right_value > *left_value {
+                    self.inner.insert(key, right_value);
+                }
+            } else {
+                self.inner.insert(key, right_value);
+            }
+        }
+    }
+}
+
 pub struct ResourceMonitor {
     resource_utilization: ResourceUtilizationStorageMap,
     last_checked_head_level: Option<u64>,
@@ -36,19 +98,19 @@ pub struct ResourceMonitor {
 #[derive(Clone, Debug, Serialize, Getters, Merge, Default)]
 pub struct MemoryStats {
     #[get = "pub(crate)"]
-    #[merge(strategy = merge::ord::max)]
+    // #[merge(strategy = merge::ord::max)]
     node: ProcessMemoryStatsMaxMerge,
 
     // TODO: TE-499 remove protocol_runners and use validators for ocaml and tezedge type
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
-    protocol_runners: Option<ProcessMemoryStatsMaxMerge>,
+    // #[merge(strategy = merge::ord::max)]
+    protocol_runners: Option<ProcessMemoryMap>,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
-    validators: Option<ProcessMemoryStatsMaxMerge>,
+    // #[merge(strategy = merge::ord::max)]
+    validators: Option<ProcessMemoryMap>,
 }
 
 #[derive(Clone, Debug, Serialize, Getters, Merge)]
@@ -76,8 +138,13 @@ pub struct CpuStats {
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
-    protocol_runners: Option<i32>,
+    // #[merge(strategy = merge::ord::max)]
+    protocol_runners: Option<ProcessCpuMap>,
+
+    #[get = "pub(crate)"]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    // #[merge(strategy = merge::ord::max)]
+    validators: Option<ProcessCpuMap>,
 }
 
 impl ResourceMonitor {
@@ -115,23 +182,24 @@ impl ResourceMonitor {
             let node_resource_measurement = if node_tag == &"tezedge" {
                 let tezedge_node = TezedgeNode::collect_memory_data(TEZEDGE_PORT).await?;
                 let protocol_runners =
-                    TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
+                    TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT, system)
+                        .await?;
                 let tezedge_disk = TezedgeNode::collect_disk_data()?;
 
                 let tezedge_cpu = TezedgeNode::collect_cpu_data(system, "light-node")?;
-                let protocol_runners_cpu =
-                    TezedgeNode::collect_cpu_data(system, "protocol-runner")?;
+                let protocol_runners_cpu = TezedgeNode::collect_protocol_runners_cpu_data(system)?;
                 let resources = ResourceUtilization {
                     timestamp: chrono::Local::now().timestamp(),
                     memory: MemoryStats {
                         node: tezedge_node,
-                        protocol_runners: Some(protocol_runners),
+                        protocol_runners: Some(ProcessMemoryMap::new(protocol_runners)),
                         validators: None,
                     },
                     disk: tezedge_disk,
                     cpu: CpuStats {
                         node: tezedge_cpu,
-                        protocol_runners: Some(protocol_runners_cpu),
+                        protocol_runners: Some(ProcessCpuMap::new(protocol_runners_cpu)),
+                        validators: None,
                     },
                 };
                 let current_head_level =
@@ -149,21 +217,23 @@ impl ResourceMonitor {
                 resources
             } else {
                 let ocaml_node = OcamlNode::collect_memory_data(OCAML_PORT).await?;
-                let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
+                let tezos_validators = OcamlNode::collect_validator_memory_stats(system)?;
                 let ocaml_disk = OcamlNode::collect_disk_data()?;
                 let ocaml_cpu = OcamlNode::collect_cpu_data(system, "tezos-node")?;
+                let validators_cpu = OcamlNode::collect_validator_cpu_data(system, "tezos-node")?;
 
                 let resources = ResourceUtilization {
                     timestamp: chrono::Local::now().timestamp(),
                     memory: MemoryStats {
                         node: ocaml_node,
                         protocol_runners: None,
-                        validators: Some(tezos_validators),
+                        validators: Some(ProcessMemoryMap::new(tezos_validators)),
                     },
                     disk: ocaml_disk,
                     cpu: CpuStats {
                         node: ocaml_cpu,
                         protocol_runners: None,
+                        validators: Some(ProcessCpuMap::new(validators_cpu)),
                     },
                 };
                 let current_head_level = *OcamlNode::collect_head_data(OCAML_PORT).await?.level();
