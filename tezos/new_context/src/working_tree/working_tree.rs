@@ -56,7 +56,6 @@ use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::gc::GarbageCollectionError;
 use crate::hash::EntryHash;
 use crate::hash::{hash_blob, hash_commit, hash_entry, hash_tree, HashingError};
 use crate::persistent;
@@ -64,7 +63,8 @@ use crate::working_tree::working_tree_stats::{
     MerkleStorageAction, MerkleStoragePerfReport, StatUpdater, TezedgeContextStatistics,
 };
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
-use crate::{ContextKey, ContextKeyValueStore, ContextValue, StringTreeEntry, StringTreeMap};
+use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
+use crate::{ContextKey, ContextValue, StringTreeEntry, StringTreeMap};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SetAction {
@@ -91,27 +91,24 @@ enum Action {
 }
 
 pub struct StagedCache {
-    db: Rc<RefCell<ContextKeyValueStore>>,
+    index: TezedgeIndex,
     cache: Rc<RefCell<HashMap<Arc<EntryHash>, Entry>>>,
 }
 
 impl StagedCache {
-    pub fn new(db: Rc<RefCell<ContextKeyValueStore>>) -> Self {
+    pub fn new(index: TezedgeIndex) -> Self {
         let cache = Rc::new(RefCell::new(HashMap::new()));
-        Self { db, cache }
+        Self { index, cache }
     }
 
     fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
         match self.cache.borrow().get(hash) {
-            None => {
-                let entry_bytes = self.db.borrow().get(hash)?;
-                match entry_bytes {
-                    None => Err(MerkleError::EntryNotFound {
-                        hash: HashType::ContextHash.hash_to_b58check(hash)?,
-                    }),
-                    Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-                }
-            }
+            None => match self.index.repository.borrow().get(hash)? {
+                None => Err(MerkleError::EntryNotFound {
+                    hash: HashType::ContextHash.hash_to_b58check(hash)?,
+                }),
+                Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
+            },
             Some(entry) => Ok(entry.clone()),
         }
     }
@@ -888,7 +885,8 @@ impl WorkingTree {
             kv_store_stats: self
                 .staged_cache
                 .borrow()
-                .db
+                .index
+                .repository
                 .borrow()
                 .total_get_mem_usage()?,
         })
