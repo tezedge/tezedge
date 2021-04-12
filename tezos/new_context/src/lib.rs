@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-#![forbid(unsafe_code)]
+// #![forbid(unsafe_code)]
 
 //! This crate contains code which is used to move context messages between OCaml and Rust worlds.
 //!
@@ -22,9 +22,8 @@ pub fn force_libtezos_linking() {
 }
 
 use std::array::TryFromSliceError;
+use std::collections::BTreeMap;
 use std::num::TryFromIntError;
-use std::rc::Rc;
-use std::{cell::RefCell, collections::BTreeMap};
 
 use failure::Fail;
 use gc::GarbageCollectionError;
@@ -35,6 +34,7 @@ use serde::Serialize;
 pub use actions::ActionRecorder;
 pub use hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
+pub use tezedge_context::TezedgeIndex;
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -92,23 +92,28 @@ where
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
 }
 
+/// Index API used by the Shell
+pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
+    // checks if a commit exists in the repository
+    fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
+    // checkout context for hash
+    fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
+}
+
 /// Context API used by the Shell
 pub trait ShellContextApi
 where
     Self: Sized,
 {
-    // checkout context for hash
-    fn checkout(
-        db: Rc<RefCell<ContextKeyValueStore>>,
-        context_hash: &ContextHash,
-    ) -> Result<Option<Self>, ContextError>;
     // commit current context diff to storage
     fn commit(
-        &mut self,
+        &self,
         author: String,
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError>;
+    fn hash(&self, author: String, message: String, date: i64)
+        -> Result<ContextHash, ContextError>;
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(
         &self,
