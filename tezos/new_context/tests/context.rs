@@ -9,8 +9,8 @@ use storage::tests_common::TmpStorage;
 use storage::{BlockHeaderWithHash, BlockStorage};
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 use tezos_new_context::context_key;
-use tezos_new_context::{initializer::initialize_tezedge_context, tezedge_context::TezedgeContext};
-use tezos_new_context::{ProtocolContextApi, ShellContextApi};
+use tezos_new_context::initializer::initialize_tezedge_context;
+use tezos_new_context::{IndexApi, ProtocolContextApi, ShellContextApi};
 
 #[test]
 pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
@@ -149,7 +149,7 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = TezedgeContext::checkout(context.repository, &context_hash_1)?.expect(&format!(
+    context = context.index.checkout(&context_hash_1)?.expect(&format!(
         "Commit not found: {}",
         context_hash_1.to_base58_check()
     ));
@@ -288,7 +288,7 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // checkout last commit to be modified
-    context = TezedgeContext::checkout(context.repository, &context_hash_1)?.expect(&format!(
+    context = context.index.checkout(&context_hash_1)?.expect(&format!(
         "Commit not found: {}",
         context_hash_1.to_base58_check()
     ));

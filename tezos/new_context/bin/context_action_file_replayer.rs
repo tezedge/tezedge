@@ -1,11 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::{collections::HashMap, io::prelude::*};
 use std::{convert::TryFrom, fs::OpenOptions};
 use std::{fs, path::PathBuf};
-use std::{fs::File, rc::Rc};
 
 use clap::{App, Arg};
 use crypto::hash::{BlockHash, ContextHash};
@@ -24,7 +24,7 @@ use tezos_new_context::{
     actions::{get_new_tree_hash, get_tree_id, ContextAction},
     TreeId,
 };
-use tezos_new_context::{ProtocolContextApi, ShellContextApi, TezedgeContext};
+use tezos_new_context::{IndexApi, ProtocolContextApi, ShellContextApi, TezedgeContext};
 
 struct Args {
     blocks_per_cycle: usize,
@@ -569,11 +569,10 @@ fn perform_context_action(
         }
 
         ContextAction::Checkout { context_hash, .. } => (
-            TezedgeContext::checkout(
-                Rc::clone(&context.repository),
-                &ContextHash::try_from(context_hash.clone())?,
-            )?
-            .expect(&format!("Failed checkout of commit: {:?}", context_hash)),
+            context
+                .index
+                .checkout(&ContextHash::try_from(context_hash.clone())?)?
+                .expect(&format!("Failed checkout of commit: {:?}", context_hash)),
             Some(0),
         ),
 
