@@ -3,8 +3,8 @@
 
 use std::fmt;
 
-use getset::Getters;
-use merge::Merge;
+use getset::{CopyGetters, Getters};
+// use merge::Merge;
 use serde::Serialize;
 
 #[derive(Serialize, Debug)]
@@ -54,13 +54,15 @@ impl fmt::Display for NodeInfo {
     }
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug, Default, Merge, Eq, Ord, PartialOrd)]
+#[derive(Serialize, PartialEq, Clone, Debug, Default, CopyGetters)]
 pub struct OcamlDiskData {
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     debugger: u64,
-    #[merge(strategy = merge::ord::max)]
+
+    #[get_copy = "pub(crate)"]
     block_storage: u64,
-    #[merge(strategy = merge::ord::max)]
+
+    #[get_copy = "pub(crate)"]
     context_irmin: u64,
 }
 
@@ -93,7 +95,7 @@ impl OcamlDiskData {
     }
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug, Ord, PartialOrd, Eq)]
+#[derive(Serialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum DiskData {
     Ocaml(OcamlDiskData),
@@ -125,24 +127,24 @@ impl fmt::Display for DiskData {
     }
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug, Default, Merge, Ord, Eq, PartialOrd)]
+#[derive(Serialize, PartialEq, Clone, Debug, Default, CopyGetters)]
 pub struct TezedgeDiskData {
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     context_irmin: u64,
 
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     context_merkle_rocksdb: u64,
 
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     block_storage: u64,
 
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     context_actions: u64,
 
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     main_db: u64,
 
-    #[merge(strategy = merge::ord::max)]
+    #[get_copy = "pub(crate)"]
     debugger: u64,
 }
 

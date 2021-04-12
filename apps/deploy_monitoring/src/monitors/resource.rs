@@ -1,21 +1,21 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::cmp;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
 use chrono::Utc;
 use getset::Getters;
-use merge::Merge;
 use serde::Serialize;
 use slog::{error, Logger};
 use sysinfo::{System, SystemExt};
 
-use shell::stats::memory::ProcessMemoryStatsMaxMerge;
+use shell::stats::memory::ProcessMemoryStats;
 
 use crate::constants::{MEASUREMENTS_MAX_CAPACITY, OCAML_PORT, TEZEDGE_PORT};
-use crate::display_info::DiskData;
+use crate::display_info::{OcamlDiskData, TezedgeDiskData};
 use crate::monitors::Alerts;
 use crate::node::OcamlNode;
 use crate::node::{Node, TezedgeNode};
@@ -33,50 +33,144 @@ pub struct ResourceMonitor {
     system: System,
 }
 
-#[derive(Clone, Debug, Serialize, Getters, Merge, Default)]
+#[derive(Clone, Debug, Serialize, Getters, Default)]
 pub struct MemoryStats {
     #[get = "pub(crate)"]
-    #[merge(strategy = merge::ord::max)]
-    node: ProcessMemoryStatsMaxMerge,
+    node: ProcessMemoryStats,
 
     // TODO: TE-499 remove protocol_runners and use validators for ocaml and tezedge type
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
-    protocol_runners: Option<ProcessMemoryStatsMaxMerge>,
+    protocol_runners: Option<ProcessMemoryStats>,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
-    validators: Option<ProcessMemoryStatsMaxMerge>,
+    validators: Option<ProcessMemoryStats>,
 }
 
-#[derive(Clone, Debug, Serialize, Getters, Merge)]
+#[derive(Clone, Debug, Serialize, Getters)]
 pub struct ResourceUtilization {
     #[get = "pub(crate)"]
-    #[merge(strategy = merge::ord::max)]
     timestamp: i64,
 
     #[get = "pub(crate)"]
     memory: MemoryStats,
 
     #[get = "pub(crate)"]
-    #[merge(strategy = merge::ord::max)]
-    disk: DiskData,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "disk")]
+    ocaml_disk: Option<OcamlDiskData>,
+
+    #[get = "pub(crate)"]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "disk")]
+    tezedge_disk: Option<TezedgeDiskData>,
 
     #[get = "pub(crate)"]
     cpu: CpuStats,
 }
 
-#[derive(Clone, Debug, Serialize, Getters, Merge, Default)]
+impl ResourceUtilization {
+    pub fn merge(&self, other: Self) -> Self {
+        let merged_ocaml_disk = if let (Some(ocaml_disk1), Some(ocaml_disk2)) =
+            (self.ocaml_disk.as_ref(), other.ocaml_disk)
+        {
+            Some(OcamlDiskData::new(
+                cmp::max(ocaml_disk1.debugger(), ocaml_disk2.debugger()),
+                cmp::max(ocaml_disk1.block_storage(), ocaml_disk2.block_storage()),
+                cmp::max(ocaml_disk1.context_irmin(), ocaml_disk2.context_irmin()),
+            ))
+        } else {
+            None
+        };
+
+        let merged_tezedge_disk = if let (Some(tezedge_disk1), Some(tezedge_disk2)) =
+            (self.tezedge_disk.as_ref(), other.tezedge_disk)
+        {
+            Some(TezedgeDiskData::new(
+                cmp::max(tezedge_disk1.debugger(), tezedge_disk2.debugger()),
+                cmp::max(tezedge_disk1.context_irmin(), tezedge_disk2.context_irmin()),
+                cmp::max(
+                    tezedge_disk1.context_merkle_rocksdb(),
+                    tezedge_disk2.context_merkle_rocksdb(),
+                ),
+                cmp::max(tezedge_disk1.block_storage(), tezedge_disk2.block_storage()),
+                cmp::max(
+                    tezedge_disk1.context_actions(),
+                    tezedge_disk2.context_actions(),
+                ),
+                cmp::max(tezedge_disk1.main_db(), tezedge_disk2.main_db()),
+            ))
+        } else {
+            None
+        };
+
+        let merged_protocol_runner_memory =
+            if let (Some(protocol_runner_mem1), Some(protocol_runner_mem2)) = (
+                self.memory.protocol_runners.as_ref(),
+                other.memory.protocol_runners,
+            ) {
+                Some(ProcessMemoryStats::new(
+                    cmp::max(
+                        protocol_runner_mem1.virtual_mem(),
+                        protocol_runner_mem2.virtual_mem(),
+                    ),
+                    cmp::max(
+                        protocol_runner_mem1.resident_mem(),
+                        protocol_runner_mem2.resident_mem(),
+                    ),
+                ))
+            } else {
+                None
+            };
+
+        let merged_validators_memory = if let (Some(validators_mem1), Some(validators_mem2)) =
+            (self.memory.validators.as_ref(), other.memory.validators)
+        {
+            Some(ProcessMemoryStats::new(
+                cmp::max(validators_mem1.virtual_mem(), validators_mem2.virtual_mem()),
+                cmp::max(
+                    validators_mem1.resident_mem(),
+                    validators_mem2.resident_mem(),
+                ),
+            ))
+        } else {
+            None
+        };
+
+        Self {
+            timestamp: cmp::max(self.timestamp, other.timestamp),
+            cpu: CpuStats {
+                node: cmp::max(self.cpu.node, other.cpu.node),
+                protocol_runners: cmp::max(self.cpu.protocol_runners, other.cpu.protocol_runners),
+            },
+            memory: MemoryStats {
+                node: ProcessMemoryStats::new(
+                    cmp::max(
+                        self.memory.node.virtual_mem(),
+                        other.memory.node.virtual_mem(),
+                    ),
+                    cmp::max(
+                        self.memory.node.resident_mem(),
+                        other.memory.node.resident_mem(),
+                    ),
+                ),
+                protocol_runners: merged_protocol_runner_memory,
+                validators: merged_validators_memory,
+            },
+            ocaml_disk: merged_ocaml_disk,
+            tezedge_disk: merged_tezedge_disk,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Getters, Default)]
 pub struct CpuStats {
     #[get = "pub(crate)"]
-    #[merge(strategy = merge::ord::max)]
     node: i32,
 
     #[get = "pub(crate)"]
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[merge(strategy = merge::ord::max)]
     protocol_runners: Option<i32>,
 }
 
@@ -128,7 +222,8 @@ impl ResourceMonitor {
                         protocol_runners: Some(protocol_runners),
                         validators: None,
                     },
-                    disk: tezedge_disk,
+                    tezedge_disk: Some(tezedge_disk),
+                    ocaml_disk: None,
                     cpu: CpuStats {
                         node: tezedge_cpu,
                         protocol_runners: Some(protocol_runners_cpu),
@@ -160,7 +255,8 @@ impl ResourceMonitor {
                         protocol_runners: None,
                         validators: Some(tezos_validators),
                     },
-                    disk: ocaml_disk,
+                    ocaml_disk: Some(ocaml_disk),
+                    tezedge_disk: None,
                     cpu: CpuStats {
                         node: ocaml_cpu,
                         protocol_runners: None,
@@ -241,4 +337,92 @@ async fn handle_alerts(
         .await?;
     *last_checked_head_level = Some(current_head_level);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::display_info::TezedgeDiskData;
+    use itertools::Itertools;
+
+    #[test]
+    fn test_mergable_resources() {
+        let resources1 = ResourceUtilization {
+            cpu: CpuStats {
+                node: 150,
+                protocol_runners: Some(10),
+            },
+            tezedge_disk: TezedgeDiskData::new(1, 1, 1, 1, 1, 1).into(),
+            ocaml_disk: None,
+            memory: MemoryStats {
+                node: ProcessMemoryStats::new(1000, 100),
+                protocol_runners: Some(ProcessMemoryStats::new(1000, 100)),
+                validators: None,
+            },
+            timestamp: 1,
+        };
+
+        let resources2 = ResourceUtilization {
+            cpu: CpuStats {
+                node: 200,
+                protocol_runners: Some(20),
+            },
+            tezedge_disk: TezedgeDiskData::new(6, 5, 4, 3, 2, 125).into(),
+            ocaml_disk: None,
+            memory: MemoryStats {
+                node: ProcessMemoryStats::new(2000, 200),
+                protocol_runners: Some(ProcessMemoryStats::new(3000, 300)),
+                validators: None,
+            },
+            timestamp: 2,
+        };
+
+        let resources3 = ResourceUtilization {
+            cpu: CpuStats {
+                node: 90,
+                protocol_runners: Some(258),
+                // validators: None,
+            },
+            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 8, 7).into(),
+            ocaml_disk: None,
+            memory: MemoryStats {
+                node: ProcessMemoryStats::new(1500, 45000),
+                protocol_runners: Some(ProcessMemoryStats::new(2500, 250)),
+                validators: None,
+            },
+            timestamp: 3,
+        };
+
+        let expected = ResourceUtilization {
+            cpu: CpuStats {
+                node: 200,
+                protocol_runners: Some(258),
+                // validators: None,
+            },
+            tezedge_disk: TezedgeDiskData::new(12, 11, 10, 9, 8, 125).into(),
+            ocaml_disk: None,
+            memory: MemoryStats {
+                node: ProcessMemoryStats::new(2000, 45000),
+                protocol_runners: Some(ProcessMemoryStats::new(3000, 300)),
+                validators: None,
+            },
+            timestamp: 3,
+        };
+
+        let resources = vec![resources1, resources2, resources3];
+        let merged_final = resources.into_iter().fold1(|m1, m2| m1.merge(m2)).unwrap();
+
+        assert_eq!(merged_final.cpu.node, expected.cpu.node);
+        assert_eq!(
+            merged_final.cpu.protocol_runners,
+            expected.cpu.protocol_runners
+        );
+        assert_eq!(merged_final.tezedge_disk, expected.tezedge_disk);
+        assert_eq!(merged_final.memory.node, expected.memory.node);
+        assert_eq!(
+            merged_final.memory.protocol_runners,
+            expected.memory.protocol_runners
+        );
+        assert_eq!(merged_final.timestamp, expected.timestamp);
+    }
 }

@@ -11,18 +11,24 @@ use merge::Merge;
 
 use sysinfo::{ProcessExt, System, SystemExt};
 
-use shell::stats::memory::{MemoryData, ProcessMemoryStats, ProcessMemoryStatsMaxMerge};
+use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::constants::{DEBUGGER_VOLUME_PATH, OCAML_VOLUME_PATH, TEZEDGE_VOLUME_PATH};
 use crate::display_info::NodeInfo;
-use crate::display_info::{DiskData, OcamlDiskData, TezedgeDiskData};
+use crate::display_info::{OcamlDiskData, TezedgeDiskData};
 use crate::image::DeployMonitoringContainer;
 
 pub struct TezedgeNode;
 
 #[async_trait]
-impl Node for TezedgeNode {
-    fn collect_disk_data() -> Result<DiskData, failure::Error> {
+impl Node for TezedgeNode {}
+
+impl DeployMonitoringContainer for TezedgeNode {
+    const NAME: &'static str = "deploy-monitoring-tezedge-node";
+}
+
+impl TezedgeNode {
+    pub fn collect_disk_data() -> Result<TezedgeDiskData, failure::Error> {
         let disk_data = TezedgeDiskData::new(
             dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge"))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
@@ -41,18 +47,12 @@ impl Node for TezedgeNode {
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
         );
 
-        Ok(disk_data.into())
+        Ok(disk_data)
     }
-}
 
-impl DeployMonitoringContainer for TezedgeNode {
-    const NAME: &'static str = "deploy-monitoring-tezedge-node";
-}
-
-impl TezedgeNode {
     pub async fn collect_protocol_runners_memory_stats(
         port: u16,
-    ) -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
+    ) -> Result<ProcessMemoryStats, failure::Error> {
         let protocol_runners: Vec<MemoryData> = match reqwest::get(&format!(
             "http://localhost:{}/stats/memory/protocol_runners",
             port
@@ -63,15 +63,14 @@ impl TezedgeNode {
             Err(e) => bail!("GET memory error: {}", e),
         };
 
-        let memory_stats: ProcessMemoryStatsMaxMerge = protocol_runners
+        let memory_stats: ProcessMemoryStats = protocol_runners
             .into_iter()
             .map(|v| v.try_into().unwrap())
             .fold1(|mut m1: ProcessMemoryStats, m2| {
                 m1.merge(m2);
                 m1
             })
-            .unwrap_or_default()
-            .into();
+            .unwrap_or_default();
 
         Ok(memory_stats)
     }
@@ -80,23 +79,22 @@ impl TezedgeNode {
 pub struct OcamlNode;
 
 #[async_trait]
-impl Node for OcamlNode {
-    fn collect_disk_data() -> Result<DiskData, failure::Error> {
-        Ok(OcamlDiskData::new(
-            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezos"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
-        )
-        .into())
-    }
-}
+impl Node for OcamlNode {}
 
 impl DeployMonitoringContainer for OcamlNode {
     const NAME: &'static str = "deploy-monitoring-ocaml-node";
 }
 
 impl OcamlNode {
-    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
+    pub fn collect_disk_data() -> Result<OcamlDiskData, failure::Error> {
+        Ok(OcamlDiskData::new(
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezos"))?,
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
+        ))
+    }
+
+    pub fn collect_validator_memory_stats() -> Result<ProcessMemoryStats, failure::Error> {
         let mut system = System::new_all();
         system.refresh_all();
 
@@ -111,7 +109,7 @@ impl OcamlNode {
             .collect();
 
         // collect all processes that is the child of the main process and sum up the memory usage
-        let valaidators: ProcessMemoryStatsMaxMerge = system_processes
+        let valaidators: ProcessMemoryStats = system_processes
             .iter()
             .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
             .map(|(_, process)| {
@@ -124,8 +122,7 @@ impl OcamlNode {
                 m1.merge(m2);
                 m1
             })
-            .unwrap_or_default()
-            .into();
+            .unwrap_or_default();
 
         Ok(valaidators)
     }
@@ -162,7 +159,7 @@ pub trait Node {
         Ok(head_data)
     }
 
-    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStatsMaxMerge, failure::Error> {
+    async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
         let tezedge_raw_memory_info: MemoryData =
             match reqwest::get(&format!("http://localhost:{}/stats/memory", port)).await {
                 Ok(result) => result.json().await?,
@@ -170,7 +167,7 @@ pub trait Node {
             };
         let memory_stats: ProcessMemoryStats = tezedge_raw_memory_info.try_into()?;
 
-        Ok(memory_stats.into())
+        Ok(memory_stats)
     }
 
     async fn collect_commit_hash(port: u16) -> Result<String, failure::Error> {
@@ -193,5 +190,5 @@ pub trait Node {
             .sum::<f32>() as i32)
     }
 
-    fn collect_disk_data() -> Result<DiskData, failure::Error>;
+    // fn collect_disk_data() -> Result<DiskData, failure::Error>;
 }

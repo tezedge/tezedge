@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
-use shell::stats::memory::ProcessMemoryStatsMaxMerge;
+use shell::stats::memory::ProcessMemoryStats;
 
 use crate::configuration::AlertThresholds;
 use crate::constants::TEZEDGE_VOLUME_PATH;
@@ -245,7 +245,7 @@ impl Alerts {
                     .memory()
                     .protocol_runners()
                     .as_ref()
-                    .unwrap_or(&ProcessMemoryStatsMaxMerge::default())
+                    .unwrap_or(&ProcessMemoryStats::default())
                     .resident_mem()
         } else {
             last_measurement.memory().node().resident_mem()
@@ -253,7 +253,7 @@ impl Alerts {
                     .memory()
                     .validators()
                     .as_ref()
-                    .unwrap_or(&ProcessMemoryStatsMaxMerge::default())
+                    .unwrap_or(&ProcessMemoryStats::default())
                     .resident_mem()
         };
         let res = self.assign_resource_alert(
