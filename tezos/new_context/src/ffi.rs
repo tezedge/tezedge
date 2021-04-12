@@ -1,78 +1,389 @@
-use crate::{ContextKey, ContextValue, ProtocolContextApi, TezedgeContext};
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
 
-// Initialization
+//! Functions exposed to be called from OCaml
 
-//fn tezedge_initialize_inmem_context(rt, unit: OCamlRef<()>) {
-//    let _context = storage::initializer::initialize_tezedge_context(
-//        &storage::initializer::ContextKvStoreConfiguration::InMem, // NOTE: this is a config value, not a store
-//    )
-//    .expect("Failed to initialize merkle storage");
-//    OCaml::unit()
-//}
+use std::{marker::PhantomData, rc::Rc};
 
-// Shell Context API
+use ocaml_interop::*;
 
-// TODO
-// val exists : index -> Context_hash.t -> bool Lwt.t
+use crypto::hash::ContextHash;
 
-// TODO
-// val checkout : index -> Context_hash.t -> context option Lwt.t
+use crate::{
+    working_tree::working_tree::WorkingTree, ContextKey, ContextValue, IndexApi,
+    ProtocolContextApi, ShellContextApi, TezedgeContext, TezedgeIndex,
+};
+use tezos_api::ocaml_conv::OCamlContextHash;
 
-// TODO
-// val commit : time:Time.Protocol.t -> ?message:string -> context -> Context_hash.t Lwt.t
+const COMMIT_AUTHOR: &str = "Tezos";
 
-// TODO
-// val hash : time:Time.Protocol.t -> ?message:string -> t -> Context_hash.t
+// TODO: instead of converting errors into strings, it may be wort to pass
+// them around using custom pointers so that they can be recovered later.
+// OCaml code will not do anything with the errors, just raice an exception,
+// but once we catch it on Rust, having the original error value may be useful.
 
-// Protocol Context API
+ocaml_export! {
+    // OCaml = val exists : index -> Context_hash.t -> bool Lwt.t
+    fn tezedge_index_exists(
+        rt,
+        index: OCamlRef<TezedgeIndex>,
+        context_hash: OCamlRef<OCamlContextHash>,
+    ) -> OCaml<Result<bool, String>> {
+        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
+        let index = index_ptr.as_ref();
+        let context_hash: ContextHash = context_hash.to_rust(rt);
 
-// val mem : context -> key -> bool Lwt.t
-pub fn mem(context: &TezedgeContext, key: &ContextKey) -> bool {
-    // TODO: remove error case or handle somehow
-    context.mem(key).unwrap()
+        let result = index.exists(&context_hash)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val checkout : index -> Context_hash.t -> context option Lwt.t
+    fn tezedge_index_checkout(
+        rt,
+        index: OCamlRef<TezedgeIndex>,
+        context_hash: OCamlRef<OCamlContextHash>,
+    ) -> OCaml<Result<Option<TezedgeContext>, String>> {
+        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
+        let index = index_ptr.as_ref();
+        let context_hash: ContextHash = context_hash.to_rust(rt);
+
+        let result = index.checkout(&context_hash)
+            .map_err(|err| format!("{:?}", err))
+            .map(|ok| ok.map(|context| OCamlToRustPointer::alloc_custom(rt, context)));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val commit : time:Time.Protocol.t -> ?message:string -> context -> Context_hash.t Lwt.t
+    fn tezedge_context_commit(
+        rt,
+        date: OCamlRef<OCamlInt64>,
+        message: OCamlRef<String>,
+        context: OCamlRef<TezedgeContext>,
+    ) -> OCaml<Result<OCamlContextHash, String>> {
+        let mut context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_mut();
+        let message = message.to_rust(rt);
+        let date = date.to_rust(rt);
+
+        let result = context.commit(COMMIT_AUTHOR.to_owned(), message, date)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val hash : time:Time.Protocol.t -> ?message:string -> context -> Context_hash.t
+    fn tezedge_context_hash(
+        rt,
+        date: OCamlRef<OCamlInt64>,
+        message: OCamlRef<String>,
+        context: OCamlRef<TezedgeContext>,
+    ) -> OCaml<Result<OCamlContextHash, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let message = message.to_rust(rt);
+        let date = date.to_rust(rt);
+
+        let result = context.hash(COMMIT_AUTHOR.to_owned(), message, date)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val mem : context -> key -> bool Lwt.t
+    fn tezedge_context_mem(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<bool, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = context.mem(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val dir_mem : context -> key -> bool Lwt.t
+    fn tezedge_context_dir_mem(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<bool, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = context.dirmem(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val get : context -> key -> value option Lwt.t
+    fn tezedge_context_get(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<OCamlBytes, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = context.get(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+
+    }
+
+    // OCaml = val set : context -> key -> value -> t Lwt.t
+    fn tezedge_context_set(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+        value: OCamlRef<OCamlBytes>,
+    ) -> OCaml<Result<TezedgeContext, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+        let value: ContextValue = value.to_rust(rt);
+
+        let result =  context.set(&key, value)
+            .map_err(|err| format!("{:?}", err))
+            .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val remove_rec : context -> key -> t Lwt.t
+    fn tezedge_context_remove_rec(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<TezedgeContext, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = context.delete(&key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+
+        result.to_ocaml(rt)
+    }
+
+    // (** [copy] returns None if the [from] key is not bound *)
+    // OCaml = val copy : context -> from:key -> to_:key -> context option Lwt.t
+    fn tezedge_context_copy(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        from_key: OCamlRef<OCamlList<String>>,
+        to_key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<Option<TezedgeContext>, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let from_key: ContextKey = from_key.to_rust(rt);
+        let to_key: ContextKey = to_key.to_rust(rt);
+
+        let result = context.copy(&from_key, &to_key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|ok| ok.map(|context| OCamlToRustPointer::alloc_custom(rt, context)));
+
+        result.to_ocaml(rt)
+    }
+
+    // TODO: fold
+    // type key_or_dir = [`Key of key | `Dir of key]
+    //
+    // (** [fold] iterates over elements under a path (not recursive). Iteration order
+    //     is nondeterministic. *)
+    // val fold :
+    //   context -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
 }
 
-// val dir_mem : context -> key -> bool Lwt.t
-pub fn dir_mem(context: &TezedgeContext, key: &ContextKey) -> bool {
-    // TODO: remove error case or handle somehow
-    context.dirmem(key).unwrap()
+// Custom pointers from OCaml's heap to Rust's heap
+
+// TODO: reimplement all this directly into ocaml-interop
+
+pub const DEFAULT_CUSTOM_OPS: CustomOps = CustomOps {
+    identifier: core::ptr::null(),
+    fixed_length: core::ptr::null_mut(),
+    compare: None,
+    compare_ext: None,
+    deserialize: None,
+    finalize: None,
+    hash: None,
+    serialize: None,
+};
+
+#[derive(Clone)]
+#[repr(C)]
+#[allow(missing_docs)]
+pub struct CustomOps {
+    pub identifier: *const ocaml_sys::Char,
+    pub finalize: Option<unsafe extern "C" fn(v: RawOCaml)>,
+    pub compare: Option<unsafe extern "C" fn(v1: RawOCaml, v2: RawOCaml) -> i32>,
+    pub hash: Option<unsafe extern "C" fn(v: RawOCaml) -> OCamlInt>,
+
+    pub serialize: Option<
+        unsafe extern "C" fn(
+            v: RawOCaml,
+            bsize_32: *mut ocaml_sys::Uintnat,
+            bsize_64: *mut ocaml_sys::Uintnat,
+        ),
+    >,
+    pub deserialize:
+        Option<unsafe extern "C" fn(dst: *mut core::ffi::c_void) -> ocaml_sys::Uintnat>,
+    pub compare_ext: Option<unsafe extern "C" fn(v1: RawOCaml, v2: RawOCaml) -> i32>,
+    pub fixed_length: *const ocaml_sys::custom_fixed_length,
 }
 
-// val get : context -> key -> value option Lwt.t
-pub fn get(context: &TezedgeContext, key: &ContextKey) -> Option<ContextValue> {
-    // TODO: remove error case or handle somehow
-    context.get(key).ok()
+pub trait CustomOCamlPointer {
+    const NAME: &'static str;
+    const FIXED_LENGTH: Option<ocaml_sys::custom_fixed_length> = None;
+    const OPS: CustomOps;
+    const USED: usize = 0;
+    const MAX: usize = 1;
+
+    fn ops() -> &'static CustomOps {
+        &Self::OPS
+    }
 }
 
-// val set : context -> key -> value -> t Lwt.t
-pub fn set(context: &TezedgeContext, key: &ContextKey, value: ContextValue) -> TezedgeContext {
-    // TODO: remove error case or handle somehow
-    context.set(key, value).unwrap()
+// NOTE: the block is not initialized, a pointer must be written to it immediately
+// before anything else happens
+unsafe fn alloc_custom<T>(_rt: &mut OCamlRuntime) -> RawOCaml
+where
+    T: CustomOCamlPointer,
+{
+    ocaml_sys::caml_alloc_custom(
+        &T::ops() as *const _ as *const ocaml_sys::custom_operations,
+        ::core::mem::size_of::<T>(),
+        T::USED,
+        T::MAX,
+    )
 }
 
-// val remove_rec : context -> key -> t Lwt.t
-pub fn remove_rec(context: &TezedgeContext, key: &ContextKey) -> TezedgeContext {
-    // TODO: remove error case or handle somehow
-    context.delete(key).unwrap()
+// OCamlToRustPointer is an allocated OCaml custom block which contains
+// a Rust value.
+
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct OCamlToRustPointer<T: 'static>(pub RawOCaml, PhantomData<T>);
+
+impl<T> OCamlToRustPointer<T> {
+    pub fn alloc_custom(rt: &mut OCamlRuntime, x: T) -> Self
+    where
+        T: CustomOCamlPointer,
+    {
+        unsafe {
+            let mut ptr = Self(alloc_custom::<T>(rt), PhantomData);
+            ptr.set(x);
+            ptr
+        }
+    }
+
+    pub fn set(&mut self, x: T) {
+        unsafe {
+            ::core::ptr::write_unaligned(self.as_mut_ptr(), x);
+        }
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        unsafe { ocaml_sys::field(self.0, 1) as *const T }
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        unsafe { ocaml_sys::field(self.0, 1) as *mut T }
+    }
 }
 
-// (** [copy] returns None if the [from] key is not bound *)
-// val copy : context -> from:key -> to_:key -> context option Lwt.t
-pub fn copy(
-    context: &TezedgeContext,
-    from_key: &ContextKey,
-    to_key: &ContextKey,
-) -> Option<TezedgeContext> {
-    // TODO: remove error case or handle somehow
-    context.copy(from_key, to_key).unwrap()
+impl<'a, T> AsRef<T> for OCamlToRustPointer<T> {
+    fn as_ref(&self) -> &T {
+        unsafe { &*self.as_ptr() }
+    }
 }
 
-// TODO: fold
-/*
-type key_or_dir = [`Key of key | `Dir of key]
+impl<'a, T> AsMut<T> for OCamlToRustPointer<T> {
+    fn as_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.as_mut_ptr() }
+    }
+}
 
-(** [fold] iterates over elements under a path (not recursive). Iteration order
-    is nondeterministic. *)
-val fold :
-  context -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
-*/
+// Fake conversion from OCamlToRustPointer<T> into OCaml<T>.
+// Doesn't need to allocate anything, just reuse the pointer,
+
+unsafe impl<T: CustomOCamlPointer> ToOCaml<T> for OCamlToRustPointer<T> {
+    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, T> {
+        unsafe { OCaml::new(rt, self.0) }
+    }
+}
+
+unsafe impl<T: CustomOCamlPointer> FromOCaml<T> for OCamlToRustPointer<T> {
+    fn from_ocaml(value: OCaml<T>) -> Self {
+        OCamlToRustPointer(unsafe { value.raw() }, PhantomData)
+    }
+}
+
+#[macro_export]
+macro_rules! impl_custom_ocaml_pointer {
+    ($name:ident $(<$t:tt>)? $({$($k:ident : $v:expr),* $(,)? })?) => {
+        impl $(<$t>)? CustomOCamlPointer for $name $(<$t>)? {
+            impl_custom_ocaml_pointer! {
+                name: concat!("rust.", stringify!($name))
+                $(, $($k: $v),*)?
+            }
+        }
+    };
+    {name : $name:expr $(, fixed_length: $fl:expr)? $(, $($k:ident : $v:expr),*)? $(,)? } => {
+        const NAME: &'static str = concat!($name, "\0");
+
+        const OPS: CustomOps = CustomOps {
+            identifier: Self::NAME.as_ptr() as *const ocaml_sys::Char,
+            $($($k: Some($v),)*)?
+            .. DEFAULT_CUSTOM_OPS
+        };
+    };
+}
+
+// Concrete implementations of custom pointers used by the API
+
+impl_custom_ocaml_pointer!(TezedgeIndex {
+    finalize: tezedge_drop_tezedge_index,
+});
+
+impl_custom_ocaml_pointer!(TezedgeContext {
+    finalize: tezedge_drop_tezedge_context,
+});
+
+type WorkingTreeRc = Rc<WorkingTree>;
+
+impl_custom_ocaml_pointer!(WorkingTreeRc {
+    finalize: tezedge_drop_working_tree_rc,
+});
+
+extern "C" fn tezedge_drop_tezedge_index(v: RawOCaml) {
+    unsafe {
+        let ptr = ocaml_sys::field(v, 1) as *mut TezedgeIndex;
+        std::ptr::drop_in_place(ptr);
+    }
+}
+
+extern "C" fn tezedge_drop_tezedge_context(v: RawOCaml) {
+    unsafe {
+        let ptr = ocaml_sys::field(v, 1) as *mut TezedgeContext;
+        std::ptr::drop_in_place(ptr);
+    }
+}
+
+extern "C" fn tezedge_drop_working_tree_rc(v: RawOCaml) {
+    unsafe {
+        let ptr = ocaml_sys::field(v, 1) as *mut WorkingTreeRc;
+        std::ptr::drop_in_place(ptr);
+    }
+}
