@@ -17,6 +17,7 @@ im = { version = "15.0.0", features = ["serde"] }
 lazy_static = "1.4"
 leb128 = "0.2"
 ocaml-interop = { version = "0.7.2", features = ["without-ocamlopt"] }
+ocaml-sys = { version = "0.20.1", features = ["without-ocamlopt"] }
 serde = { version = "1.0", features = ["derive"] }
 sled = "0.34.6"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
@@ -25,6 +26,7 @@ strum = "0.20"
 strum_macros = "0.20"
 # Internal dependencies
 tezos-sys = { path = "../sys" }
+tezos_api = { path = "../api" }
 crypto = { path = "../../crypto" }
 
 # Context actions replayer binary and his dependencies
