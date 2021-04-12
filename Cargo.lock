@@ -4053,6 +4053,7 @@ dependencies = [
  "lazy_static",
  "leb128",
  "ocaml-interop",
+ "ocaml-sys",
  "serde 1.0.123",
  "serde_json",
  "sled",
@@ -4064,6 +4065,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos-sys",
+ "tezos_api",
  "tezos_messages",
 ]
 
