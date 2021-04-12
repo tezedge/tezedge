@@ -10,6 +10,24 @@ extern "C" {
     pub fn initialize_ml_context_functions(
         ml_context_send_action: unsafe extern "C" fn(isize) -> isize,
     );
+
+    pub fn initialize_tezedge_context_callbacks(
+        tezedge_context_commit: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
+        tezedge_context_hash: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
+        tezedge_context_copy: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_context_remove: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_add: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_context_find: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_mem: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_empty: unsafe extern "C" fn(isize) -> isize,
+
+        tezedge_index_patch_context_get: unsafe extern "C" fn(isize) -> isize,
+        tezedge_index_checkout: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_index_exists: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_index_close: unsafe extern "C" fn(isize) -> isize,
+        tezedge_index_init: unsafe extern "C" fn(isize) -> isize,
+    );
 }
 
 /// This function does nothing. It exists to force cargo to link libtezos to crates
