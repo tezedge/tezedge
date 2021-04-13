@@ -1,5 +1,8 @@
-/// Predefined data sets as callback functions for test node peer
-/// #[cfg(test)]
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Predefined data sets as callback functions for test node peer
+
 use std::path::Path;
 use std::sync::Once;
 use std::{env, fs};
