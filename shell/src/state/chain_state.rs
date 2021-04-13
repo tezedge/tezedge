@@ -23,13 +23,14 @@ use tezos_messages::p2p::encoding::{block_header::BlockHeader, limits::HISTORY_M
 use tezos_messages::Head;
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
+use crate::chain_feeder::ChainFeederRef;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, StartBranchBootstraping,
     UpdateBlockState, UpdateOperationsState,
 };
 use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
-use crate::state::data_requester::DataRequesterRef;
+use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::head_state::CurrentHeadRef;
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
@@ -40,6 +41,7 @@ use crate::validation;
 /// Note: if needed, cound be refactored to cfg and struct
 pub(crate) mod bootstrap_constants {
     use crate::state::peer_state::DataQueuesLimits;
+    use std::time::Duration;
 
     /// We can controll speedup of downloading blocks from network
     pub(crate) const MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT: i8 = 2;
@@ -48,7 +50,9 @@ pub(crate) mod bootstrap_constants {
     pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
 
     /// We tries to apply downloaded blocks in batch to speedup and save resources
-    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 1000;
+    pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 100;
+    /// We controll frequecncy of holding lock too long, just in case peers is stucked, this is the maximum deadline
+    pub(crate) const BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT: Duration = Duration::from_secs(60 * 20);
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
@@ -89,14 +93,19 @@ pub struct BlockchainState {
 
 impl BlockchainState {
     pub fn new(
-        requester: DataRequesterRef,
+        block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
         shell_channel: ShellChannelRef,
         chain_id: Arc<ChainId>,
         chain_genesis_block_hash: Arc<BlockHash>,
     ) -> Self {
         BlockchainState {
-            requester,
+            requester: DataRequesterRef::new(DataRequester::new(
+                BlockMetaStorage::new(&persistent_storage),
+                OperationsMetaStorage::new(&persistent_storage),
+                block_applier,
+                bootstrap_constants::BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT,
+            )),
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),

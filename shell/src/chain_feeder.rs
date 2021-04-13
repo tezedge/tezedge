@@ -453,6 +453,7 @@ fn feed_chain_to_protocol(
                             block_meta_storage,
                             context,
                             protocol_controller,
+                            init_storage_data.one_context,
                             &log,
                         ) {
                             Ok(result) => {
@@ -559,6 +560,7 @@ fn _apply_block(
     block_meta_storage: &BlockMetaStorage,
     context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
+    one_context: bool,
     log: &Logger,
 ) -> Result<Option<ProcessValidatedBlock>, FeedChainError> {
     // collect all required data for apply
@@ -607,7 +609,7 @@ fn _apply_block(
 
     // we need to check and wait for context_hash to be 100% sure, that everything is ok
     let context_wait_timer = Instant::now();
-    wait_for_context(context, &apply_block_result.context_hash)?;
+    wait_for_context(context, &apply_block_result.context_hash, one_context)?;
     let context_wait_elapsed = context_wait_timer.elapsed();
     if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
         info!(log, "Block was applied with long context processing";
@@ -734,7 +736,11 @@ pub(crate) fn initialize_protocol_context(
             )?;
 
             let context_wait_timer = Instant::now();
-            wait_for_context(context, &genesis_context_hash)?;
+            wait_for_context(
+                context,
+                &genesis_context_hash,
+                init_storage_data.one_context,
+            )?;
             let context_wait_elapsed = context_wait_timer.elapsed();
 
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
@@ -784,7 +790,7 @@ fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(60 * 60), Duration::from_millis(15));
+    (Duration::from_secs(60 * 60 * 2), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 
@@ -792,7 +798,11 @@ const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 pub fn wait_for_context(
     context: &Box<dyn ContextApi>,
     context_hash: &ContextHash,
+    one_context: bool,
 ) -> Result<(), FeedChainError> {
+    if one_context {
+        return Ok(());
+    }
     let (timeout, delay): (Duration, Duration) = CONTEXT_WAIT_DURATION;
     let start = SystemTime::now();
 

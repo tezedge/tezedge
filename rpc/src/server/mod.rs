@@ -65,6 +65,9 @@ pub struct RpcServiceEnvironment {
     tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     tezos_without_context_api: Arc<TezosApiConnectionPool>,
+
+    // TODO: TE-447 - remove one_context when integration done
+    pub one_context: bool,
 }
 
 impl RpcServiceEnvironment {
@@ -83,6 +86,7 @@ impl RpcServiceEnvironment {
         main_chain_id: ChainId,
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
+        one_context: bool,
         log: &Logger,
     ) -> Self {
         Self {
@@ -101,6 +105,7 @@ impl RpcServiceEnvironment {
             tezos_readonly_api,
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
+            one_context,
         }
     }
 }
@@ -143,6 +148,7 @@ pub fn spawn_server(
 ) -> impl Future<Output = Result<(), hyper::Error>> {
     let routes = Arc::new(router::create_routes(
         env.state().read().unwrap().is_sandbox(),
+        env.one_context,
     ));
 
     hyper::Server::bind(bind_address)

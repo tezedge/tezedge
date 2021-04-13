@@ -465,6 +465,8 @@ steps:
   when:
     ref:
       - refs/pull/*/head
+  # TODO: needs rework and speedup with new CI
+  detach: true
 
 image_pull_secrets:
   - docker_pull_secret

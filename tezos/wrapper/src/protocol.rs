@@ -52,6 +52,7 @@ pub trait ProtocolApi {
         commit_genesis: bool,
         enable_testchain: bool,
         readonly: bool,
+        turn_off_context_raw_inspector: bool,
         patch_context: Option<PatchContext>,
     ) -> Result<InitProtocolContextResult, TezosStorageInitError>;
 

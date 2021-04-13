@@ -23,7 +23,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
+pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -137,16 +137,18 @@ pub(crate) fn create_routes(is_sandbox: bool) -> PathTree<MethodHandler> {
         "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index/:operation_index",
         shell_handler::get_block_operation,
     );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
-        shell_handler::context_raw_bytes,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
-        shell_handler::context_raw_bytes,
-    );
+    if !one_context {
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
+            shell_handler::context_raw_bytes,
+        );
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
+            shell_handler::context_raw_bytes,
+        );
+    }
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/metadata",

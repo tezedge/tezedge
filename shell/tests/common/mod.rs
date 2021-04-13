@@ -1,5 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fs;

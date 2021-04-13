@@ -121,7 +121,7 @@ fn create_tezos_without_context_api_pool(
 /// Create pool for ffi protocol runner connection (used for write to context)
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 fn create_tezos_writeable_api_pool(
-    event_server_path: PathBuf,
+    event_server_path: Option<PathBuf>,
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
@@ -140,7 +140,8 @@ fn create_tezos_writeable_api_pool(
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
+                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes
+                    && !env.storage.context_action_recorders.is_empty(),
                 debug_mode: !env.storage.context_action_recorders.is_empty(),
             },
             tezos_env,
@@ -148,7 +149,7 @@ fn create_tezos_writeable_api_pool(
             &env.storage.tezos_data_dir,
             &env.ffi.protocol_runner,
             env.logging.level,
-            Some(event_server_path),
+            event_server_path,
         ),
         log,
     )
@@ -215,7 +216,11 @@ fn block_on_actors(
         IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
     let tezos_writeable_api_pool = Arc::new(
         create_tezos_writeable_api_pool(
-            context_actions_event_server.server_path(),
+            if context_action_recorders.is_empty() && env.storage.one_context {
+                None
+            } else {
+                Some(context_actions_event_server.server_path())
+            },
             &env,
             tezos_env.clone(),
             log.clone(),
@@ -252,15 +257,19 @@ fn block_on_actors(
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
-    let _ = ContextListener::actor(
-        &actor_system,
-        shell_channel.clone(),
-        &persistent_storage,
-        context_action_recorders,
-        context_actions_event_server,
-        log.clone(),
-    )
-    .expect("Failed to create context event listener");
+    if context_action_recorders.is_empty() && env.storage.one_context {
+        ()
+    } else {
+        let _ = ContextListener::actor(
+            &actor_system,
+            shell_channel.clone(),
+            &persistent_storage,
+            context_action_recorders,
+            context_actions_event_server,
+            log.clone(),
+        )
+        .expect("Failed to create context event listener");
+    }
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
@@ -558,6 +567,7 @@ fn main() {
             &env.storage.db_path,
             &env.storage.tezos_data_dir,
             &env.storage.patch_context,
+            env.storage.one_context,
             &log,
         ) {
             Ok(init_data) => {

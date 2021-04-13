@@ -3,13 +3,14 @@
 #![feature(test)]
 extern crate test;
 
-/// Simple integration test for actors
+/// Simple integration test for chain actors
 ///
-/// (Tests are ignored, because they need protocol-runner binary)
+///(Tests are ignored, because they need protocol-runner binary)
 /// Runs like: `PROTOCOL_RUNNER=./target/release/protocol-runner cargo test --release -- --ignored`
 use std::collections::{HashMap, HashSet};
 use std::env;
 use std::iter::FromIterator;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime};
@@ -40,6 +41,7 @@ lazy_static! {
     pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
             listener_port: *NODE_P2P_PORT,
+            listener_address: format!("0.0.0.0:{}", *NODE_P2P_PORT).parse::<SocketAddr>().expect("Failed to parse listener address"),
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
@@ -89,7 +91,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     // connect mocked node peer with test data set
     let clocks = Instant::now();
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE",
+        "TEST_PEER_NODE".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -192,7 +194,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     let (db_branch_1, ..) = common::test_cases_data::sandbox_branch_1_level3::init_data(&node.log);
     let clocks = Instant::now();
     let mocked_peer_node_branch_1 = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE_BRANCH_1",
+        "TEST_PEER_NODE_BRANCH_1".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -213,7 +215,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     let clocks = Instant::now();
     let (db_branch_2, ..) = common::test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
     let mocked_peer_node_branch_2 = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE_BRANCH_2",
+        "TEST_PEER_NODE_BRANCH_2".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -335,7 +337,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
 
     // connect mocked node peer with test data set (dont_serve_data does not respond on p2p) - we just want to connect peers
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE",
+        "TEST_PEER_NODE".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -437,7 +439,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
 
     // register network channel listener
     let peers_mirror = Arc::new(RwLock::new(HashMap::new()));
-    let _ = test_actor::NetworkChannelListener::actor(
+    let _ = common::infra::test_actor::NetworkChannelListener::actor(
         &node.actor_system,
         node.network_channel.clone(),
         peers_mirror.clone(),
@@ -453,7 +455,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     // connect mocked node peer with test data set
     let test_node_identity = tezos_identity::Identity::generate(0f64)?;
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE-1",
+        "TEST_PEER_NODE-1".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         test_node_identity.clone(),
@@ -466,7 +468,10 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     assert!(mocked_peer_node
         .wait_for_connection((Duration::from_secs(5), Duration::from_millis(100)))
         .is_ok());
-    test_actor::NetworkChannelListener::verify_connected(&mocked_peer_node, peers_mirror.clone())?;
+    common::infra::test_actor::NetworkChannelListener::verify_connected(
+        &mocked_peer_node,
+        peers_mirror.clone(),
+    )?;
 
     // wait for current head on level 3
     node.wait_for_new_current_head(
@@ -486,7 +491,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     ))?;
 
     // peer should be now blacklisted
-    test_actor::NetworkChannelListener::verify_blacklisted(
+    common::infra::test_actor::NetworkChannelListener::verify_blacklisted(
         &mocked_peer_node,
         peers_mirror.clone(),
     )?;
@@ -494,7 +499,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
 
     // try to reconnect with same peer (ip/identity)
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE-2",
+        "TEST_PEER_NODE-2".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         test_node_identity.clone(),
@@ -513,7 +518,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
 
     // try to reconnect with same peer (ip/identity)
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE-3",
+        "TEST_PEER_NODE-3".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         test_node_identity,
@@ -525,7 +530,10 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     assert!(mocked_peer_node
         .wait_for_connection((Duration::from_secs(5), Duration::from_millis(100)))
         .is_ok());
-    test_actor::NetworkChannelListener::verify_connected(&mocked_peer_node, peers_mirror.clone())?;
+    common::infra::test_actor::NetworkChannelListener::verify_connected(
+        &mocked_peer_node,
+        peers_mirror.clone(),
+    )?;
 
     // send current_head with level4 (with hacked protocol data)
     // (Invalid signature for block)
@@ -538,7 +546,10 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     ))?;
 
     // peer should be now blacklisted
-    test_actor::NetworkChannelListener::verify_blacklisted(&mocked_peer_node, peers_mirror)?;
+    common::infra::test_actor::NetworkChannelListener::verify_blacklisted(
+        &mocked_peer_node,
+        peers_mirror,
+    )?;
 
     // stop nodes
     drop(mocked_peer_node);
@@ -605,7 +616,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     // connect mocked node peer with test data set
     let clocks = Instant::now();
     let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE",
+        "TEST_PEER_NODE".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -834,7 +845,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     // connect mocked node peer with test data set
     let clocks = Instant::now();
     let _ = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE",
+        "TEST_PEER_NODE".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -879,170 +890,6 @@ fn ensure_target_action_file() -> Result<PathBuf, failure::Error> {
         std::fs::remove_file(&path)?;
     }
     Ok(path)
-}
-
-mod test_actor {
-    use std::collections::HashMap;
-    use std::sync::{Arc, RwLock};
-    use std::time::{Duration, SystemTime};
-
-    use riker::actors::*;
-
-    use crypto::hash::CryptoboxPublicKeyHash;
-    use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
-    use shell::subscription::subscribe_to_network_events;
-
-    use crate::common::test_node_peer::TestNodePeer;
-
-    #[actor(NetworkChannelMsg)]
-    pub(crate) struct NetworkChannelListener {
-        peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-        network_channel: NetworkChannelRef,
-    }
-
-    pub type NetworkChannelListenerRef = ActorRef<NetworkChannelListenerMsg>;
-
-    impl Actor for NetworkChannelListener {
-        type Msg = NetworkChannelListenerMsg;
-
-        fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-            subscribe_to_network_events(&self.network_channel, ctx.myself());
-        }
-
-        fn recv(
-            &mut self,
-            ctx: &Context<Self::Msg>,
-            msg: Self::Msg,
-            sender: Option<BasicActorRef>,
-        ) {
-            self.receive(ctx, msg, sender);
-        }
-    }
-
-    impl
-        ActorFactoryArgs<(
-            NetworkChannelRef,
-            Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-        )> for NetworkChannelListener
-    {
-        fn create_args(
-            (network_channel, peers_mirror): (
-                NetworkChannelRef,
-                Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-            ),
-        ) -> Self {
-            Self {
-                network_channel,
-                peers_mirror,
-            }
-        }
-    }
-
-    impl Receive<NetworkChannelMsg> for NetworkChannelListener {
-        type Msg = NetworkChannelListenerMsg;
-
-        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
-            self.process_network_channel_message(ctx, msg)
-        }
-    }
-
-    impl NetworkChannelListener {
-        pub fn name() -> &'static str {
-            "network-channel-listener-actor"
-        }
-
-        pub fn actor(
-            sys: &ActorSystem,
-            network_channel: NetworkChannelRef,
-            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-        ) -> Result<NetworkChannelListenerRef, CreateError> {
-            Ok(sys.actor_of_props::<NetworkChannelListener>(
-                Self::name(),
-                Props::new_args((network_channel, peers_mirror)),
-            )?)
-        }
-
-        fn process_network_channel_message(
-            &mut self,
-            _: &Context<NetworkChannelListenerMsg>,
-            msg: NetworkChannelMsg,
-        ) {
-            match msg {
-                NetworkChannelMsg::PeerMessageReceived(_) => {}
-                NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
-                    self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
-                        "CONNECTED".to_string(),
-                    );
-                }
-                NetworkChannelMsg::BlacklistPeer(..) => {}
-                NetworkChannelMsg::PeerBlacklisted(peer_id) => {
-                    self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
-                        "BLACKLISTED".to_string(),
-                    );
-                }
-                _ => (),
-            }
-        }
-
-        pub fn verify_connected(
-            peer: &TestNodePeer,
-            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-        ) -> Result<(), failure::Error> {
-            Self::verify_state(
-                "CONNECTED",
-                peer,
-                peers_mirror,
-                (Duration::from_secs(5), Duration::from_millis(250)),
-            )
-        }
-
-        pub fn verify_blacklisted(
-            peer: &TestNodePeer,
-            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-        ) -> Result<(), failure::Error> {
-            Self::verify_state(
-                "BLACKLISTED",
-                peer,
-                peers_mirror,
-                (Duration::from_secs(5), Duration::from_millis(250)),
-            )
-        }
-
-        // TODO: refactor with async/condvar, not to block main thread
-        fn verify_state(
-            expected_state: &str,
-            peer: &TestNodePeer,
-            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, String>>>,
-            (timeout, delay): (Duration, Duration),
-        ) -> Result<(), failure::Error> {
-            let start = SystemTime::now();
-            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
-
-            let result = loop {
-                let peers_mirror = peers_mirror.read().unwrap();
-                if let Some(peer_state) = peers_mirror.get(peer_public_key_hash) {
-                    if peer_state == expected_state {
-                        break Ok(());
-                    }
-                }
-
-                // kind of simple retry policy
-                if start.elapsed()?.le(&timeout) {
-                    std::thread::sleep(delay);
-                } else {
-                    break Err(
-                        failure::format_err!(
-                            "[{}] verify_state - peer_public_key({}) - (expected_state: {}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
-                        )
-                    );
-                }
-            };
-            result
-        }
-    }
 }
 
 mod stats {

@@ -44,6 +44,7 @@ fn test_init_empty_context_for_all_enviroment_nets() {
             true,
             false,
             false,
+            false,
             None,
         ) {
             Err(e) => panic!(
@@ -102,6 +103,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
         true,
         false,
         false,
+        false,
         Some(patch_context),
     ) {
         Err(e) => panic!(
@@ -147,6 +149,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
         tezos_env.genesis.clone(),
         tezos_env.protocol_overrides.clone(),
         true,
+        false,
         false,
         false,
         None,
