@@ -1,9 +1,0 @@
-[Unit]
-Description=Tezedge "stack"(node + debugger + explorer) deployment timer
-
-[Timer]
-OnUnitActiveSec=300s
-OnBootSec=10s
-
-[Install]
-WantedBy=timers.target

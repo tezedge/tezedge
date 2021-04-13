@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::convert::TryFrom;
+use std::fmt;
 use std::fs::{read_dir, File};
 use std::io::prelude::*;
 use std::path::Path;
@@ -8,6 +10,7 @@ use std::process::Command;
 use std::string::FromUtf8Error;
 
 use failure::Fail;
+use getset::CopyGetters;
 use merge::Merge;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -28,23 +31,25 @@ pub struct LinuxData {
     dt: String,       // dirty pages (unused in Linux 2.6)
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 pub struct DarwinOsData {
     page_size: usize, // unit of memory assignment/addressing used by the Linux kernel
     mem: f64,         // percentage of real memory being used by the process in KB
     resident: String, // resident set size
 }
 
-#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq)]
+#[derive(Serialize, Debug, Default, Merge, Clone, PartialEq, CopyGetters)]
 pub struct ProcessMemoryStats {
+    #[get_copy = "pub"]
     #[merge(strategy = merge::num::saturating_add)]
     virtual_mem: usize,
 
+    #[get_copy = "pub"]
     #[merge(strategy = merge::num::saturating_add)]
     resident_mem: usize,
 }
 
-#[derive(Serialize, PartialEq, Clone, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Clone, Debug)]
 #[serde(untagged)]
 pub enum MemoryData {
     Linux(LinuxData),
@@ -60,6 +65,78 @@ impl From<LinuxData> for MemoryData {
 impl From<DarwinOsData> for MemoryData {
     fn from(data: DarwinOsData) -> Self {
         MemoryData::DarwinOs(data)
+    }
+}
+
+impl TryFrom<MemoryData> for ProcessMemoryStats {
+    type Error = failure::Error;
+
+    fn try_from(data: MemoryData) -> Result<Self, Self::Error> {
+        match data {
+            MemoryData::Linux(stats) => {
+                let LinuxData {
+                    size,
+                    resident,
+                    page_size,
+                    ..
+                } = stats;
+
+                let size = size.parse::<usize>()?;
+                let resident = resident.parse::<usize>()?;
+
+                let virtual_mem = size * page_size;
+                let resident_mem = resident * page_size;
+
+                Ok(ProcessMemoryStats {
+                    virtual_mem,
+                    resident_mem,
+                })
+            }
+            MemoryData::DarwinOs(stats) => {
+                let DarwinOsData {
+                    resident,
+                    page_size,
+                    ..
+                } = stats;
+
+                let resident = resident.parse::<usize>()?;
+
+                // Note: we cannot get the virstual memory size from the data available
+                let virtual_mem = 0;
+                let resident_mem = resident * page_size;
+
+                Ok(ProcessMemoryStats {
+                    virtual_mem,
+                    resident_mem,
+                })
+            }
+        }
+    }
+}
+
+impl fmt::Display for ProcessMemoryStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "\n\tVirtual memory: {} MB\n\tResident memory: {} MB",
+            self.virtual_mem, self.resident_mem,
+        )
+    }
+}
+
+impl ProcessMemoryStats {
+    pub fn new(virtual_mem: usize, resident_mem: usize) -> Self {
+        Self {
+            virtual_mem,
+            resident_mem,
+        }
+    }
+
+    pub fn to_megabytes(&self) -> Self {
+        Self {
+            resident_mem: self.resident_mem / 1024 / 1024,
+            virtual_mem: self.virtual_mem / 1024 / 1024,
+        }
     }
 }
 
