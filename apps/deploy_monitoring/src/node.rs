@@ -114,8 +114,8 @@ impl OcamlNode {
             .filter(|(_, process)| tezos_ocaml_processes.contains(&process.parent()))
             .map(|(_, process)| {
                 ProcessMemoryStats::new(
-                    process.virtual_memory().try_into().unwrap_or_default(),
-                    process.memory().try_into().unwrap_or_default(),
+                    (process.virtual_memory() * 1024).try_into().unwrap(),
+                    (process.memory() * 1024).try_into().unwrap(),
                 )
             })
             .fold1(|mut m1, m2| {
