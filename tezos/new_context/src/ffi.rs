@@ -3,6 +3,9 @@
 
 //! Functions exposed to be called from OCaml
 
+// TODO: init function
+// TODO: externs in OCaml side
+
 use std::{marker::PhantomData, rc::Rc};
 
 use ocaml_interop::*;
@@ -12,17 +15,27 @@ use crypto::hash::ContextHash;
 use crate::{
     working_tree::working_tree::WorkingTree, ContextKey, ContextValue, IndexApi,
     ProtocolContextApi, ShellContextApi, TezedgeContext, TezedgeIndex,
+    initializer::ContextKvStoreConfiguration, initializer::initialize_tezedge_index,
 };
 use tezos_api::ocaml_conv::OCamlContextHash;
 
 const COMMIT_AUTHOR: &str = "Tezos";
 
-// TODO: instead of converting errors into strings, it may be wort to pass
+// TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
 // OCaml code will not do anything with the errors, just raice an exception,
 // but once we catch it on Rust, having the original error value may be useful.
 
 ocaml_export! {
+    fn tezedge_index_init(
+        rt,
+        _unit: OCamlRef<()>,
+    ) -> OCaml<TezedgeIndex> {
+        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMem);
+        let index = OCamlToRustPointer::alloc_custom(rt, index);
+        index.to_ocaml(rt)
+    }
+
     // OCaml = val exists : index -> Context_hash.t -> bool Lwt.t
     fn tezedge_index_exists(
         rt,
