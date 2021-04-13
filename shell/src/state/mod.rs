@@ -248,7 +248,7 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::convert::TryInto;
     use std::sync::Arc;
 
@@ -426,6 +426,7 @@ mod tests {
             let metadata = MetadataMessage::new(false, false);
             let version = NetworkVersion::new("".to_owned(), 0, 0);
             let peer_ref = Peer::actor(
+                &peer_id_marker,
                 sys,
                 network_channel,
                 tokio_runtime.handle().clone(),

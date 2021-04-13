@@ -3,11 +3,13 @@
 #![feature(test)]
 extern crate test;
 
-/// Simple integration test for actors
+/// Simple integration test for p2p actors
 ///
 /// (Tests are ignored, because they need protocol-runner binary)
 /// Runs like: `PROTOCOL_RUNNER=./target/release/protocol-runner cargo test --release -- --ignored`
-use std::sync::atomic::Ordering;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use lazy_static::lazy_static;
@@ -28,6 +30,7 @@ lazy_static! {
     pub static ref NODE_P2P_CFG: (P2p, ShellCompatibilityVersion) = (
         P2p {
             listener_port: *NODE_P2P_PORT,
+            listener_address: format!("0.0.0.0:{}", *NODE_P2P_PORT).parse::<SocketAddr>().expect("Failed to parse listener address"),
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
@@ -38,6 +41,16 @@ lazy_static! {
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
     pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64).unwrap();
+}
+
+fn p2p_cfg_with_threshold(
+    mut cfg: (P2p, ShellCompatibilityVersion),
+    low: usize,
+    high: usize,
+) -> (P2p, ShellCompatibilityVersion) {
+    cfg.0.peer_threshold =
+        PeerConnectionThreshold::try_new(low, high, Some(0)).expect("Invalid range");
+    cfg
 }
 
 #[ignore]
@@ -57,6 +70,9 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         .get(&tezos_env)
         .expect("no environment configuration");
 
+    // max peer's 4, means max incoming connections 2
+    let peer_threshold_high = 4;
+
     // start node
     let node = common::infra::NodeInfrastructure::start(
         TmpStorage::create(common::prepare_empty_dir("__test_22"))?,
@@ -64,12 +80,24 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         "test_peer_threshold",
         &tezos_env,
         patch_context,
-        Some(NODE_P2P_CFG.clone()),
+        Some(p2p_cfg_with_threshold(
+            NODE_P2P_CFG.clone(),
+            0,
+            peer_threshold_high,
+        )),
         NODE_IDENTITY.clone(),
         (log, log_level),
         vec![],
         (false, false),
     )?;
+
+    // register network channel listener
+    let peers_mirror = Arc::new(RwLock::new(HashMap::new()));
+    let _ = common::infra::test_actor::NetworkChannelListener::actor(
+        &node.actor_system,
+        node.network_channel.clone(),
+        peers_mirror.clone(),
+    );
 
     // wait for storage initialization to genesis
     node.wait_for_new_current_head(
@@ -78,31 +106,43 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
 
-    let mut incoming_peers: Vec<common::test_node_peer::TestNodePeer> = Vec::new();
-    for peer_index in 0..4 {
-        let name: &'static str =
-            Box::leak(format!("{}{}", "TEST_PEER_", peer_index).into_boxed_str());
-        incoming_peers.push(common::test_node_peer::TestNodePeer::connect(
-            name,
-            NODE_P2P_CFG.0.listener_port,
-            NODE_P2P_CFG.1.clone(),
-            tezos_identity::Identity::generate(0f64)?,
-            node.log.clone(),
-            &node.tokio_runtime,
-            common::test_cases_data::sandbox_branch_1_level3::serve_data,
-        ));
-    }
-    // TODO (Hotfix): TE- Remove this sleep after the p2p rework
-    // Note: Now we are essentially connecting after the threshold, but immediatly disconnecting so we need a delay here
+    // try connect several peers: <peer_threshold_high * 2>
+    let incoming_peers: Vec<common::test_node_peer::TestNodePeer> = (0..(peer_threshold_high * 2))
+        .map(|idx| format!("TEST_PEER_NODE_{}", idx))
+        .map(|peer_name| {
+            common::test_node_peer::TestNodePeer::connect(
+                peer_name,
+                NODE_P2P_CFG.0.listener_port,
+                NODE_P2P_CFG.1.clone(),
+                tezos_identity::Identity::generate(0f64).expect("failed to generate identity"),
+                node.log.clone(),
+                &node.tokio_runtime,
+                common::test_cases_data::sandbox_branch_1_level3::serve_data,
+            )
+        })
+        .collect();
+
+    // give some time to async actors
     std::thread::sleep(Duration::from_secs(3));
+
+    // verify peers state - we should accepted just max peer_threshold_high
+    let connected = peers_mirror
+        .read()
+        .unwrap()
+        .iter()
+        .filter(|&(_, status)| {
+            status == &common::infra::test_actor::PeerConnectionStatus::Connected
+        })
+        .count();
     assert_eq!(
-        incoming_peers
-            .iter()
-            .map(|peer| peer.connected.load(Ordering::Acquire))
-            .filter(|con| con == &true)
-            .count(),
-        2
+        connected,
+        peer_threshold_high / 2,
+        "Actual connected count: {}, expected <= {}",
+        connected,
+        peer_threshold_high
     );
+
+    drop(incoming_peers);
 
     Ok(())
 }

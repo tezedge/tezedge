@@ -1,18 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// use std::collections::{HashMap, HashSet};
-// use std::env;
-// use std::fs;
-// use std::path::{Path, PathBuf};
-
-// use serde::{Deserialize, Serialize};
-// use slog::{Drain, Level, Logger};
-
-// use crypto::hash::OperationHash;
-// use tezos_messages::p2p::encoding::prelude::Operation;
-
-/// Module which runs actor's very similar than real node runs
+//! Module which runs actor's very similar than real node runs
 
 #[cfg(test)]
 use std::collections::HashSet;
@@ -447,4 +436,175 @@ fn create_tokio_runtime() -> tokio::runtime::Runtime {
         .enable_all()
         .build()
         .expect("Failed to create tokio runtime")
+}
+
+pub mod test_actor {
+    use std::collections::HashMap;
+    use std::sync::{Arc, RwLock};
+    use std::time::{Duration, SystemTime};
+
+    use riker::actors::*;
+
+    use crypto::hash::CryptoboxPublicKeyHash;
+    use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef};
+    use shell::subscription::subscribe_to_network_events;
+
+    use crate::common::test_node_peer::TestNodePeer;
+
+    #[derive(PartialEq, Eq, Debug)]
+    pub enum PeerConnectionStatus {
+        Connected,
+        Blacklisted,
+        Stalled,
+    }
+
+    #[actor(NetworkChannelMsg)]
+    pub struct NetworkChannelListener {
+        peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+        network_channel: NetworkChannelRef,
+    }
+
+    pub type NetworkChannelListenerRef = ActorRef<NetworkChannelListenerMsg>;
+
+    impl Actor for NetworkChannelListener {
+        type Msg = NetworkChannelListenerMsg;
+
+        fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+            subscribe_to_network_events(&self.network_channel, ctx.myself());
+        }
+
+        fn recv(
+            &mut self,
+            ctx: &Context<Self::Msg>,
+            msg: Self::Msg,
+            sender: Option<BasicActorRef>,
+        ) {
+            self.receive(ctx, msg, sender);
+        }
+    }
+
+    impl
+        ActorFactoryArgs<(
+            NetworkChannelRef,
+            Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+        )> for NetworkChannelListener
+    {
+        fn create_args(
+            (network_channel, peers_mirror): (
+                NetworkChannelRef,
+                Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+            ),
+        ) -> Self {
+            Self {
+                network_channel,
+                peers_mirror,
+            }
+        }
+    }
+
+    impl Receive<NetworkChannelMsg> for NetworkChannelListener {
+        type Msg = NetworkChannelListenerMsg;
+
+        fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+            self.process_network_channel_message(ctx, msg)
+        }
+    }
+
+    impl NetworkChannelListener {
+        pub fn name() -> &'static str {
+            "network-channel-listener-actor"
+        }
+
+        pub fn actor(
+            sys: &ActorSystem,
+            network_channel: NetworkChannelRef,
+            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+        ) -> Result<NetworkChannelListenerRef, CreateError> {
+            Ok(sys.actor_of_props::<NetworkChannelListener>(
+                Self::name(),
+                Props::new_args((network_channel, peers_mirror)),
+            )?)
+        }
+
+        fn process_network_channel_message(
+            &mut self,
+            _: &Context<NetworkChannelListenerMsg>,
+            msg: NetworkChannelMsg,
+        ) {
+            match msg {
+                NetworkChannelMsg::PeerMessageReceived(_) => {}
+                NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
+                    self.peers_mirror.write().unwrap().insert(
+                        peer_id.peer_public_key_hash.clone(),
+                        PeerConnectionStatus::Connected,
+                    );
+                }
+                NetworkChannelMsg::BlacklistPeer(..) => {}
+                NetworkChannelMsg::PeerBlacklisted(peer_id) => {
+                    self.peers_mirror.write().unwrap().insert(
+                        peer_id.peer_public_key_hash.clone(),
+                        PeerConnectionStatus::Blacklisted,
+                    );
+                }
+                _ => (),
+            }
+        }
+
+        pub fn verify_connected(
+            peer: &TestNodePeer,
+            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+        ) -> Result<(), failure::Error> {
+            Self::verify_state(
+                PeerConnectionStatus::Connected,
+                peer,
+                peers_mirror,
+                (Duration::from_secs(5), Duration::from_millis(250)),
+            )
+        }
+
+        pub fn verify_blacklisted(
+            peer: &TestNodePeer,
+            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+        ) -> Result<(), failure::Error> {
+            Self::verify_state(
+                PeerConnectionStatus::Blacklisted,
+                peer,
+                peers_mirror,
+                (Duration::from_secs(5), Duration::from_millis(250)),
+            )
+        }
+
+        // TODO: refactor with async/condvar, not to block main thread
+        fn verify_state(
+            expected_state: PeerConnectionStatus,
+            peer: &TestNodePeer,
+            peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
+            (timeout, delay): (Duration, Duration),
+        ) -> Result<(), failure::Error> {
+            let start = SystemTime::now();
+            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
+
+            let result = loop {
+                let peers_mirror = peers_mirror.read().unwrap();
+                if let Some(peer_state) = peers_mirror.get(peer_public_key_hash) {
+                    if peer_state == &expected_state {
+                        break Ok(());
+                    }
+                }
+
+                // kind of simple retry policy
+                if start.elapsed()?.le(&timeout) {
+                    std::thread::sleep(delay);
+                } else {
+                    break Err(
+                        failure::format_err!(
+                            "[{}] verify_state - peer_public_key({}) - (expected_state: {:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
+                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
+                        )
+                    );
+                }
+            };
+            result
+        }
+    }
 }

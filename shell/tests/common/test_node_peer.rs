@@ -1,4 +1,8 @@
-/// Test node peer, which simulates p2p remote peer, communicates through real p2p socket
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Test node peer, which simulates p2p remote peer, communicates through real p2p socket
+
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +30,7 @@ const READ_TIMEOUT_LONG: Duration = Duration::from_secs(30);
 
 pub struct TestNodePeer {
     pub identity: Arc<Identity>,
-    pub name: &'static str,
+    pub name: String,
     log: Logger,
     pub connected: Arc<AtomicBool>,
     /// Tokio task executor
@@ -40,7 +44,7 @@ pub struct TestNodePeer {
 
 impl TestNodePeer {
     pub fn connect(
-        name: &'static str,
+        name: String,
         connect_to_node_port: u16,
         shell_compatibility_version: ShellCompatibilityVersion,
         identity: Identity,
@@ -64,6 +68,7 @@ impl TestNodePeer {
             let connected = connected.clone();
             let tx = tx.clone();
             let log = log.clone();
+            let name = name.clone();
             tokio_executor.spawn(async move {
                 // init socket connection to server node
                 match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
@@ -119,7 +124,7 @@ impl TestNodePeer {
 
     /// Start to process incoming data
     async fn begin_process_incoming(
-        name: &str,
+        name: String,
         rx: Arc<Mutex<Option<EncryptedMessageReader>>>,
         tx: Arc<Mutex<Option<EncryptedMessageWriter>>>,
         connected: Arc<AtomicBool>,

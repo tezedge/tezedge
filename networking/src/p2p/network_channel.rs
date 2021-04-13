@@ -46,7 +46,6 @@ pub enum NetworkChannelMsg {
     ProcessAdvertisedPeers(Arc<PeerId>, AdvertiseMessage),
     SendBootstrapPeers(Arc<PeerId>),
     ProcessFailedBootstrapAddress(PeerBootstrapFailed),
-    ProcessSuccessBootstrapAddress(Arc<PeerId>),
 }
 
 impl From<PeerMessageReceived> for NetworkChannelMsg {

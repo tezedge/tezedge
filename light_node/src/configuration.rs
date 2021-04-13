@@ -783,13 +783,18 @@ impl Environment {
             })
             .collect();
 
+        let listener_port = args
+            .value_of("p2p-port")
+            .unwrap_or("")
+            .parse::<u16>()
+            .expect("Was expecting value of p2p-port");
+
         Environment {
             p2p: crate::configuration::P2p {
-                listener_port: args
-                    .value_of("p2p-port")
-                    .unwrap_or("")
-                    .parse::<u16>()
-                    .expect("Was expecting value of p2p-port"),
+                listener_port,
+                listener_address: format!("0.0.0.0:{}", listener_port)
+                    .parse::<SocketAddr>()
+                    .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")

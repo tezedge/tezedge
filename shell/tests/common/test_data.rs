@@ -1,4 +1,8 @@
-/// Stored first cca first 1300 apply block data
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+//! Stored first cca first 1300 apply block data
+
 use std::collections::HashMap;
 use std::convert::TryInto;
 
