@@ -93,6 +93,7 @@ impl NodeInfrastructure {
             &tmp_storage.path(),
             &context_db_path,
             &patch_context,
+            false,
             &log,
         )
         .expect("Failed to resolve init storage chain data");

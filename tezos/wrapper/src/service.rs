@@ -64,6 +64,7 @@ struct InitProtocolContextParams {
     commit_genesis: bool,
     enable_testchain: bool,
     readonly: bool,
+    turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
 }
 
@@ -168,6 +169,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     params.commit_genesis,
                     params.enable_testchain,
                     params.readonly,
+                    params.turn_off_context_raw_inspector,
                     params.patch_context,
                 );
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
@@ -671,6 +673,7 @@ impl ProtocolController {
                 commit_genesis,
                 enable_testchain,
                 readonly,
+                turn_off_context_raw_inspector: self.configuration.event_server_path.is_none(),
                 patch_context,
             },
         ))?;

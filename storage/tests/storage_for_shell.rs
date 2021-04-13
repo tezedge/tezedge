@@ -55,8 +55,14 @@ fn test_storage() -> Result<(), Error> {
     };
 
     // initialize empty storage
-    let init_data =
-        resolve_storage_init_chain_data(&tezos_env, &tmp_storage_dir, &context_dir, &None, &log);
+    let init_data = resolve_storage_init_chain_data(
+        &tezos_env,
+        &tmp_storage_dir,
+        &context_dir,
+        &None,
+        false,
+        &log,
+    );
     assert!(init_data.is_ok());
 
     let init_data = init_data.unwrap();

@@ -34,6 +34,7 @@ pub fn init_protocol_context(
     commit_genesis: bool,
     enable_testchain: bool,
     readonly: bool,
+    turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
 ) -> Result<InitProtocolContextResult, TezosStorageInitError> {
     ffi::init_protocol_context(
@@ -43,6 +44,7 @@ pub fn init_protocol_context(
         commit_genesis,
         enable_testchain,
         readonly,
+        turn_off_context_raw_inspector,
         patch_context,
     ).map_err(|e| {
         TezosStorageInitError::InitializeError {

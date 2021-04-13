@@ -45,6 +45,7 @@ fn init_test_protocol_context(
         true,
         false,
         false,
+        false,
         tezos_env.patch_context_genesis_parameters.clone(),
     )
     .unwrap();
