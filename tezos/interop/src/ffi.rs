@@ -60,7 +60,7 @@ mod tezos_ffi {
             genesis: (OCamlBytes, OCamlBytes, OCamlBytes),
             protocol_override: (OCamlList<(OCamlInt32, OCamlBytes)>,
                                 OCamlList<(OCamlBytes, OCamlBytes)>),
-            configuration: (bool, bool, bool),
+            configuration: (bool, bool, bool, bool),
             sandbox_json_patch_context: Option<(OCamlBytes, OCamlBytes)>
         ) -> TzResult<(OCamlList<OCamlBytes>, Option<OCamlBytes>)>;
         pub fn genesis_result_data(
@@ -125,6 +125,7 @@ pub fn init_protocol_context(
     commit_genesis: bool,
     enable_testchain: bool,
     readonly: bool,
+    turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
 ) -> Result<InitProtocolContextResult, TezosStorageInitError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
@@ -139,7 +140,13 @@ pub fn init_protocol_context(
             .to_boxroot(rt);
 
         // configuration
-        let configuration = (commit_genesis, enable_testchain, readonly).to_boxroot(rt);
+        let configuration = (
+            commit_genesis,
+            enable_testchain,
+            readonly,
+            turn_off_context_raw_inspector,
+        )
+            .to_boxroot(rt);
 
         // patch context
         let sandbox_json_patch_context = patch_context.map(|pc| (pc.key, pc.json)).to_boxroot(rt);

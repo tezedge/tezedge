@@ -86,6 +86,14 @@ pub const OPERATION_MAX_PASS: usize = 8;
 /// ```
 pub const ADVERTISE_ID_LIST_MAX_LENGTH: usize = 100;
 
+///
+/// OCaml ref: tezos/src/lib_p2p/p2p_connect_handler.ml
+/// ```ocaml
+///         P2p_pool.list_known_points ~ignore_private:true ~size:50 t.pool
+///         (* Never send more than 100 points, you would be greylisted *)
+/// ```
+pub const ADVERTISE_ID_LIST_MAX_LENGTH_FOR_SEND: usize = 50;
+
 /// CurrentBranch history max length
 ///
 /// OCaml refs:

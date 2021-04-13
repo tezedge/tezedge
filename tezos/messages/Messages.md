@@ -1,6 +1,6 @@
 # P2P Messages
 
-## Bootstraping Messages
+## Handshaking Messages
 
 ### ConnectionMessage
 Size: up to 214

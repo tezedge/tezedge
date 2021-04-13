@@ -3,7 +3,7 @@
 
 use std::fmt;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -42,9 +42,6 @@ use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStrea
 const IO_TIMEOUT: Duration = Duration::from_secs(6);
 /// There is a 90-second timeout for ping peers with GetCurrentHead
 const READ_TIMEOUT_LONG: Duration = Duration::from_secs(120);
-
-// TODO: refactor somehow - peer actor names should be under controll of caller
-static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Fail)]
 pub enum PeerError {
@@ -227,14 +224,16 @@ pub struct Peer {
 impl Peer {
     /// Create instance of a peer actor.
     pub fn actor(
+        peer_actor_name: &str,
         sys: &impl ActorRefFactory,
         network_channel: NetworkChannelRef,
         tokio_executor: Handle,
         info: BootstrapOutput,
     ) -> Result<PeerRef, CreateError> {
-        let props = Props::new_args::<Peer, _>((network_channel, tokio_executor, info));
-        let actor_id = ACTOR_ID_GENERATOR.fetch_add(1, Ordering::SeqCst);
-        sys.actor_of_props(&format!("peer-{}", actor_id), props)
+        sys.actor_of_props(
+            peer_actor_name,
+            Props::new_args::<Peer, _>((network_channel, tokio_executor, info)),
+        )
     }
 }
 
@@ -293,12 +292,6 @@ impl Actor for Peer {
             network_channel.tell(Publish {
                 msg: NetworkChannelMsg::PeerBootstrapped(peer_id.clone(), Arc::new(peer_metadata), Arc::new(peer_compatible_network_version)),
                 topic: NetworkChannelTopic::NetworkEvents.into(),
-            }, None);
-
-            // Network command - notify that peer was bootstrapped successfully
-            network_channel.tell(Publish {
-                msg: NetworkChannelMsg::ProcessSuccessBootstrapAddress(peer_id),
-                topic: NetworkChannelTopic::NetworkCommands.into(),
             }, None);
 
             // begin to process incoming messages in a loop

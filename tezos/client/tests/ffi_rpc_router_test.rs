@@ -54,6 +54,7 @@ fn init_test_protocol_context(
         true,
         false,
         false,
+        false,
         Some(test_data::get_patch_context()),
     )
     .unwrap();

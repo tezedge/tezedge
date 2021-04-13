@@ -160,6 +160,9 @@ pub struct Storage {
     pub context_kv_store: ContextKvStoreConfiguration,
     // context actions cfg
     pub merkle_context_actions_store: Option<RocksDbConfig<ContextActionsRocksDbTableInitializer>>,
+
+    // TODO: TE-447 - remove one_context when integration done
+    pub one_context: bool,
 }
 
 impl Storage {
@@ -555,10 +558,15 @@ pub fn tezos_app() -> App<'static, 'static> {
         .arg(Arg::with_name("actions-store-backend")
             .long("actions-store-backend")
             .takes_value(true)
-            .multiple(true)
+            // TODO: hard to override, do as single atribute commanseparated
+            // .multiple(true)
             .value_name("STRING")
             .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
+        .arg(Arg::with_name("one-context")
+            .long("one-context")
+            .takes_value(false)
+            .help("TODO: TE-447 - temp/hack argument to turn off TezEdge second context"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
             .takes_value(true)
@@ -783,13 +791,18 @@ impl Environment {
             })
             .collect();
 
+        let listener_port = args
+            .value_of("p2p-port")
+            .unwrap_or("")
+            .parse::<u16>()
+            .expect("Was expecting value of p2p-port");
+
         Environment {
             p2p: crate::configuration::P2p {
-                listener_port: args
-                    .value_of("p2p-port")
-                    .unwrap_or("")
-                    .parse::<u16>()
-                    .expect("Was expecting value of p2p-port"),
+                listener_port,
+                listener_address: format!("0.0.0.0:{}", listener_port)
+                    .parse::<SocketAddr>()
+                    .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")
@@ -1076,6 +1089,7 @@ impl Environment {
                             }
                         }
                     },
+                    one_context: args.is_present("one-context"),
                 }
             },
             identity: crate::configuration::Identity {

@@ -48,6 +48,7 @@ fn init_test_protocol_context(
         true,
         false,
         false,
+        false,
         None,
     )
     .unwrap();

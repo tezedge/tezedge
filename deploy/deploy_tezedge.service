@@ -1,7 +1,0 @@
-[Unit]
-Description=Tezedge "stack"(node + debugger + explorer) deployment
-
-[Service]
-Type=oneshot
-# give exec start the absolute path to the tezedge checking script 
-ExecStart=/bin/bash <path to tezedge dir>/tezedge/deploy/deploy_tezedge_stack.sh <path to tezedge dir> <image tag to deploy>

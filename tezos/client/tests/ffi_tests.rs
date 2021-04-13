@@ -115,6 +115,7 @@ fn prepare_protocol_context(
         commit_genesis,
         false,
         false,
+        false,
         None,
     )
     .unwrap()

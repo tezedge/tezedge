@@ -34,9 +34,6 @@ use crate::validation::CanApplyStatus;
 /// Shareable ref between threads
 pub type DataRequesterRef = Arc<DataRequester>;
 
-/// We controll frequecncy of holding lock too long, just in case peers is stucked
-const BLOCK_APPLY_LOCK_HOLD_TIMEOUT: Duration = Duration::from_secs(60 * 2);
-
 /// Requester manages global request/response queues for data
 /// and also manages local queues for every peer.
 pub struct DataRequester {
@@ -55,12 +52,13 @@ impl DataRequester {
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
         block_applier: ChainFeederRef,
+        block_apply_lock_hold_timeout: Duration,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
             block_applier,
-            block_apply_try_lock: DeadlineTryLock::new(BLOCK_APPLY_LOCK_HOLD_TIMEOUT),
+            block_apply_try_lock: DeadlineTryLock::new(block_apply_lock_hold_timeout),
         }
     }
 
@@ -554,6 +552,7 @@ mod tests {
         create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
     };
     use crate::state::{BlockApplyBatch, StateError};
+    use std::time::Duration;
 
     macro_rules! assert_block_queue_contains {
         ($expected:expr, $queues:expr, $block:expr) => {{
@@ -619,6 +618,7 @@ mod tests {
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock(&actor_system)?,
+            Duration::from_secs(15),
         );
 
         // try schedule nothiing
@@ -704,6 +704,7 @@ mod tests {
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock(&actor_system)?,
+            Duration::from_secs(15),
         );
 
         // prepare missing operations in db for block with 4 validation_pass
@@ -843,6 +844,7 @@ mod tests {
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock(&actor_system)?,
+            Duration::from_secs(15),
         );
 
         // prepare missing operations in db for block with 4 validation_pass
@@ -918,6 +920,7 @@ mod tests {
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock(&actor_system)?,
+            Duration::from_secs(15),
         );
 
         let chain_id = Arc::new(ChainId::from_base58_check("NetXgtSLGNJvNye")?);

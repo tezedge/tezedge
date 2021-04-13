@@ -25,13 +25,13 @@ use crate::utils::DeadlineTryLockGuard;
 
 /// After this timeout peer will be disconnected if no activity is done on any pipeline
 /// So if peer does not change any branch bootstrap, we will disconnect it
-const STALE_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(90);
+const STALE_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(60 * 3);
 
 /// If we have empty bootstrap pipelines for along time, we disconnect peer, means, peer is not provoding us a new current heads/branches
 const MISSING_NEW_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(60 * 2);
 
 /// Constatnt for rescheduling of processing bootstrap pipelines
-const NO_DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_secs(2);
+const NO_DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_secs(3);
 const DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_millis(5);
 
 /// Message commands [`PeerBranchBootstrapper`] to disconnect peer if any of bootstraping pipelines are stalled
@@ -264,6 +264,11 @@ impl PeerBranchBootstrapper {
         if let Some(lock) = self.block_batch_apply_try_lock.take() {
             drop(lock);
         }
+    }
+
+    fn is_block_batch_apply_try_lock_aquired(&mut self) -> bool {
+        self.check_deadline_for_block_batch_apply_try_lock();
+        self.block_batch_apply_try_lock.as_ref().is_some()
     }
 
     fn process_data_download(&mut self, log: &Logger) -> bool {
@@ -637,6 +642,8 @@ impl Receive<BlockBatchApplyFailed> for PeerBranchBootstrapper {
                     true
                 }
             });
+
+        self.release_block_batch_apply_try_lock();
     }
 }
 
@@ -667,11 +674,19 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
             }
         }
 
+        // if we have acquired lock, we are not considered as stalled, because we are still applying blocks
+        if self.is_block_batch_apply_try_lock_aquired() {
+            is_stalled = false;
+        }
+
         // if stalled, just disconnect peer
         if is_stalled {
             warn!(log, "Disconnecting peer, because of stalled bootstrap pipeline";
                        "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
             );
+
+            // release lock
+            self.release_block_batch_apply_try_lock();
 
             // stop actors for peer
             ctx.system.stop(ctx.myself());

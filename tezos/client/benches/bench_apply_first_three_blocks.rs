@@ -145,6 +145,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         true,
         false,
         false,
+        false,
         None,
     )
     .unwrap();

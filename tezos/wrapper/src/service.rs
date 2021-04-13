@@ -64,6 +64,7 @@ struct InitProtocolContextParams {
     commit_genesis: bool,
     enable_testchain: bool,
     readonly: bool,
+    turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
 }
 
@@ -168,6 +169,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     params.commit_genesis,
                     params.enable_testchain,
                     params.readonly,
+                    params.turn_off_context_raw_inspector,
                     params.patch_context,
                 );
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
@@ -390,7 +392,7 @@ pub struct ProtocolController {
 /// Instead of manually sending and receiving messages over IPC channel use provided methods.
 /// Methods also handle things such as timeouts and also checks is correct response type is received.
 impl ProtocolController {
-    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+    const APPLY_BLOCK_TIMEOUT: Duration = Duration::from_secs(60 * 60 * 2);
     const INIT_PROTOCOL_CONTEXT_TIMEOUT: Duration = Duration::from_secs(60);
     const BEGIN_APPLICATION_TIMEOUT: Duration = Duration::from_secs(120);
     const BEGIN_CONSTRUCTION_TIMEOUT: Duration = Duration::from_secs(120);
@@ -671,6 +673,7 @@ impl ProtocolController {
                 commit_genesis,
                 enable_testchain,
                 readonly,
+                turn_off_context_raw_inspector: self.configuration.event_server_path.is_none(),
                 patch_context,
             },
         ))?;
