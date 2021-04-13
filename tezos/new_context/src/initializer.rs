@@ -13,10 +13,11 @@ pub enum ContextKvStoreConfiguration {
     BTreeMap,
 }
 
-pub fn initialize_tezedge_context(
+// TODO: are errors not possible here? recheck that
+pub fn initialize_tezedge_index(
     context_kv_store: &ContextKvStoreConfiguration,
-) -> Result<TezedgeContext, failure::Error> {
-    let index = TezedgeIndex::new(match context_kv_store {
+) -> TezedgeIndex {
+    TezedgeIndex::new(match context_kv_store {
         ContextKvStoreConfiguration::Sled { path } => {
             let sled = sled::Config::new()
                 .path(path)
@@ -32,6 +33,12 @@ pub fn initialize_tezedge_context(
         ContextKvStoreConfiguration::BTreeMap => Rc::new(RefCell::new(
             crate::kv_store::btree_map::BTreeMapBackend::new(),
         )),
-    });
+    })
+}
+
+pub fn initialize_tezedge_context(
+    context_kv_store: &ContextKvStoreConfiguration,
+) -> Result<TezedgeContext, failure::Error> {
+    let index = initialize_tezedge_index(context_kv_store);
     Ok(TezedgeContext::new(index, None, None))
 }
