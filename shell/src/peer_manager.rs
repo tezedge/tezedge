@@ -31,6 +31,7 @@ use networking::p2p::{
 };
 use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
+use tezos_messages::p2p::encoding::limits::ADVERTISE_ID_LIST_MAX_LENGTH_FOR_SEND;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
@@ -48,6 +49,12 @@ const CHECK_PEER_COUNT_LIMIT: Duration = Duration::from_secs(5);
 ///  Sequencer used for peer actor name generation
 /// TODO: refactor to somehow better/infinite way
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
+/// How often to print stats in logs
+const LOG_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Message commands [`PeerManager`] to log its internal stats.
+#[derive(Clone, Debug)]
+pub struct LogPeerStats;
 
 /// Check peer threshold
 /// Received message instructs this actor to check whether number of connected peers is within desired bounds
@@ -125,6 +132,7 @@ impl<T> From<PoisonError<T>> for PeerManagerError {
     WhitelistAllIpAddresses,
     AcceptPeer,
     ConnectToPeer,
+    LogPeerStats,
     NetworkChannelMsg,
     ShellChannelMsg,
     SystemEvent,
@@ -360,10 +368,10 @@ impl PeerManager {
 
         // try to limit
         if addresses_to_connect.len() > num_of_max_potential_peers {
-            let count_to_remove = addresses_to_connect.len() - num_of_max_potential_peers;
-            for i in 0..count_to_remove {
-                addresses_to_connect.remove(i);
-            }
+            addresses_to_connect = addresses_to_connect
+                .into_iter()
+                .take(num_of_max_potential_peers)
+                .collect::<Vec<_>>();
         }
 
         potential_peers.clear();
@@ -436,8 +444,8 @@ impl PeerManager {
                     .values()
                     .filter(|peer_state| peer_state.peer_ref != peer.peer_ref)
                     .map(|peer_state| peer_state.peer_address)
+                    .take(ADVERTISE_ID_LIST_MAX_LENGTH_FOR_SEND)
                     .collect::<Vec<_>>();
-
 
                 let msg = Arc::new(AdvertiseMessage::new(&addresses).into());
                 peer.peer_ref.tell(SendMessage::new(msg), None);
@@ -566,6 +574,13 @@ impl Actor for PeerManager {
             None,
             WhitelistAllIpAddresses.into(),
         );
+        ctx.schedule::<Self::Msg, _>(
+            LOG_INTERVAL / 2,
+            LOG_INTERVAL,
+            ctx.myself(),
+            None,
+            LogPeerStats.into(),
+        );
 
         let listener_address = self.listener_address.clone();
         let peers = self.peers.clone();
@@ -646,6 +661,32 @@ impl Receive<DeadLetter> for PeerManager {
                                                                   "reason" => format!("{:?}", e))
             }
         }
+    }
+}
+
+impl Receive<LogPeerStats> for PeerManager {
+    type Msg = PeerManagerMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _: LogPeerStats, _: Sender) {
+        // TODO: TE-490 - check actors vs peers and vice versa - kil//stop/remove
+        let connected_peers_count = match self.peers.connected_peers.read() {
+            Ok(connected_peers) => connected_peers.len().to_string(),
+            Err(_) => "-failed-to-collect-".to_string(),
+        };
+        let potential_peers_count = match self.peers.potential_peers.read() {
+            Ok(potential_peers) => potential_peers.len().to_string(),
+            Err(_) => "-failed-to-collect-".to_string(),
+        };
+        info!(ctx.system.log(), "Peer manager info";
+            "connected_peers_count" => connected_peers_count,
+            "potential_peers_count" => potential_peers_count,
+            "incoming_connection_tickets_available" => self.peers.incoming_connection_tickets.available_permits(),
+            "blacklisted_ip_count" => self.ip_blacklist.len(),
+            "check_peer_count_last_elapsed" => match self.check_peer_count_last.as_ref() {
+                Some(time) => format!("{:?}", time.elapsed()),
+                None => "--none--".to_string()
+            },
+        );
     }
 }
 
@@ -1021,9 +1062,15 @@ pub(crate) struct P2pPeers {
 
 impl P2pPeers {
     fn new(peers_threshold: Arc<PeerConnectionThreshold>) -> Self {
-        let max_incoming_connection_tickets = match peers_threshold.high.checked_div(2) {
-            Some(half) => half,
-            None => peers_threshold.low,
+        let max_incoming_connection_tickets = {
+            if peers_threshold.high == 1 {
+                1
+            } else {
+                match peers_threshold.high.checked_div(2) {
+                    Some(half) => half,
+                    None => peers_threshold.low,
+                }
+            }
         };
         Self {
             potential_peers: Arc::new(RwLock::new(HashSet::new())),
