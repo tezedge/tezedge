@@ -784,7 +784,7 @@ pub mod tests_common {
                     PredecessorStorage::sub_tree_name().to_string(),
                     SystemStorage::sub_tree_name().to_string(),
                 ],
-                true,
+                false,
             )?);
 
             // context

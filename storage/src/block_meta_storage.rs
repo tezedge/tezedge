@@ -725,7 +725,7 @@ mod tests {
         {
             let db = open_sled_db_with_trees(
                 path,
-                true,
+                false,
                 vec![BlockMetaStorage::sub_tree_name().to_string()],
             )
             .unwrap();
