@@ -5,7 +5,6 @@ use crate::database::{
 };
 use crate::persistent::{Decoder, Encoder, KeyValueSchema};
 use crate::IteratorMode;
-use im::HashMap;
 use sled::{IVec, Tree};
 use std::alloc::Global;
 use std::path::Path;
@@ -13,9 +12,11 @@ use std::sync::Arc;
 
 use std::marker::PhantomData;
 use sled::transaction::abort;
+use crate::system_storage::SystemValue::Hash;
+use std::collections::{HashSet, HashMap};
 
 pub struct MainDB {
-    inner: Arc<HashMap<String, Arc<Tree>>>,
+    inner: Arc<HashMap<String, Tree>>
 }
 
 fn replace_merge(
@@ -48,7 +49,7 @@ impl MainDB {
             tree.set_merge_operator(replace_merge);
             tree_map.insert(
                 name.to_owned(),
-                Arc::new(tree)
+                tree
             );
         }
 
@@ -58,7 +59,7 @@ impl MainDB {
         Ok(db)
     }
 
-    fn get_tree(&self, name: &'static str) -> Result<Arc<Tree>, Error> {
+    fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
         let tree = match self.inner.get(name) {
             None => {
                 return Err(Error::MissingSubTree {
@@ -116,7 +117,9 @@ impl MainDB {
             }
             Some(t) => t,
         };
-        tree.merge(key,value).map_err(Error::from)
+        let res = tree.merge(key,value).map_err(Error::from)?;
+        tree.flush().map_err(Error::from)?;
+        Ok(res)
     }
 
     pub fn flush(&self) -> Result<(), Error> {
@@ -151,9 +154,14 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let tree = self.get_tree(S::sub_tree_name())?;
-        let _ = tree.merge(key, value).map_err(Error::from)?;
-        tree.flush();
+        //let tree = self.get_tree(S::sub_tree_name())?;
+        /*let result = tree.transaction(|tx|{
+            tx.remove(key.clone())?;
+            tx.insert(key, value)?;
+            Ok(())
+        });
+        */
+        self.tree_merge(S::sub_tree_name(),key,value )?;
         Ok(())
     }
 

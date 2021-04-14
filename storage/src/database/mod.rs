@@ -95,7 +95,7 @@ pub struct SledIteratorWrapper {
 }
 
 impl SledIteratorWrapper {
-    fn new(mode: SledIteratorWrapperMode, tree: Arc<Tree>) -> Self {
+    fn new(mode: SledIteratorWrapperMode, tree: Tree) -> Self {
         match mode.clone() {
             SledIteratorWrapperMode::Start => Self {
                 mode,
