@@ -16,7 +16,8 @@ use crate::system_storage::SystemValue::Hash;
 use std::collections::{HashSet, HashMap};
 
 pub struct MainDB {
-    inner: Arc<HashMap<String, Tree>>
+    inner: sled::Db,
+    trees : HashSet<String>
 }
 
 fn replace_merge(
@@ -42,93 +43,43 @@ impl MainDB {
             .open()
             .map_err(Error::from)?;
 
-        let mut tree_map = HashMap::new();
+        let mut tree_map = HashSet::new();
 
         for name in trees {
-            let tree = db.open_tree(name.as_str()).map_err(Error::from)?;
-            tree.set_merge_operator(replace_merge);
             tree_map.insert(
                 name.to_owned(),
-                tree
             );
         }
 
         let db = MainDB {
-            inner: Arc::new(tree_map),
+            inner: db,
+            trees: Default::default()
         };
         Ok(db)
     }
 
     fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
-        let tree = match self.inner.get(name) {
+        let tree = match self.trees.get(name) {
             None => {
                 return Err(Error::MissingSubTree {
                     error: name.to_owned(),
                 });
             }
-            Some(t) => t,
+            Some(t) => {
+                let tree = self.inner.open_tree(t).map_err(Error::from)?;
+                tree.set_merge_operator(replace_merge);
+                tree
+            }
         };
-        Ok(tree.clone())
+        Ok(tree)
     }
 
-    fn tree_insert(&self, name : &str, key : Vec<u8>, value: Vec<u8> ) -> Result<(), Error>  {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        let _ = tree.insert(key, value).map_err(Error::from)?;
-        Ok(())
-    }
-
-    fn tree_get(&self, name : &str, key : Vec<u8>) -> Result<Option<IVec>, Error>  {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        tree.get(key).map_err(Error::from)
-    }
-
-    fn tree_delete(&self, name : &str, key : Vec<u8>) -> Result<Option<IVec>, Error>  {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        tree.remove(key).map_err(Error::from)
-    }
-
-    fn tree_merge(&self, name : &str, key : Vec<u8>, value: Vec<u8>) -> Result<Option<IVec>, Error>  {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        let res = tree.merge(key,value).map_err(Error::from)?;
-        tree.flush().map_err(Error::from)?;
-        Ok(res)
-    }
 
     pub fn flush(&self) -> Result<(), Error> {
-        for tree in self.inner.values() {
-            match tree.flush() {
-                Ok(_) => {}
-                Err(error) => {
-                    println!("Flush failed {}", error)
-                }
+        match self.inner.flush() {
+            Ok(_) => {}
+            Err(error) => {
+                println!("Flush failed {}", error)
             }
         }
         Ok(())
@@ -154,14 +105,8 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
-        //let tree = self.get_tree(S::sub_tree_name())?;
-        /*let result = tree.transaction(|tx|{
-            tx.remove(key.clone())?;
-            tx.insert(key, value)?;
-            Ok(())
-        });
-        */
-        self.tree_merge(S::sub_tree_name(),key,value )?;
+        let tree = self.get_tree(S::sub_tree_name())?;
+        tree.merge(key,value )?;
         Ok(())
     }
 
