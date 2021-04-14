@@ -13,12 +13,9 @@ use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 
-
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
-};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, IteratorMode, PersistentStorage, StorageError};
-use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
 
 /// Convenience type for operation meta storage database
 pub type MempoolStorageKV = dyn KVDBStoreWithSchema<MempoolStorage> + Sync + Send;

@@ -6,20 +6,18 @@ use std::{convert::TryInto, sync::Arc};
 use std::convert::TryFrom;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::{MergeOperands};
+use rocksdb::MergeOperands;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::persistent::database::{
-    IteratorMode
-};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBIteratorWithSchema, KVDBStoreWithSchema};
+use crate::persistent::database::IteratorMode;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::database::{KVDBStoreWithSchema, KVDBIteratorWithSchema, DBSubtreeKeyValueSchema};
 
 pub type BlockMetaStorageKV = dyn KVDBStoreWithSchema<BlockMetaStorage> + Sync + Send;
 
@@ -185,7 +183,10 @@ impl BlockMetaStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -585,11 +586,10 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::{open_sled_db_with_trees};
+    use crate::persistent::open_sled_db_with_trees;
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -726,7 +726,7 @@ mod tests {
             let db = open_sled_db_with_trees(
                 path,
                 true,
-                vec![BlockMetaStorage::sub_tree_name().to_string()]
+                vec![BlockMetaStorage::sub_tree_name().to_string()],
             )
             .unwrap();
             let k: BlockHash = vec![44; 32].try_into().unwrap();

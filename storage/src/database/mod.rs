@@ -1,11 +1,10 @@
-use crate::persistent::{KeyValueSchema, SchemaError};
 use crate::database::error::Error;
-use crate::{IteratorMode, Direction};
+use crate::persistent::{KeyValueSchema, SchemaError};
+use crate::{Direction, IteratorMode};
 
+use crate::persistent::codec::Decoder;
 use sled::IVec;
 use std::marker::PhantomData;
-use crate::persistent::codec::Decoder;
-
 
 pub mod db;
 pub mod error;
@@ -68,16 +67,19 @@ pub trait KVDatabaseWithSchemaIterator<S: DBSubtreeKeyValueSchema> {
     /// # Arguments
     /// * `key` - Key (specified by schema), from which to start reading entries
     /// * `max_key_len` - max prefix key length
-    fn prefix_iterator(&self, key: &S::Key, max_key_len: usize) -> Result<KVDBIteratorWithSchema<S>, Error>;
+    fn prefix_iterator(
+        &self,
+        key: &S::Key,
+        max_key_len: usize,
+    ) -> Result<KVDBIteratorWithSchema<S>, Error>;
 }
 
 pub struct KVDBIteratorWithSchema<S: KeyValueSchema>(SledIteratorWrapper, PhantomData<S>);
 
 pub trait KVDBStoreWithSchema<S: DBSubtreeKeyValueSchema>:
-KVDatabase<S> + KVDatabaseWithSchemaIterator<S>
+    KVDatabase<S> + KVDatabaseWithSchemaIterator<S>
 {
 }
-
 
 #[derive(Clone)]
 pub enum SledIteratorWrapperMode {
@@ -87,47 +89,33 @@ pub enum SledIteratorWrapperMode {
     Prefix(IVec),
 }
 pub struct SledIteratorWrapper {
-    mode : SledIteratorWrapperMode,
-    iter : sled::Iter
+    mode: SledIteratorWrapperMode,
+    iter: sled::Iter,
 }
 
 impl SledIteratorWrapper {
-    fn new(mode : SledIteratorWrapperMode, tree : sled::Tree) -> Self {
+    fn new(mode: SledIteratorWrapperMode, tree: sled::Tree) -> Self {
         match mode.clone() {
-            SledIteratorWrapperMode::Start => {
-                Self{
-                    mode,
-                    iter : tree.iter()
-                }
-            }
-            SledIteratorWrapperMode::End => {
-                Self{
-                    mode,
-                    iter : tree.iter()
-                }
-            }
+            SledIteratorWrapperMode::Start => Self {
+                mode,
+                iter: tree.iter(),
+            },
+            SledIteratorWrapperMode::End => Self {
+                mode,
+                iter: tree.iter(),
+            },
             SledIteratorWrapperMode::From(key, direction) => {
                 let iter = match direction {
-                    Direction::Forward => {
-                        tree.range(key..)
-                    }
-                    Direction::Reverse => {
-                        tree.range(..key)
-                    }
+                    Direction::Forward => tree.range(key..),
+                    Direction::Reverse => tree.range(..key),
                 };
 
-                Self {
-                    mode,
-                    iter
-                }
-
+                Self { mode, iter }
             }
-            SledIteratorWrapperMode::Prefix(key) => {
-                Self {
-                    mode,
-                    iter: tree.scan_prefix(key)
-                }
-            }
+            SledIteratorWrapperMode::Prefix(key) => Self {
+                mode,
+                iter: tree.scan_prefix(key),
+            },
         }
     }
 }
@@ -137,25 +125,13 @@ impl Iterator for SledIteratorWrapper {
 
     fn next(&mut self) -> Option<Self::Item> {
         match &self.mode {
-            SledIteratorWrapperMode::Start => {
-                self.iter.next()
-            }
-            SledIteratorWrapperMode::End => {
-                self.iter.next_back()
-            }
-            SledIteratorWrapperMode::From(_, direction) => {
-                match direction {
-                    Direction::Forward => {
-                        self.iter.next()
-                    }
-                    Direction::Reverse => {
-                        self.iter.next_back()
-                    }
-                }
-            }
-            SledIteratorWrapperMode::Prefix(_) => {
-                self.iter.next()
-            }
+            SledIteratorWrapperMode::Start => self.iter.next(),
+            SledIteratorWrapperMode::End => self.iter.next_back(),
+            SledIteratorWrapperMode::From(_, direction) => match direction {
+                Direction::Forward => self.iter.next(),
+                Direction::Reverse => self.iter.next_back(),
+            },
+            SledIteratorWrapperMode::Prefix(_) => self.iter.next(),
         }
     }
 }
@@ -165,20 +141,15 @@ impl<S: KeyValueSchema> Iterator for KVDBIteratorWithSchema<S> {
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         match self.0.next() {
-            Some(i) => {
-                match i {
-                    Ok((k, v)) => {
-                        Some((S::Key::decode(&k), S::Value::decode(&v)))
-                    }
-                    Err(_) => {
-                        return None;
-                    }
+            Some(i) => match i {
+                Ok((k, v)) => Some((S::Key::decode(&k), S::Value::decode(&v))),
+                Err(_) => {
+                    return None;
                 }
-            }
+            },
             None => {
                 return None;
             }
         }
     }
-
 }

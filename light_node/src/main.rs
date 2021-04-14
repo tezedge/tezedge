@@ -25,9 +25,12 @@ use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use storage::context::TezedgeContext;
-use storage::initializer::{initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache, initialize_maindb};
+use storage::initializer::{
+    initialize_maindb, initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain,
+    RocksDbCache,
+};
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, CommitLogSchema, open_sled_db};
+use storage::persistent::{open_cl, open_sled_db, CommitLogSchema};
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -509,8 +512,13 @@ fn main() {
     );
 
     // initialize dbs
-    let maindb = initialize_maindb(&log,&env.storage.db_path, env.storage.db.expected_db_version, &main_chain)
-        .expect("Failed to initialize main db (sled) storage");
+    let maindb = initialize_maindb(
+        &log,
+        &env.storage.db_path,
+        env.storage.db.expected_db_version,
+        &main_chain,
+    )
+    .expect("Failed to initialize main db (sled) storage");
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
     caches.push(kv_cache);
@@ -531,8 +539,6 @@ fn main() {
         )
         .expect("Failed to initialize merkle storage"),
     ));
-
-
 
     // context actions persistent db (optional)
     let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {

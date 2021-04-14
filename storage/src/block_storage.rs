@@ -11,11 +11,11 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
-
-
-use crate::persistent::{BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBIteratorWithSchema, KVDBStoreWithSchema};
+use crate::persistent::{
+    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location,
+};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
-use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema};
 
 /// Store block header data in a key-value store and into commit log.
 /// The value is first inserted into commit log, which returns a location of the newly inserted value.
@@ -459,7 +459,6 @@ impl CommitLogSchema for BlockStorage {
     }
 }
 
-
 /// This mimics columns in a classic relational database.
 #[derive(Serialize, Deserialize)]
 pub enum BlockStorageColumn {
@@ -609,15 +608,13 @@ impl DBSubtreeKeyValueSchema for BlockByLevelIndex {
     }
 }
 
-
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByContextHashIndex {
     kv: Arc<BlockByContextHashIndexKV>,
 }
 
-pub type BlockByContextHashIndexKV =
-    dyn KVDBStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
+pub type BlockByContextHashIndexKV = dyn KVDBStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -663,10 +660,9 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{open_sled_db_with_trees};
+    use crate::persistent::open_sled_db_with_trees;
 
     use super::*;
-    
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {

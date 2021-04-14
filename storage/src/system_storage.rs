@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::StorageError;
-use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
 
 pub type SystemStorageKv = dyn KVDBStoreWithSchema<SystemStorage> + Sync + Send;
 pub type DbVersion = i64;

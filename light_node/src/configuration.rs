@@ -957,7 +957,7 @@ impl Environment {
                             .expect("Provided value cannot be converted to number")
                     });
 
-                let db =  RocksDbConfig {
+                let db = RocksDbConfig {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
                     expected_db_version: Storage::DB_STORAGE_VERSION,
                     db_path: db_path.join("db"),
@@ -1014,7 +1014,7 @@ impl Environment {
                                 cache_size: Storage::LRU_CACHE_SIZE_64MB,
                                 expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
                                 db_path: db_path.join("context"),
-                                system_storage_path:db_path.join("sys"),
+                                system_storage_path: db_path.join("sys"),
                                 columns: ContextRocksDbTableInitializer,
                                 threads: db_context_threads_count,
                             })

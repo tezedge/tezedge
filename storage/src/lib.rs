@@ -45,21 +45,19 @@ use crate::persistent::{
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
-
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
 pub mod context;
+pub mod database;
 pub mod mempool_storage;
 pub mod operations_meta_storage;
 pub mod operations_storage;
 pub mod persistent;
 pub mod predecessor_storage;
 pub mod system_storage;
-pub mod database;
 
 use crate::database::db::MainDB;
-
 
 /// Extension of block header with block hash
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
@@ -416,7 +414,7 @@ pub fn initialize_storage_with_genesis_block(
 
 /// Helper module to easily initialize databases
 pub mod initializer {
-    use std::path::{PathBuf, Path};
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
@@ -425,12 +423,11 @@ pub mod initializer {
     use crypto::hash::ChainId;
 
     use crate::context::merkle::merkle_storage::MerkleStorage;
-    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration, open_sled_db};
-    use crate::{StorageError, SystemStorage};
     use crate::database::db::MainDB;
     use crate::database::error::Error as DatabaseError;
-
+    use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
+    use crate::persistent::{open_sled_db, DBError, DbConfiguration};
+    use crate::{StorageError, SystemStorage};
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
@@ -455,16 +452,13 @@ pub mod initializer {
 
     impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
-            vec![
-                crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
-            ]
+            vec![crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache)]
         }
     }
 
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
-            vec![
-            ]
+            vec![]
         }
     }
 
@@ -484,7 +478,7 @@ pub mod initializer {
         pub cache_size: usize,
         pub expected_db_version: i64,
         pub db_path: PathBuf,
-        pub system_storage_path : PathBuf,
+        pub system_storage_path: PathBuf,
         pub columns: C,
         pub threads: Option<usize>,
     }
@@ -510,31 +504,21 @@ pub mod initializer {
                 max_threads: config.threads,
             },
         )
-            .map(Arc::new)?;
+        .map(Arc::new)?;
         Ok(db)
     }
 
-    pub fn initialize_maindb<P : AsRef<Path>>(
+    pub fn initialize_maindb<P: AsRef<Path>>(
         log: &Logger,
-        path : P,
+        path: P,
         db_version: i64,
         expected_main_chain: &MainChain,
     ) -> Result<Arc<MainDB>, DatabaseError> {
-        let db = Arc::new(open_sled_db(
-            path.as_ref()
-        )?);
+        let db = Arc::new(open_sled_db(path.as_ref())?);
 
-        match check_database_compatibility(
-            db.clone(),
-            db_version,
-            expected_main_chain,
-            &log,
-        ) {
+        match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
-                name: format!(
-                    "Database is incompatible with version {}",
-                    db_version
-                ),
+                name: format!("Database is incompatible with version {}", db_version),
             }),
             Err(e) => Err(DatabaseError::DatabaseIncompatibility {
                 name: format!("Failed to verify database compatibility reason: '{}'", e),
@@ -610,7 +594,6 @@ pub mod initializer {
 
         Ok(db_version_ok && chain_id_ok)
     }
-
 
     pub fn initialize_merkle(
         context_kv_store: &ContextKvStoreConfiguration,
@@ -740,12 +723,10 @@ pub mod tests_common {
 
     use failure::Error;
 
-    
-    
     use crate::context::actions::context_action_storage;
     use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
     use crate::context::merkle::merkle_storage::MerkleStorage;
-    
+
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
@@ -788,10 +769,14 @@ pub mod tests_common {
             let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
             //Sled DB storage
-            let maindb = Arc::new(MainDB::initialize(path.join("database"), vec![
-                OperationsStorage::sub_tree_name().to_string(),
-                OperationsMetaStorage::sub_tree_name().to_string(),
-            ], true)?);
+            let maindb = Arc::new(MainDB::initialize(
+                path.join("database"),
+                vec![
+                    OperationsStorage::sub_tree_name().to_string(),
+                    OperationsMetaStorage::sub_tree_name().to_string(),
+                ],
+                true,
+            )?);
 
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB

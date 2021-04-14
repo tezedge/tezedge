@@ -5,19 +5,17 @@ use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use rocksdb::{MergeOperands};
+use rocksdb::MergeOperands;
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::database::{
-    IteratorMode
-};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBIteratorWithSchema, KVDBStoreWithSchema};
+use crate::persistent::database::IteratorMode;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
-use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema, KVDBIteratorWithSchema};
 
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageKV = dyn KVDBStoreWithSchema<OperationsMetaStorage> + Sync + Send;
@@ -112,7 +110,10 @@ impl OperationsMetaStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
@@ -314,11 +315,10 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::{open_sled_db_with_trees};
+    use crate::persistent::open_sled_db_with_trees;
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
         let mut vec = bytes.to_vec();

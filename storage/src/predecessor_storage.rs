@@ -3,18 +3,15 @@
 
 use std::sync::Arc;
 
-
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
-use crate::persistent::database::{
-    IteratorMode
-};
+use crate::database::{DBSubtreeKeyValueSchema, KVDBIteratorWithSchema, KVDBStoreWithSchema};
+use crate::persistent::database::IteratorMode;
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
-use crate::database::{KVDBStoreWithSchema, KVDBIteratorWithSchema, DBSubtreeKeyValueSchema};
 
 pub type PredecessorsIndexStorageKV = dyn KVDBStoreWithSchema<PredecessorStorage> + Sync + Send;
 
@@ -99,7 +96,10 @@ impl PredecessorStorage {
     }
 
     #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
+    pub fn iter(
+        &self,
+        mode: IteratorMode<Self>,
+    ) -> Result<KVDBIteratorWithSchema<Self>, StorageError> {
         self.kv.iterator(mode).map_err(StorageError::from)
     }
 }

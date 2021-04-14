@@ -4,17 +4,13 @@
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-
-
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
-
+use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
-use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
-
 
 pub type OperationsStorageKV = dyn KVDBStoreWithSchema<OperationsStorage> + Sync + Send;
 
@@ -108,7 +104,9 @@ impl RocksDbKeyValueSchema for OperationsStorage {
 }
 */
 impl DBSubtreeKeyValueSchema for OperationsStorage {
-    fn sub_tree_name() -> &'static str {"operations_storage"}
+    fn sub_tree_name() -> &'static str {
+        "operations_storage"
+    }
 }
 
 #[derive(Debug, PartialEq)]

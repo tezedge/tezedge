@@ -1,7 +1,7 @@
-use std::io;
-use failure::Fail;
 use crate::persistent::SchemaError;
 use crypto::hash::FromBytesError;
+use failure::Fail;
+use std::io;
 
 /// Possible errors for schema
 #[derive(Debug, Fail)]
@@ -22,7 +22,6 @@ pub enum Error {
     DatabaseIncompatibility { name: String },
 }
 
-
 impl From<SchemaError> for Error {
     fn from(error: SchemaError) -> Self {
         Error::SchemaError { error }
@@ -38,4 +37,3 @@ impl From<FromBytesError> for Error {
         Error::HashEncodeError { error }
     }
 }
-

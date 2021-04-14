@@ -5,16 +5,19 @@ use std::path::Path;
 
 use derive_builder::Builder;
 
+use crate::block_storage;
+use crate::database::db::MainDB;
+use crate::database::error::Error as DatabaseError;
+use crate::database::DBSubtreeKeyValueSchema;
+use crate::persistent::sequence::Sequences;
+use crate::{
+    BlockMetaStorage, ChainMetaStorage, MempoolStorage, OperationsMetaStorage, OperationsStorage,
+    PredecessorStorage, SystemStorage,
+};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
-use crate::database::db::{MainDB};
-use crate::database::error::{Error as DatabaseError};
-use crate::{OperationsStorage, OperationsMetaStorage, BlockMetaStorage, MempoolStorage, ChainMetaStorage, PredecessorStorage, SystemStorage};
-use crate::database::DBSubtreeKeyValueSchema;
-use crate::block_storage;
-use crate::persistent::sequence::Sequences;
 
 pub mod codec;
 pub mod commit_log;
@@ -47,31 +50,39 @@ where
 
 /// Open commit log at a given path.
 pub fn open_sled_db<P>(path: P) -> Result<MainDB, DatabaseError>
-    where
-        P: AsRef<Path>,
+where
+    P: AsRef<Path>,
 {
     let path = path.as_ref().to_path_buf();
-    MainDB::initialize(path.join("database"), vec![
-        OperationsStorage::sub_tree_name().to_string(),
-        OperationsMetaStorage::sub_tree_name().to_string(),
-        block_storage::BlockByLevelIndex::sub_tree_name().to_string(),
-        block_storage::BlockPrimaryIndex::sub_tree_name().to_string(),
-        block_storage::BlockByContextHashIndex::sub_tree_name().to_string(),
-        BlockMetaStorage::sub_tree_name().to_string(),
-        Sequences::sub_tree_name().to_string(),
-        MempoolStorage::sub_tree_name().to_string(),
-        ChainMetaStorage::sub_tree_name().to_string(),
-        PredecessorStorage::sub_tree_name().to_string(),
-        SystemStorage::sub_tree_name().to_string()
-    ], false)
+    MainDB::initialize(
+        path.join("database"),
+        vec![
+            OperationsStorage::sub_tree_name().to_string(),
+            OperationsMetaStorage::sub_tree_name().to_string(),
+            block_storage::BlockByLevelIndex::sub_tree_name().to_string(),
+            block_storage::BlockPrimaryIndex::sub_tree_name().to_string(),
+            block_storage::BlockByContextHashIndex::sub_tree_name().to_string(),
+            BlockMetaStorage::sub_tree_name().to_string(),
+            Sequences::sub_tree_name().to_string(),
+            MempoolStorage::sub_tree_name().to_string(),
+            ChainMetaStorage::sub_tree_name().to_string(),
+            PredecessorStorage::sub_tree_name().to_string(),
+            SystemStorage::sub_tree_name().to_string(),
+        ],
+        false,
+    )
 }
 
-pub fn open_sled_db_with_trees<P>(path: P, is_temporary : bool, trees : Vec<String>) -> Result<MainDB, DatabaseError>
-    where
-        P: AsRef<Path>,
+pub fn open_sled_db_with_trees<P>(
+    path: P,
+    is_temporary: bool,
+    trees: Vec<String>,
+) -> Result<MainDB, DatabaseError>
+where
+    P: AsRef<Path>,
 {
     let path = path.as_ref().to_path_buf();
-    MainDB::initialize(path.join("database"), trees,is_temporary)
+    MainDB::initialize(path.join("database"), trees, is_temporary)
 }
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement

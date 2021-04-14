@@ -8,10 +8,9 @@ use std::sync::Arc;
 use failure::Error;
 use rocksdb::Cache;
 
-
-use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_sled_db_with_trees};
 use storage::database::DBSubtreeKeyValueSchema;
+use storage::persistent::open_sled_db_with_trees;
+use storage::persistent::sequence::Sequences;
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
@@ -24,11 +23,8 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
     {
         let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-        let db = open_sled_db_with_trees(
-            &path,
-            true,
-            vec![Sequences::sub_tree_name().to_string()]
-        ).unwrap();
+        let db = open_sled_db_with_trees(&path, true, vec![Sequences::sub_tree_name().to_string()])
+            .unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -45,20 +41,14 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
 
 #[test]
 fn generator_test_cloned_gen() -> Result<(), Error> {
-    
-
     let path = out_dir_path("__sequence_multiseq");
     if path.exists() {
         std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
-        let db = open_sled_db_with_trees(
-            &path,
-            true,
-            vec![Sequences::sub_tree_name().to_string()]
-        )
-        .unwrap();
+        let db = open_sled_db_with_trees(&path, true, vec![Sequences::sub_tree_name().to_string()])
+            .unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -76,18 +66,14 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
 
 #[test]
 fn generator_test_batch() -> Result<(), Error> {
-
     let path = out_dir_path("__sequence_batch");
     if path.exists() {
         std::fs::remove_dir_all(&path).unwrap();
     }
 
     {
-        let db = open_sled_db_with_trees(
-            &path,
-            true,
-            vec![Sequences::sub_tree_name().to_string()]
-        )?;
+        let db =
+            open_sled_db_with_trees(&path, true, vec![Sequences::sub_tree_name().to_string()])?;
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
@@ -110,7 +96,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
         let db = Arc::new(open_sled_db_with_trees(
             &path,
             true,
-            vec![Sequences::sub_tree_name().to_string()]
+            vec![Sequences::sub_tree_name().to_string()],
         )?);
 
         // First run
