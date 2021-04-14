@@ -673,8 +673,6 @@ mod tests {
             std::fs::remove_dir_all(path).unwrap();
         }
 
-        let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
-
         {
             let db = open_sled_db_with_trees(
                 path,

@@ -107,7 +107,7 @@ impl SledIteratorWrapper {
             SledIteratorWrapperMode::From(key, direction) => {
                 let iter = match direction {
                     Direction::Forward => tree.range(key..),
-                    Direction::Reverse => tree.range(..key),
+                    Direction::Reverse => tree.range(..=key),
                 };
 
                 Self { mode, iter }
