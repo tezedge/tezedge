@@ -649,8 +649,6 @@ pub mod initializer {
 
 #[derive(Clone)]
 pub struct PersistentStorage {
-    /// key-value store for operational database
-    db: Arc<DB>,
     /// key-value store for main db
     main_db: Arc<MainDB>,
     /// commit log store for storing plain block header data
@@ -665,7 +663,6 @@ pub struct PersistentStorage {
 
 impl PersistentStorage {
     pub fn new(
-        db: Arc<DB>,
         main_db: Arc<MainDB>,
         clog: Arc<CommitLogs>,
         seq: Arc<Sequences>,
@@ -674,17 +671,11 @@ impl PersistentStorage {
     ) -> Self {
         Self {
             clog,
-            db,
             seq,
             merkle,
             merkle_context_actions,
             main_db,
         }
-    }
-
-    #[inline]
-    pub fn db(&self) -> Arc<DB> {
-        self.db.clone()
     }
 
     #[inline]
@@ -714,7 +705,7 @@ impl PersistentStorage {
 
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
-        let db = self.db.flush();
+        let db = self.main_db.flush();
         let merkle = match self.merkle.write() {
             Ok(merkle) => merkle.flush(),
             Err(e) => Err(failure::format_err!(
@@ -796,14 +787,6 @@ pub mod tests_common {
             // create common RocksDB block cache to be shared among column families
             let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
-            // db storage - is used for db and sequences
-            let kv = Arc::new(open_kv(
-                path.join("db"),
-                vec![
-                ],
-                &cfg,
-            )?);
-
             //Sled DB storage
             let maindb = Arc::new(MainDB::initialize(path.join("database"), vec![
                 OperationsStorage::sub_tree_name().to_string(),
@@ -845,7 +828,6 @@ pub mod tests_common {
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
-                    kv.clone(),
                     maindb.clone(),
                     Arc::new(clog),
                     Arc::new(Sequences::new(maindb, 1000)),
