@@ -6,7 +6,7 @@ agree to abide by the thoughtbot [code of conduct].
 
 Fork, then clone the repo:
 
-    git clone https://github.com/simplestaking/tezedge.git
+    git clone https://github.com/tezedge/tezedge.git
 
 Make your change. Add tests for your change. Make the tests pass:
 

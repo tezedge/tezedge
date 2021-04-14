@@ -35,14 +35,14 @@ In addition to implementing a new node, the project seeks to maintain and improv
 | GitHub Actions |  [![Build Status master]][Build Link master] | [![Build Status develop]][Build Link develop] |
 | Drone |  [![Drone Status master]][Drone Link]   |   [![Drone Status develop]][Drone Link] |
 
-[Build Status master]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=master
-[Build Status develop]: https://github.com/simplestaking/tezedge/workflows/build/badge.svg?branch=develop
-[Build Link master]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Amaster
-[Build Link develop]: https://github.com/simplestaking/tezedge/actions?query=workflow%3Abuild+branch%3Adevelop
+[Build Status master]: https://github.com/tezedge/tezedge/workflows/build/badge.svg?branch=master
+[Build Status develop]: https://github.com/tezedge/tezedge/workflows/build/badge.svg?branch=develop
+[Build Link master]: https://github.com/tezedge/tezedge/actions?query=workflow%3Abuild+branch%3Amaster
+[Build Link develop]: https://github.com/tezedge/tezedge/actions?query=workflow%3Abuild+branch%3Adevelop
 
-[Drone Status master]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/master
-[Drone Status develop]: http://ci.tezedge.com/api/badges/simplestaking/tezedge/status.svg?ref=refs/heads/develop
-[Drone Link]: http://ci.tezedge.com/simplestaking/tezedge/
+[Drone Status master]: http://ci.tezedge.com/api/badges/tezedge/tezedge/status.svg?ref=refs/heads/master
+[Drone Status develop]: http://ci.tezedge.com/api/badges/tezedge/tezedge/status.svg?ref=refs/heads/develop
+[Drone Link]: http://ci.tezedge.com/tezedge/tezedge/
 
 [Docs Status]: https://img.shields.io/badge/user--docs-master-informational
 [Docs Link]: http://docs.tezedge.com/
@@ -50,16 +50,16 @@ In addition to implementing a new node, the project seeks to maintain and improv
 [RustDoc Status]:https://img.shields.io/badge/code--docs-master-orange
 
 [MIT licensed]: https://img.shields.io/badge/license-MIT-blue.svg
-[MIT link]: https://github.com/simplestaking/tezedge/blob/master/LICENSE
+[MIT link]: https://github.com/tezedge/tezedge/blob/master/LICENSE
 
 [changelog]: ./CHANGELOG.md
 [changelog-badge]: https://img.shields.io/badge/changelog-Changelog-%23E05735
 
-[release-badge]: https://img.shields.io/github/v/release/simplestaking/tezedge
-[release-link]: https://github.com/simplestaking/tezedge/releases/latest
+[release-badge]: https://img.shields.io/github/v/release/tezedge/tezedge
+[release-link]: https://github.com/tezedge/tezedge/releases/latest
 
 [docker-badge]: https://img.shields.io/badge/docker-images-blue
-[docker-link]: https://hub.docker.com/r/simplestakingcom/tezedge/tags
+[docker-link]: https://hub.docker.com/r/tezedge/tezedge/tags
 
 ## Quick demo
 
@@ -79,7 +79,7 @@ If you want to run this demo, you need to first install the following:
 1. **Download the TezEdge source code**
     ```
    # Open shell and type this code into the command line and then press Enter:
-   git clone https://github.com/simplestaking/tezedge
+   git clone https://github.com/tezedge/tezedge
     cd tezedge
     ```
 2. **Run docker (compose)**
@@ -88,9 +88,9 @@ If you want to run this demo, you need to first install the following:
     docker-compose pull
     docker-compose up
     ```
-    ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/node_bootstrap.gif)
+    ![alt text](https://raw.githubusercontent.com/tezedge/tezedge/master/docs/images/node_bootstrap.gif)
 3. **Open your web browser by entering this address into your browser's URL bar: http://localhost:8080**
-    ![alt text](https://raw.githubusercontent.com/simplestaking/tezedge/master/docs/images/tezedge_explorer.gif)
+    ![alt text](https://raw.githubusercontent.com/tezedge/tezedge/master/docs/images/tezedge_explorer.gif)
 
 
 _**Docker for Windows**_
@@ -172,7 +172,7 @@ If you want to build from source code, you need to install this before:
 1. **Download TezEdge source code**
     ```
     # Open shell, type this code into the command line and then press Enter:
-    git clone https://github.com/simplestaking/tezedge
+    git clone https://github.com/tezedge/tezedge
     cd tezedge
     ```
 
