@@ -16,8 +16,6 @@ pub struct MainDB {
 
 impl MainDB {
     pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>, is_temporary : bool) -> Result<Self, Error> {
-        println!("DATABASE LOCATION: {}", String::from(db_path.as_ref().as_os_str().to_string_lossy()));
-
         let db = sled::Config::new()
             .path(db_path)
             .temporary(is_temporary)
