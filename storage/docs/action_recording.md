@@ -42,12 +42,12 @@ Actions in the file are stored as:
 
 where :
  - `header N` - is unsigned int 32 - lenght of the `N` block
- - `block N` - Vec<[ContextAction](https://github.com/simplestaking/tezedge/blob/develop/tezos/context/src/channel.rs#L44)> serialized using [bincode crate](https://docs.rs/bincode/1.3.2/bincode/) and then compress  using [snap](https://crates.io/crates/snap)
+ - `block N` - Vec<[ContextAction](https://github.com/tezedge/tezedge/blob/develop/tezos/context/src/channel.rs#L44)> serialized using [bincode crate](https://docs.rs/bincode/1.3.2/bincode/) and then compress  using [snap](https://crates.io/crates/snap)
 
 single block is represented as `Vec<ContextAction>`
 
 
-There is dedicated [ActionFileReader](https://github.com/simplestaking/tezedge/blob/develop/storage/src/action_file.rs#L61) that can be used for reading and deserializing following blocks
+There is dedicated [ActionFileReader](https://github.com/tezedge/tezedge/blob/develop/storage/src/action_file.rs#L61) that can be used for reading and deserializing following blocks
 
 
 

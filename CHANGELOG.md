@@ -367,29 +367,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/simplestaking/tezedge/compare/v1.3.1...HEAD
-[1.3.1]: https://github.com/simplestaking/tezedge/releases/v1.3.1
-[1.2.0]: https://github.com/simplestaking/tezedge/releases/v1.2.0
-[1.1.4]: https://github.com/simplestaking/tezedge/releases/v1.1.4
-[1.1.3]: https://github.com/simplestaking/tezedge/releases/v1.1.3
-[1.1.2]: https://github.com/simplestaking/tezedge/releases/v1.1.2
-[1.1.0]: https://github.com/simplestaking/tezedge/releases/v1.1.0
-[1.0.0]: https://github.com/simplestaking/tezedge/releases/v1.0.0
-[0.9.2]: https://github.com/simplestaking/tezedge/releases/v0.9.2
-[0.9.1]: https://github.com/simplestaking/tezedge/releases/v0.9.1
-[0.9.0]: https://github.com/simplestaking/tezedge/releases/v0.9.0
-[0.8.0]: https://github.com/simplestaking/tezedge/releases/v0.8.0
-[0.7.2]: https://github.com/simplestaking/tezedge/releases/v0.7.2
-[0.7.1]: https://github.com/simplestaking/tezedge/releases/v0.7.1
-[0.7.0]: https://github.com/simplestaking/tezedge/releases/v0.7.0
-[0.6.0]: https://github.com/simplestaking/tezedge/releases/v0.6.0
-[0.5.0]: https://github.com/simplestaking/tezedge/releases/v0.5.0
-[0.4.0]: https://github.com/simplestaking/tezedge/releases/v0.4.0
-[0.3.0]: https://github.com/simplestaking/tezedge/releases/v0.3.0
-[0.2.0]: https://github.com/simplestaking/tezedge/releases/v0.2.0
-[0.1.0]: https://github.com/simplestaking/tezedge/releases/v0.1.0
-[0.0.2]: https://github.com/simplestaking/tezedge/releases/v0.0.2
-[0.0.1]: https://github.com/simplestaking/tezedge/releases/v0.0.1
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/tezedge/tezedge/releases/v1.3.1
+[1.2.0]: https://github.com/tezedge/tezedge/releases/v1.2.0
+[1.1.4]: https://github.com/tezedge/tezedge/releases/v1.1.4
+[1.1.3]: https://github.com/tezedge/tezedge/releases/v1.1.3
+[1.1.2]: https://github.com/tezedge/tezedge/releases/v1.1.2
+[1.1.0]: https://github.com/tezedge/tezedge/releases/v1.1.0
+[1.0.0]: https://github.com/tezedge/tezedge/releases/v1.0.0
+[0.9.2]: https://github.com/tezedge/tezedge/releases/v0.9.2
+[0.9.1]: https://github.com/tezedge/tezedge/releases/v0.9.1
+[0.9.0]: https://github.com/tezedge/tezedge/releases/v0.9.0
+[0.8.0]: https://github.com/tezedge/tezedge/releases/v0.8.0
+[0.7.2]: https://github.com/tezedge/tezedge/releases/v0.7.2
+[0.7.1]: https://github.com/tezedge/tezedge/releases/v0.7.1
+[0.7.0]: https://github.com/tezedge/tezedge/releases/v0.7.0
+[0.6.0]: https://github.com/tezedge/tezedge/releases/v0.6.0
+[0.5.0]: https://github.com/tezedge/tezedge/releases/v0.5.0
+[0.4.0]: https://github.com/tezedge/tezedge/releases/v0.4.0
+[0.3.0]: https://github.com/tezedge/tezedge/releases/v0.3.0
+[0.2.0]: https://github.com/tezedge/tezedge/releases/v0.2.0
+[0.1.0]: https://github.com/tezedge/tezedge/releases/v0.1.0
+[0.0.2]: https://github.com/tezedge/tezedge/releases/v0.0.2
+[0.0.1]: https://github.com/tezedge/tezedge/releases/v0.0.1
 ___
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).

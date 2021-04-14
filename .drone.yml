@@ -226,7 +226,7 @@ steps:
     - rm -rf tezedge
     - target_branch=$${DRONE_TARGET_BRANCH}
     - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
+    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
     # message_benchmark
     - cd /tmp/tezedge-cache/tezedge/tezos/messages
     - cargo bench --bench message_benchmark --no-run
@@ -1523,7 +1523,7 @@ steps:
     - rm -rf tezedge
     - target_branch=$${DRONE_TARGET_BRANCH}
     - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/simplestaking/tezedge.git && cd tezedge && git checkout $target_branch
+    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
     - cd /tmp/tezedge-cache/tezedge
     - cargo build --release --workspace
     - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "/artifacts/identities/identity_5.json"
