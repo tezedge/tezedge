@@ -177,8 +177,8 @@ impl Storage {
     const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
     const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::ROCKSDB;
-    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::ROCKSDB;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::SLEDDB;
+    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::FILE;
 }
 
 #[derive(Debug, Clone)]

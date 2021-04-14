@@ -16,6 +16,7 @@ pub mod sled_backend;
 pub mod stats;
 
 pub const ROCKSDB: &str = "rocksdb";
+pub const SLEDDB: &str = "sled";
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {
