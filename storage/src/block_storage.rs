@@ -706,7 +706,6 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(vec![65673, 1161, 905, 649, 393], res);
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
         Ok(())
     }
 }

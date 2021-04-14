@@ -457,7 +457,6 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
         Ok(())
     }
 

@@ -17,6 +17,14 @@ pub struct MainDB {
     inner: Arc<HashMap<String, Tree>>,
 }
 
+fn replace_merge(
+    _key: &[u8],               // the key being merged
+    _old_value: Option<&[u8]>,  // the previous value, if one existed
+    merged_bytes: &[u8]        // the new bytes being merged in
+) -> Option<Vec<u8>> {       // set the new value, return None to delete
+    Some(merged_bytes.to_vec())
+}
+
 impl MainDB {
     pub fn initialize<P: AsRef<Path>>(
         db_path: P,
@@ -35,9 +43,11 @@ impl MainDB {
         let mut tree_map = HashMap::new();
 
         for name in trees {
+            let tree = db.open_tree(name.as_str()).map_err(Error::from)?;
+            tree.set_merge_operator(replace_merge);
             tree_map.insert(
                 name.to_owned(),
-                db.open_tree(name.as_str()).map_err(Error::from)?,
+                tree
             );
         }
 

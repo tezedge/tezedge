@@ -767,7 +767,6 @@ mod tests {
                 _ => panic!("value not present"),
             }
         }
-        assert!(DB::destroy(&Options::default(), path).is_ok());
     }
 
     /// Create and return a storage with [number_of_blocks] blocks and the last BlockHash in it
