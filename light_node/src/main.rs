@@ -513,8 +513,6 @@ fn main() {
         .expect("Failed to initialize main db (sled) storage");
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
-    let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
-        .expect("Failed to create/initialize RocksDB database (db)");
     caches.push(kv_cache);
 
     let commit_logs = Arc::new(
@@ -557,7 +555,6 @@ fn main() {
 
     {
         let persistent_storage = PersistentStorage::new(
-            kv,
             maindb,
             commit_logs,
             sequences,
