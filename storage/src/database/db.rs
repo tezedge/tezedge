@@ -12,6 +12,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use std::marker::PhantomData;
+use sled::transaction::abort;
+use crate::database::error::Error::TransactionError;
 
 pub struct MainDB {
     inner: Arc<HashMap<String, Arc<Tree>>>,
@@ -152,6 +154,7 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
         let value = value.encode()?;
         let tree = self.get_tree(S::sub_tree_name())?;
         let _ = tree.merge(key, value).map_err(Error::from)?;
+        tree.flush();
         Ok(())
     }
 

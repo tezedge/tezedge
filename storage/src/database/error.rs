@@ -20,6 +20,8 @@ pub enum Error {
     HashEncodeError { error: FromBytesError },
     #[fail(display = "Database incompatibility {}", name)]
     DatabaseIncompatibility { name: String },
+    #[fail(display = "Database Transaction error {}", name)]
+    TransactionError { error: String },
 }
 
 impl From<SchemaError> for Error {
