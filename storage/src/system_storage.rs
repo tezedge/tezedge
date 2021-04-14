@@ -11,8 +11,9 @@ use crypto::hash::ChainId;
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
 use crate::StorageError;
+use crate::database::{KVDBStoreWithSchema, DBSubtreeKeyValueSchema};
 
-pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
+pub type SystemStorageKv = dyn KVDBStoreWithSchema<SystemStorage> + Sync + Send;
 pub type DbVersion = i64;
 
 /// Represents storage of the system settings.
@@ -111,15 +112,8 @@ impl KeyValueSchema for SystemStorage {
     type Key = String;
     type Value = SystemValue;
 }
-
-impl RocksDbKeyValueSchema for SystemStorage {
-    fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
-        let cf_opts = default_table_options(cache);
-        ColumnFamilyDescriptor::new(Self::name(), cf_opts)
-    }
-
-    #[inline]
-    fn name() -> &'static str {
+impl DBSubtreeKeyValueSchema for SystemStorage {
+    fn sub_tree_name() -> &'static str {
         "system_storage"
     }
 }

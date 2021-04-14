@@ -416,7 +416,7 @@ pub fn initialize_storage_with_genesis_block(
 
 /// Helper module to easily initialize databases
 pub mod initializer {
-    use std::path::{PathBuf};
+    use std::path::{PathBuf, Path};
     use std::sync::Arc;
 
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
@@ -426,10 +426,11 @@ pub mod initializer {
 
     use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration};
+    use crate::persistent::{DBError, DbConfiguration, open_sled_db};
     use crate::{StorageError, SystemStorage};
-    
-    
+    use crate::database::db::MainDB;
+    use crate::database::error::Error as DatabaseError;
+
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
@@ -455,7 +456,6 @@ pub mod initializer {
     impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
-                crate::SystemStorage::descriptor(cache),
                 crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
             ]
         }
@@ -464,17 +464,6 @@ pub mod initializer {
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
-                //crate::block_storage::BlockPrimaryIndex::descriptor(cache),
-                //crate::block_storage::BlockByLevelIndex::descriptor(cache),
-                //crate::block_storage::BlockByContextHashIndex::descriptor(cache),
-                //crate::BlockMetaStorage::descriptor(cache),
-                //crate::OperationsStorage::descriptor(cache),
-                //crate::OperationsMetaStorage::descriptor(cache),
-                crate::SystemStorage::descriptor(cache),
-                //crate::persistent::sequence::Sequences::descriptor(cache),
-                //crate::MempoolStorage::descriptor(cache),
-                //crate::ChainMetaStorage::descriptor(cache),
-                //crate::PredecessorStorage::descriptor(cache),
             ]
         }
     }
@@ -482,7 +471,6 @@ pub mod initializer {
     impl RocksDbColumnFactory for ContextActionsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![
-                crate::SystemStorage::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
                 crate::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
@@ -523,33 +511,16 @@ pub mod initializer {
             },
         )
             .map(Arc::new)?;
-
-        match check_database_compatibility(
-            db.clone(),
-            config.expected_db_version,
-            expected_main_chain,
-            &log,
-        ) {
-            Ok(false) => Err(DBError::DatabaseIncompatibility {
-                name: format!(
-                    "Database is incompatible with version {}",
-                    config.expected_db_version
-                ),
-            }),
-            Err(e) => Err(DBError::DatabaseIncompatibility {
-                name: format!("Failed to verify database compatibility reason: '{}'", e),
-            }),
-            _ => Ok(db),
-        }
+        Ok(db)
     }
-    /*
+
     pub fn initialize_maindb<P : AsRef<Path>>(
         log: &Logger,
         path : P,
         db_version: i64,
         expected_main_chain: &MainChain,
     ) -> Result<Arc<MainDB>, DatabaseError> {
-        let db = Arc::new(open_main_db(
+        let db = Arc::new(open_sled_db(
             path.as_ref()
         )?);
 
@@ -571,7 +542,7 @@ pub mod initializer {
             _ => Ok(db),
         }
     }
-     */
+
     pub struct MainChain {
         chain_id: ChainId,
         chain_name: String,
@@ -587,7 +558,7 @@ pub mod initializer {
     }
 
     fn check_database_compatibility(
-        db: Arc<DB>,
+        db: Arc<MainDB>,
         expected_database_version: i64,
         expected_main_chain: &MainChain,
         log: &Logger,
@@ -829,7 +800,6 @@ pub mod tests_common {
             let kv = Arc::new(open_kv(
                 path.join("db"),
                 vec![
-                    SystemStorage::descriptor(&db_cache),
                 ],
                 &cfg,
             )?);

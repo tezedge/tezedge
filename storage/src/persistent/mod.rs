@@ -11,7 +11,7 @@ pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIter
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
 use crate::database::db::{MainDB};
 use crate::database::error::{Error as DatabaseError};
-use crate::{OperationsStorage, OperationsMetaStorage, BlockMetaStorage, MempoolStorage, ChainMetaStorage, PredecessorStorage};
+use crate::{OperationsStorage, OperationsMetaStorage, BlockMetaStorage, MempoolStorage, ChainMetaStorage, PredecessorStorage, SystemStorage};
 use crate::database::DBSubtreeKeyValueSchema;
 use crate::block_storage;
 use crate::persistent::sequence::Sequences;
@@ -61,7 +61,8 @@ pub fn open_sled_db<P>(path: P) -> Result<MainDB, DatabaseError>
         Sequences::sub_tree_name().to_string(),
         MempoolStorage::sub_tree_name().to_string(),
         ChainMetaStorage::sub_tree_name().to_string(),
-        PredecessorStorage::sub_tree_name().to_string()
+        PredecessorStorage::sub_tree_name().to_string(),
+        SystemStorage::sub_tree_name().to_string()
     ], false)
 }
 
