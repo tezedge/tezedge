@@ -13,7 +13,6 @@ use std::sync::Arc;
 
 use std::marker::PhantomData;
 use sled::transaction::abort;
-use crate::database::error::Error::TransactionError;
 
 pub struct MainDB {
     inner: Arc<HashMap<String, Arc<Tree>>>,
