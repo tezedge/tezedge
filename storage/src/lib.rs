@@ -774,6 +774,15 @@ pub mod tests_common {
                 vec![
                     OperationsStorage::sub_tree_name().to_string(),
                     OperationsMetaStorage::sub_tree_name().to_string(),
+                    block_storage::BlockByLevelIndex::sub_tree_name().to_string(),
+                    block_storage::BlockPrimaryIndex::sub_tree_name().to_string(),
+                    block_storage::BlockByContextHashIndex::sub_tree_name().to_string(),
+                    BlockMetaStorage::sub_tree_name().to_string(),
+                    Sequences::sub_tree_name().to_string(),
+                    MempoolStorage::sub_tree_name().to_string(),
+                    ChainMetaStorage::sub_tree_name().to_string(),
+                    PredecessorStorage::sub_tree_name().to_string(),
+                    SystemStorage::sub_tree_name().to_string(),
                 ],
                 true,
             )?);
