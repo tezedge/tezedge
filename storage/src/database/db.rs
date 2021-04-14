@@ -16,6 +16,8 @@ pub struct MainDB {
 
 impl MainDB {
     pub fn initialize<P: AsRef<Path>>(db_path: P, trees: Vec<String>, is_temporary : bool) -> Result<Self, Error> {
+        println!("DATABASE LOCATION: {}", String::from(db_path.as_ref().as_os_str().to_string_lossy()));
+
         let db = sled::Config::new()
             .path(db_path)
             .temporary(is_temporary)
@@ -27,7 +29,7 @@ impl MainDB {
 
 
         let mut tree_map = HashMap::new();
-        println!("DATABASE LOCATION: {}", String::from(db_path.as_ref().as_os_str().to_string_lossy()));
+
 
         for name in trees {
             tree_map.insert(name.to_owned(), db.open_tree(name.as_str()).map_err(Error::from)?);
