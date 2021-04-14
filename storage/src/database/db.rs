@@ -27,6 +27,7 @@ impl MainDB {
 
 
         let mut tree_map = HashMap::new();
+        println!("DATABASE LOCATION: {}", String::from(db_path.as_ref().as_os_str().to_string_lossy()));
 
         for name in trees {
             tree_map.insert(name.to_owned(), db.open_tree(name.as_str()).map_err(Error::from)?);
