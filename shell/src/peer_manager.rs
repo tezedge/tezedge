@@ -65,7 +65,6 @@ pub struct CheckPeerCount;
 #[derive(Clone, Debug)]
 pub struct WhitelistAllIpAddresses;
 
-// pub type IncomingConnectionPermit = Arc<OwnedSemaphorePermit>;
 pub type IncomingConnectionPermit = Arc<OwnedSemaphorePermit>;
 
 /// Accept incoming peer connection.

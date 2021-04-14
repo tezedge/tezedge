@@ -3,7 +3,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use failure::Fail;
 
@@ -96,96 +96,39 @@ pub fn try_wait_for_condvar_result<T, E>(
 /// Simple try_lock without Mutex/RwLock
 ///
 /// Inspired by: https://morestina.net/blog/749/exploring-lock-free-rust-2-atomics
-pub struct DeadlineTryLock(Arc<AtomicBool>, Duration);
+pub struct AtomicTryLock(Arc<AtomicBool>);
 
-impl DeadlineTryLock {
-    pub fn new(timeout: Duration) -> DeadlineTryLock {
-        DeadlineTryLock(Arc::new(AtomicBool::new(false)), timeout)
+impl AtomicTryLock {
+    pub fn create() -> AtomicTryLock {
+        AtomicTryLock(Arc::new(AtomicBool::new(false)))
     }
 
-    pub fn try_lock(&self) -> Option<DeadlineTryLockGuard> {
+    pub fn try_lock(&self) -> Option<AtomicTryLockGuard> {
         let was_locked = self.0.swap(true, Ordering::Acquire);
         if was_locked {
             None
         } else {
-            Some(DeadlineTryLockGuard {
+            Some(AtomicTryLockGuard {
                 lock: self.0.clone(),
-                deadline: Instant::now() + self.1,
             })
         }
     }
-}
 
-pub struct DeadlineTryLockGuard {
-    lock: Arc<AtomicBool>,
-    deadline: Instant,
-}
-
-impl DeadlineTryLockGuard {
-    pub fn is_deadline_reached(&self) -> bool {
-        self.deadline.le(&Instant::now())
+    pub fn is_available(&self) -> bool {
+        !self.0.load(Ordering::Acquire)
     }
 }
 
-impl Drop for DeadlineTryLockGuard {
+#[derive(Debug)]
+pub struct AtomicTryLockGuard {
+    lock: Arc<AtomicBool>,
+}
+
+impl Drop for AtomicTryLockGuard {
     fn drop(&mut self) {
         self.lock.store(false, Ordering::Release);
     }
 }
-
-// TODO: TE-386 - remove not needed
-// /// Unility to help manage [`UniqueBlockData`] structure
-// pub(crate) struct MissingBlockData<D> {
-//     pub missing_data: UniqueBlockData<D>,
-// }
-
-// impl<D: BlockData + Ord> MissingBlockData<D> {
-// TODO: TE-386 - remove not needed
-// pub fn push_data(&mut self, missing_data: D) {
-//     self.missing_data.push(missing_data);
-// }
-
-// TODO: TE-386 - remove not needed
-// #[inline]
-// pub fn has_missing_data(&self) -> bool {
-//     !self.missing_data.is_empty()
-// }
-//
-// #[inline]
-// pub fn missing_data_count(&self) -> usize {
-//     self.missing_data.len()
-// }
-
-// TODO: TE-386 - remove not needed
-// #[inline]
-// pub fn drain_missing_data<F>(&mut self, n: usize, filter: F) -> Vec<D>
-// where
-//     F: Fn(&D) -> bool,
-// {
-//     (0..std::cmp::min(self.missing_data.len(), n))
-//         .filter_map(|_| {
-//             if self
-//                 .missing_data
-//                 .peek()
-//                 .filter(|block| filter(block))
-//                 .is_some()
-//             {
-//                 self.missing_data.pop()
-//             } else {
-//                 None
-//             }
-//         })
-//         .collect()
-// }
-// }
-//
-// impl<D: BlockData + Ord> Default for MissingBlockData<D> {
-//     fn default() -> Self {
-//         Self {
-//             missing_data: UniqueBlockData::default(),
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
@@ -194,7 +137,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::utils::{
-        dispatch_condvar_result, try_wait_for_condvar_result, CondvarResult, DeadlineTryLock,
+        dispatch_condvar_result, try_wait_for_condvar_result, AtomicTryLock, CondvarResult,
     };
 
     #[test]
@@ -219,22 +162,28 @@ mod tests {
 
     #[test]
     fn test_atomic_try_lock() {
-        let lock = DeadlineTryLock::new(Duration::from_secs(2));
+        let lock = AtomicTryLock::create();
+        assert!(lock.is_available());
 
         // get lock
         let lock_guard = lock.try_lock();
         assert!(lock_guard.is_some());
+        assert!(!lock.is_available());
 
         // get next lock
         assert!(lock.try_lock().is_none());
         assert!(lock.try_lock().is_none());
         assert!(lock.try_lock().is_none());
+        assert!(!lock.is_available());
 
         // release lock
         drop(lock_guard);
+        assert!(lock.is_available());
 
         // try next lock
         assert!(lock.try_lock().is_some());
+        assert!(lock.is_available());
         assert!(lock.try_lock().is_some());
+        assert!(lock.is_available());
     }
 }

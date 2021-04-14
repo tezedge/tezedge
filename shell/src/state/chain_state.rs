@@ -41,7 +41,6 @@ use crate::validation;
 /// Note: if needed, cound be refactored to cfg and struct
 pub(crate) mod bootstrap_constants {
     use crate::state::peer_state::DataQueuesLimits;
-    use std::time::Duration;
 
     /// We can controll speedup of downloading blocks from network
     pub(crate) const MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT: i8 = 2;
@@ -51,8 +50,6 @@ pub(crate) mod bootstrap_constants {
 
     /// We tries to apply downloaded blocks in batch to speedup and save resources
     pub(crate) const MAX_BLOCK_APPLY_BATCH: usize = 100;
-    /// We controll frequecncy of holding lock too long, just in case peers is stucked, this is the maximum deadline
-    pub(crate) const BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT: Duration = Duration::from_secs(60 * 20);
 
     /// Constants for peer's queue
     pub(crate) const LIMITS: DataQueuesLimits = DataQueuesLimits {
@@ -104,7 +101,6 @@ impl BlockchainState {
                 BlockMetaStorage::new(&persistent_storage),
                 OperationsMetaStorage::new(&persistent_storage),
                 block_applier,
-                bootstrap_constants::BLOCK_APPLY_LOCK_MAX_HOLD_TIMEOUT,
             )),
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),

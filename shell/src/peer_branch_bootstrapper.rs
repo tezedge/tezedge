@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -21,7 +19,6 @@ use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::StateError;
 use crate::subscription::subscribe_to_actor_terminated;
-use crate::utils::DeadlineTryLockGuard;
 
 /// After this timeout peer will be disconnected if no activity is done on any pipeline
 /// So if peer does not change any branch bootstrap, we will disconnect it
@@ -32,7 +29,7 @@ const MISSING_NEW_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(60 * 2);
 
 /// Constatnt for rescheduling of processing bootstrap pipelines
 const NO_DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_secs(3);
-const DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_millis(5);
+const DATA_SCHEDULED_NEXT_SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_millis(1500);
 
 /// Message commands [`PeerBranchBootstrapper`] to disconnect peer if any of bootstraping pipelines are stalled
 #[derive(Clone, Debug)]
@@ -125,7 +122,6 @@ pub struct BlockBatchApplyFailed {
 pub struct PeerBranchBootstrapper {
     peer: Arc<PeerId>,
     peer_queues: Arc<DataQueues>,
-    block_batch_apply_try_lock: Option<DeadlineTryLockGuard>,
 
     shell_channel: ShellChannelRef,
     block_meta_storage: BlockMetaStorage,
@@ -140,7 +136,9 @@ pub struct PeerBranchBootstrapper {
 
     /// Indicates that we already scheduled process_bootstrap_pipelines, means we have already unprocessed message in mailbox
     /// So, we dont need to add it twice - this is kind if optimization, not to exhause mailbox with the same messages
-    process_bootstrap_pipelines_triggered: AtomicBool,
+    process_bootstrap_pipelines_triggered: bool,
+    /// Local flag that we triggered block_apply and waiting for response (optimize, not to overload unnecessesery)
+    block_batch_apply_triggered: bool,
 }
 
 #[derive(Clone)]
@@ -206,13 +204,8 @@ impl PeerBranchBootstrapper {
         schedule_at_delay: Duration,
     ) {
         // if not already scheduled, than schedule
-        if !self
-            .process_bootstrap_pipelines_triggered
-            .load(Ordering::Acquire)
-        {
-            self.process_bootstrap_pipelines_triggered
-                .store(true, Ordering::Release);
-
+        if !self.process_bootstrap_pipelines_triggered {
+            self.process_bootstrap_pipelines_triggered = true;
             ctx.schedule_once(
                 schedule_at_delay,
                 ctx.myself(),
@@ -247,28 +240,6 @@ impl PeerBranchBootstrapper {
 
         // check, if we completed any pipeline
         self.handle_resolved_bootstraps(log);
-
-        // check if we need to release lock
-        self.check_deadline_for_block_batch_apply_try_lock();
-    }
-
-    fn check_deadline_for_block_batch_apply_try_lock(&mut self) {
-        if let Some(lock) = self.block_batch_apply_try_lock.as_ref() {
-            if lock.is_deadline_reached() {
-                self.release_block_batch_apply_try_lock();
-            }
-        }
-    }
-
-    fn release_block_batch_apply_try_lock(&mut self) {
-        if let Some(lock) = self.block_batch_apply_try_lock.take() {
-            drop(lock);
-        }
-    }
-
-    fn is_block_batch_apply_try_lock_aquired(&mut self) -> bool {
-        self.check_deadline_for_block_batch_apply_try_lock();
-        self.block_batch_apply_try_lock.as_ref().is_some()
     }
 
     fn process_data_download(&mut self, log: &Logger) -> bool {
@@ -318,7 +289,7 @@ impl PeerBranchBootstrapper {
             block_meta_storage,
             requester,
             cfg,
-            block_batch_apply_try_lock: block_apply_try_lock,
+            block_batch_apply_triggered,
             ..
         } = self;
 
@@ -327,9 +298,9 @@ impl PeerBranchBootstrapper {
             schedule_block_applying(
                 peer,
                 bootstrap,
-                block_apply_try_lock,
                 block_meta_storage,
                 requester,
+                block_batch_apply_triggered,
                 myself.clone(),
                 cfg.max_block_apply_batch,
                 log,
@@ -407,13 +378,13 @@ impl
             peer,
             peer_queues,
             requester,
-            block_batch_apply_try_lock: None,
             bootstrap_state: Default::default(),
             shell_channel,
             block_meta_storage,
             operations_meta_storage,
             empty_bootstrap_state: None,
-            process_bootstrap_pipelines_triggered: AtomicBool::new(false),
+            process_bootstrap_pipelines_triggered: false,
+            block_batch_apply_triggered: false,
             cfg,
         }
     }
@@ -466,8 +437,6 @@ impl Receive<SystemEvent> for PeerBranchBootstrapper {
             if self.peer.peer_ref.uri().eq(evt.actor.uri()) {
                 warn!(ctx.system.log(), "Stopping peer's branch bootstrapper, because peer is terminated";
                                         "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string());
-                // release lock
-                self.release_block_batch_apply_try_lock();
                 // stop actor
                 ctx.stop(ctx.myself());
             }
@@ -541,8 +510,7 @@ impl Receive<PingBootstrapPipelinesProcessing> for PeerBranchBootstrapper {
         _: Option<BasicActorRef>,
     ) {
         // clean for next run
-        self.process_bootstrap_pipelines_triggered
-            .store(false, Ordering::Release);
+        self.process_bootstrap_pipelines_triggered = false;
 
         // process
         self.process_bootstrap_pipelines(ctx, &ctx.system.log());
@@ -600,8 +568,8 @@ impl Receive<BlockBatchApplied> for PeerBranchBootstrapper {
         msg: BlockBatchApplied,
         _: Option<BasicActorRef>,
     ) {
-        // release lock
-        self.release_block_batch_apply_try_lock();
+        // reset flag
+        self.block_batch_apply_triggered = false;
 
         // process message
         self.bootstrap_state.iter_mut().for_each(|bootstrap| {
@@ -622,6 +590,9 @@ impl Receive<BlockBatchApplyFailed> for PeerBranchBootstrapper {
         msg: BlockBatchApplyFailed,
         _: Option<BasicActorRef>,
     ) {
+        // reset flag
+        self.block_batch_apply_triggered = false;
+
         let log = ctx.system.log();
         let Self {
             bootstrap_state,
@@ -642,8 +613,6 @@ impl Receive<BlockBatchApplyFailed> for PeerBranchBootstrapper {
                     true
                 }
             });
-
-        self.release_block_batch_apply_try_lock();
     }
 }
 
@@ -674,8 +643,8 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
             }
         }
 
-        // if we have acquired lock, we are not considered as stalled, because we are still applying blocks
-        if self.is_block_batch_apply_try_lock_aquired() {
+        // if we have acquired lock, we are not considered as stalled, because we are still applying blocks and waiting for response from chain_feeder
+        if self.block_batch_apply_triggered {
             is_stalled = false;
         }
 
@@ -684,9 +653,6 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
             warn!(log, "Disconnecting peer, because of stalled bootstrap pipeline";
                        "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
             );
-
-            // release lock
-            self.release_block_batch_apply_try_lock();
 
             // stop actors for peer
             ctx.system.stop(ctx.myself());
@@ -818,15 +784,15 @@ fn schedule_operations_downloading(
 fn schedule_block_applying(
     peer: &mut Arc<PeerId>,
     bootstrap: &mut BootstrapState,
-    block_apply_try_lock: &mut Option<DeadlineTryLockGuard>,
     block_meta_storage: &mut BlockMetaStorage,
     requester: &DataRequesterRef,
+    block_batch_apply_triggered: &mut bool,
     myself: PeerBranchBootstrapperRef,
     max_block_apply_batch: usize,
     log: &Logger,
 ) {
-    // if we hold the lock, means we are waiting for our scheduled batch to finish
-    if block_apply_try_lock.is_some() {
+    // try global trylock, if it is free
+    if !requester.is_block_apply_try_lock_available() {
         return;
     }
 
@@ -843,10 +809,10 @@ fn schedule_block_applying(
                 batch,
                 Some(myself),
             ) {
-                Ok(Some(lock)) => {
-                    *block_apply_try_lock = Some(lock);
+                Ok(true) => {
+                    *block_batch_apply_triggered = true;
                 }
-                Ok(None) => {
+                Ok(false) => {
                     // no lock acquired, so not our turn
                 }
                 Err(e) => {

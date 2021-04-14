@@ -40,7 +40,7 @@ use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::state::BlockApplyBatch;
 use crate::stats::apply_block_stats::BlockValidationTimer;
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::utils::{dispatch_condvar_result, AtomicTryLockGuard, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -52,6 +52,9 @@ pub struct ApplyBlock {
     bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
+
+    /// Simple lock guard, for easy synchronization
+    permit: Option<Arc<AtomicTryLockGuard>>,
 }
 
 impl ApplyBlock {
@@ -60,12 +63,14 @@ impl ApplyBlock {
         batch: BlockApplyBatch,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
+        permit: Option<AtomicTryLockGuard>,
     ) -> Self {
         Self {
             chain_id,
             batch,
             result_callback,
             bootstrapper,
+            permit: permit.map(Arc::new),
         }
     }
 }
@@ -435,6 +440,7 @@ fn feed_chain_to_protocol(
                         bootstrapper,
                         chain_id,
                         result_callback,
+                        permit,
                     } = request;
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
@@ -517,6 +523,11 @@ fn feed_chain_to_protocol(
                                 break;
                             }
                         }
+                    }
+
+                    // allow others as soon as possible
+                    if let Some(permit) = permit {
+                        drop(permit);
                     }
 
                     // notify condvar

@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use riker::actors::*;
 use slog::{warn, Logger};
@@ -27,7 +27,7 @@ use crate::chain_feeder::{ApplyBlock, ChainFeederRef};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
 use crate::state::peer_state::{DataQueues, MissingOperations, PeerState};
 use crate::state::{BlockApplyBatch, StateError};
-use crate::utils::{CondvarResult, DeadlineTryLock, DeadlineTryLockGuard};
+use crate::utils::{AtomicTryLock, AtomicTryLockGuard, CondvarResult};
 use crate::validation;
 use crate::validation::CanApplyStatus;
 
@@ -44,7 +44,7 @@ pub struct DataRequester {
     block_applier: ChainFeederRef,
 
     /// Global try_lock, we want to limit sending request to block_applier and wait for the result
-    block_apply_try_lock: DeadlineTryLock,
+    block_apply_try_lock: AtomicTryLock,
 }
 
 impl DataRequester {
@@ -52,13 +52,12 @@ impl DataRequester {
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
         block_applier: ChainFeederRef,
-        block_apply_lock_hold_timeout: Duration,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
             block_applier,
-            block_apply_try_lock: DeadlineTryLock::new(block_apply_lock_hold_timeout),
+            block_apply_try_lock: AtomicTryLock::create(),
         }
     }
 
@@ -366,6 +365,10 @@ impl DataRequester {
         }))
     }
 
+    pub fn is_block_apply_try_lock_available(&self) -> bool {
+        self.block_apply_try_lock.is_available()
+    }
+
     /// Tries to schedule block for applying, if passed all checks
     ///
     /// Returns true, only if was block apply trigger (means, block is completed and can be applied and it is not already applied)
@@ -374,14 +377,14 @@ impl DataRequester {
         chain_id: Arc<ChainId>,
         batch: BlockApplyBatch,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
-    ) -> Result<Option<DeadlineTryLockGuard>, StateError> {
+    ) -> Result<bool, StateError> {
         // try to get lock - we can schedule block apply batch just only one in time
         match self.block_apply_try_lock.try_lock() {
             Some(guard) => {
-                self.call_apply_block(chain_id, batch, None, bootstrapper)?;
-                Ok(Some(guard))
+                self.call_apply_block(chain_id, batch, None, bootstrapper, Some(guard))?;
+                Ok(true)
             }
-            None => Ok(None),
+            None => Ok(false),
         }
     }
 
@@ -396,6 +399,7 @@ impl DataRequester {
             BlockApplyBatch::one(block_hash),
             result_callback,
             None,
+            None, /* no permit needed here */
         )
     }
 
@@ -405,6 +409,7 @@ impl DataRequester {
         batch: BlockApplyBatch,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
+        permit: Option<AtomicTryLockGuard>,
     ) -> Result<(), StateError> {
         // check batch, if the start block is ok and can be applied
         // if start is already applied, we fold the bath to next block (if any)
@@ -472,7 +477,7 @@ impl DataRequester {
 
         // try to call apply
         self.block_applier.tell(
-            ApplyBlock::new(chain_id, batch, result_callback, bootstrapper),
+            ApplyBlock::new(chain_id, batch, result_callback, bootstrapper, permit),
             None,
         );
 
@@ -528,7 +533,7 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerId) {
 mod tests {
     use std::collections::HashSet;
     use std::sync::atomic::AtomicBool;
-    use std::sync::mpsc::channel;
+    use std::sync::mpsc::{channel, Receiver};
     use std::sync::{Arc, Mutex};
     use std::thread;
 
@@ -544,6 +549,7 @@ mod tests {
     };
     use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
+    use crate::chain_feeder;
     use crate::chain_feeder::{ChainFeeder, ChainFeederRef};
     use crate::shell_channel::ShellChannel;
     use crate::state::data_requester::DataRequester;
@@ -552,7 +558,6 @@ mod tests {
         create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
     };
     use crate::state::{BlockApplyBatch, StateError};
-    use std::time::Duration;
 
     macro_rules! assert_block_queue_contains {
         ($expected:expr, $queues:expr, $block:expr) => {{
@@ -612,13 +617,13 @@ mod tests {
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
 
         // requester instance
         let data_requester = DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock(&actor_system)?,
-            Duration::from_secs(15),
+            chain_feeder_mock,
         );
 
         // try schedule nothiing
@@ -698,13 +703,13 @@ mod tests {
         let storage =
             TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block_operations")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
 
         // requester instance
         let data_requester = DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock(&actor_system)?,
-            Duration::from_secs(15),
+            chain_feeder_mock,
         );
 
         // prepare missing operations in db for block with 4 validation_pass
@@ -838,13 +843,13 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_one")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
+        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
 
         // requester instance
         let data_requester = DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock(&actor_system)?,
-            Duration::from_secs(15),
+            chain_feeder_mock,
         );
 
         // prepare missing operations in db for block with 4 validation_pass
@@ -856,9 +861,10 @@ mod tests {
         assert!(matches!(
             data_requester.call_apply_block(
             chain_id.clone(),
-            batch_with_block1.clone(),
-            None,
-            None,
+                batch_with_block1.clone(),
+                None,
+                None,
+                None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("No metadata found")
         ));
@@ -887,6 +893,7 @@ mod tests {
                 batch_with_block1.clone(),
                 None,
                 None,
+                None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("cannot be applied")
         ));
@@ -899,7 +906,7 @@ mod tests {
 
         // try schedule - ok
         assert!(matches!(
-            data_requester.call_apply_block(chain_id, batch_with_block1, None, None,),
+            data_requester.call_apply_block(chain_id, batch_with_block1, None, None, None),
             Ok(())
         ));
 
@@ -914,14 +921,15 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_batch")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
+        let (chain_feeder_mock, chain_feeder_receiver) = chain_feeder_mock(&actor_system)?;
 
         // requester instance
         let data_requester = DataRequester::new(
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock(&actor_system)?,
-            Duration::from_secs(15),
+            chain_feeder_mock,
         );
+        assert!(data_requester.is_block_apply_try_lock_available());
 
         let chain_id = Arc::new(ChainId::from_base58_check("NetXgtSLGNJvNye")?);
         let block1 = block(1);
@@ -963,7 +971,8 @@ mod tests {
             batch_with_block1.clone(),
             None,
         )?;
-        assert!(lock.is_some());
+        assert!(lock);
+        assert!(!data_requester.is_block_apply_try_lock_available());
 
         // try schedule twice - not ok
         assert!(matches!(
@@ -972,11 +981,13 @@ mod tests {
                 batch_with_block1.clone(),
                 None,
             ),
-            Ok(None)
+            Ok(false)
         ));
+        assert!(!data_requester.is_block_apply_try_lock_available());
 
-        // release lock
-        drop(lock);
+        // read event, which drops lock
+        assert!(chain_feeder_receiver.recv().is_ok());
+        assert!(data_requester.is_block_apply_try_lock_available());
 
         // try schedule queue - ok
         assert!(matches!(
@@ -985,8 +996,11 @@ mod tests {
                 batch_with_block1.clone(),
                 None,
             ),
-            Ok(x) if x.is_some()
+            Ok(true)
         ));
+        assert!(!data_requester.is_block_apply_try_lock_available());
+        assert!(chain_feeder_receiver.recv().is_ok());
+        assert!(data_requester.is_block_apply_try_lock_available());
 
         // try to apply if block1 is_already applied - testing shifting batch
         // mark block1 as applied
@@ -1030,8 +1044,11 @@ mod tests {
                 batch_with_block1.clone(),
                 None,
             ),
-            Ok(x) if x.is_some()
+            Ok(true)
         ));
+        assert!(!data_requester.is_block_apply_try_lock_available());
+        assert!(chain_feeder_receiver.recv().is_ok());
+        assert!(data_requester.is_block_apply_try_lock_available());
 
         // try to apply if the whole batch is_already applied - testing shifting batch
         block_meta_storage.put(
@@ -1073,13 +1090,15 @@ mod tests {
         Ok(())
     }
 
-    fn chain_feeder_mock(actor_system: &ActorSystem) -> Result<ChainFeederRef, failure::Error> {
+    fn chain_feeder_mock(
+        actor_system: &ActorSystem,
+    ) -> Result<(ChainFeederRef, Receiver<chain_feeder::Event>), failure::Error> {
         // run actor's
         let shell_channel =
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
 
-        let (block_applier_event_sender, _) = channel();
-        let block_applier_run = Arc::new(AtomicBool::new(false));
+        let (block_applier_event_sender, block_applier_event_receiver) = channel();
+        let block_applier_run = Arc::new(AtomicBool::new(true));
 
         actor_system
             .actor_of_props::<ChainFeeder>(
@@ -1091,6 +1110,7 @@ mod tests {
                     Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
                 )),
             )
+            .and_then(|feeder| Ok((feeder, block_applier_event_receiver)))
             .map_err(|e| e.into())
     }
 }
