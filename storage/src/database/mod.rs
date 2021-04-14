@@ -3,8 +3,9 @@ use crate::persistent::{KeyValueSchema, SchemaError};
 use crate::{Direction, IteratorMode};
 
 use crate::persistent::codec::Decoder;
-use sled::IVec;
+use sled::{IVec, Tree};
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 pub mod db;
 pub mod error;
@@ -94,7 +95,7 @@ pub struct SledIteratorWrapper {
 }
 
 impl SledIteratorWrapper {
-    fn new(mode: SledIteratorWrapperMode, tree: sled::Tree) -> Self {
+    fn new(mode: SledIteratorWrapperMode, tree: Arc<Tree>) -> Self {
         match mode.clone() {
             SledIteratorWrapperMode::Start => Self {
                 mode,

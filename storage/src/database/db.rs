@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::marker::PhantomData;
 
 pub struct MainDB {
-    inner: Arc<HashMap<String, Tree>>,
+    inner: Arc<HashMap<String, Arc<Tree>>>,
 }
 
 fn replace_merge(
@@ -47,7 +47,7 @@ impl MainDB {
             tree.set_merge_operator(replace_merge);
             tree_map.insert(
                 name.to_owned(),
-                tree
+                Arc::new(tree)
             );
         }
 
@@ -57,7 +57,7 @@ impl MainDB {
         Ok(db)
     }
 
-    fn get_tree(&self, name: &str) -> Result<Tree, Error> {
+    fn get_tree(&self, name: &'static str) -> Result<Arc<Tree>, Error> {
         let tree = match self.inner.get(name) {
             None => {
                 return Err(Error::MissingSubTree {
@@ -67,6 +67,55 @@ impl MainDB {
             Some(t) => t,
         };
         Ok(tree.clone())
+    }
+
+    fn tree_insert(&self, name : &str, key : Vec<u8>, value: Vec<u8> ) -> Result<(), Error>  {
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        let _ = tree.insert(key, value).map_err(Error::from)?;
+        Ok(())
+    }
+
+    fn tree_get(&self, name : &str, key : Vec<u8>) -> Result<Option<IVec>, Error>  {
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        tree.get(key).map_err(Error::from)
+    }
+
+    fn tree_delete(&self, name : &str, key : Vec<u8>) -> Result<Option<IVec>, Error>  {
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        tree.remove(key).map_err(Error::from)
+    }
+
+    fn tree_merge(&self, name : &str, key : Vec<u8>, value: Vec<u8>) -> Result<Option<IVec>, Error>  {
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        tree.merge(key,value).map_err(Error::from)
     }
 
     pub fn flush(&self) -> Result<(), Error> {
