@@ -520,10 +520,10 @@ impl DBSubtreeKeyValueSchema for BlockMetaStorage {
     }
 }
 
-fn merge_meta_value(
+pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
-    operands: &mut MergeOperands,
+    merge_val: &[u8]
 ) -> Option<Vec<u8>> {
     if let Some(val) = existing_val {
         if val.len() < LEN_FIXED_META {
@@ -533,47 +533,44 @@ fn merge_meta_value(
 
     let mut result = existing_val.map(|v| v.to_vec());
 
-    for op in operands {
-        match result {
-            Some(ref mut val) => {
-                if op.len() < LEN_FIXED_META {
-                    return None;
-                }
-
-                let mask_val = val[IDX_MASK];
-                let mask_op = op[IDX_MASK];
-
-                // merge `mask(1)`
-                val[IDX_MASK] = mask_val | mask_op;
-
-                // if op has predecessor and val has not, copy it from op to val
-                if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
-                    val.splice(
-                        IDX_PREDECESSOR..IDX_LEVEL,
-                        op[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
-                    );
-                }
-
-                // replace op (successors count + successors) to val
-                let val_successors_count = successors_count!(val);
-                let op_successors_count = successors_count!(op);
-                if (has_successor!(mask_op) && !has_successor!(mask_val))
-                    || (val_successors_count != op_successors_count)
-                {
-                    val.truncate(LEN_FIXED_META);
-                    val.splice(
-                        IDX_SUCCESSOR_COUNT..,
-                        op[IDX_SUCCESSOR_COUNT..].iter().cloned(),
-                    );
-                }
-
-                let total_len = total_len(op_successors_count);
-                debug_assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
+    match result {
+        Some(ref mut val) => {
+            if merge_val.len() < LEN_FIXED_META {
+                return None;
             }
-            None => result = Some(op.to_vec()),
-        }
-    }
 
+            let mask_val = val[IDX_MASK];
+            let mask_op = merge_val[IDX_MASK];
+
+            // merge `mask(1)`
+            val[IDX_MASK] = mask_val | mask_op;
+
+            // if op has predecessor and val has not, copy it from op to val
+            if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
+                val.splice(
+                    IDX_PREDECESSOR..IDX_LEVEL,
+                    merge_val[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
+                );
+            }
+
+            // replace op (successors count + successors) to val
+            let val_successors_count = successors_count!(val);
+            let op_successors_count = successors_count!(merge_val);
+            if (has_successor!(mask_op) && !has_successor!(mask_val))
+                || (val_successors_count != op_successors_count)
+            {
+                val.truncate(LEN_FIXED_META);
+                val.splice(
+                    IDX_SUCCESSOR_COUNT..,
+                    merge_val[IDX_SUCCESSOR_COUNT..].iter().cloned(),
+                );
+            }
+
+            let total_len = total_len(op_successors_count);
+            debug_assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
+        }
+        None => result = Some(merge_val.to_vec()),
+    }
     result
 }
 
