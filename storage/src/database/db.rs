@@ -4,27 +4,31 @@ use crate::database::{
     KVDatabaseWithSchemaIterator, SledIteratorWrapper, SledIteratorWrapperMode,
 };
 use crate::persistent::{Decoder, Encoder, KeyValueSchema};
-use crate::{IteratorMode, OperationsMetaStorage, operations_meta_storage, BlockMetaStorage, block_meta_storage};
+use crate::{
+    block_meta_storage, operations_meta_storage, BlockMetaStorage, IteratorMode,
+    OperationsMetaStorage,
+};
 use sled::{IVec, Tree};
 use std::alloc::Global;
 use std::path::Path;
 use std::sync::Arc;
 
-use std::marker::PhantomData;
-use sled::transaction::abort;
 use crate::system_storage::SystemValue::Hash;
-use std::collections::{HashSet, HashMap};
+use sled::transaction::abort;
+use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
 
 pub struct MainDB {
-    db : sled::Db,
-    inner: Arc<HashMap<String, Tree>>
+    db: sled::Db,
+    inner: Arc<HashMap<String, Tree>>,
 }
 
 fn replace_merge(
     _key: &[u8],               // the key being merged
-    _old_value: Option<&[u8]>,  // the previous value, if one existed
-    merged_bytes: &[u8]        // the new bytes being merged in
-) -> Option<Vec<u8>> {       // set the new value, return None to delete
+    _old_value: Option<&[u8]>, // the previous value, if one existed
+    merged_bytes: &[u8],       // the new bytes being merged in
+) -> Option<Vec<u8>> {
+    // set the new value, return None to delete
     Some(merged_bytes.to_vec())
 }
 
@@ -54,10 +58,7 @@ impl MainDB {
             if name == BlockMetaStorage::sub_tree_name() {
                 tree.set_merge_operator(block_meta_storage::merge_meta_value)
             }
-            tree_map.insert(
-                name.to_owned(),
-                tree
-            );
+            tree_map.insert(name.to_owned(), tree);
         }
 
         let db = MainDB {
@@ -111,7 +112,7 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
         let value = value.encode()?;
         let tree_name = S::sub_tree_name();
         let tree = self.get_tree(tree_name)?;
-        tree.merge(key,value).map_err(Error::from)?;
+        tree.merge(key, value).map_err(Error::from)?;
         Ok(())
     }
 

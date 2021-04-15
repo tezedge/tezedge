@@ -137,13 +137,11 @@ _key: &[u8],               // the key being merged
 pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
-    merged_bytes: &[u8]
+    merged_bytes: &[u8],
 ) -> Option<Vec<u8>> {
     let mut result = existing_val.map(|v| v.to_vec());
     match result {
-        None => {
-            return Some(merged_bytes.to_vec())
-        }
+        None => return Some(merged_bytes.to_vec()),
         Some(ref mut val) => {
             debug_assert_eq!(
                 val.len(),
@@ -153,7 +151,10 @@ pub fn merge_meta_value(
                 merged_bytes.len()
             );
             debug_assert_ne!(0, val.len(), "Value cannot have zero size");
-            debug_assert_eq!(val[0], merged_bytes[0], "Value of validation passes cannot change");
+            debug_assert_eq!(
+                val[0], merged_bytes[0],
+                "Value of validation passes cannot change"
+            );
             // in case of inconsistency, return `None`
             if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
                 return None;

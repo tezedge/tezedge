@@ -523,7 +523,7 @@ impl DBSubtreeKeyValueSchema for BlockMetaStorage {
 pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
-    merge_val: &[u8]
+    merge_val: &[u8],
 ) -> Option<Vec<u8>> {
     if let Some(val) = existing_val {
         if val.len() < LEN_FIXED_META {
@@ -567,7 +567,13 @@ pub fn merge_meta_value(
             }
 
             let total_len = total_len(op_successors_count);
-            debug_assert_eq!(total_len, val.len(), "Invalid length after merge operator was applied. Was expecting {} but found {}.", total_len, val.len());
+            debug_assert_eq!(
+                total_len,
+                val.len(),
+                "Invalid length after merge operator was applied. Was expecting {} but found {}.",
+                total_len,
+                val.len()
+            );
         }
         None => result = Some(merge_val.to_vec()),
     }
