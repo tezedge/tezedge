@@ -16,8 +16,7 @@ use crate::system_storage::SystemValue::Hash;
 use std::collections::{HashSet, HashMap};
 
 pub struct MainDB {
-    inner: sled::Db,
-    trees : HashSet<String>
+    inner: Arc<HashMap<String, Tree>>
 }
 
 fn replace_merge(
@@ -43,43 +42,29 @@ impl MainDB {
             .open()
             .map_err(Error::from)?;
 
-        let mut tree_map = HashSet::new();
+        let mut tree_map = HashMap::new();
 
         for name in trees {
+            let tree = db.open_tree(name.as_str()).map_err(Error::from)?;
+            tree.set_merge_operator(replace_merge);
             tree_map.insert(
                 name.to_owned(),
+                tree
             );
         }
 
         let db = MainDB {
-            inner: db,
-            trees: Default::default()
+            inner: Arc::new(tree_map),
         };
         Ok(db)
     }
-
-    fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
-        let tree = match self.trees.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => {
-                let tree = self.inner.open_tree(t).map_err(Error::from)?;
-                tree.set_merge_operator(replace_merge);
-                tree
-            }
-        };
-        Ok(tree)
-    }
-
-
     pub fn flush(&self) -> Result<(), Error> {
-        match self.inner.flush() {
-            Ok(_) => {}
-            Err(error) => {
-                println!("Flush failed {}", error)
+        for tree in self.inner.values() {
+            match tree.flush() {
+                Ok(_) => {}
+                Err(error) => {
+                    println!("Flush failed {}", error)
+                }
             }
         }
         Ok(())
@@ -106,7 +91,8 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
         let key = key.encode()?;
         let value = value.encode()?;
         let tree = self.get_tree(S::sub_tree_name())?;
-        tree.merge(key,value )?;
+        tree.remove(&key )?;
+        tree.insert(key,value)?;
         Ok(())
     }
 
