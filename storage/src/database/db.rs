@@ -47,7 +47,13 @@ impl MainDB {
 
         for name in trees {
             let tree = db.open_tree(name.as_str()).map_err(Error::from)?;
-            tree.set_merge_operator(replace_merge);
+            if name == OperationsMetaStorage::sub_tree_name() {
+                tree.set_merge_operator(operations_meta_storage::merge_meta_value)
+            }
+
+            if name == BlockMetaStorage::sub_tree_name() {
+                tree.set_merge_operator(block_meta_storage::merge_meta_value)
+            }
             tree_map.insert(
                 name.to_owned(),
                 tree
@@ -61,8 +67,15 @@ impl MainDB {
         Ok(db)
     }
     fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
-        let tree = self.db.open_tree(name).map_err(Error::from)?;
-        Ok(tree)
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        Ok(tree.clone())
     }
     pub fn flush(&self) -> Result<(), Error> {
         for tree in self.inner.values() {
@@ -98,14 +111,6 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
         let value = value.encode()?;
         let tree_name = S::sub_tree_name();
         let tree = self.get_tree(tree_name)?;
-
-        if tree_name == OperationsMetaStorage::sub_tree_name() {
-            tree.set_merge_operator(operations_meta_storage::merge_meta_value)
-        }
-
-        if tree_name == BlockMetaStorage::sub_tree_name() {
-            tree.set_merge_operator(block_meta_storage::merge_meta_value)
-        }
         tree.merge(key,value).map_err(Error::from)?;
         Ok(())
     }
