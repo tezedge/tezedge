@@ -12,7 +12,7 @@ pub struct DeployMonitoringEnvironment {
     pub log_level: slog::Level,
 
     // interval in seconds to check for new remote image
-    pub image_monitor_interval: u64,
+    pub image_monitor_interval: Option<u64>,
 
     // interval in seconds to check for new remote image
     pub resource_monitor_interval: u64,
@@ -33,6 +33,8 @@ pub struct DeployMonitoringEnvironment {
     pub cleanup_volumes: bool,
 
     pub slack_configuration: Option<SlackConfiguration>,
+
+    pub tezedge_only: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -40,14 +42,14 @@ pub struct AlertThresholds {
     pub memory: u64,
     pub disk: u64,
     pub synchronization: i64,
-    pub cpu: u64,
+    pub cpu: Option<u64>,
 }
 
 impl fmt::Display for AlertThresholds {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\n\tMemory: {}MB\n\tTotal disk space: {}%\n\tCpu: {}%\n\tSynchronization: {}s\n",
+            "\n\tMemory: {}MB\n\tTotal disk space: {}%\n\tCpu: {:?}%\n\tSynchronization: {}s\n",
             self.memory / 1024 / 1024,
             self.disk,
             self.cpu,
@@ -200,6 +202,11 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
             Arg::with_name("cleanup-volumes")
                 .long("cleanup-volumes")
                 .help("Enable and dissable volume cleanup"),
+        )
+        .arg(
+            Arg::with_name("tezedge-only")
+                .long("tezedge-only")
+                .help("Only launches the tezedge node with debugger and explorer"),
         );
     app
 }
@@ -212,7 +219,6 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 }
 
 fn validate_required_args(args: &clap::ArgMatches) {
-    validate_required_arg(args, "image-monitor-interval");
     validate_required_arg(args, "compose-file-path");
 }
 
@@ -263,11 +269,11 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("300")
                 .parse::<i64>()
                 .expect("Was seconds [i64]"),
-            cpu: args
-                .value_of("alert-threshold-cpu")
-                .unwrap_or("1000")
-                .parse::<u64>()
-                .expect("Was expecting percentage [u64]"),
+            cpu: args.value_of("alert-threshold-cpu").map(|cpu_thresh| {
+                cpu_thresh
+                    .parse::<u64>()
+                    .expect("Was expecting percentage [u64]")
+            }),
         };
 
         DeployMonitoringEnvironment {
@@ -283,9 +289,11 @@ impl DeployMonitoringEnvironment {
                 .expect("Expected valid path for the compose file"),
             image_monitor_interval: args
                 .value_of("image-monitor-interval")
-                .unwrap_or("0")
-                .parse::<u64>()
-                .expect("Expected u64 value of seconds"),
+                .map(|image_interval| {
+                    image_interval
+                        .parse::<u64>()
+                        .expect("Expected u64 value of seconds")
+                }),
             resource_monitor_interval: args
                 .value_of("resource-monitor-interval")
                 .unwrap_or("0")
@@ -298,6 +306,7 @@ impl DeployMonitoringEnvironment {
                 .expect("Expected u16 value of valid port number"),
             is_sandbox: args.is_present("sandbox"),
             cleanup_volumes: args.is_present("cleanup-volumes"),
+            tezedge_only: args.is_present("tezedge-only"),
             alert_thresholds,
             slack_configuration,
         }

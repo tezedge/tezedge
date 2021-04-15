@@ -26,7 +26,7 @@ pub type ResourceUtilizationStorageMap = HashMap<&'static str, ResourceUtilizati
 
 pub struct ResourceMonitor {
     resource_utilization: ResourceUtilizationStorageMap,
-    last_checked_head_level: Option<u64>,
+    last_checked_head_level: HashMap<String, u64>,
     alerts: Alerts,
     log: Logger,
     slack: Option<SlackServer>,
@@ -68,6 +68,9 @@ pub struct ResourceUtilization {
 
     #[get = "pub(crate)"]
     cpu: CpuStats,
+
+    #[serde(skip)]
+    head_level: u64,
 }
 
 impl ResourceUtilization {
@@ -160,6 +163,7 @@ impl ResourceUtilization {
             },
             ocaml_disk: merged_ocaml_disk,
             tezedge_disk: merged_tezedge_disk,
+            head_level: cmp::max(self.head_level, other.head_level),
         }
     }
 }
@@ -177,7 +181,7 @@ pub struct CpuStats {
 impl ResourceMonitor {
     pub fn new(
         resource_utilization: ResourceUtilizationStorageMap,
-        last_checked_head_level: Option<u64>,
+        last_checked_head_level: HashMap<String, u64>,
         alerts: Alerts,
         log: Logger,
         slack: Option<SlackServer>,
@@ -207,6 +211,8 @@ impl ResourceMonitor {
 
         for (node_tag, resource_storage) in resource_utilization {
             let node_resource_measurement = if node_tag == &"tezedge" {
+                let current_head_level =
+                    *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
                 let tezedge_node = TezedgeNode::collect_memory_data(TEZEDGE_PORT).await?;
                 let protocol_runners =
                     TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
@@ -228,13 +234,11 @@ impl ResourceMonitor {
                         node: tezedge_cpu,
                         protocol_runners: Some(protocol_runners_cpu),
                     },
+                    head_level: current_head_level,
                 };
-                let current_head_level =
-                    *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
                 handle_alerts(
                     node_tag,
                     resources.clone(),
-                    current_head_level,
                     last_checked_head_level,
                     slack.clone(),
                     alerts,
@@ -243,6 +247,7 @@ impl ResourceMonitor {
                 .await?;
                 resources
             } else {
+                let current_head_level = *OcamlNode::collect_head_data(OCAML_PORT).await?.level();
                 let ocaml_node = OcamlNode::collect_memory_data(OCAML_PORT).await?;
                 let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
                 let ocaml_disk = OcamlNode::collect_disk_data()?;
@@ -261,12 +266,11 @@ impl ResourceMonitor {
                         node: ocaml_cpu,
                         protocol_runners: None,
                     },
+                    head_level: current_head_level,
                 };
-                let current_head_level = *OcamlNode::collect_head_data(OCAML_PORT).await?.level();
                 handle_alerts(
                     node_tag,
                     resources.clone(),
-                    current_head_level,
                     last_checked_head_level,
                     slack.clone(),
                     alerts,
@@ -294,8 +298,7 @@ impl ResourceMonitor {
 async fn handle_alerts(
     node_tag: &str,
     last_measurement: ResourceUtilization,
-    current_head_level: u64,
-    last_checked_head_level: &mut Option<u64>,
+    last_checked_head_level: &mut HashMap<String, u64>,
     slack: Option<SlackServer>,
     alerts: &mut Alerts,
     log: &Logger,
@@ -303,7 +306,8 @@ async fn handle_alerts(
     // current time timestamp
     let current_time = Utc::now().timestamp();
 
-    // let current_head_level = *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
+    let last_head = last_checked_head_level.get(node_tag).map(|level| *level);
+    let current_head_level = last_measurement.head_level;
 
     alerts
         .check_disk_alert(node_tag, slack.as_ref(), current_time)
@@ -319,7 +323,7 @@ async fn handle_alerts(
     alerts
         .check_node_stuck_alert(
             node_tag,
-            last_checked_head_level,
+            last_head,
             current_head_level,
             current_time,
             slack.as_ref(),
@@ -327,15 +331,18 @@ async fn handle_alerts(
         )
         .await?;
 
-    alerts
-        .check_cpu_alert(
-            node_tag,
-            slack.as_ref(),
-            current_time,
-            last_measurement.clone(),
-        )
-        .await?;
-    *last_checked_head_level = Some(current_head_level);
+    if let Some(_) = alerts.thresholds().cpu {
+        alerts
+            .check_cpu_alert(
+                node_tag,
+                slack.as_ref(),
+                current_time,
+                last_measurement.clone(),
+            )
+            .await?;
+    }
+
+    last_checked_head_level.insert(node_tag.to_string(), current_head_level);
     Ok(())
 }
 
@@ -360,6 +367,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 1,
+            head_level: 1,
         };
 
         let resources2 = ResourceUtilization {
@@ -375,6 +383,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 2,
+            head_level: 2,
         };
 
         let resources3 = ResourceUtilization {
@@ -391,6 +400,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 3,
+            head_level: 3,
         };
 
         let expected = ResourceUtilization {
@@ -407,6 +417,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 3,
+            head_level: 3,
         };
 
         let resources = vec![resources1, resources2, resources3];

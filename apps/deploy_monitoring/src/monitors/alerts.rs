@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use getset::Getters;
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
@@ -22,9 +23,11 @@ pub enum AlertResult {
     Unchanged,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
 pub struct Alerts {
     inner: HashSet<MonitorAlert>,
+
+    #[get = "pub(crate)"]
     thresholds: AlertThresholds,
 }
 
@@ -158,7 +161,8 @@ impl Alerts {
                     if alert.reported {
                         crit!(
                             log,
-                            "Node still STUCK, already reported. LEVEL: {}",
+                            "[{}] Node still STUCK, already reported. LEVEL: {}",
+                            node_tag,
                             current_head_level
                         )
                     } else {
@@ -168,7 +172,12 @@ impl Alerts {
                         if current_time - alert.timestamp.unwrap_or(current_time)
                             > self.thresholds.synchronization
                         {
-                            crit!(log, "Node STUCK! - LEVEL {}", current_head_level);
+                            crit!(
+                                log,
+                                "[{}] Node STUCK! - LEVEL {}",
+                                node_tag,
+                                current_head_level
+                            );
 
                             let mut modified = alert.clone();
                             modified.reported = true;
@@ -178,7 +187,8 @@ impl Alerts {
                         } else {
                             crit!(
                                 log,
-                                "Node appears to be STUCK - LEVEL {}, time until alert: {}s",
+                                "[{}] Node appears to be STUCK - LEVEL {}, time until alert: {}s",
+                                node_tag,
                                 current_head_level,
                                 self.thresholds.synchronization
                                     - (current_time - alert.timestamp.unwrap_or(current_time))
@@ -186,17 +196,26 @@ impl Alerts {
                         }
                     }
                 } else {
-                    // When the node apploies the next block, it becomes unstuck, report this
-                    crit!(log, "Node unstuck. Level: {}", current_head_level);
-                    self.inner.remove(&head_alert);
-                    return AlertResult::Decreased(head_alert.level.clone(), head_alert);
+                    // When the node applies the next block, it becomes unstuck, report this
+                    crit!(
+                        log,
+                        "[{}] Node unstuck. Level: {}",
+                        node_tag,
+                        current_head_level
+                    );
+
+                    let mut removed = self.inner.take(&head_alert).unwrap_or(head_alert);
+                    removed.value = current_head_level;
+
+                    return AlertResult::Decreased(removed.level.clone(), removed);
                 }
             } else {
                 // No alert was reported, node is stuck, insert alert, but do not notify trough slack, lets wait for the treshold
                 if last_checked_head_level == current_head_level {
                     crit!(
                         log,
-                        "Node appears to be stuck on level {}, time until alert: {}s",
+                        "[{}]Node appears to be stuck on level {}, time until alert: {}s",
+                        node_tag,
                         current_head_level,
                         self.thresholds.synchronization
                     );
@@ -281,7 +300,8 @@ impl Alerts {
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Cpu,
-            self.thresholds.cpu,
+            // TODO: TE-499 rework for multinode
+            self.thresholds.cpu.unwrap(),
             cpu_total as u64,
             Some(time),
         );
@@ -294,7 +314,7 @@ impl Alerts {
     pub async fn check_node_stuck_alert(
         &mut self,
         node_tag: &str,
-        last_checked_head_level: &mut Option<u64>,
+        last_checked_head_level: Option<u64>,
         current_head_level: u64,
         current_time: i64,
         slack: Option<&SlackServer>,
@@ -302,7 +322,7 @@ impl Alerts {
     ) -> Result<(), failure::Error> {
         let alert_result = self.assign_node_stuck_alert(
             node_tag,
-            *last_checked_head_level,
+            last_checked_head_level,
             current_head_level,
             current_time,
             log,
@@ -312,16 +332,17 @@ impl Alerts {
                 AlertResult::Incresed(alert) => {
                     slack_server
                         .send_message(&format!(
-                            ":warning: Node is stuck on level: {}",
-                            alert.value
+                            ":warning: Node [{}] is stuck on level: {}",
+                            node_tag, alert.value
                         ))
                         .await?;
                 }
                 AlertResult::Decreased(_, alert) => {
+                    // println!("DECREASED -> {:?}", alert);
                     if alert.reported {
                         slack_server
                             .send_message(&format!(
-                                ":information_source: {} node is back to applying blocks on level: {}",
+                                ":information_source: Node [{}] is back to applying blocks on level: {}",
                                 node_tag,
                                 alert.value
                             ))
@@ -456,7 +477,7 @@ mod tests {
             disk: threshold,
             memory: 0,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 300_000_000_000, None);
@@ -540,7 +561,7 @@ mod tests {
             memory: threshold,
             disk: 0,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, threshold, memory, None);
@@ -605,7 +626,7 @@ mod tests {
             memory: memory_threshold,
             disk: disk_threshold,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, memory_threshold, memory, None);
@@ -653,7 +674,7 @@ mod tests {
             disk: 0,
             memory: 0,
             synchronization: 300,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         // discard the logs
@@ -699,7 +720,7 @@ mod tests {
             disk: 0,
             memory: 0,
             synchronization: 300,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         // discard the logs

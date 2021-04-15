@@ -30,6 +30,7 @@ pub struct DeployMonitor {
     slack: Option<SlackServer>,
     log: Logger,
     cleanup: bool,
+    tezedge_only: bool,
 }
 
 impl DeployMonitor {
@@ -39,6 +40,7 @@ impl DeployMonitor {
         slack: Option<SlackServer>,
         log: Logger,
         cleanup: bool,
+        tezedge_only: bool,
     ) -> Self {
         Self {
             compose_file_path,
@@ -46,6 +48,7 @@ impl DeployMonitor {
             slack,
             log,
             cleanup,
+            tezedge_only,
         }
     }
 
@@ -138,7 +141,7 @@ impl DeployMonitor {
             // if debugger updated not need to restart explorer
             // if explorer updated, only need to restart explorer and so on...
             if node_updated || debugger_updated || explorer_updated {
-                shutdown_and_update(&compose_file_path, log, self.cleanup).await;
+                shutdown_and_update(&compose_file_path, log, self.cleanup, self.tezedge_only).await;
             } else {
                 // Do nothing, No update occurred
                 info!(self.log, "No image change detected");
@@ -152,7 +155,7 @@ impl DeployMonitor {
             }
 
             self.send_log_dump().await?;
-            restart_stack(&compose_file_path, log, self.cleanup).await;
+            restart_stack(&compose_file_path, log, self.cleanup, self.tezedge_only).await;
         };
 
         Ok(())
