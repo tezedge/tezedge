@@ -457,7 +457,7 @@ pub mod initializer {
     }
 
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
-        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
+        fn create(&self, _cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
             vec![]
         }
     }
@@ -492,10 +492,10 @@ pub mod initializer {
     }
 
     pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
-        log: &Logger,
+        _log: &Logger,
         cache: &Cache,
         config: &RocksDbConfig<Factory>,
-        expected_main_chain: &MainChain,
+        _expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
             &config.db_path,
@@ -766,7 +766,6 @@ pub mod tests_common {
             let cfg = DbConfiguration::default();
 
             // create common RocksDB block cache to be shared among column families
-            let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
 
             //Sled DB storage
             let maindb = Arc::new(MainDB::initialize(

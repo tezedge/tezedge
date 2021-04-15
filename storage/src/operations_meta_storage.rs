@@ -5,8 +5,6 @@ use std::collections::HashSet;
 use std::convert::TryFrom;
 use std::sync::Arc;
 
-use rocksdb::MergeOperands;
-
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -16,7 +14,6 @@ use crate::persistent::database::IteratorMode;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
-use std::alloc::Global;
 
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageKV = dyn KVDBStoreWithSchema<OperationsMetaStorage> + Sync + Send;

@@ -13,23 +13,11 @@ use std::alloc::Global;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::system_storage::SystemValue::Hash;
-use sled::transaction::abort;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 pub struct MainDB {
-    db: sled::Db,
     inner: Arc<HashMap<String, Tree>>,
-}
-
-fn replace_merge(
-    _key: &[u8],               // the key being merged
-    _old_value: Option<&[u8]>, // the previous value, if one existed
-    merged_bytes: &[u8],       // the new bytes being merged in
-) -> Option<Vec<u8>> {
-    // set the new value, return None to delete
-    Some(merged_bytes.to_vec())
 }
 
 impl MainDB {
@@ -62,7 +50,6 @@ impl MainDB {
         }
 
         let db = MainDB {
-            db,
             inner: Arc::new(tree_map),
         };
         Ok(db)

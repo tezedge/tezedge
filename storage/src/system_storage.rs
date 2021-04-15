@@ -3,14 +3,12 @@
 
 use std::sync::Arc;
 
-use rocksdb::{Cache, ColumnFamilyDescriptor};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
 use crate::database::{DBSubtreeKeyValueSchema, KVDBStoreWithSchema};
-use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::StorageError;
 
 pub type SystemStorageKv = dyn KVDBStoreWithSchema<SystemStorage> + Sync + Send;

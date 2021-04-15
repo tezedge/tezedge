@@ -6,7 +6,6 @@ use std::{convert::TryInto, sync::Arc};
 use std::convert::TryFrom;
 
 use getset::{CopyGetters, Getters, Setters};
-use rocksdb::MergeOperands;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, HashType};

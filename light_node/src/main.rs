@@ -30,7 +30,7 @@ use storage::initializer::{
     RocksDbCache,
 };
 use storage::persistent::sequence::Sequences;
-use storage::persistent::{open_cl, open_sled_db, CommitLogSchema};
+use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
