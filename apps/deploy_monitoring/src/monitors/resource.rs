@@ -331,7 +331,7 @@ async fn handle_alerts(
         )
         .await?;
 
-    if let Some(_) = alerts.thresholds().cpu {
+    if alerts.thresholds().cpu.is_some() {
         alerts
             .check_cpu_alert(
                 node_tag,

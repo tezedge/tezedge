@@ -8,7 +8,7 @@ Set up slack channel with an app that has webhooks and file:write privilages.
 
 ### Build
 
-```cargo build --bin monitoring --release```
+```cargo build --bin deploy-monitoring --release```
 
 ### Runing
 
@@ -16,10 +16,9 @@ We need to set the *TEZEDGE_IMAGE_TAG* environment var to the desired version of
 Note that the debugger container needs root privilages. 
 
 ```
-sudo TEZOS_NETWORK=delphinet HOSTNAME=$(hostname) ./target/release/monitoring \
+sudo TEZOS_NETWORK=delphinet HOSTNAME=$(hostname) ./target/release/deploy-monitoring \
 --compose-file-path apps/monitoring/docker-compose.deploy.latest.yml
 --image-monitor-interval 60 \ 
---info-interval 21600 \
 --resource-monitor-interval 15 \
 --slack-url https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX \
 --slack-token "Bearer xoxb-xxxxxxxxxxxx-xxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxx" \

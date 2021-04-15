@@ -256,9 +256,11 @@ impl DeployMonitoringEnvironment {
         let alert_thresholds = AlertThresholds {
             memory: args
                 .value_of("alert-threshold-memory")
-                .unwrap_or("10737418240")
+                .unwrap_or("4096")
                 .parse::<u64>()
-                .expect("Was expecting number of bytes [u64]"),
+                .expect("Was expecting number of bytes [u64]")
+                * 1024
+                * 1024,
             disk: args
                 .value_of("alert-threshold-disk")
                 .unwrap_or("95")

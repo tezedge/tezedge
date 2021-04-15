@@ -129,12 +129,9 @@ pub async fn shutdown_and_cleanup(
 }
 
 pub async fn start_stack(
-    // compose_file_path: &PathBuf,
-    // alert_thresholds: AlertThresholds,
     env: &DeployMonitoringEnvironment,
     slack: Option<SlackServer>,
     log: &Logger,
-    // cleanup_data: bool,
 ) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
@@ -261,6 +258,5 @@ pub async fn spawn_node_stack(
     let rpc_server_handle = rpc::spawn_rpc_server(env.rpc_port, log.clone(), storage_map.clone());
     handles.push(rpc_server_handle);
 
-    // vec![deploy_handle, resources_handle, rpc_server_handle]
     handles
 }

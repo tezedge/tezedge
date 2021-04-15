@@ -91,12 +91,6 @@ impl Alerts {
     ) -> AlertResult {
         let level = if value >= AlertLevel::Critical.value().apply_to(threshold) {
             AlertLevel::Critical
-        } else if value >= AlertLevel::Severe.value().apply_to(threshold) {
-            AlertLevel::Severe
-        } else if value >= AlertLevel::Warning.value().apply_to(threshold) {
-            AlertLevel::Warning
-        } else if value >= AlertLevel::Info.value().apply_to(threshold) {
-            AlertLevel::Info
         } else {
             AlertLevel::NonAlert
         };
@@ -338,7 +332,6 @@ impl Alerts {
                         .await?;
                 }
                 AlertResult::Decreased(_, alert) => {
-                    // println!("DECREASED -> {:?}", alert);
                     if alert.reported {
                         slack_server
                             .send_message(&format!(
@@ -374,19 +367,13 @@ impl Alerts {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
 pub enum AlertLevel {
     NonAlert = 1,
-    Info = 2,
-    Warning = 3,
-    Severe = 4,
-    Critical = 5,
+    Critical = 2,
 }
 
 impl AlertLevel {
     pub fn value(&self) -> PercentageInteger {
         match *self {
             AlertLevel::NonAlert => Percentage::from(0),
-            AlertLevel::Info => Percentage::from(40),
-            AlertLevel::Warning => Percentage::from(60),
-            AlertLevel::Severe => Percentage::from(80),
             AlertLevel::Critical => Percentage::from(100),
         }
     }
@@ -426,15 +413,16 @@ async fn send_resource_alert(
                     }
                     AlertKind::NodeStucked => format!("{} level", alert.value),
                 };
-                slack_server
-                    .send_message(&format!(
-                        ":warning: {} - {} surpassed {}% of the defined threshold! Current value: {}",
+                if alert.level == AlertLevel::Critical {
+                    slack_server
+                        .send_message(&format!(
+                        ":warning: [{}] - {} surpassed the defined threshold! Current value: {}",
                         node_tag,
                         alert.kind,
-                        alert.level.value().value(),
                         current_value,
                     ))
-                    .await?;
+                        .await?;
+                }
             }
             AlertResult::Decreased(previous_alert, alert) => {
                 let current_value = match alert.kind {
@@ -444,15 +432,16 @@ async fn send_resource_alert(
                     }
                     AlertKind::NodeStucked => format!("{} level", alert.value),
                 };
-                slack_server
+                if previous_alert == AlertLevel::Critical {
+                    slack_server
                     .send_message(&format!(
-                        ":information_source: {} - {} Decreased bellow {}% of the defined threshold! Current value: {}",
+                        ":information_source: [{}] - {} Decreased bellow of the defined threshold! Current value: {}",
                         node_tag,
                         alert.kind,
-                        previous_alert.value().value(),
                         current_value
                     ))
                     .await?;
+                }
             }
             AlertResult::Unchanged => (/* Do nothing */),
         }
@@ -500,51 +489,6 @@ mod tests {
 
         assert_eq!(disk_alert.level, expected.level);
 
-        // Severe
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 85_000_000_000, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Severe,
-            timestamp: None,
-            reported: false,
-            value: 85_000_000_000,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
-        // Warning
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 60_000_000_001, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Warning,
-            timestamp: None,
-            reported: false,
-            value: 60_000_000_001,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
-        // Info
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 40_000_000_001, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Info,
-            timestamp: None,
-            reported: false,
-            value: 40_000_000_001,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
         // NonAlert
         alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 39_999_999_999, None);
 
@@ -581,13 +525,8 @@ mod tests {
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, threshold, memory, None);
 
-        // still only one alert, the memory alert, now with increased level
-        assert!(alerts.contains(AlertKind::Memory, node_tag));
-        assert_eq!(alerts.inner.len(), 1);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Info
-        );
+        // still 0 alert
+        assert_eq!(alerts.inner.len(), 0);
 
         // increased to Critical alert
         let memory = 10001;
@@ -633,13 +572,8 @@ mod tests {
         assert!(!alerts.contains(AlertKind::Memory, node_tag));
 
         // increase memory consuption
-        let memory = 7500;
+        let memory = 1100;
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, memory_threshold, memory, None);
-        assert_eq!(alerts.inner.len(), 1);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Warning
-        );
 
         alerts.assign_resource_alert(
             node_tag,
@@ -649,11 +583,6 @@ mod tests {
             None,
         );
 
-        assert_eq!(alerts.inner.len(), 2);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Warning
-        );
         assert_eq!(
             alerts.get(AlertKind::Disk, node_tag).unwrap().level,
             AlertLevel::Critical
