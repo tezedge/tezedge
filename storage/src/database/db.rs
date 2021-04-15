@@ -58,6 +58,17 @@ impl MainDB {
         };
         Ok(db)
     }
+    fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
+        let tree = match self.inner.get(name) {
+            None => {
+                return Err(Error::MissingSubTree {
+                    error: name.to_owned(),
+                });
+            }
+            Some(t) => t,
+        };
+        Ok(tree.clone())
+    }
     pub fn flush(&self) -> Result<(), Error> {
         for tree in self.inner.values() {
             match tree.flush() {
