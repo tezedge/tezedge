@@ -102,8 +102,7 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
         let key = key.encode()?;
         let value = value.encode()?;
         let tree = self.get_tree(S::sub_tree_name())?;
-        tree.remove(&key )?;
-        tree.insert(key,value)?;
+        tree.merge()
         Ok(())
     }
 

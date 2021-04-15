@@ -96,7 +96,7 @@ impl OperationsMetaStorage {
 
     #[inline]
     pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.kv.merge(block_hash, meta).map_err(StorageError::from)
+        self.kv.put(block_hash, meta).map_err(StorageError::from)
     }
 
     #[inline]
@@ -418,11 +418,10 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
-            let _cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
             let db = open_sled_db_with_trees(
                 path,
-                false,
+                true,
                 vec![OperationsMetaStorage::sub_tree_name().to_string()],
             )?;
             let k = block_hash(&[3, 1, 3, 3, 7]);
@@ -433,29 +432,18 @@ mod tests {
                 level: 31_337,
                 chain_id: vec![44; 4].try_into()?,
             };
-            {
-                let p = OperationsMetaStorageKV::merge(&db, &k, &v);
-                assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
-                v.is_validation_pass_present[2] = t;
-            }
-
-            {
-                let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
-            }
-            {
-                v.is_validation_pass_present[2] = f;
-                v.is_validation_pass_present[3] = t;
-                let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
-
-            }
-            {
-                v.is_validation_pass_present[3] = f;
-                v.is_complete = true;
-                let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
-                let m = OperationsMetaStorageKV::merge(&db, &k, &v);
-                assert!(m.is_ok());
-            }
-
+            let p = OperationsMetaStorageKV::merge(&db, &k, &v);
+            assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
+            v.is_validation_pass_present[2] = t;
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            v.is_validation_pass_present[2] = f;
+            v.is_validation_pass_present[3] = t;
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            v.is_validation_pass_present[3] = f;
+            v.is_complete = true;
+            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let m = OperationsMetaStorageKV::merge(&db, &k, &v);
+            assert!(m.is_ok());
             match OperationsMetaStorageKV::get(&db, &k) {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
