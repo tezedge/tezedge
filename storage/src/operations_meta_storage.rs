@@ -140,8 +140,10 @@ pub fn merge_meta_value(
     merged_bytes: &[u8]
 ) -> Option<Vec<u8>> {
     let mut result = existing_val.map(|v| v.to_vec());
-    match &mut result {
-        None => {}
+    match result {
+        None => {
+            return Some(merged_bytes.to_vec())
+        }
         Some(ref mut val) => {
             debug_assert_eq!(
                 val.len(),
