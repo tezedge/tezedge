@@ -16,6 +16,7 @@ use crate::system_storage::SystemValue::Hash;
 use std::collections::{HashSet, HashMap};
 
 pub struct MainDB {
+    db : sled::Db,
     inner: Arc<HashMap<String, Tree>>
 }
 
@@ -54,20 +55,14 @@ impl MainDB {
         }
 
         let db = MainDB {
+            db,
             inner: Arc::new(tree_map),
         };
         Ok(db)
     }
     fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        Ok(tree.clone())
+        let tree = self.db.open_tree(name).map_err(Error::from)?;
+        Ok(tree)
     }
     pub fn flush(&self) -> Result<(), Error> {
         for tree in self.inner.values() {
