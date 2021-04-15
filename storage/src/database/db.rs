@@ -4,7 +4,7 @@ use crate::database::{
     KVDatabaseWithSchemaIterator, SledIteratorWrapper, SledIteratorWrapperMode,
 };
 use crate::persistent::{Decoder, Encoder, KeyValueSchema};
-use crate::IteratorMode;
+use crate::{IteratorMode, OperationsMetaStorage};
 use sled::{IVec, Tree};
 use std::alloc::Global;
 use std::path::Path;
@@ -14,6 +14,7 @@ use std::marker::PhantomData;
 use sled::transaction::abort;
 use crate::system_storage::SystemValue::Hash;
 use std::collections::{HashSet, HashMap};
+use crate::operations_meta_storage::merge_meta_value;
 
 pub struct MainDB {
     db : sled::Db,
@@ -96,7 +97,12 @@ impl<S: DBSubtreeKeyValueSchema> KVDatabase<S> for MainDB {
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
-        let tree = self.get_tree(S::sub_tree_name())?;
+        let tree_name = S::sub_tree_name();
+        let tree = self.get_tree(tree_name)?;
+
+        if tree_name == OperationsMetaStorage::sub_tree_name() {
+            tree.set_merge_operator(merge_meta_value)
+        }
         tree.merge(key,value).map_err(Error::from)?;
         Ok(())
     }

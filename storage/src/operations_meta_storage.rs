@@ -16,6 +16,7 @@ use crate::persistent::database::IteratorMode;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
+use std::alloc::Global;
 
 /// Convenience type for operation meta storage database
 pub type OperationsMetaStorageKV = dyn KVDBStoreWithSchema<OperationsMetaStorage> + Sync + Send;
@@ -96,7 +97,7 @@ impl OperationsMetaStorage {
 
     #[inline]
     pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
-        self.kv.put(block_hash, meta).map_err(StorageError::from)
+        self.kv.merge(block_hash, meta).map_err(StorageError::from)
     }
 
     #[inline]
@@ -128,41 +129,42 @@ impl DBSubtreeKeyValueSchema for OperationsMetaStorage {
         "operations_meta_storage"
     }
 }
-
-fn merge_meta_value(
+/*
+_key: &[u8],               // the key being merged
+    _old_value: Option<&[u8]>,  // the previous value, if one existed
+    merged_bytes: &[u8]
+ */
+pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
-    operands: &mut MergeOperands,
+    merged_bytes: &[u8]
 ) -> Option<Vec<u8>> {
     let mut result = existing_val.map(|v| v.to_vec());
-
-    for op in operands {
-        match result {
-            Some(ref mut val) => {
-                debug_assert_eq!(
-                    val.len(),
-                    op.len(),
-                    "Value length is fixed. expected={}, found={}",
-                    val.len(),
-                    op.len()
-                );
-                debug_assert_ne!(0, val.len(), "Value cannot have zero size");
-                debug_assert_eq!(val[0], op[0], "Value of validation passes cannot change");
-                // in case of inconsistency, return `None`
-                if val.is_empty() || val.len() != op.len() || val[0] != op[0] {
-                    return None;
-                }
-
-                let validation_passes = val[0] as usize;
-                // merge `is_validation_pass_present`
-                for i in 1..=validation_passes {
-                    val[i] |= op[i]
-                }
-                // merge `is_complete`
-                let is_complete_idx = validation_passes + 1;
-                val[is_complete_idx] |= op[is_complete_idx];
+    match &mut result {
+        None => {}
+        Some(ref mut val) => {
+            debug_assert_eq!(
+                val.len(),
+                merged_bytes.len(),
+                "Value length is fixed. expected={}, found={}",
+                val.len(),
+                merged_bytes.len()
+            );
+            debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+            debug_assert_eq!(val[0], merged_bytes[0], "Value of validation passes cannot change");
+            // in case of inconsistency, return `None`
+            if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
+                return None;
             }
-            None => result = Some(op.to_vec()),
+
+            let validation_passes = val[0] as usize;
+            // merge `is_validation_pass_present`
+            for i in 1..=validation_passes {
+                val[i] |= merged_bytes[i]
+            }
+            // merge `is_complete`
+            let is_complete_idx = validation_passes + 1;
+            val[is_complete_idx] |= merged_bytes[is_complete_idx];
         }
     }
 
