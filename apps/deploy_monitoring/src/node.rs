@@ -29,6 +29,13 @@ impl DeployMonitoringContainer for TezedgeNode {
 
 impl TezedgeNode {
     pub fn collect_disk_data() -> Result<TezedgeDiskData, failure::Error> {
+        // context actions DB is optional
+        let context_actions = dir::get_size(&format!(
+            "{}/{}",
+            TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"
+        ))
+        .unwrap_or(0);
+
         let disk_data = TezedgeDiskData::new(
             dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge"))?,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
@@ -40,10 +47,7 @@ impl TezedgeNode {
                 "{}/{}",
                 TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"
             ))?,
-            dir::get_size(&format!(
-                "{}/{}",
-                TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"
-            ))?,
+            context_actions,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
         );
 
@@ -189,6 +193,4 @@ pub trait Node {
             .map(|(_, process)| process.cpu_usage())
             .sum::<f32>() as i32)
     }
-
-    // fn collect_disk_data() -> Result<DiskData, failure::Error>;
 }

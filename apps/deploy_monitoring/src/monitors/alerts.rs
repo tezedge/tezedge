@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
+use getset::Getters;
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
@@ -22,9 +23,11 @@ pub enum AlertResult {
     Unchanged,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Getters)]
 pub struct Alerts {
     inner: HashSet<MonitorAlert>,
+
+    #[get = "pub(crate)"]
     thresholds: AlertThresholds,
 }
 
@@ -88,12 +91,6 @@ impl Alerts {
     ) -> AlertResult {
         let level = if value >= AlertLevel::Critical.value().apply_to(threshold) {
             AlertLevel::Critical
-        } else if value >= AlertLevel::Severe.value().apply_to(threshold) {
-            AlertLevel::Severe
-        } else if value >= AlertLevel::Warning.value().apply_to(threshold) {
-            AlertLevel::Warning
-        } else if value >= AlertLevel::Info.value().apply_to(threshold) {
-            AlertLevel::Info
         } else {
             AlertLevel::NonAlert
         };
@@ -158,7 +155,8 @@ impl Alerts {
                     if alert.reported {
                         crit!(
                             log,
-                            "Node still STUCK, already reported. LEVEL: {}",
+                            "[{}] Node still STUCK, already reported. LEVEL: {}",
+                            node_tag,
                             current_head_level
                         )
                     } else {
@@ -168,7 +166,12 @@ impl Alerts {
                         if current_time - alert.timestamp.unwrap_or(current_time)
                             > self.thresholds.synchronization
                         {
-                            crit!(log, "Node STUCK! - LEVEL {}", current_head_level);
+                            crit!(
+                                log,
+                                "[{}] Node STUCK! - LEVEL {}",
+                                node_tag,
+                                current_head_level
+                            );
 
                             let mut modified = alert.clone();
                             modified.reported = true;
@@ -178,7 +181,8 @@ impl Alerts {
                         } else {
                             crit!(
                                 log,
-                                "Node appears to be STUCK - LEVEL {}, time until alert: {}s",
+                                "[{}] Node appears to be STUCK - LEVEL {}, time until alert: {}s",
+                                node_tag,
                                 current_head_level,
                                 self.thresholds.synchronization
                                     - (current_time - alert.timestamp.unwrap_or(current_time))
@@ -186,17 +190,26 @@ impl Alerts {
                         }
                     }
                 } else {
-                    // When the node apploies the next block, it becomes unstuck, report this
-                    crit!(log, "Node unstuck. Level: {}", current_head_level);
-                    self.inner.remove(&head_alert);
-                    return AlertResult::Decreased(head_alert.level.clone(), head_alert);
+                    // When the node applies the next block, it becomes unstuck, report this
+                    crit!(
+                        log,
+                        "[{}] Node unstuck. Level: {}",
+                        node_tag,
+                        current_head_level
+                    );
+
+                    let mut removed = self.inner.take(&head_alert).unwrap_or(head_alert);
+                    removed.value = current_head_level;
+
+                    return AlertResult::Decreased(removed.level.clone(), removed);
                 }
             } else {
                 // No alert was reported, node is stuck, insert alert, but do not notify trough slack, lets wait for the treshold
                 if last_checked_head_level == current_head_level {
                     crit!(
                         log,
-                        "Node appears to be stuck on level {}, time until alert: {}s",
+                        "[{}]Node appears to be stuck on level {}, time until alert: {}s",
+                        node_tag,
                         current_head_level,
                         self.thresholds.synchronization
                     );
@@ -281,7 +294,8 @@ impl Alerts {
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Cpu,
-            self.thresholds.cpu,
+            // TODO: TE-499 rework for multinode
+            self.thresholds.cpu.unwrap(),
             cpu_total as u64,
             Some(time),
         );
@@ -294,7 +308,7 @@ impl Alerts {
     pub async fn check_node_stuck_alert(
         &mut self,
         node_tag: &str,
-        last_checked_head_level: &mut Option<u64>,
+        last_checked_head_level: Option<u64>,
         current_head_level: u64,
         current_time: i64,
         slack: Option<&SlackServer>,
@@ -302,7 +316,7 @@ impl Alerts {
     ) -> Result<(), failure::Error> {
         let alert_result = self.assign_node_stuck_alert(
             node_tag,
-            *last_checked_head_level,
+            last_checked_head_level,
             current_head_level,
             current_time,
             log,
@@ -312,8 +326,8 @@ impl Alerts {
                 AlertResult::Incresed(alert) => {
                     slack_server
                         .send_message(&format!(
-                            ":warning: Node is stuck on level: {}",
-                            alert.value
+                            ":warning: Node [{}] is stuck on level: {}",
+                            node_tag, alert.value
                         ))
                         .await?;
                 }
@@ -321,7 +335,7 @@ impl Alerts {
                     if alert.reported {
                         slack_server
                             .send_message(&format!(
-                                ":information_source: {} node is back to applying blocks on level: {}",
+                                ":information_source: Node [{}] is back to applying blocks on level: {}",
                                 node_tag,
                                 alert.value
                             ))
@@ -353,19 +367,13 @@ impl Alerts {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
 pub enum AlertLevel {
     NonAlert = 1,
-    Info = 2,
-    Warning = 3,
-    Severe = 4,
-    Critical = 5,
+    Critical = 2,
 }
 
 impl AlertLevel {
     pub fn value(&self) -> PercentageInteger {
         match *self {
             AlertLevel::NonAlert => Percentage::from(0),
-            AlertLevel::Info => Percentage::from(40),
-            AlertLevel::Warning => Percentage::from(60),
-            AlertLevel::Severe => Percentage::from(80),
             AlertLevel::Critical => Percentage::from(100),
         }
     }
@@ -405,15 +413,16 @@ async fn send_resource_alert(
                     }
                     AlertKind::NodeStucked => format!("{} level", alert.value),
                 };
-                slack_server
-                    .send_message(&format!(
-                        ":warning: {} - {} surpassed {}% of the defined threshold! Current value: {}",
+                if alert.level == AlertLevel::Critical {
+                    slack_server
+                        .send_message(&format!(
+                        ":warning: [{}] - {} surpassed the defined threshold! Current value: {}",
                         node_tag,
                         alert.kind,
-                        alert.level.value().value(),
                         current_value,
                     ))
-                    .await?;
+                        .await?;
+                }
             }
             AlertResult::Decreased(previous_alert, alert) => {
                 let current_value = match alert.kind {
@@ -423,15 +432,16 @@ async fn send_resource_alert(
                     }
                     AlertKind::NodeStucked => format!("{} level", alert.value),
                 };
-                slack_server
+                if previous_alert == AlertLevel::Critical {
+                    slack_server
                     .send_message(&format!(
-                        ":information_source: {} - {} Decreased bellow {}% of the defined threshold! Current value: {}",
+                        ":information_source: [{}] - {} Decreased bellow of the defined threshold! Current value: {}",
                         node_tag,
                         alert.kind,
-                        previous_alert.value().value(),
                         current_value
                     ))
                     .await?;
+                }
             }
             AlertResult::Unchanged => (/* Do nothing */),
         }
@@ -456,7 +466,7 @@ mod tests {
             disk: threshold,
             memory: 0,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 300_000_000_000, None);
@@ -479,51 +489,6 @@ mod tests {
 
         assert_eq!(disk_alert.level, expected.level);
 
-        // Severe
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 85_000_000_000, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Severe,
-            timestamp: None,
-            reported: false,
-            value: 85_000_000_000,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
-        // Warning
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 60_000_000_001, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Warning,
-            timestamp: None,
-            reported: false,
-            value: 60_000_000_001,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
-        // Info
-        alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 40_000_000_001, None);
-        let disk_alert = alerts.get(AlertKind::Disk, node_tag).unwrap();
-        let expected = MonitorAlert {
-            node_tag: node_tag.to_string(),
-            kind: AlertKind::Disk,
-            level: AlertLevel::Info,
-            timestamp: None,
-            reported: false,
-            value: 40_000_000_001,
-        };
-
-        assert_eq!(disk_alert, &expected);
-        assert_eq!(disk_alert.level, expected.level);
-
         // NonAlert
         alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 39_999_999_999, None);
 
@@ -540,7 +505,7 @@ mod tests {
             memory: threshold,
             disk: 0,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, threshold, memory, None);
@@ -560,13 +525,8 @@ mod tests {
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, threshold, memory, None);
 
-        // still only one alert, the memory alert, now with increased level
-        assert!(alerts.contains(AlertKind::Memory, node_tag));
-        assert_eq!(alerts.inner.len(), 1);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Info
-        );
+        // still 0 alert
+        assert_eq!(alerts.inner.len(), 0);
 
         // increased to Critical alert
         let memory = 10001;
@@ -605,20 +565,15 @@ mod tests {
             memory: memory_threshold,
             disk: disk_threshold,
             synchronization: 0,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, memory_threshold, memory, None);
         assert!(!alerts.contains(AlertKind::Memory, node_tag));
 
         // increase memory consuption
-        let memory = 7500;
+        let memory = 1100;
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, memory_threshold, memory, None);
-        assert_eq!(alerts.inner.len(), 1);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Warning
-        );
 
         alerts.assign_resource_alert(
             node_tag,
@@ -628,11 +583,6 @@ mod tests {
             None,
         );
 
-        assert_eq!(alerts.inner.len(), 2);
-        assert_eq!(
-            alerts.get(AlertKind::Memory, node_tag).unwrap().level,
-            AlertLevel::Warning
-        );
         assert_eq!(
             alerts.get(AlertKind::Disk, node_tag).unwrap().level,
             AlertLevel::Critical
@@ -653,7 +603,7 @@ mod tests {
             disk: 0,
             memory: 0,
             synchronization: 300,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         // discard the logs
@@ -699,7 +649,7 @@ mod tests {
             disk: 0,
             memory: 0,
             synchronization: 300,
-            cpu: 0,
+            cpu: Some(0),
         });
 
         // discard the logs
