@@ -27,11 +27,10 @@ use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHas
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 
-pub use crate::block_meta_storage::{BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader};
-pub use crate::block_storage::{
-    BlockAdditionalData, BlockAdditionalDataBuilder, BlockJsonData, BlockJsonDataBuilder,
-    BlockStorage, BlockStorageReader,
+pub use crate::block_meta_storage::{
+    BlockAdditionalData, BlockMetaStorage, BlockMetaStorageKV, BlockMetaStorageReader,
 };
+pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
 pub use crate::chain_meta_storage::ChainMetaStorage;
 use crate::context::merkle::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
@@ -250,22 +249,21 @@ pub fn store_applied_block_result(
     block_hash: &BlockHash,
     block_result: ApplyBlockResponse,
     block_metadata: &mut block_meta_storage::Meta,
-) -> Result<(BlockJsonData, BlockAdditionalData), StorageError> {
+) -> Result<BlockAdditionalData, StorageError> {
     // store result data - json and additional data
-    let block_json_data = BlockJsonDataBuilder::default()
-        .block_header_proto_json(block_result.block_header_proto_json)
-        .block_header_proto_metadata_json(block_result.block_header_proto_metadata_json)
-        .operations_proto_metadata_json(block_result.operations_proto_metadata_json)
-        .build()
-        .unwrap();
-    block_storage.put_block_json_data(&block_hash, block_json_data.clone())?;
+    let block_json_data = BlockJsonData::new(
+        block_result.block_header_proto_json,
+        block_result.block_header_proto_metadata_json,
+        block_result.operations_proto_metadata_json,
+    );
+    block_storage.put_block_json_data(&block_hash, block_json_data)?;
 
     // store additional data
-    let block_additional_data = BlockAdditionalDataBuilder::default()
-        .max_operations_ttl(block_result.max_operations_ttl.try_into().unwrap())
-        .last_allowed_fork_level(block_result.last_allowed_fork_level)
-        .block_metadata_hash(block_result.block_metadata_hash)
-        .ops_metadata_hash({
+    let block_additional_data = BlockAdditionalData::new(
+        block_result.max_operations_ttl.try_into().unwrap(),
+        block_result.last_allowed_fork_level,
+        block_result.block_metadata_hash,
+        {
             // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
             //       So, we need to add the same handling, because this attributes contributes to context_hash
             //       They, store it, only if [`validation_passes > 0`], this measn that we have some operations
@@ -279,11 +277,10 @@ pub fn store_applied_block_result(
                 }
                 None => None,
             }
-        })
-        .ops_metadata_hashes(block_result.ops_metadata_hashes)
-        .build()
-        .unwrap();
-    block_storage.put_block_additional_data(&block_hash, block_additional_data.clone())?;
+        },
+        block_result.ops_metadata_hashes,
+    );
+    block_meta_storage.put_block_additional_data(&block_hash, &block_additional_data)?;
 
     // TODO: check context checksum or context_hash
 
@@ -294,7 +291,8 @@ pub fn store_applied_block_result(
     // populate predecessor storage
     block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
 
-    Ok((block_json_data, block_additional_data))
+    // return additional data for later use
+    Ok(block_additional_data)
 }
 
 /// Stores commit_genesis result to storage and mark genesis block as applied, if everythnig is ok.
@@ -307,7 +305,7 @@ pub fn store_commit_genesis_result(
     operations_meta_storage: &OperationsMetaStorage,
     init_storage_data: &StorageInitInfo,
     bock_result: CommitGenesisResult,
-) -> Result<BlockJsonData, StorageError> {
+) -> Result<(), StorageError> {
     // store data for genesis
     let genesis_block_hash = &init_storage_data.genesis_block_header_hash;
     let chain_id = &init_storage_data.chain_id;
@@ -324,13 +322,12 @@ pub fn store_commit_genesis_result(
     )?;
 
     // store result data - json and additional data
-    let block_json_data = BlockJsonDataBuilder::default()
-        .block_header_proto_json(bock_result.block_header_proto_json)
-        .block_header_proto_metadata_json(bock_result.block_header_proto_metadata_json)
-        .operations_proto_metadata_json(bock_result.operations_proto_metadata_json)
-        .build()
-        .unwrap();
-    block_storage.put_block_json_data(&genesis_block_hash, block_json_data.clone())?;
+    let block_json_data = BlockJsonData::new(
+        bock_result.block_header_proto_json,
+        bock_result.block_header_proto_metadata_json,
+        bock_result.operations_proto_metadata_json,
+    );
+    block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
 
     // set genesis as current head - it is empty storage
     match block_storage.get(&genesis_block_hash)? {
@@ -346,7 +343,7 @@ pub fn store_commit_genesis_result(
             chain_meta_storage.set_caboose(&chain_id, head.clone())?;
             chain_meta_storage.set_current_head(&chain_id, head)?;
 
-            Ok(block_json_data)
+            Ok(())
         }
         None => Err(StorageError::MissingKey),
     }
@@ -363,6 +360,7 @@ pub fn store_commit_genesis_result(
 /// Commit_genesis also updates block json/additional metadata resolved by protocol.
 pub fn initialize_storage_with_genesis_block(
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     init_storage_data: &StorageInitInfo,
     tezos_env: &TezosEnvironmentConfiguration,
     context_hash: &ContextHash,
@@ -382,15 +380,15 @@ pub fn initialize_storage_with_genesis_block(
 
     // store additional data
     let genesis_additional_data = tezos_env.genesis_additional_data();
-    let block_additional_data = BlockAdditionalDataBuilder::default()
-        .max_operations_ttl(genesis_additional_data.max_operations_ttl)
-        .last_allowed_fork_level(genesis_additional_data.last_allowed_fork_level)
-        .block_metadata_hash(None)
-        .ops_metadata_hash(None)
-        .ops_metadata_hashes(None)
-        .build()
-        .unwrap();
-    block_storage.put_block_additional_data(&genesis_with_hash.hash, block_additional_data)?;
+    let block_additional_data = BlockAdditionalData::new(
+        genesis_additional_data.max_operations_ttl,
+        genesis_additional_data.last_allowed_fork_level,
+        None,
+        None,
+        None,
+    );
+    block_meta_storage
+        .put_block_additional_data(&genesis_with_hash.hash, &block_additional_data)?;
 
     // context assign
     block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
@@ -462,6 +460,7 @@ pub mod initializer {
                 crate::MempoolStorage::descriptor(cache),
                 crate::ChainMetaStorage::descriptor(cache),
                 crate::PredecessorStorage::descriptor(cache),
+                crate::BlockAdditionalData::descriptor(&cache),
             ]
         }
     }
@@ -785,6 +784,7 @@ pub mod tests_common {
                     MempoolStorage::descriptor(&db_cache),
                     ChainMetaStorage::descriptor(&db_cache),
                     PredecessorStorage::descriptor(&db_cache),
+                    BlockAdditionalData::descriptor(&db_cache),
                 ],
                 &cfg,
             )?);

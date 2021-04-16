@@ -17,7 +17,10 @@ use failure::{bail, format_err, Error, Fail};
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::context::merkle::merkle_storage::MerkleError;
 use storage::context::ContextApi;
-use storage::{context_key, BlockHeaderWithHash, BlockStorage, BlockStorageReader};
+use storage::{
+    context_key, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader,
+};
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
 };
@@ -520,11 +523,19 @@ pub(crate) fn preapply_block(
     env: &RpcServiceEnvironment,
 ) -> Result<serde_json::value::Value, failure::Error> {
     let block_storage = BlockStorage::new(env.persistent_storage());
+    let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
+
     let (block_header, (predecessor_block_metadata_hash, predecessor_ops_metadata_hash)) =
-        match block_storage.get_with_additional_data(&block_hash)? {
-            Some((block_header, block_header_additional_data)) => {
-                (block_header, block_header_additional_data.into())
-            }
+        match block_storage.get(&block_hash)? {
+            Some(block_header) => match block_meta_storage.get_additional_data(&block_hash)? {
+                Some(block_header_additional_data) => {
+                    (block_header, block_header_additional_data.into())
+                }
+                None => bail!(
+                    "No block additioanl data found for hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            },
             None => bail!(
                 "No block header found for hash: {}",
                 block_hash.to_base58_check()

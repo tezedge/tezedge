@@ -169,7 +169,7 @@ impl Storage {
     const STORAGES_COUNT: usize = 3;
     const MINIMAL_THREAD_COUNT: usize = 1;
 
-    const DB_STORAGE_VERSION: i64 = 17;
+    const DB_STORAGE_VERSION: i64 = 18;
     const DB_CONTEXT_STORAGE_VERSION: i64 = 17;
     const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 17;
 

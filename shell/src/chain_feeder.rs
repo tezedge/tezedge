@@ -19,7 +19,10 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::PersistentStorage;
+use storage::{
+    block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
+    PersistentStorage,
+};
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
     BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,
@@ -445,17 +448,37 @@ fn feed_chain_to_protocol(
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
                     let mut condvar_result: Option<Result<(), failure::Error>> = None;
+                    let mut previous_block_data_cache: Option<(
+                        Arc<BlockHeaderWithHash>,
+                        BlockAdditionalData,
+                    )> = None;
 
                     // lets apply blocks in order
                     for block_to_apply in batch.take_all_blocks_to_apply() {
                         debug!(log, "Applying block"; "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                        let validated_at_timer = Instant::now();
+
+                        // prepare request and data for block
+                        // collect all required data for apply
+                        let load_metadata_timer = Instant::now();
+                        let apply_block_request_data = prepare_apply_request(
+                            &block_to_apply,
+                            chain_id.as_ref().clone(),
+                            block_storage,
+                            block_meta_storage,
+                            operations_storage,
+                            previous_block_data_cache,
+                        );
+                        let load_metadata_elapsed = load_metadata_timer.elapsed();
 
                         // apply block and handle result
                         match _apply_block(
                             chain_id.clone(),
                             block_to_apply.clone(),
+                            apply_block_request_data,
+                            validated_at_timer,
+                            load_metadata_elapsed,
                             block_storage,
-                            operations_storage,
                             block_meta_storage,
                             context,
                             protocol_controller,
@@ -464,11 +487,15 @@ fn feed_chain_to_protocol(
                         ) {
                             Ok(result) => {
                                 match result {
-                                    Some(validated_block) => {
+                                    Some((validated_block, block_additional_data)) => {
                                         last_applied = Some(block_to_apply);
                                         if result_callback.is_some() {
                                             condvar_result = Some(Ok(()));
                                         }
+                                        previous_block_data_cache = Some((
+                                            validated_block.block.clone(),
+                                            block_additional_data,
+                                        ));
 
                                         // notify  chain current head manager (only for new applied block)
                                         chain_current_head_manager.tell(validated_block, None);
@@ -480,6 +507,7 @@ fn feed_chain_to_protocol(
                                                 "Block/batch is already applied"
                                             )));
                                         }
+                                        previous_block_data_cache = None;
                                     }
                                 }
                             }
@@ -566,45 +594,35 @@ fn feed_chain_to_protocol(
 fn _apply_block(
     chain_id: Arc<ChainId>,
     block_hash: Arc<BlockHash>,
+    apply_block_request_data: Result<
+        (
+            ApplyBlockRequest,
+            block_meta_storage::Meta,
+            Arc<BlockHeaderWithHash>,
+        ),
+        FeedChainError,
+    >,
+    validated_at_timer: Instant,
+    load_metadata_elapsed: Duration,
     block_storage: &BlockStorage,
-    operations_storage: &OperationsStorage,
     block_meta_storage: &BlockMetaStorage,
     context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     one_context: bool,
     log: &Logger,
-) -> Result<Option<ProcessValidatedBlock>, FeedChainError> {
-    // collect all required data for apply
-    let request = prepare_apply_request(
-        &block_hash,
-        chain_id.as_ref().clone(),
-        block_storage,
-        operations_storage,
-    )?;
+) -> Result<Option<(ProcessValidatedBlock, BlockAdditionalData)>, FeedChainError> {
+    // unwrap result
+    let (block_request, mut block_meta, block) = apply_block_request_data?;
 
-    let validated_at_timer = Instant::now();
-
-    // check if block is already applied (not necessery here)
-    let load_metadata_timer = Instant::now();
-    let mut current_head_meta = match block_meta_storage.get(&block_hash)? {
-        Some(meta) => {
-            if meta.is_applied() {
-                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
-                return Ok(None);
-            }
-            meta
-        }
-        None => {
-            return Err(FeedChainError::ProcessingError {
-                reason: "Block metadata not found".to_string(),
-            });
-        }
-    };
-    let load_metadata_elapsed = load_metadata_timer.elapsed();
+    // check if not already applied
+    if block_meta.is_applied() {
+        debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+        return Ok(None);
+    }
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result = protocol_controller.apply_block(request)?;
+    let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
@@ -633,25 +651,28 @@ fn _apply_block(
     // Lets mark header as applied and store result
     // store success result
     let store_result_timer = Instant::now();
-    let _ = store_applied_block_result(
+    let block_additional_data = store_applied_block_result(
         block_storage,
         block_meta_storage,
         &block_hash,
         apply_block_result,
-        &mut current_head_meta,
+        &mut block_meta,
     )?;
     let store_result_elapsed = store_result_timer.elapsed();
 
-    Ok(Some(ProcessValidatedBlock::new(
-        block_hash,
-        chain_id,
-        Arc::new(BlockValidationTimer::new(
-            validated_at_timer.elapsed(),
-            load_metadata_elapsed,
-            protocol_call_elapsed,
-            context_wait_elapsed,
-            store_result_elapsed,
-        )),
+    Ok(Some((
+        ProcessValidatedBlock::new(
+            block,
+            chain_id,
+            Arc::new(BlockValidationTimer::new(
+                validated_at_timer.elapsed(),
+                load_metadata_elapsed,
+                protocol_call_elapsed,
+                context_wait_elapsed,
+                store_result_elapsed,
+            )),
+        ),
+        block_additional_data,
     )))
 }
 
@@ -660,18 +681,41 @@ fn prepare_apply_request(
     block_hash: &BlockHash,
     chain_id: ChainId,
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     operations_storage: &OperationsStorage,
-) -> Result<ApplyBlockRequest, StorageError> {
+    predecessor_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<
+    (
+        ApplyBlockRequest,
+        block_meta_storage::Meta,
+        Arc<BlockHeaderWithHash>,
+    ),
+    FeedChainError,
+> {
     // get block header
-    let current_head = match block_storage.get(block_hash)? {
-        Some(block) => block,
-        None => return Err(StorageError::MissingKey),
+    let block = match block_storage.get(block_hash)? {
+        Some(block) => Arc::new(block),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    // get block_metadata
+    let block_meta = match block_meta_storage.get(&block_hash)? {
+        Some(meta) => meta,
+        None => {
+            return Err(FeedChainError::ProcessingError {
+                reason: "Block metadata not found".to_string(),
+            });
+        }
     };
 
     // get operations
     let operations = operations_storage.get_operations(block_hash)?;
 
-    // get predecessor metadata
+    // resolve predecessor data
     let (
         predecessor,
         (
@@ -679,22 +723,64 @@ fn prepare_apply_request(
             predecessor_ops_metadata_hash,
             predecessor_max_operations_ttl,
         ),
-    ) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
-        Some((predecessor, predecessor_additional_data)) => {
-            (predecessor, predecessor_additional_data.into())
+    ) = resolve_block_data(
+        block.header.predecessor(),
+        block_storage,
+        block_meta_storage,
+        predecessor_data_cache,
+    )
+    .map(|(block, additional_data)| (block, additional_data.into()))?;
+
+
+    Ok((
+        ApplyBlockRequest {
+            chain_id,
+            block_header: block.header.as_ref().clone(),
+            pred_header: predecessor.header.as_ref().clone(),
+            operations: ApplyBlockRequest::convert_operations(operations),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+        },
+        block_meta,
+        block,
+    ))
+}
+
+fn resolve_block_data(
+    block_hash: &BlockHash,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    block_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<(Arc<BlockHeaderWithHash>, BlockAdditionalData), FeedChainError> {
+    // check cache at first
+    if let Some(cached) = block_data_cache {
+        // if cached data are the same as requested, then use it from cache
+        if block_hash.eq(&cached.0.hash) {
+            return Ok(cached);
         }
-        None => return Err(StorageError::MissingKey),
+    }
+    // load data from database
+    let block = match block_storage.get(block_hash)? {
+        Some(header) => Arc::new(header),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
     };
 
-    Ok(ApplyBlockRequest {
-        chain_id,
-        block_header: current_head.header.as_ref().clone(),
-        pred_header: predecessor.header.as_ref().clone(),
-        operations: ApplyBlockRequest::convert_operations(operations),
-        max_operations_ttl: predecessor_max_operations_ttl as i32,
-        predecessor_block_metadata_hash,
-        predecessor_ops_metadata_hash,
-    })
+    // predecessor additional data
+    let additional_data = match block_meta_storage.get_additional_data(block_hash)? {
+        Some(additional_data) => additional_data,
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    Ok((block, additional_data))
 }
 
 /// This initializes ocaml runtime and protocol context,
@@ -740,6 +826,7 @@ pub(crate) fn initialize_protocol_context(
             let store_result_timer = Instant::now();
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
+                block_meta_storage,
                 &init_storage_data,
                 &tezos_env,
                 &genesis_context_hash,
@@ -774,7 +861,7 @@ pub(crate) fn initialize_protocol_context(
                 // notify others that the block successfully applied
                 chain_current_head_manager.tell(
                     ProcessValidatedBlock::new(
-                        Arc::new(genesis_with_hash.hash),
+                        Arc::new(genesis_with_hash),
                         Arc::new(init_storage_data.chain_id.clone()),
                         Arc::new(BlockValidationTimer::new(
                             validated_at_timer.elapsed(),

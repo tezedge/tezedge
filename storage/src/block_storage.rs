@@ -3,13 +3,10 @@
 
 use std::sync::Arc;
 
-use derive_builder::Builder;
-use getset::{CopyGetters, Getters};
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use crypto::hash::{
-    BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
-};
+use crypto::hash::{BlockHash, ContextHash};
 
 use crate::persistent::database::IteratorWithSchema;
 use crate::persistent::database::RocksDbKeyValueSchema;
@@ -34,7 +31,7 @@ pub struct BlockStorage {
 
 pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + Send;
 
-#[derive(Clone, Builder, Getters, Serialize, Deserialize, Debug)]
+#[derive(Clone, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockJsonData {
     #[get = "pub"]
     block_header_proto_json: String,
@@ -44,58 +41,17 @@ pub struct BlockJsonData {
     operations_proto_metadata_json: String,
 }
 
-#[derive(Clone, Builder, CopyGetters, Getters, Serialize, Deserialize, Debug)]
-pub struct BlockAdditionalData {
-    #[get_copy = "pub"]
-    max_operations_ttl: u16,
-    #[get_copy = "pub"]
-    last_allowed_fork_level: i32,
-    #[get = "pub"]
-    block_metadata_hash: Option<BlockMetadataHash>,
-    // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
-    // TODO: TE-207 - not needed, can be calculated from ops_metadata_hashes
-    #[get = "pub"]
-    ops_metadata_hash: Option<OperationMetadataListListHash>,
-    /// Note: This is calculated from ops_metadata_hashes - we need this in request
-    ///       This is calculated as merkle tree hash, like operation paths
-    ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
-}
-
-impl
-    Into<(
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-    )> for BlockAdditionalData
-{
-    fn into(
-        self,
-    ) -> (
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-    ) {
-        (self.block_metadata_hash, self.ops_metadata_hash)
-    }
-}
-
-impl
-    Into<(
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-        u16,
-    )> for BlockAdditionalData
-{
-    fn into(
-        self,
-    ) -> (
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-        u16,
-    ) {
-        (
-            self.block_metadata_hash,
-            self.ops_metadata_hash,
-            self.max_operations_ttl,
-        )
+impl BlockJsonData {
+    pub fn new(
+        block_header_proto_json: String,
+        block_header_proto_metadata_json: String,
+        operations_proto_metadata_json: String,
+    ) -> Self {
+        Self {
+            block_header_proto_json,
+            block_header_proto_metadata_json,
+            operations_proto_metadata_json,
+        }
     }
 }
 
@@ -111,11 +67,6 @@ pub trait BlockStorageReader: Sync + Send {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
-
-    fn get_with_additional_data(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<(BlockHeaderWithHash, BlockAdditionalData)>, StorageError>;
 
     fn get_multiple_with_json_data(
         &self,
@@ -175,7 +126,6 @@ impl BlockStorage {
                 let location = BlockStorageColumnsLocation {
                     block_header: block_header_location,
                     block_json_data: None,
-                    block_additional_data: None,
                 };
                 self.primary_index
                     .put(&block_header.hash, &location)
@@ -201,32 +151,6 @@ impl BlockStorage {
                 .get(block_hash)?
                 .ok_or(StorageError::MissingKey)?;
             column_location.block_json_data = Some(block_json_data_location);
-            column_location
-        };
-        let block_header = self.get_block_header_by_location(&updated_column_location)?;
-        // update indexes
-        self.primary_index
-            .put(&block_header.hash, &updated_column_location)
-            .and(
-                self.by_level_index
-                    .put(block_header.header.level(), &updated_column_location),
-            )
-    }
-
-    pub fn put_block_additional_data(
-        &self,
-        block_hash: &BlockHash,
-        additional_data: BlockAdditionalData,
-    ) -> Result<(), StorageError> {
-        let updated_column_location = {
-            let block_additional_data_location = self
-                .clog
-                .append(&BlockStorageColumn::BlockAdditionalData(additional_data))?;
-            let mut column_location = self
-                .primary_index
-                .get(block_hash)?
-                .ok_or(StorageError::MissingKey)?;
-            column_location.block_additional_data = Some(block_additional_data_location);
             column_location
         };
         let block_header = self.get_block_header_by_location(&updated_column_location)?;
@@ -284,24 +208,6 @@ impl BlockStorage {
     }
 
     #[inline]
-    fn get_block_additional_data_by_location(
-        &self,
-        location: &BlockStorageColumnsLocation,
-    ) -> Result<Option<BlockAdditionalData>, StorageError> {
-        match &location.block_additional_data {
-            Some(block_additional_data_location) => match self
-                .clog
-                .get(block_additional_data_location)
-                .map_err(StorageError::from)?
-            {
-                BlockStorageColumn::BlockAdditionalData(data) => Ok(Some(data)),
-                _ => Err(StorageError::InvalidColumn),
-            },
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
     fn get_blocks_with_json_data_by_location<I>(
         &self,
         locations: I,
@@ -352,23 +258,6 @@ impl BlockStorageReader for BlockStorage {
         match self.primary_index.get(block_hash)? {
             Some(location) => self
                 .get_block_json_data_by_location(&location)?
-                .map(|json_data| {
-                    self.get_block_header_by_location(&location)
-                        .map(|block_header| (block_header, json_data))
-                })
-                .transpose(),
-            None => Ok(None),
-        }
-    }
-
-    #[inline]
-    fn get_with_additional_data(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<(BlockHeaderWithHash, BlockAdditionalData)>, StorageError> {
-        match self.primary_index.get(block_hash)? {
-            Some(location) => self
-                .get_block_additional_data_by_location(&location)?
                 .map(|json_data| {
                     self.get_block_header_by_location(&location)
                         .map(|block_header| (block_header, json_data))
@@ -466,7 +355,6 @@ impl CommitLogSchema for BlockStorage {
 pub enum BlockStorageColumn {
     BlockHeader(BlockHeaderWithHash),
     BlockJsonData(BlockJsonData),
-    BlockAdditionalData(BlockAdditionalData),
 }
 
 impl BincodeEncoded for BlockStorageColumn {}
@@ -476,7 +364,6 @@ impl BincodeEncoded for BlockStorageColumn {}
 pub struct BlockStorageColumnsLocation {
     pub block_header: Location,
     pub block_json_data: Option<Location>,
-    pub block_additional_data: Option<Location>,
 }
 
 impl BincodeEncoded for BlockStorageColumnsLocation {}
@@ -666,10 +553,10 @@ mod tests {
 
     use failure::Error;
 
+    use crate::persistent::database::open_kv;
     use crate::persistent::DbConfiguration;
 
     use super::*;
-    use crate::persistent::database::open_kv;
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
@@ -697,7 +584,6 @@ mod tests {
                     &BlockStorageColumnsLocation {
                         block_header: Location::new(*i as u64),
                         block_json_data: None,
-                        block_additional_data: None,
                     },
                 )?;
             }
