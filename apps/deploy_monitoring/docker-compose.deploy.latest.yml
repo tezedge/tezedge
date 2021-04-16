@@ -20,7 +20,7 @@ services:
 
   tezedge-node:
     image: simplestakingcom/tezedge:latest
-    command: ["--network", "${TEZOS_NETWORK}", "--actions-store-backend", "rocksdb,file", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log"]
+    command: ["--network", "${TEZOS_NETWORK}", "--actions-store-backend", "file", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"

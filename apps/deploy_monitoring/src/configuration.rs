@@ -27,7 +27,10 @@ pub struct DeployMonitoringEnvironment {
     pub compose_file_path: PathBuf,
 
     // Thresholds to alerts
-    pub alert_thresholds: AlertThresholds,
+    pub tezedge_alert_thresholds: AlertThresholds,
+
+    // Thresholds to alerts
+    pub ocaml_alert_thresholds: AlertThresholds,
 
     // flag for volume cleanup mode
     pub cleanup_volumes: bool,
@@ -171,29 +174,57 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Enable and dissable volume cleanup"),
         )
         .arg(
-            Arg::with_name("alert-threshold-disk")
-                .long("alert-threshold-disk")
+            Arg::with_name("tezedge-alert-threshold-disk")
+                .long("tezedge-alert-threshold-disk")
                 .takes_value(true)
                 .value_name("ALERT-THRESHOLD-DISK")
                 .help("Thershold in bytes for critical alerts - disk"),
         )
         .arg(
-            Arg::with_name("alert-threshold-memory")
-                .long("alert-threshold-memory")
+            Arg::with_name("tezedge-alert-threshold-memory")
+                .long("tezedge-alert-threshold-memory")
                 .takes_value(true)
                 .value_name("ALERT-THRESHOLD-MEMORY")
                 .help("Thershold in bytes for critical alerts - memory"),
         )
         .arg(
-            Arg::with_name("alert-threshold-cpu")
-                .long("alert-threshold-cpu")
+            Arg::with_name("tezedge-alert-threshold-cpu")
+                .long("tezedge-alert-threshold-cpu")
                 .takes_value(true)
                 .value_name("ALERT-THRESHOLD-CPU")
                 .help("Thershold in % for critical alerts - cpu"),
         )
         .arg(
-            Arg::with_name("alert-threshold-synchronization")
-                .long("alert-threshold-synchronization")
+            Arg::with_name("tezedge-alert-threshold-synchronization")
+                .long("tezedge-alert-threshold-synchronization")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-SYNCHRONIZATION")
+                .help("Thershold in seconds for critical alerts - synchronization"),
+        )
+        .arg(
+            Arg::with_name("ocaml-alert-threshold-disk")
+                .long("ocaml-alert-threshold-disk")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-DISK")
+                .help("Thershold in bytes for critical alerts - disk"),
+        )
+        .arg(
+            Arg::with_name("ocaml-alert-threshold-memory")
+                .long("ocaml-alert-threshold-memory")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-MEMORY")
+                .help("Thershold in bytes for critical alerts - memory"),
+        )
+        .arg(
+            Arg::with_name("ocaml-alert-threshold-cpu")
+                .long("ocaml-alert-threshold-cpu")
+                .takes_value(true)
+                .value_name("ALERT-THRESHOLD-CPU")
+                .help("Thershold in % for critical alerts - cpu"),
+        )
+        .arg(
+            Arg::with_name("ocaml-alert-threshold-synchronization")
+                .long("ocaml-alert-threshold-synchronization")
                 .takes_value(true)
                 .value_name("ALERT-THRESHOLD-SYNCHRONIZATION")
                 .help("Thershold in seconds for critical alerts - synchronization"),
@@ -253,29 +284,58 @@ impl DeployMonitoringEnvironment {
         validate_required_args(&args);
         let slack_configuration = check_slack_args(&args);
 
-        let alert_thresholds = AlertThresholds {
+        let tezedge_alert_thresholds = AlertThresholds {
             memory: args
-                .value_of("alert-threshold-memory")
+                .value_of("tezedge-alert-threshold-memory")
                 .unwrap_or("4096")
                 .parse::<u64>()
-                .expect("Was expecting number of bytes [u64]")
+                .expect("Was expecting number of megabytes [u64]")
                 * 1024
                 * 1024,
             disk: args
-                .value_of("alert-threshold-disk")
+                .value_of("tezedge-alert-threshold-disk")
                 .unwrap_or("95")
                 .parse::<u64>()
                 .expect("Was expecting percentage [u64]"),
             synchronization: args
-                .value_of("alert-threshold-synchronization")
+                .value_of("tezedge-alert-threshold-synchronization")
                 .unwrap_or("300")
                 .parse::<i64>()
                 .expect("Was seconds [i64]"),
-            cpu: args.value_of("alert-threshold-cpu").map(|cpu_thresh| {
-                cpu_thresh
-                    .parse::<u64>()
-                    .expect("Was expecting percentage [u64]")
-            }),
+            cpu: args
+                .value_of("tezedge-alert-threshold-cpu")
+                .map(|cpu_thresh| {
+                    cpu_thresh
+                        .parse::<u64>()
+                        .expect("Was expecting percentage [u64]")
+                }),
+        };
+
+        let ocaml_alert_thresholds = AlertThresholds {
+            memory: args
+                .value_of("ocaml-alert-threshold-memory")
+                .unwrap_or("6144")
+                .parse::<u64>()
+                .expect("Was expecting number of megabytes [u64]")
+                * 1024
+                * 1024,
+            disk: args
+                .value_of("ocaml-alert-threshold-disk")
+                .unwrap_or("95")
+                .parse::<u64>()
+                .expect("Was expecting percentage [u64]"),
+            synchronization: args
+                .value_of("ocaml-alert-threshold-synchronization")
+                .unwrap_or("300")
+                .parse::<i64>()
+                .expect("Was seconds [i64]"),
+            cpu: args
+                .value_of("ocaml-alert-threshold-cpu")
+                .map(|cpu_thresh| {
+                    cpu_thresh
+                        .parse::<u64>()
+                        .expect("Was expecting percentage [u64]")
+                }),
         };
 
         DeployMonitoringEnvironment {
@@ -309,7 +369,8 @@ impl DeployMonitoringEnvironment {
             is_sandbox: args.is_present("sandbox"),
             cleanup_volumes: args.is_present("cleanup-volumes"),
             tezedge_only: args.is_present("tezedge-only"),
-            alert_thresholds,
+            tezedge_alert_thresholds,
+            ocaml_alert_thresholds,
             slack_configuration,
         }
     }

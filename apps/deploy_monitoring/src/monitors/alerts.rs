@@ -28,7 +28,10 @@ pub struct Alerts {
     inner: HashSet<MonitorAlert>,
 
     #[get = "pub(crate)"]
-    thresholds: AlertThresholds,
+    tezedge_thresholds: AlertThresholds,
+
+    #[get = "pub(crate)"]
+    ocaml_thresholds: AlertThresholds,
 }
 
 #[derive(Clone, Debug, Eq)]
@@ -74,10 +77,11 @@ impl MonitorAlert {
 }
 
 impl Alerts {
-    pub fn new(thresholds: AlertThresholds) -> Self {
+    pub fn new(tezedge_thresholds: AlertThresholds, ocaml_thresholds: AlertThresholds) -> Self {
         Self {
             inner: HashSet::default(),
-            thresholds,
+            tezedge_thresholds,
+            ocaml_thresholds,
         }
     }
 
@@ -134,6 +138,7 @@ impl Alerts {
     pub fn assign_node_stuck_alert(
         &mut self,
         node_tag: &str,
+        thresholds: &AlertThresholds,
         last_checked_head_level: Option<u64>,
         current_head_level: u64,
         current_time: i64,
@@ -164,7 +169,7 @@ impl Alerts {
                         // Note: When the node is synced, the blocks update in more or less fixed interval (1min on mainnet)
                         // so do not report the alert until it's time stuck exceeds a defined threshold
                         if current_time - alert.timestamp.unwrap_or(current_time)
-                            > self.thresholds.synchronization
+                            > thresholds.synchronization
                         {
                             crit!(
                                 log,
@@ -184,7 +189,7 @@ impl Alerts {
                                 "[{}] Node appears to be STUCK - LEVEL {}, time until alert: {}s",
                                 node_tag,
                                 current_head_level,
-                                self.thresholds.synchronization
+                                thresholds.synchronization
                                     - (current_time - alert.timestamp.unwrap_or(current_time))
                             );
                         }
@@ -211,7 +216,7 @@ impl Alerts {
                         "[{}]Node appears to be stuck on level {}, time until alert: {}s",
                         node_tag,
                         current_head_level,
-                        self.thresholds.synchronization
+                        thresholds.synchronization
                     );
                     self.inner.insert(head_alert.clone());
                 }
@@ -223,6 +228,7 @@ impl Alerts {
     pub async fn check_disk_alert(
         &mut self,
         node_tag: &str,
+        thresholds: &AlertThresholds,
         slack: Option<&SlackServer>,
         time: i64,
     ) -> Result<(), failure::Error> {
@@ -232,7 +238,7 @@ impl Alerts {
         let total_disk_space = fs2::total_space(TEZEDGE_VOLUME_PATH)?;
 
         // set it to a percentage of the max capacity
-        let disk_threshold = 100 / self.thresholds.disk * total_disk_space;
+        let disk_threshold = 100 / thresholds.disk * total_disk_space;
 
         let res = self.assign_resource_alert(
             node_tag,
@@ -248,6 +254,7 @@ impl Alerts {
     pub async fn check_memory_alert(
         &mut self,
         node_tag: &str,
+        thresholds: &AlertThresholds,
         slack: Option<&SlackServer>,
         time: i64,
         last_measurement: ResourceUtilization,
@@ -272,7 +279,7 @@ impl Alerts {
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Memory,
-            self.thresholds.memory,
+            thresholds.memory,
             ram_total as u64,
             Some(time),
         );
@@ -285,6 +292,7 @@ impl Alerts {
     pub async fn check_cpu_alert(
         &mut self,
         node_tag: &str,
+        thresholds: &AlertThresholds,
         slack: Option<&SlackServer>,
         time: i64,
         last_measurement: ResourceUtilization,
@@ -295,7 +303,7 @@ impl Alerts {
             node_tag,
             AlertKind::Cpu,
             // TODO: TE-499 rework for multinode
-            self.thresholds.cpu.unwrap(),
+            thresholds.cpu.unwrap(),
             cpu_total as u64,
             Some(time),
         );
@@ -308,6 +316,7 @@ impl Alerts {
     pub async fn check_node_stuck_alert(
         &mut self,
         node_tag: &str,
+        thresholds: &AlertThresholds,
         last_checked_head_level: Option<u64>,
         current_head_level: u64,
         current_time: i64,
@@ -316,6 +325,7 @@ impl Alerts {
     ) -> Result<(), failure::Error> {
         let alert_result = self.assign_node_stuck_alert(
             node_tag,
+            thresholds,
             last_checked_head_level,
             current_head_level,
             current_time,
@@ -462,12 +472,20 @@ mod tests {
 
         let threshold = threshold_percentage / 100 * TOTAL_DISK_SPACE;
 
-        let mut alerts = Alerts::new(AlertThresholds {
-            disk: threshold,
-            memory: 0,
-            synchronization: 0,
-            cpu: Some(0),
-        });
+        let mut alerts = Alerts::new(
+            AlertThresholds {
+                disk: threshold,
+                memory: 0,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+            AlertThresholds {
+                disk: threshold,
+                memory: 0,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+        );
 
         alerts.assign_resource_alert(node_tag, AlertKind::Disk, threshold, 300_000_000_000, None);
 
@@ -501,12 +519,20 @@ mod tests {
         let memory = 1000;
         let threshold = 10000;
 
-        let mut alerts = Alerts::new(AlertThresholds {
-            memory: threshold,
-            disk: 0,
-            synchronization: 0,
-            cpu: Some(0),
-        });
+        let mut alerts = Alerts::new(
+            AlertThresholds {
+                memory: threshold,
+                disk: 0,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+            AlertThresholds {
+                memory: threshold,
+                disk: 0,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+        );
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, threshold, memory, None);
         assert!(!alerts.contains(AlertKind::Memory, node_tag));
@@ -561,12 +587,20 @@ mod tests {
 
         let disk_threshold = disk_threshold_percentage / 100 * TOTAL_DISK_SPACE;
 
-        let mut alerts = Alerts::new(AlertThresholds {
-            memory: memory_threshold,
-            disk: disk_threshold,
-            synchronization: 0,
-            cpu: Some(0),
-        });
+        let mut alerts = Alerts::new(
+            AlertThresholds {
+                memory: memory_threshold,
+                disk: disk_threshold,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+            AlertThresholds {
+                memory: memory_threshold,
+                disk: disk_threshold,
+                synchronization: 0,
+                cpu: Some(0),
+            },
+        );
 
         alerts.assign_resource_alert(node_tag, AlertKind::Memory, memory_threshold, memory, None);
         assert!(!alerts.contains(AlertKind::Memory, node_tag));
@@ -599,30 +633,60 @@ mod tests {
     #[test]
     fn test_node_stuck_alert() {
         let node_tag = "tezedge";
-        let mut alerts = Alerts::new(AlertThresholds {
-            disk: 0,
-            memory: 0,
-            synchronization: 300,
-            cpu: Some(0),
-        });
+        let mut alerts = Alerts::new(
+            AlertThresholds {
+                disk: 0,
+                memory: 0,
+                synchronization: 300,
+                cpu: Some(0),
+            },
+            AlertThresholds {
+                disk: 0,
+                memory: 0,
+                synchronization: 300,
+                cpu: Some(0),
+            },
+        );
+
+        let thresholds = alerts.tezedge_thresholds().clone();
 
         // discard the logs
         let log = Logger::root(slog::Discard, slog::o!());
         let initial_time: i64 = 1617296614;
 
         // no alert should generate
-        let res = alerts.assign_node_stuck_alert(node_tag, Some(125), 126, initial_time, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node_tag,
+            &thresholds,
+            Some(125),
+            126,
+            initial_time,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 0);
         assert_eq!(res, AlertResult::Unchanged);
 
         // 5s in future - register the error, but do not report
-        let res = alerts.assign_node_stuck_alert(node_tag, Some(126), 126, initial_time + 5, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 5,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 1);
         assert_eq!(res, AlertResult::Unchanged);
 
         // 150s in future - error is still registered but the threshold is still not exceeded
-        let res =
-            alerts.assign_node_stuck_alert(node_tag, Some(126), 126, initial_time + 150, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 150,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 1);
         assert_eq!(res, AlertResult::Unchanged);
 
@@ -635,8 +699,14 @@ mod tests {
             126,
         );
         expected.reported = true;
-        let res =
-            alerts.assign_node_stuck_alert(node_tag, Some(126), 126, initial_time + 306, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 306,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 1);
         assert_eq!(res, AlertResult::Incresed(expected));
     }
@@ -645,43 +715,93 @@ mod tests {
     fn test_multiple_node_stuck_alert() {
         let node1_tag = "tezedge";
         let node2_tag = "ocaml";
-        let mut alerts = Alerts::new(AlertThresholds {
-            disk: 0,
-            memory: 0,
-            synchronization: 300,
-            cpu: Some(0),
-        });
+        let mut alerts = Alerts::new(
+            AlertThresholds {
+                disk: 0,
+                memory: 0,
+                synchronization: 300,
+                cpu: Some(0),
+            },
+            AlertThresholds {
+                disk: 0,
+                memory: 0,
+                synchronization: 300,
+                cpu: Some(0),
+            },
+        );
+
+        let thresholds = alerts.tezedge_thresholds().clone();
 
         // discard the logs
         let log = Logger::root(slog::Discard, slog::o!());
         let initial_time: i64 = 1617296614;
 
         // no alert should generate
-        let res = alerts.assign_node_stuck_alert(node1_tag, Some(125), 126, initial_time, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node1_tag,
+            &thresholds,
+            Some(125),
+            126,
+            initial_time,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 0);
         assert_eq!(res, AlertResult::Unchanged);
 
-        let res = alerts.assign_node_stuck_alert(node2_tag, Some(125), 126, initial_time, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node2_tag,
+            &thresholds,
+            Some(125),
+            126,
+            initial_time,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 0);
         assert_eq!(res, AlertResult::Unchanged);
 
         // 5s in future - register the error, but do not report
-        let res = alerts.assign_node_stuck_alert(node1_tag, Some(126), 126, initial_time + 5, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node1_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 5,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 1);
         assert_eq!(res, AlertResult::Unchanged);
 
-        let res = alerts.assign_node_stuck_alert(node2_tag, Some(126), 126, initial_time + 5, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node2_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 5,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Unchanged);
 
         // 150s in future - error is still registered but the threshold is still not exceeded
-        let res =
-            alerts.assign_node_stuck_alert(node1_tag, Some(126), 126, initial_time + 150, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node1_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 150,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Unchanged);
 
-        let res =
-            alerts.assign_node_stuck_alert(node2_tag, Some(126), 126, initial_time + 150, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node2_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 150,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Unchanged);
 
@@ -694,8 +814,14 @@ mod tests {
             126,
         );
         expected1.reported = true;
-        let res =
-            alerts.assign_node_stuck_alert(node1_tag, Some(126), 126, initial_time + 306, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node1_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 306,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Incresed(expected1));
 
@@ -707,8 +833,14 @@ mod tests {
             126,
         );
         expected2.reported = true;
-        let res =
-            alerts.assign_node_stuck_alert(node2_tag, Some(126), 126, initial_time + 306, &log);
+        let res = alerts.assign_node_stuck_alert(
+            node2_tag,
+            &thresholds,
+            Some(126),
+            126,
+            initial_time + 306,
+            &log,
+        );
         assert_eq!(alerts.inner.len(), 2);
         assert_eq!(res, AlertResult::Incresed(expected2));
     }

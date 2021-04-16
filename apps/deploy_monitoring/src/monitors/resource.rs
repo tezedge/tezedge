@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
 use chrono::Utc;
+use failure::format_err;
 use getset::Getters;
 use serde::Serialize;
 use slog::{error, Logger};
@@ -303,18 +304,28 @@ async fn handle_alerts(
     alerts: &mut Alerts,
     log: &Logger,
 ) -> Result<(), failure::Error> {
+    // TODO: TE-499 - (multinode) - fix for multinode support
+    let thresholds = if node_tag == "tezedge" {
+        alerts.tezedge_thresholds().clone()
+    } else if node_tag == "ocaml" {
+        alerts.ocaml_thresholds().clone()
+    } else {
+        return Err(format_err!("Node [{}] not defined", node_tag));
+    };
+
     // current time timestamp
     let current_time = Utc::now().timestamp();
 
-    let last_head = last_checked_head_level.get(node_tag).map(|level| *level);
+    let last_head = last_checked_head_level.get(node_tag).copied();
     let current_head_level = last_measurement.head_level;
 
     alerts
-        .check_disk_alert(node_tag, slack.as_ref(), current_time)
+        .check_disk_alert(node_tag, &thresholds, slack.as_ref(), current_time)
         .await?;
     alerts
         .check_memory_alert(
             node_tag,
+            &thresholds,
             slack.as_ref(),
             current_time,
             last_measurement.clone(),
@@ -323,6 +334,7 @@ async fn handle_alerts(
     alerts
         .check_node_stuck_alert(
             node_tag,
+            &thresholds,
             last_head,
             current_head_level,
             current_time,
@@ -331,10 +343,11 @@ async fn handle_alerts(
         )
         .await?;
 
-    if alerts.thresholds().cpu.is_some() {
+    if thresholds.cpu.is_some() {
         alerts
             .check_cpu_alert(
                 node_tag,
+                &thresholds,
                 slack.as_ref(),
                 current_time,
                 last_measurement.clone(),
