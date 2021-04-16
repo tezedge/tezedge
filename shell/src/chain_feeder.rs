@@ -19,7 +19,7 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::PersistentStorage;
+use storage::{block_meta_storage, BlockMetaStorageReader, PersistentStorage};
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
     BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,
@@ -449,13 +449,28 @@ fn feed_chain_to_protocol(
                     // lets apply blocks in order
                     for block_to_apply in batch.take_all_blocks_to_apply() {
                         debug!(log, "Applying block"; "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                        let validated_at_timer = Instant::now();
+
+                        // prepare request and data for block
+                        // collect all required data for apply
+                        let load_metadata_timer = Instant::now();
+                        let apply_block_request_data = prepare_apply_request(
+                            &block_to_apply,
+                            chain_id.as_ref().clone(),
+                            block_storage,
+                            block_meta_storage,
+                            operations_storage,
+                        );
+                        let load_metadata_elapsed = load_metadata_timer.elapsed();
 
                         // apply block and handle result
                         match _apply_block(
                             chain_id.clone(),
                             block_to_apply.clone(),
+                            apply_block_request_data,
+                            validated_at_timer,
+                            load_metadata_elapsed,
                             block_storage,
-                            operations_storage,
                             block_meta_storage,
                             context,
                             protocol_controller,
@@ -566,45 +581,28 @@ fn feed_chain_to_protocol(
 fn _apply_block(
     chain_id: Arc<ChainId>,
     block_hash: Arc<BlockHash>,
+    apply_block_request_data: Result<(ApplyBlockRequest, block_meta_storage::Meta), FeedChainError>,
+    validated_at_timer: Instant,
+    load_metadata_elapsed: Duration,
     block_storage: &BlockStorage,
-    operations_storage: &OperationsStorage,
     block_meta_storage: &BlockMetaStorage,
     context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     one_context: bool,
     log: &Logger,
 ) -> Result<Option<ProcessValidatedBlock>, FeedChainError> {
-    // collect all required data for apply
-    let request = prepare_apply_request(
-        &block_hash,
-        chain_id.as_ref().clone(),
-        block_storage,
-        operations_storage,
-    )?;
+    // unwrap result
+    let (block_request, mut block_meta) = apply_block_request_data?;
 
-    let validated_at_timer = Instant::now();
-
-    // check if block is already applied (not necessery here)
-    let load_metadata_timer = Instant::now();
-    let mut current_head_meta = match block_meta_storage.get(&block_hash)? {
-        Some(meta) => {
-            if meta.is_applied() {
-                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
-                return Ok(None);
-            }
-            meta
-        }
-        None => {
-            return Err(FeedChainError::ProcessingError {
-                reason: "Block metadata not found".to_string(),
-            });
-        }
-    };
-    let load_metadata_elapsed = load_metadata_timer.elapsed();
+    // check if not already applied
+    if block_meta.is_applied() {
+        debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+        return Ok(None);
+    }
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result = protocol_controller.apply_block(request)?;
+    let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
@@ -638,7 +636,7 @@ fn _apply_block(
         block_meta_storage,
         &block_hash,
         apply_block_result,
-        &mut current_head_meta,
+        &mut block_meta,
     )?;
     let store_result_elapsed = store_result_timer.elapsed();
 
@@ -660,41 +658,68 @@ fn prepare_apply_request(
     block_hash: &BlockHash,
     chain_id: ChainId,
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     operations_storage: &OperationsStorage,
-) -> Result<ApplyBlockRequest, StorageError> {
+) -> Result<(ApplyBlockRequest, block_meta_storage::Meta), FeedChainError> {
     // get block header
     let current_head = match block_storage.get(block_hash)? {
         Some(block) => block,
-        None => return Err(StorageError::MissingKey),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    // get block_metadata
+    let block_meta = match block_meta_storage.get(&block_hash)? {
+        Some(meta) => meta,
+        None => {
+            return Err(FeedChainError::ProcessingError {
+                reason: "Block metadata not found".to_string(),
+            });
+        }
     };
 
     // get operations
     let operations = operations_storage.get_operations(block_hash)?;
 
     // get predecessor metadata
-    let (
-        predecessor,
-        (
-            predecessor_block_metadata_hash,
-            predecessor_ops_metadata_hash,
-            predecessor_max_operations_ttl,
-        ),
-    ) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
-        Some((predecessor, predecessor_additional_data)) => {
-            (predecessor, predecessor_additional_data.into())
+    let predecessor = match block_storage.get(&current_head.header.predecessor())? {
+        Some(header) => header,
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
         }
-        None => return Err(StorageError::MissingKey),
     };
 
-    Ok(ApplyBlockRequest {
-        chain_id,
-        block_header: current_head.header.as_ref().clone(),
-        pred_header: predecessor.header.as_ref().clone(),
-        operations: ApplyBlockRequest::convert_operations(operations),
-        max_operations_ttl: predecessor_max_operations_ttl as i32,
+    // predecessor additional data
+    let (
         predecessor_block_metadata_hash,
         predecessor_ops_metadata_hash,
-    })
+        predecessor_max_operations_ttl,
+    ) = match block_meta_storage.get_additional_data(&current_head.header.predecessor())? {
+        Some(predecessor_additional_data) => predecessor_additional_data.into(),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    Ok((
+        ApplyBlockRequest {
+            chain_id,
+            block_header: current_head.header.as_ref().clone(),
+            pred_header: predecessor.header.as_ref().clone(),
+            operations: ApplyBlockRequest::convert_operations(operations),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+        },
+        block_meta,
+    ))
 }
 
 /// This initializes ocaml runtime and protocol context,
@@ -740,6 +765,7 @@ pub(crate) fn initialize_protocol_context(
             let store_result_timer = Instant::now();
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
+                block_meta_storage,
                 &init_storage_data,
                 &tezos_env,
                 &genesis_context_hash,

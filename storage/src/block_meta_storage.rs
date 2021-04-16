@@ -1,26 +1,33 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryInto, sync::Arc};
-
 use std::convert::TryFrom;
+use std::{convert::TryInto, sync::Arc};
 
 use getset::{CopyGetters, Getters, Setters};
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
+use serde::{Deserialize, Serialize};
 use slog::{warn, Logger};
 
-use crypto::hash::{BlockHash, ChainId, HashType};
+use crypto::hash::{
+    BlockHash, BlockMetadataHash, ChainId, HashType, OperationMetadataHash,
+    OperationMetadataListListHash,
+};
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::persistent::database::{
     default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::{
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
+};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
 pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
+pub type BlockAdditionalDataStorageKV =
+    dyn KeyValueStoreWithSchema<BlockAdditionalData> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
@@ -42,12 +49,18 @@ pub trait BlockMetaStorageReader: Sync + Send {
         block_hash: BlockHash,
         max_ttl: usize,
     ) -> Result<Vec<BlockHash>, StorageError>;
+
+    fn get_additional_data(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockAdditionalData>, StorageError>;
 }
 
 #[derive(Clone)]
 pub struct BlockMetaStorage {
     kv: Arc<BlockMetaStorageKV>,
     predecessors_index: PredecessorStorage,
+    additional_data_index: Arc<BlockAdditionalDataStorageKV>,
 }
 
 impl BlockMetaStorage {
@@ -57,6 +70,7 @@ impl BlockMetaStorage {
         BlockMetaStorage {
             kv: persistent_storage.db(),
             predecessors_index: PredecessorStorage::new(persistent_storage),
+            additional_data_index: persistent_storage.db(),
         }
     }
 
@@ -173,6 +187,16 @@ impl BlockMetaStorage {
         Ok(())
     }
 
+    pub fn put_block_additional_data(
+        &self,
+        block_hash: &BlockHash,
+        additional_data: &BlockAdditionalData,
+    ) -> Result<(), StorageError> {
+        self.additional_data_index
+            .put(block_hash, additional_data)
+            .map_err(StorageError::from)
+    }
+
     #[inline]
     pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta).map_err(StorageError::from)
@@ -284,6 +308,15 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         live_blocks.sort_by(|left, right| Ord::cmp(left, right));
 
         Ok(live_blocks)
+    }
+
+    fn get_additional_data(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockAdditionalData>, StorageError> {
+        self.additional_data_index
+            .get(block_hash)
+            .map_err(StorageError::from)
     }
 }
 
@@ -582,6 +615,95 @@ fn merge_meta_value(
     result
 }
 
+/// Struct holds informations as a result from block apllication,
+/// These data are used for appling next successor block
+#[derive(Clone, CopyGetters, Getters, Serialize, Deserialize, Debug)]
+pub struct BlockAdditionalData {
+    #[get_copy = "pub"]
+    max_operations_ttl: u16,
+    #[get_copy = "pub"]
+    last_allowed_fork_level: i32,
+    #[get = "pub"]
+    block_metadata_hash: Option<BlockMetadataHash>,
+    // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
+    // TODO: TE-207 - not needed, can be calculated from ops_metadata_hashes
+    #[get = "pub"]
+    ops_metadata_hash: Option<OperationMetadataListListHash>,
+    /// Note: This is calculated from ops_metadata_hashes - we need this in request
+    ///       This is calculated as merkle tree hash, like operation paths
+    ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
+}
+
+impl BlockAdditionalData {
+    pub fn new(
+        max_operations_ttl: u16,
+        last_allowed_fork_level: i32,
+        block_metadata_hash: Option<BlockMetadataHash>,
+        ops_metadata_hash: Option<OperationMetadataListListHash>,
+        ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
+    ) -> Self {
+        Self {
+            max_operations_ttl,
+            last_allowed_fork_level,
+            block_metadata_hash,
+            ops_metadata_hash,
+            ops_metadata_hashes,
+        }
+    }
+}
+
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    ) {
+        (self.block_metadata_hash, self.ops_metadata_hash)
+    }
+}
+
+impl
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    )> for BlockAdditionalData
+{
+    fn into(
+        self,
+    ) -> (
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    ) {
+        (
+            self.block_metadata_hash,
+            self.ops_metadata_hash,
+            self.max_operations_ttl,
+        )
+    }
+}
+
+impl KeyValueSchema for BlockAdditionalData {
+    type Key = BlockHash;
+    type Value = BlockAdditionalData;
+}
+
+impl BincodeEncoded for BlockAdditionalData {}
+
+impl RocksDbKeyValueSchema for BlockAdditionalData {
+    #[inline]
+    fn name() -> &'static str {
+        "block_additional_data"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -591,11 +713,11 @@ mod tests {
     use failure::Error;
     use rand::Rng;
 
+    use crate::persistent::database::open_kv;
     use crate::persistent::DbConfiguration;
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    use crate::persistent::database::open_kv;
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
