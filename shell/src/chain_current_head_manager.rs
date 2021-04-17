@@ -14,9 +14,9 @@ use std::sync::Arc;
 use riker::actors::*;
 use slog::{debug, info, warn};
 
-use crypto::hash::{BlockHash, ChainId};
-use storage::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, StorageInitInfo};
+use crypto::hash::ChainId;
+use storage::StorageInitInfo;
+use storage::{BlockHeaderWithHash, PersistentStorage};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
@@ -30,14 +30,14 @@ use crate::stats::apply_block_stats::{ApplyBlockStatsRef, BlockValidationTimer};
 /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
 #[derive(Clone, Debug)]
 pub struct ProcessValidatedBlock {
-    pub block: Arc<BlockHash>,
+    pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
     validation_timer: Arc<BlockValidationTimer>,
 }
 
 impl ProcessValidatedBlock {
     pub fn new(
-        block: Arc<BlockHash>,
+        block: Arc<BlockHeaderWithHash>,
         chain_id: Arc<ChainId>,
         validation_timer: Arc<BlockValidationTimer>,
     ) -> Self {
@@ -54,9 +54,6 @@ impl ProcessValidatedBlock {
 pub struct ChainCurrentHeadManager {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
-
-    /// Block storage
-    block_storage: Box<dyn BlockStorageReader>,
 
     /// Helps to manage current head
     head_state: HeadState,
@@ -125,21 +122,6 @@ impl ChainCurrentHeadManager {
             chain_id,
             validation_timer,
         } = validated_block;
-
-        // TODO: TE-369 - check if just block metadata with fitness is not enought?
-
-        // read block
-        let block = match self.block_storage.get(&block)? {
-            Some(block) => Arc::new(block),
-            None => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "Block/json_data not found for block_hash: {}",
-                        block.to_base58_check()
-                    ),
-                });
-            }
-        };
 
         // we try to set it as "new current head", if some means set, if none means just ignore block
         if let Some((new_head, new_head_result)) =
@@ -301,7 +283,6 @@ impl
     ) -> Self {
         ChainCurrentHeadManager {
             shell_channel,
-            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             head_state: HeadState::new(
                 &persistent_storage,
                 local_current_head_state,
