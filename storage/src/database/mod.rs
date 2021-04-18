@@ -8,6 +8,7 @@ use std::marker::PhantomData;
 
 pub mod db;
 pub mod error;
+pub mod kvtree;
 
 /// Custom trait to unify any kv-store schema access
 pub trait KVDatabase<S: KeyValueSchema> {

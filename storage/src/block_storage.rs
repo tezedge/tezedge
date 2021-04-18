@@ -11,6 +11,8 @@ use crypto::hash::{
     BlockHash, BlockMetadataHash, ContextHash, OperationMetadataHash, OperationMetadataListListHash,
 };
 
+use crate::database::db::MainDB;
+use crate::database::kvtree::SledKvTree;
 use crate::database::{DBSubtreeKeyValueSchema, KVDBIteratorWithSchema, KVDBStoreWithSchema};
 use crate::persistent::{
     BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location,
@@ -488,7 +490,9 @@ pub struct BlockPrimaryIndex {
 pub type BlockPrimaryIndexKV = dyn KVDBStoreWithSchema<BlockPrimaryIndex> + Sync + Send;
 
 impl BlockPrimaryIndex {
-    fn new(kv: Arc<BlockPrimaryIndexKV>) -> Self {
+    fn new(main_db: Arc<MainDB>) -> Self {
+        let tree = main_db.get_tree(Self::sub_tree_name()).unwrap();
+        let kv = Arc::new(SledKvTree::new(tree));
         Self { kv }
     }
 

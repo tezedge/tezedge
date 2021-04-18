@@ -13,11 +13,12 @@ use std::alloc::Global;
 use std::path::Path;
 use std::sync::Arc;
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 
 pub struct MainDB {
-    inner: Arc<HashMap<String, Tree>>,
+    db: sled::Db,
+    trees: Arc<HashSet<String>>,
 }
 
 impl MainDB {
@@ -31,47 +32,45 @@ impl MainDB {
             .temporary(is_temporary)
             .use_compression(true)
             .mode(sled::Mode::LowSpace)
-            .cache_capacity(200_000_000)
+            .compression_factor(10)
             .open()
             .map_err(Error::from)?;
 
-        let mut tree_map = HashMap::new();
+        let mut tree_set = HashSet::new();
 
         for name in trees {
-            let tree = db.open_tree(name.as_str()).map_err(Error::from)?;
-            if name == OperationsMetaStorage::sub_tree_name() {
-                tree.set_merge_operator(operations_meta_storage::merge_meta_value)
-            }
-
-            if name == BlockMetaStorage::sub_tree_name() {
-                tree.set_merge_operator(block_meta_storage::merge_meta_value)
-            }
-            tree_map.insert(name.to_owned(), tree);
+            tree_set.insert(name);
+        }
+        Ok(MainDB {
+            db,
+            trees: Arc::new(tree_set),
+        })
+    }
+    pub fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
+        if !self.trees.contains(name) {
+            return Err(Error::MissingSubTree {
+                error: name.to_string(),
+            });
         }
 
-        let db = MainDB {
-            inner: Arc::new(tree_map),
-        };
-        Ok(db)
-    }
-    fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
-        let tree = match self.inner.get(name) {
-            None => {
-                return Err(Error::MissingSubTree {
-                    error: name.to_owned(),
-                });
-            }
-            Some(t) => t,
-        };
-        Ok(tree.clone())
+        let tree = self.db.open_tree(name).map_err(|_| Error::MissingSubTree {
+            error: name.to_owned(),
+        })?;
+
+        if name == OperationsMetaStorage::sub_tree_name() {
+            tree.set_merge_operator(operations_meta_storage::merge_meta_value)
+        }
+
+        if name == BlockMetaStorage::sub_tree_name() {
+            tree.set_merge_operator(block_meta_storage::merge_meta_value)
+        }
+        Ok(tree)
     }
     pub fn flush(&self) -> Result<(), Error> {
-        for tree in self.inner.values() {
-            match tree.flush() {
-                Ok(_) => {}
-                Err(error) => {
-                    println!("Flush failed {}", error)
-                }
+        match self.db.flush() {
+            Ok(_) => {}
+            Err(error) => {
+                println!("Flush failed {}", error)
             }
         }
         Ok(())
