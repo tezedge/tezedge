@@ -21,7 +21,6 @@ ocaml_export! {
         context_send_action(action);
         OCaml::unit()
     }
-
 }
 
 fn context_send_action(action: ContextAction) {
