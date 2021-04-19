@@ -135,32 +135,54 @@ impl OcamlNode {
 #[async_trait]
 pub trait Node {
     async fn collect_head_data(port: u16) -> Result<NodeInfo, failure::Error> {
-        let head_data = match reqwest::get(&format!(
+        let head_data: serde_json::Value = match reqwest::get(&format!(
             "http://localhost:{}/chains/main/blocks/head/header",
             port
         ))
         .await
         {
-            Ok(result) => {
-                let res_json: serde_json::Value = result.json().await?;
-                NodeInfo::new(
-                    res_json["level"]
-                        .as_u64()
-                        .ok_or_else(|| format_err!("Level is not u64"))?,
-                    res_json["hash"]
-                        .as_str()
-                        .ok_or_else(|| format_err!("hash is not str"))?
-                        .to_string(),
-                    res_json["timestamp"]
-                        .as_str()
-                        .ok_or_else(|| format_err!("timestamp is not str"))?
-                        .to_string(),
-                )
-            }
+            Ok(result) => result.json().await?,
             Err(e) => bail!("GET header error: {}", e),
         };
 
-        Ok(head_data)
+        let head_metadata: serde_json::Value = match reqwest::get(&format!(
+            "http://localhost:{}/chains/main/blocks/head/metadata",
+            port
+        ))
+        .await
+        {
+            Ok(result) => result.json().await?,
+            Err(e) => bail!("GET header error: {}", e),
+        };
+
+        Ok(NodeInfo::new(
+            head_data["level"]
+                .as_u64()
+                .ok_or_else(|| format_err!("Level is not u64"))?,
+            head_data["hash"]
+                .as_str()
+                .ok_or_else(|| format_err!("hash is not str"))?
+                .to_string(),
+            head_data["timestamp"]
+                .as_str()
+                .ok_or_else(|| format_err!("timestamp is not str"))?
+                .to_string(),
+            head_data["proto"]
+                .as_u64()
+                .ok_or_else(|| format_err!("Protocol is not u64"))?,
+            head_metadata["level"]["cycle_position"]
+                .as_u64()
+                .unwrap_or(0),
+            head_metadata["level"]["voting_period_position"]
+                .as_u64()
+                .unwrap_or(0),
+            head_metadata["voting_period_kind"]
+                .as_str()
+                .unwrap_or("")
+                .to_string(),
+        ))
+
+        // Ok(head_data)
     }
 
     async fn collect_memory_data(port: u16) -> Result<ProcessMemoryStats, failure::Error> {
