@@ -7,11 +7,12 @@ use std::sync::Arc;
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 
 use crypto::hash::{BlockHash, HashType};
-use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::persistent::{
+    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
+};
 use crate::{PersistentStorage, StorageError};
 
 pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
@@ -47,7 +48,7 @@ impl OperationsStorage {
     }
 
     #[inline]
-    pub fn put(
+    fn put(
         &self,
         key: &OperationKey,
         value: &OperationsForBlocksMessage,
@@ -159,19 +160,8 @@ impl Encoder for OperationKey {
     }
 }
 
-impl Decoder for OperationsForBlocksMessage {
-    #[inline]
-    fn decode(bytes: &[u8]) -> Result<Self, SchemaError> {
-        OperationsForBlocksMessage::from_bytes(bytes).map_err(|_| SchemaError::DecodeError)
-    }
-}
-
-impl Encoder for OperationsForBlocksMessage {
-    #[inline]
-    fn encode(&self) -> Result<Vec<u8>, SchemaError> {
-        self.as_bytes().map_err(|_| SchemaError::EncodeError)
-    }
-}
+// Serialize operations as bincode
+impl BincodeEncoded for OperationsForBlocksMessage {}
 
 #[cfg(test)]
 mod tests {
