@@ -2,20 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::convert::TryFrom;
 use std::sync::Arc;
 
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
-use crypto::hash::{BlockHash, ChainId, HashType};
-use tezos_messages::p2p::encoding::block_header::Level;
+use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::persistent::database::{
     default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
 };
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
-use crate::{num_from_slice, PersistentStorage};
+use crate::PersistentStorage;
 use crate::{BlockHeaderWithHash, StorageError};
 
 /// Convenience type for operation meta storage database
@@ -45,13 +43,8 @@ impl OperationsMetaStorage {
     pub fn put_block_header(
         &self,
         block_header: &BlockHeaderWithHash,
-        chain_id: ChainId,
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
-        let meta = Meta::new(
-            block_header.header.validation_pass(),
-            block_header.header.level(),
-            chain_id,
-        );
+        let meta = Meta::new(block_header.header.validation_pass());
         self.put(&block_header.hash, &meta)
             .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
     }
@@ -184,18 +177,14 @@ pub struct Meta {
     validation_passes: u8,
     is_validation_pass_present: Vec<u8>,
     is_complete: bool,
-    level: i32,
-    chain_id: ChainId,
 }
 
 impl Meta {
-    pub fn new(validation_pass: u8, level: Level, chain_id: ChainId) -> Meta {
+    pub fn new(validation_pass: u8) -> Meta {
         Self {
             validation_passes: validation_pass,
             is_validation_pass_present: vec![false as u8; validation_pass as usize],
             is_complete: validation_pass == 0,
-            level,
-            chain_id,
         }
     }
 
@@ -203,13 +192,11 @@ impl Meta {
         self.is_complete
     }
 
-    pub fn genesis_meta(chain_id: &ChainId) -> Self {
+    pub fn genesis_meta() -> Self {
         Meta {
             is_complete: true,
             validation_passes: 0,
             is_validation_pass_present: vec![],
-            level: 0,
-            chain_id: chain_id.clone(),
         }
     }
 
@@ -226,16 +213,6 @@ impl Meta {
                     .collect(),
             )
         }
-    }
-
-    #[inline]
-    pub fn level(&self) -> i32 {
-        self.level
-    }
-
-    #[inline]
-    pub fn chain_id(&self) -> &ChainId {
-        &self.chain_id
     }
 }
 
@@ -257,26 +234,11 @@ impl Decoder for Meta {
             let is_complete_pos = validation_passes as usize + 1;
             let is_validation_pass_present = bytes[1..is_complete_pos].to_vec();
             let is_complete = bytes[is_complete_pos] != 0;
-            // level
-            let level_pos = is_complete_pos + std::mem::size_of::<u8>();
-            let level = num_from_slice!(bytes, level_pos, i32);
 
-            if level < 0 {
-                return Err(SchemaError::DecodeValidationError(format!(
-                    "Meta: level must be positive number, but instead it is: {}",
-                    level
-                )));
-            }
-            // chain_id
-            let chain_id_pos = level_pos + std::mem::size_of::<i32>();
-            let chain_id =
-                ChainId::try_from(&bytes[chain_id_pos..chain_id_pos + HashType::ChainId.size()])?;
             Ok(Meta {
                 validation_passes,
                 is_validation_pass_present,
                 is_complete,
-                level,
-                chain_id,
             })
         } else {
             Err(SchemaError::DecodeValidationError(
@@ -293,8 +255,6 @@ impl Encoder for Meta {
             value.push(self.validation_passes);
             value.extend(&self.is_validation_pass_present);
             value.push(self.is_complete as u8);
-            value.extend(&self.level.to_be_bytes());
-            value.extend(self.chain_id.as_ref());
             debug_assert_eq!(
                 expected_data_length(self.validation_passes),
                 value.len(),
@@ -309,13 +269,12 @@ impl Encoder for Meta {
     }
 }
 
+// TODO: treba?
 #[inline]
 fn expected_data_length(validation_passes: u8) -> usize {
     std::mem::size_of::<u8>()           // validation_passes
         + std::mem::size_of::<u8>()     // is_complete
-        + std::mem::size_of::<i32>()    // level
-        + (validation_passes as usize) * std::mem::size_of::<u8>()  // is_validation_pass_present
-        + HashType::ChainId.size() // chain_id
+        + (validation_passes as usize) * std::mem::size_of::<u8>() // is_validation_pass_present
 }
 
 #[cfg(test)]
@@ -329,6 +288,7 @@ mod tests {
 
     use super::*;
     use crate::persistent::database::open_kv;
+    use crypto::hash::HashType;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
         let mut vec = bytes.to_vec();
@@ -342,8 +302,6 @@ mod tests {
             is_validation_pass_present: vec![false as u8; 5],
             is_complete: false,
             validation_passes: 5,
-            level: 93_422,
-            chain_id: vec![44; 4].try_into()?,
         };
         let encoded_bytes = expected.encode()?;
         let decoded = Meta::decode(&encoded_bytes)?;
@@ -356,7 +314,7 @@ mod tests {
         let tmp_storage = TmpStorage::create_to_out_dir("__opmeta_genesistest")?;
 
         let k = "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?;
-        let v = Meta::genesis_meta(&vec![44; 4].try_into()?);
+        let v = Meta::genesis_meta();
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
         match storage.get(&k)? {
@@ -365,8 +323,6 @@ mod tests {
                     validation_passes: 0,
                     is_validation_pass_present: vec![],
                     is_complete: true,
-                    level: 0,
-                    chain_id: vec![44; 4].try_into()?,
                 };
                 assert_eq!(expected, value);
             }
@@ -388,8 +344,6 @@ mod tests {
             is_complete: false,
             is_validation_pass_present: vec![f; 5],
             validation_passes: 5,
-            level: 785,
-            chain_id: vec![44; 4].try_into()?,
         };
         let storage = OperationsMetaStorage::new(tmp_storage.storage());
         storage.put(&k, &v)?;
@@ -406,9 +360,6 @@ mod tests {
             Some(value) => {
                 assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                 assert!(value.is_complete);
-                assert_eq!(785, value.level);
-                let ci: ChainId = vec![44; 4].try_into()?;
-                assert_eq!(ci, value.chain_id);
             }
             _ => panic!("value not present"),
         }
@@ -440,8 +391,6 @@ mod tests {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
-                level: 31_337,
-                chain_id: vec![44; 4].try_into()?,
             };
             let p = OperationsMetaStorageKV::merge(&db, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
@@ -459,9 +408,6 @@ mod tests {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);
-                    assert_eq!(31_337, value.level);
-                    let chain_id: ChainId = vec![44; 4].try_into()?;
-                    assert_eq!(chain_id, value.chain_id);
                 }
                 Err(_) => println!("error reading value"),
                 _ => panic!("value not present"),
@@ -480,8 +426,6 @@ mod tests {
             is_complete: false,
             is_validation_pass_present: vec![false as u8; 5],
             validation_passes: 5,
-            level: 785,
-            chain_id: vec![44; 4].try_into()?,
         };
         let k_missing_1 = block_hash(&[0, 1, 2]);
         let k_added_later = block_hash(&[6, 7, 8, 9]);

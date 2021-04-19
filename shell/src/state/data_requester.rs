@@ -66,7 +66,7 @@ impl DataRequester {
     /// Returns true if was scheduled and p2p message was sent
     pub fn fetch_block_headers(
         &self,
-        blocks_to_download: Vec<Arc<BlockHash>>,
+        mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
         log: &Logger,
@@ -90,18 +90,10 @@ impl DataRequester {
             return Ok(false);
         };
 
-        // fillter non-queued
-        let mut blocks_to_download = blocks_to_download
-            .into_iter()
-            .filter(|block_hash| !peer_queued_block_headers.contains(block_hash.as_ref()))
-            .collect::<Vec<Arc<BlockHash>>>();
-
-        // trim to max capacity
-        let blocks_to_download = if available_capacity < blocks_to_download.len() {
-            blocks_to_download.drain(0..available_capacity).collect()
-        } else {
-            blocks_to_download
-        };
+        // fillter non-queued and trim to queue capacity
+        blocks_to_download
+            .retain(|block_hash| !peer_queued_block_headers.contains(block_hash.as_ref()));
+        blocks_to_download.truncate(available_capacity);
 
         // if empty finish
         if blocks_to_download.is_empty() {
@@ -109,7 +101,7 @@ impl DataRequester {
         }
 
         // add to queue
-        let _ = peer_queued_block_headers.extend(blocks_to_download.clone());
+        peer_queued_block_headers.extend(blocks_to_download.clone());
         // release lock
         drop(peer_queued_block_headers);
 
@@ -159,7 +151,7 @@ impl DataRequester {
     /// Returns true if was scheduled and p2p message was sent
     pub fn fetch_block_operations(
         &self,
-        blocks_to_download: Vec<Arc<BlockHash>>,
+        mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
         log: &Logger,
@@ -183,18 +175,10 @@ impl DataRequester {
             return Ok(false);
         };
 
-        // fillter non-queued
-        let mut blocks_to_download = blocks_to_download
-            .into_iter()
-            .filter(|block_hash| !peer_queued_block_headers.contains_key(block_hash.as_ref()))
-            .collect::<Vec<Arc<BlockHash>>>();
-
-        // trim to max capacity
-        let blocks_to_download = if available_capacity < blocks_to_download.len() {
-            blocks_to_download.drain(0..available_capacity).collect()
-        } else {
-            blocks_to_download
-        };
+        // fillter non-queued and trim to queue capacity
+        blocks_to_download
+            .retain(|block_hash| !peer_queued_block_headers.contains_key(block_hash.as_ref()));
+        blocks_to_download.truncate(available_capacity);
 
         // collect missing validation_passes
         let blocks_to_download: Vec<(Arc<BlockHash>, MissingOperations)> = blocks_to_download
@@ -714,14 +698,8 @@ mod tests {
 
         // prepare missing operations in db for block with 4 validation_pass
         let block1 = block(1);
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(
-                4,
-                10,
-                ChainId::from_base58_check("NetXgtSLGNJvNye")?,
-            ),
-        )?;
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block1, &operations_meta_storage::Meta::new(4))?;
 
         // try schedule nothiing
         assert!(matches!(
@@ -899,10 +877,8 @@ mod tests {
         ));
 
         // save operations - validation_pass 0 - no operations missing
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
-        )?;
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block1, &operations_meta_storage::Meta::new(0))?;
 
         // try schedule - ok
         assert!(matches!(
@@ -960,10 +936,8 @@ mod tests {
             ),
         )?;
         // save operations - validation_pass 0 - no operations missing
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
-        )?;
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block1, &operations_meta_storage::Meta::new(0))?;
 
         // try schedule batch - ok
         let lock = data_requester.try_schedule_apply_block(
@@ -1034,10 +1008,8 @@ mod tests {
                 chain_id.as_ref().clone(),
             ),
         )?;
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block2,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
-        )?;
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block2, &operations_meta_storage::Meta::new(0))?;
         assert!(matches!(
             data_requester.try_schedule_apply_block(
                 chain_id.clone(),

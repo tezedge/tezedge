@@ -284,12 +284,13 @@ pub fn store_applied_block_result(
 
     // TODO: check context checksum or context_hash
 
+    // populate predecessor storage
+    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
+
     // if everything is stored and ok, we can considere this block as applied
     // mark current head as applied
     block_metadata.set_is_applied(true);
     block_meta_storage.put(&block_hash, &block_metadata)?;
-    // populate predecessor storage
-    block_meta_storage.store_predecessors(&block_hash, &block_metadata)?;
 
     // return additional data for later use
     Ok(block_additional_data)
@@ -318,7 +319,7 @@ pub fn store_commit_genesis_result(
     )?;
     operations_meta_storage.put(
         &genesis_block_hash,
-        &operations_meta_storage::Meta::genesis_meta(chain_id),
+        &operations_meta_storage::Meta::genesis_meta(),
     )?;
 
     // store result data - json and additional data
