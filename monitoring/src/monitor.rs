@@ -16,9 +16,7 @@ use shell::subscription::{
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
-use storage::{
-    BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, OperationsMetaStorage,
-};
+use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::websocket::handler_messages::HandlerMessage;
@@ -311,18 +309,18 @@ fn initialize_monitors(
         iter.for_each(|(k, _)| {
             if let Ok(key) = k {
                 if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
-                    chain_monitor.process_block_header(header_with_hash.header.level());
+                    let block_level = header_with_hash.header.level();
+                    chain_monitor.process_block_header(block_level);
                     downloaded_headers += 1;
-                }
-            }
-        })
-    }
-    if let Ok(iter) = operations_meta_storage.iter(IteratorMode::Start) {
-        iter.for_each(|(_, v)| {
-            if let Ok(v) = v {
-                if v.is_complete() {
-                    chain_monitor.process_block_operations(v.level());
-                    downloaded_blocks += 1;
+
+                    if let Ok(is_complete) =
+                        operations_meta_storage.is_complete(&header_with_hash.hash)
+                    {
+                        if is_complete {
+                            chain_monitor.process_block_operations(block_level);
+                            downloaded_blocks += 1;
+                        }
+                    }
                 }
             }
         })

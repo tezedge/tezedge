@@ -561,9 +561,7 @@ impl BlockchainState {
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         match self.operations_meta_storage.get(&block_header.hash)? {
             Some(meta) => Ok((meta.is_complete(), meta.get_missing_validation_passes())),
-            None => self
-                .operations_meta_storage
-                .put_block_header(block_header, self.chain_id.as_ref().clone()),
+            None => self.operations_meta_storage.put_block_header(block_header),
         }
     }
 
@@ -580,7 +578,7 @@ impl BlockchainState {
             Some(meta) => Ok(meta.is_complete()),
             None => self
                 .operations_meta_storage
-                .put_block_header(block_header, self.chain_id.as_ref().clone())
+                .put_block_header(block_header)
                 .map(|(is_complete, _)| is_complete),
         }
     }
