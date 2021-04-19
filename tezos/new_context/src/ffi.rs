@@ -4,7 +4,6 @@
 //! Functions exposed to be called from OCaml
 
 // TODO: init function
-// TODO: externs in OCaml side
 
 use std::{marker::PhantomData, rc::Rc};
 
@@ -13,13 +12,11 @@ use ocaml_interop::*;
 use crypto::hash::ContextHash;
 
 use crate::{
+    initializer::initialize_tezedge_index, initializer::ContextKvStoreConfiguration,
     working_tree::working_tree::WorkingTree, ContextKey, ContextValue, IndexApi,
     ProtocolContextApi, ShellContextApi, TezedgeContext, TezedgeIndex,
-    initializer::ContextKvStoreConfiguration, initializer::initialize_tezedge_index,
 };
 use tezos_api::ocaml_conv::OCamlContextHash;
-
-const COMMIT_AUTHOR: &str = "Tezos";
 
 // TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
@@ -34,6 +31,13 @@ ocaml_export! {
         let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMem);
         let index = OCamlToRustPointer::alloc_custom(rt, index);
         index.to_ocaml(rt)
+    }
+
+    fn tezedge_index_close(
+        rt,
+        _index: OCamlRef<TezedgeIndex>,
+    ) {
+        OCaml::unit()
     }
 
     // OCaml = val exists : index -> Context_hash.t -> bool Lwt.t
@@ -74,14 +78,17 @@ ocaml_export! {
         rt,
         date: OCamlRef<OCamlInt64>,
         message: OCamlRef<String>,
+        author: OCamlRef<String>,
         context: OCamlRef<TezedgeContext>,
     ) -> OCaml<Result<OCamlContextHash, String>> {
         let mut context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
         let context = context_ptr.as_mut();
         let message = message.to_rust(rt);
         let date = date.to_rust(rt);
+        let author = author.to_rust(rt);
 
-        let result = context.commit(COMMIT_AUTHOR.to_owned(), message, date)
+        // TODO: commit value instead of hash
+        let result = context.commit(author, message, date)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
@@ -92,14 +99,16 @@ ocaml_export! {
         rt,
         date: OCamlRef<OCamlInt64>,
         message: OCamlRef<String>,
+        author: OCamlRef<String>,
         context: OCamlRef<TezedgeContext>,
     ) -> OCaml<Result<OCamlContextHash, String>> {
         let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
         let context = context_ptr.as_ref();
         let message = message.to_rust(rt);
         let date = date.to_rust(rt);
+        let author = author.to_rust(rt);
 
-        let result = context.hash(COMMIT_AUTHOR.to_owned(), message, date)
+        let result = context.hash(author, message, date)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
@@ -121,8 +130,24 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
+    // TODO: implement
+    fn tezedge_context_empty(
+        rt,
+        _unit: OCamlRef<()>,
+    ) {
+        OCaml::unit()
+    }
+
+    // TODO: implement
+    fn tezedge_index_patch_context_get(
+        rt,
+        _unit: OCamlRef<()>,
+    ) {
+        OCaml::unit()
+    }
+
     // OCaml = val dir_mem : context -> key -> bool Lwt.t
-    fn tezedge_context_dir_mem(
+    fn tezedge_context_mem_tree(
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
@@ -138,7 +163,7 @@ ocaml_export! {
     }
 
     // OCaml = val get : context -> key -> value option Lwt.t
-    fn tezedge_context_get(
+    fn tezedge_context_find(
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
@@ -155,7 +180,7 @@ ocaml_export! {
     }
 
     // OCaml = val set : context -> key -> value -> t Lwt.t
-    fn tezedge_context_set(
+    fn tezedge_context_add(
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
@@ -174,7 +199,7 @@ ocaml_export! {
     }
 
     // OCaml = val remove_rec : context -> key -> t Lwt.t
-    fn tezedge_context_remove_rec(
+    fn tezedge_context_remove(
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
@@ -218,6 +243,31 @@ ocaml_export! {
     // val fold :
     //   context -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
 }
+
+use tezos_sys::initialize_tezedge_context_callbacks;
+
+pub fn initialize_callbacks() {
+    unsafe {
+        initialize_tezedge_context_callbacks(
+            tezedge_context_commit,
+            tezedge_context_hash,
+            tezedge_context_copy,
+            tezedge_context_remove,
+            tezedge_context_add,
+            tezedge_context_find,
+            tezedge_context_mem_tree,
+            tezedge_context_mem,
+            tezedge_context_empty,
+            tezedge_index_patch_context_get,
+            tezedge_index_checkout,
+            tezedge_index_exists,
+            tezedge_index_close,
+            tezedge_index_init,
+        )
+    }
+}
+
+ocaml_export! {}
 
 // Custom pointers from OCaml's heap to Rust's heap
 
