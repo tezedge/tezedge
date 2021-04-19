@@ -99,10 +99,7 @@ pub fn start_resource_monitoring(
         ..
     } = env;
 
-    let alerts = Alerts::new(
-        tezedge_alert_thresholds.clone(),
-        ocaml_alert_thresholds.clone(),
-    );
+    let alerts = Alerts::new(*tezedge_alert_thresholds, *ocaml_alert_thresholds);
     let mut resource_monitor = ResourceMonitor::new(
         resource_utilization,
         HashMap::new(),
@@ -111,7 +108,7 @@ pub fn start_resource_monitoring(
         slack,
     );
 
-    let resource_monitor_interval = resource_monitor_interval.clone();
+    let resource_monitor_interval = *resource_monitor_interval;
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = resource_monitor.take_measurement().await {

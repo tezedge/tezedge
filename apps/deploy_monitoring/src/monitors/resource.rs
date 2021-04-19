@@ -307,9 +307,9 @@ async fn handle_alerts(
 ) -> Result<(), failure::Error> {
     // TODO: TE-499 - (multinode) - fix for multinode support
     let thresholds = if node_tag == "tezedge" {
-        alerts.tezedge_thresholds().clone()
+        *alerts.tezedge_thresholds()
     } else if node_tag == "ocaml" {
-        alerts.ocaml_thresholds().clone()
+        *alerts.ocaml_thresholds()
     } else {
         return Err(format_err!("Node [{}] not defined", node_tag));
     };
