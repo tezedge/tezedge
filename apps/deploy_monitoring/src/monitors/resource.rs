@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, RwLock};
 
 use chrono::Utc;
+use failure::format_err;
 use getset::Getters;
 use serde::Serialize;
 use slog::{error, Logger};
@@ -15,7 +16,7 @@ use sysinfo::{System, SystemExt};
 use shell::stats::memory::ProcessMemoryStats;
 
 use crate::constants::{MEASUREMENTS_MAX_CAPACITY, OCAML_PORT, TEZEDGE_PORT};
-use crate::display_info::{OcamlDiskData, TezedgeDiskData};
+use crate::display_info::{NodeInfo, OcamlDiskData, TezedgeDiskData};
 use crate::monitors::Alerts;
 use crate::node::OcamlNode;
 use crate::node::{Node, TezedgeNode};
@@ -69,8 +70,9 @@ pub struct ResourceUtilization {
     #[get = "pub(crate)"]
     cpu: CpuStats,
 
+    #[get = "pub(crate)"]
     #[serde(skip)]
-    head_level: u64,
+    head_info: NodeInfo,
 }
 
 impl ResourceUtilization {
@@ -163,7 +165,8 @@ impl ResourceUtilization {
             },
             ocaml_disk: merged_ocaml_disk,
             tezedge_disk: merged_tezedge_disk,
-            head_level: cmp::max(self.head_level, other.head_level),
+            // this is not present in the FE data, do not need to merge with max strategy
+            head_info: other.head_info,
         }
     }
 }
@@ -211,8 +214,7 @@ impl ResourceMonitor {
 
         for (node_tag, resource_storage) in resource_utilization {
             let node_resource_measurement = if node_tag == &"tezedge" {
-                let current_head_level =
-                    *TezedgeNode::collect_head_data(TEZEDGE_PORT).await?.level();
+                let current_head_info = TezedgeNode::collect_head_data(TEZEDGE_PORT).await?;
                 let tezedge_node = TezedgeNode::collect_memory_data(TEZEDGE_PORT).await?;
                 let protocol_runners =
                     TezedgeNode::collect_protocol_runners_memory_stats(TEZEDGE_PORT).await?;
@@ -234,7 +236,7 @@ impl ResourceMonitor {
                         node: tezedge_cpu,
                         protocol_runners: Some(protocol_runners_cpu),
                     },
-                    head_level: current_head_level,
+                    head_info: current_head_info,
                 };
                 handle_alerts(
                     node_tag,
@@ -247,7 +249,7 @@ impl ResourceMonitor {
                 .await?;
                 resources
             } else {
-                let current_head_level = *OcamlNode::collect_head_data(OCAML_PORT).await?.level();
+                let current_head_info = OcamlNode::collect_head_data(OCAML_PORT).await?;
                 let ocaml_node = OcamlNode::collect_memory_data(OCAML_PORT).await?;
                 let tezos_validators = OcamlNode::collect_validator_memory_stats()?;
                 let ocaml_disk = OcamlNode::collect_disk_data()?;
@@ -266,7 +268,7 @@ impl ResourceMonitor {
                         node: ocaml_cpu,
                         protocol_runners: None,
                     },
-                    head_level: current_head_level,
+                    head_info: current_head_info,
                 };
                 handle_alerts(
                     node_tag,
@@ -303,18 +305,34 @@ async fn handle_alerts(
     alerts: &mut Alerts,
     log: &Logger,
 ) -> Result<(), failure::Error> {
+    // TODO: TE-499 - (multinode) - fix for multinode support
+    let thresholds = if node_tag == "tezedge" {
+        *alerts.tezedge_thresholds()
+    } else if node_tag == "ocaml" {
+        *alerts.ocaml_thresholds()
+    } else {
+        return Err(format_err!("Node [{}] not defined", node_tag));
+    };
+
     // current time timestamp
     let current_time = Utc::now().timestamp();
 
-    let last_head = last_checked_head_level.get(node_tag).map(|level| *level);
-    let current_head_level = last_measurement.head_level;
+    let last_head = last_checked_head_level.get(node_tag).copied();
+    let current_head_info = last_measurement.head_info.clone();
 
     alerts
-        .check_disk_alert(node_tag, slack.as_ref(), current_time)
+        .check_disk_alert(
+            node_tag,
+            &thresholds,
+            slack.as_ref(),
+            current_time,
+            current_head_info.clone(),
+        )
         .await?;
     alerts
         .check_memory_alert(
             node_tag,
+            &thresholds,
             slack.as_ref(),
             current_time,
             last_measurement.clone(),
@@ -323,26 +341,29 @@ async fn handle_alerts(
     alerts
         .check_node_stuck_alert(
             node_tag,
+            &thresholds,
             last_head,
-            current_head_level,
             current_time,
             slack.as_ref(),
             log,
+            current_head_info.clone(),
         )
         .await?;
 
-    if alerts.thresholds().cpu.is_some() {
+    if thresholds.cpu.is_some() {
         alerts
             .check_cpu_alert(
                 node_tag,
+                &thresholds,
                 slack.as_ref(),
                 current_time,
                 last_measurement.clone(),
+                current_head_info.clone(),
             )
             .await?;
     }
 
-    last_checked_head_level.insert(node_tag.to_string(), current_head_level);
+    last_checked_head_level.insert(node_tag.to_string(), *current_head_info.level());
     Ok(())
 }
 
@@ -367,7 +388,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 1,
-            head_level: 1,
+            head_info: NodeInfo::default(),
         };
 
         let resources2 = ResourceUtilization {
@@ -383,7 +404,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 2,
-            head_level: 2,
+            head_info: NodeInfo::default(),
         };
 
         let resources3 = ResourceUtilization {
@@ -400,7 +421,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 3,
-            head_level: 3,
+            head_info: NodeInfo::default(),
         };
 
         let expected = ResourceUtilization {
@@ -417,7 +438,7 @@ mod tests {
                 validators: None,
             },
             timestamp: 3,
-            head_level: 3,
+            head_info: NodeInfo::default(),
         };
 
         let resources = vec![resources1, resources2, resources3];
