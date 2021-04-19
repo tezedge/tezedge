@@ -14,9 +14,7 @@ pub enum ContextKvStoreConfiguration {
 }
 
 // TODO: are errors not possible here? recheck that
-pub fn initialize_tezedge_index(
-    context_kv_store: &ContextKvStoreConfiguration,
-) -> TezedgeIndex {
+pub fn initialize_tezedge_index(context_kv_store: &ContextKvStoreConfiguration) -> TezedgeIndex {
     TezedgeIndex::new(match context_kv_store {
         ContextKvStoreConfiguration::Sled { path } => {
             let sled = sled::Config::new()
