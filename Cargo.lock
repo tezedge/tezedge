@@ -3846,7 +3846,6 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos-sys",
- "tezos_api",
  "tezos_messages",
 ]
 
@@ -3991,6 +3990,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos-sys",
+ "tezos_api",
  "tezos_messages",
 ]
 
