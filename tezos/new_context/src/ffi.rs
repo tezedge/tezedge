@@ -161,7 +161,7 @@ ocaml_export! {
         let context = context_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = context.dirmem(&key)
+        let result = context.mem_tree(&key)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
@@ -177,7 +177,7 @@ ocaml_export! {
         let context = context_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = context.get(&key)
+        let result = context.find(&key)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
@@ -213,7 +213,7 @@ ocaml_export! {
         let key: ContextKey = key.to_rust(rt);
         let value: ContextValue = value.to_rust(rt);
 
-        let result =  context.set(&key, value)
+        let result =  context.add(&key, value)
             .map_err(|err| format!("{:?}", err))
             .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
 
@@ -320,7 +320,7 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // OCaml = val mem : context -> key -> bool Lwt.t
+    // OCaml = val mem : tree -> key -> bool Lwt.t
     fn tezedge_tree_mem(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -344,7 +344,7 @@ ocaml_export! {
         OCaml::unit()
     }
 
-    // OCaml = val dir_mem : context -> key -> bool Lwt.t
+    // OCaml = val dir_mem : tree -> key -> bool Lwt.t
     fn tezedge_tree_mem_tree(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -354,13 +354,13 @@ ocaml_export! {
         let tree = tree_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = tree.dirmem(&key)
+        let result = tree.mem_tree(&key)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
 
-    // OCaml = val find : context -> key -> value option Lwt.t
+    // OCaml = val find : tree -> key -> value option Lwt.t
     fn tezedge_tree_find(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -370,13 +370,13 @@ ocaml_export! {
         let tree = tree_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = tree.get(&key)
+        let result = tree.find(&key)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
 
-    // OCaml = val find_tree : context -> key -> tree option Lwt.t
+    // OCaml = val find_tree : tree -> key -> tree option Lwt.t
     fn tezedge_tree_find_tree(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -394,7 +394,7 @@ ocaml_export! {
         Err::<Option<OCamlToRustPointer<WorkingTreeRc>>, String>("unimplemented".to_owned()).to_ocaml(rt)
     }
 
-    // OCaml = val add : context -> key -> value -> t Lwt.t
+    // OCaml = val add : tree -> key -> value -> t Lwt.t
     fn tezedge_tree_add(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -406,14 +406,14 @@ ocaml_export! {
         let key: ContextKey = key.to_rust(rt);
         let value: ContextValue = value.to_rust(rt);
 
-        let result =  tree.set(&key, value)
+        let result =  tree.add(&key, value)
             .map_err(|err| format!("{:?}", err))
             .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
 
         result.to_ocaml(rt)
     }
 
-    // OCaml = val add_tree : tcontext -> key -> tree -> t Lwt.t
+    // OCaml = val add_tree : tree -> key -> tree -> t Lwt.t
     fn tezedge_tree_add_tree(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
@@ -434,7 +434,7 @@ ocaml_export! {
         Err::<OCamlToRustPointer<WorkingTreeRc>, String>("unimplemented".to_owned()).to_ocaml(rt)
     }
 
-    // OCaml = val remove_ : context -> key -> t Lwt.t
+    // OCaml = val remove : tree -> key -> t Lwt.t
     fn tezedge_tree_remove(
         rt,
         tree: OCamlRef<WorkingTreeRc>,

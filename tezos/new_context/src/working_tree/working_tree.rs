@@ -245,7 +245,7 @@ impl WorkingTree {
     }
 
     /// Get value from current staged root
-    pub fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
+    pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Get, Some(key));
 
         let root_hash = self.get_staged_root_hash()?;
@@ -271,7 +271,7 @@ impl WorkingTree {
     }
 
     /// Check if directory exists in current staged root
-    pub fn dirmem(&self, key: &ContextKey) -> Result<bool, MerkleError> {
+    pub fn mem_tree(&self, key: &ContextKey) -> Result<bool, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
 
         let root_hash = self.get_staged_root_hash()?;
@@ -571,7 +571,7 @@ impl WorkingTree {
     }
 
     /// Set key/val to the staging area.
-    pub fn set(&self, key: &ContextKey, value: ContextValue) -> Result<Self, MerkleError> {
+    pub fn add(&self, key: &ContextKey, value: ContextValue) -> Result<Self, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Set, Some(key));
         let new_root_hash = &self._set(&self.tree, key, value)?;
         //self.set_stage_root(&self.get_tree(new_root_hash)?, new_tree_id);
