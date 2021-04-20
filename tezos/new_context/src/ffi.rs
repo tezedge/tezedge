@@ -156,13 +156,12 @@ ocaml_export! {
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<bool, String>> {
+    ) -> OCaml<bool> {
         let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
         let context = context_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = context.mem_tree(&key)
-            .map_err(|err| format!("{:?}", err));
+        let result = context.mem_tree(&key);
 
         result.to_ocaml(rt)
     }
@@ -312,7 +311,7 @@ ocaml_export! {
         let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
         let tree = tree_ptr.as_ref();
 
-        let result = match tree.get_staged_root_hash()  {
+        let result = match tree.get_working_tree_root_hash()  {
             Err(err) => Err(format!("{:?}", err)),
             Ok(hash) => ContextHash::try_from(hash.as_ref()).map_err(|err| format!("{:?}", err))
         };
@@ -349,13 +348,13 @@ ocaml_export! {
         rt,
         tree: OCamlRef<WorkingTreeRc>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<bool, String>> {
+    //) -> OCaml<Result<bool, String>> {
+    ) -> OCaml<bool> {
         let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
         let tree = tree_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = tree.mem_tree(&key)
-            .map_err(|err| format!("{:?}", err));
+        let result = tree.mem_tree(&key);
 
         result.to_ocaml(rt)
     }
