@@ -245,14 +245,16 @@ impl WorkingTree {
     }
 
     /// Get value from current staged root
-    pub fn get(&self, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+    pub fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Get, Some(key));
 
         let root_hash = self.get_staged_root_hash()?;
 
-        let rv = self
-            .get_from_tree(&root_hash, key)
-            .or_else(|_| Ok(Vec::new()));
+        let rv = match self.get_from_tree(&root_hash, key) {
+            Ok(value) => Ok(Some(value)),
+            Err(MerkleError::ValueNotFound { .. }) => Ok(None),
+            Err(err) => Err(err),
+        };
         //stat_updater.update_execution_stats(&mut self.stats);
         rv
     }

@@ -83,7 +83,7 @@ where
         to_key: &ContextKey,
     ) -> Result<Option<Self>, ContextError>;
     // get value for key
-    fn get(&self, key: &ContextKey) -> Result<ContextValue, ContextError>;
+    fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // mem - check if value exists
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // dirmem - check if directory exists
