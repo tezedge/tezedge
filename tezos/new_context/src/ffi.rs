@@ -3,8 +3,9 @@
 
 //! Functions exposed to be called from OCaml
 
-// TODO: init function
+// TODO: extend init function
 
+use std::convert::TryFrom;
 use std::{marker::PhantomData, rc::Rc};
 
 use ocaml_interop::*;
@@ -24,6 +25,8 @@ use tezos_api::ocaml_conv::OCamlContextHash;
 // but once we catch it on Rust, having the original error value may be useful.
 
 ocaml_export! {
+    // Index API
+
     fn tezedge_index_init(
         rt,
         _unit: OCamlRef<()>,
@@ -36,6 +39,14 @@ ocaml_export! {
     fn tezedge_index_close(
         rt,
         _index: OCamlRef<TezedgeIndex>,
+    ) {
+        OCaml::unit()
+    }
+
+    // TODO: implement
+    fn tezedge_index_patch_context_get(
+        rt,
+        _unit: OCamlRef<()>,
     ) {
         OCaml::unit()
     }
@@ -72,6 +83,8 @@ ocaml_export! {
 
         result.to_ocaml(rt)
     }
+
+    // Context API
 
     // OCaml = val commit : time:Time.Protocol.t -> ?message:string -> context -> Context_hash.t Lwt.t
     fn tezedge_context_commit(
@@ -138,14 +151,6 @@ ocaml_export! {
         OCaml::unit()
     }
 
-    // TODO: implement
-    fn tezedge_index_patch_context_get(
-        rt,
-        _unit: OCamlRef<()>,
-    ) {
-        OCaml::unit()
-    }
-
     // OCaml = val dir_mem : context -> key -> bool Lwt.t
     fn tezedge_context_mem_tree(
         rt,
@@ -162,12 +167,12 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // OCaml = val get : context -> key -> value option Lwt.t
+    // OCaml = val find : context -> key -> value option Lwt.t
     fn tezedge_context_find(
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<OCamlBytes, String>> {
+    ) -> OCaml<Result<Option<OCamlBytes>, String>> {
         let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
         let context = context_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
@@ -176,10 +181,27 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
-
     }
 
-    // OCaml = val set : context -> key -> value -> t Lwt.t
+    // OCaml = val find_tree : context -> key -> tree option Lwt.t
+    fn tezedge_context_find_tree(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<Option<WorkingTreeRc>, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let _context = context_ptr.as_ref();
+        let _key: ContextKey = key.to_rust(rt);
+
+        //let result = context.find_tree(&key)
+        //    .map_err(|err| format!("{:?}", err));
+
+        //result.to_ocaml(rt)
+        // TODO: complete implementation once tree API is available
+        Err::<Option<OCamlToRustPointer<WorkingTreeRc>>, String>("unimplemented".to_owned()).to_ocaml(rt)
+    }
+
+    // OCaml = val add : context -> key -> value -> t Lwt.t
     fn tezedge_context_add(
         rt,
         context: OCamlRef<TezedgeContext>,
@@ -198,7 +220,28 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // OCaml = val remove_rec : context -> key -> t Lwt.t
+    // OCaml = val add_tree : tcontext -> key -> tree -> t Lwt.t
+    fn tezedge_context_add_tree(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        key: OCamlRef<OCamlList<String>>,
+        tree: OCamlRef<WorkingTreeRc>,
+    ) -> OCaml<Result<TezedgeContext, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let _context = context_ptr.as_ref();
+        let _key: ContextKey = key.to_rust(rt);
+        let _tree: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+
+        //let result =  context.add_tree(&key, tree)
+        //    .map_err(|err| format!("{:?}", err))
+        //    .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+
+        // result.to_ocaml(rt)
+        // TODO: complete implementation once tree API is available
+        Err::<OCamlToRustPointer<TezedgeContext>, String>("unimplemented".to_owned()).to_ocaml(rt)
+    }
+
+    // OCaml = val remove_ : context -> key -> t Lwt.t
     fn tezedge_context_remove(
         rt,
         context: OCamlRef<TezedgeContext>,
@@ -236,12 +279,177 @@ ocaml_export! {
     }
 
     // TODO: fold
-    // type key_or_dir = [`Key of key | `Dir of key]
+    //  (** [fold ?depth t root ~init ~f] recursively folds over the trees
+    //      and values of [t]. The [f] callbacks are called with a key relative
+    //      to [root]. [f] is never called with an empty key for values; i.e.,
+    //      folding over a value is a no-op.
     //
-    // (** [fold] iterates over elements under a path (not recursive). Iteration order
-    //     is nondeterministic. *)
-    // val fold :
-    //   context -> key -> init:'a -> f:(key_or_dir -> 'a -> 'a Lwt.t) -> 'a Lwt.t
+    //      Elements are traversed in lexical order of keys.
+    //
+    //      The depth is 0-indexed. If [depth] is set (by default it is not), then [f]
+    //      is only called when the conditions described by the parameter is true:
+    //
+    //      - [Eq d] folds over nodes and contents of depth exactly [d].
+    //      - [Lt d] folds over nodes and contents of depth strictly less than [d].
+    //      - [Le d] folds over nodes and contents of depth less than or equal to [d].
+    //      - [Gt d] folds over nodes and contents of depth strictly more than [d].
+    //      - [Ge d] folds over nodes and contents of depth more than or equal to [d]. *)
+    //  val fold :
+    //    ?depth:[`Eq of int | `Le of int | `Lt of int | `Ge of int | `Gt of int] ->
+    //    t ->
+    //    key ->
+    //    init:'a ->
+    //    f:(key -> tree -> 'a -> 'a Lwt.t) ->
+    //    'a Lwt.t
+
+    // Tree API
+
+    // OCaml = val hash : tree -> Context_hash.t
+    fn tezedge_tree_hash(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+    ) -> OCaml<Result<OCamlContextHash, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+
+        let result = match tree.get_staged_root_hash()  {
+            Err(err) => Err(format!("{:?}", err)),
+            Ok(hash) => ContextHash::try_from(hash.as_ref()).map_err(|err| format!("{:?}", err))
+        };
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val mem : context -> key -> bool Lwt.t
+    fn tezedge_tree_mem(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<bool, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = tree.mem(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // TODO: implement
+    fn tezedge_tree_empty(
+        rt,
+        _unit: OCamlRef<()>,
+    ) {
+        OCaml::unit()
+    }
+
+    // OCaml = val dir_mem : context -> key -> bool Lwt.t
+    fn tezedge_tree_mem_tree(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<bool, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = tree.dirmem(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val find : context -> key -> value option Lwt.t
+    fn tezedge_tree_find(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<Option<OCamlBytes>, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = tree.get(&key)
+            .map_err(|err| format!("{:?}", err));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val find_tree : context -> key -> tree option Lwt.t
+    fn tezedge_tree_find_tree(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<Option<WorkingTreeRc>, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let _tree = tree_ptr.as_ref();
+        let _key: ContextKey = key.to_rust(rt);
+
+        //let result = context.find_tree(&key)
+        //    .map_err(|err| format!("{:?}", err));
+
+        //result.to_ocaml(rt)
+        // TODO: complete implementation once tree API is available
+        Err::<Option<OCamlToRustPointer<WorkingTreeRc>>, String>("unimplemented".to_owned()).to_ocaml(rt)
+    }
+
+    // OCaml = val add : context -> key -> value -> t Lwt.t
+    fn tezedge_tree_add(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+        value: OCamlRef<OCamlBytes>,
+    ) -> OCaml<Result<WorkingTreeRc, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+        let value: ContextValue = value.to_rust(rt);
+
+        let result =  tree.set(&key, value)
+            .map_err(|err| format!("{:?}", err))
+            .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val add_tree : tcontext -> key -> tree -> t Lwt.t
+    fn tezedge_tree_add_tree(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+        new_tree: OCamlRef<WorkingTreeRc>,
+    ) -> OCaml<Result<WorkingTreeRc, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let _tree = tree_ptr.as_ref();
+        let _key: ContextKey = key.to_rust(rt);
+        let _new_tree: OCamlToRustPointer<WorkingTreeRc> = new_tree.to_rust(rt);
+
+        //let result =  context.add_tree(&key, tree)
+        //    .map_err(|err| format!("{:?}", err))
+        //    .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+
+        // result.to_ocaml(rt)
+        // TODO: complete implementation once tree API is available
+        Err::<OCamlToRustPointer<WorkingTreeRc>, String>("unimplemented".to_owned()).to_ocaml(rt)
+    }
+
+    // OCaml = val remove_ : context -> key -> t Lwt.t
+    fn tezedge_tree_remove(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<WorkingTreeRc, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let key: ContextKey = key.to_rust(rt);
+
+        let result = tree.delete(&key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
+
+        result.to_ocaml(rt)
+    }
 }
 
 use tezos_sys::initialize_tezedge_context_callbacks;

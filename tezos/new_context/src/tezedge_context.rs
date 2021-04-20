@@ -103,19 +103,16 @@ impl ProtocolContextApi for TezedgeContext {
         }
     }
 
-    fn get(&self, key: &ContextKey) -> Result<ContextValue, ContextError> {
-        let val = self.tree.get(key)?;
-        Ok(val)
+    fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
+        Ok(self.tree.get(key)?)
     }
 
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let val = self.tree.mem(key)?;
-        Ok(val)
+        Ok(self.tree.mem(key)?)
     }
 
     fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let val = self.tree.dirmem(key)?;
-        Ok(val)
+        Ok(self.tree.dirmem(key)?)
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {
