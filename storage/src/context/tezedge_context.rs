@@ -3,7 +3,7 @@
 
 use std::convert::TryFrom;
 use std::convert::TryInto;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 
 use failure::Error;
 
@@ -25,7 +25,7 @@ impl ContextApi for TezedgeContext {
         key: &ContextKey,
         value: ContextValue,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle.set(new_tree_id, key, value)?;
 
         Ok(())
@@ -33,7 +33,7 @@ impl ContextApi for TezedgeContext {
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<(), ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle.checkout(&context_hash_arr)?;
 
         Ok(())
@@ -47,7 +47,7 @@ impl ContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
 
         let date: u64 = date.try_into()?;
         let commit_hash = merkle.commit(date, author, message)?;
@@ -64,7 +64,7 @@ impl ContextApi for TezedgeContext {
         new_tree_id: TreeId,
         key_prefix_to_delete: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle.delete(new_tree_id, key_prefix_to_delete)?;
         Ok(())
     }
@@ -75,7 +75,7 @@ impl ContextApi for TezedgeContext {
         new_tree_id: TreeId,
         key_prefix_to_remove: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle.delete(new_tree_id, key_prefix_to_remove)?;
         Ok(())
     }
@@ -87,25 +87,25 @@ impl ContextApi for TezedgeContext {
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle.copy(new_tree_id, from_key, to_key)?;
         Ok(())
     }
 
     fn get_key(&self, key: &ContextKey) -> Result<ContextValue, ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         let val = merkle.get(key)?;
         Ok(val)
     }
 
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         let val = merkle.mem(key)?;
         Ok(val)
     }
 
     fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         let val = merkle.dirmem(key)?;
         Ok(val)
     }
@@ -116,7 +116,7 @@ impl ContextApi for TezedgeContext {
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         match merkle.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
@@ -135,7 +135,7 @@ impl ContextApi for TezedgeContext {
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle
             .get_key_values_by_prefix(&context_hash_arr, prefix)
             .map_err(ContextError::from)
@@ -148,19 +148,19 @@ impl ContextApi for TezedgeContext {
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         merkle
             .get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
             .map_err(ContextError::from)
     }
 
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError> {
-        let merkle = self.merkle.read()?;
+        let merkle = self.merkle.lock()?;
         Ok(merkle.get_last_commit_hash().map(|x| x.to_vec()))
     }
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
-        let merkle = self.merkle.read()?;
+        let merkle = self.merkle.lock()?;
         Ok(merkle.get_merkle_stats()?)
     }
 
@@ -174,27 +174,31 @@ impl ContextApi for TezedgeContext {
     }
 
     fn set_merkle_root(&mut self, tree_id: TreeId) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
-        merkle.stage_checkout(tree_id).map_err(ContextError::from)
+        let mut merkle = self.merkle.lock()?;
+        merkle
+            .working_tree_checkout(tree_id)
+            .map_err(ContextError::from)
     }
 
     fn get_merkle_root(&mut self) -> Result<EntryHash, ContextError> {
-        let merkle = self.merkle.read()?;
-        merkle.get_staged_root_hash().map_err(ContextError::from)
+        let merkle = self.merkle.lock()?;
+        merkle
+            .get_working_tree_root_hash()
+            .map_err(ContextError::from)
     }
 
     fn block_applied(&self) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         Ok(merkle.block_applied()?)
     }
 
     fn cycle_started(&self) -> Result<(), ContextError> {
-        let mut merkle = self.merkle.write()?;
+        let mut merkle = self.merkle.lock()?;
         Ok(merkle.start_new_cycle()?)
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {
-        let merkle = self.merkle.write()?;
+        let merkle = self.merkle.lock()?;
         Ok(merkle.get_memory_usage()?)
     }
 
@@ -315,11 +319,11 @@ where
 #[derive(Clone)]
 pub struct TezedgeContext {
     block_storage: Option<BlockStorage>,
-    merkle: Arc<RwLock<MerkleStorage>>,
+    merkle: Arc<Mutex<MerkleStorage>>,
 }
 
 impl TezedgeContext {
-    pub fn new(block_storage: Option<BlockStorage>, merkle: Arc<RwLock<MerkleStorage>>) -> Self {
+    pub fn new(block_storage: Option<BlockStorage>, merkle: Arc<Mutex<MerkleStorage>>) -> Self {
         TezedgeContext {
             block_storage,
             merkle,

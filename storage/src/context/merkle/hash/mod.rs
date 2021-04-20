@@ -5,7 +5,7 @@
 //!
 //! A document describing the algorithm can be found [here](https://github.com/tarides/tezos-context-hash).
 
-use std::{array::TryFromSliceError, convert::TryInto, io};
+use std::{array::TryFromSliceError, convert::TryInto, io, sync::Arc};
 
 use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
@@ -36,6 +36,10 @@ pub enum HashingError {
     UnexpectedEmptyInode,
     #[fail(display = "Invalid hash value, reason: {}", _0)]
     InvalidHash(String),
+    #[fail(display = "Missing Entry")]
+    MissingEntry,
+    #[fail(display = "The Entry is borrowed more than once")]
+    EntryBorrow,
 }
 
 impl From<InvalidOutputSize> for HashingError {
@@ -59,7 +63,7 @@ impl From<io::Error> for HashingError {
 /// Inode representation used for hashing directories with >256 entries.
 enum Inode {
     Empty,
-    Value(Vec<(String, Node)>),
+    Value(Vec<(Arc<String>, Node)>),
     Tree {
         depth: u32,
         children: usize,
@@ -81,7 +85,7 @@ fn index(depth: u32, name: &str) -> u32 {
 // IMPORTANT: entries must be sorted in lexicographic order of the name
 // Because we use `OrdMap`, this holds true when we iterate the items, but this is
 // something to keep in mind if the representation of `Tree` changes.
-fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, HashingError> {
+fn partition_entries(depth: u32, entries: &[(&Arc<String>, &Node)]) -> Result<Inode, HashingError> {
     if entries.is_empty() {
         Ok(Inode::Empty)
     } else if entries.len() <= 32 {
@@ -98,7 +102,7 @@ fn partition_entries(depth: u32, entries: &[(&String, &Node)]) -> Result<Inode, 
 
         // pointers = {p(i) | i <- [0..31], t(i) != Empty}
         for i in 0..=31 {
-            let entries_at_depth_and_index_i: Vec<(&String, &Node)> = entries
+            let entries_at_depth_and_index_i: Vec<(&Arc<String>, &Node)> = entries
                 .iter()
                 .filter(|(name, _)| index(depth, name) == i)
                 .cloned()
@@ -150,7 +154,7 @@ fn hash_long_inode(inode: &Inode) -> Result<EntryHash, HashingError> {
                     NodeKind::Leaf => hasher.update(&[1u8]),
                     NodeKind::NonLeaf => hasher.update(&[0u8]),
                 };
-                hasher.update(node.entry_hash.as_ref());
+                hasher.update(&node.entry_hash()?);
             }
         }
         Inode::Tree {
@@ -213,7 +217,7 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
         leb128::write::unsigned(&mut hasher, k.len() as u64)?;
         hasher.update(k.as_bytes());
         hasher.update(&(ENTRY_HASH_LEN as u64).to_be_bytes());
-        hasher.update(&v.entry_hash.as_ref());
+        hasher.update(&v.entry_hash()?);
     }
 
     Ok(hasher.finalize_boxed().as_ref().try_into()?)
@@ -224,7 +228,8 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
-        let entries: Vec<(&String, &Node)> = tree.iter().map(|(s, n)| (s, n.as_ref())).collect();
+        let entries: Vec<(&Arc<String>, &Node)> =
+            tree.iter().map(|(s, n)| (s, n.as_ref())).collect();
         let inode = partition_entries(0, &entries)?;
         hash_long_inode(&inode)
     } else {
@@ -286,7 +291,7 @@ pub(crate) fn hash_entry(entry: &Entry) -> Result<EntryHash, HashingError> {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::{env, fs::File, io::Read, path::Path, sync::Arc};
+    use std::{cell::RefCell, env, fs::File, io::Read, path::Path, sync::Arc};
 
     use flate2::read::GzDecoder;
 
@@ -402,9 +407,10 @@ mod tests {
         let mut dummy_tree = Tree::new();
         let node = Node {
             node_kind: NodeKind::Leaf,
-            entry_hash: Arc::new(hash_blob(&vec![1]).unwrap()), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
+            entry_hash: RefCell::new(Some(hash_blob(&vec![1]).unwrap())),
+            entry: RefCell::new(None), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
         };
-        dummy_tree.insert("a".to_string(), Arc::new(node));
+        dummy_tree.insert(Arc::new("a".to_string()), Arc::new(node));
 
         // hexademical representation of above tree:
         //
@@ -509,13 +515,14 @@ mod tests {
                     other => panic!("Got unexpected binding kind: {}", other),
                 };
                 let entry_hash = ContextHash::from_base58_check(&binding.hash).unwrap();
-                let entry_hash: Arc<EntryHash> =
-                    Arc::new(entry_hash.as_ref().as_slice().try_into().unwrap());
+                let entry_hash: RefCell<Option<EntryHash>> =
+                    RefCell::new(Some(entry_hash.as_ref().as_slice().try_into().unwrap()));
                 let node = Node {
                     node_kind,
                     entry_hash,
+                    entry: RefCell::new(None),
                 };
-                tree = tree.update(binding.name, Arc::new(node));
+                tree = tree.update(Arc::new(binding.name), Arc::new(node));
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();

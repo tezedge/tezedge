@@ -1,12 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![forbid(unsafe_code)]
+
+// TODO - TE-261: uncomment once storage has moved to protocol runner
+// #![forbid(unsafe_code)]
 #![feature(const_fn)]
 #![feature(allocator_api)]
 
 use std::convert::{TryFrom, TryInto};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 
 use failure::Fail;
 use rocksdb::{Cache, DB};
@@ -639,7 +641,7 @@ pub struct PersistentStorage {
     /// autoincrement  id generators
     seq: Arc<Sequences>,
     /// merkle-tree based context storage
-    merkle: Arc<RwLock<MerkleStorage>>,
+    merkle: Arc<Mutex<MerkleStorage>>,
     /// persistent context actions storage
     merkle_context_actions: Option<Arc<DB>>,
 }
@@ -649,7 +651,7 @@ impl PersistentStorage {
         db: Arc<DB>,
         clog: Arc<CommitLogs>,
         seq: Arc<Sequences>,
-        merkle: Arc<RwLock<MerkleStorage>>,
+        merkle: Arc<Mutex<MerkleStorage>>,
         merkle_context_actions: Option<Arc<DB>>,
     ) -> Self {
         Self {
@@ -677,7 +679,7 @@ impl PersistentStorage {
     }
 
     #[inline]
-    pub fn merkle(&self) -> Arc<RwLock<MerkleStorage>> {
+    pub fn merkle(&self) -> Arc<Mutex<MerkleStorage>> {
         self.merkle.clone()
     }
 
@@ -689,7 +691,7 @@ impl PersistentStorage {
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
         let db = self.db.flush();
-        let merkle = match self.merkle.write() {
+        let merkle = match self.merkle.lock() {
             Ok(merkle) => merkle.flush(),
             Err(e) => Err(failure::format_err!(
                 "Failed to write/lock for flush, reason: {:?}",
@@ -825,7 +827,7 @@ pub mod tests_common {
                     kv.clone(),
                     Arc::new(clog),
                     Arc::new(Sequences::new(kv, 1000)),
-                    Arc::new(RwLock::new(merkle)),
+                    Arc::new(Mutex::new(merkle)),
                     Some(Arc::new(kv_context_action)),
                 ),
                 path,

@@ -948,7 +948,7 @@ mod stats {
         // generate stats
         let m = persistent_storage.merkle();
         let merkle = m
-            .write()
+            .lock()
             .map_err(|e| failure::format_err!("Lock error: {:?}", e))?;
         let stats = merkle.get_merkle_stats()?;
 

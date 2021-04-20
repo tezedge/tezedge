@@ -85,8 +85,12 @@ pub fn collect_hashes(
                     // anywhere in the recursion paths. TODO: is revert possible?
                     let mut b = HashSet::new();
                     for (_, child_node) in tree.iter() {
-                        let entry = fetch_entry_from_store(store, *child_node.entry_hash)?;
-                        collect_hashes(&entry, &mut b, cache, store)?;
+                        let entry = &child_node
+                            .entry
+                            .try_borrow()
+                            .map_err(|_| HashingError::EntryBorrow)?;
+                        let entry = entry.as_ref().ok_or(HashingError::MissingEntry)?;
+                        collect_hashes(entry, &mut b, cache, store)?;
                     }
                     cache.insert(hash_entry(entry)?, b.clone());
                     batch.extend(b);
