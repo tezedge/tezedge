@@ -7,6 +7,7 @@ edition = "2018"
 [dependencies]
 chrono = "0.4"
 dns-lookup = "1.0.1"
+deepsize = "0.2.0"
 failure = "0.1"
 futures = "0.3"
 getset = "0.1"

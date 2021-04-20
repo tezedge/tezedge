@@ -55,6 +55,7 @@ macro_rules! define_hash {
             std::cmp::PartialOrd,
             std::cmp::Ord,
             std::hash::Hash,
+            deepsize::DeepSizeOf,
         )]
         pub struct $name(pub Hash);
 

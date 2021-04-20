@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 base58 = "0.1.0"
+deepsize = "0.2.0"
 failure = "0.1"
 failure_derive = "0.1"
 hex = "0.4"

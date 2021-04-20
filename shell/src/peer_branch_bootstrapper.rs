@@ -20,6 +20,8 @@ use crate::state::synchronization_state::PeerBranchSynchronizationDone;
 use crate::state::StateError;
 use crate::subscription::subscribe_to_actor_terminated;
 
+use deepsize::DeepSizeOf;
+
 /// After this timeout peer will be disconnected if no activity is done on any pipeline
 /// So if peer does not change any branch bootstrap, we will disconnect it
 const STALE_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(60 * 3);
@@ -397,8 +399,8 @@ impl Actor for PeerBranchBootstrapper {
         subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
 
         ctx.schedule::<Self::Msg, _>(
-            STALE_BOOTSTRAP_TIMEOUT,
-            STALE_BOOTSTRAP_TIMEOUT,
+            Duration::from_secs(15),
+            Duration::from_secs(15),
             ctx.myself(),
             None,
             DisconnectStalledBootstraps {
@@ -627,6 +629,17 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
     ) {
         let log = ctx.system.log();
         self.handle_resolved_bootstraps(&log);
+
+        let stats = self.bootstrap_state.iter().map(|b| {
+            let bc = b.intervals.iter().fold(0, |a, i| a + i.blocks.len());
+            format!("I:{}-{}", b.intervals.len(), bc)
+        }).collect::<Vec<String>>().join(", ");
+
+        warn!(log, "Peer branch bootstrapper memory stats";
+                   "size_of" => self.bootstrap_state.deep_size_of(),
+                   "stats" => stats,
+                   "peer_id" => self.peer.peer_id_marker.clone(), "peer_ip" => self.peer.peer_address.to_string(), "peer" => self.peer.peer_ref.name(), "peer_uri" => self.peer.peer_ref.uri().to_string(),
+        );
 
         // check for any stalled bootstrap
         let mut is_stalled = self

@@ -17,17 +17,20 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::state::{BlockApplyBatch, StateError};
 
+use deepsize::DeepSizeOf;
+
 /// BootstrapState helps to easily manage/mutate inner state
+#[derive(DeepSizeOf)]
 pub struct BootstrapState {
-    /// We can identify stalled pipelines by this atribute and take action like disconnect peer
-    last_updated: Instant,
+    // We can identify stalled pipelines by this atribute and take action like disconnect peer
+    // last_updated: Instant,
 
     /// Level of the highest block from all intervals
     to_level: Arc<Level>,
     chain_id: Arc<ChainId>,
 
     /// Partitions are expected to be ordered from the lowest_level/oldest block
-    intervals: Vec<BootstrapInterval>,
+    pub intervals: Vec<BootstrapInterval>,
 }
 
 impl BootstrapState {
@@ -41,7 +44,7 @@ impl BootstrapState {
     ) -> BootstrapState {
         BootstrapState {
             chain_id,
-            last_updated: Instant::now(),
+            // last_updated: NaiveDateTime::now(),
             intervals: BootstrapInterval::split(
                 BlockState::new_applied(first_applied_block),
                 blocks,
@@ -104,7 +107,7 @@ impl BootstrapState {
         if !new_intervals.is_empty() {
             self.intervals.extend(new_intervals);
             self.to_level = new_bootstrap_level;
-            self.last_updated = Instant::now();
+            // self.last_updated = Instant::now();
             return true;
         }
 
@@ -151,7 +154,7 @@ impl BootstrapState {
                 max_interval_ahead_count -= 1;
             }
             if was_interval_updated {
-                self.last_updated = Instant::now();
+                // self.last_updated = Instant::now();
             }
 
             if result.len() >= requested_count || max_interval_ahead_count <= 0 {
@@ -213,7 +216,7 @@ impl BootstrapState {
                 max_interval_ahead_count -= 1;
             }
             if was_interval_updated {
-                self.last_updated = Instant::now();
+                // self.last_updated = Instant::now();
             }
 
             if result.len() >= requested_count || max_interval_ahead_count <= 0 {
@@ -275,7 +278,7 @@ impl BootstrapState {
                         operations_downloaded: true,
                     }) {
                         last_marked_as_applied_block = Some(b.block_hash.clone());
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
 
                     // continue to check next block
@@ -374,10 +377,10 @@ impl BootstrapState {
 
                     // update its state
                     if b.update(&requested_block_new_inner_state) {
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                     if b.update_predecessor(predecessor_block_hash.clone()) {
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
 
                     predecessor_insert_to_index = Some(block_index);
@@ -422,7 +425,7 @@ impl BootstrapState {
 
             // check if have downloaded whole interval
             if interval.check_all_blocks_downloaded() {
-                self.last_updated = Instant::now();
+                // self.last_updated = Instant::now();
             }
         };
 
@@ -432,13 +435,13 @@ impl BootstrapState {
                 // get first block
                 if let Some(begin) = next_interval.blocks.get_mut(0) {
                     if begin.update(&end_of_previos_interval_state) {
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                 }
 
                 // check if have downloaded whole next interval
                 if next_interval.check_all_blocks_downloaded() {
-                    self.last_updated = Instant::now();
+                    // self.last_updated = Instant::now();
                 }
             }
         }
@@ -475,7 +478,7 @@ impl BootstrapState {
                     // now we can update
                     if !b.operations_downloaded {
                         b.operations_downloaded = true;
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
 
                     // Note:end_interval: handle end of the interval
@@ -501,7 +504,7 @@ impl BootstrapState {
                 // get first block
                 if let Some(begin) = next_interval.blocks.get_mut(0) {
                     if begin.update(&end_of_previos_interval_state) {
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                 }
             }
@@ -534,7 +537,7 @@ impl BootstrapState {
                     // now we can update
                     if !b.applied {
                         b.applied = true;
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                     if b.applied {
                         block_index_to_remove_before = Some(block_index);
@@ -560,10 +563,10 @@ impl BootstrapState {
                 // we dont want to remove the block, just the blocks before, because at least first block must be applied
                 for _ in 0..remove_index {
                     let _ = interval.blocks.remove(0);
-                    self.last_updated = Instant::now();
+                    // self.last_updated = Instant::now();
                 }
                 if interval.check_all_blocks_downloaded() {
-                    self.last_updated = Instant::now();
+                    // self.last_updated = Instant::now();
                 }
             }
 
@@ -573,7 +576,7 @@ impl BootstrapState {
                     // get first block
                     if let Some(begin) = next_interval.blocks.get_mut(0) {
                         if begin.update(&end_of_previos_interval_state) {
-                            self.last_updated = Instant::now();
+                            // self.last_updated = Instant::now();
                         }
                     }
                 }
@@ -585,7 +588,7 @@ impl BootstrapState {
                     let all_applied = interval_to_remove.blocks.iter().all(|b| b.applied);
                     if all_applied {
                         let _ = self.intervals.remove(interval_idx);
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                 }
 
@@ -594,7 +597,7 @@ impl BootstrapState {
                     // so, remove all previous
                     for _ in 0..interval_idx {
                         let _ = self.intervals.remove(0);
-                        self.last_updated = Instant::now();
+                        // self.last_updated = Instant::now();
                     }
                 }
             }
@@ -602,7 +605,8 @@ impl BootstrapState {
     }
 
     pub fn is_stalled(&self, stale_timeout: Duration) -> bool {
-        self.last_updated.elapsed() > stale_timeout
+        // self.last_updated.elapsed() > stale_timeout
+        false
     }
 
     pub fn is_done(&self) -> bool {
@@ -619,14 +623,15 @@ impl BootstrapState {
 ///     (bh2, bh3)
 ///     (bh3, bh4)
 ///     (bh4, bh5)
-struct BootstrapInterval {
+#[derive(DeepSizeOf)]
+pub struct BootstrapInterval {
     all_blocks_downloaded: bool,
     all_operations_downloaded: bool,
     all_block_applied: bool,
 
     // TODO: we should maybe add here: (start: Arc<Mutex<BlockState>>, end: Arc<Mutex<BlockState>>)
     //       it would simplify maybe handling see: Note:begining_interval, Note:end_interval
-    blocks: Vec<BlockState>,
+    pub blocks: Vec<BlockState>,
 }
 
 impl BootstrapInterval {
@@ -895,8 +900,8 @@ pub struct InnerBlockState {
     pub applied: bool,
 }
 
-#[derive(Clone)]
-struct BlockState {
+#[derive(Clone, DeepSizeOf)]
+pub struct BlockState {
     block_hash: Arc<BlockHash>,
     predecessor_block_hash: Option<Arc<BlockHash>>,
 
