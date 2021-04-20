@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use riker::actors::*;
 
-use crypto::hash::{BlockHash, ChainId, OperationHash};
-use storage::mempool_storage::MempoolOperationType;
+use crypto::hash::{BlockHash, ChainId};
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
 use tezos_messages::Head;
@@ -38,14 +37,6 @@ pub struct AllBlockOperationsReceived {
     pub level: i32,
 }
 
-/// Notify actors that operations should by validated by mempool
-#[derive(Clone, Debug)]
-pub struct MempoolOperationReceived {
-    pub operation_hash: OperationHash,
-    pub operation_type: MempoolOperationType,
-    pub result_callback: Option<CondvarResult<(), failure::Error>>,
-}
-
 #[derive(Clone, Debug)]
 pub struct InjectBlock {
     pub chain_id: Arc<ChainId>,
@@ -63,7 +54,6 @@ pub enum ShellChannelMsg {
     BlockReceived(BlockReceived),
     BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),
-    MempoolOperationReceived(MempoolOperationReceived),
 
     /// Commands
     AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
@@ -73,12 +63,6 @@ pub enum ShellChannelMsg {
     RequestCurrentHead(RequestCurrentHead),
     PeerBranchSynchronizationDone(PeerBranchSynchronizationDone),
     ShuttingDown(ShuttingDown),
-}
-
-impl From<MempoolOperationReceived> for ShellChannelMsg {
-    fn from(msg: MempoolOperationReceived) -> Self {
-        ShellChannelMsg::MempoolOperationReceived(msg)
-    }
 }
 
 impl From<BlockReceived> for ShellChannelMsg {
@@ -113,9 +97,6 @@ pub enum ShellChannelTopic {
     /// Dedicated channel for new current head
     ShellNewCurrentHead,
 
-    /// Dedicated channel for block applied
-    ShellBlockApplied,
-
     /// Control event
     ShellCommands,
 
@@ -128,7 +109,6 @@ impl From<ShellChannelTopic> for Topic {
         match evt {
             ShellChannelTopic::ShellEvents => Topic::from("shell.events"),
             ShellChannelTopic::ShellNewCurrentHead => Topic::from("shell.new_current_head"),
-            ShellChannelTopic::ShellBlockApplied => Topic::from("shell.block_applied"),
             ShellChannelTopic::ShellCommands => Topic::from("shell.commands"),
             ShellChannelTopic::ShellShutdown => Topic::from("shell.shutdown"),
         }

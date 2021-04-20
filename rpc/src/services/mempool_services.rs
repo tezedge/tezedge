@@ -13,10 +13,10 @@ use serde_json::Value;
 use slog::info;
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
+use shell::mempool::mempool_channel::{MempoolChannelRef, MempoolOperationReceived};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{
-    InjectBlock, MempoolOperationReceived, RequestCurrentHead, ShellChannelMsg, ShellChannelRef,
-    ShellChannelTopic,
+    InjectBlock, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use shell::utils::try_wait_for_condvar_result;
 use shell::validation;
@@ -107,7 +107,7 @@ fn convert_applied(
                 return Err(format_err!(
                     "missing operation data for operation_hash: {}",
                     &operation_hash
-                ))
+                ));
             }
         };
 
@@ -140,7 +140,7 @@ fn convert_errored(
                 return Err(format_err!(
                     "missing operation data for operation_hash: {}",
                     &operation_hash
-                ))
+                ));
             }
         };
 
@@ -183,7 +183,7 @@ pub fn inject_operation(
     chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: &ShellChannelRef,
+    mempool_channel: &MempoolChannelRef,
 ) -> Result<String, failure::Error> {
     let start_request = SystemTime::now();
 
@@ -240,7 +240,7 @@ pub fn inject_operation(
     let start_async = SystemTime::now();
 
     // ping mempool with new operation for mempool validation
-    shell_channel.tell(
+    mempool_channel.tell(
         Publish {
             msg: MempoolOperationReceived {
                 operation_hash,

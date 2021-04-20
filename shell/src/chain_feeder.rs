@@ -731,7 +731,6 @@ fn prepare_apply_request(
     )
     .map(|(block, additional_data)| (block, additional_data.into()))?;
 
-
     Ok((
         ApplyBlockRequest {
             chain_id,

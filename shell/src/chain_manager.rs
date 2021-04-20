@@ -37,11 +37,14 @@ use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_feeder::ChainFeederRef;
+use crate::mempool::mempool_channel::{
+    MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
+};
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{
-    AllBlockOperationsReceived, BlockReceived, InjectBlock, MempoolOperationReceived,
-    ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
+    AllBlockOperationsReceived, BlockReceived, InjectBlock, ShellChannelMsg, ShellChannelRef,
+    ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
 use crate::state::head_state::CurrentHeadRef;
@@ -182,6 +185,8 @@ pub struct ChainManager {
     network_channel: NetworkChannelRef,
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
+    /// Mempool channel
+    mempool_channel: MempoolChannelRef,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -230,6 +235,7 @@ impl ChainManager {
         block_applier: ChainFeederRef,
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
+        mempool_channel: MempoolChannelRef,
         persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
@@ -248,6 +254,7 @@ impl ChainManager {
                 block_applier,
                 network_channel,
                 shell_channel,
+                mempool_channel,
                 persistent_storage,
                 tezos_readonly_prevalidation_api,
                 init_storage_data,
@@ -285,6 +292,7 @@ impl ChainManager {
             peers,
             chain_state,
             shell_channel,
+            mempool_channel,
             network_channel,
             block_storage,
             block_meta_storage,
@@ -701,7 +709,7 @@ impl ChainManager {
                                         ctx.myself().tell(CheckMempoolCompleteness, None);
 
                                         // notify others that new operation was received
-                                        shell_channel.tell(
+                                        mempool_channel.tell(
                                             Publish {
                                                 msg: MempoolOperationReceived {
                                                     operation_hash,
@@ -709,7 +717,7 @@ impl ChainManager {
                                                     result_callback: None,
                                                 }
                                                 .into(),
-                                                topic: ShellChannelTopic::ShellEvents.into(),
+                                                topic: MempoolChannelTopic.into(),
                                             },
                                             None,
                                         );
@@ -1276,6 +1284,7 @@ impl
         ChainFeederRef,
         NetworkChannelRef,
         ShellChannelRef,
+        MempoolChannelRef,
         PersistentStorage,
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
@@ -1294,6 +1303,7 @@ impl
             block_applier,
             network_channel,
             shell_channel,
+            mempool_channel,
             persistent_storage,
             tezos_readonly_prevalidation_api,
             init_storage_data,
@@ -1309,6 +1319,7 @@ impl
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
+            MempoolChannelRef,
             PersistentStorage,
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
@@ -1325,6 +1336,7 @@ impl
         ChainManager {
             network_channel,
             shell_channel: shell_channel.clone(),
+            mempool_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),

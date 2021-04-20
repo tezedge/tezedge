@@ -18,6 +18,7 @@ use shell::chain_feeder::ChainFeeder;
 use shell::chain_manager::ChainManager;
 use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
+use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
@@ -260,6 +261,8 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let mempool_channel =
+        MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
     if context_action_recorders.is_empty() && env.storage.one_context {
@@ -278,6 +281,7 @@ fn block_on_actors(
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
+        mempool_channel.clone(),
         persistent_storage.clone(),
         init_storage_data.clone(),
         local_current_head_state.clone(),
@@ -285,6 +289,7 @@ fn block_on_actors(
         current_mempool_state_storage.clone(),
         bootstrap_state.clone(),
         apply_block_stats.clone(),
+        env.p2p.disable_mempool,
     )
     .expect("Failed to create chain current head manager");
     let block_applier = ChainFeeder::actor(
@@ -303,6 +308,7 @@ fn block_on_actors(
         block_applier,
         network_channel.clone(),
         shell_channel.clone(),
+        mempool_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
@@ -324,6 +330,7 @@ fn block_on_actors(
         let _ = MempoolPrevalidator::actor(
             &actor_system,
             shell_channel.clone(),
+            mempool_channel.clone(),
             &persistent_storage,
             current_mempool_state_storage.clone(),
             init_storage_data.chain_id.clone(),
@@ -351,6 +358,7 @@ fn block_on_actors(
     let _ = RpcServer::actor(
         &actor_system,
         shell_channel.clone(),
+        mempool_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,

@@ -184,13 +184,12 @@ mod tests {
     }
 
     #[test]
-    fn operation_key_decode_underflow() -> Result<(), Error> {
+    fn operation_key_decode_underflow() {
         let result = OperationKey::decode(&[0; 0]);
         assert!(matches!(result, Err(SchemaError::DecodeError)));
         let result = OperationKey::decode(&[0; 1]);
         assert!(matches!(result, Err(SchemaError::DecodeError)));
         let result = OperationKey::decode(&[0; HashType::BlockHash.size()]);
         assert!(matches!(result, Err(SchemaError::DecodeError)));
-        Ok(())
     }
 }

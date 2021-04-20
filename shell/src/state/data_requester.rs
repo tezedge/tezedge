@@ -1082,7 +1082,7 @@ mod tests {
                     Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
                 )),
             )
-            .and_then(|feeder| Ok((feeder, block_applier_event_receiver)))
+            .map(|feeder| (feeder, block_applier_event_receiver))
             .map_err(|e| e.into())
     }
 }

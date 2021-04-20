@@ -5,6 +5,7 @@ use std::sync::{Arc, RwLock};
 
 use crate::mempool::mempool_state::MempoolState;
 
+pub mod mempool_channel;
 pub mod mempool_prevalidator;
 pub mod mempool_state;
 

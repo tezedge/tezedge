@@ -15,6 +15,7 @@ use riker::system::SystemBuilder;
 use slog::{info, warn, Level, Logger};
 use tokio::runtime::Runtime;
 
+use common::contains_all_keys;
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
@@ -22,6 +23,7 @@ use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::context_listener::ContextListener;
+use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
@@ -42,7 +44,6 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::common;
-use common::contains_all_keys;
 
 pub struct NodeInfrastructure {
     name: String,
@@ -171,6 +172,8 @@ impl NodeInfrastructure {
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+        let mempool_channel =
+            MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
         let _ = ContextListener::actor(
             &actor_system,
@@ -184,6 +187,7 @@ impl NodeInfrastructure {
         let chain_current_head_manager = ChainCurrentHeadManager::actor(
             &actor_system,
             shell_channel.clone(),
+            mempool_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.clone(),
             local_current_head_state.clone(),
@@ -191,6 +195,7 @@ impl NodeInfrastructure {
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
             apply_block_stats.clone(),
+            false,
         )
         .expect("Failed to create chain current head manager");
         let block_applier = ChainFeeder::actor(
@@ -209,6 +214,7 @@ impl NodeInfrastructure {
             block_applier.clone(),
             network_channel.clone(),
             shell_channel.clone(),
+            mempool_channel.clone(),
             persistent_storage.clone(),
             tezos_readonly_api.clone(),
             init_storage_data.clone(),
@@ -225,6 +231,7 @@ impl NodeInfrastructure {
         let _ = MempoolPrevalidator::actor(
             &actor_system,
             shell_channel.clone(),
+            mempool_channel,
             &persistent_storage,
             current_mempool_state_storage.clone(),
             init_storage_data.chain_id,
