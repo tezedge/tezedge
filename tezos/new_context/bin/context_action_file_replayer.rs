@@ -424,14 +424,6 @@ fn main() -> Result<(), Error> {
 
             // verify state of the storage after action has been applied
             match action {
-                ContextAction::Commit {
-                    new_context_hash, ..
-                } => {
-                    assert_eq!(
-                        new_context_hash.clone(),
-                        context.get_last_commit_hash()?.unwrap()
-                    );
-                }
                 ContextAction::Checkout { context_hash, .. } => {
                     assert!(!context_hash.is_empty());
                     assert_eq!(
@@ -447,7 +439,7 @@ fn main() -> Result<(), Error> {
                     assert_eq!(*value, context.mem(key).unwrap());
                 }
                 ContextAction::DirMem { key, value, .. } => {
-                    assert_eq!(*value, context.mem_tree(key).unwrap());
+                    assert_eq!(*value, context.mem_tree(key));
                 }
                 _ => {}
             };
@@ -503,12 +495,13 @@ fn perform_context_action(
 ) -> Result<(TezedgeContext, Option<TreeId>), Error> {
     let tree_id = get_tree_id(&action);
     let new_tree_hash = get_new_tree_hash(&action)?;
-    let current_context = if let Some(tree_id) = tree_id {
-        contexts
-            .get_mut(&tree_id)
-            .expect(&format!("Context with tree_id={} not found", tree_id))
-    } else {
+    let current_context = if contexts.is_empty() || tree_id.is_none() {
         &mut context
+    } else {
+        contexts.get_mut(&tree_id.unwrap()).expect(&format!(
+            "Context with tree_id={} not found",
+            tree_id.unwrap()
+        ))
     };
 
     // Write actions produce a new context, read actions return the original context
@@ -522,7 +515,7 @@ fn perform_context_action(
             (context, None)
         }
         ContextAction::DirMem { key, .. } => {
-            current_context.mem_tree(&key)?;
+            current_context.mem_tree(&key);
             (context, None)
         }
         ContextAction::Set {
