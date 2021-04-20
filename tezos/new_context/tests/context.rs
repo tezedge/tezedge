@@ -31,7 +31,7 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     .unwrap();
 
     // add to context
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/index/123"),
         vec![1, 2, 3, 4, 5, 6],
     )?;
@@ -73,27 +73,27 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     .unwrap();
 
     // add to context
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/0"),
         vec![1, 2, 3, 4],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/1/a"),
         vec![1, 2, 3, 4, 5],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/1/b"),
         vec![1, 2, 3, 4, 5],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/2/a"),
         vec![1, 2, 3, 4, 5, 61],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/2/b"),
         vec![1, 2, 3, 4, 5, 62],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/index/123"),
         vec![1, 2, 3, 4, 5, 6, 7],
     )?;
@@ -222,23 +222,23 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     .unwrap();
 
     // add to context
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/0"),
         vec![1, 2, 3, 4],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/1"),
         vec![1, 2, 3, 4, 5],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/2/a"),
         vec![1, 2, 3, 4, 5, 61],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/cpu/2/b"),
         vec![1, 2, 3, 4, 5, 62],
     )?;
-    context = context.set(
+    context = context.add(
         &context_key!("data/rolls/owner/current/index/123"),
         vec![1, 2, 3, 4, 5, 6, 7],
     )?;
