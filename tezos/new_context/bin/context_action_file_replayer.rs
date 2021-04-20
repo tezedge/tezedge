@@ -63,9 +63,9 @@ impl Args {
                 .takes_value(true)
                 .value_name("STRING")
                 .required(true)
-                .default_value("rocksdb")
+                .default_value("inmem")
                 .possible_values(&SupportedContextKeyValueStore::possible_values())
-                .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"));
+                .help("Choose the merkle storege backend - supported backends: 'sled', 'inmem', 'btree'"));
 
         let matches = app.get_matches();
 
