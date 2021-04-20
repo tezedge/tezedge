@@ -79,8 +79,8 @@ pub struct TezedgeContext {
 }
 
 impl ProtocolContextApi for TezedgeContext {
-    fn set(&self, key: &ContextKey, value: ContextValue) -> Result<Self, ContextError> {
-        let tree = self.tree.set(key, value)?;
+    fn add(&self, key: &ContextKey, value: ContextValue) -> Result<Self, ContextError> {
+        let tree = self.tree.add(key, value)?;
 
         Ok(self.with_tree(tree))
     }
@@ -103,16 +103,16 @@ impl ProtocolContextApi for TezedgeContext {
         }
     }
 
-    fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
-        Ok(self.tree.get(key)?)
+    fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
+        Ok(self.tree.find(key)?)
     }
 
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError> {
         Ok(self.tree.mem(key)?)
     }
 
-    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        Ok(self.tree.dirmem(key)?)
+    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        Ok(self.tree.mem_tree(key)?)
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {

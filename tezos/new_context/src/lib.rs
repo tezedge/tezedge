@@ -73,7 +73,7 @@ where
     Self: Sized,
 {
     // set key-value
-    fn set(&self, key: &ContextKey, value: ContextValue) -> Result<Self, ContextError>;
+    fn add(&self, key: &ContextKey, value: ContextValue) -> Result<Self, ContextError>;
     // delete key-value
     fn delete(&self, key_prefix_to_delete: &ContextKey) -> Result<Self, ContextError>;
     // copies subtree under 'from_key' to new subtree under 'to_key', returns None if from_key doesn't exist
@@ -82,12 +82,12 @@ where
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<Option<Self>, ContextError>;
-    // get value for key
-    fn get(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
+    // find value for key
+    fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // mem - check if value exists
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
-    // dirmem - check if directory exists
-    fn dirmem(&self, key: &ContextKey) -> Result<bool, ContextError>;
+    // mem_tree - check if directory exists
+    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError>;
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
 }
