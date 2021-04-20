@@ -23,7 +23,7 @@ use crate::{
     TreeId,
 };
 
-use crate::{working_tree::working_tree::StagedCache, ContextKeyValueStore};
+use crate::ContextKeyValueStore;
 
 #[derive(Clone)]
 pub struct TezedgeIndex {
@@ -51,8 +51,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
         if let Some(commit) = db_get_commit(self.repository.borrow(), &context_hash_arr)? {
             if let Some(tree) = db_get_tree(self.repository.borrow(), &commit.root_hash)? {
-                let staged_cache = Rc::new(RefCell::new(StagedCache::new(self.clone())));
-                let tree = WorkingTree::new_with_tree(staged_cache, tree);
+                let tree = WorkingTree::new_with_tree(self.clone(), tree);
 
                 Ok(Some(TezedgeContext::new(
                     self.clone(),
@@ -111,12 +110,12 @@ impl ProtocolContextApi for TezedgeContext {
         Ok(self.tree.mem(key)?)
     }
 
-    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError> {
-        Ok(self.tree.mem_tree(key)?)
+    fn mem_tree(&self, key: &ContextKey) -> bool {
+        self.tree.mem_tree(key)
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {
-        Ok(self.tree.get_staged_root_hash()?)
+        Ok(self.tree.get_working_tree_root_hash()?)
     }
 }
 
@@ -251,9 +250,7 @@ impl TezedgeContext {
         let tree = if let Some(tree) = tree {
             tree
         } else {
-            Rc::new(WorkingTree::new(Rc::new(RefCell::new(StagedCache::new(
-                index.clone(),
-            )))))
+            Rc::new(WorkingTree::new(index.clone()))
         };
         let tree_id_generator = Rc::new(RefCell::new(TreeIdGenerator::new()));
         let tree_id = tree_id_generator.borrow_mut().next();
