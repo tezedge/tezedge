@@ -21,9 +21,9 @@ pub fn force_libtezos_linking() {
     tezos_sys::force_libtezos_linking();
 }
 
-use std::array::TryFromSliceError;
 use std::collections::BTreeMap;
 use std::num::TryFromIntError;
+use std::{array::TryFromSliceError, rc::Rc};
 
 use failure::Fail;
 use gc::GarbageCollectionError;
@@ -56,7 +56,7 @@ pub type ContextValue = Vec<u8>;
 pub type TreeId = i32;
 
 /// Tree in String form needed for JSON RPCs
-pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
+pub type StringTreeMap = BTreeMap<Rc<String>, StringTreeEntry>;
 
 /// Tree in String form needed for JSON RPCs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ where
     // mem - check if value exists
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // mem_tree - check if directory exists
-    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError>;
+    fn mem_tree(&self, key: &ContextKey) -> bool;
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
 }
