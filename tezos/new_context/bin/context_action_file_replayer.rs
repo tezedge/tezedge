@@ -440,7 +440,8 @@ fn main() -> Result<(), Error> {
                     );
                 }
                 ContextAction::Get { key, value, .. } => {
-                    assert_eq!(value.clone(), context.get(key).unwrap());
+                    // FIXME: value can be `None`, fix ContextAction::Get
+                    assert_eq!(value.clone(), context.get(key).unwrap().unwrap());
                 }
                 ContextAction::Mem { key, value, .. } => {
                     assert_eq!(*value, context.mem(key).unwrap());
