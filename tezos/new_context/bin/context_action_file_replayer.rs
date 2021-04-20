@@ -440,13 +440,14 @@ fn main() -> Result<(), Error> {
                     );
                 }
                 ContextAction::Get { key, value, .. } => {
-                    assert_eq!(value.clone(), context.get(key).unwrap());
+                    // FIXME: value can be `None`, fix ContextAction::Get
+                    assert_eq!(value.clone(), context.find(key).unwrap().unwrap());
                 }
                 ContextAction::Mem { key, value, .. } => {
                     assert_eq!(*value, context.mem(key).unwrap());
                 }
                 ContextAction::DirMem { key, value, .. } => {
-                    assert_eq!(*value, context.dirmem(key).unwrap());
+                    assert_eq!(*value, context.mem_tree(key).unwrap());
                 }
                 _ => {}
             };
@@ -513,7 +514,7 @@ fn perform_context_action(
     // Write actions produce a new context, read actions return the original context
     let (context, new_tree_id) = match action {
         ContextAction::Get { key, .. } => {
-            current_context.get(&key)?;
+            current_context.find(&key)?;
             (context, None)
         }
         ContextAction::Mem { key, .. } => {
@@ -521,7 +522,7 @@ fn perform_context_action(
             (context, None)
         }
         ContextAction::DirMem { key, .. } => {
-            current_context.dirmem(&key)?;
+            current_context.mem_tree(&key)?;
             (context, None)
         }
         ContextAction::Set {
@@ -529,7 +530,7 @@ fn perform_context_action(
             value,
             new_tree_id,
             ..
-        } => (current_context.set(&key, value)?, Some(new_tree_id)),
+        } => (current_context.add(&key, value)?, Some(new_tree_id)),
         ContextAction::Copy {
             to_key: key,
             from_key,
