@@ -143,8 +143,6 @@ pub enum MerkleError {
     ValueExpected(&'static str),
     #[fail(display = "Invalid state: {}", _0)]
     InvalidState(&'static str),
-    #[fail(display = "The working tree is not a tree")]
-    NotATree,
 }
 
 impl From<persistent::database::DBError> for MerkleError {
@@ -267,9 +265,11 @@ impl WorkingTree {
         Self::new(self.index.clone())
     }
 
-    pub fn is_empty(&self) -> Result<bool, MerkleError> {
-        let root = self.get_working_tree_root_ref();
-        Ok(root.is_empty())
+    pub fn is_empty(&self) -> bool {
+        match &self.value {
+            WorkingTreeValue::Tree(tree) => tree.is_empty(),
+            WorkingTreeValue::Value(_) => true,
+        }
     }
 
     pub fn list(&self, _key: &ContextKey) {
@@ -307,14 +307,14 @@ impl WorkingTree {
     }
 
     /// Check if directory exists in current staged root
-    pub fn mem_tree(&self, key: &ContextKey) -> Result<bool, MerkleError> {
+    pub fn mem_tree(&self, key: &ContextKey) -> bool {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
 
         let root = self.get_working_tree_root_ref();
         let rv = self.directory_exists(root.as_ref(), key);
 
         //stat_updater.update_execution_stats(&mut self.stats);
-        Ok(rv)
+        rv
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
