@@ -156,12 +156,13 @@ ocaml_export! {
         rt,
         context: OCamlRef<TezedgeContext>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<bool> {
+    ) -> OCaml<Result<bool, String>> {
         let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
         let context = context_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = context.mem_tree(&key);
+        let result = context.mem_tree(&key)
+            .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
@@ -349,12 +350,13 @@ ocaml_export! {
         tree: OCamlRef<WorkingTreeRc>,
         key: OCamlRef<OCamlList<String>>,
     //) -> OCaml<Result<bool, String>> {
-    ) -> OCaml<bool> {
+    ) -> OCaml<Result<bool, String>> {
         let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
         let tree = tree_ptr.as_ref();
         let key: ContextKey = key.to_rust(rt);
 
-        let result = tree.mem_tree(&key);
+        let result = tree.mem_tree(&key)
+            .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }

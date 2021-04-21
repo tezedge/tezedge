@@ -88,14 +88,14 @@ where
     // mem - check if value exists
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // mem_tree - check if directory exists
-    fn mem_tree(&self, key: &ContextKey) -> bool;
+    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError>;
     fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError>;
     fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<WorkingTree, ContextError>;
     fn equal(&self, other: &Self) -> Result<bool, ContextError>;
     fn hash(&self) -> Result<EntryHash, ContextError>;
     fn kind(&self, key: &ContextKey) -> Result<NodeKind, ContextError>;
     fn empty(&self) -> Self;
-    fn is_empty(&self) -> bool;
+    fn is_empty(&self) -> Result<bool, ContextError>;
     fn list(&self, key: &ContextKey);
     fn fold(&self, key: &ContextKey);
 
