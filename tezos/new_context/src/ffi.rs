@@ -157,15 +157,19 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // TODO: implement
     fn tezedge_context_empty(
         rt,
-        _unit: OCamlRef<()>,
-    ) {
-        OCaml::unit()
+        index: OCamlRef<TezedgeIndex>,
+    ) -> OCaml<TezedgeContext> {
+        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
+        let index = index_ptr.as_ref();
+        let empty_context = TezedgeContext::new(index.clone(), None, None);
+        let result = OCamlToRustPointer::alloc_custom(rt, empty_context);
+
+        result.to_ocaml(rt)
     }
 
-    // OCaml = val dir_mem : context -> key -> bool Lwt.t
+    // OCaml = val mem_tree : context -> key -> bool Lwt.t
     fn tezedge_context_mem_tree(
         rt,
         context: OCamlRef<TezedgeContext>,
@@ -381,7 +385,7 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // OCaml = val dir_mem : tree -> key -> bool Lwt.t
+    // OCaml = val mem_tree : tree -> key -> bool Lwt.t
     fn tezedge_tree_mem_tree(
         rt,
         tree: OCamlRef<WorkingTreeRc>,
