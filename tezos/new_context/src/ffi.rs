@@ -121,7 +121,7 @@ ocaml_export! {
         let date = date.to_rust(rt);
         let author = author.to_rust(rt);
 
-        let result = context.hash(author, message, date)
+        let result = ShellContextApi::hash(context, author, message, date)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
