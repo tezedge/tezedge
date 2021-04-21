@@ -9,7 +9,7 @@ use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 
-use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
+use crate::working_tree::{working_tree_stats::MerkleStoragePerfReport};
 use crate::{
     hash::EntryHash,
     working_tree::{Commit, Entry, Tree},
@@ -112,6 +112,26 @@ impl ProtocolContextApi for TezedgeContext {
 
     fn mem_tree(&self, key: &ContextKey) -> bool {
         self.tree.mem_tree(key)
+    }
+
+    fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError> {
+        self.tree.find_tree(key).map_err(Into::into)
+    }
+
+    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<Self, ContextError> {
+        Ok(self.with_tree(self.tree.add_tree(key, tree)?))
+    }
+
+    fn empty(&self) -> Self {
+        self.with_tree(self.tree.empty())
+    }
+
+    fn list(&self, key: &ContextKey) {
+        self.tree.list(key)
+    }
+
+    fn fold(&self, key: &ContextKey) {
+        self.tree.fold(key)
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {

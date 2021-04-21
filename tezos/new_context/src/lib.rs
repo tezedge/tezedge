@@ -35,6 +35,7 @@ pub use actions::ActionRecorder;
 pub use hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
+use working_tree::{working_tree::WorkingTree};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -88,6 +89,11 @@ where
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // mem_tree - check if directory exists
     fn mem_tree(&self, key: &ContextKey) -> bool;
+    fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError>;
+    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<Self, ContextError>;
+    fn empty(&self) -> Self;
+    fn list(&self, key: &ContextKey);
+    fn fold(&self, key: &ContextKey);
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
 }
