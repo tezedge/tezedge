@@ -9,7 +9,7 @@ use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 
-use crate::working_tree::{working_tree_stats::MerkleStoragePerfReport, NodeKind};
+use crate::working_tree::{working_tree_stats::MerkleStoragePerfReport};
 use crate::{
     hash::EntryHash,
     working_tree::{Commit, Entry, Tree},
@@ -118,28 +118,12 @@ impl ProtocolContextApi for TezedgeContext {
         self.tree.find_tree(key).map_err(Into::into)
     }
 
-    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<WorkingTree, ContextError> {
-        self.tree.add_tree(key, tree).map_err(Into::into)
-    }
-
-    fn equal(&self, other: &Self) -> Result<bool, ContextError> {
-        self.tree.equal(&other.tree).map_err(Into::into)
-    }
-
-    fn hash(&self) -> Result<EntryHash, ContextError> {
-        self.tree.hash().map_err(Into::into)
-    }
-
-    fn kind(&self, key: &ContextKey) -> Result<NodeKind, ContextError> {
-        self.tree.kind(key).map_err(Into::into)
+    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<Self, ContextError> {
+        Ok(self.with_tree(self.tree.add_tree(key, tree)?))
     }
 
     fn empty(&self) -> Self {
         self.with_tree(self.tree.empty())
-    }
-
-    fn is_empty(&self) -> bool {
-        self.tree.is_empty()
     }
 
     fn list(&self, key: &ContextKey) {
