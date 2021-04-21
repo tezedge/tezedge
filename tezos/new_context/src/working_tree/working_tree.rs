@@ -241,6 +241,7 @@ impl WorkingTree {
     }
 
     pub fn equal(&self, other: &Self) -> Result<bool, MerkleError> {
+        // TODO: ok for now, but perform an actual compare instead of hashing here
         Ok(self.hash()? == other.hash()?)
     }
 
@@ -248,17 +249,11 @@ impl WorkingTree {
         self.get_working_tree_root_hash()
     }
 
-    pub fn kind(&self, key: &ContextKey) -> Result<NodeKind, MerkleError> {
-        let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
-
-        let root = self.get_working_tree_root_ref();
-        let node = self.find_raw_tree(root.as_ref(), &path)?;
-
-        node.get(file)
-            .map(|node| node.node_kind.clone())
-            .ok_or_else(|| MerkleError::ValueNotFound {
-                key: self.key_to_string(key),
-            })
+    pub fn kind(&self) -> NodeKind {
+        match &self.value {
+            WorkingTreeValue::Tree(_) => NodeKind::NonLeaf,
+            WorkingTreeValue::Value(_) => NodeKind::Leaf,
+        }
     }
 
     pub fn empty(&self) -> Self {
