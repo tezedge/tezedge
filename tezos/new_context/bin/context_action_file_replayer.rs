@@ -439,7 +439,7 @@ fn main() -> Result<(), Error> {
                     assert_eq!(*value, context.mem(key).unwrap());
                 }
                 ContextAction::DirMem { key, value, .. } => {
-                    assert_eq!(*value, context.mem_tree(key));
+                    assert_eq!(*value, context.mem_tree(key).unwrap());
                 }
                 _ => {}
             };
@@ -515,7 +515,7 @@ fn perform_context_action(
             (context, None)
         }
         ContextAction::DirMem { key, .. } => {
-            current_context.mem_tree(&key);
+            current_context.mem_tree(&key)?;
             (context, None)
         }
         ContextAction::Set {
