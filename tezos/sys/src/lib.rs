@@ -12,16 +12,35 @@ extern "C" {
     );
 
     pub fn initialize_tezedge_context_callbacks(
+        // Context
         tezedge_context_commit: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_hash: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
-        tezedge_context_copy: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_context_find_tree: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_add_tree: unsafe extern "C" fn(isize, isize, isize) -> isize,
         tezedge_context_remove: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_add: unsafe extern "C" fn(isize, isize, isize) -> isize,
         tezedge_context_find: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_mem: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_empty: unsafe extern "C" fn(isize) -> isize,
+        // TODO: list and fold
 
+        // Tree
+        tezedge_tree_hash: unsafe extern "C" fn(isize) -> isize,
+        tezedge_tree_find_tree: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_add_tree: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_tree_remove: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_add: unsafe extern "C" fn(isize, isize, isize) -> isize,
+        tezedge_tree_find: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_mem: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_empty: unsafe extern "C" fn(isize) -> isize,
+        tezedge_tree_is_empty: unsafe extern "C" fn(isize) -> isize,
+        tezedge_tree_equal: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_kind: unsafe extern "C" fn(isize) -> isize,
+        // TODO: list and fold
+
+        // Index
         tezedge_index_patch_context_get: unsafe extern "C" fn(isize) -> isize,
         tezedge_index_checkout: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_index_exists: unsafe extern "C" fn(isize, isize) -> isize,
