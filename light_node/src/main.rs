@@ -24,7 +24,6 @@ use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use storage::context::TezedgeContext;
 use storage::initializer::{
     initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
@@ -246,7 +245,6 @@ fn block_on_actors(
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
     );
-    let apply_block_stats = init_empty_apply_block_stats();
 
     // create tokio runtime
     let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
@@ -288,7 +286,6 @@ fn block_on_actors(
         remote_current_head_state.clone(),
         current_mempool_state_storage.clone(),
         bootstrap_state.clone(),
-        apply_block_stats.clone(),
         env.p2p.disable_mempool,
     )
     .expect("Failed to create chain current head manager");
@@ -317,7 +314,6 @@ fn block_on_actors(
         remote_current_head_state,
         current_mempool_state_storage.clone(),
         bootstrap_state,
-        apply_block_stats,
         env.p2p.disable_mempool,
         identity.clone(),
     )

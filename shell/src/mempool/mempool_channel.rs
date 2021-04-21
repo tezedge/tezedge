@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-//! This channel is used to transmit [`BlockApplied`] message for [`peer_branch_bootstrappers`]
+//! This channel is used to transmit message to [`MempoolPrevalidator`]
 
 use std::sync::Arc;
 

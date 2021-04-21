@@ -2,23 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use std::ops::AddAssign;
-use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use getset::Getters;
 
 use tezos_messages::p2p::encoding::block_header::Level;
 
-/// Shareabale type for stats
-pub type ApplyBlockStatsRef = Arc<RwLock<ApplyBlockStats>>;
-
-/// Inits empty current head state
-pub fn init_empty_apply_block_stats() -> ApplyBlockStatsRef {
-    Arc::new(RwLock::new(ApplyBlockStats::default()))
-}
-
 /// Statistics about applying
-#[derive(Getters)]
+#[derive(Getters, Clone, Debug)]
 pub struct ApplyBlockStats {
     /// ID of the last applied block
     #[get = "pub(crate)"]
@@ -27,7 +18,7 @@ pub struct ApplyBlockStats {
     #[get = "pub(crate)"]
     applied_block_last: Option<Instant>,
 
-    /// Count of applied blocks, from last LogStats run
+    /// Count of applied blocks, from the last clearing
     #[get = "pub(crate)"]
     applied_block_lasts_count: u32,
     /// Sum of durations of block validation with protocol from last LogStats run
@@ -52,7 +43,7 @@ impl ApplyBlockStats {
         self.applied_block_lasts_sum_validation_timer = BlockValidationTimer::default();
     }
 
-    pub fn add_block_validation_stats(&mut self, validation_timer: Arc<BlockValidationTimer>) {
+    pub fn add_block_validation_stats(&mut self, validation_timer: &BlockValidationTimer) {
         self.applied_block_lasts_count += 1;
         self.applied_block_lasts_sum_validation_timer
             .add_assign(validation_timer);
@@ -61,6 +52,14 @@ impl ApplyBlockStats {
     pub fn set_applied_block_level(&mut self, new_level: Level) {
         self.applied_block_level = Some(new_level);
         self.applied_block_last = Some(Instant::now());
+    }
+
+    pub fn merge(&mut self, new_stats: ApplyBlockStats) {
+        self.applied_block_last = new_stats.applied_block_last;
+        self.applied_block_level = new_stats.applied_block_level;
+        self.applied_block_lasts_count += new_stats.applied_block_lasts_count;
+        self.applied_block_lasts_sum_validation_timer
+            .add_assign(&new_stats.applied_block_lasts_sum_validation_timer);
     }
 }
 
@@ -109,8 +108,8 @@ impl BlockValidationTimer {
     }
 }
 
-impl AddAssign<Arc<BlockValidationTimer>> for BlockValidationTimer {
-    fn add_assign(&mut self, rhs: Arc<BlockValidationTimer>) {
+impl AddAssign<&BlockValidationTimer> for BlockValidationTimer {
+    fn add_assign(&mut self, rhs: &BlockValidationTimer) {
         self.validated_at = match self.validated_at.checked_add(rhs.validated_at) {
             Some(result) => result,
             None => self.validated_at,

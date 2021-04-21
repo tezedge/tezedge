@@ -53,7 +53,6 @@ use crate::state::synchronization_state::{
     PeerBranchSynchronizationDone, SynchronizationBootstrapStateRef,
 };
 use crate::state::StateError;
-use crate::stats::apply_block_stats::ApplyBlockStatsRef;
 use crate::subscription::*;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 use crate::validation;
@@ -165,9 +164,6 @@ struct Stats {
     unseen_block_last: Instant,
     /// Last time when previously unseen operations were received
     unseen_block_operations_last: Instant,
-
-    /// Shared statistics for applying blocks
-    apply_block_stats: ApplyBlockStatsRef,
 }
 
 /// Purpose of this actor is to perform chain synchronization.
@@ -244,7 +240,6 @@ impl ChainManager {
         remote_current_head_state: CurrentHeadRef,
         current_mempool_state: CurrentMempoolStateStorageRef,
         current_bootstrap_state: SynchronizationBootstrapStateRef,
-        apply_block_stats: ApplyBlockStatsRef,
         p2p_disable_mempool: bool,
         identity: Arc<Identity>,
     ) -> Result<ChainManagerRef, CreateError> {
@@ -263,7 +258,6 @@ impl ChainManager {
                 remote_current_head_state,
                 current_mempool_state,
                 current_bootstrap_state,
-                apply_block_stats,
                 p2p_disable_mempool,
                 identity.peer_id(),
             )),
@@ -1293,7 +1287,6 @@ impl
         CurrentHeadRef,
         CurrentMempoolStateStorageRef,
         SynchronizationBootstrapStateRef,
-        ApplyBlockStatsRef,
         bool,
         CryptoboxPublicKeyHash,
     )> for ChainManager
@@ -1312,7 +1305,6 @@ impl
             remote_current_head_state,
             current_mempool_state,
             current_bootstrap_state,
-            apply_block_stats,
             p2p_disable_mempool,
             identity_peer_id,
         ): (
@@ -1328,7 +1320,6 @@ impl
             CurrentHeadRef,
             CurrentMempoolStateStorageRef,
             SynchronizationBootstrapStateRef,
-            ApplyBlockStatsRef,
             bool,
             CryptoboxPublicKeyHash,
         ),
@@ -1358,7 +1349,6 @@ impl
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
                 unseen_block_operations_last: Instant::now(),
-                apply_block_stats,
             },
             is_sandbox,
             identity_peer_id,
@@ -1485,50 +1475,6 @@ impl Receive<LogStats> for ChainManager {
             }
         };
 
-        // calculate applied stats
-        let (last_applied, applied_block_level, applied_block_last) = {
-            let Stats {
-                apply_block_stats, ..
-            } = &self.stats;
-
-            match apply_block_stats.write() {
-                Ok(mut apply_block_stats) => {
-                    let applied_block_lasts_count = apply_block_stats.applied_block_lasts_count();
-
-                    if *applied_block_lasts_count > 0 {
-                        let validation = apply_block_stats
-                            .applied_block_lasts_sum_validation_timer()
-                            .print_formatted_average_for_count(*applied_block_lasts_count);
-
-                        // collect stats before clearing
-                        let stats = format!(
-                            "({} blocks - average times [{}]",
-                            applied_block_lasts_count, validation,
-                        );
-                        let applied_block_level = *apply_block_stats.applied_block_level();
-                        let applied_block_last = apply_block_stats
-                            .applied_block_last()
-                            .map(|i| i.elapsed().as_secs());
-
-                        // clear stats for next run
-                        apply_block_stats.clear_applied_block_lasts();
-
-                        (stats, applied_block_level, applied_block_last)
-                    } else {
-                        (
-                            format!("({} blocks)", applied_block_lasts_count),
-                            None,
-                            None,
-                        )
-                    }
-                }
-                Err(e) => {
-                    warn!(log, "Failed to get apply block stats"; "reason" => format!("{}", e));
-                    ("(failed to get stats)".to_string(), None, None)
-                }
-            }
-        };
-
         info!(log, "Head info";
             "local" => local,
             "local_level" => local_level,
@@ -1539,9 +1485,7 @@ impl Receive<LogStats> for ChainManager {
         info!(log, "Blocks and operations info";
             "block_count" => self.stats.unseen_block_count,
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),
-            "last_block_operations_secs" => self.stats.unseen_block_operations_last.elapsed().as_secs(),
-            "applied_block_level" => applied_block_level,
-            "applied_block_secs" => applied_block_last);
+            "last_block_operations_secs" => self.stats.unseen_block_operations_last.elapsed().as_secs());
         // TODO: TE-369 - peers stats
         for peer in self.peers.values() {
             debug!(log, "Peer state info";
@@ -1583,8 +1527,6 @@ impl Receive<LogStats> for ChainManager {
         }
         info!(log, "Various info";
                    "peer_count" => self.peers.len(),
-                   "local_level" => local_level,
-                   "last_applied" => last_applied,
         );
     }
 }

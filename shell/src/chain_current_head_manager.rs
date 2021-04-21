@@ -24,7 +24,6 @@ use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::head_state::{CurrentHeadRef, HeadResult, HeadState};
 use crate::state::synchronization_state::SynchronizationBootstrapStateRef;
 use crate::state::StateError;
-use crate::stats::apply_block_stats::{ApplyBlockStatsRef, BlockValidationTimer};
 
 /// Message commands [`ChainCurrentHeadManager`] to process applied block.
 /// Chain_feeder propagates if block successfully validated and applied
@@ -33,20 +32,11 @@ use crate::stats::apply_block_stats::{ApplyBlockStatsRef, BlockValidationTimer};
 pub struct ProcessValidatedBlock {
     pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
-    validation_timer: Arc<BlockValidationTimer>,
 }
 
 impl ProcessValidatedBlock {
-    pub fn new(
-        block: Arc<BlockHeaderWithHash>,
-        chain_id: Arc<ChainId>,
-        validation_timer: Arc<BlockValidationTimer>,
-    ) -> Self {
-        Self {
-            block,
-            chain_id,
-            validation_timer,
-        }
+    pub fn new(block: Arc<BlockHeaderWithHash>, chain_id: Arc<ChainId>) -> Self {
+        Self { block, chain_id }
     }
 }
 
@@ -65,9 +55,6 @@ pub struct ChainCurrentHeadManager {
     current_bootstrap_state: SynchronizationBootstrapStateRef,
     /// Holds "best" known remote head
     remote_current_head_state: CurrentHeadRef,
-
-    /// Internal stats
-    apply_block_stats: ApplyBlockStatsRef,
 
     /// check if mempool is supported
     p2p_disable_mempool: bool,
@@ -88,7 +75,6 @@ impl ChainCurrentHeadManager {
         remote_current_head_state: CurrentHeadRef,
         current_mempool_state: CurrentMempoolStateStorageRef,
         current_bootstrap_state: SynchronizationBootstrapStateRef,
-        apply_block_stats: ApplyBlockStatsRef,
         p2p_disable_mempool: bool,
     ) -> Result<ChainCurrentHeadManagerRef, CreateError> {
         sys.actor_of_props::<ChainCurrentHeadManager>(
@@ -102,7 +88,6 @@ impl ChainCurrentHeadManager {
                 remote_current_head_state,
                 current_mempool_state,
                 current_bootstrap_state,
-                apply_block_stats,
                 p2p_disable_mempool,
             )),
         )
@@ -128,11 +113,7 @@ impl ChainCurrentHeadManager {
         ctx: &Context<ChainCurrentHeadManagerMsg>,
         validated_block: ProcessValidatedBlock,
     ) -> Result<(), StateError> {
-        let ProcessValidatedBlock {
-            block,
-            chain_id,
-            validation_timer,
-        } = validated_block;
+        let ProcessValidatedBlock { block, chain_id } = validated_block;
 
         // we try to set it as "new current head", if some means set, if none means just ignore block
         if let Some((new_head, new_head_result)) =
@@ -227,16 +208,7 @@ impl ChainCurrentHeadManager {
                     }
                 }
             }
-
-            // update internal state
-            let mut apply_block_stats = self.apply_block_stats.write()?;
-            apply_block_stats.set_applied_block_level(*new_head.level());
         }
-
-        // add to stats
-        self.apply_block_stats
-            .write()?
-            .add_block_validation_stats(validation_timer);
 
         Ok(())
     }
@@ -280,7 +252,6 @@ impl
         CurrentHeadRef,
         CurrentMempoolStateStorageRef,
         SynchronizationBootstrapStateRef,
-        ApplyBlockStatsRef,
         bool,
     )> for ChainCurrentHeadManager
 {
@@ -294,7 +265,6 @@ impl
             remote_current_head_state,
             current_mempool_state,
             current_bootstrap_state,
-            apply_block_stats,
             p2p_disable_mempool,
         ): (
             ShellChannelRef,
@@ -305,7 +275,6 @@ impl
             CurrentHeadRef,
             CurrentMempoolStateStorageRef,
             SynchronizationBootstrapStateRef,
-            ApplyBlockStatsRef,
             bool,
         ),
     ) -> Self {
@@ -321,7 +290,6 @@ impl
             ),
             current_bootstrap_state,
             remote_current_head_state,
-            apply_block_stats,
             p2p_disable_mempool,
         }
     }

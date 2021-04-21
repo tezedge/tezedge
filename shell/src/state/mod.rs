@@ -63,12 +63,12 @@ impl From<failure::Error> for StateError {
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockApplyBatch {
+pub struct ApplyBlockBatch {
     pub block_to_apply: Arc<BlockHash>,
     successors: Vec<Arc<BlockHash>>,
 }
 
-impl BlockApplyBatch {
+impl ApplyBlockBatch {
     pub fn one(block_hash: BlockHash) -> Self {
         Self {
             block_to_apply: Arc::new(block_hash),
@@ -96,6 +96,10 @@ impl BlockApplyBatch {
         }
     }
 
+    pub fn batch_total_size(&self) -> usize {
+        self.successors_size() + 1
+    }
+
     pub fn successors_size(&self) -> usize {
         self.successors.len()
     }
@@ -110,21 +114,21 @@ impl BlockApplyBatch {
         successors
     }
 
-    pub fn shift(self) -> Option<BlockApplyBatch> {
+    pub fn shift(self) -> Option<ApplyBlockBatch> {
         let Self { mut successors, .. } = self;
 
         if successors.is_empty() {
             None
         } else {
             let head = successors.remove(0);
-            Some(BlockApplyBatch::batch(head, successors))
+            Some(ApplyBlockBatch::batch(head, successors))
         }
     }
 }
 
-impl From<BlockApplyBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
-    fn from(b: BlockApplyBatch) -> Self {
-        let BlockApplyBatch {
+impl From<ApplyBlockBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
+    fn from(b: ApplyBlockBatch) -> Self {
+        let ApplyBlockBatch {
             block_to_apply,
             successors,
         } = b;
@@ -257,7 +261,7 @@ pub mod tests {
     #[test]
     fn test_batch() {
         // create batch
-        let mut batch = BlockApplyBatch::batch(block(1), vec![block(2)]);
+        let mut batch = ApplyBlockBatch::batch(block(1), vec![block(2)]);
         batch.add_successor(block(3));
         batch.add_successor(block(4));
         assert_eq!(block(1).as_ref(), batch.block_to_apply.as_ref());

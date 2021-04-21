@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 use crypto::hash::{BlockHash, ChainId};
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::state::{BlockApplyBatch, StateError};
+use crate::state::{ApplyBlockBatch, StateError};
 
 /// BootstrapState helps to easily manage/mutate inner state
 pub struct BootstrapState {
@@ -231,12 +231,12 @@ impl BootstrapState {
         &mut self,
         max_block_apply_batch: usize,
         is_block_applied: IA,
-    ) -> Result<Option<BlockApplyBatch>, StateError>
+    ) -> Result<Option<ApplyBlockBatch>, StateError>
     where
         IA: Fn(&BlockHash) -> Result<bool, StateError>,
     {
         let mut last_marked_as_applied_block = None;
-        let mut batch_for_apply: Option<BlockApplyBatch> = None;
+        let mut batch_for_apply: Option<ApplyBlockBatch> = None;
         let mut previous_block: Option<(Arc<BlockHash>, bool)> = None;
 
         for interval in self.intervals.iter_mut() {
@@ -297,7 +297,7 @@ impl BootstrapState {
                                 if *previous_is_applied {
                                     // start batch and continue to next blocks
                                     batch_for_apply =
-                                        Some(BlockApplyBatch::start_batch(b.block_hash.clone()));
+                                        Some(ApplyBlockBatch::start_batch(b.block_hash.clone()));
 
                                     if max_block_apply_batch > 0 {
                                         // continue to check next block

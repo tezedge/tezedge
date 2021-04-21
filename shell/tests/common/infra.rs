@@ -30,7 +30,6 @@ use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddres
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use shell::stats::apply_block_stats::init_empty_apply_block_stats;
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
@@ -158,8 +157,6 @@ impl NodeInfrastructure {
         let bootstrap_state = init_synchronization_bootstrap_state_storage(
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
         );
-        let apply_block_stats = init_empty_apply_block_stats();
-
         let tokio_runtime = create_tokio_runtime();
 
         // run actor's
@@ -194,7 +191,6 @@ impl NodeInfrastructure {
             remote_current_head_state.clone(),
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
-            apply_block_stats.clone(),
             false,
         )
         .expect("Failed to create chain current head manager");
@@ -223,7 +219,6 @@ impl NodeInfrastructure {
             remote_current_head_state,
             current_mempool_state_storage.clone(),
             bootstrap_state,
-            apply_block_stats,
             false,
             identity.clone(),
         )
