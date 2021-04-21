@@ -114,28 +114,24 @@ impl ProtocolContextApi for TezedgeContext {
         self.tree.mem_tree(key)
     }
 
-    fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
-        match self.tree.find_tree(key)? {
-            Some(tree) => Ok(Some(self.with_tree(tree))),
-            None => Ok(None),
-        }
+    fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError> {
+        self.tree.find_tree(key).map_err(Into::into)
     }
 
-    fn add_tree(&self, key: &ContextKey, tree: &Self) -> Result<Self, MerkleError> {
-        let tree = self.tree.add_tree(key, &tree.tree)?;
-        Ok(self.with_tree(tree))
+    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<WorkingTree, ContextError> {
+        self.tree.add_tree(key, tree).map_err(Into::into)
     }
 
-    fn equal(&self, other: &Self) -> Result<bool, MerkleError> {
-        self.tree.equal(&other.tree)
+    fn equal(&self, other: &Self) -> Result<bool, ContextError> {
+        self.tree.equal(&other.tree).map_err(Into::into)
     }
 
-    fn hash(&self) -> Result<EntryHash, MerkleError> {
-        self.tree.hash()
+    fn hash(&self) -> Result<EntryHash, ContextError> {
+        self.tree.hash().map_err(Into::into)
     }
 
-    fn kind(&self, key: &ContextKey) -> Result<NodeKind, MerkleError> {
-        self.tree.kind(key)
+    fn kind(&self, key: &ContextKey) -> Result<NodeKind, ContextError> {
+        self.tree.kind(key).map_err(Into::into)
     }
 
     fn empty(&self) -> Self {
