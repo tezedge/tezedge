@@ -5,7 +5,7 @@ authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-ocaml-interop = { version = "0.7.2", features = ["without-ocamlopt"] }
+ocaml-interop = { version = "0.8.0", features = ["without-ocamlopt"] }
 # local dependencies
 tezos-sys = { path = "../sys" }
 tezos_context = { path = "../context" }
