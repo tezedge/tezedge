@@ -110,8 +110,8 @@ impl ProtocolContextApi for TezedgeContext {
         Ok(self.tree.mem(key)?)
     }
 
-    fn mem_tree(&self, key: &ContextKey) -> bool {
-        self.tree.mem_tree(key)
+    fn mem_tree(&self, key: &ContextKey) -> Result<bool, ContextError> {
+        self.tree.mem_tree(key).map_err(Into::into)
     }
 
     fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError> {
@@ -138,8 +138,8 @@ impl ProtocolContextApi for TezedgeContext {
         self.with_tree(self.tree.empty())
     }
 
-    fn is_empty(&self) -> bool {
-        self.tree.is_empty()
+    fn is_empty(&self) -> Result<bool, ContextError> {
+        self.tree.is_empty().map_err(Into::into)
     }
 
     fn list(&self, key: &ContextKey) {

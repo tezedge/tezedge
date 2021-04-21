@@ -87,9 +87,16 @@ enum Action {
     Remove(RemoveAction),
 }
 
+// The 'working tree' can be either a Tree or a Value
+#[derive(Clone)]
+enum WorkingTreeValue {
+    Tree(Tree),
+    Value(ContextValue),
+}
+
 #[derive(Clone)]
 pub struct WorkingTree {
-    tree: Tree,
+    value: WorkingTreeValue,
     index: TezedgeIndex,
     /// storage latency statistics
     stats: TezedgeContextStatistics, // TODO: move to context
@@ -136,6 +143,8 @@ pub enum MerkleError {
     ValueExpected(&'static str),
     #[fail(display = "Invalid state: {}", _0)]
     InvalidState(&'static str),
+    #[fail(display = "The working tree is not a tree")]
+    NotATree,
 }
 
 impl From<persistent::database::DBError> for MerkleError {
@@ -197,13 +206,22 @@ impl WorkingTree {
     pub fn new_with_tree(index: TezedgeIndex, tree: Tree) -> Self {
         WorkingTree {
             index,
-            tree,
+            value: WorkingTreeValue::Tree(tree),
+            stats: TezedgeContextStatistics::default(),
+        }
+    }
+
+    pub fn new_with_value(index: TezedgeIndex, value: ContextValue) -> Self {
+        WorkingTree {
+            index,
+            value: WorkingTreeValue::Value(value),
             stats: TezedgeContextStatistics::default(),
         }
     }
 
     pub fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
-        let tree = self.find_raw_tree(&self.tree, key)?;
+        let root = self.get_working_tree_root_ref()?;
+        let tree = self.find_raw_tree(root, key)?;
 
         if tree.is_empty() {
             return Ok(None);
@@ -213,7 +231,11 @@ impl WorkingTree {
     }
 
     pub fn add_tree(&self, key: &ContextKey, tree: &Self) -> Result<Self, MerkleError> {
-        let node = Self::get_non_leaf(Entry::Tree(tree.tree.clone()));
+        let node = match tree.value.clone() {
+            WorkingTreeValue::Tree(tree) => Self::get_non_leaf(Entry::Tree(tree)),
+            WorkingTreeValue::Value(value) => Self::get_leaf(Entry::Blob(value)),
+        };
+
         let entry = &self._add(key, node)?;
         let tree = self.get_tree(entry)?.clone();
 
@@ -230,7 +252,9 @@ impl WorkingTree {
 
     pub fn kind(&self, key: &ContextKey) -> Result<NodeKind, MerkleError> {
         let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
-        let node = self.find_raw_tree(&self.tree, &path)?;
+
+        let root = self.get_working_tree_root_ref()?;
+        let node = self.find_raw_tree(root, &path)?;
 
         node.get(file)
             .map(|node| node.node_kind.clone())
@@ -243,8 +267,9 @@ impl WorkingTree {
         Self::new(self.index.clone())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.tree.is_empty()
+    pub fn is_empty(&self) -> Result<bool, MerkleError> {
+        let root = self.get_working_tree_root_ref()?;
+        Ok(root.is_empty())
     }
 
     pub fn list(&self, _key: &ContextKey) {
@@ -259,8 +284,8 @@ impl WorkingTree {
     pub fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Get, Some(key));
 
-        let root = self.get_working_tree_root_ref();
-        let rv = match self.get_from_tree(&root, key) {
+        let root = self.get_working_tree_root_ref()?;
+        let rv = match self.get_from_tree(root, key) {
             Ok(value) => Ok(Some(value)),
             Err(MerkleError::ValueNotFound { .. }) => Ok(None),
             Err(err) => Err(err),
@@ -274,22 +299,22 @@ impl WorkingTree {
     pub fn mem(&self, key: &ContextKey) -> Result<bool, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Mem, Some(key));
 
-        let root = self.get_working_tree_root_ref();
-        let rv = self.value_exists(&root, key);
+        let root = self.get_working_tree_root_ref()?;
+        let rv = self.value_exists(root, key);
 
         //stat_updater.update_execution_stats(&mut self.stats);
         rv
     }
 
     /// Check if directory exists in current staged root
-    pub fn mem_tree(&self, key: &ContextKey) -> bool {
+    pub fn mem_tree(&self, key: &ContextKey) -> Result<bool, MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::DirMem, Some(key));
 
-        let root = self.get_working_tree_root_ref();
-        let rv = self.directory_exists(&root, key);
+        let root = self.get_working_tree_root_ref()?;
+        let rv = self.directory_exists(root, key);
 
         //stat_updater.update_execution_stats(&mut self.stats);
-        rv
+        Ok(rv)
     }
 
     /// Get value. Staging area is checked first, then last (checked out) commit.
@@ -297,7 +322,8 @@ impl WorkingTree {
         &self,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
-        self._get_key_values_by_prefix(&self.tree, prefix)
+        let root = self.get_working_tree_root_ref()?;
+        self._get_key_values_by_prefix(root, prefix)
     }
 
     /// Get value from historical context identified by commit hash.
@@ -518,6 +544,7 @@ impl WorkingTree {
     ) -> Result<(EntryHash, Vec<(EntryHash, ContextValue)>), MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
         let root_hash = self.get_working_tree_root_hash()?;
+        let root = self.get_working_tree_root_ref()?;
 
         let new_commit = Commit {
             root_hash,
@@ -530,7 +557,7 @@ impl WorkingTree {
 
         // produce entries to be persisted to storage
         let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
-        self.get_entries_recursively(&entry, Some(&self.tree), &mut batch)?;
+        self.get_entries_recursively(&entry, Some(root), &mut batch)?;
 
         let commit_hash = hash_commit(&new_commit)?;
 
@@ -543,7 +570,11 @@ impl WorkingTree {
     pub fn with_new_root(&self, tree: Tree) -> Self {
         let index = self.index.clone();
         let stats = self.stats.clone();
-        Self { tree, stats, index }
+        Self {
+            value: WorkingTreeValue::Tree(tree),
+            stats,
+            index,
+        }
     }
 
     /// Set key/val to the working tree.
@@ -572,8 +603,10 @@ impl WorkingTree {
     }
 
     fn _delete(&self, key: &ContextKey) -> Result<Entry, MerkleError> {
+        let root = self.get_working_tree_root_ref()?;
+
         if key.is_empty() {
-            return Ok(Entry::Tree(self.tree.clone()));
+            return Ok(Entry::Tree(root.clone()));
         }
         self.compute_new_root_with_change(&key, None)
     }
@@ -601,7 +634,7 @@ impl WorkingTree {
         from_key: &ContextKey,
         to_key: &ContextKey,
     ) -> Result<Option<Entry>, MerkleError> {
-        let root = self.get_working_tree_root_ref();
+        let root = self.get_working_tree_root_ref()?;
 
         let source_tree = match self.find_raw_tree(root, &from_key) {
             Ok(tree) => tree,
@@ -653,7 +686,7 @@ impl WorkingTree {
         };
 
         let path = &key[..key.len() - 1];
-        let root = self.get_working_tree_root_ref();
+        let root = self.get_working_tree_root_ref()?;
         let mut tree = self.find_raw_tree(root, path)?;
 
         match new_node {
@@ -705,7 +738,8 @@ impl WorkingTree {
 
     pub fn get_working_tree_root_hash(&self) -> Result<EntryHash, MerkleError> {
         // TOOD: unnecessery recalculation, should be one when set_staged_root
-        hash_tree(&self.tree).map_err(MerkleError::from)
+        let root = self.get_working_tree_root_ref()?;
+        hash_tree(root).map_err(MerkleError::from)
     }
 
     /// Builds vector of entries to be persisted to DB, recursively
@@ -844,8 +878,11 @@ impl WorkingTree {
         string.split('/').map(str::to_string).collect()
     }
 
-    fn get_working_tree_root_ref(&self) -> &Tree {
-        &self.tree
+    fn get_working_tree_root_ref(&self) -> Result<&Tree, MerkleError> {
+        match &self.value {
+            WorkingTreeValue::Tree(tree) => Ok(tree),
+            WorkingTreeValue::Value(_) => Err(MerkleError::NotATree),
+        }
     }
 
     // TODO: only used in tests on this file
