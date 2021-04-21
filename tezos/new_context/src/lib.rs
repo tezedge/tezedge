@@ -35,7 +35,7 @@ pub use actions::ActionRecorder;
 pub use hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
-use working_tree::NodeKind;
+use working_tree::{working_tree::WorkingTree, NodeKind};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -89,11 +89,11 @@ where
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
     // mem_tree - check if directory exists
     fn mem_tree(&self, key: &ContextKey) -> bool;
-    fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError>;
-    fn add_tree(&self, key: &ContextKey, tree: &Self) -> Result<Self, MerkleError>;
-    fn equal(&self, other: &Self) -> Result<bool, MerkleError>;
-    fn hash(&self) -> Result<EntryHash, MerkleError>;
-    fn kind(&self, key: &ContextKey) -> Result<NodeKind, MerkleError>;
+    fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError>;
+    fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<WorkingTree, ContextError>;
+    fn equal(&self, other: &Self) -> Result<bool, ContextError>;
+    fn hash(&self) -> Result<EntryHash, ContextError>;
+    fn kind(&self, key: &ContextKey) -> Result<NodeKind, ContextError>;
     fn empty(&self) -> Self;
     fn is_empty(&self) -> bool;
     fn list(&self, key: &ContextKey);
