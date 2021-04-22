@@ -35,7 +35,7 @@ pub use actions::ActionRecorder;
 pub use hash::EntryHash;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
-use working_tree::{working_tree::WorkingTree};
+use working_tree::working_tree::WorkingTree;
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -92,7 +92,12 @@ where
     fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError>;
     fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<Self, ContextError>;
     fn empty(&self) -> Self;
-    fn list(&self, key: &ContextKey);
+    fn list(
+        &self,
+        offset: Option<usize>,
+        length: Option<usize>,
+        key: &ContextKey,
+    ) -> Result<Vec<(Rc<String>, WorkingTree)>, ContextError>;
     fn fold(&self, key: &ContextKey);
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
