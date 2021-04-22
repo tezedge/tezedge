@@ -273,6 +273,40 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
+    // OCaml = val list : context -> ?offset:int -> ?length:int -> key -> (string * tree) list Lwt.t
+    fn tezedge_context_list(
+        rt,
+        context: OCamlRef<TezedgeContext>,
+        offset: OCamlRef<Option<OCamlInt>>,
+        length: OCamlRef<Option<OCamlInt>>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<OCamlList<(String, WorkingTreeRc)>, String>> {
+        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
+        let context = context_ptr.as_ref();
+        let offset: Option<i64> = offset.to_rust(rt);
+        let offset = offset.map(|n| n as usize);
+        let length: Option<i64> = length.to_rust(rt);
+        let length = length.map(|n| n as usize);
+        let key: ContextKey = key.to_rust(rt);
+
+        // TODO: don't clone the string, implement `ToOCaml` trait for `Rc<_>`
+        let result = context
+            .list(offset, length, &key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|v| {
+                v.into_iter()
+                    .map(|(s, tree)| {
+                        (
+                            (*s).clone(),
+                            OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+
+        result.to_ocaml(rt)
+    }
+
     // TODO: fold
     //  (** [fold ?depth t root ~init ~f] recursively folds over the trees
     //      and values of [t]. The [f] callbacks are called with a key relative
@@ -488,6 +522,40 @@ ocaml_export! {
 
         result.to_ocaml(rt)
     }
+
+    // OCaml = val list : tree -> ?offset:int -> ?length:int -> key -> (string * tree) list Lwt.t
+    fn tezedge_tree_list(
+        rt,
+        tree: OCamlRef<WorkingTreeRc>,
+        offset: OCamlRef<Option<OCamlInt>>,
+        length: OCamlRef<Option<OCamlInt>>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<OCamlList<(String, WorkingTreeRc)>, String>> {
+        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
+        let tree = tree_ptr.as_ref();
+        let offset: Option<i64> = offset.to_rust(rt);
+        let offset = offset.map(|n| n as usize);
+        let length: Option<i64> = length.to_rust(rt);
+        let length = length.map(|n| n as usize);
+        let key: ContextKey = key.to_rust(rt);
+
+        // TODO: don't clone the string, implement `ToOCaml` trait for `Rc<_>`
+        let result = tree
+            .list(offset, length, &key)
+            .map_err(|err| format!("{:?}", err))
+            .map(|v| {
+                v.into_iter()
+                    .map(|(s, tree)| {
+                        (
+                            (*s).clone(),
+                            OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            });
+
+        result.to_ocaml(rt)
+    }
 }
 
 use tezos_sys::initialize_tezedge_context_callbacks;
@@ -495,6 +563,7 @@ use tezos_sys::initialize_tezedge_context_callbacks;
 pub fn initialize_callbacks() {
     unsafe {
         initialize_tezedge_context_callbacks(
+            // Context
             tezedge_context_commit,
             tezedge_context_hash,
             tezedge_context_find_tree,
@@ -504,7 +573,9 @@ pub fn initialize_callbacks() {
             tezedge_context_find,
             tezedge_context_mem_tree,
             tezedge_context_mem,
+            tezedge_context_list,
             tezedge_context_empty,
+            // Tree
             tezedge_tree_hash,
             tezedge_tree_find_tree,
             tezedge_tree_add_tree,
@@ -513,10 +584,12 @@ pub fn initialize_callbacks() {
             tezedge_tree_find,
             tezedge_tree_mem_tree,
             tezedge_tree_mem,
+            tezedge_tree_list,
             tezedge_tree_empty,
             tezedge_tree_is_empty,
             tezedge_tree_equal,
             tezedge_tree_kind,
+            // Index
             tezedge_index_patch_context_get,
             tezedge_index_checkout,
             tezedge_index_exists,
