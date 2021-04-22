@@ -28,7 +28,7 @@ use tezos_api::ocaml_conv::OCamlContextHash;
 
 enum TreeKind {
     Tree,
-    Value
+    Value,
 }
 
 impl_to_ocaml_polymorphic_variant! {
