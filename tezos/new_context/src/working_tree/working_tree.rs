@@ -267,8 +267,34 @@ impl WorkingTree {
         }
     }
 
-    pub fn list(&self, _key: &ContextKey) {
-        todo!()
+    pub fn list(
+        &self,
+        offset: Option<usize>,
+        length: Option<usize>,
+        key: &ContextKey,
+    ) -> Result<Vec<(Rc<String>, WorkingTree)>, MerkleError> {
+        let root = self.get_working_tree_root_ref();
+        let node = self.find_raw_tree(root.as_ref(), key)?;
+        let node_length = node.len();
+
+        let children_length = length.unwrap_or(node_length).saturating_sub(offset.unwrap_or(0));
+        let mut children = Vec::with_capacity(children_length);
+
+        for (key, value) in node
+            .iter()
+            .skip(offset.unwrap_or(0))
+            .take(length.unwrap_or(node_length))
+        {
+            let value = match self.get_entry(value)? {
+                Entry::Tree(tree) => Self::new_with_tree(self.index.clone(), tree),
+                Entry::Blob(value) => Self::new_with_value(self.index.clone(), value),
+                Entry::Commit(_) => continue,
+            };
+
+            children.push((key.clone(), value));
+        }
+
+        Ok(children)
     }
 
     pub fn fold(&self, _key: &ContextKey) {
