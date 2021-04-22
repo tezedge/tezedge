@@ -156,6 +156,7 @@ impl ShellContextApi for TezedgeContext {
         let (commit_hash, batch) =
             self.tree
                 .prepare_commit(date, author, message, self.parent_commit_hash)?;
+        // FIXME: only write entries if there are any, empty commits should not produce anything
         self.index.repository.borrow_mut().write_batch(batch)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
 
