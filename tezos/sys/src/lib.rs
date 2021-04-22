@@ -22,8 +22,9 @@ extern "C" {
         tezedge_context_find: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_context_mem: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_context_list: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_empty: unsafe extern "C" fn(isize) -> isize,
-        // TODO: list and fold
+        // TODO: fold
 
         // Tree
         tezedge_tree_hash: unsafe extern "C" fn(isize) -> isize,
@@ -34,11 +35,12 @@ extern "C" {
         tezedge_tree_find: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_mem_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_mem: unsafe extern "C" fn(isize, isize) -> isize,
+        tezedge_tree_list: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_tree_empty: unsafe extern "C" fn(isize) -> isize,
         tezedge_tree_is_empty: unsafe extern "C" fn(isize) -> isize,
         tezedge_tree_equal: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_kind: unsafe extern "C" fn(isize) -> isize,
-        // TODO: list and fold
+        // TODO: fold
 
         // Index
         tezedge_index_patch_context_get: unsafe extern "C" fn(isize) -> isize,
