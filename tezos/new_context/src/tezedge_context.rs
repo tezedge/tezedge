@@ -9,7 +9,7 @@ use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 
-use crate::working_tree::{working_tree_stats::MerkleStoragePerfReport};
+use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crate::{
     hash::EntryHash,
     working_tree::{Commit, Entry, Tree},
@@ -126,8 +126,13 @@ impl ProtocolContextApi for TezedgeContext {
         self.with_tree(self.tree.empty())
     }
 
-    fn list(&self, key: &ContextKey) {
-        self.tree.list(key)
+    fn list(
+        &self,
+        offset: Option<usize>,
+        length: Option<usize>,
+        key: &ContextKey,
+    ) -> Result<Vec<(Rc<String>, WorkingTree)>, ContextError> {
+        self.tree.list(offset, length, key).map_err(Into::into)
     }
 
     fn fold(&self, key: &ContextKey) {
