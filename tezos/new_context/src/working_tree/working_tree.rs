@@ -554,6 +554,7 @@ impl WorkingTree {
     /// Take the current changes in the staging area, create a commit and persist all changes
     /// to database under the new commit. Return last commit if there are no changes, that is
     /// empty commits are not allowed.
+    // FIXME: we don't check for empty commits.
     pub fn prepare_commit(
         &self,
         time: u64,
