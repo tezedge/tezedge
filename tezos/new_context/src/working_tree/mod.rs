@@ -1,7 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -30,10 +33,20 @@ pub enum NodeKind {
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node {
     pub node_kind: NodeKind,
+    /// True when the entry has already been commited.
+    /// We don't need to serialize it twice.
+    #[serde(skip)]
+    #[serde(default = "node_serialized")]
+    pub commited: Cell<bool>,
     #[serde(serialize_with = "ensure_non_null_entry_hash")]
     pub entry_hash: RefCell<Option<EntryHash>>,
     #[serde(skip)]
     pub entry: RefCell<Option<Entry>>,
+}
+
+fn node_serialized() -> Cell<bool> {
+    // Deserializing the Node means it was already serialized
+    Cell::new(true)
 }
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize, Eq, PartialEq)]

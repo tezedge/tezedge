@@ -296,7 +296,15 @@ pub(crate) fn hash_entry(entry: &Entry) -> Result<EntryHash, HashingError> {
 #[cfg(test)]
 #[allow(unused_must_use)]
 mod tests {
-    use std::{cell::RefCell, env, fs::File, io::Read, path::Path, rc::Rc, sync::Arc};
+    use std::{
+        cell::{Cell, RefCell},
+        env,
+        fs::File,
+        io::Read,
+        path::Path,
+        rc::Rc,
+        sync::Arc,
+    };
 
     use flate2::read::GzDecoder;
 
@@ -414,6 +422,7 @@ mod tests {
             node_kind: NodeKind::Leaf,
             entry_hash: RefCell::new(Some(hash_blob(&vec![1]).unwrap())), // 407f958990678e2e9fb06758bc6520dae46d838d39948a4c51a5b19bd079293d
             entry: RefCell::new(None),
+            commited: Cell::new(false),
         };
         dummy_tree.insert(Rc::new("a".to_string()), Rc::new(node));
 
@@ -526,6 +535,7 @@ mod tests {
                     node_kind,
                     entry_hash: RefCell::new(Some(*entry_hash)),
                     entry: RefCell::new(None),
+                    commited: Cell::new(false),
                 };
                 tree = tree.update(Rc::new(binding.name.clone()), Rc::new(node));
             }
