@@ -47,7 +47,12 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::{array::TryFromSliceError, borrow::Cow, cell::RefCell, rc::Rc};
+use std::{
+    array::TryFromSliceError,
+    borrow::Cow,
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use failure::Fail;
 use serde::Deserialize;
@@ -779,6 +784,11 @@ impl WorkingTree {
                 // anywhere in the recursion paths. TODO: is revert possible?
                 tree.iter()
                     .map(|(_, child_node)| {
+                        if child_node.commited.get() {
+                            return Ok(());
+                        }
+                        child_node.commited.set(true);
+
                         match child_node
                             .entry
                             .try_borrow()
@@ -877,6 +887,7 @@ impl WorkingTree {
             node_kind: NodeKind::NonLeaf,
             entry_hash: RefCell::new(None),
             entry: RefCell::new(Some(entry)),
+            commited: Cell::new(false),
         }
     }
 
@@ -885,6 +896,7 @@ impl WorkingTree {
             node_kind: NodeKind::Leaf,
             entry_hash: RefCell::new(None),
             entry: RefCell::new(Some(entry)),
+            commited: Cell::new(false),
         }
     }
 
