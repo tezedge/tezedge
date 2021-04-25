@@ -4005,6 +4005,7 @@ dependencies = [
  "tezos_context",
  "tezos_interop_callback",
  "tezos_messages",
+ "tezos_new_context",
 ]
 
 [[package]]
@@ -4046,7 +4047,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_new_context"
-version = "1.3.0"
+version = "1.4.0"
 dependencies = [
  "bincode",
  "blake2",
