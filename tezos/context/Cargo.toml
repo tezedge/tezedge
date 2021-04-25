@@ -8,6 +8,6 @@ edition = "2018"
 crossbeam = "0.8"
 lazy_static = "1.4"
 serde = { version = "1.0", features = ["derive"] }
-ocaml-interop = { version = "0.8.0", features = ["without-ocamlopt"] }
+ocaml-interop = { version = "0.8.1" }
 # this package should not have any internal dependencies except this one
 tezos-sys = { path = "../sys" }

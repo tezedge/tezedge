@@ -2401,9 +2401,9 @@ dependencies = [
 
 [[package]]
 name = "ocaml-interop"
-version = "0.8.0"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a49811abff7a7536e0ab0825ee7826703dafede014ebd186152d6c4d4941b3b"
+checksum = "81f20ad463393222d4358bb199ce1c13c1a5c35f233bceaa7ae9317753c28994"
 dependencies = [
  "ocaml-boxroot-sys",
  "ocaml-sys",
