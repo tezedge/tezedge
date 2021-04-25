@@ -3,11 +3,9 @@
 
 // #![forbid(unsafe_code)]
 
-//! This crate contains code which is used to move context messages between OCaml and Rust worlds.
-//!
-//! Code in this crate should not reference any other tezedge crates to avoid circular dependencies.
-//! At OCaml side message is pushed into crossbeam channel. At Rust side messages are fetched from
-//! the crossbeam channel.
+//! Implementation of the TezEdge context for the Tezos economic protocol
+
+// TODO: docs
 
 pub mod gc;
 pub mod hash;
@@ -33,6 +31,7 @@ use serde::Serialize;
 
 pub use actions::ActionRecorder;
 pub use hash::EntryHash;
+pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
 use working_tree::working_tree::WorkingTree;
@@ -77,6 +76,7 @@ where
     fn add(&self, key: &ContextKey, value: ContextValue) -> Result<Self, ContextError>;
     // delete key-value
     fn delete(&self, key_prefix_to_delete: &ContextKey) -> Result<Self, ContextError>;
+    // TODO: remove `copy`, not part of the API anymore (replaced by `find_tree` + `add_tree`)
     // copies subtree under 'from_key' to new subtree under 'to_key', returns None if from_key doesn't exist
     fn copy(
         &self,
