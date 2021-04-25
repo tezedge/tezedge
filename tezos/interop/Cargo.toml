@@ -16,6 +16,7 @@ tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
 tezos_interop_callback = { path = "../interop_callback" }
 tezos_messages = { path = "../messages" }
+tezos_new_context = { path = "../new_context" }
 crypto = { path = "../../crypto" }
 
 [dev-dependencies]
