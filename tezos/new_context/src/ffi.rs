@@ -5,8 +5,8 @@
 
 // TODO: extend init function
 
-use std::convert::TryFrom;
-use std::{marker::PhantomData, rc::Rc};
+use std::{cell::RefCell, convert::TryFrom};
+use core::borrow::Borrow;
 
 use ocaml_interop::*;
 
@@ -16,15 +16,17 @@ use crate::{
     initializer::initialize_tezedge_index,
     initializer::ContextKvStoreConfiguration,
     working_tree::{working_tree::WorkingTree, NodeKind},
-    ContextKey, ContextValue, IndexApi, ProtocolContextApi, ShellContextApi, TezedgeContext,
-    TezedgeIndex,
+    ContextKey, ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
+    TezedgeContext, TezedgeIndex,
 };
 use tezos_api::ocaml_conv::OCamlContextHash;
 
 // TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
-// OCaml code will not do anything with the errors, just raice an exception,
+// OCaml code will not do anything with the errors, just raise an exception,
 // but once we catch it on Rust, having the original error value may be useful.
+
+// TODO: see if some of the cloning can be avoided.
 
 enum TreeKind {
     Tree,
@@ -38,41 +40,73 @@ impl_to_ocaml_polymorphic_variant! {
     }
 }
 
+type WorkingTreeFFI = WorkingTree;
+#[derive(Clone)]
+struct TezedgeIndexFFI(RefCell<TezedgeIndex>);
+#[derive(Clone)]
+struct TezedgeContextFFI(RefCell<TezedgeContext>);
+
+impl TezedgeIndexFFI {
+    fn new(index: TezedgeIndex) -> Self {
+        Self(RefCell::new(index))
+    }
+}
+
+impl From<TezedgeIndex> for TezedgeIndexFFI {
+    fn from(index: TezedgeIndex) -> Self {
+        Self::new(index)
+    }
+}
+
+impl TezedgeContextFFI {
+    fn new(index: TezedgeContext) -> Self {
+        Self(RefCell::new(index))
+    }
+}
+
+impl From<TezedgeContext> for TezedgeContextFFI {
+    fn from(index: TezedgeContext) -> Self {
+        Self::new(index)
+    }
+}
+
 ocaml_export! {
     // Index API
 
     fn tezedge_index_init(
         rt,
-        _unit: OCamlRef<()>,
-    ) -> OCaml<TezedgeIndex> {
-        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMem);
-        let index = OCamlToRustPointer::alloc_custom(rt, index);
-        index.to_ocaml(rt)
+        patch_context: OCamlRef<Option<PatchContextFunction>>,
+    ) -> OCaml<DynBox<TezedgeIndexFFI>> {
+        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMem, BoxRoot::new(rt.get(patch_context)));
+        OCaml::box_value(rt, index.into())
     }
 
     fn tezedge_index_close(
         rt,
-        _index: OCamlRef<TezedgeIndex>,
+        _index: OCamlRef<DynBox<TezedgeIndexFFI>>,
     ) {
         OCaml::unit()
     }
 
-    // TODO: implement
     fn tezedge_index_patch_context_get(
         rt,
-        _unit: OCamlRef<()>,
-    ) {
-        OCaml::unit()
+        index: OCamlRef<DynBox<TezedgeIndexFFI>>,
+    ) -> OCaml<Option<PatchContextFunction>> {
+        let ocaml_index = rt.get(index);
+        let index: &TezedgeIndexFFI = ocaml_index.borrow();
+        let index = index.0.borrow().clone();
+        index.patch_context.get(rt)
     }
 
     // OCaml = val exists : index -> Context_hash.t -> bool Lwt.t
     fn tezedge_index_exists(
         rt,
-        index: OCamlRef<TezedgeIndex>,
+        index: OCamlRef<DynBox<TezedgeIndexFFI>>,
         context_hash: OCamlRef<OCamlContextHash>,
     ) -> OCaml<Result<bool, String>> {
-        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
-        let index = index_ptr.as_ref();
+        let ocaml_index = rt.get(index);
+        let index: &TezedgeIndexFFI = ocaml_index.borrow();
+        let index = index.0.borrow().clone();
         let context_hash: ContextHash = context_hash.to_rust(rt);
 
         let result = index.exists(&context_hash)
@@ -84,16 +118,17 @@ ocaml_export! {
     // OCaml = val checkout : index -> Context_hash.t -> context option Lwt.t
     fn tezedge_index_checkout(
         rt,
-        index: OCamlRef<TezedgeIndex>,
+        index: OCamlRef<DynBox<TezedgeIndexFFI>>,
         context_hash: OCamlRef<OCamlContextHash>,
-    ) -> OCaml<Result<Option<TezedgeContext>, String>> {
-        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
-        let index = index_ptr.as_ref();
+    ) -> OCaml<Result<Option<DynBox<TezedgeContextFFI>>, String>> {
+        let ocaml_index = rt.get(index);
+        let index: &TezedgeIndexFFI = ocaml_index.borrow();
+        let index = index.0.borrow().clone();
         let context_hash: ContextHash = context_hash.to_rust(rt);
 
         let result = index.checkout(&context_hash)
             .map_err(|err| format!("{:?}", err))
-            .map(|ok| ok.map(|context| OCamlToRustPointer::alloc_custom(rt, context)));
+            .map(|opt| opt.map(TezedgeContextFFI::new));
 
         result.to_ocaml(rt)
     }
@@ -106,10 +141,11 @@ ocaml_export! {
         date: OCamlRef<OCamlInt64>,
         message: OCamlRef<String>,
         author: OCamlRef<String>,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
     ) -> OCaml<Result<OCamlContextHash, String>> {
-        let mut context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_mut();
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let message = message.to_rust(rt);
         let date = date.to_rust(rt);
         let author = author.to_rust(rt);
@@ -127,15 +163,16 @@ ocaml_export! {
         date: OCamlRef<OCamlInt64>,
         message: OCamlRef<String>,
         author: OCamlRef<String>,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
     ) -> OCaml<Result<OCamlContextHash, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let message = message.to_rust(rt);
         let date = date.to_rust(rt);
         let author = author.to_rust(rt);
 
-        let result = ShellContextApi::hash(context, author, message, date)
+        let result = context.hash(author, message, date)
             .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
@@ -144,11 +181,12 @@ ocaml_export! {
     // OCaml = val mem : context -> key -> bool Lwt.t
     fn tezedge_context_mem(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<Result<bool, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
 
         let result = context.mem(&key)
@@ -159,24 +197,25 @@ ocaml_export! {
 
     fn tezedge_context_empty(
         rt,
-        index: OCamlRef<TezedgeIndex>,
-    ) -> OCaml<TezedgeContext> {
-        let index_ptr: OCamlToRustPointer<TezedgeIndex> = index.to_rust(rt);
-        let index = index_ptr.as_ref();
+        index: OCamlRef<DynBox<TezedgeIndexFFI>>,
+    ) -> OCaml<DynBox<TezedgeContextFFI>> {
+        let ocaml_index = rt.get(index);
+        let index: &TezedgeIndexFFI = ocaml_index.borrow();
+        let index = index.0.borrow().clone();
         let empty_context = TezedgeContext::new(index.clone(), None, None);
-        let result = OCamlToRustPointer::alloc_custom(rt, empty_context);
 
-        result.to_ocaml(rt)
+        OCaml::box_value(rt, empty_context.into())
     }
 
     // OCaml = val mem_tree : context -> key -> bool Lwt.t
     fn tezedge_context_mem_tree(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<bool> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
 
         let result = context.mem_tree(&key);
@@ -187,11 +226,12 @@ ocaml_export! {
     // OCaml = val find : context -> key -> value option Lwt.t
     fn tezedge_context_find(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<Result<Option<OCamlBytes>, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
 
         let result = context.find(&key)
@@ -203,16 +243,17 @@ ocaml_export! {
     // OCaml = val find_tree : context -> key -> tree option Lwt.t
     fn tezedge_context_find_tree(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<Option<WorkingTreeRc>, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+    ) -> OCaml<Result<Option<DynBox<WorkingTreeFFI>>, String>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
 
         let result = context.find_tree(&key)
-            .map_err(|err| format!("{:?}", err))
-            .map(|tree_opt| tree_opt.map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree))));
+            .map_err(|err| format!("{:?}", err));
+            //.map(|tree_opt| tree_opt.map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree))));
 
         result.to_ocaml(rt)
     }
@@ -220,18 +261,19 @@ ocaml_export! {
     // OCaml = val add : context -> key -> value -> t Lwt.t
     fn tezedge_context_add(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
         value: OCamlRef<OCamlBytes>,
-    ) -> OCaml<Result<TezedgeContext, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+    ) -> OCaml<Result<DynBox<TezedgeContextFFI>, String>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
         let value: ContextValue = value.to_rust(rt);
 
-        let result =  context.add(&key, value)
+        let result = context.add(&key, value)
             .map_err(|err| format!("{:?}", err))
-            .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+            .map(TezedgeContextFFI::new);
 
         result.to_ocaml(rt)
     }
@@ -239,19 +281,20 @@ ocaml_export! {
     // OCaml = val add_tree : context -> key -> tree -> t Lwt.t
     fn tezedge_context_add_tree(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
-        tree: OCamlRef<WorkingTreeRc>,
-    ) -> OCaml<Result<TezedgeContext, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+    ) -> OCaml<Result<DynBox<TezedgeContextFFI>, String>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
         let result =  context.add_tree(&key, tree)
             .map_err(|err| format!("{:?}", err))
-            .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+            .map(TezedgeContextFFI::new);
 
          result.to_ocaml(rt)
     }
@@ -259,16 +302,17 @@ ocaml_export! {
     // OCaml = val remove_ : context -> key -> t Lwt.t
     fn tezedge_context_remove(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<TezedgeContext, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+    ) -> OCaml<Result<DynBox<TezedgeContextFFI>, String>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let key: ContextKey = key.to_rust(rt);
 
         let result = context.delete(&key)
             .map_err(|err| format!("{:?}", err))
-            .map(|context| OCamlToRustPointer::alloc_custom(rt, context));
+            .map(TezedgeContextFFI::new);
 
         result.to_ocaml(rt)
     }
@@ -276,13 +320,14 @@ ocaml_export! {
     // OCaml = val list : context -> ?offset:int -> ?length:int -> key -> (string * tree) list Lwt.t
     fn tezedge_context_list(
         rt,
-        context: OCamlRef<TezedgeContext>,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
         offset: OCamlRef<Option<OCamlInt>>,
         length: OCamlRef<Option<OCamlInt>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<OCamlList<(String, WorkingTreeRc)>, String>> {
-        let context_ptr: OCamlToRustPointer<TezedgeContext> = context.to_rust(rt);
-        let context = context_ptr.as_ref();
+    ) -> OCaml<Result<OCamlList<(String, DynBox<WorkingTreeFFI>)>, String>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
         let offset: Option<i64> = offset.to_rust(rt);
         let offset = offset.map(|n| n as usize);
         let length: Option<i64> = length.to_rust(rt);
@@ -295,12 +340,7 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err))
             .map(|v| {
                 v.into_iter()
-                    .map(|(s, tree)| {
-                        (
-                            (*s).clone(),
-                            OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)),
-                        )
-                    })
+                    .map(|(s, tree)| ((*s).clone(), tree))
                     .collect::<Vec<_>>()
             });
 
@@ -336,10 +376,10 @@ ocaml_export! {
     // OCaml = val hash : tree -> Context_hash.t
     fn tezedge_tree_hash(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
     ) -> OCaml<Result<OCamlContextHash, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
         let result = match tree.get_working_tree_root_hash()  {
             Err(err) => Err(format!("{:?}", err)),
@@ -352,11 +392,11 @@ ocaml_export! {
     // OCaml = val mem : tree -> key -> bool Lwt.t
     fn tezedge_tree_mem(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<Result<bool, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
 
         let result = tree.mem(&key)
@@ -376,10 +416,10 @@ ocaml_export! {
     // OCaml = val is_empty : tree -> bool
     fn tezedge_tree_is_empty(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
     ) -> OCaml<bool> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
         let result = tree.is_empty();
 
@@ -389,14 +429,13 @@ ocaml_export! {
     // OCaml = val equal : tree -> tree -> bool
     fn tezedge_tree_equal(
         rt,
-        tree1: OCamlRef<WorkingTreeRc>,
-        tree2: OCamlRef<WorkingTreeRc>,
+        tree1: OCamlRef<DynBox<WorkingTreeFFI>>,
+        tree2: OCamlRef<DynBox<WorkingTreeFFI>>,
     ) -> OCaml<Result<bool, String>> {
-        let tree1_ptr: OCamlToRustPointer<WorkingTreeRc> = tree1.to_rust(rt);
-        let tree1 = tree1_ptr.as_ref();
-        let tree2_ptr: OCamlToRustPointer<WorkingTreeRc> = tree2.to_rust(rt);
-        let tree2 = tree2_ptr.as_ref();
-
+        let ocaml_tree1 = rt.get(tree1);
+        let tree1: &WorkingTreeFFI = ocaml_tree1.borrow();
+        let ocaml_tree2 = rt.get(tree2);
+        let tree2: &WorkingTreeFFI = ocaml_tree2.borrow();
         let result = tree1.equal(tree2)
             .map_err(|err| format!("{:?}", err));
 
@@ -406,10 +445,10 @@ ocaml_export! {
     // OCaml = val kind : tree -> [`Value | `Tree]
     fn tezedge_tree_kind(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
     ) -> OCaml<TreeKind> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
         let result = match tree.kind() {
             NodeKind::Leaf => TreeKind::Value,
@@ -422,11 +461,11 @@ ocaml_export! {
     // OCaml = val mem_tree : tree -> key -> bool Lwt.t
     fn tezedge_tree_mem_tree(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<bool> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
 
         let result = tree.mem_tree(&key);
@@ -437,11 +476,11 @@ ocaml_export! {
     // OCaml = val find : tree -> key -> value option Lwt.t
     fn tezedge_tree_find(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
     ) -> OCaml<Result<Option<OCamlBytes>, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
 
         let result = tree.find(&key)
@@ -453,16 +492,15 @@ ocaml_export! {
     // OCaml = val find_tree : tree -> key -> tree option Lwt.t
     fn tezedge_tree_find_tree(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<Option<WorkingTreeRc>, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+    ) -> OCaml<Result<Option<DynBox<WorkingTreeFFI>>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
 
         let result = tree.find_tree(&key)
-            .map_err(|err| format!("{:?}", err))
-            .map(|tree_opt| tree_opt.map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree))));
+            .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
@@ -470,18 +508,17 @@ ocaml_export! {
     // OCaml = val add : tree -> key -> value -> t Lwt.t
     fn tezedge_tree_add(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
         value: OCamlRef<OCamlBytes>,
-    ) -> OCaml<Result<WorkingTreeRc, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+    ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
         let value: ContextValue = value.to_rust(rt);
 
         let result =  tree.add(&key, value)
-            .map_err(|err| format!("{:?}", err))
-            .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
+            .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
@@ -489,19 +526,18 @@ ocaml_export! {
     // OCaml = val add_tree : tree -> key -> tree -> t Lwt.t
     fn tezedge_tree_add_tree(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
-        new_tree: OCamlRef<WorkingTreeRc>,
-    ) -> OCaml<Result<WorkingTreeRc, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+        new_tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+    ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
-        let new_tree_ptr: OCamlToRustPointer<WorkingTreeRc> = new_tree.to_rust(rt);
-        let new_tree = new_tree_ptr.as_ref();
+        let ocaml_new_tree = rt.get(new_tree);
+        let new_tree: &WorkingTreeFFI = ocaml_new_tree.borrow();
 
         let result =  tree.add_tree(&key, new_tree)
-            .map_err(|err| format!("{:?}", err))
-            .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
+            .map_err(|err| format!("{:?}", err));
 
          result.to_ocaml(rt)
     }
@@ -509,16 +545,15 @@ ocaml_export! {
     // OCaml = val remove : tree -> key -> t Lwt.t
     fn tezedge_tree_remove(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<WorkingTreeRc, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+    ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let key: ContextKey = key.to_rust(rt);
 
         let result = tree.delete(&key)
-            .map_err(|err| format!("{:?}", err))
-            .map(|tree| OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)));
+            .map_err(|err| format!("{:?}", err));
 
         result.to_ocaml(rt)
     }
@@ -526,13 +561,13 @@ ocaml_export! {
     // OCaml = val list : tree -> ?offset:int -> ?length:int -> key -> (string * tree) list Lwt.t
     fn tezedge_tree_list(
         rt,
-        tree: OCamlRef<WorkingTreeRc>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
         offset: OCamlRef<Option<OCamlInt>>,
         length: OCamlRef<Option<OCamlInt>>,
         key: OCamlRef<OCamlList<String>>,
-    ) -> OCaml<Result<OCamlList<(String, WorkingTreeRc)>, String>> {
-        let tree_ptr: OCamlToRustPointer<WorkingTreeRc> = tree.to_rust(rt);
-        let tree = tree_ptr.as_ref();
+    ) -> OCaml<Result<OCamlList<(String, DynBox<WorkingTreeFFI>)>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
         let offset: Option<i64> = offset.to_rust(rt);
         let offset = offset.map(|n| n as usize);
         let length: Option<i64> = length.to_rust(rt);
@@ -545,16 +580,29 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err))
             .map(|v| {
                 v.into_iter()
-                    .map(|(s, tree)| {
-                        (
-                            (*s).clone(),
-                            OCamlToRustPointer::alloc_custom(rt, Rc::new(tree)),
-                        )
-                    })
+                    .map(|(s, tree)| ((*s).clone(), tree))
                     .collect::<Vec<_>>()
             });
 
         result.to_ocaml(rt)
+    }
+}
+
+unsafe impl ToOCaml<DynBox<WorkingTreeFFI>> for WorkingTreeFFI {
+    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<WorkingTreeFFI>> {
+        OCaml::box_value(rt, self.clone())
+    }
+}
+
+unsafe impl ToOCaml<DynBox<TezedgeContextFFI>> for TezedgeContextFFI {
+    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<TezedgeContextFFI>> {
+        OCaml::box_value(rt, self.clone())
+    }
+}
+
+unsafe impl ToOCaml<DynBox<TezedgeIndexFFI>> for TezedgeIndexFFI {
+    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<TezedgeIndexFFI>> {
+        OCaml::box_value(rt, self.clone())
     }
 }
 
@@ -596,189 +644,5 @@ pub fn initialize_callbacks() {
             tezedge_index_close,
             tezedge_index_init,
         )
-    }
-}
-
-ocaml_export! {}
-
-// Custom pointers from OCaml's heap to Rust's heap
-
-// TODO: reimplement all this directly into ocaml-interop
-
-pub const DEFAULT_CUSTOM_OPS: CustomOps = CustomOps {
-    identifier: core::ptr::null(),
-    fixed_length: core::ptr::null_mut(),
-    compare: None,
-    compare_ext: None,
-    deserialize: None,
-    finalize: None,
-    hash: None,
-    serialize: None,
-};
-
-#[derive(Clone)]
-#[repr(C)]
-#[allow(missing_docs)]
-pub struct CustomOps {
-    pub identifier: *const ocaml_sys::Char,
-    pub finalize: Option<unsafe extern "C" fn(v: RawOCaml)>,
-    pub compare: Option<unsafe extern "C" fn(v1: RawOCaml, v2: RawOCaml) -> i32>,
-    pub hash: Option<unsafe extern "C" fn(v: RawOCaml) -> OCamlInt>,
-
-    pub serialize: Option<
-        unsafe extern "C" fn(
-            v: RawOCaml,
-            bsize_32: *mut ocaml_sys::Uintnat,
-            bsize_64: *mut ocaml_sys::Uintnat,
-        ),
-    >,
-    pub deserialize:
-        Option<unsafe extern "C" fn(dst: *mut core::ffi::c_void) -> ocaml_sys::Uintnat>,
-    pub compare_ext: Option<unsafe extern "C" fn(v1: RawOCaml, v2: RawOCaml) -> i32>,
-    pub fixed_length: *const ocaml_sys::custom_fixed_length,
-}
-
-pub trait CustomOCamlPointer {
-    const NAME: &'static str;
-    const FIXED_LENGTH: Option<ocaml_sys::custom_fixed_length> = None;
-    const OPS: CustomOps;
-    const USED: usize = 0;
-    const MAX: usize = 1;
-
-    fn ops() -> &'static CustomOps {
-        &Self::OPS
-    }
-}
-
-// NOTE: the block is not initialized, a pointer must be written to it immediately
-// before anything else happens
-unsafe fn alloc_custom<T>(_rt: &mut OCamlRuntime) -> RawOCaml
-where
-    T: CustomOCamlPointer,
-{
-    ocaml_sys::caml_alloc_custom(
-        &T::ops() as *const _ as *const ocaml_sys::custom_operations,
-        ::core::mem::size_of::<T>(),
-        T::USED,
-        T::MAX,
-    )
-}
-
-// OCamlToRustPointer is an allocated OCaml custom block which contains
-// a Rust value.
-
-#[derive(Clone, Copy)]
-#[repr(transparent)]
-pub struct OCamlToRustPointer<T: 'static>(pub RawOCaml, PhantomData<T>);
-
-impl<T> OCamlToRustPointer<T> {
-    pub fn alloc_custom(rt: &mut OCamlRuntime, x: T) -> Self
-    where
-        T: CustomOCamlPointer,
-    {
-        unsafe {
-            let mut ptr = Self(alloc_custom::<T>(rt), PhantomData);
-            ptr.set(x);
-            ptr
-        }
-    }
-
-    pub fn set(&mut self, x: T) {
-        unsafe {
-            ::core::ptr::write_unaligned(self.as_mut_ptr(), x);
-        }
-    }
-
-    pub fn as_ptr(&self) -> *const T {
-        unsafe { ocaml_sys::field(self.0, 1) as *const T }
-    }
-
-    pub fn as_mut_ptr(&mut self) -> *mut T {
-        unsafe { ocaml_sys::field(self.0, 1) as *mut T }
-    }
-}
-
-impl<'a, T> AsRef<T> for OCamlToRustPointer<T> {
-    fn as_ref(&self) -> &T {
-        unsafe { &*self.as_ptr() }
-    }
-}
-
-impl<'a, T> AsMut<T> for OCamlToRustPointer<T> {
-    fn as_mut(&mut self) -> &mut T {
-        unsafe { &mut *self.as_mut_ptr() }
-    }
-}
-
-// Fake conversion from OCamlToRustPointer<T> into OCaml<T>.
-// Doesn't need to allocate anything, just reuse the pointer,
-
-unsafe impl<T: CustomOCamlPointer> ToOCaml<T> for OCamlToRustPointer<T> {
-    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, T> {
-        unsafe { OCaml::new(rt, self.0) }
-    }
-}
-
-unsafe impl<T: CustomOCamlPointer> FromOCaml<T> for OCamlToRustPointer<T> {
-    fn from_ocaml(value: OCaml<T>) -> Self {
-        OCamlToRustPointer(unsafe { value.raw() }, PhantomData)
-    }
-}
-
-#[macro_export]
-macro_rules! impl_custom_ocaml_pointer {
-    ($name:ident $(<$t:tt>)? $({$($k:ident : $v:expr),* $(,)? })?) => {
-        impl $(<$t>)? CustomOCamlPointer for $name $(<$t>)? {
-            impl_custom_ocaml_pointer! {
-                name: concat!("rust.", stringify!($name))
-                $(, $($k: $v),*)?
-            }
-        }
-    };
-    {name : $name:expr $(, fixed_length: $fl:expr)? $(, $($k:ident : $v:expr),*)? $(,)? } => {
-        const NAME: &'static str = concat!($name, "\0");
-
-        const OPS: CustomOps = CustomOps {
-            identifier: Self::NAME.as_ptr() as *const ocaml_sys::Char,
-            $($($k: Some($v),)*)?
-            .. DEFAULT_CUSTOM_OPS
-        };
-    };
-}
-
-// Concrete implementations of custom pointers used by the API
-
-impl_custom_ocaml_pointer!(TezedgeIndex {
-    finalize: tezedge_drop_tezedge_index,
-});
-
-impl_custom_ocaml_pointer!(TezedgeContext {
-    finalize: tezedge_drop_tezedge_context,
-});
-
-type WorkingTreeRc = Rc<WorkingTree>;
-
-impl_custom_ocaml_pointer!(WorkingTreeRc {
-    finalize: tezedge_drop_working_tree_rc,
-});
-
-extern "C" fn tezedge_drop_tezedge_index(v: RawOCaml) {
-    unsafe {
-        let ptr = ocaml_sys::field(v, 1) as *mut TezedgeIndex;
-        std::ptr::drop_in_place(ptr);
-    }
-}
-
-extern "C" fn tezedge_drop_tezedge_context(v: RawOCaml) {
-    unsafe {
-        let ptr = ocaml_sys::field(v, 1) as *mut TezedgeContext;
-        std::ptr::drop_in_place(ptr);
-    }
-}
-
-extern "C" fn tezedge_drop_working_tree_rc(v: RawOCaml) {
-    unsafe {
-        let ptr = ocaml_sys::field(v, 1) as *mut WorkingTreeRc;
-        std::ptr::drop_in_place(ptr);
     }
 }
