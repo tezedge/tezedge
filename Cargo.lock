@@ -2415,6 +2415,17 @@ dependencies = [
 
 [[package]]
 name = "ocaml-interop"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a0e44117d2dca8eda1e04735260a0f017eba98abf898d14f3de2fe5d2804ef4"
+dependencies = [
+ "ocaml-boxroot-sys",
+ "ocaml-sys",
+ "static_assertions",
+]
+
+[[package]]
+name = "ocaml-interop"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feed1425b18c848323dceeed5fc35a085b07b58783b040560e3a05dfe2427753"
@@ -3895,7 +3906,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "nom 6.1.2",
- "ocaml-interop",
+ "ocaml-interop 0.8.4",
  "serde 1.0.123",
  "serde_json",
  "slog",
@@ -3928,7 +3939,7 @@ version = "1.6.0"
 dependencies = [
  "crossbeam",
  "lazy_static",
- "ocaml-interop",
+ "ocaml-interop 0.8.4",
  "serde 1.0.123",
  "tezos-sys",
 ]
@@ -3986,7 +3997,7 @@ dependencies = [
  "futures",
  "hex",
  "lazy_static",
- "ocaml-interop",
+ "ocaml-interop 0.8.4",
  "serde_json",
  "serial_test",
  "tezos-sys",
@@ -4000,7 +4011,7 @@ dependencies = [
 name = "tezos_interop_callback"
 version = "1.6.0"
 dependencies = [
- "ocaml-interop",
+ "ocaml-interop 0.8.4",
  "tezos-sys",
  "tezos_context",
 ]
@@ -4051,7 +4062,7 @@ dependencies = [
  "im",
  "lazy_static",
  "leb128",
- "ocaml-interop",
+ "ocaml-interop 0.7.2",
  "ocaml-sys",
  "serde 1.0.123",
  "serde_json",
