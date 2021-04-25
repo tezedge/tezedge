@@ -8,6 +8,7 @@ use std::{
 use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
+use ocaml_interop::BoxRoot;
 
 use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crate::{
@@ -25,14 +26,21 @@ use crate::{
 
 use crate::ContextKeyValueStore;
 
+// Represents the patch_context function passed from the OCaml side
+// It is opaque to rust, we don't care about it's actual type
+// because it is not used on Rust, but we need a type to represent it.
+pub struct PatchContextFunction {}
+
 #[derive(Clone)]
 pub struct TezedgeIndex {
     pub repository: Rc<RefCell<ContextKeyValueStore>>,
+    pub patch_context: Rc<BoxRoot<Option<PatchContextFunction>>>,
 }
 
 impl TezedgeIndex {
-    pub fn new(repository: Rc<RefCell<ContextKeyValueStore>>) -> Self {
-        Self { repository }
+    pub fn new(repository: Rc<RefCell<ContextKeyValueStore>>, patch_context: BoxRoot<Option<PatchContextFunction>>) -> Self {
+        let patch_context = Rc::new(patch_context);
+        Self { repository, patch_context }
     }
 }
 
