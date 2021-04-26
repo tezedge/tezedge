@@ -12,7 +12,6 @@ extern "C" {
     );
 
     pub fn initialize_tezedge_context_callbacks(
-        // Context
         tezedge_context_commit: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_hash: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_find_tree: unsafe extern "C" fn(isize, isize) -> isize,
@@ -25,8 +24,9 @@ extern "C" {
         tezedge_context_list: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_empty: unsafe extern "C" fn(isize) -> isize,
         // TODO: fold
+    );
 
-        // Tree
+    pub fn initialize_tezedge_tree_callbacks(
         tezedge_tree_hash: unsafe extern "C" fn(isize) -> isize,
         tezedge_tree_find_tree: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_add_tree: unsafe extern "C" fn(isize, isize, isize) -> isize,
@@ -41,13 +41,22 @@ extern "C" {
         tezedge_tree_equal: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_tree_kind: unsafe extern "C" fn(isize) -> isize,
         // TODO: fold
+    );
 
-        // Index
+    pub fn initialize_tezedge_index_callbacks(
         tezedge_index_patch_context_get: unsafe extern "C" fn(isize) -> isize,
         tezedge_index_checkout: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_index_exists: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_index_close: unsafe extern "C" fn(isize) -> isize,
         tezedge_index_init: unsafe extern "C" fn(isize) -> isize,
+    );
+
+    pub fn initialize_tezedge_timing_callbacks(
+        tezedge_timing_set_block: unsafe extern "C" fn(isize) -> isize,
+        tezedge_timing_checkout: unsafe extern "C" fn(isize, f64, f64) -> isize,
+        tezedge_timing_set_operation: unsafe extern "C" fn(isize) -> isize,
+        tezedge_timing_commit: unsafe extern "C" fn(isize, f64, f64) -> isize,
+        tezedge_timing_context_action: unsafe extern "C" fn(isize, isize, f64, f64) -> isize,
     );
 }
 

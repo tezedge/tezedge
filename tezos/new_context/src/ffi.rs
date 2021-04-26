@@ -5,8 +5,8 @@
 
 // TODO: extend init function
 
-use std::{cell::RefCell, convert::TryFrom};
 use core::borrow::Borrow;
+use std::{cell::RefCell, convert::TryFrom};
 
 use ocaml_interop::*;
 
@@ -15,11 +15,12 @@ use crypto::hash::ContextHash;
 use crate::{
     initializer::initialize_tezedge_index,
     initializer::ContextKvStoreConfiguration,
+    timings,
     working_tree::{working_tree::WorkingTree, NodeKind},
     ContextKey, ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
 };
-use tezos_api::ocaml_conv::OCamlContextHash;
+use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 // TODO: instead of converting errors into strings, it may be useful to pass
 // them around using custom pointers so that they can be recovered later.
@@ -586,6 +587,55 @@ ocaml_export! {
 
         result.to_ocaml(rt)
     }
+
+    // Timings
+
+    fn tezedge_timing_set_block(
+        rt,
+        block_hash: OCamlRef<Option<OCamlBlockHash>>,
+    ) {
+        timings::set_block(rt, block_hash);
+        OCaml::unit()
+    }
+
+    fn tezedge_timing_checkout(
+        rt,
+        context_hash: OCamlRef<OCamlContextHash>,
+        irmin_time: f64,
+        tezedge_time: f64,
+    ) {
+        timings::checkout(rt, context_hash, irmin_time, tezedge_time);
+        OCaml::unit()
+    }
+
+    fn tezedge_timing_set_operation(
+        rt,
+        operation_hash: OCamlRef<Option<OCamlOperationHash>>,
+    ) {
+        timings::set_operation(rt, operation_hash);
+        OCaml::unit()
+    }
+
+    fn tezedge_timing_commit(
+        rt,
+        new_context_hash: OCamlRef<OCamlContextHash>,
+        irmin_time: f64,
+        tezedge_time: f64,
+    ) {
+        timings::commit(rt, new_context_hash, irmin_time, tezedge_time);
+        OCaml::unit()
+    }
+
+    fn tezedge_timing_context_action(
+        rt,
+        action_name: OCamlRef<String>,
+        key: OCamlRef<OCamlList<String>>,
+        irmin_time: f64,
+        tezedge_time: f64,
+    ) {
+        timings::context_action(rt, action_name, key, irmin_time, tezedge_time);
+        OCaml::unit()
+    }
 }
 
 unsafe impl ToOCaml<DynBox<WorkingTreeFFI>> for WorkingTreeFFI {
@@ -606,12 +656,14 @@ unsafe impl ToOCaml<DynBox<TezedgeIndexFFI>> for TezedgeIndexFFI {
     }
 }
 
-use tezos_sys::initialize_tezedge_context_callbacks;
+use tezos_sys::{
+    initialize_tezedge_context_callbacks, initialize_tezedge_index_callbacks,
+    initialize_tezedge_timing_callbacks, initialize_tezedge_tree_callbacks,
+};
 
 pub fn initialize_callbacks() {
     unsafe {
         initialize_tezedge_context_callbacks(
-            // Context
             tezedge_context_commit,
             tezedge_context_hash,
             tezedge_context_find_tree,
@@ -623,7 +675,8 @@ pub fn initialize_callbacks() {
             tezedge_context_mem,
             tezedge_context_list,
             tezedge_context_empty,
-            // Tree
+        );
+        initialize_tezedge_tree_callbacks(
             tezedge_tree_hash,
             tezedge_tree_find_tree,
             tezedge_tree_add_tree,
@@ -637,12 +690,20 @@ pub fn initialize_callbacks() {
             tezedge_tree_is_empty,
             tezedge_tree_equal,
             tezedge_tree_kind,
-            // Index
+        );
+        initialize_tezedge_index_callbacks(
             tezedge_index_patch_context_get,
             tezedge_index_checkout,
             tezedge_index_exists,
             tezedge_index_close,
             tezedge_index_init,
-        )
+        );
+        initialize_tezedge_timing_callbacks(
+            tezedge_timing_set_block,
+            tezedge_timing_checkout,
+            tezedge_timing_set_operation,
+            tezedge_timing_commit,
+            tezedge_timing_context_action,
+        );
     }
 }
