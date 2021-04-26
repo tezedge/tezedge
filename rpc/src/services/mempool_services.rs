@@ -13,7 +13,9 @@ use serde_json::Value;
 use slog::info;
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
-use shell::mempool::mempool_channel::{MempoolChannelRef, MempoolOperationReceived};
+use shell::mempool::mempool_channel::{
+    MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
+};
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{
     InjectBlock, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
@@ -248,7 +250,7 @@ pub fn inject_operation(
                 result_callback: result_callback.clone(),
             }
             .into(),
-            topic: ShellChannelTopic::ShellEvents.into(),
+            topic: MempoolChannelTopic.into(),
         },
         None,
     );

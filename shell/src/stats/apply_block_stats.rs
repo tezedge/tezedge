@@ -22,7 +22,6 @@ pub struct ApplyBlockStats {
     #[get = "pub(crate)"]
     applied_block_lasts_count: u32,
     /// Sum of durations of block validation with protocol from last LogStats run
-    #[get = "pub(crate)"]
     applied_block_lasts_sum_validation_timer: BlockValidationTimer,
 }
 
@@ -47,6 +46,28 @@ impl ApplyBlockStats {
         self.applied_block_lasts_count += 1;
         self.applied_block_lasts_sum_validation_timer
             .add_assign(validation_timer);
+    }
+
+    pub fn sum_validated_at_time(&self) -> &Duration {
+        &self.applied_block_lasts_sum_validation_timer.validated_at
+    }
+
+    pub fn print_formatted_average_times(&self) -> String {
+        let div = |duration: Duration, count: u32| -> String {
+            match duration.checked_div(count) {
+                Some(result) => format!("{:?}", result),
+                None => "-".to_string(),
+            }
+        };
+
+        format!(
+            "validation {} -> load_metadata {} + protocol_call {} + context_check {} + store_result {}",
+            div(self.applied_block_lasts_sum_validation_timer.validated_at, self.applied_block_lasts_count),
+            div(self.applied_block_lasts_sum_validation_timer.load_metadata_elapsed, self.applied_block_lasts_count),
+            div(self.applied_block_lasts_sum_validation_timer.protocol_call_elapsed, self.applied_block_lasts_count),
+            div(self.applied_block_lasts_sum_validation_timer.context_wait_elapsed, self.applied_block_lasts_count),
+            div(self.applied_block_lasts_sum_validation_timer.store_result_elapsed, self.applied_block_lasts_count),
+        )
     }
 
     pub fn set_applied_block_level(&mut self, new_level: Level) {
@@ -87,24 +108,6 @@ impl BlockValidationTimer {
             context_wait_elapsed,
             store_result_elapsed,
         }
-    }
-
-    pub fn print_formatted_average_for_count(&self, count: u32) -> String {
-        let div = |duration: Duration, count: u32| -> String {
-            match duration.checked_div(count) {
-                Some(result) => format!("{:?}", result),
-                None => "-".to_string(),
-            }
-        };
-
-        format!(
-            "validation {} -> load_metadata {} + protocol_call {} + context_check {} + store_result {}",
-            div(self.validated_at, count),
-            div(self.load_metadata_elapsed, count),
-            div(self.protocol_call_elapsed, count),
-            div(self.context_wait_elapsed, count),
-            div(self.store_result_elapsed, count),
-        )
     }
 }
 

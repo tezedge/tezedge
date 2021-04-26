@@ -316,6 +316,9 @@ impl Receive<SendMessage> for Peer {
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
         let peer_id_marker = self.peer_id_marker.clone();
+
+
+
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
@@ -581,7 +584,7 @@ async fn begin_process_incoming(
                                 .into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             },
-                            Some(myself.clone().into()),
+                            None,
                         );
                     }
                 }

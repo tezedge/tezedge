@@ -142,55 +142,6 @@ impl From<ApplyBlockBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
 /// lowest value means as-soon-as-possible
 pub type HistoryOrderPriority = usize;
 
-// TODO: TE-386 - remove not needed
-// pub struct MissingBlock {
-//     pub block_hash: Arc<BlockHash>,
-//     pub history_order_priority: HistoryOrderPriority,
-// }
-//
-// impl BlockData for MissingBlock {
-//     #[inline]
-//     fn block_hash(&self) -> &BlockHash {
-//         &self.block_hash
-//     }
-// }
-//
-// impl MissingBlock {
-// TODO: TE-386 - remove not needed
-// pub fn with_history_order(
-//     block_hash: Arc<BlockHash>,
-//     history_order_priority: HistoryOrderPriority,
-// ) -> Self {
-//     MissingBlock {
-//         block_hash,
-//         history_order_priority,
-//     }
-// }
-// }
-//
-// impl PartialEq for MissingBlock {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.block_hash == other.block_hash
-//     }
-// }
-//
-// impl Eq for MissingBlock {}
-//
-// impl PartialOrd for MissingBlock {
-//     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-//
-// impl Ord for MissingBlock {
-//     fn cmp(&self, other: &Self) -> Ordering {
-//         // reverse, because we want lower level at begining
-//         self.history_order_priority
-//             .cmp(&other.history_order_priority)
-//             .reverse()
-//     }
-// }
-
 #[derive(Clone)]
 pub struct MissingOperations {
     pub(crate) block_hash: BlockHash,
@@ -211,13 +162,6 @@ impl MissingOperations {
         true
     }
 }
-
-// impl BlockData for MissingOperations {
-//     #[inline]
-//     fn block_hash(&self) -> &BlockHash {
-//         &self.block_hash
-//     }
-// }
 
 impl PartialEq for MissingOperations {
     fn eq(&self, other: &Self) -> bool {
@@ -261,127 +205,53 @@ pub mod tests {
     #[test]
     fn test_batch() {
         // create batch
-        let mut batch = ApplyBlockBatch::batch(block(1), vec![block(2)]);
-        batch.add_successor(block(3));
-        batch.add_successor(block(4));
-        assert_eq!(block(1).as_ref(), batch.block_to_apply.as_ref());
+        let mut batch = ApplyBlockBatch::batch(block_ref(1), vec![block_ref(2)]);
+        batch.add_successor(block_ref(3));
+        batch.add_successor(block_ref(4));
+        assert_eq!(&block(1), batch.block_to_apply.as_ref());
         assert_eq!(3, batch.successors_size());
-        assert_eq!(block(2).as_ref(), batch.successors[0].as_ref());
-        assert_eq!(block(3).as_ref(), batch.successors[1].as_ref());
-        assert_eq!(block(4).as_ref(), batch.successors[2].as_ref());
+        assert_eq!(&block(2), batch.successors[0].as_ref());
+        assert_eq!(&block(3), batch.successors[1].as_ref());
+        assert_eq!(&block(4), batch.successors[2].as_ref());
 
         // shift
         let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(block(2).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(&block(2), batch.block_to_apply.as_ref());
         assert_eq!(2, batch.successors_size());
-        assert_eq!(block(3).as_ref(), batch.successors[0].as_ref());
-        assert_eq!(block(4).as_ref(), batch.successors[1].as_ref());
+        assert_eq!(&block(3), batch.successors[0].as_ref());
+        assert_eq!(&block(4), batch.successors[1].as_ref());
 
         // shift
         let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(block(3).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(&block(3), batch.block_to_apply.as_ref());
         assert_eq!(1, batch.successors_size());
-        assert_eq!(block(4).as_ref(), batch.successors[0].as_ref());
+        assert_eq!(&block(4), batch.successors[0].as_ref());
 
         // shift
         let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(block(4).as_ref(), batch.block_to_apply.as_ref());
+        assert_eq!(&block(4), batch.block_to_apply.as_ref());
         assert_eq!(0, batch.successors_size());
 
         // shift
         assert!(batch.shift().is_none());
     }
 
-    pub(crate) fn block(d: u8) -> Arc<BlockHash> {
-        Arc::new(
-            [d; crypto::hash::HashType::BlockHash.size()]
-                .to_vec()
-                .try_into()
-                .expect("Failed to create BlockHash"),
-        )
+    pub(crate) fn block(d: u8) -> BlockHash {
+        [d; crypto::hash::HashType::BlockHash.size()]
+            .to_vec()
+            .try_into()
+            .expect("Failed to create BlockHash")
     }
 
-    // TODO: TE-386 - remove not needed
-    // #[test]
-    // fn test_missing_blocks_has_correct_ordering() {
-    //     let mut heap = MissingBlockData::default();
-    //
-    //     // simulate header and predecesor
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(1)), 10, 1));
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(2)), 9, 1));
-    //
-    //     // simulate history
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(3)), 4, 1));
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(7)), 0, 1));
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(5)), 2, 1));
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(6)), 1, 1));
-    //     heap.push_data(MissingBlock::with_history_order(Arc::new(block(4)), 3, 1));
-    //
-    //     // pop all from heap
-    //     let ordered_hashes = heap
-    //         .drain_missing_data(heap.missing_data_count(), |_| true)
-    //         .into_iter()
-    //         .map(|b| b.block_hash.as_ref().clone())
-    //         .collect::<Vec<BlockHash>>();
-    //
-    //     // ordered by priority: 0, 1, 2, 3, 4, 9, 10
-    //     let expected_order: Vec<BlockHash> = vec![
-    //         block(7),
-    //         block(6),
-    //         block(5),
-    //         block(4),
-    //         block(3),
-    //         block(2),
-    //         block(1),
-    //     ];
-    //
-    //     assert_eq!(expected_order, ordered_hashes)
-    // }
-
-    // #[test]
-    // fn missing_operation_has_correct_ordering() {
-    //     let mut heap = MissingBlockData::default();
-    //     heap.push_data(MissingOperations {
-    //         history_order_priority: 15,
-    //         block_hash: block(1),
-    //         validation_passes: HashSet::new(),
-    //         retries: 1,
-    //     });
-    //     heap.push_data(MissingOperations {
-    //         history_order_priority: 7,
-    //         block_hash: block(9),
-    //         validation_passes: HashSet::new(),
-    //         retries: 1,
-    //     });
-    //     heap.push_data(MissingOperations {
-    //         history_order_priority: 0,
-    //         block_hash: block(4),
-    //         validation_passes: HashSet::new(),
-    //         retries: 1,
-    //     });
-    //     heap.push_data(MissingOperations {
-    //         history_order_priority: 1,
-    //         block_hash: block(5),
-    //         validation_passes: HashSet::new(),
-    //         retries: 1,
-    //     });
-    //
-    //     // TODO: TE-386 - remove not needed
-    //     // pop all from heap
-    //     let history_order_priorities = heap
-    //         .drain_missing_data(4, |_| true)
-    //         .into_iter()
-    //         .map(|b| b.history_order_priority)
-    //         .collect::<Vec<HistoryOrderPriority>>();
-    //
-    //     assert_eq!(vec![0, 1, 7, 15], history_order_priorities)
-    // }
+    pub(crate) fn block_ref(d: u8) -> Arc<BlockHash> {
+        Arc::new(block(d))
+    }
 
     #[test]
     fn test_retry() {
         let mut data = MissingOperations {
             history_order_priority: 1,
-            block_hash: block(5).as_ref().clone(),
+            block_hash: block(5),
             validation_passes: HashSet::new(),
             retries: 5,
         };

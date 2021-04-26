@@ -16,12 +16,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use failure::{format_err, Error};
+use itertools::{Itertools, MinMaxResult};
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId, CryptoboxPublicKeyHash, OperationHash};
 use crypto::seeded_step::Seed;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+use networking::PeerId;
 use storage::mempool_storage::MempoolOperationType;
 use storage::PersistentStorage;
 use storage::{
@@ -42,6 +44,7 @@ use crate::mempool::mempool_channel::{
 };
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
 use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, InjectBlock, ShellChannelMsg, ShellChannelRef,
     ShellChannelTopic,
@@ -61,15 +64,18 @@ use crate::validation;
 const ASK_CURRENT_HEAD_INTERVAL: Duration = Duration::from_secs(90);
 /// Initial delay to ask the peers for current head
 const ASK_CURRENT_HEAD_INITIAL_DELAY: Duration = Duration::from_secs(15);
-/// How often to print stats in logs
-const LOG_INTERVAL: Duration = Duration::from_secs(60);
-
 /// After this time we will disconnect peer if his current head level stays the same
 const CURRENT_HEAD_LEVEL_UPDATE_TIMEOUT: Duration = Duration::from_secs(60 * 2);
+/// We accept current_head not older that this timeout
+const CURRENT_HEAD_LAST_RECEIVED_ACCEPT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// After this time peer will be disconnected if it fails to respond to our request
 const SILENT_PEER_TIMEOUT: Duration = Duration::from_secs(60);
 /// Maximum timeout duration in sandbox mode (do not disconnect peers in sandbox mode)
 const SILENT_PEER_TIMEOUT_SANDBOX: Duration = Duration::from_secs(31_536_000);
+
+/// How often to print stats in logs
+const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Message commands [`ChainManager`] to disconnect stalled peers.
 #[derive(Clone, Debug)]
@@ -83,7 +89,9 @@ pub struct CheckMempoolCompleteness;
 
 /// Message commands [`ChainManager`] to ask all connected peers for their current head.
 #[derive(Clone, Debug)]
-pub struct AskPeersAboutCurrentHead;
+pub struct AskPeersAboutCurrentHead {
+    last_received_timeout: Duration,
+}
 
 /// Message commands [`ChainManager`] to log its internal stats.
 #[derive(Clone, Debug)]
@@ -160,10 +168,27 @@ impl CurrentHead {
 struct Stats {
     /// Count of received blocks
     unseen_block_count: usize,
+    /// Count of received blocks with all operations
+    unseen_block_operations_count: usize,
     /// Last time when previously not seen block was received
     unseen_block_last: Instant,
     /// Last time when previously unseen operations were received
     unseen_block_operations_last: Instant,
+
+    /// Count of received messages from the last log
+    actor_received_messages_count: usize,
+}
+
+impl Stats {
+    fn get_and_clear_unseen_block_headers_count(&mut self) -> usize {
+        std::mem::replace(&mut self.unseen_block_count, 0)
+    }
+    fn get_and_clear_unseen_block_operations_count(&mut self) -> usize {
+        std::mem::replace(&mut self.unseen_block_operations_count, 0)
+    }
+    fn get_and_clear_actor_received_messages_count(&mut self) -> usize {
+        std::mem::replace(&mut self.actor_received_messages_count, 0)
+    }
 }
 
 /// Purpose of this actor is to perform chain synchronization.
@@ -315,10 +340,15 @@ impl ChainManager {
                 }
             }
             NetworkChannelMsg::PeerStalled(actor_uri) => {
-                if let Some(peer_state) = self.peers.remove(&actor_uri) {
-                    if let Some(peer_branch_bootstrapper) = peer_state.peer_branch_bootstrapper {
-                        ctx.system.stop(peer_branch_bootstrapper);
-                    }
+                // remove peer from inner state
+                if let Some(mut peer_state) = self.peers.remove(&actor_uri) {
+                    // clear innner state (not needed, it will be drop)
+                    peer_state.clear();
+                }
+                // tell bootstrapper to clean potential data
+                if let Some(peer_branch_bootstrapper) = self.chain_state.peer_branch_bootstrapper()
+                {
+                    peer_branch_bootstrapper.tell(CleanPeerData(actor_uri), None);
                 }
             }
             NetworkChannelMsg::PeerMessageReceived(received) => {
@@ -411,14 +441,14 @@ impl ChainManager {
                                     // now handle received header
                                     Self::process_downloaded_header(
                                         block_header_with_hash,
-                                        peer,
                                         stats,
                                         chain_state,
                                         shell_channel,
                                         &log,
+                                        &peer.peer_id,
                                     )?;
 
-                                    // explicit drop (not needed)
+                                    // not needed, just to be explicit
                                     drop(requested_data);
                                 }
                             }
@@ -471,10 +501,12 @@ impl ChainManager {
                                     // update operations state
                                     let block_hash = operations.operations_for_block().hash();
                                     if chain_state.process_block_operations_from_peer(
-                                        peer,
-                                        &block_hash,
-                                        &operations,
+                                        block_hash.clone(),
+                                        operations,
+                                        &peer.peer_id,
                                     )? {
+                                        stats.unseen_block_operations_count += 1;
+
                                         // TODO: TE-369 - is this necessery?
                                         // notify others that new all operations for block were received
                                         let block_meta = block_meta_storage
@@ -485,7 +517,6 @@ impl ChainManager {
                                         shell_channel.tell(
                                             Publish {
                                                 msg: AllBlockOperationsReceived {
-                                                    hash: block_hash.clone(),
                                                     level: block_meta.level(),
                                                 }
                                                 .into(),
@@ -495,8 +526,8 @@ impl ChainManager {
                                         );
                                     }
 
-                                    // explicit drop (not needed)
-                                    drop(requested_data)
+                                    // not needed, just to be explicit
+                                    drop(requested_data);
                                 }
                             }
                             PeerMessage::GetOperationsForBlocks(message) => {
@@ -513,9 +544,6 @@ impl ChainManager {
                             }
                             PeerMessage::CurrentHead(message) => {
                                 peer.current_head_response_last = Instant::now();
-                                peer.update_current_head_level(
-                                    message.current_block_header().level(),
-                                );
 
                                 // process current head only if we are bootstrapped
                                 if self
@@ -536,6 +564,9 @@ impl ChainManager {
                                             )?;
 
                                             // update remote heads
+                                            peer.update_current_head_level(
+                                                message.current_block_header().level(),
+                                            );
                                             peer.update_current_head(&message_current_head);
                                             if let Err(e) = current_head
                                                 .update_remote_head(&message_current_head)
@@ -546,11 +577,11 @@ impl ChainManager {
                                             // process downloaded block directly
                                             Self::process_downloaded_header(
                                                 message_current_head.clone(),
-                                                peer,
                                                 stats,
                                                 chain_state,
                                                 shell_channel,
                                                 &log,
+                                                &peer.peer_id,
                                             )?;
 
                                             // here we accept head, which also means that we know predecessor
@@ -638,6 +669,30 @@ impl ChainManager {
                                             );
                                         }
                                     };
+                                } else {
+                                    // if not bootstraped, check if increasing
+                                    let was_updated = peer.update_current_head_level(
+                                        message.current_block_header().level(),
+                                    );
+
+                                    // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
+                                    if was_updated {
+                                        if let Some(peer_branch_bootstrapper) =
+                                            chain_state.peer_branch_bootstrapper()
+                                        {
+                                            let message_current_head = BlockHeaderWithHash::new(
+                                                message.current_block_header().clone(),
+                                            )?;
+
+                                            peer_branch_bootstrapper.tell(
+                                                UpdateBranchBootstraping::new(
+                                                    peer.peer_id.clone(),
+                                                    message_current_head,
+                                                ),
+                                                None,
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             PeerMessage::GetOperations(message) => {
@@ -843,14 +898,14 @@ impl ChainManager {
 
     fn process_downloaded_header(
         received_block: BlockHeaderWithHash,
-        peer: &mut PeerState,
         stats: &mut Stats,
         chain_state: &mut BlockchainState,
         shell_channel: &ShellChannelRef,
         log: &Logger,
+        peer_id: &Arc<PeerId>,
     ) -> Result<(), Error> {
         // store header
-        if chain_state.process_block_header_from_peer(peer, &received_block, log)? {
+        if chain_state.process_block_header_from_peer(&received_block, log, peer_id)? {
             // update stats for new header
             stats.unseen_block_last = Instant::now();
             stats.unseen_block_count += 1;
@@ -1018,12 +1073,12 @@ impl ChainManager {
 
                                 // update stats
                                 self.stats.unseen_block_operations_last = Instant::now();
+                                self.stats.unseen_block_operations_count += 1;
 
                                 // notify others that new all operations for block were received
                                 self.shell_channel.tell(
                                     Publish {
                                         msg: AllBlockOperationsReceived {
-                                            hash: block_header_with_hash.hash.clone(),
                                             level: block_metadata.level(),
                                         }
                                         .into(),
@@ -1348,7 +1403,9 @@ impl
             stats: Stats {
                 unseen_block_count: 0,
                 unseen_block_last: Instant::now(),
+                unseen_block_operations_count: 0,
                 unseen_block_operations_last: Instant::now(),
+                actor_received_messages_count: 0,
             },
             is_sandbox,
             identity_peer_id,
@@ -1374,7 +1431,10 @@ impl Actor for ChainManager {
             ASK_CURRENT_HEAD_INTERVAL,
             ctx.myself(),
             None,
-            AskPeersAboutCurrentHead.into(),
+            AskPeersAboutCurrentHead {
+                last_received_timeout: CURRENT_HEAD_LAST_RECEIVED_ACCEPT_TIMEOUT,
+            }
+            .into(),
         );
         ctx.schedule::<Self::Msg, _>(
             LOG_INTERVAL / 2,
@@ -1422,11 +1482,13 @@ impl Actor for ChainManager {
         sender: Option<BasicActorRef>,
     ) {
         if let SystemMsg::Event(evt) = msg {
+            self.stats.actor_received_messages_count += 1;
             self.receive(ctx, evt, sender);
         }
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
+        self.stats.actor_received_messages_count += 1;
         self.receive(ctx, msg, sender);
     }
 }
@@ -1482,42 +1544,47 @@ impl Receive<LogStats> for ChainManager {
             "remote" => remote,
             "remote_level" => remote_level,
             "remote_fitness" => remote_fitness);
-        info!(log, "Blocks and operations info";
-            "block_count" => self.stats.unseen_block_count,
+        info!(log, "Blocks, operations, messages info";
+            "last_received_block_headers_count" => self.stats.get_and_clear_unseen_block_headers_count(),
+            "last_received_block_operations_count" => self.stats.get_and_clear_unseen_block_operations_count(),
             "last_block_secs" => self.stats.unseen_block_last.elapsed().as_secs(),
-            "last_block_operations_secs" => self.stats.unseen_block_operations_last.elapsed().as_secs());
+            "last_block_operations_secs" => self.stats.unseen_block_operations_last.elapsed().as_secs(),
+            "actor_received_messages_count" => self.stats.get_and_clear_actor_received_messages_count(),
+            "peer_count" => self.peers.len());
         // TODO: TE-369 - peers stats
         for peer in self.peers.values() {
-            debug!(log, "Peer state info";
+            info!(log, "Peer state info";
                 "actor_ref" => format!("{}", peer.peer_id.peer_ref),
-                // "missing_blocks" => peer.missing_blocks.missing_data_count(),
-                // "missing_block_operations" => peer.missing_operations_for_blocks.missing_data_count(),
-                // "queued_block_headers" => peer.queued_block_headers.len(),
-                // "queued_block_operations" => peer.queued_block_operations.len(),
                 "current_head_request_secs" => peer.current_head_request_last.elapsed().as_secs(),
                 "current_head_response_secs" => peer.current_head_response_last.elapsed().as_secs(),
-                "block_request_secs" => {
-                    match peer.queues.block_request_last.try_read() {
-                        Ok(request_last) => format!("{}", request_last.elapsed().as_secs()),
-                        _ =>  "-failed-to-collect-".to_string(),
+                "queued_block_headers" => {
+                    match peer.queues.queued_block_headers.try_lock() {
+                        Ok(queued_block_headers) => {
+                            match queued_block_headers
+                                .iter()
+                                .map(|(_, requested_time)| requested_time)
+                                .minmax_by(|left_requested_time, right_requested_time| left_requested_time.cmp(right_requested_time)) {
+                                MinMaxResult::NoElements => "-empty-".to_string(),
+                                MinMaxResult::OneElement(x) => format!("(1 item, requested_time: {:?}, {:?})", x.elapsed(), queued_block_headers.iter().map(|(b, requested_time)| format!("{} ({:?})", b.to_base58_check(), requested_time.elapsed())).collect::<Vec<_>>().join(", ")),
+                                MinMaxResult::MinMax(x, y) => format!("({} items, oldest_request_elapsed_time: {:?}, last_request_elapsed_time: {:?}, {:?})", queued_block_headers.len(), x.elapsed(), y.elapsed(), queued_block_headers.iter().map(|(b, requested_time)| format!("{} ({:?})", b.to_base58_check(), requested_time.elapsed())).collect::<Vec<_>>().join(", "))
+                            }
+                        },
+                        _ =>  "-failed-to-collect-".to_string()
                     }
                 },
-                "block_response_secs" => {
-                    match peer.queues.block_response_last.try_read() {
-                        Ok(response_last) => format!("{}", response_last.elapsed().as_secs()),
-                        _ =>  "-failed-to-collect-".to_string(),
-                    }
-                },
-                "block_operations_request_secs" => {
-                    match peer.queues.block_operations_request_last.try_read() {
-                        Ok(request_last) => format!("{}", request_last.elapsed().as_secs()),
-                        _ =>  "-failed-to-collect-".to_string(),
-                    }
-                },
-                "block_operations_response_secs" => {
-                    match peer.queues.block_operations_response_last.try_read() {
-                        Ok(response_last) => format!("{}", response_last.elapsed().as_secs()),
-                        _ =>  "-failed-to-collect-".to_string(),
+                "queued_block_operations" => {
+                    match peer.queues.queued_block_operations.try_lock() {
+                        Ok(queued_block_operations) => {
+                            match queued_block_operations
+                                .iter()
+                                .map(|(_, (_, requested_time))| requested_time)
+                                .minmax_by(|left_requested_time, right_requested_time| left_requested_time.cmp(right_requested_time)) {
+                                MinMaxResult::NoElements => "-empty-".to_string(),
+                                MinMaxResult::OneElement(x) => format!("(1 item, requested_time: {:?}, {:?})", x.elapsed(), queued_block_operations.iter().map(|(b, (_, requested_time))| format!("{} ({:?})", b.to_base58_check(), requested_time.elapsed())).collect::<Vec<_>>().join(", ")),
+                                MinMaxResult::MinMax(x, y) => format!("({} items, oldest_request_elapsed_time: {:?}, last_request_elapsed_time: {:?}, {:?})", queued_block_operations.len(), x.elapsed(), y.elapsed(), queued_block_operations.iter().map(|(b, (_, requested_time))| format!("{} ({:?})", b.to_base58_check(), requested_time.elapsed())).collect::<Vec<_>>().join(", "))
+                            }
+                        },
+                        _ =>  "-failed-to-collect-".to_string()
                     }
                 },
                 "mempool_operations_request_secs" => peer.mempool_operations_request_last.elapsed().as_secs(),
@@ -1525,9 +1592,6 @@ impl Receive<LogStats> for ChainManager {
                 "current_head_level" => peer.current_head_level,
                 "current_head_update_secs" => peer.current_head_update_last.elapsed().as_secs());
         }
-        info!(log, "Various info";
-                   "peer_count" => self.peers.len(),
-        );
     }
 }
 
@@ -1551,43 +1615,7 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                     None => true,
                 };
 
-                // chcek penalty peer for not responding to our requests on time
-                let block_response_pending = match state.is_block_response_pending(msg.silent_peer_timeout) {
-                    Ok(response_pending) => {
-                        if response_pending {
-                            warn!(ctx.system.log(), "Peer did not respond to our request for block on time";
-                                                "silent_peer_timeout_exceeded" => format!("{:?}", msg.silent_peer_timeout),
-                                                "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                        }
-                        response_pending
-                    }
-                    Err(e) => {
-                        warn!(ctx.system.log(), "Failed to resolve, if block response pending, for peer (so behave as ok)";
-                                                "reason" => format!("{}", e),
-                                                "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                        false
-                    }
-                };
-                let block_operations_response_pending = match state.is_block_operations_response_pending(msg.silent_peer_timeout) {
-                    Ok(response_pending) => {
-                        if response_pending {
-                            warn!(ctx.system.log(), "Peer did not respond to our request for block operations on time";
-                                                "silent_peer_timeout_exceeded" => format!("{:?}", msg.silent_peer_timeout),
-                                                "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                        }
-                        response_pending
-                    }
-                    Err(e) => {
-                        warn!(ctx.system.log(), "Failed to resolve, if block operations response pending, for peer (so behave as ok)";
-                                                "reason" => format!("{}", e),
-                                                "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
-                        false
-                    }
-                };
-
-                let should_disconnect = if block_response_pending || block_operations_response_pending {
-                    true
-                } else if current_head_response_pending && (state.current_head_request_last - state.current_head_response_last > msg.silent_peer_timeout) {
+                let should_disconnect = if current_head_response_pending && (state.current_head_request_last - state.current_head_response_last > msg.silent_peer_timeout) {
                     warn!(ctx.system.log(), "Peer did not respond to our request for current_head on time"; "request_secs" => state.current_head_request_last.elapsed().as_secs(), "response_secs" => state.current_head_response_last.elapsed().as_secs(),
                                             "peer_id" => state.peer_id.peer_id_marker.clone(), "peer_ip" => state.peer_id.peer_address.to_string(), "peer" => state.peer_id.peer_ref.name(), "peer_uri" => uri.to_string());
                     true
@@ -1630,11 +1658,6 @@ impl Receive<DisconnectStalledPeers> for ChainManager {
                 if should_disconnect {
                     // stop peer
                     ctx.system.stop(state.peer_id.peer_ref.clone());
-
-                    // stop peer's bootstrap
-                    if let Some(boot) = state.peer_branch_bootstrapper.as_ref() {
-                        ctx.system.stop(boot);
-                    }
                 }
             });
     }
@@ -1658,7 +1681,7 @@ impl Receive<CheckMempoolCompleteness> for ChainManager {
 impl Receive<NetworkChannelMsg> for ChainManager {
     type Msg = ChainManagerMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _: Sender) {
         match self.process_network_channel_message(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
@@ -1687,18 +1710,19 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
     fn receive(
         &mut self,
         _ctx: &Context<Self::Msg>,
-        _msg: AskPeersAboutCurrentHead,
+        msg: AskPeersAboutCurrentHead,
         _sender: Sender,
     ) {
         let ChainManager {
             peers, chain_state, ..
         } = self;
         peers.iter_mut().for_each(|(_, peer)| {
-            peer.current_head_request_last = Instant::now();
-            tell_peer(
-                GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into(),
-                peer,
-            )
+            if peer.current_head_response_last.elapsed() > msg.last_received_timeout {
+                tell_peer(
+                    GetCurrentHeadMessage::new(chain_state.get_chain_id().as_ref().clone()).into(),
+                    peer,
+                )
+            }
         })
     }
 }

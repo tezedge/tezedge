@@ -218,6 +218,8 @@ impl BlockMetaStorageReader for BlockMetaStorage {
         self.kv.get(block_hash).map_err(StorageError::from)
     }
 
+    // TODO: change this do contains, when fixed
+    // TODO: at first, fix put_block_header, just to store actual block metadata and not empty predecessor's data
     fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
     }
@@ -443,6 +445,10 @@ impl Meta {
 
     pub fn take_successors(self) -> Vec<BlockHash> {
         self.successors
+    }
+
+    pub fn take_predecessor(self) -> Option<BlockHash> {
+        self.predecessor
     }
 }
 

@@ -200,6 +200,7 @@ impl Meta {
         }
     }
 
+    /// Returns None, if completed
     pub fn get_missing_validation_passes(&self) -> Option<HashSet<u8>> {
         if self.is_complete {
             None

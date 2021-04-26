@@ -194,7 +194,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     let (db_branch_1, ..) = common::test_cases_data::sandbox_branch_1_level3::init_data(&node.log);
     let clocks = Instant::now();
     let mocked_peer_node_branch_1 = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE_BRANCH_1".to_string(),
+        "TEST_PEER_NODE_BRANCH_1-3".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,
@@ -215,7 +215,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
     let clocks = Instant::now();
     let (db_branch_2, ..) = common::test_cases_data::sandbox_branch_2_level4::init_data(&node.log);
     let mocked_peer_node_branch_2 = common::test_node_peer::TestNodePeer::connect(
-        "TEST_PEER_NODE_BRANCH_2".to_string(),
+        "TEST_PEER_NODE_BRANCH_2-4".to_string(),
         NODE_P2P_CFG.0.listener_port,
         NODE_P2P_CFG.1.clone(),
         tezos_identity::Identity::generate(0f64)?,

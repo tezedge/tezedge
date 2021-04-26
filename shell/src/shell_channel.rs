@@ -33,7 +33,6 @@ pub struct BlockReceived {
 /// Message informing actors about receiving all operations for a specific block
 #[derive(Clone, Debug)]
 pub struct AllBlockOperationsReceived {
-    pub hash: BlockHash,
     pub level: i32,
 }
 

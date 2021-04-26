@@ -37,7 +37,7 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::{
-    BlockBatchApplied, BlockBatchApplyFailed, PeerBranchBootstrapperRef,
+    ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::state::ApplyBlockBatch;
@@ -52,6 +52,8 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
+/// BLocks are applied in batches, to optimize database unnecessery access between two blocks (predecessor data)
+/// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
 const BLOCK_APPLY_BATCH_MAX_TICKETS: usize = 2;
 
 pub type ApplyBlockPermit = OwnedSemaphorePermit;
@@ -92,11 +94,20 @@ impl ApplyBlock {
 pub struct ScheduleApplyBlock {
     batch: ApplyBlockBatch,
     chain_id: Arc<ChainId>,
+    bootstrapper: Option<PeerBranchBootstrapperRef>,
 }
 
 impl ScheduleApplyBlock {
-    pub fn new(chain_id: Arc<ChainId>, batch: ApplyBlockBatch) -> Self {
-        Self { chain_id, batch }
+    pub fn new(
+        chain_id: Arc<ChainId>,
+        batch: ApplyBlockBatch,
+        bootstrapper: Option<PeerBranchBootstrapperRef>,
+    ) -> Self {
+        Self {
+            chain_id,
+            batch,
+            bootstrapper,
+        }
     }
 }
 
@@ -135,6 +146,7 @@ pub struct ChainFeeder {
     /// Semaphore for limiting block apply queue, guarding block_applier_event_sender
     /// And also we want to limit QueueSender, because we have to points of produceing ApplyBlock event (bootstrap, inject block)
     apply_block_tickets: Arc<Semaphore>,
+    apply_block_tickets_maximum: usize,
 
     /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
@@ -210,11 +222,19 @@ impl ChainFeeder {
     fn apply_completed_block(&self, msg: ApplyBlock, chain_feeder: ChainFeederRef, log: &Logger) {
         // add request to queue
         let result_callback = msg.result_callback.clone();
-        if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg, chain_feeder)) {
+        if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg, chain_feeder.clone())) {
             warn!(log, "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
             if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
                 warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
             }
+
+            // just ping chain_feeder
+            chain_feeder.tell(
+                ApplyBlockDone {
+                    stats: ApplyBlockStats::default(),
+                },
+                None,
+            );
         }
     }
 
@@ -228,7 +248,13 @@ impl ChainFeeder {
             match self.queue.pop_front() {
                 Some(batch) => {
                     self.apply_completed_block(
-                        ApplyBlock::new(batch.chain_id, batch.batch, None, None, Some(permit)),
+                        ApplyBlock::new(
+                            batch.chain_id,
+                            batch.batch,
+                            None,
+                            batch.bootstrapper,
+                            Some(permit),
+                        ),
                         chain_feeder.clone(),
                         log,
                     );
@@ -275,6 +301,7 @@ impl
             block_applier_thread,
             apply_block_stats: ApplyBlockStats::default(),
             apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
+            apply_block_tickets_maximum: max_permits,
         }
     }
 }
@@ -363,15 +390,14 @@ impl Receive<LogStats> for ChainFeeder {
             let applied_block_lasts_count = self.apply_block_stats.applied_block_lasts_count();
 
             if *applied_block_lasts_count > 0 {
-                let validation = self
-                    .apply_block_stats
-                    .applied_block_lasts_sum_validation_timer()
-                    .print_formatted_average_for_count(*applied_block_lasts_count);
+                let validation = self.apply_block_stats.print_formatted_average_times();
 
                 // collect stats before clearing
                 let stats = format!(
-                    "({} blocks - average times [{}]",
-                    applied_block_lasts_count, validation,
+                    "({} blocks validated in time: {:?}, average times [{}]",
+                    applied_block_lasts_count,
+                    self.apply_block_stats.sum_validated_at_time(),
+                    validation,
                 );
                 let applied_block_level = *self.apply_block_stats.applied_block_level();
                 let applied_block_last = self
@@ -393,7 +419,7 @@ impl Receive<LogStats> for ChainFeeder {
         };
 
         // count queue batches
-        let (queued_batch_count, queued_batch_blocks_count) =
+        let (waiting_batch_count, waiting_batch_blocks_count) =
             self.queue
                 .iter()
                 .fold((0, 0), |(batches_count, blocks_count), next_batch| {
@@ -402,10 +428,15 @@ impl Receive<LogStats> for ChainFeeder {
                         blocks_count + next_batch.batch.batch_total_size(),
                     )
                 });
+        let queued_batch_count = self
+            .apply_block_tickets_maximum
+            .checked_sub(self.apply_block_tickets.available_permits())
+            .unwrap_or(0);
 
         info!(log, "Blocks apply info";
             "queued_batch_count" => queued_batch_count,
-            "queued_batch_blocks_count" => queued_batch_blocks_count,
+            "waiting_batch_count" => waiting_batch_count,
+            "waiting_batch_blocks_count" => waiting_batch_blocks_count,
             "last_applied" => last_applied,
             "last_applied_batch_block_level" => last_applied_block_level,
             "last_applied_batch_block_elapsed_in_secs" => last_applied_block_elapsed_in_secs);
@@ -732,7 +763,7 @@ fn feed_chain_to_protocol(
                                 if apply_block_run.load(Ordering::Acquire) {
                                     if let Some(bootstrapper) = bootstrapper.as_ref() {
                                         bootstrapper.tell(
-                                            BlockBatchApplyFailed {
+                                            ApplyBlockBatchFailed {
                                                 failed_block: block_to_apply.clone(),
                                             },
                                             None,
@@ -784,7 +815,7 @@ fn feed_chain_to_protocol(
                         if let Some(last_applied) = last_applied {
                             // notify bootstrapper just on the end of the success batch
                             if let Some(bootstrapper) = bootstrapper {
-                                bootstrapper.tell(BlockBatchApplied { last_applied }, None);
+                                bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
                             }
                         }
                     }
@@ -834,7 +865,7 @@ fn _apply_block(
 
     // check if not already applied
     if block_meta.is_applied() {
-        debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+        info!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
         return Ok(None);
     }
 
@@ -1070,14 +1101,18 @@ pub(crate) fn initialize_protocol_context(
             )?;
             let store_result_elapsed = store_result_timer.elapsed();
 
+            let mut stats = ApplyBlockStats::default();
+            stats.set_applied_block_level(genesis_with_hash.header.level());
+            stats.add_block_validation_stats(&BlockValidationTimer::new(
+                validated_at_timer.elapsed(),
+                load_metadata_elapsed,
+                protocol_call_elapsed,
+                context_wait_elapsed,
+                store_result_elapsed,
+            ));
+
             info!(log, "Genesis commit stored successfully";
-                       "stats" => BlockValidationTimer::new(
-                            validated_at_timer.elapsed(),
-                            load_metadata_elapsed,
-                            protocol_call_elapsed,
-                            context_wait_elapsed,
-                            store_result_elapsed,
-                        ).print_formatted_average_for_count(1));
+                       "stats" => stats.print_formatted_average_times());
 
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {

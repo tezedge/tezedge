@@ -227,7 +227,7 @@ impl Receive<BroadcastSignal> for Monitor {
 impl Receive<NetworkChannelMsg> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _: Sender) {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                 let key = peer_id.peer_ref.uri();

@@ -18,7 +18,7 @@ use crypto::hash::ChainId;
 use storage::StorageInitInfo;
 use storage::{BlockHeaderWithHash, PersistentStorage};
 
-use crate::mempool::mempool_channel::{MempoolChannelMsg, MempoolChannelRef};
+use crate::mempool::mempool_channel::{MempoolChannelMsg, MempoolChannelRef, MempoolChannelTopic};
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::head_state::{CurrentHeadRef, HeadResult, HeadState};
@@ -171,7 +171,7 @@ impl ChainCurrentHeadManager {
                     self.mempool_channel.tell(
                         Publish {
                             msg: MempoolChannelMsg::ResetMempool(block),
-                            topic: ShellChannelTopic::ShellNewCurrentHead.into(),
+                            topic: MempoolChannelTopic.into(),
                         },
                         None,
                     );
