@@ -38,9 +38,15 @@ pub struct TezedgeIndex {
 }
 
 impl TezedgeIndex {
-    pub fn new(repository: Rc<RefCell<ContextKeyValueStore>>, patch_context: BoxRoot<Option<PatchContextFunction>>) -> Self {
+    pub fn new(
+        repository: Rc<RefCell<ContextKeyValueStore>>,
+        patch_context: BoxRoot<Option<PatchContextFunction>>,
+    ) -> Self {
         let patch_context = Rc::new(patch_context);
-        Self { repository, patch_context }
+        Self {
+            repository,
+            patch_context,
+        }
     }
 }
 

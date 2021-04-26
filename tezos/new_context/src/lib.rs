@@ -14,6 +14,7 @@ pub mod working_tree;
 pub mod ffi;
 pub mod from_ocaml;
 pub mod initializer;
+pub mod timings;
 
 pub fn force_libtezos_linking() {
     tezos_sys::force_libtezos_linking();
