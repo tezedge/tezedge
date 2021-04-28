@@ -103,9 +103,12 @@ enum TimingMessage {
     Action(Action),
 }
 
+// Id of the hash in the database
+type HashId = String;
+
 struct Timing {
-    current_block: Option<(i64, BlockHash)>,
-    current_operation: Option<(i64, OperationHash)>,
+    current_block: Option<(HashId, BlockHash)>,
+    current_operation: Option<(HashId, OperationHash)>,
     sql: sqlite::Connection,
 }
 
@@ -196,121 +199,74 @@ impl Timing {
     }
 
     fn set_current_block(&mut self, block_hash: Option<BlockHash>) {
-        let block_hash = match (block_hash, self.current_block.as_ref()) {
-            (None, _) => {
-                self.current_block = None;
-                return;
-            }
-            (Some(block_hash), None) => {
-                block_hash
-            }
-            (Some(block_hash), Some((_, current_block_hash))) => {
-                if &block_hash == current_block_hash {
-                    return;
-                }
-                block_hash
-            }
-        };
-
-        let block_hash_string = Self::hash_to_string(block_hash.as_ref());
-
-        if let Some(id) = self.get_block_id(&block_hash_string) {
-            self.current_block = Some((id, block_hash));
-            return;
-        };
-
-        let insert_query = format!(
-            "INSERT INTO blocks (hash) VALUES ('{}');",
-            block_hash_string
-        );
-
-        self.sql
-            .execute(insert_query)
-            .unwrap();
-
-        if let Some(id) = self.get_block_id(&block_hash_string) {
-            self.current_block = Some((id, block_hash));
-        };
+        Self::set_current(&self.sql, block_hash, &mut self.current_block, "blocks");
     }
 
     fn set_current_operation(&mut self, operation_hash: Option<OperationHash>) {
-        let operation_hash = match (operation_hash, self.current_operation.as_ref()) {
+        Self::set_current(&self.sql, operation_hash, &mut self.current_operation, "operations");
+    }
+
+    fn set_current<T>(
+        sql: &sqlite::Connection,
+        hash: Option<T>,
+        current: &mut Option<(String, T)>,
+        table_name: &str,
+    )
+    where
+        T: Eq,
+        T: AsRef<Vec<u8>>
+    {
+        match (hash.as_ref(), current.as_ref()) {
             (None, _) => {
-                self.current_block = None;
+                *current = None;
                 return;
             }
-            (Some(operation_hash), None) => {
-                operation_hash
+            (Some(hash), Some((_, current_hash))) if hash == current_hash => {
+                return;
             }
-            (Some(operation_hash), Some((_, current_operation_hash))) => {
-                if &operation_hash == current_operation_hash {
-                    return;
-                }
-                operation_hash
-            }
+            _ => {}
         };
 
-        let block_hash_string = Self::hash_to_string(operation_hash.as_ref());
+        let hash = hash.unwrap();
+        let hash_string = Self::hash_to_string(hash.as_ref());
 
-        if let Some(id) = self.get_operation_id(&block_hash_string) {
-            self.current_operation = Some((id, operation_hash));
+        if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string) {
+            current.replace((id.to_string(), hash));
             return;
         };
 
         let insert_query = format!(
-            "INSERT INTO operations (hash) VALUES ('{}');",
-            block_hash_string
+            "INSERT INTO {table} (hash) VALUES ('{hash}');",
+            table = table_name,
+            hash = hash_string
         );
 
-        self.sql
-            .execute(insert_query)
-            .unwrap();
+        sql.execute(insert_query).unwrap();
 
-        if let Some(id) = self.get_operation_id(&block_hash_string) {
-            self.current_operation = Some((id, operation_hash));
+        if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string) {
+            current.replace((id.to_string(), hash));
         };
     }
 
-    fn get_block_id(&self, block_hash_string: &str) -> Option<i64> {
-        let mut cursor = self.make_cursor(
-            format!(
-                "SELECT id FROM blocks WHERE hash = '{}'",
-                block_hash_string
-            )
+    fn get_id_on_table(sql: &sqlite::Connection, table_name: &str, hash_string: &str) -> Option<i64> {
+        let query = format!(
+            "SELECT id FROM {table} WHERE hash = '{hash}'",
+            table = table_name,
+            hash = hash_string
         );
 
-        if let Some([Integer(id), ..]) = cursor.next().unwrap() {
+        let mut cursor = sql.prepare(query).unwrap().into_cursor();
+
+        if let Ok(Some([Integer(id), ..])) = cursor.next() {
             return Some(*id)
         };
 
         None
-    }
-
-    fn get_operation_id(&self, block_hash_string: &str) -> Option<i64> {
-        let mut cursor = self.make_cursor(
-            format!(
-                "SELECT id FROM operations WHERE hash = '{}'",
-                block_hash_string
-            )
-        );
-
-        if let Some([Integer(id), ..]) = cursor.next().unwrap() {
-            return Some(*id)
-        };
-
-        None
-    }
-
-    fn make_cursor<T: AsRef<str>>(&self, query: T) -> Cursor {
-        self.sql
-            .prepare(query)
-            .unwrap()
-            .into_cursor()
     }
 
     fn insert_action(&self, action: &Action) {
-        let block_id = self.current_block.as_ref().map(|(id, _)| id.to_string()).unwrap_or_else(|| "NULL".to_string());
-        let operation_id = self.current_operation.as_ref().map(|(id, _)| id.to_string()).unwrap_or_else(|| "NULL".to_string());
+        let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str()).unwrap_or("NULL");
+        let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str()).unwrap_or("NULL");
 
         let query = format!(
                 "
@@ -355,15 +311,6 @@ impl Timing {
                 ",
             )
             .unwrap();
-
-        // connection
-        //     .execute(
-        //         "
-        // INSERT INTO blocks (id, hash) VALUES (1, 'abc');
-        // INSERT INTO actions (name, key, block_id) VALUES ('hello', 'abc', 1);
-        //         ",
-        //     )
-        //     .unwrap();
     }
 }
 
@@ -381,20 +328,17 @@ mod tests {
         assert!(timing.current_block.is_none());
 
         timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![1; 32]).unwrap()));
-        let block_id = timing.current_block.as_ref().unwrap().0;
+        let block_id = timing.current_block.clone().unwrap().0;
 
         timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![1; 32]).unwrap()));
-        let same_block_id = timing.current_block.as_ref().unwrap().0;
+        let same_block_id = timing.current_block.clone().unwrap().0;
 
         assert_eq!(block_id, same_block_id);
 
         timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()));
-        let other_block_id = timing.current_block.as_ref().unwrap().0;
+        let other_block_id = timing.current_block.clone().unwrap().0;
 
         assert_ne!(block_id, other_block_id);
-
-        println!("LA {:?}", timing);
-        // timing.set_current_operation(Some("abc"));
 
         timing.insert_action(&Action {
             name: "action_name".to_string(),
