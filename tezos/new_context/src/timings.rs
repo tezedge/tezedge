@@ -119,16 +119,6 @@ impl std::fmt::Debug for Timing {
     }
 }
 
-// struct Block {
-//     hash: BlockHash,
-//     operations: Vec<Operation>
-// }
-
-// struct Operation {
-//     hash: OperationHash,
-//     actions: Vec<Action>
-// }
-
 struct Action {
     name: String,
     key: Vec<String>,
@@ -159,12 +149,12 @@ fn start_timing(recv: Receiver<TimingMessage>) {
 
 impl Timing {
     fn new() -> Timing {
-        let connection = sqlite::open("context_timing.sql").unwrap();
+        let sql = Self::init_sqlite();
 
         Timing {
             current_block: None,
             current_operation: None,
-            sql: connection,
+            sql,
         }
     }
 
@@ -304,7 +294,7 @@ impl Timing {
         self.sql.execute(query).unwrap();
     }
 
-    fn init_sqlite(&mut self) {
+    fn init_sqlite() -> sqlite::Connection {
         let connection = sqlite::open("context_timing.sql").unwrap();
 
         connection
@@ -328,6 +318,8 @@ impl Timing {
                 ",
             )
             .unwrap();
+
+        connection
     }
 }
 
@@ -341,7 +333,6 @@ mod tests {
     fn test_init_db() {
         let mut timing = Timing::new();
 
-        timing.init_sqlite();
         assert!(timing.current_block.is_none());
 
         timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![1; 32]).unwrap()));
