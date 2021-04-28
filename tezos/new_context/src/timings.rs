@@ -1,12 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crossbeam_channel::{Receiver, Sender, unbounded};
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
-use sqlite::{Cursor, Value::Integer};
-use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 use once_cell::sync::Lazy;
+use sqlite::Value::Integer;
+use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
@@ -80,9 +80,7 @@ pub fn context_action(
         tezedge_time,
     };
 
-    TIMING_CHANNEL
-        .send(TimingMessage::Action(action))
-        .unwrap();
+    TIMING_CHANNEL.send(TimingMessage::Action(action)).unwrap();
 }
 
 // TODO: add tree_action
@@ -115,9 +113,9 @@ struct Timing {
 impl std::fmt::Debug for Timing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Timing")
-         .field("current_block", &self.current_block)
-         .field("current_operation", &self.current_operation)
-         .finish()
+            .field("current_block", &self.current_block)
+            .field("current_operation", &self.current_operation)
+            .finish()
     }
 }
 
@@ -181,12 +179,16 @@ impl Timing {
             TimingMessage::Action(action) => {
                 self.insert_action(&action);
             }
-            TimingMessage::Checkout { context_hash, irmin_time, tezedge_time } => {
-
-            }
-            TimingMessage::Commit { new_context_hash, irmin_time, tezedge_time } => {
-
-            }
+            TimingMessage::Checkout {
+                context_hash,
+                irmin_time,
+                tezedge_time,
+            } => {}
+            TimingMessage::Commit {
+                new_context_hash,
+                irmin_time,
+                tezedge_time,
+            } => {}
         }
     }
 
@@ -203,7 +205,12 @@ impl Timing {
     }
 
     fn set_current_operation(&mut self, operation_hash: Option<OperationHash>) {
-        Self::set_current(&self.sql, operation_hash, &mut self.current_operation, "operations");
+        Self::set_current(
+            &self.sql,
+            operation_hash,
+            &mut self.current_operation,
+            "operations",
+        );
     }
 
     fn set_current<T>(
@@ -211,10 +218,9 @@ impl Timing {
         hash: Option<T>,
         current: &mut Option<(String, T)>,
         table_name: &str,
-    )
-    where
+    ) where
         T: Eq,
-        T: AsRef<Vec<u8>>
+        T: AsRef<Vec<u8>>,
     {
         match (hash.as_ref(), current.as_ref()) {
             (None, _) => {
@@ -248,7 +254,11 @@ impl Timing {
         };
     }
 
-    fn get_id_on_table(sql: &sqlite::Connection, table_name: &str, hash_string: &str) -> Option<i64> {
+    fn get_id_on_table(
+        sql: &sqlite::Connection,
+        table_name: &str,
+        hash_string: &str,
+    ) -> Option<i64> {
         let query = format!(
             "SELECT id FROM {table} WHERE hash = '{hash}'",
             table = table_name,
@@ -258,22 +268,31 @@ impl Timing {
         let mut cursor = sql.prepare(query).unwrap().into_cursor();
 
         if let Ok(Some([Integer(id), ..])) = cursor.next() {
-            return Some(*id)
+            return Some(*id);
         };
 
         None
     }
 
     fn insert_action(&self, action: &Action) {
-        let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str()).unwrap_or("NULL");
-        let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str()).unwrap_or("NULL");
+        let block_id = self
+            .current_block
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap_or("NULL");
+        let operation_id = self
+            .current_operation
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap_or("NULL");
 
         let query = format!(
-                "
+            "
         INSERT INTO actions
           (name, key, irmin_time, tezedge_time, block_id, operation_id)
         VALUES
-          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id});",
+          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id});
+            ",
             name = &action.name,
             key = &action.key.join("/"),
             irmin_time = &action.irmin_time,
@@ -282,9 +301,7 @@ impl Timing {
             operation_id = operation_id,
         );
 
-        self.sql
-            .execute(query)
-            .unwrap();
+        self.sql.execute(query).unwrap();
     }
 
     fn init_sqlite(&mut self) {
@@ -342,7 +359,10 @@ mod tests {
 
         timing.insert_action(&Action {
             name: "action_name".to_string(),
-            key: vec!["a", "b", "c"].iter().map(ToString::to_string).collect(),
+            key: vec!["a", "b", "c"]
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
             irmin_time: 1.0,
             tezedge_time: 2.0,
         });
