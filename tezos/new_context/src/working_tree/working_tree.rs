@@ -582,7 +582,7 @@ impl WorkingTree {
 
         // produce entries to be persisted to storage
         let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
-        self.get_entries_recursively(&entry, Some(root.as_ref()), &mut batch)?;
+        self.get_entries_recursively(&entry, None, Some(root.as_ref()), &mut batch)?;
 
         let commit_hash = hash_commit(&new_commit)?;
 
@@ -771,11 +771,16 @@ impl WorkingTree {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
+        entry_hash: Option<EntryHash>,
         root: Option<&Tree>,
         batch: &mut Vec<(EntryHash, ContextValue)>,
     ) -> Result<(), MerkleError> {
+        let entry_hash = match entry_hash {
+            None => hash_entry(entry)?,
+            Some(hash) => hash
+        };
         // add entry to batch
-        batch.push((hash_entry(entry)?, bincode::serialize(entry)?));
+        batch.push((entry_hash, bincode::serialize(entry)?));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -796,7 +801,7 @@ impl WorkingTree {
                             .as_ref()
                         {
                             None => Ok(()),
-                            Some(entry) => self.get_entries_recursively(entry, None, batch),
+                            Some(entry) => self.get_entries_recursively(entry, child_node.entry_hash.borrow().clone(), None, batch),
                         }
                     })
                     .find_map(|res| match res {
@@ -810,7 +815,7 @@ impl WorkingTree {
                     Some(root) => Entry::Tree(root.clone()),
                     None => self.get_entry_from_hash(&commit.root_hash)?,
                 };
-                self.get_entries_recursively(&entry, None, batch)
+                self.get_entries_recursively(&entry, None, None, batch)
             }
         }
     }
