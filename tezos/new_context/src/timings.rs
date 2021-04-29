@@ -107,6 +107,7 @@ type HashId = String;
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
+    current_context: Option<(HashId, ContextHash)>,
     sql: sqlite::Connection,
 }
 
@@ -154,6 +155,7 @@ impl Timing {
         Timing {
             current_block: None,
             current_operation: None,
+            current_context: None,
             sql,
         }
     }
@@ -162,6 +164,8 @@ impl Timing {
         match msg {
             TimingMessage::SetBlock(block_hash) => {
                 self.set_current_block(block_hash);
+                self.current_context = None;
+                self.current_operation = None;
             }
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(operation_hash);
@@ -173,12 +177,16 @@ impl Timing {
                 context_hash,
                 irmin_time,
                 tezedge_time,
-            } => {}
+            } => {
+                self.insert_checkout(context_hash, irmin_time, tezedge_time);
+            }
             TimingMessage::Commit {
-                new_context_hash,
+                new_context_hash: _,
                 irmin_time,
                 tezedge_time,
-            } => {}
+            } => {
+                self.insert_commit(irmin_time, tezedge_time);
+            }
         }
     }
 
@@ -201,6 +209,10 @@ impl Timing {
             &mut self.current_operation,
             "operations",
         );
+    }
+
+    fn set_current_context(&mut self, context_hash: ContextHash) {
+        Self::set_current(&self.sql, Some(context_hash), &mut self.current_context, "contexts");
     }
 
     fn set_current<T>(
@@ -239,9 +251,10 @@ impl Timing {
 
         sql.execute(insert_query).unwrap();
 
-        if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string) {
-            current.replace((id.to_string(), hash));
-        };
+        let id = Self::get_id_on_table(sql, table_name, &hash_string)
+            .expect("Unable to find row after INSERT"); // This should never happen
+
+        current.replace((id.to_string(), hash));
     }
 
     fn get_id_on_table(
@@ -264,6 +277,25 @@ impl Timing {
         None
     }
 
+    fn insert_checkout(&mut self, context_hash: ContextHash, irmin_time: f64, tezedge_time: f64) {
+        self.set_current_context(context_hash);
+        self.insert_action(&Action {
+            name: "checkout".to_string(),
+            key: vec![],
+            irmin_time,
+            tezedge_time,
+        });
+    }
+
+    fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) {
+        self.insert_action(&Action {
+            name: "commit".to_string(),
+            key: vec![],
+            irmin_time,
+            tezedge_time,
+        });
+    }
+
     fn insert_action(&self, action: &Action) {
         let block_id = self
             .current_block
@@ -275,20 +307,32 @@ impl Timing {
             .as_ref()
             .map(|(id, _)| id.as_str())
             .unwrap_or("NULL");
+        let context_id = self
+            .current_context
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap_or("NULL");
+
+        let key = if action.key.is_empty() {
+            "NULL".to_string()
+        } else {
+            action.key.join("/")
+        };
 
         let query = format!(
             "
         INSERT INTO actions
-          (name, key, irmin_time, tezedge_time, block_id, operation_id)
+          (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
-          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id});
+          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
             ",
             name = &action.name,
-            key = &action.key.join("/"),
+            key = &key,
             irmin_time = &action.irmin_time,
             tezedge_time = &action.tezedge_time,
             block_id = block_id,
             operation_id = operation_id,
+            context_id = context_id,
         );
 
         self.sql.execute(query).unwrap();
@@ -303,7 +347,7 @@ impl Timing {
         PRAGMA foreign_keys = ON;
         CREATE TABLE IF NOT EXISTS blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
-        CREATE TABLE IF NOT EXISTS context (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
+        CREATE TABLE IF NOT EXISTS contexts (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -312,8 +356,10 @@ impl Timing {
             tezedge_time REAL,
             block_id INTEGER DEFAULT NULL,
             operation_id INTEGER DEFAULT NULL,
+            context_id INTEGER DEFAULT NULL,
             FOREIGN KEY(block_id) REFERENCES blocks(id),
             FOREIGN KEY(operation_id) REFERENCES operations(id)
+            FOREIGN KEY(context_id) REFERENCES contexts(id)
         );
                 ",
             )
