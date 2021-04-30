@@ -25,6 +25,7 @@ members = [
     "networking",
     "shell",
     "shell-integration",
+    "shell_automaton",
     "storage",
     "sandbox",
     "light_node",

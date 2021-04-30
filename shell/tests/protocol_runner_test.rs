@@ -1,7 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
-#![feature(test)]
-extern crate test;
+
+// #![feature(test)]
+// extern crate test;
 
 // TODO: reimplement with new async IPC architecture once multiple processes have been added
 
@@ -19,7 +20,7 @@ extern crate test;
 // };
 // use tezos_protocol_ipc_client::{ProtocolRunnerConfiguration, ProtocolRunnerInstance};
 
-pub mod common;
+// pub mod common;
 
 //#[ignore]
 //#[test]
@@ -382,7 +383,6 @@ pub mod common;
 //    }
 //
 //    Ok(())
-//}
 
 // mod test_data {
 //     use std::collections::HashMap;

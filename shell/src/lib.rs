@@ -10,11 +10,13 @@ pub mod chain_feeder;
 pub mod chain_manager;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;
-pub mod peer_manager;
+pub mod shell_automaton_manager;
 pub mod shell_channel;
 pub mod state;
 pub mod stats;
 pub mod validation;
+
+pub use shell_automaton::shell_compatibility_version::ShellCompatibilityVersion;
 
 /// Constant tells about p2p feature versions, which this shell is compatible with
 pub const SUPPORTED_P2P_VERSION: &[u16] = &[0, 1];
@@ -29,8 +31,8 @@ pub struct InvalidRangeError(String);
 /// Simple threshold, for representing integral ranges.
 #[derive(Copy, Clone, Debug)]
 pub struct PeerConnectionThreshold {
-    low: usize,
-    high: usize,
+    pub low: usize,
+    pub high: usize,
     peers_for_bootstrap_threshold: Option<usize>,
 }
 
@@ -86,7 +88,7 @@ impl PeerConnectionThreshold {
 pub mod subscription {
     use tezedge_actor_system::actors::*;
 
-    use networking::p2p::network_channel::NetworkChannelTopic;
+    use networking::network_channel::NetworkChannelTopic;
 
     #[inline]
     pub fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
@@ -200,43 +202,11 @@ pub mod subscription {
             None,
         );
     }
-
-    #[inline]
-    pub(crate) fn subscribe_to_dead_letters<M, E>(dl_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub(crate) fn unsubscribe_from_dead_letters<M, E>(
-        dl_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Unsubscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
-            },
-            None,
-        );
-    }
 }
 
 /// Module implements shell integration based on actual shell constalation.
 /// In case of new architecture (state machine, ..., whatever),
-/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ProposerHandle or whatever
+/// we just need to reimplement [ShellConnectorSupport] here and replace shell_channel with ShellAutomatonSender or whatever
 pub mod connector {
     use std::sync::Arc;
 

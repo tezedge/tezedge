@@ -27,6 +27,7 @@ tokio = { version = "1.12", features = ["time"] }
 crypto = { path = "../crypto" }
 networking = { path = "../networking" }
 shell_integration = { path = "../shell-integration" }
+shell_automaton = { path = "../shell_automaton" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_identity = { path = "../tezos/identity" }

@@ -11,17 +11,17 @@ use tezedge_actor_system::actors::*;
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
-use networking::p2p::network_channel::NetworkChannel;
-use networking::ShellCompatibilityVersion;
+use networking::network_channel::NetworkChannel;
 use rpc::RpcServer;
 use shell::chain_feeder::ApplyBlock;
 use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::connector::ShellConnectorSupport;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
-use shell::peer_manager::PeerManager;
+use shell::shell_automaton_manager::ShellAutomatonManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::ShellCompatibilityVersion;
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use shell_integration::{create_oneshot_callback, ThreadWatcher};
 use storage::persistent::sequence::Sequences;
@@ -156,6 +156,20 @@ fn block_on_actors(
         NetworkChannel::actor(actor_system.as_ref()).expect("Failed to create network channel");
     let shell_channel =
         ShellChannel::actor(actor_system.as_ref()).expect("Failed to create shell channel");
+
+    // initialize shell automaton manager
+    let mut shell_automaton_manager = ShellAutomatonManager::new(
+        persistent_storage.clone(),
+        network_channel.clone(),
+        log.clone(),
+        identity.clone(),
+        shell_compatibility_version.clone(),
+        env.p2p.clone(),
+        env.identity.expected_pow,
+        init_storage_data.chain_id.clone(),
+    );
+
+    // initialize actors
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
         actor_system.clone(),
         log.clone(),
@@ -227,6 +241,7 @@ fn block_on_actors(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
+        shell_automaton_manager.shell_automaton_sender(),
         shell_channel.clone(),
         persistent_storage.clone(),
         Arc::clone(&tezos_protocol_api),
@@ -314,19 +329,6 @@ fn block_on_actors(
     } else {
         // TODO: TE-386 - controlled startup
         std::thread::sleep(std::time::Duration::from_secs(2));
-
-        // and than open p2p and others
-        let _ = PeerManager::actor(
-            actor_system.as_ref(),
-            network_channel,
-            shell_channel.clone(),
-            tokio_runtime.handle().clone(),
-            identity,
-            shell_compatibility_version,
-            env.p2p,
-            env.identity.expected_pow,
-        )
-        .expect("Failed to create peer manager");
     }
 
     let mut is_setup_ok = true;
@@ -336,8 +338,10 @@ fn block_on_actors(
         error!(log, "Failed to start RPC server"; "reason" => format!("{:?}", e));
         is_setup_ok = false;
     };
-
     info!(log, "Actors initialized");
+
+    // start shell_automaton thread.
+    shell_automaton_manager.start();
 
     tokio_runtime.block_on(async move {
         use tokio::signal;
@@ -351,10 +355,13 @@ fn block_on_actors(
             info!(log, "Ctrl-c or SIGINT received!");
         }
 
-        info!(log, "Shutting down rpc server (1/8)");
+        info!(log, "Shutting down shell automaton (1/9)");
+        drop(shell_automaton_manager);
+
+        info!(log, "Shutting down rpc server (2/9)");
         drop(rpc_server);
 
-        info!(log, "Shutting down of thread workers starting (2/8)");
+        info!(log, "Shutting down of thread workers starting (3/9)");
         if let Err(e) = block_applier_thread_watcher.stop() {
             warn!(log, "Failed to stop thread watcher";
                        "thread_name" => block_applier_thread_watcher.thread_name(),
@@ -396,7 +403,7 @@ fn block_on_actors(
         };
         info!(log, "Shutting down of thread workers initiated"; "mempool_thread_watchers_count" => mempool_thread_watchers.len());
 
-        info!(log, "Sending shutdown notification to actors (3/8)");
+        info!(log, "Sending shutdown notification to actors (4/9)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -405,17 +412,13 @@ fn block_on_actors(
             None,
         );
 
-        // give actors some time to shut down
-        info!(log, "Waiting 2s for shutdown of actors (2/6)");
-        tokio::time::sleep(Duration::from_secs(2)).await;
-
-        info!(log, "Shutting down actors (4/8)");
+        info!(log, "Shutting down actors (5/9)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => warn!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (5/8)");
+        info!(log, "Waiting for thread workers finish gracefully (please, wait, it could take some time) (6/9)");
         if let Some(thread) = block_applier_thread_watcher.thread() {
             thread.thread().unpark();
             if let Err(e) = thread.join() {
@@ -438,15 +441,15 @@ fn block_on_actors(
         }
         info!(log, "Thread workers stopped");
 
-        info!(log, "Shutting down protocol runners (6/8)");
+        info!(log, "Shutting down protocol runners (7/9)");
         tezos_protocol_api.shutdown().await;
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Flushing databases (7/8)");
+        info!(log, "Flushing databases (8/9)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (8/8)");
+        info!(log, "Shutdown complete (9/9)");
     });
 }
 
