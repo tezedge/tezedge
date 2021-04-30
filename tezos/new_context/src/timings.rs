@@ -6,6 +6,7 @@ use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use once_cell::sync::Lazy;
 use sqlite::Value::Integer;
+use sqlite::Error as SQLError;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
@@ -51,7 +52,6 @@ pub fn commit(
 
     TIMING_CHANNEL
         .send(TimingMessage::Commit {
-            new_context_hash,
             irmin_time,
             tezedge_time,
         })
@@ -94,7 +94,6 @@ enum TimingMessage {
         tezedge_time: f64,
     },
     Commit {
-        new_context_hash: ContextHash,
         irmin_time: f64,
         tezedge_time: f64,
     },
@@ -116,6 +115,7 @@ impl std::fmt::Debug for Timing {
         f.debug_struct("Timing")
             .field("current_block", &self.current_block)
             .field("current_operation", &self.current_operation)
+            .field("current_context", &self.current_context)
             .finish()
     }
 }
@@ -144,13 +144,13 @@ fn start_timing(recv: Receiver<TimingMessage>) {
     let mut timing = Timing::new();
 
     for msg in recv {
-        timing.process_msg(msg);
+        timing.process_msg(msg).unwrap();
     }
 }
 
 impl Timing {
     fn new() -> Timing {
-        let sql = Self::init_sqlite();
+        let sql = Self::init_sqlite().unwrap();
 
         Timing {
             current_block: None,
@@ -160,77 +160,81 @@ impl Timing {
         }
     }
 
-    fn process_msg(&mut self, msg: TimingMessage) {
+    fn process_msg(&mut self, msg: TimingMessage) -> Result<(), SQLError> {
         match msg {
             TimingMessage::SetBlock(block_hash) => {
-                self.set_current_block(block_hash);
-                self.current_context = None;
-                self.current_operation = None;
+                self.set_current_block(block_hash)
             }
             TimingMessage::SetOperation(operation_hash) => {
-                self.set_current_operation(operation_hash);
+                self.set_current_operation(operation_hash)
             }
             TimingMessage::Action(action) => {
-                self.insert_action(&action);
+                self.insert_action(&action)
             }
             TimingMessage::Checkout {
                 context_hash,
                 irmin_time,
                 tezedge_time,
             } => {
-                self.insert_checkout(context_hash, irmin_time, tezedge_time);
+                self.insert_checkout(context_hash, irmin_time, tezedge_time)
             }
-            TimingMessage::Commit {
-                new_context_hash: _,
-                irmin_time,
-                tezedge_time,
-            } => {
-                self.insert_commit(irmin_time, tezedge_time);
+            TimingMessage::Commit { irmin_time, tezedge_time } => {
+                self.insert_commit(irmin_time, tezedge_time)
             }
         }
     }
 
     pub fn hash_to_string(hash: &[u8]) -> String {
-        let mut s = String::with_capacity(32);
+        const HEXCHARS: &[u8] = b"0123456789ABCDEF";
+
+        let mut s = String::with_capacity(62);
         for byte in hash {
-            s.push_str(&format!("{:X}", byte));
+            s.push(HEXCHARS[*byte as usize >> 4] as char);
+            s.push(HEXCHARS[*byte as usize & 0xF] as char);
         }
         s
     }
 
-    fn set_current_block(&mut self, block_hash: Option<BlockHash>) {
-        Self::set_current(&self.sql, block_hash, &mut self.current_block, "blocks");
+    fn set_current_block(&mut self, block_hash: Option<BlockHash>) -> Result<(), SQLError> {
+        Self::set_current(&self.sql, block_hash, &mut self.current_block, "blocks")?;
+
+        // Reset context and operation
+        self.current_context = None;
+        self.current_operation = None;
+
+        Ok(())
     }
 
-    fn set_current_operation(&mut self, operation_hash: Option<OperationHash>) {
+    fn set_current_operation(&mut self, operation_hash: Option<OperationHash>) -> Result<(), SQLError> {
         Self::set_current(
             &self.sql,
             operation_hash,
             &mut self.current_operation,
             "operations",
-        );
+        )
     }
 
-    fn set_current_context(&mut self, context_hash: ContextHash) {
-        Self::set_current(&self.sql, Some(context_hash), &mut self.current_context, "contexts");
+    fn set_current_context(&mut self, context_hash: ContextHash) -> Result<(), SQLError> {
+        Self::set_current(&self.sql, Some(context_hash), &mut self.current_context, "contexts")
     }
 
     fn set_current<T>(
         sql: &sqlite::Connection,
         hash: Option<T>,
-        current: &mut Option<(String, T)>,
+        current: &mut Option<(HashId, T)>,
         table_name: &str,
-    ) where
+    ) -> Result<(), SQLError>
+    where
         T: Eq,
         T: AsRef<Vec<u8>>,
     {
         match (hash.as_ref(), current.as_ref()) {
             (None, _) => {
                 *current = None;
-                return;
+                return Ok(());
             }
             (Some(hash), Some((_, current_hash))) if hash == current_hash => {
-                return;
+                return Ok(());
             }
             _ => {}
         };
@@ -238,9 +242,9 @@ impl Timing {
         let hash = hash.unwrap();
         let hash_string = Self::hash_to_string(hash.as_ref());
 
-        if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string) {
+        if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string)? {
             current.replace((id.to_string(), hash));
-            return;
+            return Ok(());
         };
 
         let insert_query = format!(
@@ -249,54 +253,56 @@ impl Timing {
             hash = hash_string
         );
 
-        sql.execute(insert_query).unwrap();
+        sql.execute(insert_query)?;
 
-        let id = Self::get_id_on_table(sql, table_name, &hash_string)
+        let id = Self::get_id_on_table(sql, table_name, &hash_string)?
             .expect("Unable to find row after INSERT"); // This should never happen
 
         current.replace((id.to_string(), hash));
+
+        Ok(())
     }
 
     fn get_id_on_table(
         sql: &sqlite::Connection,
         table_name: &str,
         hash_string: &str,
-    ) -> Option<i64> {
+    ) -> Result<Option<i64>, SQLError> {
         let query = format!(
             "SELECT id FROM {table} WHERE hash = '{hash}'",
             table = table_name,
             hash = hash_string
         );
 
-        let mut cursor = sql.prepare(query).unwrap().into_cursor();
+        let mut cursor = sql.prepare(query)?.into_cursor();
 
-        if let Ok(Some([Integer(id), ..])) = cursor.next() {
-            return Some(*id);
+        if let Some([Integer(id), ..]) = cursor.next()? {
+            return Ok(Some(*id));
         };
 
-        None
+        Ok(None)
     }
 
-    fn insert_checkout(&mut self, context_hash: ContextHash, irmin_time: f64, tezedge_time: f64) {
-        self.set_current_context(context_hash);
+    fn insert_checkout(&mut self, context_hash: ContextHash, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
+        self.set_current_context(context_hash)?;
         self.insert_action(&Action {
             name: "checkout".to_string(),
             key: vec![],
             irmin_time,
             tezedge_time,
-        });
+        })
     }
 
-    fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) {
+    fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
         self.insert_action(&Action {
             name: "commit".to_string(),
             key: vec![],
             irmin_time,
             tezedge_time,
-        });
+        })
     }
 
-    fn insert_action(&self, action: &Action) {
+    fn insert_action(&self, action: &Action) -> Result<(), SQLError> {
         let block_id = self
             .current_block
             .as_ref()
@@ -335,11 +341,11 @@ impl Timing {
             context_id = context_id,
         );
 
-        self.sql.execute(query).unwrap();
+        self.sql.execute(query)
     }
 
-    fn init_sqlite() -> sqlite::Connection {
-        let connection = sqlite::open("context_timing.sql").unwrap();
+    fn init_sqlite() -> Result<sqlite::Connection, SQLError> {
+        let connection = sqlite::open("context_timing.sql")?;
 
         connection
             .execute(
@@ -362,10 +368,9 @@ impl Timing {
             FOREIGN KEY(context_id) REFERENCES contexts(id)
         );
                 ",
-            )
-            .unwrap();
+            )?;
 
-        connection
+        Ok(connection)
     }
 }
 
@@ -376,20 +381,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_init_db() {
+    fn test_timing_db() {
         let mut timing = Timing::new();
 
         assert!(timing.current_block.is_none());
 
-        timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![1; 32]).unwrap()));
+        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        timing.set_current_block(Some(block_hash.clone())).unwrap();
         let block_id = timing.current_block.clone().unwrap().0;
 
-        timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![1; 32]).unwrap()));
+        timing.set_current_block(Some(block_hash)).unwrap();
         let same_block_id = timing.current_block.clone().unwrap().0;
 
         assert_eq!(block_id, same_block_id);
 
-        timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()));
+        timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap())).unwrap();
         let other_block_id = timing.current_block.clone().unwrap().0;
 
         assert_ne!(block_id, other_block_id);
