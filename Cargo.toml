@@ -11,6 +11,7 @@ members = [
     "tezos/interop",
     "tezos/interop_callback",
     "tezos/encoding",
+    "tezos/encoding-derive",
     "tezos/client",
     "tezos/wrapper",
     "networking",

@@ -3893,6 +3893,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezos_encoding_derive"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "proc-macro2 1.0.24",
+ "quote 1.0.9",
+ "syn 1.0.60",
+]
+
+[[package]]
 name = "tezos_identity"
 version = "1.5.0"
 dependencies = [
@@ -3956,7 +3966,9 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_encoding",
+ "tezos_encoding_derive",
  "tezos_identity",
+ "tyname",
 ]
 
 [[package]]
@@ -4242,6 +4254,12 @@ checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "tyname"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14ff19d643600fb1f110e0f3ef088ad2b0efa15af4e3ce2dd2af9c1a19376778"
 
 [[package]]
 name = "typenum"

@@ -12,22 +12,26 @@ use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
 use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+
 
 use crate::non_cached_data;
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::encoding::version::NetworkVersion;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+use tezos_encoding::encoding::HasEncoding;
+
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, tezos_encoding_derive::HasEncoding)]
 pub struct ConnectionMessage {
     port: u16,
     #[get = "pub"]
-    version: NetworkVersion,
-    #[get = "pub"]
+    #[encoding(Sized("CRYPTO_KEY_SIZE", Bytes))]
     public_key: Vec<u8>,
+    #[encoding(Sized("POW_SIZE", Bytes))]
     proof_of_work_stamp: Vec<u8>,
+    #[encoding(Sized("NONCE_SIZE", Bytes))]
     message_nonce: Vec<u8>,
+    #[get = "pub"]
+    version: NetworkVersion,
 }
 
 impl ConnectionMessage {
@@ -60,6 +64,8 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 }
 
 non_cached_data!(ConnectionMessage);
+
+/*
 has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
     Encoding::Obj(
         "ConnectionMessage",
@@ -81,3 +87,4 @@ has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
         ],
     )
 });
+*/
