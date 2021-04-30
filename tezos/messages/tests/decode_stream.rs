@@ -13,7 +13,7 @@ use crypto::{
     CryptoError,
 };
 use tezos_messages::p2p::{
-    binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES},
+    binary_message::{BinaryChunk, BinaryChunkError, BinaryRead, CONTENT_LENGTH_FIELD_BYTES},
     encoding::metadata::MetadataMessage,
     encoding::peer::PeerMessageResponse,
     encoding::prelude::ConnectionMessage,

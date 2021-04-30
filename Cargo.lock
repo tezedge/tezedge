@@ -337,6 +337,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitvec"
+version = "0.19.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8942c8d352ae1838c9dda0b0ca2ab657696ef2232a20147cf1b30ae1a9cb4321"
+dependencies = [
+ "funty",
+ "radium",
+ "tap",
+ "wyz",
+]
+
+[[package]]
 name = "blake2"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -494,7 +506,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f4aedb84272dbe89af497cf81375129abda4fc0a9e7c5d317498c15cc30c0d27"
 dependencies = [
- "nom",
+ "nom 5.1.2",
 ]
 
 [[package]]
@@ -590,7 +602,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b076e143e1d9538dde65da30f8481c2a6c44040edb8e02b9bf1351edb92ce3"
 dependencies = [
  "lazy_static",
- "nom",
+ "nom 5.1.2",
  "rust-ini",
  "serde 1.0.123",
  "serde-hjson",
@@ -1165,6 +1177,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2022715d62ab30faffd124d40b76f4134a550a87792276512b18d63272333394"
 
 [[package]]
+name = "funty"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
+
+[[package]]
 name = "futures"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1336,16 +1354,6 @@ dependencies = [
  "honggfuzz",
  "log",
  "tezos_messages",
-]
-
-[[package]]
-name = "fuzz_encoding"
-version = "1.5.0"
-dependencies = [
- "honggfuzz",
- "log",
- "rand 0.7.3",
- "tezos_encoding",
 ]
 
 [[package]]
@@ -2265,6 +2273,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nom"
+version = "6.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7413f999671bd4745a7b624bd370a569fb6bc574b23c83a3c5ed2e453f3d5e2"
+dependencies = [
+ "bitvec",
+ "funty",
+ "lexical-core",
+ "memchr",
+ "version_check",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2525,6 +2546,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-display"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7271152b3c46c07c729698e7a5248e2744466b3446d222c97a0b1315925a97b1"
+dependencies = [
+ "once_cell",
+ "parse-display-derive",
+ "regex",
+]
+
+[[package]]
+name = "parse-display-derive"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a9f3e41b237b77c99c09686481c235964ff5878229412b226c451f3e809f4f"
+dependencies = [
+ "once_cell",
+ "proc-macro2 1.0.24",
+ "quote 1.0.9",
+ "regex",
+ "regex-syntax",
+ "syn 1.0.60",
+]
+
+[[package]]
 name = "path-tree"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2773,6 +2819,12 @@ dependencies = [
  "parking_lot",
  "scheduled-thread-pool",
 ]
+
+[[package]]
+name = "radium"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "941ba9d78d8e2f7ce474c015eea4d9c6d25b6a3327f9832ee29a4de27f91bbb8"
 
 [[package]]
 name = "rand"
@@ -3401,6 +3453,7 @@ dependencies = [
  "merge",
  "networking",
  "nix 0.19.1",
+ "nom 6.1.2",
  "page_size",
  "r2d2",
  "rand 0.7.3",
@@ -3427,7 +3480,7 @@ dependencies = [
 [[package]]
 name = "shiplift"
 version = "0.7.0"
-source = "git+https://github.com/simplestaking/shiplift.git?branch=master#f5017f603afab9821966032ea652cb3161051f17"
+source = "git+https://github.com/simplestaking/shiplift.git#f5017f603afab9821966032ea652cb3161051f17"
 dependencies = [
  "base64",
  "byteorder",
@@ -3762,6 +3815,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f764005d11ee5f36500a149ace24e00e3da98b0158b3e2d53a7495660d3f4d60"
 
 [[package]]
+name = "tap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
 name = "tar"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3839,6 +3898,7 @@ dependencies = [
  "failure",
  "hex",
  "lazy_static",
+ "nom 6.1.2",
  "ocaml-interop",
  "serde 1.0.123",
  "serde_json",
@@ -3846,6 +3906,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos-sys",
+ "tezos_encoding",
  "tezos_messages",
 ]
 
@@ -3887,9 +3948,23 @@ dependencies = [
  "crypto",
  "failure",
  "hex",
+ "lazy_static",
+ "nom 6.1.2",
  "num-bigint 0.3.1",
  "num-traits 0.2.14",
  "serde 1.0.123",
+ "tezos_encoding_derive",
+]
+
+[[package]]
+name = "tezos_encoding_derive"
+version = "1.5.0"
+dependencies = [
+ "lazy_static",
+ "parse-display",
+ "proc-macro2 1.0.24",
+ "quote 1.0.9",
+ "syn 1.0.60",
 ]
 
 [[package]]
@@ -3949,6 +4024,7 @@ dependencies = [
  "getset",
  "hex",
  "lazy_static",
+ "nom 6.1.2",
  "num-bigint 0.3.1",
  "num-traits 0.2.14",
  "serde 1.0.123",
@@ -3956,7 +4032,9 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_encoding",
+ "tezos_encoding_derive",
  "tezos_identity",
+ "tyname",
 ]
 
 [[package]]
@@ -4242,6 +4320,12 @@ checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "tyname"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14ff19d643600fb1f110e0f3ef088ad2b0efa15af4e3ce2dd2af9c1a19376778"
 
 [[package]]
 name = "typenum"
@@ -4591,6 +4675,12 @@ checksum = "0120db82e8a1e0b9fb3345a539c478767c0048d842860994d96113d5b667bd69"
 dependencies = [
  "winapi",
 ]
+
+[[package]]
+name = "wyz"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85e60b0d1b5f99db2556934e21937020776a5d31520bf169e851ac44e6420214"
 
 [[package]]
 name = "xattr"

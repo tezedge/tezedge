@@ -13,7 +13,7 @@ use tezos_api::ffi::{
 use ocaml_interop::{OCamlRuntime, ToOCaml};
 use tezos_interop::runtime;
 use tezos_interop::{ffi, runtime::OCamlBlockPanic};
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
 const CHAIN_ID: &str = "8eceda2f";

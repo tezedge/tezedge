@@ -13,7 +13,7 @@ use tezos_api::environment::{
 use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_interop::ffi;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 // not a real bench, just for approximatelly measurement of applying first three blocks
@@ -172,7 +172,7 @@ mod test_data {
 
     use crypto::hash::ContextHash;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;

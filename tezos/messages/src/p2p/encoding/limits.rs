@@ -1,7 +1,7 @@
-use crypto::hash::HashType;
-
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
+use crypto::hash::HashType;
 
 /// P2P message encoding maximal size in OCaml
 ///

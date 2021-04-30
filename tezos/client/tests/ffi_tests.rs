@@ -1,14 +1,15 @@
-use std::convert::TryFrom;
-
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
+use std::convert::TryFrom;
+
 use crypto::hash::ProtocolHash;
 use serial_test::serial;
 use tezos_api::environment::{self, TezosEnvironment};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_interop::ffi;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 mod common;

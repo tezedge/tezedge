@@ -14,7 +14,7 @@ use tezos_api::ffi::{
     TezosRuntimeConfiguration,
 };
 use tezos_client::client;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
 mod common;
@@ -857,7 +857,7 @@ mod test_data_protocol_v1 {
     use crypto::hash::{ContextHash, OperationMetadataHash};
     use tezos_api::environment::TezosEnvironmentConfiguration;
     use tezos_api::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub fn tezos_network() -> TezosEnvironmentConfiguration {

@@ -2,26 +2,70 @@
 // SPDX-License-Identifier: MIT
 
 use std::fmt;
-use std::mem::size_of;
 
 use getset::Getters;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take},
+    combinator::{map, success},
+    sequence::preceded,
+};
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_encoding::has_encoding;
+use tezos_encoding::{
+    encoding::HasEncoding,
+    nom::{size, NomReader},
+};
 
-use crate::non_cached_data;
+use crate::p2p::binary_message::{complete_input, SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
 pub enum AckMessage {
+    #[encoding(tag = 0x00)]
     Ack,
+    #[encoding(tag = 0xff)]
     NackV0,
+    #[encoding(tag = 0x01)]
     Nack(NackInfo),
 }
 
-#[derive(Serialize, Deserialize, PartialEq)]
+impl SizeFromChunk for AckMessage {
+    fn size_from_chunk(
+        bytes: impl AsRef<[u8]>,
+    ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
+        let bytes = bytes.as_ref();
+        let size = complete_input(
+            alt((
+                preceded(tag(0x00u8.to_be_bytes()), success(1)),
+                preceded(tag(0xffu8.to_be_bytes()), success(1)),
+                preceded(
+                    tag(0x01u8.to_be_bytes()),
+                    map(preceded(take(2usize), size), |s| (s as usize) + 3),
+                ),
+            )),
+            bytes,
+        )?;
+        Ok(size as usize)
+    }
+}
+
+#[derive(Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader)]
+pub struct NackInfo {
+    #[get = "pub"]
+    motive: NackMotive,
+    #[get = "pub"]
+    #[encoding(
+        dynamic,
+        list = "NACK_PEERS_MAX_LENGTH",
+        bounded = "P2P_POINT_MAX_SIZE"
+    )]
+    potential_peers_to_connect: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader)]
+#[encoding(tags = "u16")]
 pub enum NackMotive {
     NoMotive,
     TooManyConnections,
@@ -29,34 +73,6 @@ pub enum NackMotive {
     DeprecatedP2pVersion,
     DeprecatedDistributedDbVersion,
     AlreadyConnected,
-}
-
-impl fmt::Display for NackMotive {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let motive = match &self {
-            NackMotive::NoMotive => "No_motive",
-            NackMotive::TooManyConnections => "Too_many_connections ",
-            NackMotive::UnknownChainName => "Unknown_chain_name",
-            NackMotive::DeprecatedP2pVersion => "Deprecated_p2p_version",
-            NackMotive::DeprecatedDistributedDbVersion => "Deprecated_distributed_db_version",
-            NackMotive::AlreadyConnected => "Already_connected",
-        };
-        write!(f, "{}", motive)
-    }
-}
-
-impl fmt::Debug for NackMotive {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", &self)
-    }
-}
-
-#[derive(Serialize, Deserialize, Getters, PartialEq)]
-pub struct NackInfo {
-    #[get = "pub"]
-    motive: NackMotive,
-    #[get = "pub"]
-    potential_peers_to_connect: Vec<String>,
 }
 
 impl NackInfo {
@@ -79,45 +95,22 @@ impl fmt::Debug for NackInfo {
     }
 }
 
-impl NackInfo {
-    fn encoding() -> Encoding {
-        Encoding::Obj(
-            "NackInfo",
-            vec![
-                Field::new(
-                    "motive",
-                    Encoding::Tags(
-                        size_of::<u16>(),
-                        TagMap::new(vec![
-                            Tag::new(0, "NoMotive", Encoding::Unit),
-                            Tag::new(1, "TooManyConnections", Encoding::Unit),
-                            Tag::new(2, "UnknownChainName", Encoding::Unit),
-                            Tag::new(3, "DeprecatedP2pVersion", Encoding::Unit),
-                            Tag::new(4, "DeprecatedDistributedDbVersion", Encoding::Unit),
-                            Tag::new(5, "AlreadyConnected", Encoding::Unit),
-                        ]),
-                    ),
-                ),
-                Field::new(
-                    "potential_peers_to_connect",
-                    Encoding::dynamic(Encoding::bounded_list(
-                        NACK_PEERS_MAX_LENGTH,
-                        Encoding::bounded(P2P_POINT_MAX_SIZE, Encoding::String),
-                    )),
-                ),
-            ],
-        )
+impl fmt::Display for NackMotive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let motive = match &self {
+            NackMotive::NoMotive => "No_motive",
+            NackMotive::TooManyConnections => "Too_many_connections ",
+            NackMotive::UnknownChainName => "Unknown_chain_name",
+            NackMotive::DeprecatedP2pVersion => "Deprecated_p2p_version",
+            NackMotive::DeprecatedDistributedDbVersion => "Deprecated_distributed_db_version",
+            NackMotive::AlreadyConnected => "Already_connected",
+        };
+        write!(f, "{}", motive)
     }
 }
 
-non_cached_data!(AckMessage);
-has_encoding!(AckMessage, ACK_MESSAGE_ENCODING, {
-    Encoding::Tags(
-        size_of::<u8>(),
-        TagMap::new(vec![
-            Tag::new(0x00, "Ack", Encoding::Unit),
-            Tag::new(0x01, "Nack", NackInfo::encoding()),
-            Tag::new(0xFF, "NackV0", Encoding::Unit),
-        ]),
-    )
-});
+impl fmt::Debug for NackMotive {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", &self)
+    }
+}

@@ -19,7 +19,7 @@ use tezos_messages::p2p::{
 };
 use tokio_test::io::{Builder, Mock};
 
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::limits::BLOCK_HEADER_MAX_SIZE;
 
 pub struct BinaryChunks<'a> {

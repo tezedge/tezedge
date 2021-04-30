@@ -4,19 +4,18 @@
 use bytes::{Buf, BufMut};
 use failure::Fail;
 use failure::_core::convert::TryFrom;
-use serde::de::DeserializeOwned;
+use nom::{
+    combinator::{all_consuming, complete},
+    Finish,
+};
 use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::binary_writer;
-use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::HasEncoding;
-use tezos_encoding::json_writer::JsonWriter;
-use tezos_encoding::ser;
+use tezos_encoding::nom::{error::convert_error, NomError, NomInput, NomResult};
 use tezos_encoding::{
-    binary_reader::{BinaryReader, BinaryReaderError},
-    binary_writer::BinaryWriterError,
+    binary_reader::BinaryReaderError,
+    binary_writer::{self, BinaryWriterError},
 };
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
@@ -26,205 +25,92 @@ pub const CONTENT_LENGTH_FIELD_BYTES: usize = 2;
 /// Max allowed message length in bytes
 pub const CONTENT_LENGTH_MAX: usize = u16::max_value() as usize;
 
-/// This feature can provide cache mechanism for BinaryMessages.
-/// Cache is used to reduce computation time of encoding/decoding process.
-///
-/// When we use cache (see macro [cached_data]):
-/// - first time we read [from_bytes], original bytes are stored to cache and message/struct is constructed from bytes
-/// - so next time we want to use/call [as_bytes], bytes are not calculated with encoding, but just returned from cache
-///
-/// e.g: this is used, when we receive data from p2p as bytes, and then store them also as bytes to storage and calculate count of bytes in monitoring
-///
-/// When we dont need cache (see macro [non_cached_data]):
-///
-/// e.g.: we we just want to read data from bytes and never convert back to bytes
-///
-pub mod cache {
-    use std::fmt;
-
-    use serde::{Deserialize, Deserializer};
-
-    pub trait CacheReader {
-        fn get(&self) -> Option<Vec<u8>>;
-    }
-
-    pub trait CacheWriter {
-        fn put(&mut self, body: &[u8]);
-    }
-
-    pub trait CachedData {
-        fn cache_reader(&self) -> Option<&dyn CacheReader>;
-        fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter>;
-    }
-
-    #[derive(Clone, Default)]
-    pub struct BinaryDataCache {
-        data: Option<Vec<u8>>,
-    }
-
-    impl CacheReader for BinaryDataCache {
-        #[inline]
-        fn get(&self) -> Option<Vec<u8>> {
-            self.data.as_ref().cloned()
-        }
-    }
-
-    impl CacheWriter for BinaryDataCache {
-        #[inline]
-        fn put(&mut self, body: &[u8]) {
-            self.data.replace(body.to_vec());
-        }
-    }
-
-    impl PartialEq for BinaryDataCache {
-        #[inline]
-        fn eq(&self, _: &Self) -> bool {
-            true
-        }
-    }
-
-    impl Eq for BinaryDataCache {}
-
-    impl<'de> Deserialize<'de> for BinaryDataCache {
-        fn deserialize<D>(_: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            Ok(BinaryDataCache::default())
-        }
-    }
-
-    impl fmt::Debug for BinaryDataCache {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self.get() {
-                Some(data) => write!(
-                    f,
-                    "BinaryDataCache {{ has_value: true, len: {} }}",
-                    data.len()
-                ),
-                None => write!(f, "BinaryDataCache {{ has_value: false }}"),
-            }
-        }
-    }
-
-    #[derive(Clone, PartialEq, Default)]
-    pub struct NeverCache;
-
-    impl<'de> Deserialize<'de> for NeverCache {
-        fn deserialize<D>(_: D) -> Result<Self, D::Error>
-        where
-            D: Deserializer<'de>,
-        {
-            Ok(NeverCache::default())
-        }
-    }
-
-    impl CacheReader for NeverCache {
-        #[inline]
-        fn get(&self) -> Option<Vec<u8>> {
-            None
-        }
-    }
-
-    impl CacheWriter for NeverCache {
-        #[inline]
-        fn put(&mut self, _: &[u8]) {
-            // ..
-        }
-    }
-
-    impl fmt::Debug for NeverCache {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "NeverCache {{ }}")
-        }
-    }
-
-    /// Adds implementation CachedData for given struct
-    /// Struct should contains property [$property_cache_name] with cache struct, e.g. BinaryDataCache,
-    /// usually this cache does not need to be serialized, so can be marked with [#[serde(skip_serializing)]]
-    #[macro_export]
-    macro_rules! cached_data {
-        ($struct_name:ident, $property_cache_name:ident) => {
-            impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
-                #[inline]
-                fn cache_reader(
-                    &self,
-                ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
-                    Some(&self.$property_cache_name)
-                }
-
-                #[inline]
-                fn cache_writer(
-                    &mut self,
-                ) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
-                    Some(&mut self.$property_cache_name)
-                }
-            }
-        };
-    }
-
-    /// Adds empty non-caching implementation CachedData for given struct
-    #[macro_export]
-    macro_rules! non_cached_data {
-        ($struct_name:ident) => {
-            impl $crate::p2p::binary_message::cache::CachedData for $struct_name {
-                #[inline]
-                fn cache_reader(
-                    &self,
-                ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
-                    None
-                }
-
-                #[inline]
-                fn cache_writer(
-                    &mut self,
-                ) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
-                    None
-                }
-            }
-        };
-    }
-}
-
-/// Trait for binary encoding to implement.
-///
-/// Binary messages could be written by a [`MessageWriter`](super::stream::MessageWriter).
-/// To read binary encoding use  [`MessageReader`](super::stream::MessageReader).
-pub trait BinaryMessage: Sized {
-    /// Produce bytes from the struct.
-    fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError>;
-
+/// Trait for reading a binary message.
+pub trait BinaryRead: Sized {
     /// Create new struct from bytes.
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
 }
 
-impl<T> BinaryMessage for T
+/// Trait for writing a binary message.
+pub trait BinaryWrite {
+    /// Produce bytes from the struct.
+    fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError>;
+}
+
+/// Message that can be both encoded and decoded into binary format.
+pub trait BinaryMessage: BinaryRead + BinaryWrite {}
+
+impl<T: BinaryRead + BinaryWrite> BinaryMessage for T {}
+
+impl<T> BinaryWrite for T
 where
-    T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
+    T: tezos_encoding::encoding::HasEncoding + Serialize,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
-        // check cache at first
-        if let Some(cache) = self.cache_reader() {
-            if let Some(data) = cache.get() {
-                return Ok(data);
-            }
-        }
-
-        // if cache not configured or empty, resolve by encoding
         binary_writer::write(self, &Self::encoding())
     }
+}
 
+impl<T> BinaryRead for T
+where
+    T: tezos_encoding::nom::NomReader + Sized,
+{
     #[inline]
-    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
-        let bytes = bytes.as_ref();
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
+        all_consuming_complete_input(T::nom_read, buf.as_ref())
+    }
+}
 
-        let value = BinaryReader::new().read(bytes, &Self::encoding())?;
-        let mut myself: Self = deserialize_from_value(&value)?;
-        if let Some(cache_writer) = myself.cache_writer() {
-            cache_writer.put(bytes);
-        }
-        Ok(myself)
+/// This trait is able to predict the exact size of the message from the first bytes of the message.
+pub trait SizeFromChunk {
+    /// Returns the size of the message.
+    fn size_from_chunk(bytes: impl AsRef<[u8]>) -> Result<usize, BinaryReaderError>;
+}
+
+/// Applies nom parser `parser` to the input, assuming that input is complete.
+pub fn complete_input<'a, T>(
+    parser: impl FnMut(NomInput<'a>) -> NomResult<'a, T>,
+    input: NomInput<'a>,
+) -> Result<T, BinaryReaderError> {
+    // - `complete` combinator assumes that underlying parsing has complete input,
+    //   converting ``Incomplete` into `Error`.
+    // - `finish` flattens `nom::Err` into underlying error for easier processing.
+    complete(parser)(input)
+        .finish()
+        .map(|(_, output)| output)
+        .map_err(|error| map_nom_error(input, error))
+}
+
+/// Applies nom parser `parser` to the input, assuming that input is complete and
+/// ensuring that it is fully consumed.
+pub fn all_consuming_complete_input<T>(
+    parser: impl FnMut(NomInput) -> NomResult<T>,
+    input: NomInput,
+) -> Result<T, BinaryReaderError> {
+    // - `all_consuming` combinator ensures that all input is consumed,
+    //   reporting error otherwise.
+    // - `complete` combinator assumes that underlying parsing has complete input,
+    //   converting ``Incomplete` into `Error`.
+    // - `finish` flattens `nom::Err` into underlying error for easier processing.
+    all_consuming(complete(parser))(input)
+        .finish()
+        .map(|(bytes, output)| {
+            debug_assert!(
+                bytes.is_empty(),
+                "Successful parsing should consume all bytes"
+            );
+            output
+        })
+        .map_err(|error| map_nom_error(input, error))
+}
+
+/// Maps input and nom error into printable version.
+pub(crate) fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderError {
+    if let Some(unknown_tag) = error.get_unknown_tag() {
+        BinaryReaderError::UnknownTag(unknown_tag.clone())
+    } else {
+        BinaryReaderError::Error(convert_error(input, error))
     }
 }
 
@@ -304,23 +190,6 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
     }
 }
 
-/// Trait for json encoding to implement.
-pub trait JsonMessage {
-    /// Produce JSON from the struct.
-    fn as_json(&self) -> Result<String, ser::Error>;
-}
-
-impl<T> JsonMessage for T
-where
-    T: HasEncoding + Serialize + Sized,
-{
-    #[inline]
-    fn as_json(&self) -> Result<String, ser::Error> {
-        let mut writer = JsonWriter::new();
-        writer.write(self, &Self::encoding())
-    }
-}
-
 /// Message hash error
 #[derive(Debug, Fail)]
 pub enum MessageHashError {
@@ -358,7 +227,7 @@ pub trait MessageHash {
         H: crypto::hash::HashTrait;
 }
 
-impl<T: BinaryMessage + cache::CachedData> MessageHash for T {
+impl<T: BinaryMessage> MessageHash for T {
     #[inline]
     fn message_hash(&self) -> Result<Hash, MessageHashError> {
         let bytes = self.as_bytes()?;

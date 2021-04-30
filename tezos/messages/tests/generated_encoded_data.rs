@@ -1,6 +1,8 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::rc::Rc;
 
-use tezos_encoding::encoding::SchemaType;
 use tezos_encoding::encoding::{Encoding, Field};
 
 use tezos_encoding::encoding::HasEncoding;
@@ -163,9 +165,6 @@ impl EncodingExplorer {
                     let path = NodePath::child(&path, NodeKind::Tag(tag.get_id()));
                     self.get_paths(path, tag.get_encoding());
                 }
-            }
-            Encoding::Split(split) => {
-                self.get_paths(path, &split(SchemaType::Binary));
             }
             _ => {}
         }
@@ -474,7 +473,6 @@ impl EncodedDataGenerator {
                 }
             }
             */
-            Encoding::Split(split) => self.generate(path, &split(SchemaType::Binary)),
             _ => unimplemented!("{:?}", encoding),
         }
     }

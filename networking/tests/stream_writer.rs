@@ -11,7 +11,10 @@ use tezos_messages::p2p::{
         swap::SwapMessage,
     },
 };
-use tezos_messages::p2p::{binary_message::BinaryMessage, encoding::limits::BLOCK_HEADER_MAX_SIZE};
+use tezos_messages::p2p::{
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::limits::BLOCK_HEADER_MAX_SIZE,
+};
 use tokio_test::io::Builder;
 
 pub mod common;

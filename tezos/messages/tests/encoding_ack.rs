@@ -3,9 +3,11 @@
 
 use failure::Error;
 
-use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::{
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::ack::{NackInfo, NackMotive},
+};
 
 #[test]
 fn can_serialize_ack() -> Result<(), Error> {

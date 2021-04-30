@@ -1,17 +1,17 @@
-use std::collections::HashMap;
-
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
+use tezos_encoding::nom::NomReader;
 use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
-    has_encoding,
-    types::BigInt,
+    encoding::HasEncoding,
+    types::{Mutez, Zarith},
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-use crate::non_cached_data;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -55,28 +55,29 @@ impl ToRpcJsonMap for FixedConstants {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
 pub struct ParametricConstants {
     preserved_cycles: u8,
     blocks_per_cycle: i32,
     blocks_per_commitment: i32,
     blocks_per_roll_snapshot: i32,
     blocks_per_voting_period: i32,
+    #[encoding(dynamic, list)]
     time_between_blocks: Vec<i64>,
     endorsers_per_block: u16,
-    hard_gas_limit_per_operation: BigInt,
-    hard_gas_limit_per_block: BigInt,
+    hard_gas_limit_per_operation: Zarith,
+    hard_gas_limit_per_block: Zarith,
     proof_of_work_threshold: i64,
-    tokens_per_roll: BigInt,
+    tokens_per_roll: Mutez,
     michelson_maximum_type_size: u16,
-    seed_nonce_revelation_tip: BigInt,
+    seed_nonce_revelation_tip: Mutez,
     origination_size: i32,
-    block_security_deposit: BigInt,
-    endorsement_security_deposit: BigInt,
-    block_reward: BigInt,
-    endorsement_reward: BigInt,
-    cost_per_byte: BigInt,
-    hard_storage_limit_per_operation: BigInt,
+    block_security_deposit: Mutez,
+    endorsement_security_deposit: Mutez,
+    block_reward: Mutez,
+    endorsement_reward: Mutez,
+    cost_per_byte: Mutez,
+    hard_storage_limit_per_operation: Zarith,
     test_chain_duration: i64,
     quorum_min: i32,
     quorum_max: i32,
@@ -118,11 +119,11 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "hard_gas_limit_per_operation",
-            UniversalValue::big_num(self.hard_gas_limit_per_operation.clone()),
+            UniversalValue::big_num(&self.hard_gas_limit_per_operation),
         );
         ret.insert(
             "hard_gas_limit_per_block",
-            UniversalValue::big_num(self.hard_gas_limit_per_block.clone()),
+            UniversalValue::big_num(&self.hard_gas_limit_per_block),
         );
         ret.insert(
             "proof_of_work_threshold",
@@ -130,7 +131,7 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "tokens_per_roll",
-            UniversalValue::big_num(self.tokens_per_roll.clone()),
+            UniversalValue::big_num(&self.tokens_per_roll),
         );
         ret.insert(
             "michelson_maximum_type_size",
@@ -138,7 +139,7 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "seed_nonce_revelation_tip",
-            UniversalValue::big_num(self.seed_nonce_revelation_tip.clone()),
+            UniversalValue::big_num(&self.seed_nonce_revelation_tip),
         );
         ret.insert(
             "origination_size",
@@ -146,27 +147,24 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "block_security_deposit",
-            UniversalValue::big_num(self.block_security_deposit.clone()),
+            UniversalValue::big_num(&self.block_security_deposit),
         );
         ret.insert(
             "endorsement_security_deposit",
-            UniversalValue::big_num(self.endorsement_security_deposit.clone()),
+            UniversalValue::big_num(&self.endorsement_security_deposit),
         );
-        ret.insert(
-            "block_reward",
-            UniversalValue::big_num(self.block_reward.clone()),
-        );
+        ret.insert("block_reward", UniversalValue::big_num(&self.block_reward));
         ret.insert(
             "endorsement_reward",
-            UniversalValue::big_num(self.endorsement_reward.clone()),
+            UniversalValue::big_num(&self.endorsement_reward),
         );
         ret.insert(
             "cost_per_byte",
-            UniversalValue::big_num(self.cost_per_byte.clone()),
+            UniversalValue::big_num(&self.cost_per_byte),
         );
         ret.insert(
             "hard_storage_limit_per_operation",
-            UniversalValue::big_num(self.hard_storage_limit_per_operation.clone()),
+            UniversalValue::big_num(&self.hard_storage_limit_per_operation),
         );
         ret.insert(
             "test_chain_duration",
@@ -189,41 +187,3 @@ impl ToRpcJsonMap for ParametricConstants {
         ret
     }
 }
-
-non_cached_data!(ParametricConstants);
-has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
-    Encoding::Obj(
-        "ParametricConstants",
-        vec![
-            Field::new("preserved_cycles", Encoding::Uint8),
-            Field::new("blocks_per_cycle", Encoding::Int32),
-            Field::new("blocks_per_commitment", Encoding::Int32),
-            Field::new("blocks_per_roll_snapshot", Encoding::Int32),
-            Field::new("blocks_per_voting_period", Encoding::Int32),
-            Field::new(
-                "time_between_blocks",
-                Encoding::dynamic(Encoding::list(Encoding::Int64)),
-            ),
-            Field::new("endorsers_per_block", Encoding::Uint16),
-            Field::new("hard_gas_limit_per_operation", Encoding::Z),
-            Field::new("hard_gas_limit_per_block", Encoding::Z),
-            Field::new("proof_of_work_threshold", Encoding::Int64),
-            Field::new("tokens_per_roll", Encoding::Mutez),
-            Field::new("michelson_maximum_type_size", Encoding::Uint16),
-            Field::new("seed_nonce_revelation_tip", Encoding::Mutez),
-            Field::new("origination_size", Encoding::Int32),
-            Field::new("block_security_deposit", Encoding::Mutez),
-            Field::new("endorsement_security_deposit", Encoding::Mutez),
-            Field::new("block_reward", Encoding::Mutez),
-            Field::new("endorsement_reward", Encoding::Mutez),
-            Field::new("cost_per_byte", Encoding::Mutez),
-            Field::new("hard_storage_limit_per_operation", Encoding::Z),
-            Field::new("test_chain_duration", Encoding::Int64),
-            Field::new("quorum_min", Encoding::Int32),
-            Field::new("quorum_max", Encoding::Int32),
-            Field::new("min_proposal_quorum", Encoding::Int32),
-            Field::new("initial_endorsers", Encoding::Uint16),
-            Field::new("delay_per_missing_endorsement", Encoding::Int64),
-        ],
-    )
-});

@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryWrite;
 use tezos_messages::p2p::encoding::{
     limits::BLOCK_HEADER_MAX_SIZE,
     peer::{PeerMessage, PeerMessageResponse},

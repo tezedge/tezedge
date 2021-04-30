@@ -9,7 +9,7 @@ use failure::Error;
 use storage::mempool_storage::MempoolOperationType;
 use storage::tests_common::TmpStorage;
 use storage::MempoolStorage;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
