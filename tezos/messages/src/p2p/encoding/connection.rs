@@ -11,14 +11,16 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::binary_reader::BinaryReaderError;
+use tezos_encoding::{binary_reader::BinaryReaderError, encoding::{Encoding, Field, HasEncoding, HasEncodingTest}, has_encoding_test};
 
 
 use crate::non_cached_data;
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::encoding::version::NetworkVersion;
 
-use tezos_encoding::encoding::HasEncoding;
+use tezos_encoding::encoding::HasEncodingOld;
+use tezos_encoding::encoding::HasEncodingDerived;
+use tezos_encoding::nom::NomReader;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone, tezos_encoding_derive::HasEncoding)]
 pub struct ConnectionMessage {
@@ -33,6 +35,31 @@ pub struct ConnectionMessage {
     #[get = "pub"]
     version: NetworkVersion,
 }
+
+impl tezos_encoding::nom::NomReader for ConnectionMessage {
+    fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
+        let (bytes, port) = nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
+        let (bytes, public_key) = nom::combinator::map_parser(
+            nom::bytes::complete::take(CRYPTO_KEY_SIZE),
+            nom::combinator::map(nom::combinator::rest, Vec::from)
+        )(bytes)?;
+        let (bytes, proof_of_work_stamp) = nom::combinator::map_parser(
+            nom::bytes::complete::take(POW_SIZE),
+            nom::combinator::map(nom::combinator::rest, Vec::from)
+        )(bytes)?;
+        let (bytes, message_nonce) = nom::combinator::map_parser(
+            nom::bytes::complete::take(NONCE_SIZE),
+            nom::combinator::map(nom::combinator::rest, Vec::from)
+        )(bytes)?;
+        let (bytes, version) = NetworkVersion::from_bytes_nom(bytes)?;
+        Ok((bytes, ConnectionMessage { port, public_key, proof_of_work_stamp, message_nonce, version }))
+    }
+}
+
+/*
+ * let (bytes, port) = nom::u16()?;
+ * let (bytes, public_key) = num::
+*/
 
 impl ConnectionMessage {
     pub fn try_new(
@@ -64,9 +91,7 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 }
 
 non_cached_data!(ConnectionMessage);
-
-/*
-has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
+has_encoding_test!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
     Encoding::Obj(
         "ConnectionMessage",
         vec![
@@ -87,4 +112,3 @@ has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
         ],
     )
 });
-*/

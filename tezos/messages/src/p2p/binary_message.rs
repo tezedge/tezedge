@@ -200,7 +200,7 @@ pub trait BinaryMessage: Sized {
 
 impl<T> BinaryMessage for T
 where
-    T: HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
+    T: tezos_encoding::encoding::HasEncodingOld + cache::CachedData + DeserializeOwned + Serialize + Sized,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
@@ -218,6 +218,19 @@ where
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
         let bytes = bytes.as_ref();
+
+        if let Some(dir) = std::env::var_os("OUTPUT_DIR") {
+            let type_name = std::any::type_name::<T>();
+            let type_name = type_name.rsplit("::").next().unwrap();
+            let dir = std::path::PathBuf::from(dir).join(type_name);
+            if dir.exists() {
+                assert!(dir.is_dir());
+            } else {
+                std::fs::create_dir(&dir).unwrap();
+            }
+            let hash = crypto::blake2b::digest_256(bytes).unwrap();
+            std::fs::File::create(std::path::PathBuf::from(dir).join(&format!("{}.data", hex::encode(&hash)))).and_then(|mut f| std::io::Write::write_all(&mut f, bytes)).expect("cannoot");
+        }
 
         let value = BinaryReader::new().read(bytes, &Self::encoding())?;
         let mut myself: Self = deserialize_from_value(&value)?;

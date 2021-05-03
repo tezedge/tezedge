@@ -68,6 +68,8 @@ pub enum BinaryReaderErrorKind {
     /// Arithmetic overflow
     #[fail(display = "Arithmetic overflow while encoding {:?}", encoding)]
     ArithmeticOverflow { encoding: &'static str },
+    #[fail(display = "Nom error: {}", error)]
+    NomError { error: String },
 }
 
 impl From<crate::de::Error> for BinaryReaderError {
@@ -91,6 +93,12 @@ impl From<crate::bit_utils::BitsError> for BinaryReaderError {
             error: crate::de::Error::custom(format!("Bits operation error: {:?}", source)),
         }
         .into()
+    }
+}
+
+impl<T: std::fmt::Debug> From<nom::Err<T>> for BinaryReaderError {
+    fn from(error: nom::Err<T>) -> Self {
+        BinaryReaderErrorKind::NomError { error: error.to_string() }.into()
     }
 }
 

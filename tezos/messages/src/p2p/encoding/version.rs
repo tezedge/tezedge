@@ -5,10 +5,19 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
+use tezos_encoding::{
+    encoding::{Encoding, Field, HasEncodingOld},
+    has_encoding_test,
+};
 
 use crate::non_cached_data;
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
+
+use crate::p2p::binary_message::cache::CachedData;
+use tezos_encoding::encoding::HasEncodingDerived;
+use tezos_encoding::encoding::HasEncodingTest;
+use tezos_encoding::nom::NomReader;
 
 /// Holds informations about chain compatibility, features compatibility...
 #[derive(Serialize, Deserialize, Getters, Clone, tezos_encoding_derive::HasEncoding)]
@@ -20,6 +29,29 @@ pub struct NetworkVersion {
     distributed_db_version: u16,
     #[get = "pub"]
     p2p_version: u16,
+}
+
+impl tezos_encoding::nom::NomReader for NetworkVersion {
+    fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
+        let (bytes, chain_name) = nom::combinator::map_res(
+            nom::combinator::flat_map(
+                nom::number::complete::u32(nom::number::Endianness::Big),
+                nom::bytes::complete::take,
+            ),
+            |bytes: &[u8]| std::str::from_utf8(bytes).map(str::to_string),
+        )(bytes)?;
+        let (bytes, distributed_db_version) =
+            nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
+        let (bytes, p2p_version) = nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
+        Ok((
+            bytes,
+            NetworkVersion {
+                chain_name,
+                distributed_db_version,
+                p2p_version,
+            },
+        ))
+    }
 }
 
 impl fmt::Debug for NetworkVersion {
@@ -47,8 +79,7 @@ impl NetworkVersion {
 }
 
 non_cached_data!(NetworkVersion);
-/*
-has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
+has_encoding_test!(NetworkVersion, NETWORK_VERSION_ENCODING, {
     Encoding::Obj(
         "NetworkVersion",
         vec![
@@ -58,7 +89,6 @@ has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
         ],
     )
 });
-*/
 
 impl Eq for NetworkVersion {}
 

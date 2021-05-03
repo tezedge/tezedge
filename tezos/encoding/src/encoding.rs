@@ -354,6 +354,27 @@ pub trait HasEncoding {
     fn encoding() -> &'static Encoding;
 }
 
+/// Indicates that type has it's own ser/de schema, to be used with new derived schema.
+pub trait HasEncodingOld {
+    fn encoding_old() -> &'static Encoding;
+}
+
+impl<T: HasEncodingOld> HasEncoding for T {
+    fn encoding() -> &'static Encoding {
+        Self::encoding_old()
+    }
+}
+
+/// Indicates that type has it's own ser/de schema, to be used with new derived schema.
+pub trait HasEncodingTest {
+    fn encoding_test() -> &'static Encoding;
+}
+
+/// Indicates that type has it's own derived schema.
+pub trait HasEncodingDerived {
+    fn encoding_derived() -> &'static Encoding;
+}
+
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]
 macro_rules! has_encoding {
@@ -364,8 +385,44 @@ macro_rules! has_encoding {
             };
         }
 
-        impl HasEncoding for $struct_name {
-            fn encoding() -> &'static Encoding {
+        impl tezos_encoding::encoding::HasEncodingOld for $struct_name {
+            fn encoding_old() -> &'static Encoding {
+                &$enc_ref_name
+            }
+        }
+    };
+}
+
+/// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
+#[macro_export]
+macro_rules! has_encoding_test {
+    ($struct_name:ident, $enc_ref_name:ident, $code:block) => {
+        lazy_static::lazy_static! {
+            static ref $enc_ref_name: Encoding = {
+                $code
+            };
+        }
+
+        impl tezos_encoding::encoding::HasEncodingTest for $struct_name {
+            fn encoding_test() -> &'static Encoding {
+                &$enc_ref_name
+            }
+        }
+    };
+}
+
+/// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
+#[macro_export]
+macro_rules! has_encoding_old {
+    ($struct_name:ident, $enc_ref_name:ident, $code:block) => {
+        lazy_static::lazy_static! {
+            static ref $enc_ref_name: Encoding = {
+                $code
+            };
+        }
+
+        impl HasEncodingOld for $struct_name {
+            fn encoding_old() -> &'static Encoding {
                 &$enc_ref_name
             }
         }
