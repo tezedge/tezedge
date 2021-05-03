@@ -6,12 +6,12 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
-    PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
-    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-    ValidateOperationRequest, ValidateOperationResponse,
+    ComputePathResponse, ContextDataError, GetDataError, HelpersPreapplyBlockRequest,
+    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper,
+    ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
+    TezosContextConfiguration, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+    ValidateOperationResponse,
 };
 use tezos_interop::ffi;
 
@@ -28,24 +28,10 @@ pub fn change_runtime_configuration(
 
 /// Initializes context for Tezos ocaml protocol
 pub fn init_protocol_context(
-    storage_data_dir: String,
-    genesis: GenesisChain,
-    protocol_overrides: ProtocolOverrides,
-    commit_genesis: bool,
-    enable_testchain: bool,
-    readonly: bool,
-    turn_off_context_raw_inspector: bool,
-    patch_context: Option<PatchContext>,
+    context_config: TezosContextConfiguration,
 ) -> Result<InitProtocolContextResult, TezosStorageInitError> {
     ffi::init_protocol_context(
-        storage_data_dir,
-        genesis,
-        protocol_overrides,
-        commit_genesis,
-        enable_testchain,
-        readonly,
-        turn_off_context_raw_inspector,
-        patch_context,
+        context_config
     ).map_err(|e| {
         TezosStorageInitError::InitializeError {
             message: format!("FFI 'init_protocol_context' failed! Initialization of Tezos context failed, this storage is required, we can do nothing without that, reason: {:?}", e)

@@ -777,7 +777,7 @@ impl WorkingTree {
     ) -> Result<(), MerkleError> {
         let entry_hash = match entry_hash {
             None => hash_entry(entry)?,
-            Some(hash) => hash
+            Some(hash) => hash,
         };
         // add entry to batch
         batch.push((entry_hash, bincode::serialize(entry)?));
@@ -801,7 +801,12 @@ impl WorkingTree {
                             .as_ref()
                         {
                             None => Ok(()),
-                            Some(entry) => self.get_entries_recursively(entry, child_node.entry_hash.borrow().clone(), None, batch),
+                            Some(entry) => self.get_entries_recursively(
+                                entry,
+                                child_node.entry_hash.borrow().clone(),
+                                None,
+                                batch,
+                            ),
                         }
                     })
                     .find_map(|res| match res {
