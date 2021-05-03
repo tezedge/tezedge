@@ -11,14 +11,19 @@ use std::thread;
 use std::time::Duration;
 
 use crypto::hash::HashType;
+use failure::Error;
 
-use crate::gc::{
-    collect_hashes_recursively, fetch_entry_from_store, GarbageCollectionError, GarbageCollector,
-};
 use crate::hash::EntryHash;
 use crate::persistent::database::DBError;
 use crate::persistent::KeyValueStoreBackend;
 use crate::working_tree::Entry;
+use crate::{
+    gc::{
+        collect_hashes_recursively, fetch_entry_from_store, GarbageCollectionError,
+        GarbageCollector,
+    },
+    persistent::{Flushable, Persistable},
+};
 use crate::{ContextKeyValueStoreSchema, ContextValue};
 
 const COUNT_OF_KEYS_TO_CLEANUP_IN_SINGLE_GC_ITERATION: usize = 2048;
@@ -424,6 +429,18 @@ impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync
                 ),
             }),
         }
+    }
+}
+
+impl<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>> Flushable for MarkMoveGCed<T> {
+    fn flush(&self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>> Persistable for MarkMoveGCed<T> {
+    fn is_persistent(&self) -> bool {
+        false
     }
 }
 
