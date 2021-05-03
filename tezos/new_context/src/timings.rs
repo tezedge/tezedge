@@ -376,38 +376,30 @@ impl Timing {
             action.key.join("/")
         };
 
-        // let query = format!(
-        //     "
-        // INSERT INTO actions
-        //   (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
-        // VALUES
-        //   ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
-        //     ",
-        //     name = &action.name,
-        //     key = &key,
-        //     irmin_time = &action.irmin_time,
-        //     tezedge_time = &action.tezedge_time,
-        //     block_id = block_id,
-        //     operation_id = operation_id,
-        //     context_id = context_id,
-        // );
+        let query = format!(
+            "
+        INSERT INTO actions
+          (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+        VALUES
+          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
+            ",
+            name = &action.name,
+            key = &key,
+            irmin_time = &action.irmin_time,
+            tezedge_time = &action.tezedge_time,
+            block_id = block_id,
+            operation_id = operation_id,
+            context_id = context_id,
+        );
 
-        // let now = std::time::Instant::now();
-        // self.sql.execute(&query)?;
-        // let elapsed = now.elapsed();
+        self.sql.execute(&query)?;
 
-        // if elapsed > std::time::Duration::from_millis(5) {
-        //     println!("QUERY ELAPSED {:?}", elapsed);
-        //     // println!("QUERY={:?}", query);
-        // }
+        self.nactions = self.nactions.checked_add(1).expect("actions count overflowed");
 
-        self.nactions = self.nactions.checked_add(1).expect("nactions overflow");
-
-        let entry = self
-            .actions_in_current_block
+        self.actions_in_current_block
             .entry(action.name.clone())
-            .or_default();
-        entry.add(action.irmin_time, action.tezedge_time);
+            .or_default()
+            .add(action.irmin_time, action.tezedge_time);
 
         Ok(())
     }
@@ -530,6 +522,7 @@ impl Timing {
             .execute(
                 "
         PRAGMA foreign_keys = ON;
+        PRAGMA synchronous = OFF;
         CREATE TABLE IF NOT EXISTS blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS contexts (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
