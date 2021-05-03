@@ -10,7 +10,9 @@ use super::{
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
     ForkingTestchainData, HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest,
-    RpcMethod, RpcRequest, ValidateOperationRequest,
+    RpcMethod, RpcRequest, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    ValidateOperationRequest,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
@@ -71,6 +73,41 @@ to_ocaml_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
+
+// Configuration
+
+impl_to_ocaml_record! {
+    TezosContextIrminStorageConfiguration {
+        data_dir: String,
+    }
+}
+
+impl_to_ocaml_variant! {
+    TezosContextStorageConfiguration {
+        TezosContextStorageConfiguration::IrminOnly(cfg: TezosContextIrminStorageConfiguration),
+        TezosContextStorageConfiguration::TezEdgeOnly(cfg: TezosContextTezEdgeStorageConfiguration),
+        TezosContextStorageConfiguration::Both(
+            irmin: TezosContextIrminStorageConfiguration,
+            tezedge: TezosContextTezEdgeStorageConfiguration,
+        )
+    }
+}
+
+impl_to_ocaml_record! {
+    TezosContextConfiguration {
+        storage: TezosContextStorageConfiguration,
+        genesis: (String, String, String) =>
+            (genesis.time.clone(), genesis.block.clone(), genesis.protocol.clone()),
+        protocol_overrides: (OCamlList<(OCamlInt32, String)>, OCamlList<(String, String)>) =>
+            (protocol_overrides.user_activated_upgrades.clone(),
+             protocol_overrides.user_activated_protocol_overrides.clone()),
+        commit_genesis: bool,
+        enable_testchain: bool,
+        readonly: bool,
+        sandbox_json_patch_context: Option<(String, String)> =>
+            sandbox_json_patch_context.clone().map(|pc| (pc.key, pc.json)),
+    }
+}
 
 // Other
 
