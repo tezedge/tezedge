@@ -3060,6 +3060,7 @@ dependencies = [
  "serde_json",
  "shell",
  "slog",
+ "sqlite",
  "storage",
  "strum",
  "strum_macros",
