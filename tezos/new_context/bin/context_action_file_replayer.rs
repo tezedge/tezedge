@@ -63,9 +63,9 @@ impl Args {
                 .takes_value(true)
                 .value_name("STRING")
                 .required(true)
-                .default_value("inmem")
+                .default_value("inmem-gc")
                 .possible_values(&SupportedContextKeyValueStore::possible_values())
-                .help("Choose the merkle storege backend - supported backends: 'sled', 'inmem', 'btree'"));
+                .help("Choose the merkle storege backend - supported backends: 'sled', 'inmem', 'inmem-gc', 'btree'"));
 
         let matches = app.get_matches();
 
@@ -91,6 +91,7 @@ impl Args {
                         }
                     }
                     SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
+                    SupportedContextKeyValueStore::InMemGC => ContextKvStoreConfiguration::InMemGC,
                     SupportedContextKeyValueStore::BTreeMap => {
                         ContextKvStoreConfiguration::BTreeMap
                     }
@@ -340,6 +341,7 @@ fn resolve_context_kv_store(
     match context_kv_store_configuration {
         ContextKvStoreConfiguration::Sled { path } => ("sled".to_string(), Some(path.clone())),
         ContextKvStoreConfiguration::InMem => ("inmem".to_string(), None),
+        ContextKvStoreConfiguration::InMemGC => ("inmem-gc".to_string(), None),
         ContextKvStoreConfiguration::BTreeMap => ("btree".to_string(), None),
     }
 }
