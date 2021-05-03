@@ -119,10 +119,10 @@ impl Times {
     }
 
     fn sum(&self) -> (f64, f64) {
-        (
-            self.irmin_times.iter().sum(),
-            self.tezedge_times.iter().sum(),
-        )
+        let irmin = self.irmin_times.iter().sum();
+        let tezedge = self.tezedge_times.iter().sum();
+
+        (irmin, tezedge)
     }
 }
 
@@ -344,8 +344,6 @@ impl Timing {
             tezedge_time,
         })?;
         self.update_global_stats()
-
-        // todo!()
     }
 
     fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
@@ -446,19 +444,23 @@ impl Timing {
             .map(|(id, _)| id.as_str())
             .unwrap_or("NULL");
 
-        let mut values = Vec::with_capacity(self.actions_in_current_block.len());
+        let values: Vec<String> = self
+            .actions_in_current_block
+            .iter()
+            .map(|(name, times)| {
+                let (time_irmin, time_tezedge) = times.sum();
 
-        for (name, times) in self.actions_in_current_block.iter() {
-            let (time_irmin, time_tezedge) = times.sum();
+                format!(
+                    "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
+                    block_id = block_id,
+                    action_name = name,
+                    time_irmin = time_irmin,
+                    time_tezedge = time_tezedge,
+                )
+            })
+            .collect();
 
-            values.push(format!(
-                "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
-                block_id = block_id,
-                action_name = name,
-                time_irmin = time_irmin,
-                time_tezedge = time_tezedge,
-            ))
-        }
+        self.actions_in_current_block = HashMap::new();
 
         let query = format!(
             "
