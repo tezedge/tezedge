@@ -195,25 +195,20 @@ impl Timing {
 
     fn process_msg(&mut self, msg: TimingMessage) -> Result<(), SQLError> {
         match msg {
-            TimingMessage::SetBlock(block_hash) => {
-                self.set_current_block(block_hash)
-            },
+            TimingMessage::SetBlock(block_hash) => self.set_current_block(block_hash),
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(operation_hash)
             }
-            TimingMessage::Action(action) => {
-                self.insert_action(&action)
-            },
+            TimingMessage::Action(action) => self.insert_action(&action),
             TimingMessage::Checkout {
                 context_hash,
                 irmin_time,
                 tezedge_time,
-            } => {
-                self.insert_checkout(context_hash, irmin_time, tezedge_time)
-            }
-            TimingMessage::Commit { irmin_time, tezedge_time } => {
-                self.insert_commit(irmin_time, tezedge_time)
-            }
+            } => self.insert_checkout(context_hash, irmin_time, tezedge_time),
+            TimingMessage::Commit {
+                irmin_time,
+                tezedge_time,
+            } => self.insert_commit(irmin_time, tezedge_time),
         }
     }
 
@@ -394,7 +389,10 @@ impl Timing {
 
         self.sql.execute(&query)?;
 
-        self.nactions = self.nactions.checked_add(1).expect("actions count overflowed");
+        self.nactions = self
+            .nactions
+            .checked_add(1)
+            .expect("actions count overflowed");
 
         self.actions_in_current_block
             .entry(action.name.clone())
@@ -424,7 +422,8 @@ impl Timing {
             .fold(f64::NEG_INFINITY, f64::max);
 
         let tezedge_checkouts_total = self.checkouts.tezedge_times.iter().sum::<f64>();
-        let tezedge_checkouts_mean = tezedge_checkouts_total / self.checkouts.tezedge_times.len() as f64;
+        let tezedge_checkouts_mean =
+            tezedge_checkouts_total / self.checkouts.tezedge_times.len() as f64;
         let tezedge_checkouts_max = self
             .checkouts
             .tezedge_times
@@ -452,24 +451,23 @@ impl Timing {
         for (name, times) in self.actions_in_current_block.iter() {
             let (time_irmin, time_tezedge) = times.sum();
 
-            values.push(
-                format!(
-                    "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
-                    block_id = block_id,
-                    action_name = name,
-                    time_irmin = time_irmin,
-                    time_tezedge = time_tezedge,
-                )
-            )
+            values.push(format!(
+                "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
+                block_id = block_id,
+                action_name = name,
+                time_irmin = time_irmin,
+                time_tezedge = time_tezedge,
+            ))
         }
 
-        let query = format!("
+        let query = format!(
+            "
              INSERT INTO block_details
                (block_id, action_name, irmin_time, tezedge_time)
              VALUES
                {values};
              ",
-             values = values.join(",")
+            values = values.join(",")
         );
 
         self.sql.execute(query).unwrap();
