@@ -11,7 +11,7 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::{binary_reader::BinaryReaderError, encoding::{Encoding, Field, HasEncoding, HasEncodingTest}, has_encoding_test};
+use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncoding, HasEncodingTest}, has_encoding_test};
 
 
 use crate::non_cached_data;
@@ -76,6 +76,31 @@ impl ConnectionMessage {
             proof_of_work_stamp: proof_of_work_stamp.as_ref().to_vec(),
             message_nonce: message_nonce.get_bytes()?.into(),
         })
+    }
+
+    pub fn from_bytes_raw(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
+        const PUBLIC_KEY_OFF: usize = std::mem::size_of::<u16>();
+        const PROOF_OF_WORK_STAMP_OFF: usize = PUBLIC_KEY_OFF + CRYPTO_KEY_SIZE;
+        const MESSAGE_NONCE_OFF: usize = PROOF_OF_WORK_STAMP_OFF + POW_SIZE;
+        const NETWORK_VERSION_OFF: usize = MESSAGE_NONCE_OFF + NONCE_SIZE;
+        if bytes.len() < 2 {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: 2 - bytes.len() }.into());
+        }
+        let port: u16 = (bytes[0] as u16) << 8 + bytes[1];
+        if bytes.len() - PUBLIC_KEY_OFF < CRYPTO_KEY_SIZE {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: CRYPTO_KEY_SIZE - (bytes.len() - PUBLIC_KEY_OFF) }.into());
+        }
+        let public_key = bytes[PUBLIC_KEY_OFF..PROOF_OF_WORK_STAMP_OFF].to_vec();
+        if bytes.len() - PROOF_OF_WORK_STAMP_OFF < POW_SIZE {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: POW_SIZE - (bytes.len() - PROOF_OF_WORK_STAMP_OFF) }.into());
+        }
+        let proof_of_work_stamp = bytes[PROOF_OF_WORK_STAMP_OFF..MESSAGE_NONCE_OFF].to_vec();
+        if bytes.len() - MESSAGE_NONCE_OFF < NONCE_SIZE {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: NONCE_SIZE - (bytes.len() - MESSAGE_NONCE_OFF) }.into());
+        }
+        let message_nonce = bytes[MESSAGE_NONCE_OFF..NETWORK_VERSION_OFF].to_vec();
+        let (bytes, version) = NetworkVersion::from_bytes_raw(&bytes[NETWORK_VERSION_OFF..])?;
+        Ok((bytes, ConnectionMessage { port, public_key, proof_of_work_stamp, message_nonce, version }))
     }
 }
 

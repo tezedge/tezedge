@@ -19,6 +19,11 @@ fn connection_benchmark(c: &mut Criterion) {
             let _ = ConnectionMessage::from_bytes_nom(&data).unwrap();
         });
     });
+    c.bench_function("connection_decode_raw", |b| {
+        b.iter(|| {
+            let _ = ConnectionMessage::from_bytes_raw(&data).unwrap();
+        });
+    });
 }
 
 criterion_group! {

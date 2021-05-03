@@ -5,10 +5,7 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncodingOld},
-    has_encoding_test,
-};
+use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncodingOld}, has_encoding_test};
 
 use crate::non_cached_data;
 
@@ -29,6 +26,33 @@ pub struct NetworkVersion {
     distributed_db_version: u16,
     #[get = "pub"]
     p2p_version: u16,
+}
+
+impl NetworkVersion {
+    pub fn from_bytes_raw(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
+        if bytes.len() < 4 {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: 4 - bytes.len() }.into());
+        }
+        let chain_name_len: u32 = (bytes[0] as u32) << 24 + (bytes[1] as u32) << 16 + (bytes[2] as u32) << 8 + bytes[3] as u32;
+        let chain_name_len = chain_name_len as usize;
+        let off = 4usize;
+        if bytes.len() - off < chain_name_len {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: chain_name_len - bytes.len() - off }.into());
+        }
+        let chain_name = std::str::from_utf8(&bytes[off..off + chain_name_len as usize])?.to_string();
+        let off = off + chain_name_len as usize;
+        if bytes.len() - off < 2 {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: 2 - bytes.len() - off }.into());
+        }
+        let distributed_db_version = (bytes[off] as u16) << 8 + bytes[off+1] as u16;
+        let off = off + 2;
+        if bytes.len() - off < 2 {
+            return Err(BinaryReaderErrorKind::Underflow { bytes: 2 - bytes.len() - off }.into());
+        }
+        let p2p_version = (bytes[off] as u16) << 8 + bytes[off+1] as u16;
+        let off = off + 2;
+        Ok((&bytes[off..], NetworkVersion { chain_name, distributed_db_version, p2p_version}))
+    }
 }
 
 impl tezos_encoding::nom::NomReader for NetworkVersion {
