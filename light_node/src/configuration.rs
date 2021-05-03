@@ -606,7 +606,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
+            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'inmem-gc', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
             .takes_value(true)
@@ -1043,6 +1043,7 @@ impl Environment {
                     })
                     .collect::<Vec<_>>();
 
+                // TODO - TE-261: Add InMemGC here when tezos/new_context is used
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
