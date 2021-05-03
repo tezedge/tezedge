@@ -35,7 +35,10 @@ use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
 use storage::tests_common::TmpStorage;
 use storage::{resolve_storage_init_chain_data, BlockStorage, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosRuntimeConfiguration,
+};
 use tezos_identity::Identity;
 use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -87,11 +90,17 @@ impl NodeInfrastructure {
             context_db_path.to_string()
         };
 
-        let context_db_path = PathBuf::from(context_db_path);
+        let context_storage_configuration = TezosContextStorageConfiguration::Both(
+            TezosContextIrminStorageConfiguration {
+                data_dir: context_db_path,
+            },
+            (),
+        );
+
         let init_storage_data = resolve_storage_init_chain_data(
             &tezos_env,
             &tmp_storage.path(),
-            &context_db_path,
+            &context_storage_configuration,
             &patch_context,
             false,
             &log,
@@ -116,7 +125,7 @@ impl NodeInfrastructure {
                 },
                 tezos_env.clone(),
                 false,
-                &context_db_path,
+                context_storage_configuration.clone(),
                 &common::protocol_runner_executable_path(),
                 log_level,
                 None,
@@ -143,7 +152,7 @@ impl NodeInfrastructure {
                 },
                 tezos_env.clone(),
                 false,
-                &context_db_path,
+                context_storage_configuration,
                 &common::protocol_runner_executable_path(),
                 log_level,
                 Some(apply_protocol_events.server_path()),

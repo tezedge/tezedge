@@ -46,14 +46,7 @@ pub trait ProtocolApi {
 
     /// Command tezos ocaml code to initialize protocol and context.
     fn init_protocol_context(
-        storage_data_dir: String,
-        genesis: GenesisChain,
-        protocol_overrides: ProtocolOverrides,
-        commit_genesis: bool,
-        enable_testchain: bool,
-        readonly: bool,
-        turn_off_context_raw_inspector: bool,
-        patch_context: Option<PatchContext>,
+        context_config: TezosContextConfiguration,
     ) -> Result<InitProtocolContextResult, TezosStorageInitError>;
 
     /// Command gets genesis data from context

@@ -10,7 +10,11 @@ use crypto::hash::ChainId;
 use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV,
 };
-use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    ApplyBlockRequest, InitProtocolContextResult, TezosContextConfiguration,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosRuntimeConfiguration,
+};
 use tezos_client::client;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryMessage;
@@ -138,17 +142,22 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         .get(&test_data::TEZOS_NETWORK)
         .expect("no tezos environment configured");
 
-    let result = client::init_protocol_context(
-        common::prepare_empty_dir(dir_name),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        None,
-    )
-    .unwrap();
+    let data_dir = common::prepare_empty_dir(dir_name);
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration { data_dir },
+        (),
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: None,
+    };
+
+    let result = client::init_protocol_context(context_config).unwrap();
 
     let genesis_commit_hash = match result.clone().genesis_commit_hash {
         None => panic!("we needed commit_genesis and here should be result of it"),

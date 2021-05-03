@@ -8,12 +8,13 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use failure::Fail;
-use getset::{CopyGetters, Getters};
 use r2d2::{CustomizeConnection, Pool};
 use slog::{Level, Logger};
 
-use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
+use tezos_api::{
+    environment::TezosEnvironmentConfiguration, ffi::TezosContextStorageConfiguration,
+};
 
 use crate::pool::{
     InitReadonlyContextProtocolRunnerConnectionCustomizer, NoopProtocolRunnerConnectionCustomizer,
@@ -138,21 +139,15 @@ impl Drop for TezosApiConnectionPool {
 }
 
 /// Protocol configuration (transferred via IPC from tezedge node to protocol_runner.
-#[derive(Clone, Getters, CopyGetters)]
+#[derive(Clone)]
 pub struct ProtocolEndpointConfiguration {
-    #[get = "pub"]
-    runtime_configuration: TezosRuntimeConfiguration,
-    #[get = "pub"]
-    environment: TezosEnvironmentConfiguration,
-    #[get_copy = "pub"]
-    enable_testchain: bool,
-    #[get = "pub"]
-    data_dir: PathBuf,
-    #[get = "pub"]
-    executable_path: PathBuf,
-    #[get = "pub"]
-    log_level: Level,
-    event_server_path: Option<PathBuf>,
+    pub runtime_configuration: TezosRuntimeConfiguration,
+    pub environment: TezosEnvironmentConfiguration,
+    pub enable_testchain: bool,
+    pub storage: TezosContextStorageConfiguration,
+    pub executable_path: PathBuf,
+    pub log_level: Level,
+    pub event_server_path: Option<PathBuf>,
 }
 
 impl ProtocolEndpointConfiguration {
@@ -160,16 +155,16 @@ impl ProtocolEndpointConfiguration {
         runtime_configuration: TezosRuntimeConfiguration,
         environment: TezosEnvironmentConfiguration,
         enable_testchain: bool,
-        data_dir: P,
+        storage: TezosContextStorageConfiguration,
         executable_path: P,
         log_level: Level,
         event_server_path: Option<PathBuf>,
     ) -> Self {
-        ProtocolEndpointConfiguration {
+        Self {
             runtime_configuration,
             environment,
             enable_testchain,
-            data_dir: data_dir.as_ref().into(),
+            storage,
             executable_path: executable_path.as_ref().into(),
             log_level,
             event_server_path,

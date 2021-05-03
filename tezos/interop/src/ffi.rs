@@ -15,9 +15,9 @@ use crate::runtime;
 type TzResult<T> = Result<T, TezosErrorTrace>;
 
 mod tezos_ffi {
-    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlInt32, OCamlList};
+    use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
 
-    use tezos_api::ocaml_conv::FfiPath;
+    use tezos_api::{ffi::TezosContextConfiguration, ocaml_conv::FfiPath};
     use tezos_api::{
         ffi::{
             ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest,
@@ -56,12 +56,7 @@ mod tezos_ffi {
             log_enabled: bool, debug_mode: bool, compute_context_action_tree_hashes: bool,
         );
         pub fn init_protocol_context(
-            data_dir: String,
-            genesis: (OCamlBytes, OCamlBytes, OCamlBytes),
-            protocol_override: (OCamlList<(OCamlInt32, OCamlBytes)>,
-                                OCamlList<(OCamlBytes, OCamlBytes)>),
-            configuration: (bool, bool, bool, bool),
-            sandbox_json_patch_context: Option<(OCamlBytes, OCamlBytes)>
+            context_config: TezosContextConfiguration
         ) -> TzResult<(OCamlList<OCamlBytes>, Option<OCamlBytes>)>;
         pub fn genesis_result_data(
             context_hash: OCamlBytes,
@@ -120,47 +115,11 @@ pub fn change_runtime_configuration(
 }
 
 pub fn init_protocol_context(
-    storage_data_dir: String,
-    genesis: GenesisChain,
-    protocol_overrides: ProtocolOverrides,
-    commit_genesis: bool,
-    enable_testchain: bool,
-    readonly: bool,
-    turn_off_context_raw_inspector: bool,
-    patch_context: Option<PatchContext>,
+    context_config: TezosContextConfiguration,
 ) -> Result<InitProtocolContextResult, TezosStorageInitError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
-        // genesis configuration
-        let genesis_tuple = (genesis.time, genesis.block, genesis.protocol).to_boxroot(rt);
-
-        // protocol overrides
-        let protocol_overrides_tuple = (
-            protocol_overrides.user_activated_upgrades,
-            protocol_overrides.user_activated_protocol_overrides,
-        )
-            .to_boxroot(rt);
-
-        // configuration
-        let configuration = (
-            commit_genesis,
-            enable_testchain,
-            readonly,
-            turn_off_context_raw_inspector,
-        )
-            .to_boxroot(rt);
-
-        // patch context
-        let sandbox_json_patch_context = patch_context.map(|pc| (pc.key, pc.json)).to_boxroot(rt);
-
-        let storage_data_dir = storage_data_dir.to_boxroot(rt);
-        let result = tezos_ffi::init_protocol_context(
-            rt,
-            &storage_data_dir,
-            &genesis_tuple,
-            &protocol_overrides_tuple,
-            &configuration,
-            &sandbox_json_patch_context,
-        );
+        let context_config = context_config.to_boxroot(rt);
+        let result = tezos_ffi::init_protocol_context(rt, &context_config);
         let result = rt.get(&result).to_result();
 
         match result {
