@@ -21,10 +21,13 @@ use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, ChainId, ContextHash, FromBytesError, HashType},
 };
-use tezos_api::environment::{
-    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
-};
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
+use tezos_api::{
+    environment::{
+        get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
+    },
+    ffi::TezosContextStorageConfiguration,
+};
 use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
@@ -215,7 +218,7 @@ pub struct StorageInitInfo {
 pub fn resolve_storage_init_chain_data(
     tezos_env: &TezosEnvironmentConfiguration,
     storage_db_path: &Path,
-    context_db_path: &Path,
+    context_storage_configuration: &TezosContextStorageConfiguration,
     patch_context: &Option<PatchContext>,
     one_context: bool,
     log: &Logger,
@@ -234,7 +237,7 @@ pub fn resolve_storage_init_chain_data(
         "init_data.chain_id" => format!("{:?}", init_data.chain_id.to_base58_check()),
         "init_data.genesis_header" => format!("{:?}", init_data.genesis_block_header_hash.to_base58_check()),
         "storage_db_path" => format!("{:?}", storage_db_path),
-        "context_db_path" => format!("{:?}", context_db_path),
+        "context_storage_configuration" => format!("{:?}", context_storage_configuration),
         "one_context" => one_context,
         "patch_context" => match patch_context {
                 Some(pc) => format!("{:?}", pc),

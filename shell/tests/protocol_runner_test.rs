@@ -13,7 +13,10 @@ use serial_test::serial;
 use slog::{error, info, o, warn, Level, Logger};
 
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    InitProtocolContextResult, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+};
 use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -119,6 +122,16 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
         .get(&test_data::TEZOS_NETWORK)
         .expect("no environment configuration");
 
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: context_db_path
+                .to_str()
+                .expect("Invalid context_db_path value")
+                .to_string(),
+        },
+        (),
+    );
+
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
     let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
@@ -131,7 +144,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             },
             tezos_env.clone(),
             false,
-            &context_db_path,
+            storage,
             &protocol_runner,
             log_level,
             None,
@@ -206,6 +219,16 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         idle_timeout: Duration::from_secs(1),
     };
 
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: context_db_path
+                .to_str()
+                .expect("Invalid context_db_path value")
+                .to_string(),
+        },
+        (),
+    );
+
     // cfg for protocol runner
     let endpoint_cfg = ProtocolEndpointConfiguration::new(
         TezosRuntimeConfiguration {
@@ -215,7 +238,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         },
         tezos_env.clone(),
         false,
-        &context_db_path,
+        storage,
         &protocol_runner,
         log_level,
         None,
