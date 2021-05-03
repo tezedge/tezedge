@@ -126,70 +126,6 @@ impl Times {
     }
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy)]
-pub enum ActionType {
-    Mem,
-    Find,
-    FindTree,
-    Add,
-    AddTree,
-    Equal,
-    Hash,
-    Kind,
-    Empty,
-    IsEmpty,
-    List,
-    Fold,
-    Remove,
-    Commit,
-    Checkout,
-}
-
-impl<'a> From<&'a str> for ActionType {
-    fn from(name: &str) -> Self {
-        match name {
-            "mem" => Self::Mem,
-            "find" => Self::Find,
-            "find_tree" => Self::FindTree,
-            "add" => Self::Add,
-            "add_tree" => Self::AddTree,
-            "equal" => Self::Equal,
-            "hash" => Self::Hash,
-            "kind" => Self::Kind,
-            "empty" => Self::Empty,
-            "is_empty" => Self::IsEmpty,
-            "list" => Self::List,
-            "fold" => Self::Fold,
-            "remove" => Self::Remove,
-            "commit" => Self::Commit,
-            "checkout" => Self::Checkout,
-            _ => panic!("Unhandled action {:?}", name),
-        }
-    }
-}
-
-impl Into<&'static str> for ActionType {
-    fn into(self) -> &'static str {
-        match self {
-            ActionType::Mem => "mem",
-            ActionType::Find => "find",
-            ActionType::FindTree => "find_tree",
-            ActionType::Add => "add",
-            ActionType::AddTree => "add_tree",
-            ActionType::Equal => "equal",
-            ActionType::Hash => "hash",
-            ActionType::Kind => "kind",
-            ActionType::Empty => "empty",
-            ActionType::IsEmpty => "is_empty",
-            ActionType::List => "list",
-            ActionType::Fold => "fold",
-            ActionType::Remove => "remove",
-            ActionType::Commit => "commit",
-            ActionType::Checkout => "checkout",
-        }
-    }
-}
-
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
@@ -198,7 +134,7 @@ struct Timing {
     nactions: usize,
     commits: Times,
     checkouts: Times,
-    actions_in_current_block: HashMap<ActionType, Times>,
+    actions_in_current_block: HashMap<String, Times>,
     sql: sqlite::Connection,
 }
 
@@ -440,25 +376,25 @@ impl Timing {
             action.key.join("/")
         };
 
-        let query = format!(
-            "
-        INSERT INTO actions
-          (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
-        VALUES
-          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
-            ",
-            name = &action.name,
-            key = &key,
-            irmin_time = &action.irmin_time,
-            tezedge_time = &action.tezedge_time,
-            block_id = block_id,
-            operation_id = operation_id,
-            context_id = context_id,
-        );
+        // let query = format!(
+        //     "
+        // INSERT INTO actions
+        //   (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+        // VALUES
+        //   ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
+        //     ",
+        //     name = &action.name,
+        //     key = &key,
+        //     irmin_time = &action.irmin_time,
+        //     tezedge_time = &action.tezedge_time,
+        //     block_id = block_id,
+        //     operation_id = operation_id,
+        //     context_id = context_id,
+        // );
 
-        let now = std::time::Instant::now();
-        self.sql.execute(&query)?;
-        let elapsed = now.elapsed();
+        // let now = std::time::Instant::now();
+        // self.sql.execute(&query)?;
+        // let elapsed = now.elapsed();
 
         // if elapsed > std::time::Duration::from_millis(5) {
         //     println!("QUERY ELAPSED {:?}", elapsed);
@@ -467,10 +403,9 @@ impl Timing {
 
         self.nactions = self.nactions.checked_add(1).expect("nactions overflow");
 
-        let action_type = ActionType::from(action.name.as_str());
         let entry = self
             .actions_in_current_block
-            .entry(action_type)
+            .entry(action.name.clone())
             .or_default();
         entry.add(action.irmin_time, action.tezedge_time);
 
@@ -514,36 +449,38 @@ impl Timing {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
 
-        let actions: HashMap<ActionType, (f64, f64)> = self
-            .actions_in_current_block
-            .iter()
-            .map(|(action, times)| (*action, times.sum()))
-            .collect();
-
         let block_id = self
             .current_block
             .as_ref()
             .map(|(id, _)| id.as_str())
             .unwrap_or("NULL");
 
-        for (name, times) in actions {
-            let name: &str = name.into();
+        let mut values = Vec::with_capacity(self.actions_in_current_block.len());
 
-            let query = format!(
-                "
-        INSERT INTO block_details
-          (block_id, action_name, time_irmin, time_tezedge)
-        VALUES
-          ({block_id}, {action_name}, {time_irmin}, {time_tezedge});
-            ",
-                block_id = block_id,
-                action_name = name,
-                time_irmin = times.0,
-                time_tezedge = times.1,
-            );
+        for (name, times) in self.actions_in_current_block.iter() {
+            let (time_irmin, time_tezedge) = times.sum();
 
-            self.sql.execute(query)?;
+            values.push(
+                format!(
+                    "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
+                    block_id = block_id,
+                    action_name = name,
+                    time_irmin = time_irmin,
+                    time_tezedge = time_tezedge,
+                )
+            )
         }
+
+        let query = format!("
+             INSERT INTO block_details
+               (block_id, action_name, irmin_time, tezedge_time)
+             VALUES
+               {values};
+             ",
+             values = values.join(",")
+        );
+
+        self.sql.execute(query).unwrap();
 
         let query = format!(
             "
@@ -562,7 +499,9 @@ impl Timing {
           tezedge_commits_total = {tezedge_commits_total},
           irmin_commits_max = {irmin_commits_max},
           irmin_commits_mean = {irmin_commits_mean},
-          irmin_commits_total = {irmin_commits_total};
+          irmin_commits_total = {irmin_commits_total}
+        WHERE
+          id = 0;
             ",
             actions_count = self.nactions,
             tezedge_checkouts_max = tezedge_checkouts_max,
@@ -616,6 +555,8 @@ impl Timing {
             FOREIGN KEY(context_id) REFERENCES contexts(id)
         );
         CREATE TABLE IF NOT EXISTS global_stats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actions_count INTEGER,
             tezedge_checkouts_max REAL,
             tezedge_checkouts_mean REAL,
             tezedge_checkouts_total REAL,
@@ -629,6 +570,7 @@ impl Timing {
             irmin_commits_mean REAL,
             irmin_commits_total REAL
         );
+        INSERT INTO global_stats (id) VALUES (0) ON CONFLICT DO NOTHING;
                 ",
             )?;
 
