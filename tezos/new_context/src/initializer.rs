@@ -11,6 +11,11 @@ use crate::kv_store::{
     btree_map::BTreeMapBackend, in_memory_backend::InMemoryBackend, sled_backend::SledBackend,
 };
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
+use crate::kv_store::{in_memory_backend::InMemoryBackend, btree_map::BTreeMapBackend, sled_backend::SledBackend};
+use crate::gc::mark_move_gced::MarkMoveGCed;
+
+// TODO: should this be here?
+const PRESERVE_CYCLE_COUNT: usize = 7;
 
 // TODO: should this be here?
 const PRESERVE_CYCLE_COUNT: usize = 7;
