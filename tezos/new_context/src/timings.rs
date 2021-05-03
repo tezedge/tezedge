@@ -134,6 +134,7 @@ struct Timing {
     nactions: usize,
     commits: Times,
     checkouts: Times,
+    times_current_block: Times,
     actions_in_current_block: HashMap<String, Times>,
     sql: sqlite::Connection,
 }
@@ -189,6 +190,7 @@ impl Timing {
             commits: Times::default(),
             checkouts: Times::default(),
             actions_in_current_block: HashMap::default(),
+            times_current_block: Times::default(),
             sql,
         }
     }
@@ -397,10 +399,18 @@ impl Timing {
             .or_default()
             .add(action.irmin_time, action.tezedge_time);
 
+        self.times_current_block.add(action.irmin_time, action.tezedge_time);
+
         Ok(())
     }
 
     fn update_global_stats(&mut self) -> Result<(), SQLError> {
+        let block_id = self
+            .current_block
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap_or("NULL");
+
         let tezedge_commits_total = self.commits.tezedge_times.iter().sum::<f64>();
         let tezedge_commits_mean = tezedge_commits_total / self.commits.tezedge_times.len() as f64;
         let tezedge_commits_max = self
@@ -438,12 +448,6 @@ impl Timing {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
 
-        let block_id = self
-            .current_block
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap_or("NULL");
-
         let values: Vec<String> = self
             .actions_in_current_block
             .iter()
@@ -460,8 +464,6 @@ impl Timing {
             })
             .collect();
 
-        self.actions_in_current_block = HashMap::new();
-
         let query = format!(
             "
              INSERT INTO block_details
@@ -470,6 +472,49 @@ impl Timing {
                {values};
              ",
             values = values.join(",")
+        );
+
+        self.sql.execute(query).unwrap();
+
+        let tezedge_time_total = self.times_current_block.tezedge_times.iter().sum::<f64>();
+        let tezedge_time_mean = tezedge_time_total / self.times_current_block.tezedge_times.len() as f64;
+        let tezedge_time_max = self
+            .times_current_block
+            .tezedge_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let irmin_time_total = self.times_current_block.irmin_times.iter().sum::<f64>();
+        let irmin_time_mean = irmin_time_total / self.times_current_block.irmin_times.len() as f64;
+        let irmin_time_max = self
+            .times_current_block
+            .irmin_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let query = format!(
+            "
+        UPDATE
+          blocks
+        SET
+          tezedge_time_max = {tezedge_time_max},
+          tezedge_time_mean = {tezedge_time_mean},
+          tezedge_time_total = {tezedge_time_total},
+          irmin_time_max = {irmin_time_max},
+          irmin_time_mean = {irmin_time_mean},
+          irmin_time_total = {irmin_time_total}
+        WHERE
+          id = {block_id};
+            ",
+            tezedge_time_max = tezedge_time_max,
+            tezedge_time_mean = tezedge_time_mean,
+            tezedge_time_total = tezedge_time_total,
+            irmin_time_max = irmin_time_max,
+            irmin_time_mean = irmin_time_mean,
+            irmin_time_total = irmin_time_total,
+            block_id = block_id
         );
 
         self.sql.execute(query).unwrap();
@@ -512,6 +557,9 @@ impl Timing {
 
         self.sql.execute(query)?;
 
+        self.actions_in_current_block = HashMap::new();
+        self.times_current_block = Times::default();
+
         Ok(())
     }
 
@@ -523,7 +571,16 @@ impl Timing {
                 "
         PRAGMA foreign_keys = ON;
         PRAGMA synchronous = OFF;
-        CREATE TABLE IF NOT EXISTS blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
+        CREATE TABLE IF NOT EXISTS blocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            hash TEXT UNIQUE,
+            tezedge_time_max REAL,
+            tezedge_time_mean REAL,
+            tezedge_time_total REAL,
+            irmin_time_max REAL,
+            irmin_time_mean REAL,
+            irmin_time_total REAL
+        );
         CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS contexts (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS block_details (
