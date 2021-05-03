@@ -15,7 +15,10 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
-use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides};
+use tezos_api::ffi::{
+    ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
@@ -26,7 +29,7 @@ fn test_storage() -> Result<(), Error> {
     let log = create_logger();
 
     // storage
-    let context_dir = PathBuf::from("__storage_for_shell");
+    let context_dir = "__storage_for_shell".to_string();
     let tmp_storage_dir = test_storage_dir_path("__storage_for_shell");
     let tmp_storage = TmpStorage::create(tmp_storage_dir.clone())?;
     let block_storage = BlockStorage::new(tmp_storage.storage());
@@ -53,12 +56,18 @@ fn test_storage() -> Result<(), Error> {
         enable_testchain: true,
         patch_context_genesis_parameters: None,
     };
+    let context_storage_configuration = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: context_dir,
+        },
+        (),
+    );
 
     // initialize empty storage
     let init_data = resolve_storage_init_chain_data(
         &tezos_env,
         &tmp_storage_dir,
-        &context_dir,
+        &context_storage_configuration,
         &None,
         false,
         &log,
