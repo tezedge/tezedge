@@ -17,6 +17,7 @@ pub mod stats;
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {
     InMem,
+    InMemGC,
     Sled { path: PathBuf },
     BTreeMap,
 }
@@ -33,6 +34,7 @@ impl SupportedContextKeyValueStore {
     fn supported_values(&self) -> Vec<&'static str> {
         match self {
             SupportedContextKeyValueStore::InMem => vec!["inmem"],
+            SupportedContextKeyValueStore::InMemGC => vec!["inmem-gc"],
             SupportedContextKeyValueStore::Sled { .. } => vec!["sled"],
             SupportedContextKeyValueStore::BTreeMap => vec!["btree"],
         }
@@ -112,6 +114,10 @@ pub mod test_support {
                     SupportedContextKeyValueStore::InMem,
                     Box::new(InMemoryBackendTestContextKvStoreFactory),
                 ),
+                SupportedContextKeyValueStore::InMemGC => store_factories.insert(
+                    SupportedContextKeyValueStore::InMemGC,
+                    Box::new(InMemoryGCBackendTestContextKvStoreFactory),
+                ),
                 SupportedContextKeyValueStore::Sled { .. } => store_factories.insert(
                     SupportedContextKeyValueStore::Sled {
                         path: base_dir.clone(),
@@ -152,6 +158,23 @@ pub mod test_support {
     }
 
     impl Persistable for InMemoryBackendTestContextKvStoreFactory {
+        fn is_persistent(&self) -> bool {
+            false
+        }
+    }
+
+    /// Garbage-collected In-memory kv-store
+    pub struct InMemoryGCBackendTestContextKvStoreFactory;
+
+    impl TestContextKvStoreFactory for InMemoryGCBackendTestContextKvStoreFactory {
+        fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
+            use crate::gc::mark_move_gced::MarkMoveGCed;
+            use crate::kv_store::in_memory_backend::InMemoryBackend;
+            Ok(Box::new(MarkMoveGCed::<InMemoryBackend>::new(7)))
+        }
+    }
+
+    impl Persistable for InMemoryGCBackendTestContextKvStoreFactory {
         fn is_persistent(&self) -> bool {
             false
         }
