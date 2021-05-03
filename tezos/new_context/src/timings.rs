@@ -1,12 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use once_cell::sync::Lazy;
-use sqlite::Value::Integer;
 use sqlite::Error as SQLError;
+use sqlite::Value::Integer;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
@@ -85,6 +87,7 @@ pub fn context_action(
 
 // TODO: add tree_action
 
+#[derive(Debug)]
 enum TimingMessage {
     SetBlock(Option<BlockHash>),
     SetOperation(Option<OperationHash>),
@@ -103,10 +106,99 @@ enum TimingMessage {
 // Id of the hash in the database
 type HashId = String;
 
+#[derive(Default)]
+struct Times {
+    tezedge_times: Vec<f64>,
+    irmin_times: Vec<f64>,
+}
+
+impl Times {
+    fn add(&mut self, irmin_time: f64, tezedge_time: f64) {
+        self.irmin_times.push(irmin_time);
+        self.tezedge_times.push(tezedge_time);
+    }
+
+    fn sum(&self) -> (f64, f64) {
+        (
+            self.irmin_times.iter().sum(),
+            self.tezedge_times.iter().sum(),
+        )
+    }
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Copy)]
+pub enum ActionType {
+    Mem,
+    Find,
+    FindTree,
+    Add,
+    AddTree,
+    Equal,
+    Hash,
+    Kind,
+    Empty,
+    IsEmpty,
+    List,
+    Fold,
+    Remove,
+    Commit,
+    Checkout,
+}
+
+impl<'a> From<&'a str> for ActionType {
+    fn from(name: &str) -> Self {
+        match name {
+            "mem" => Self::Mem,
+            "find" => Self::Find,
+            "find_tree" => Self::FindTree,
+            "add" => Self::Add,
+            "add_tree" => Self::AddTree,
+            "equal" => Self::Equal,
+            "hash" => Self::Hash,
+            "kind" => Self::Kind,
+            "empty" => Self::Empty,
+            "is_empty" => Self::IsEmpty,
+            "list" => Self::List,
+            "fold" => Self::Fold,
+            "remove" => Self::Remove,
+            "commit" => Self::Commit,
+            "checkout" => Self::Checkout,
+            _ => panic!("Unhandled action {:?}", name),
+        }
+    }
+}
+
+impl Into<&'static str> for ActionType {
+    fn into(self) -> &'static str {
+        match self {
+            ActionType::Mem => "mem",
+            ActionType::Find => "find",
+            ActionType::FindTree => "find_tree",
+            ActionType::Add => "add",
+            ActionType::AddTree => "add_tree",
+            ActionType::Equal => "equal",
+            ActionType::Hash => "hash",
+            ActionType::Kind => "kind",
+            ActionType::Empty => "empty",
+            ActionType::IsEmpty => "is_empty",
+            ActionType::List => "list",
+            ActionType::Fold => "fold",
+            ActionType::Remove => "remove",
+            ActionType::Commit => "commit",
+            ActionType::Checkout => "checkout",
+        }
+    }
+}
+
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
+    /// Total number of actions
+    nactions: usize,
+    commits: Times,
+    checkouts: Times,
+    actions_in_current_block: HashMap<ActionType, Times>,
     sql: sqlite::Connection,
 }
 
@@ -120,6 +212,7 @@ impl std::fmt::Debug for Timing {
     }
 }
 
+#[derive(Debug)]
 struct Action {
     name: String,
     key: Vec<String>,
@@ -156,6 +249,10 @@ impl Timing {
             current_block: None,
             current_operation: None,
             current_context: None,
+            nactions: 0,
+            commits: Times::default(),
+            checkouts: Times::default(),
+            actions_in_current_block: HashMap::default(),
             sql,
         }
     }
@@ -164,13 +261,13 @@ impl Timing {
         match msg {
             TimingMessage::SetBlock(block_hash) => {
                 self.set_current_block(block_hash)
-            }
+            },
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(operation_hash)
             }
             TimingMessage::Action(action) => {
                 self.insert_action(&action)
-            }
+            },
             TimingMessage::Checkout {
                 context_hash,
                 irmin_time,
@@ -205,7 +302,10 @@ impl Timing {
         Ok(())
     }
 
-    fn set_current_operation(&mut self, operation_hash: Option<OperationHash>) -> Result<(), SQLError> {
+    fn set_current_operation(
+        &mut self,
+        operation_hash: Option<OperationHash>,
+    ) -> Result<(), SQLError> {
         Self::set_current(
             &self.sql,
             operation_hash,
@@ -215,7 +315,12 @@ impl Timing {
     }
 
     fn set_current_context(&mut self, context_hash: ContextHash) -> Result<(), SQLError> {
-        Self::set_current(&self.sql, Some(context_hash), &mut self.current_context, "contexts")
+        Self::set_current(
+            &self.sql,
+            Some(context_hash),
+            &mut self.current_context,
+            "contexts",
+        )
     }
 
     fn set_current<T>(
@@ -269,7 +374,7 @@ impl Timing {
         hash_string: &str,
     ) -> Result<Option<i64>, SQLError> {
         let query = format!(
-            "SELECT id FROM {table} WHERE hash = '{hash}'",
+            "SELECT id FROM {table} WHERE hash = '{hash}';",
             table = table_name,
             hash = hash_string
         );
@@ -283,7 +388,13 @@ impl Timing {
         Ok(None)
     }
 
-    fn insert_checkout(&mut self, context_hash: ContextHash, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
+    fn insert_checkout(
+        &mut self,
+        context_hash: ContextHash,
+        irmin_time: f64,
+        tezedge_time: f64,
+    ) -> Result<(), SQLError> {
+        self.checkouts.add(irmin_time, tezedge_time);
         self.set_current_context(context_hash)?;
         self.insert_action(&Action {
             name: "checkout".to_string(),
@@ -294,15 +405,19 @@ impl Timing {
     }
 
     fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
+        self.commits.add(irmin_time, tezedge_time);
         self.insert_action(&Action {
             name: "commit".to_string(),
             key: vec![],
             irmin_time,
             tezedge_time,
-        })
+        })?;
+        self.update_global_stats()
+
+        // todo!()
     }
 
-    fn insert_action(&self, action: &Action) -> Result<(), SQLError> {
+    fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
         let block_id = self
             .current_block
             .as_ref()
@@ -341,7 +456,132 @@ impl Timing {
             context_id = context_id,
         );
 
-        self.sql.execute(query)
+        let now = std::time::Instant::now();
+        self.sql.execute(&query)?;
+        let elapsed = now.elapsed();
+
+        // if elapsed > std::time::Duration::from_millis(5) {
+        //     println!("QUERY ELAPSED {:?}", elapsed);
+        //     // println!("QUERY={:?}", query);
+        // }
+
+        self.nactions = self.nactions.checked_add(1).expect("nactions overflow");
+
+        let action_type = ActionType::from(action.name.as_str());
+        let entry = self
+            .actions_in_current_block
+            .entry(action_type)
+            .or_default();
+        entry.add(action.irmin_time, action.tezedge_time);
+
+        Ok(())
+    }
+
+    fn update_global_stats(&mut self) -> Result<(), SQLError> {
+        let tezedge_commits_total = self.commits.tezedge_times.iter().sum::<f64>();
+        let tezedge_commits_mean = tezedge_commits_total / self.commits.tezedge_times.len() as f64;
+        let tezedge_commits_max = self
+            .commits
+            .tezedge_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let irmin_commits_total = self.commits.irmin_times.iter().sum::<f64>();
+        let irmin_commits_mean = irmin_commits_total / self.commits.irmin_times.len() as f64;
+        let irmin_commits_max = self
+            .commits
+            .irmin_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let tezedge_checkouts_total = self.checkouts.tezedge_times.iter().sum::<f64>();
+        let tezedge_checkouts_mean = tezedge_checkouts_total / self.checkouts.tezedge_times.len() as f64;
+        let tezedge_checkouts_max = self
+            .checkouts
+            .tezedge_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let irmin_checkouts_total = self.checkouts.irmin_times.iter().sum::<f64>();
+        let irmin_checkouts_mean = irmin_checkouts_total / self.checkouts.irmin_times.len() as f64;
+        let irmin_checkouts_max = self
+            .checkouts
+            .irmin_times
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+
+        let actions: HashMap<ActionType, (f64, f64)> = self
+            .actions_in_current_block
+            .iter()
+            .map(|(action, times)| (*action, times.sum()))
+            .collect();
+
+        let block_id = self
+            .current_block
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap_or("NULL");
+
+        for (name, times) in actions {
+            let name: &str = name.into();
+
+            let query = format!(
+                "
+        INSERT INTO block_details
+          (block_id, action_name, time_irmin, time_tezedge)
+        VALUES
+          ({block_id}, {action_name}, {time_irmin}, {time_tezedge});
+            ",
+                block_id = block_id,
+                action_name = name,
+                time_irmin = times.0,
+                time_tezedge = times.1,
+            );
+
+            self.sql.execute(query)?;
+        }
+
+        let query = format!(
+            "
+        UPDATE
+          global_stats
+        SET
+          actions_count = {actions_count},
+          tezedge_checkouts_max = {tezedge_checkouts_max},
+          tezedge_checkouts_mean = {tezedge_checkouts_mean},
+          tezedge_checkouts_total = {tezedge_checkouts_total},
+          irmin_checkouts_max = {irmin_checkouts_max},
+          irmin_checkouts_mean = {irmin_checkouts_mean},
+          irmin_checkouts_total = {irmin_checkouts_total},
+          tezedge_commits_max = {tezedge_commits_max},
+          tezedge_commits_mean = {tezedge_commits_mean},
+          tezedge_commits_total = {tezedge_commits_total},
+          irmin_commits_max = {irmin_commits_max},
+          irmin_commits_mean = {irmin_commits_mean},
+          irmin_commits_total = {irmin_commits_total};
+            ",
+            actions_count = self.nactions,
+            tezedge_checkouts_max = tezedge_checkouts_max,
+            tezedge_checkouts_mean = tezedge_checkouts_mean,
+            tezedge_checkouts_total = tezedge_checkouts_total,
+            irmin_checkouts_max = irmin_checkouts_max,
+            irmin_checkouts_mean = irmin_checkouts_mean,
+            irmin_checkouts_total = irmin_checkouts_total,
+            tezedge_commits_max = tezedge_commits_max,
+            tezedge_commits_mean = tezedge_commits_mean,
+            tezedge_commits_total = tezedge_commits_total,
+            irmin_commits_max = irmin_commits_max,
+            irmin_commits_mean = irmin_commits_mean,
+            irmin_commits_total = irmin_commits_total
+        );
+
+        self.sql.execute(query)?;
+
+        Ok(())
     }
 
     fn init_sqlite() -> Result<sqlite::Connection, SQLError> {
@@ -354,6 +594,14 @@ impl Timing {
         CREATE TABLE IF NOT EXISTS blocks (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
         CREATE TABLE IF NOT EXISTS contexts (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
+        CREATE TABLE IF NOT EXISTS block_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_name TEXT NOT NULL,
+            irmin_time REAL NOT NULL,
+            tezedge_time REAL NOT NULL,
+            block_id INTEGER DEFAULT NULL,
+            FOREIGN KEY(block_id) REFERENCES blocks(id)
+        );
         CREATE TABLE IF NOT EXISTS actions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT,
@@ -364,8 +612,22 @@ impl Timing {
             operation_id INTEGER DEFAULT NULL,
             context_id INTEGER DEFAULT NULL,
             FOREIGN KEY(block_id) REFERENCES blocks(id),
-            FOREIGN KEY(operation_id) REFERENCES operations(id)
+            FOREIGN KEY(operation_id) REFERENCES operations(id),
             FOREIGN KEY(context_id) REFERENCES contexts(id)
+        );
+        CREATE TABLE IF NOT EXISTS global_stats (
+            tezedge_checkouts_max REAL,
+            tezedge_checkouts_mean REAL,
+            tezedge_checkouts_total REAL,
+            irmin_checkouts_max REAL,
+            irmin_checkouts_mean REAL,
+            irmin_checkouts_total REAL,
+            tezedge_commits_max REAL,
+            tezedge_commits_mean REAL,
+            tezedge_commits_total REAL,
+            irmin_commits_max REAL,
+            irmin_commits_mean REAL,
+            irmin_commits_total REAL
         );
                 ",
             )?;
@@ -395,7 +657,9 @@ mod tests {
 
         assert_eq!(block_id, same_block_id);
 
-        timing.set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap())).unwrap();
+        timing
+            .set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()))
+            .unwrap();
         let other_block_id = timing.current_block.clone().unwrap().0;
 
         assert_ne!(block_id, other_block_id);
