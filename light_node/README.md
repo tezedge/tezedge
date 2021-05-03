@@ -1,18 +1,30 @@
 Light Node
 ===========
 
-This is an implementation of a lightweight Tezos node written in Rust. 
+This is an implementation of a lightweight Tezos node written in Rust.
 
 # Running the node
-Detailed information on how to start the node can be found in the repository [README](../README.md) file 
+Detailed information on how to start the node can be found in the repository [README](../README.md) file
 
 ## Arguments
 All arguments and their default values can be found in the [tezedge.config](./etc/tezedge/tezedge.config) file.
 They can also be provided as command line arguments in the same format, in which case they have higher priority than the ones in config file
 
+### Tezos context storage
+
+The context storage to use. Options are:
+
+- `irmin`: uses the default Irmin context implementation.
+- `tezedge`: uses TezEdge's own context implementation.
+- `both`: uses both Irmin and TezEdge contexts.
+
+```
+--tezos-context-storage <NAME>
+```
+
 
 ### Tezos data dir
-The path to directory which will be used to store Tezos-specific data. This is a required argument, and if the node fails to 
+The path to directory which will be used to store Tezos-specific data. This is a required argument, and if the node fails to
 create or access this directory, it will die gracefully.
 
 ```
@@ -20,8 +32,8 @@ create or access this directory, it will die gracefully.
 ```
 
 ### Identity file
-The path to the json identity file with peer-id, public-key, secret-key and pow-stamp. 
-If an identity does not exist in the specified path, a new one will be automatically generated. 
+The path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
+If an identity does not exist in the specified path, a new one will be automatically generated.
 In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir
 
 ```
@@ -30,9 +42,9 @@ In case it starts with "./" or "../", it is a relative path to the current dir, 
 
 ## Database configuration
 ### Bootstrap database path
-Path to the bootstrap database directory. 
-In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir. 
-If the directory does not exist, it will be created. If directory already exists and 
+Path to the bootstrap database directory.
+In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir.
+If the directory does not exist, it will be created. If directory already exists and
 it contains a valid database, the node will continue in the bootstrapping process on that database
 
 ```
@@ -50,7 +62,7 @@ it contains a valid database, the node will continue in the bootstrapping proces
 -----
 
 ### Bootstrap lookup addresses
-List of peers to bootstrap the network from. Peers are delimited by a colon. 
+List of peers to bootstrap the network from. Peers are delimited by a colon.
 For further information, see `--network` parameter of the OCaml node.
 
 ```
@@ -58,7 +70,7 @@ For further information, see `--network` parameter of the OCaml node.
 ```
 
 ### Logging file
-Path to the logger file. If provided, logs are written to the log file, otherwise they will be displayed in the terminal. 
+Path to the logger file. If provided, logs are written to the log file, otherwise they will be displayed in the terminal.
 In case it starts with "./" or "../", it is a relative path to the current dir, otherwise to the --tezos-data-dir
 ```
 --log-file <PATH>
@@ -87,7 +99,7 @@ Enable OCaml runtime logger.
 ```
 
 ### Network
-Specifies the Tezos environment for this node. Accepted values are: 
+Specifies the Tezos environment for this node. Accepted values are:
 `alphanet, babylonnet, babylon, mainnet, zeronet, carthagenet, carthage, delphinet, delphi, edonet (deprecated - use edo2), edo (deprecated - use edo2), edo2net, edo2, sandbox`
 
 ```
@@ -121,7 +133,7 @@ Each peer is described by its address and port in `IP:PORT` format, delimited by
 
 ```
 --peers <IP:PORT>(,<IP:PORT>)*
-``` 
+```
 
 ### Lower peer threshold
 Set minimal number of peers, if the running node does not have enough connected peers, peer discovery is enforced.
@@ -138,7 +150,7 @@ Set maximum number of connected peers. If this threshold is met, then the runnin
 ```
 
 ### Protocol runner
-Path to the protocol runner binary, which is compiled with `tezedge`. 
+Path to the protocol runner binary, which is compiled with `tezedge`.
 For example: `./target/debug/protocol-runner`.
 
 ```
@@ -203,7 +215,7 @@ Number of seconds to remove unused protocol_runner from pool, default: 1800 (30 
 ### Recording context actions
 Activate recording of context storage actions.
 ```
---store-context-actions 
+--store-context-actions
 ```
 
 ### Sandbox context patching

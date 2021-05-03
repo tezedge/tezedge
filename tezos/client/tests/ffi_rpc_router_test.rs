@@ -13,7 +13,10 @@ use tezos_api::ffi::{
 };
 use tezos_api::{
     environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV},
-    ffi::{ProtocolRpcResponse, RpcMethod},
+    ffi::{
+        ProtocolRpcResponse, RpcMethod, TezosContextConfiguration,
+        TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    },
 };
 use tezos_client::client;
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
@@ -47,17 +50,22 @@ fn init_test_protocol_context(
         .get(&test_data::TEZOS_NETWORK)
         .expect("no tezos environment configured");
 
-    let result = client::init_protocol_context(
-        common::prepare_empty_dir(dir_name),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        Some(test_data::get_patch_context()),
-    )
-    .unwrap();
+    let data_dir = common::prepare_empty_dir(dir_name);
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration { data_dir },
+        (),
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: Some(test_data::get_patch_context()),
+    };
+
+    let result = client::init_protocol_context(context_config).unwrap();
 
     let genesis_commit_hash = match result.clone().genesis_commit_hash {
         None => panic!("we needed commit_genesis and here should be result of it"),

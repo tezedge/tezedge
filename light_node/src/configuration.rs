@@ -37,7 +37,9 @@ use storage::initializer::{
 use storage::PersistentStorage;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
-use tezos_api::ffi::PatchContext;
+use tezos_api::ffi::{
+    PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+};
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 macro_rules! create_terminal_logger {
@@ -138,6 +140,31 @@ impl MultipleValueArg for LoggerType {
 #[fail(display = "No logger target was provided")]
 pub struct NoDrainError;
 
+#[derive(Debug, Clone)]
+pub struct ParseTezosContextStorageChoiceError(String);
+
+enum TezosContextStorageChoice {
+    Irmin,
+    TezEdge,
+    Both,
+}
+
+impl FromStr for TezosContextStorageChoice {
+    type Err = ParseTezosContextStorageChoiceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_ref() {
+            "both" => Ok(TezosContextStorageChoice::Both),
+            "irmin" => Ok(TezosContextStorageChoice::Irmin),
+            "tezedge" => Ok(TezosContextStorageChoice::TezEdge),
+            _ => Err(ParseTezosContextStorageChoiceError(format!(
+                "Invalid context storage name: {}",
+                s
+            ))),
+        }
+    }
+}
+
 pub trait MultipleValueArg: IntoEnumIterator {
     fn possible_values() -> Vec<&'static str> {
         let mut possible_values = Vec::new();
@@ -153,7 +180,7 @@ pub trait MultipleValueArg: IntoEnumIterator {
 pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
-    pub tezos_data_dir: PathBuf,
+    pub context_storage_configuration: TezosContextStorageConfiguration,
     pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
@@ -281,6 +308,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Configuration file with start-up arguments (same format as cli arguments)")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
+        .arg(Arg::with_name("tezos-context-storage")
+            .long("tezos-context-storage")
+            .takes_value(true)
+            .value_name("NAME")
+            .help("Context storage to use (irmin/tezedge/both)"))
         .arg(Arg::with_name("tezos-data-dir")
             .long("tezos-data-dir")
             .takes_value(true)
@@ -769,7 +801,12 @@ impl Environment {
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 
-        let data_dir: PathBuf = args
+        let context_storage: TezosContextStorageChoice = args
+            .value_of("tezos-context-storage")
+            .unwrap_or("both")
+            .parse::<TezosContextStorageChoice>()
+            .expect("Provided value cannot be converted to a context storage option");
+        let tezos_data_dir: PathBuf = args
             .value_of("tezos-data-dir")
             .unwrap_or("")
             .parse::<PathBuf>()
@@ -908,7 +945,7 @@ impl Environment {
                     });
 
                     if let Some(path) = log_file_path {
-                        Some(get_final_path(&data_dir, path))
+                        Some(get_final_path(&tezos_data_dir, path))
                     } else {
                         log_file_path
                     }
@@ -920,7 +957,7 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path");
-                let db_path = get_final_path(&data_dir, path);
+                let db_path = get_final_path(&tezos_data_dir, path);
 
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
@@ -1044,8 +1081,33 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
 
+                let context_storage_configuration = match context_storage {
+                    TezosContextStorageChoice::TezEdge => {
+                        TezosContextStorageConfiguration::TezEdgeOnly(())
+                    }
+                    TezosContextStorageChoice::Irmin => {
+                        TezosContextStorageConfiguration::IrminOnly(
+                            TezosContextIrminStorageConfiguration {
+                                data_dir: tezos_data_dir
+                                    .to_str()
+                                    .expect("Invalid tezos_data_dir value")
+                                    .to_string(),
+                            },
+                        )
+                    }
+                    TezosContextStorageChoice::Both => TezosContextStorageConfiguration::Both(
+                        TezosContextIrminStorageConfiguration {
+                            data_dir: tezos_data_dir
+                                .to_str()
+                                .expect("Invalid tezos_data_dir value")
+                                .to_string(),
+                        },
+                        (),
+                    ),
+                };
+
                 crate::configuration::Storage {
-                    tezos_data_dir: data_dir.clone(),
+                    context_storage_configuration,
                     db,
                     db_path,
                     compute_context_action_tree_hashes,
@@ -1058,7 +1120,7 @@ impl Environment {
                                 let path = path
                                     .parse::<PathBuf>()
                                     .expect("Provided value cannot be converted to path");
-                                let path = get_final_path(&data_dir, path);
+                                let path = get_final_path(&tezos_data_dir, path);
                                 match fs::read_to_string(&path) {
                                     Ok(content) => {
                                         // validate valid json
@@ -1103,7 +1165,7 @@ impl Environment {
                         .unwrap_or("")
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path");
-                    get_final_path(&data_dir, identity_path)
+                    get_final_path(&tezos_data_dir, identity_path)
                 },
                 expected_pow: args
                     .value_of("identity-expected-pow")

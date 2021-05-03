@@ -57,7 +57,7 @@ enum ProtocolMessage {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct InitProtocolContextParams {
-    storage_data_dir: String,
+    storage: TezosContextStorageConfiguration,
     genesis: GenesisChain,
     genesis_max_operations_ttl: u16,
     protocol_overrides: ProtocolOverrides,
@@ -162,16 +162,16 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 tx.send(&NodeMessage::ChangeRuntimeConfigurationResult(res))?;
             }
             ProtocolMessage::InitProtocolContextCall(params) => {
-                let res = Proto::init_protocol_context(
-                    params.storage_data_dir,
-                    params.genesis,
-                    params.protocol_overrides,
-                    params.commit_genesis,
-                    params.enable_testchain,
-                    params.readonly,
-                    params.turn_off_context_raw_inspector,
-                    params.patch_context,
-                );
+                let context_config = TezosContextConfiguration {
+                    storage: params.storage,
+                    genesis: params.genesis,
+                    protocol_overrides: params.protocol_overrides,
+                    commit_genesis: params.commit_genesis,
+                    enable_testchain: params.enable_testchain,
+                    readonly: params.readonly,
+                    sandbox_json_patch_context: params.patch_context,
+                };
+                let res = Proto::init_protocol_context(context_config);
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
             }
             ProtocolMessage::GenesisResultDataCall(params) => {
@@ -635,7 +635,7 @@ impl ProtocolController {
     /// CommitGenesisResult is returned only if commit_genesis is set to true
     fn init_protocol_context(
         &self,
-        storage_data_dir: String,
+        storage: TezosContextStorageConfiguration,
         tezos_environment: &TezosEnvironmentConfiguration,
         commit_genesis: bool,
         enable_testchain: bool,
@@ -664,7 +664,7 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::InitProtocolContextCall(
             InitProtocolContextParams {
-                storage_data_dir,
+                storage,
                 genesis: tezos_environment.genesis.clone(),
                 genesis_max_operations_ttl: tezos_environment
                     .genesis_additional_data()
@@ -740,18 +740,12 @@ impl ProtocolController {
         commit_genesis: bool,
         patch_context: &Option<PatchContext>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
-            self.configuration
-                .data_dir()
-                .to_str()
-                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
-                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
-                })?
-                .to_string(),
-            self.configuration.environment(),
+            self.configuration.storage.clone(),
+            &self.configuration.environment,
             commit_genesis,
-            self.configuration.enable_testchain(),
+            self.configuration.enable_testchain,
             false,
             patch_context.clone(),
         )
@@ -761,18 +755,12 @@ impl ProtocolController {
     pub fn init_protocol_for_read(
         &self,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
-            self.configuration
-                .data_dir()
-                .to_str()
-                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
-                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
-                })?
-                .to_string(),
-            self.configuration.environment(),
+            self.configuration.storage.clone(),
+            &self.configuration.environment,
             false,
-            self.configuration.enable_testchain(),
+            self.configuration.enable_testchain,
             true,
             None,
         )
@@ -783,7 +771,7 @@ impl ProtocolController {
         &self,
         genesis_context_hash: &ContextHash,
     ) -> Result<CommitGenesisResult, ProtocolServiceError> {
-        let tezos_environment = self.configuration.environment();
+        let tezos_environment = self.configuration.environment.clone();
         let main_chain_id = tezos_environment.main_chain_id().map_err(|e| {
             ProtocolServiceError::InvalidDataError {
                 message: format!("{:?}", e),

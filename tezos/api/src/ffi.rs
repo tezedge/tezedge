@@ -103,6 +103,38 @@ pub struct TezosRuntimeConfiguration {
     pub compute_context_action_tree_hashes: bool,
 }
 
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextIrminStorageConfiguration {
+    pub data_dir: String,
+}
+
+// Must be in sync with ffi_config.ml
+pub type TezosContextTezEdgeStorageConfiguration = ();
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum TezosContextStorageConfiguration {
+    IrminOnly(TezosContextIrminStorageConfiguration),
+    TezEdgeOnly(TezosContextTezEdgeStorageConfiguration),
+    Both(
+        TezosContextIrminStorageConfiguration,
+        TezosContextTezEdgeStorageConfiguration,
+    ),
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TezosContextConfiguration {
+    pub storage: TezosContextStorageConfiguration,
+    pub genesis: GenesisChain,
+    pub protocol_overrides: ProtocolOverrides,
+    pub commit_genesis: bool,
+    pub enable_testchain: bool,
+    pub readonly: bool,
+    pub sandbox_json_patch_context: Option<PatchContext>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
 pub struct ApplyBlockRequest {
     pub chain_id: ChainId,

@@ -7,7 +7,10 @@ use strum::IntoEnumIterator;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
-use tezos_api::ffi::{PatchContext, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+};
 use tezos_client::client;
 
 mod common;
@@ -37,16 +40,23 @@ fn test_init_empty_context_for_all_enviroment_nets() {
             .get(&net)
             .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
-        match client::init_protocol_context(
-            common::prepare_empty_dir(&storage_data_dir),
-            tezos_env.genesis.clone(),
-            tezos_env.protocol_overrides.clone(),
-            true,
-            false,
-            false,
-            false,
-            None,
-        ) {
+        let storage = TezosContextStorageConfiguration::Both(
+            TezosContextIrminStorageConfiguration {
+                data_dir: common::prepare_empty_dir(storage_data_dir),
+            },
+            (),
+        );
+        let context_config = TezosContextConfiguration {
+            storage,
+            genesis: tezos_env.genesis.clone(),
+            protocol_overrides: tezos_env.protocol_overrides.clone(),
+            commit_genesis: true,
+            enable_testchain: false,
+            readonly: false,
+            sandbox_json_patch_context: None,
+        };
+
+        match client::init_protocol_context(context_config) {
             Err(e) => panic!(
                 "Failed to initialize storage for: {:?}, Reason: {:?}",
                 net, e
@@ -96,16 +106,23 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
         ),
     };
 
-    match client::init_protocol_context(
-        common::prepare_empty_dir(&storage_data_dir),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        Some(patch_context),
-    ) {
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: common::prepare_empty_dir(storage_data_dir),
+        },
+        (),
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: Some(patch_context),
+    };
+
+    match client::init_protocol_context(context_config) {
         Err(e) => panic!(
             "Failed to initialize storage for: {:?}, Reason: {:?}",
             net, e
@@ -144,16 +161,23 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
         .get(&net)
         .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
-    match client::init_protocol_context(
-        common::prepare_empty_dir(&storage_data_dir),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        None,
-    ) {
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: common::prepare_empty_dir(storage_data_dir),
+        },
+        (),
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: None,
+    };
+
+    match client::init_protocol_context(context_config) {
         Err(e) => panic!(
             "Failed to initialize storage for: {:?}, Reason: {:?}",
             net, e
