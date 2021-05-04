@@ -1,7 +1,8 @@
 extern crate proc_macro;
 
 use proc_macro2::TokenStream;
-use syn::{parse_macro_input, DeriveInput, Lit, Meta, NestedMeta, Type};
+use quote::ToTokens;
+use syn::{parse_macro_input, DeriveInput, Meta, Type};
 
 mod symbol;
 
@@ -16,7 +17,11 @@ fn is_vec_u8(ty: &syn::Type) -> bool {
                         syn::PathArguments::AngleBracketed(args) => {
                             if args.args.len() == 1 {
                                 match args.args.last().unwrap() {
-                                    syn::GenericArgument::Type(Type::Path(path)) if path.path == symbol::rust::U8 => return true,
+                                    syn::GenericArgument::Type(Type::Path(path))
+                                        if path.path == symbol::rust::U8 =>
+                                    {
+                                        return true
+                                    }
                                     _ => (),
                                 }
                             }
@@ -25,7 +30,7 @@ fn is_vec_u8(ty: &syn::Type) -> bool {
                     }
                 }
             }
-        },
+        }
         _ => (),
     };
     false
@@ -39,25 +44,39 @@ fn is_string(ty: &syn::Type) -> bool {
 }
 
 /// Finds `encoding` attribute and parse its content
-fn get_encoding_meta(attrs: &[syn::Attribute]) -> Option<syn::Meta> {
-    attrs.iter().find_map(|attr| {
-        if attr.path == symbol::ENCODING {
-            let meta = attr.parse_meta().unwrap();
+fn get_encoding_meta(attrs: &[syn::Attribute]) -> Result<Option<syn::Meta>, syn::Error> {
+    let encoding_attr = attrs.iter().find(|attr| attr.path == symbol::ENCODING);
+    match encoding_attr {
+        None => Ok(None),
+        Some(encoding_meta) => {
+            let meta = encoding_meta.parse_meta();
             match meta {
-                syn::Meta::List(m) => {
-                    assert!(m.nested.len() == 1);
-                    let meta = m.nested.into_iter().next();
-                    match meta {
-                        Some(syn::NestedMeta::Meta(m)) => Some(m),
-                        _ => panic!("Wrong parameter for `encoding` attribute: {:?}", meta),
+                Ok(syn::Meta::List(m)) => {
+                    if m.nested.len() != 1 {
+                        return Err(syn::Error::new_spanned(
+                            &encoding_meta.to_token_stream(),
+                            "Unexpected number of `encoding` attrubute nested attributes",
+                        ));
+                    }
+                    match m.nested.into_iter().next().unwrap() {
+                        syn::NestedMeta::Meta(m) => Ok(Some(m)),
+                        _ => Err(syn::Error::new_spanned(
+                            &encoding_meta.to_token_stream(),
+                            "Unexpected kind of `encoding` nested attribute",
+                        )),
                     }
                 }
-                _ => panic!("Unexpected kind of `encoding` attrubute: {:?}", meta),
+                Ok(_) => Err(syn::Error::new_spanned(
+                    &encoding_meta.to_token_stream(),
+                    format!(
+                        "Unexpected kind of `encoding` attrubute: {:?}",
+                        encoding_meta
+                    ),
+                )),
+                Err(e) => Err(e),
             }
-        } else {
-            None
         }
-    })
+    }
 }
 
 /// Handles different kinds of encoding specified in attrubutes
@@ -74,10 +93,108 @@ trait EncodingHandler {
     fn on_sized(&self, ty: &syn::Type, size: &syn::Expr, inner: Option<&syn::Meta>) -> TokenStream;
 }
 
+fn spanned_error<T: ToTokens, U: std::fmt::Display>(tokens: T, message: U) -> TokenStream {
+    syn::Error::new_spanned(tokens, message).into_compile_error()
+}
+
+fn attribute_error<T: ToTokens, U: std::fmt::Display>(
+    name: &syn::Path,
+    tokens: T,
+    message: U,
+) -> TokenStream {
+    spanned_error(
+        tokens,
+        format!("Attribute `{}`: {}", quote::quote! {#name}, message),
+    )
+}
+
 /// Visits encoding attrubutes and calls `handler`'s appropriate method, see [EncodingHandler].
 struct EncodingVisitor {}
 
 impl EncodingVisitor {
+    fn _modifier<'a>(meta_list: &'a syn::MetaList) -> Result<Option<&'a syn::Meta>, TokenStream> {
+        let mut it = meta_list.nested.iter();
+        let inner = match it.next() {
+            Some(syn::NestedMeta::Meta(m)) => Some(m),
+            None => None,
+            _ => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    "Wrong `inner` parameter",
+                ))
+            }
+        };
+        Ok(inner)
+    }
+
+    fn parameterized_modifier<'a>(
+        meta_list: &'a syn::MetaList,
+        param: &str,
+    ) -> Result<(syn::Expr, Option<&'a syn::Meta>), TokenStream> {
+        let mut it = meta_list.nested.iter();
+        let param = match it.next() {
+            Some(syn::NestedMeta::Lit(syn::Lit::Str(s))) => match s.parse() {
+                Ok(param) => param,
+                Err(e) => return Err(e.into_compile_error()),
+            },
+            Some(_) => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    format!("Expecting string literal as `{}` attribute", param),
+                ))
+            }
+            None => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    format!("Missing `{}` attribute", param),
+                ))
+            }
+        };
+        let inner = match it.next() {
+            Some(syn::NestedMeta::Meta(m)) => Some(m),
+            None => None,
+            _ => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    "Wrong `inner` parameter",
+                ))
+            }
+        };
+        Ok((param, inner))
+    }
+
+    fn parameterized_encoding(
+        meta_list: &syn::MetaList,
+        param: &str,
+    ) -> Result<syn::Expr, TokenStream> {
+        let mut it = meta_list.nested.iter();
+        let param = match it.next() {
+            Some(syn::NestedMeta::Lit(syn::Lit::Str(s))) => match s.parse() {
+                Ok(param) => param,
+                Err(e) => return Err(e.into_compile_error()),
+            },
+            Some(_) => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    format!("Expecting string literal as `{}` attribute", param),
+                ))
+            }
+            None => {
+                return Err(attribute_error(
+                    &meta_list.path,
+                    &meta_list,
+                    format!("Missing `{}` attribute", param),
+                ))
+            }
+        };
+        Ok(param)
+    }
+
     pub fn visit<T: EncodingHandler>(
         &self,
         ty: &Type,
@@ -87,45 +204,48 @@ impl EncodingVisitor {
         match meta {
             // `Sized("Expr")`, `Sized("Expr", Inner)`
             Some(syn::Meta::List(m)) if m.path == symbol::SIZED => {
-                let mut it = m.nested.iter();
-                let size = it.next().unwrap();
-                let size = match size {
-                    syn::NestedMeta::Lit(syn::Lit::Str(s)) => syn::parse_str(&s.value()).unwrap(),
-                    _ => panic!("Wrong size parameter for `Sized` attribute: {:?}", size),
-                };
-                let inner = it.next().map(|inner| match inner {
-                    syn::NestedMeta::Meta(m) => m,
-                    _ => panic!("Wrong inner parameter for `Sized` attribute: {:?}", inner),
-                });
-                handler.on_sized(ty, &size, inner)
+                match Self::parameterized_modifier(m, "size") {
+                    Ok((size, inner)) => handler.on_sized(ty, &size, inner),
+                    Err(ts) => ts,
+                }
             }
             // `Bytes`
             Some(syn::Meta::Path(p)) if p == symbol::BYTES => {
-                assert!(is_vec_u8(ty));
-                handler.on_bytes()
+                if is_vec_u8(ty) {
+                    handler.on_bytes()
+                } else {
+                    spanned_error(&ty, "`Bytes` encoding is supported only for `Vec<u8>` type")
+                }
             }
             // `String`
             Some(syn::Meta::Path(p)) if p == symbol::STRING => {
-                assert!(is_string(ty));
-                handler.on_string()
+                if is_string(ty) {
+                    handler.on_string()
+                } else {
+                    spanned_error(&ty, "`String` encoding is supported only for `String` type")
+                }
             }
             // `BoundedString("SIZE")`
             Some(Meta::List(m)) if m.path == symbol::BOUNDED_STRING => {
-                let mut it = m.nested.iter();
-                let size = it.next().unwrap();
-                let size = match size {
-                    NestedMeta::Lit(Lit::Str(s)) => syn::parse_str(&s.value()).unwrap(),
-                    _ => panic!(
-                        "Wrong size parameter for `BoundedString` attribute: {:?}",
-                        size
-                    ),
-                };
-                assert!(is_string(ty));
-                handler.on_bounded_string(&size)
+                match Self::parameterized_encoding(m, "size") {
+                    Ok(size) => {
+                        if is_string(ty) {
+                            handler.on_bounded_string(&size)
+                        } else {
+                            spanned_error(
+                                &ty,
+                                "`BoundedString(...)` encoding is supported only for `String` type",
+                            )
+                        }
+                    }
+                    Err(ts) => ts,
+                }
             }
             // no attributes, use type information
             None => handler.on_type(ty),
-            _ => panic!("Encoding not implemented for attribute {:?}", meta),
+            Some(Meta::List(m)) => attribute_error(&m.path, &m, "Encoding not implemented"),
+            Some(Meta::Path(m)) => attribute_error(&m, &m, "Encoding not implemented"),
+            _ => spanned_error(meta, "Invalid meta attribute"),
         }
     }
 }
@@ -136,7 +256,9 @@ mod enc {
     use quote::quote;
     use syn::spanned::Spanned;
 
-    use crate::{get_encoding_meta, symbol::Symbol, EncodingHandler, EncodingVisitor};
+    use crate::{
+        get_encoding_meta, spanned_error, symbol::Symbol, EncodingHandler, EncodingVisitor,
+    };
 
     lazy_static! {
         static ref DIRECT_MAPPING: std::collections::HashMap<Symbol, &'static str> = {
@@ -191,7 +313,7 @@ mod enc {
                         quote! { #ty::encoding().clone() }
                     }
                 }
-                _ => panic!("Encoding not implemented for type {:?}", ty),
+                _ => spanned_error(&ty, "Encoding not implemented for this type"),
             }
         }
 
@@ -225,13 +347,14 @@ mod enc {
     }
 
     fn generate_field_encoding(field: &syn::Field) -> TokenStream {
-        let meta = get_encoding_meta(&field.attrs);
-        EncodingGenerator::new().generate(&field.ty, meta.as_ref())
+        get_encoding_meta(&field.attrs)
+            .map(|meta| EncodingGenerator::new().generate(&field.ty, meta.as_ref()))
+            .unwrap_or_else(|err| err.to_compile_error())
     }
 
     pub fn struct_fields_encoding(data: &syn::Data) -> TokenStream {
-        match *data {
-            syn::Data::Struct(ref data) => match data.fields {
+        match data {
+            syn::Data::Struct(data) => match data.fields {
                 syn::Fields::Named(ref fields) => {
                     let recurse = fields.named.iter().map(|f| {
                         let name = f
@@ -248,9 +371,10 @@ mod enc {
                         #(#recurse)*
                     }
                 }
-                _ => panic!("Only `struct` with named fields supported"),
+                _ => spanned_error(&data.fields, "Only `struct` with named fields supported"),
             },
-            _ => panic!("Only `struct` types supported"),
+            syn::Data::Enum(e) => spanned_error(e.enum_token, "Only `struct` types supported"),
+            syn::Data::Union(e) => spanned_error(e.union_token, "Only `struct` types supported"),
         }
     }
 
@@ -284,9 +408,9 @@ mod enc {
 
 mod nom {
     use proc_macro2::TokenStream;
-    use quote::{ToTokens, quote};
+    use quote::{quote, ToTokens};
 
-    use crate::{EncodingHandler, EncodingVisitor, get_encoding_meta, symbol};
+    use crate::{get_encoding_meta, spanned_error, symbol, EncodingHandler, EncodingVisitor};
 
     struct NomReaderGenerator {
         visitor: EncodingVisitor,
@@ -316,7 +440,7 @@ mod nom {
                         }
                     }
                 }
-                _ => panic!("Encoding not implemented for type {:?}", ty),
+                _ => spanned_error(&ty, "Encoding not implemented for this type"),
             }
         }
 
@@ -370,13 +494,14 @@ mod nom {
     }
 
     fn generate_field_nom_reader(field: &syn::Field) -> TokenStream {
-        let meta = get_encoding_meta(&field.attrs);
-        NomReaderGenerator::new().generate(&field.ty, meta.as_ref())
+        get_encoding_meta(&field.attrs)
+            .map(|meta| NomReaderGenerator::new().generate(&field.ty, meta.as_ref()))
+            .unwrap_or_else(|err| err.into_compile_error())
     }
 
     fn struct_fields_nom_reader(data: &syn::Data, name: &syn::Ident) -> TokenStream {
-        match *data {
-            syn::Data::Struct(ref data) => match data.fields {
+        match data {
+            syn::Data::Struct(data) => match data.fields {
                 syn::Fields::Named(ref fields) => {
                     let nom_reader = fields.named.iter().map(|f| {
                         let name = &f.ident;
@@ -385,15 +510,19 @@ mod nom {
                             let (bytes, #name) = #nom_read(bytes)?;
                         }
                     });
-                    let construct = fields.named.iter().map(|f| f.ident.as_ref().map(|i| i.to_token_stream()));
+                    let construct = fields
+                        .named
+                        .iter()
+                        .map(|f| f.ident.as_ref().map(|i| i.to_token_stream()));
                     quote! {
                         #(#nom_reader)*
                         Ok((bytes, #name { #(#construct, )* }))
                     }
                 }
-                _ => panic!("Only `struct` with named fields supported"),
+                _ => spanned_error(&data.fields, "Only `struct` with named fields supported"),
             },
-            _ => panic!("Only `struct` types supported"),
+            syn::Data::Enum(e) => spanned_error(e.enum_token, "Only `struct` types supported"),
+            syn::Data::Union(e) => spanned_error(e.union_token, "Only `struct` types supported"),
         }
     }
 
@@ -409,7 +538,6 @@ mod nom {
         }
     }
 }
-
 
 #[proc_macro_derive(HasEncoding, attributes(encoding))]
 pub fn derive_tezos_encoding(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
