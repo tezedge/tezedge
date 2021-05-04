@@ -112,17 +112,16 @@ struct Times {
     irmin_times: Vec<f64>,
 }
 
-impl Times {
-    fn add(&mut self, irmin_time: f64, tezedge_time: f64) {
-        self.irmin_times.push(irmin_time);
-        self.tezedge_times.push(tezedge_time);
-    }
+impl<'a> std::iter::Sum<&'a Times> for Times {
+    fn sum<I: Iterator<Item = &'a Times>>(iter: I) -> Self {
+        let mut times = Times::default();
 
-    fn sum(&self) -> (f64, f64) {
-        let irmin = self.irmin_times.iter().sum();
-        let tezedge = self.tezedge_times.iter().sum();
+        for elem in iter {
+            times.tezedge_times.extend_from_slice(&elem.tezedge_times);
+            times.irmin_times.extend_from_slice(&elem.irmin_times);
+        }
 
-        (irmin, tezedge)
+        times
     }
 }
 
@@ -132,10 +131,12 @@ struct Timing {
     current_context: Option<(HashId, ContextHash)>,
     /// Total number of actions
     nactions: usize,
+    /// Stats for all commits since start
     commits: Times,
+    /// Stats for all checkouts since start
     checkouts: Times,
-    times_current_block: Times,
-    actions_in_current_block: HashMap<String, Times>,
+    /// Times in the current block, by action name
+    times_in_current_block_by_name: HashMap<String, Times>,
     sql: sqlite::Connection,
 }
 
@@ -170,6 +171,20 @@ static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
     sender
 });
 
+impl Times {
+    fn add(&mut self, irmin_time: f64, tezedge_time: f64) {
+        self.irmin_times.push(irmin_time);
+        self.tezedge_times.push(tezedge_time);
+    }
+
+    fn sum(&self) -> (f64, f64) {
+        let irmin = self.irmin_times.iter().sum();
+        let tezedge = self.tezedge_times.iter().sum();
+
+        (irmin, tezedge)
+    }
+}
+
 fn start_timing(recv: Receiver<TimingMessage>) {
     let mut timing = Timing::new();
 
@@ -189,8 +204,7 @@ impl Timing {
             nactions: 0,
             commits: Times::default(),
             checkouts: Times::default(),
-            actions_in_current_block: HashMap::default(),
-            times_current_block: Times::default(),
+            times_in_current_block_by_name: HashMap::default(),
             sql,
         }
     }
@@ -394,22 +408,23 @@ impl Timing {
             .checked_add(1)
             .expect("actions count overflowed");
 
-        self.actions_in_current_block
+        self.times_in_current_block_by_name
             .entry(action.name.clone())
             .or_default()
             .add(action.irmin_time, action.tezedge_time);
 
-        self.times_current_block.add(action.irmin_time, action.tezedge_time);
-
         Ok(())
     }
 
+    // Compute stats for the current block and global ones
     fn update_global_stats(&mut self) -> Result<(), SQLError> {
         let block_id = self
             .current_block
             .as_ref()
             .map(|(id, _)| id.as_str())
             .unwrap_or("NULL");
+
+        // Compute global stats
 
         let tezedge_commits_total = self.commits.tezedge_times.iter().sum::<f64>();
         let tezedge_commits_mean = tezedge_commits_total / self.commits.tezedge_times.len() as f64;
@@ -448,8 +463,10 @@ impl Timing {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
 
+        // Compute stats for the current block, by action name
+
         let values: Vec<String> = self
-            .actions_in_current_block
+            .times_in_current_block_by_name
             .iter()
             .map(|(name, times)| {
                 let (time_irmin, time_tezedge) = times.sum();
@@ -458,8 +475,8 @@ impl Timing {
                     "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
                     block_id = block_id,
                     action_name = name,
-                    time_irmin = time_irmin,
-                    time_tezedge = time_tezedge,
+                    time_irmin = time_irmin.max(0.0),
+                    time_tezedge = time_tezedge.max(0.0),
                 )
             })
             .collect();
@@ -474,21 +491,23 @@ impl Timing {
             values = values.join(",")
         );
 
-        self.sql.execute(query).unwrap();
+        self.sql.execute(query)?;
 
-        let tezedge_time_total = self.times_current_block.tezedge_times.iter().sum::<f64>();
-        let tezedge_time_mean = tezedge_time_total / self.times_current_block.tezedge_times.len() as f64;
-        let tezedge_time_max = self
-            .times_current_block
+        // Compute stats for all actions in the current block
+
+        let times: Times = self.times_in_current_block_by_name.values().sum();
+
+        let tezedge_time_total = times.tezedge_times.iter().sum::<f64>();
+        let tezedge_time_mean = tezedge_time_total / times.tezedge_times.len() as f64;
+        let tezedge_time_max = times
             .tezedge_times
             .iter()
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
 
-        let irmin_time_total = self.times_current_block.irmin_times.iter().sum::<f64>();
-        let irmin_time_mean = irmin_time_total / self.times_current_block.irmin_times.len() as f64;
-        let irmin_time_max = self
-            .times_current_block
+        let irmin_time_total = times.irmin_times.iter().sum::<f64>();
+        let irmin_time_mean = irmin_time_total / times.irmin_times.len() as f64;
+        let irmin_time_max = times
             .irmin_times
             .iter()
             .copied()
@@ -508,16 +527,16 @@ impl Timing {
         WHERE
           id = {block_id};
             ",
-            tezedge_time_max = tezedge_time_max,
-            tezedge_time_mean = tezedge_time_mean,
-            tezedge_time_total = tezedge_time_total,
-            irmin_time_max = irmin_time_max,
-            irmin_time_mean = irmin_time_mean,
-            irmin_time_total = irmin_time_total,
+            tezedge_time_max = tezedge_time_max.max(0.0),
+            tezedge_time_mean = tezedge_time_mean.max(0.0),
+            tezedge_time_total = tezedge_time_total.max(0.0),
+            irmin_time_max = irmin_time_max.max(0.0),
+            irmin_time_mean = irmin_time_mean.max(0.0),
+            irmin_time_total = irmin_time_total.max(0.0),
             block_id = block_id
         );
 
-        self.sql.execute(query).unwrap();
+        self.sql.execute(query)?;
 
         let query = format!(
             "
@@ -541,24 +560,24 @@ impl Timing {
           id = 0;
             ",
             actions_count = self.nactions,
-            tezedge_checkouts_max = tezedge_checkouts_max,
-            tezedge_checkouts_mean = tezedge_checkouts_mean,
-            tezedge_checkouts_total = tezedge_checkouts_total,
-            irmin_checkouts_max = irmin_checkouts_max,
-            irmin_checkouts_mean = irmin_checkouts_mean,
-            irmin_checkouts_total = irmin_checkouts_total,
-            tezedge_commits_max = tezedge_commits_max,
-            tezedge_commits_mean = tezedge_commits_mean,
-            tezedge_commits_total = tezedge_commits_total,
-            irmin_commits_max = irmin_commits_max,
-            irmin_commits_mean = irmin_commits_mean,
-            irmin_commits_total = irmin_commits_total
+            tezedge_checkouts_max = tezedge_checkouts_max.max(0.0),
+            tezedge_checkouts_mean = tezedge_checkouts_mean.max(0.0),
+            tezedge_checkouts_total = tezedge_checkouts_total.max(0.0),
+            irmin_checkouts_max = irmin_checkouts_max.max(0.0),
+            irmin_checkouts_mean = irmin_checkouts_mean.max(0.0),
+            irmin_checkouts_total = irmin_checkouts_total.max(0.0),
+            tezedge_commits_max = tezedge_commits_max.max(0.0),
+            tezedge_commits_mean = tezedge_commits_mean.max(0.0),
+            tezedge_commits_total = tezedge_commits_total.max(0.0),
+            irmin_commits_max = irmin_commits_max.max(0.0),
+            irmin_commits_mean = irmin_commits_mean.max(0.0),
+            irmin_commits_total = irmin_commits_total.max(0.0)
         );
 
         self.sql.execute(query)?;
 
-        self.actions_in_current_block = HashMap::new();
-        self.times_current_block = Times::default();
+        // Reset block stats
+        self.times_in_current_block_by_name = HashMap::new();
 
         Ok(())
     }
@@ -657,7 +676,7 @@ mod tests {
         assert_ne!(block_id, other_block_id);
 
         timing.insert_action(&Action {
-            name: "action_name".to_string(),
+            name: "some_action".to_string(),
             key: vec!["a", "b", "c"]
                 .iter()
                 .map(ToString::to_string)
@@ -665,5 +684,7 @@ mod tests {
             irmin_time: 1.0,
             tezedge_time: 2.0,
         });
+
+        timing.update_global_stats().unwrap();
     }
 }
