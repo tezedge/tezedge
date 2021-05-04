@@ -7,7 +7,7 @@ pub(crate) struct ContextStats {
     actions_count: usize,
     checkout_context: CheckoutCommit,
     commit_context: CheckoutCommit,
-    operations_context: Vec<BlockDetails>,
+    operations_context: Vec<BlockStats>,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -21,7 +21,7 @@ pub(crate) struct CheckoutCommit {
 /// Total time for each action in the block
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct BlockDetails {
+pub(crate) struct BlockStats {
     block_hash: String,
     mem: f64,
     find: f64,
@@ -46,11 +46,10 @@ pub(crate) struct BlockDetails {
 pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
     let sql = sqlite::open("context_timing.sql")?;
 
-    let blocks = read_blocks(&sql);
-    let blocks = get_block_details(&sql, blocks)?;
+    let blocks = get_blocks_stats(&sql)?;
+    let blocks = get_actions_stats(&sql, blocks)?;
 
     let mut stats = get_context_stats(&sql)?.unwrap_or_default();
-
     stats.operations_context = blocks;
 
     println!("GLOBAL HERE = {:#?}", stats);
@@ -71,8 +70,7 @@ fn get_context_stats(sql: &sqlite::Connection) -> Result<Option<ContextStats>, f
            tezedge_commits_total
          FROM
            global_stats",
-        )
-        .unwrap()
+        )?
         .into_cursor();
 
     let row = match cursor.next()? {
@@ -81,16 +79,16 @@ fn get_context_stats(sql: &sqlite::Connection) -> Result<Option<ContextStats>, f
     };
 
     let stats = ContextStats {
-        actions_count: row[0].as_integer().unwrap().try_into().unwrap(),
+        actions_count: row[0].as_integer().unwrap_or(0).try_into()?,
         checkout_context: CheckoutCommit {
-            max: row[1].as_float().unwrap(),
-            mean: row[2].as_float().unwrap(),
-            total_time: row[3].as_float().unwrap(),
+            max: row[1].as_float().unwrap_or(0.0),
+            mean: row[2].as_float().unwrap_or(0.0),
+            total_time: row[3].as_float().unwrap_or(0.0),
         },
         commit_context: CheckoutCommit {
-            max: row[4].as_float().unwrap(),
-            mean: row[5].as_float().unwrap(),
-            total_time: row[6].as_float().unwrap(),
+            max: row[4].as_float().unwrap_or(0.0),
+            mean: row[5].as_float().unwrap_or(0.0),
+            total_time: row[6].as_float().unwrap_or(0.0),
         },
         operations_context: Vec::new(),
     };
@@ -98,21 +96,21 @@ fn get_context_stats(sql: &sqlite::Connection) -> Result<Option<ContextStats>, f
     return Ok(Some(stats));
 }
 
-fn get_block_details(
+fn get_actions_stats(
     sql: &sqlite::Connection,
-    mut blocks_map: HashMap<String, BlockDetails>,
-) -> Result<Vec<BlockDetails>, failure::Error> {
+    mut blocks_map: HashMap<String, BlockStats>,
+) -> Result<Vec<BlockStats>, failure::Error> {
     let mut cursor = sql
         .prepare(
-            "SELECT
+            "
+         SELECT
             block_details.action_name,
             block_details.tezedge_time,
             blocks.hash AS block_hash
          FROM
             block_details
-         JOIN blocks
-         WHERE
-            block_id = blocks.id",
+         JOIN blocks ON block_details.block_id = blocks.id
+            ",
         )?
         .into_cursor();
 
@@ -122,30 +120,30 @@ fn get_block_details(
             None => continue,
         };
 
-        let entry = match blocks_map.get_mut(&block_hash) {
-            Some(entry) => entry,
+        let block = match blocks_map.get_mut(&block_hash) {
+            Some(block) => block,
             _ => continue,
         };
 
-        let action_name = row[0].as_string().unwrap();
+        let action_name = row[0].as_string().unwrap_or("");
         let value = row[1].as_float().unwrap_or(0.0);
 
         match action_name {
-            "mem" => entry.mem = value,
-            "find" => entry.find = value,
-            "find_tree" => entry.find_tree = value,
-            "add" => entry.add = value,
-            "add_tree" => entry.add_tree = value,
-            "equal" => entry.equal = value,
-            "hash" => entry.hash = value,
-            "kind" => entry.kind = value,
-            "empty" => entry.empty = value,
-            "is_empty" => entry.is_empty = value,
-            "list" => entry.list = value,
-            "fold" => entry.fold = value,
-            "remove" => entry.remove = value,
-            "commit" => entry.commit = value,
-            "checkout" => entry.checkout = value,
+            "mem" => block.mem = value,
+            "find" => block.find = value,
+            "find_tree" => block.find_tree = value,
+            "add" => block.add = value,
+            "add_tree" => block.add_tree = value,
+            "equal" => block.equal = value,
+            "hash" => block.hash = value,
+            "kind" => block.kind = value,
+            "empty" => block.empty = value,
+            "is_empty" => block.is_empty = value,
+            "list" => block.list = value,
+            "fold" => block.fold = value,
+            "remove" => block.remove = value,
+            "commit" => block.commit = value,
+            "checkout" => block.checkout = value,
             _ => {}
         }
     }
@@ -156,8 +154,8 @@ fn get_block_details(
         .collect())
 }
 
-fn read_blocks(sql: &sqlite::Connection) -> HashMap<String, BlockDetails> {
-    let mut blocks_map: HashMap<String, BlockDetails> = HashMap::new();
+fn get_blocks_stats(sql: &sqlite::Connection) -> Result<HashMap<String, BlockStats>, failure::Error> {
+    let mut blocks_map: HashMap<String, BlockStats> = HashMap::new();
 
     let mut cursor = sql
         .prepare(
@@ -168,23 +166,22 @@ fn read_blocks(sql: &sqlite::Connection) -> HashMap<String, BlockDetails> {
             tezedge_time_total
          FROM
             blocks;",
-        )
-        .unwrap()
+        )?
         .into_cursor();
 
-    while let Some(row) = cursor.next().unwrap() {
+    while let Some(row) = cursor.next()? {
         let block_hash = row[0].as_string().unwrap();
 
-        let mut details = BlockDetails::default();
-        details.block_hash = block_hash.to_string();
-        details.max = row[1].as_float().unwrap_or(0.0);
-        details.mean = row[2].as_float().unwrap_or(0.0);
-        details.total = row[3].as_float().unwrap_or(0.0);
+        let mut block = BlockStats::default();
+        block.block_hash = block_hash.to_string();
+        block.max = row[1].as_float().unwrap_or(0.0);
+        block.mean = row[2].as_float().unwrap_or(0.0);
+        block.total = row[3].as_float().unwrap_or(0.0);
 
-        blocks_map.insert(block_hash.to_string(), details);
+        blocks_map.insert(block_hash.to_string(), block);
     }
 
-    blocks_map
+    Ok(blocks_map)
 }
 
 #[cfg(test)]
