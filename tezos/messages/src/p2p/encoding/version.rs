@@ -28,14 +28,14 @@ impl tezos_encoding::raw::RawReader for NetworkVersion {
         if bytes.len() < 4 {
             return Err(BinaryReaderErrorKind::Underflow { bytes: 4 - bytes.len() }.into());
         }
-        let chain_name_len: u32 = (bytes[0] as u32) << 24 + (bytes[1] as u32) << 16 + (bytes[2] as u32) << 8 + bytes[3] as u32;
+        let chain_name_len: u32 = ((bytes[0] as u32) << 24) + ((bytes[1] as u32) << 16) + ((bytes[2] as u32) << 8) + bytes[3] as u32;
         let chain_name_len = chain_name_len as usize;
         let off = 4usize;
         if bytes.len() - off < chain_name_len {
             return Err(BinaryReaderErrorKind::Underflow { bytes: chain_name_len - bytes.len() - off }.into());
         }
-        let chain_name = std::str::from_utf8(&bytes[off..off + chain_name_len as usize])?.to_string();
-        let off = off + chain_name_len as usize;
+        let chain_name = std::str::from_utf8(&bytes[off..off + chain_name_len])?.to_string();
+        let off = off + chain_name_len;
         if bytes.len() - off < 2 {
             return Err(BinaryReaderErrorKind::Underflow { bytes: 2 - bytes.len() - off }.into());
         }

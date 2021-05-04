@@ -74,7 +74,7 @@ impl ConnectionMessage {
 
 impl tezos_encoding::raw::RawReader for ConnectionMessage {
     fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
-        const PUBLIC_KEY_OFF: usize = std::mem::size_of::<u16>();
+        const PUBLIC_KEY_OFF: usize = 2;
         const PROOF_OF_WORK_STAMP_OFF: usize = PUBLIC_KEY_OFF + CRYPTO_KEY_SIZE;
         const MESSAGE_NONCE_OFF: usize = PROOF_OF_WORK_STAMP_OFF + POW_SIZE;
         const NETWORK_VERSION_OFF: usize = MESSAGE_NONCE_OFF + NONCE_SIZE;
