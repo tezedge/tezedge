@@ -5,19 +5,14 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncodingOld}, has_encoding_test};
+use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field}, has_encoding_test};
 
 use crate::non_cached_data;
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
 
-use crate::p2p::binary_message::cache::CachedData;
-use tezos_encoding::encoding::HasEncodingDerived;
-use tezos_encoding::encoding::HasEncodingTest;
-use tezos_encoding::nom::NomReader;
-
 /// Holds informations about chain compatibility, features compatibility...
-#[derive(Serialize, Deserialize, Getters, Clone, tezos_encoding_derive::HasEncoding)]
+#[derive(Serialize, Deserialize, Getters, Clone, tezos_encoding::HasEncoding, tezos_encoding::NomReader)]
 pub struct NetworkVersion {
     #[get = "pub"]
     #[encoding(BoundedString("CHAIN_NAME_MAX_LENGTH"))]
@@ -28,8 +23,8 @@ pub struct NetworkVersion {
     p2p_version: u16,
 }
 
-impl NetworkVersion {
-    pub fn from_bytes_raw(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
+impl tezos_encoding::raw::RawReader for NetworkVersion {
+    fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
         if bytes.len() < 4 {
             return Err(BinaryReaderErrorKind::Underflow { bytes: 4 - bytes.len() }.into());
         }
@@ -55,14 +50,18 @@ impl NetworkVersion {
     }
 }
 
+/*
 impl tezos_encoding::nom::NomReader for NetworkVersion {
     fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
         let (bytes, chain_name) = nom::combinator::map_res(
             nom::combinator::flat_map(
-                nom::number::complete::u32(nom::number::Endianness::Big),
+                nom::combinator::verify(
+                    nom::number::complete::u32(nom::number::Endianness::Big),
+                    |v| *v <= CHAIN_NAME_MAX_LENGTH as u32,
+                ),
                 nom::bytes::complete::take,
             ),
-            |bytes: &[u8]| std::str::from_utf8(bytes).map(str::to_string),
+            |bytes| std::str::from_utf8(bytes).map(str::to_string),
         )(bytes)?;
         let (bytes, distributed_db_version) =
             nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
@@ -77,6 +76,7 @@ impl tezos_encoding::nom::NomReader for NetworkVersion {
         ))
     }
 }
+*/
 
 impl fmt::Debug for NetworkVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -1,15 +1,41 @@
 extern crate proc_macro;
 
 use proc_macro2::TokenStream;
-use quote::quote;
 use syn::{parse_macro_input, DeriveInput, Lit, Meta, NestedMeta, Type};
 
 mod symbol;
 
 /// Checks that the type is `Vec<u8>`
-fn is_vec_u8(_ty: &syn::Type) -> bool {
-    // TODO
-    true
+fn is_vec_u8(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(path) => {
+            if path.path.segments.len() == 1 {
+                let segm = path.path.segments.last().unwrap();
+                if segm.ident == symbol::rust::VEC {
+                    match &segm.arguments {
+                        syn::PathArguments::AngleBracketed(args) => {
+                            if args.args.len() == 1 {
+                                match args.args.last().unwrap() {
+                                    syn::GenericArgument::Type(Type::Path(path)) if path.path == symbol::rust::U8 => return true,
+                                    _ => (),
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            }
+        },
+        _ => (),
+    };
+    false
+}
+
+fn is_string(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(path) if path.path == symbol::rust::STRING => true,
+        _ => false,
+    }
 }
 
 /// Finds `encoding` attribute and parse its content
@@ -78,6 +104,11 @@ impl EncodingVisitor {
                 assert!(is_vec_u8(ty));
                 handler.on_bytes()
             }
+            // `String`
+            Some(syn::Meta::Path(p)) if p == symbol::STRING => {
+                assert!(is_string(ty));
+                handler.on_string()
+            }
             // `BoundedString("SIZE")`
             Some(Meta::List(m)) if m.path == symbol::BOUNDED_STRING => {
                 let mut it = m.nested.iter();
@@ -89,7 +120,7 @@ impl EncodingVisitor {
                         size
                     ),
                 };
-                assert!(is_vec_u8(ty));
+                assert!(is_string(ty));
                 handler.on_bounded_string(&size)
             }
             // no attributes, use type information
@@ -109,8 +140,9 @@ mod enc {
 
     lazy_static! {
         static ref DIRECT_MAPPING: std::collections::HashMap<Symbol, &'static str> = {
+            use crate::symbol::rust::*;
             use crate::symbol::*;
-            [(U8, "Uint8"), (U16, "Uint16")].iter().cloned().collect()
+            [(U8, UINT_8), (U16, UINT_16)].iter().cloned().collect()
         };
     }
 
@@ -221,58 +253,176 @@ mod enc {
             _ => panic!("Only `struct` types supported"),
         }
     }
+
+    pub fn derive_encoding(input: syn::DeriveInput) -> TokenStream {
+        let name = &input.ident;
+        let name_str = name.to_string();
+        let encoding_static_name = syn::Ident::new(
+            &format!("__TEZOS_ENCODING_{}", name.to_string().to_uppercase()),
+            name.span(),
+        );
+        let fields_encoding = struct_fields_encoding(&input.data);
+        quote! {
+            lazy_static::lazy_static! {
+                #[allow(non_upper_case_globals)]
+                static ref #encoding_static_name: tezos_encoding::encoding::Encoding = tezos_encoding::encoding::Encoding::Obj(
+                    #name_str,
+                    vec![
+                        #fields_encoding
+                    ]
+                );
+            }
+
+            impl tezos_encoding::encoding::HasEncoding for #name {
+                fn encoding() -> &'static tezos_encoding::encoding::Encoding {
+                    &#encoding_static_name
+                }
+            }
+        }
+    }
 }
+
+mod nom {
+    use proc_macro2::TokenStream;
+    use quote::{ToTokens, quote};
+
+    use crate::{EncodingHandler, EncodingVisitor, get_encoding_meta, symbol};
+
+    struct NomReaderGenerator {
+        visitor: EncodingVisitor,
+    }
+
+    impl NomReaderGenerator {
+        fn new() -> Self {
+            let visitor = EncodingVisitor {};
+            NomReaderGenerator { visitor }
+        }
+        fn generate(&self, ty: &syn::Type, meta: Option<&syn::Meta>) -> TokenStream {
+            self.visitor.visit(ty, meta, self)
+        }
+    }
+
+    impl EncodingHandler for NomReaderGenerator {
+        fn on_type(&self, ty: &syn::Type) -> TokenStream {
+            match ty {
+                syn::Type::Path(path) => {
+                    if path.path == symbol::rust::U16 {
+                        quote! {
+                            nom::number::complete::u16(nom::number::Endianness::Big)
+                        }
+                    } else {
+                        quote! {
+                            <#ty as tezos_encoding::nom::NomReader>::from_bytes
+                        }
+                    }
+                }
+                _ => panic!("Encoding not implemented for type {:?}", ty),
+            }
+        }
+
+        fn on_bytes(&self) -> TokenStream {
+            quote! {
+                nom::combinator::map(nom::combinator::rest, Vec::from)
+            }
+        }
+
+        fn on_string(&self) -> TokenStream {
+            quote! {
+                nom::combinator::map_res(
+                    nom::combinator::flat_map(
+                        nom::number::complete::u32(nom::number::Endianness::Big),
+                        nom::bytes::complete::take,
+                    ),
+                    |bytes| std::str::from_utf8(bytes).map(str::to_string),
+                )
+            }
+        }
+
+        fn on_bounded_string(&self, size: &syn::Expr) -> TokenStream {
+            quote! {
+                nom::combinator::map_res(
+                    nom::combinator::flat_map(
+                        nom::combinator::verify(
+                            nom::number::complete::u32(nom::number::Endianness::Big),
+                            |v| *v <= #size as u32,
+                        ),
+                        nom::bytes::complete::take,
+                    ),
+                    |bytes| std::str::from_utf8(bytes).map(str::to_string),
+                )
+            }
+        }
+
+        fn on_sized(
+            &self,
+            ty: &syn::Type,
+            size: &syn::Expr,
+            inner: Option<&syn::Meta>,
+        ) -> TokenStream {
+            let inner = self.visitor.visit(ty, inner, self);
+            quote! {
+                nom::combinator::map_parser(
+                    nom::bytes::complete::take(#size),
+                    #inner
+                )
+            }
+        }
+    }
+
+    fn generate_field_nom_reader(field: &syn::Field) -> TokenStream {
+        let meta = get_encoding_meta(&field.attrs);
+        NomReaderGenerator::new().generate(&field.ty, meta.as_ref())
+    }
+
+    fn struct_fields_nom_reader(data: &syn::Data, name: &syn::Ident) -> TokenStream {
+        match *data {
+            syn::Data::Struct(ref data) => match data.fields {
+                syn::Fields::Named(ref fields) => {
+                    let nom_reader = fields.named.iter().map(|f| {
+                        let name = &f.ident;
+                        let nom_read = generate_field_nom_reader(f);
+                        quote! {
+                            let (bytes, #name) = #nom_read(bytes)?;
+                        }
+                    });
+                    let construct = fields.named.iter().map(|f| f.ident.as_ref().map(|i| i.to_token_stream()));
+                    quote! {
+                        #(#nom_reader)*
+                        Ok((bytes, #name { #(#construct, )* }))
+                    }
+                }
+                _ => panic!("Only `struct` with named fields supported"),
+            },
+            _ => panic!("Only `struct` types supported"),
+        }
+    }
+
+    pub fn derive_nom_reader(input: syn::DeriveInput) -> TokenStream {
+        let name = &input.ident;
+        let fields_nom_read = struct_fields_nom_reader(&input.data, name);
+        quote! {
+            impl tezos_encoding::nom::NomReader for #name {
+                fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
+                    #fields_nom_read
+                }
+            }
+        }
+    }
+}
+
 
 #[proc_macro_derive(HasEncoding, attributes(encoding))]
 pub fn derive_tezos_encoding(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    let expanded = enc::derive_encoding(input);
+    expanded.into()
+}
 
-    let name = input.ident;
-    let name_str = name.to_string();
-    let encoding_static_name = syn::Ident::new(
-        &format!("__TEZOS_ENCODING_{}", name.to_string().to_uppercase()),
-        name.span(),
-    );
-    let fields_encoding = enc::struct_fields_encoding(&input.data);
-
-    let expanded = quote! {
-        lazy_static::lazy_static! {
-            #[allow(non_upper_case_globals)]
-            static ref #encoding_static_name: tezos_encoding::encoding::Encoding = tezos_encoding::encoding::Encoding::Obj(
-                #name_str,
-                vec![
-                    #fields_encoding
-                ]
-            );
-        }
-
-        impl tezos_encoding::encoding::HasEncodingDerived for #name {
-            fn encoding_derived() -> &'static tezos_encoding::encoding::Encoding {
-                &#encoding_static_name
-            }
-        }
-
-        impl tezos_encoding::encoding::HasEncoding for #name {
-            fn encoding() -> &'static tezos_encoding::encoding::Encoding {
-                &#encoding_static_name
-            }
-        }
-
-        impl crate::p2p::binary_message::BinaryMessage for #name {
-            #[inline]
-            fn as_bytes(&self) -> Result<Vec<u8>, tezos_encoding::binary_writer::BinaryWriterError> {
-                // if cache not configured or empty, resolve by encoding
-                tezos_encoding::binary_writer::write(self, &Self::encoding_derived())
-            }
-
-            #[inline]
-            fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
-                let (bytes, myself) = Self::from_bytes_nom(bytes.as_ref())?;
-                Ok(myself)
-            }
-        }
-    };
-    proc_macro::TokenStream::from(expanded)
+#[proc_macro_derive(NomReader, attributes(encoding))]
+pub fn derive_nom_reader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let expanded = nom::derive_nom_reader(input);
+    expanded.into()
 }
 
 /*

@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::binary_writer;
+use tezos_encoding::{binary_reader::BinaryReaderErrorKind, binary_writer};
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
@@ -198,9 +198,10 @@ pub trait BinaryMessage: Sized {
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
 }
 
+
 impl<T> BinaryMessage for T
 where
-    T: tezos_encoding::encoding::HasEncodingOld + cache::CachedData + DeserializeOwned + Serialize + Sized,
+    T: tezos_encoding::encoding::HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
@@ -218,26 +219,81 @@ where
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
         let bytes = bytes.as_ref();
-
-        if let Some(dir) = std::env::var_os("OUTPUT_DIR") {
-            let type_name = std::any::type_name::<T>();
-            let type_name = type_name.rsplit("::").next().unwrap();
-            let dir = std::path::PathBuf::from(dir).join(type_name);
-            if dir.exists() {
-                assert!(dir.is_dir());
-            } else {
-                std::fs::create_dir(&dir).unwrap();
-            }
-            let hash = crypto::blake2b::digest_256(bytes).unwrap();
-            std::fs::File::create(std::path::PathBuf::from(dir).join(&format!("{}.data", hex::encode(&hash)))).and_then(|mut f| std::io::Write::write_all(&mut f, bytes)).expect("cannoot");
-        }
-
         let value = BinaryReader::new().read(bytes, &Self::encoding())?;
         let mut myself: Self = deserialize_from_value(&value)?;
         if let Some(cache_writer) = myself.cache_writer() {
             cache_writer.put(bytes);
         }
         Ok(myself)
+    }
+}
+
+/// Trait for binary encoding to implement via `nom`.
+///
+/// TODO this is a transitional trait, should be removed after `nom` is fully adopted.
+pub trait BinaryMessageSerde: Sized {
+    /// Create new struct from bytes.
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
+}
+
+impl<T> BinaryMessageSerde for T
+where
+    T: tezos_encoding::encoding::HasEncoding + cache::CachedData + DeserializeOwned + Sized,
+{
+    #[inline]
+    fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
+        let bytes = bytes.as_ref();
+        let value = BinaryReader::new().read(bytes, &Self::encoding())?;
+        let mut myself: Self = deserialize_from_value(&value)?;
+        if let Some(cache_writer) = myself.cache_writer() {
+            cache_writer.put(bytes);
+        }
+        Ok(myself)
+    }
+}
+
+/// Trait for binary encoding to implement via `nom`.
+///
+/// TODO this is a transitional trait, should be removed after `nom` is fully adopted.
+pub trait BinaryMessageNom: Sized {
+    /// Create new struct from bytes.
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
+}
+
+impl<T> BinaryMessageNom for T
+where
+    T: tezos_encoding::nom::NomReader + Sized
+{
+    #[inline]
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
+        let (bytes, myself) = tezos_encoding::nom::NomReader::from_bytes(buf.as_ref())?;
+        if bytes.len() > 0 {
+            Err(BinaryReaderErrorKind::Overflow { bytes: bytes.len() }.into())
+        } else {
+            Ok(myself)
+        }
+    }
+}
+
+/// Trait for binary encoding to implement without any library.
+///
+/// TODO this is a transitional trait, should be removed after `nom` is fully adopted.
+pub trait BinaryMessageRaw: Sized {
+    /// Create new struct from bytes.
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
+}
+
+impl<T> BinaryMessageRaw for T
+where
+    T: tezos_encoding::raw::RawReader
+{
+    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
+        let (bytes, myself) = tezos_encoding::raw::RawReader::from_bytes(buf.as_ref())?;
+        if bytes.len() > 0 {
+            Err(BinaryReaderErrorKind::Overflow { bytes: bytes.len() }.into())
+        } else {
+            Ok(myself)
+        }
     }
 }
 

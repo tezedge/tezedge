@@ -1,5 +1,5 @@
 
 
 pub trait NomReader : Sized {
-    fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self>;
+    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self>;
 }

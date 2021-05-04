@@ -4,15 +4,22 @@ use syn::{Ident, Path};
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Symbol(&'static str);
 
-pub const U8: Symbol = Symbol("u8");
-pub const U16: Symbol = Symbol("u16");
-pub const VEC: Symbol = Symbol("Vec");
+pub mod rust {
+    use super::*;
 
-pub const UINT_16: Symbol = Symbol("Uint16");
+    pub const STRING: Symbol = Symbol("String");
+    pub const U8: Symbol = Symbol("u8");
+    pub const U16: Symbol = Symbol("u16");
+    pub const VEC: Symbol = Symbol("Vec");
+}
+
+pub const UINT_8: &str ="Uint8";
+pub const UINT_16: &str ="Uint16";
 
 pub const ENCODING: Symbol = Symbol("encoding");
 pub const SIZED: Symbol = Symbol("Sized");
 pub const BYTES: Symbol = Symbol("Bytes");
+pub const STRING: Symbol = Symbol("String");
 pub const BOUNDED_STRING: Symbol = Symbol("BoundedString");
 
 impl PartialEq<Symbol> for Ident {

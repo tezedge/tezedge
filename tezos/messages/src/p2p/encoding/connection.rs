@@ -14,15 +14,11 @@ use crypto::CryptoError;
 use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncoding, HasEncodingTest}, has_encoding_test};
 
 
-use crate::non_cached_data;
-use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
+use crate::{non_cached_data, p2p::binary_message::BinaryMessageNom};
+use crate::p2p::binary_message::BinaryChunk;
 use crate::p2p::encoding::version::NetworkVersion;
 
-use tezos_encoding::encoding::HasEncodingOld;
-use tezos_encoding::encoding::HasEncodingDerived;
-use tezos_encoding::nom::NomReader;
-
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, tezos_encoding_derive::HasEncoding)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, tezos_encoding::HasEncoding, tezos_encoding::NomReader)]
 pub struct ConnectionMessage {
     port: u16,
     #[get = "pub"]
@@ -36,6 +32,7 @@ pub struct ConnectionMessage {
     version: NetworkVersion,
 }
 
+/*
 impl tezos_encoding::nom::NomReader for ConnectionMessage {
     fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
         let (bytes, port) = nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
@@ -55,10 +52,6 @@ impl tezos_encoding::nom::NomReader for ConnectionMessage {
         Ok((bytes, ConnectionMessage { port, public_key, proof_of_work_stamp, message_nonce, version }))
     }
 }
-
-/*
- * let (bytes, port) = nom::u16()?;
- * let (bytes, public_key) = num::
 */
 
 impl ConnectionMessage {
@@ -77,8 +70,10 @@ impl ConnectionMessage {
             message_nonce: message_nonce.get_bytes()?.into(),
         })
     }
+}
 
-    pub fn from_bytes_raw(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
+impl tezos_encoding::raw::RawReader for ConnectionMessage {
+    fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), BinaryReaderError> {
         const PUBLIC_KEY_OFF: usize = std::mem::size_of::<u16>();
         const PROOF_OF_WORK_STAMP_OFF: usize = PUBLIC_KEY_OFF + CRYPTO_KEY_SIZE;
         const MESSAGE_NONCE_OFF: usize = PROOF_OF_WORK_STAMP_OFF + POW_SIZE;
@@ -99,7 +94,7 @@ impl ConnectionMessage {
             return Err(BinaryReaderErrorKind::Underflow { bytes: NONCE_SIZE - (bytes.len() - MESSAGE_NONCE_OFF) }.into());
         }
         let message_nonce = bytes[MESSAGE_NONCE_OFF..NETWORK_VERSION_OFF].to_vec();
-        let (bytes, version) = NetworkVersion::from_bytes_raw(&bytes[NETWORK_VERSION_OFF..])?;
+        let (bytes, version) = <NetworkVersion as tezos_encoding::raw::RawReader>::from_bytes(&bytes[NETWORK_VERSION_OFF..])?;
         Ok((bytes, ConnectionMessage { port, public_key, proof_of_work_stamp, message_nonce, version }))
     }
 }
@@ -111,7 +106,7 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 
     fn try_from(value: BinaryChunk) -> Result<Self, Self::Error> {
         let cursor = Cursor::new(value.content());
-        ConnectionMessage::from_bytes(cursor.into_inner())
+        <ConnectionMessage as BinaryMessageNom>::from_bytes(cursor.into_inner())
     }
 }
 
@@ -133,7 +128,7 @@ has_encoding_test!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
                 "message_nonce",
                 Encoding::sized(NONCE_SIZE, Encoding::Bytes),
             ),
-            Field::new("version", NetworkVersion::encoding().clone()),
+            Field::new("version", NetworkVersion::encoding_test().clone()),
         ],
     )
 });

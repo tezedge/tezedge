@@ -3464,7 +3464,7 @@ dependencies = [
 [[package]]
 name = "shiplift"
 version = "0.7.0"
-source = "git+https://github.com/simplestaking/shiplift.git?branch=master#f5017f603afab9821966032ea652cb3161051f17"
+source = "git+https://github.com/simplestaking/shiplift.git#f5017f603afab9821966032ea652cb3161051f17"
 dependencies = [
  "base64",
  "byteorder",
@@ -3934,6 +3934,7 @@ dependencies = [
  "num-bigint 0.3.1",
  "num-traits 0.2.14",
  "serde 1.0.123",
+ "tezos_encoding_derive",
 ]
 
 [[package]]
