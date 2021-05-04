@@ -14,7 +14,9 @@ use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
 const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
+const LIBTEZOS_HEADERS_NAME: &str = "libtezos-ffi-headers.tar.gz";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
+const ARTIFACTS_INCLUDES_DIR: &str = "lib_tezos/artifacts/include";
 
 // zcash params files for sapling - these files are fixed and never ever changes
 const ZCASH_PARAM_SAPLING_SPEND_FILE_NAME: &str = "sapling-spend.params";
@@ -199,6 +201,8 @@ fn current_release_distributions_artifacts() -> Vec<Artifact> {
 fn run_builder(build_chain: &BuildChain) {
     let artifacts_path = Path::new(ARTIFACTS_DIR);
     let libtezos_ffi_dst_path = artifacts_path.join(libtezos_filename());
+    let libtezos_ffi_headers_path = Path::new(ARTIFACTS_INCLUDES_DIR);
+    let libtezos_ffi_headers_dst_path = libtezos_ffi_headers_path.join(LIBTEZOS_HEADERS_NAME);
     let zcash_params_spend_dest_path = artifacts_path.join(ZCASH_PARAM_SAPLING_SPEND_FILE_NAME);
     let zcash_params_output_dest_path = artifacts_path.join(ZCASH_PARAM_SAPLING_OUTPUT_FILE_NAME);
 
@@ -206,6 +210,7 @@ fn run_builder(build_chain: &BuildChain) {
         BuildChain::Local(tezos_base_dir) => {
             let tezos_path = Path::new(&tezos_base_dir);
             let libtezos_ffi_src_path = tezos_path.join(LIBTEZOS_BUILD_NAME);
+            let ocaml_headers_path = tezos_path.join("_opam/lib/ocaml/caml");
             let zcash_params_spend_src_path = tezos_path
                 .join(ZCASH_PARAM_SAPLING_FILES_TEZOS_PATH)
                 .join(ZCASH_PARAM_SAPLING_SPEND_FILE_NAME);
@@ -227,6 +232,20 @@ fn run_builder(build_chain: &BuildChain) {
                     "{} {} was not found!",
                     "error".bright_red(),
                     libtezos_ffi_src_path.to_str().unwrap()
+                );
+
+                println!();
+                println!(
+                    "Please build libtezos-ffi before continuing (see: ./tezos/interop/README.md)."
+                );
+                panic!();
+            }
+
+            if !ocaml_headers_path.exists() {
+                println!(
+                    "{} {} was not found!",
+                    "error".bright_red(),
+                    ocaml_headers_path.to_str().unwrap()
                 );
 
                 println!();
@@ -275,6 +294,21 @@ fn run_builder(build_chain: &BuildChain) {
                     panic!(
                         "Couldn't copy '{:?}' to '{:?}'",
                         libtezos_ffi_src_path, libtezos_ffi_dst_path
+                    )
+                });
+
+            Command::new("cp")
+                .args(&[
+                    "-R",
+                    "-f",
+                    ocaml_headers_path.to_str().unwrap(),
+                    libtezos_ffi_headers_path.to_str().unwrap(),
+                ])
+                .status()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't copy '{:?}' to '{:?}'",
+                        ocaml_headers_path, libtezos_ffi_headers_path
                     )
                 });
 
@@ -336,6 +370,31 @@ fn run_builder(build_chain: &BuildChain) {
                 ),
                 &zcash_params_output_dest_path,
             );
+            download_remote_file_and_check_sha256(
+                get_remote_file(LIBTEZOS_HEADERS_NAME, &artifacts).unwrap_or_else(|| {
+                    panic!("Failed to find file {} in artifacts", LIBTEZOS_HEADERS_NAME)
+                }),
+                &libtezos_ffi_headers_dst_path,
+            );
+            Command::new("tar")
+                .args(&[
+                    "xvzf",
+                    libtezos_ffi_headers_dst_path.to_str().unwrap(),
+                    "-C",
+                    libtezos_ffi_headers_path.to_str().unwrap(),
+                ])
+                .status()
+                .unwrap_or_else(|_| {
+                    panic!(
+                        "Couldn't decompress '{:?}' into '{:?}'",
+                        libtezos_ffi_headers_dst_path.clone(),
+                        libtezos_ffi_headers_path
+                    )
+                });
+            fs::remove_file(libtezos_ffi_headers_dst_path.clone()).expect(&format!(
+                "Failed to remove file {:?}",
+                libtezos_ffi_headers_dst_path
+            ));
         }
     };
 }
@@ -346,6 +405,8 @@ fn main() {
         fs::remove_dir_all(ARTIFACTS_DIR).expect("Failed to delete artifacts directory!");
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
+    fs::create_dir_all(ARTIFACTS_INCLUDES_DIR)
+        .expect("Failed to create artifacts includes directory!");
 
     let tezos_base_dir = env::var("TEZOS_BASE_DIR").unwrap_or_else(|_| "".to_owned());
     let build_chain = if tezos_base_dir.is_empty() {
@@ -376,5 +437,4 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", &out_dir);
     println!("cargo:rustc-link-lib=dylib=tezos");
-    println!("cargo:rerun-if-env-changed=TEZOS_BASE_DIR");
 }
