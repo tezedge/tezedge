@@ -5,14 +5,14 @@ use std::{collections::HashMap, convert::TryInto};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
     actions_count: usize,
-    checkout_context: CheckoutCommit,
-    commit_context: CheckoutCommit,
+    checkout_context: TimeStats,
+    commit_context: TimeStats,
     operations_context: Vec<BlockStats>,
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct CheckoutCommit {
+pub(crate) struct TimeStats {
     max: f64,
     mean: f64,
     total_time: f64,
@@ -49,15 +49,12 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
     let blocks = get_blocks_stats(&sql)?;
     let blocks = get_actions_stats(&sql, blocks)?;
 
-    let mut stats = get_context_stats(&sql)?.unwrap_or_default();
-    stats.operations_context = blocks;
-
-    println!("GLOBAL HERE = {:#?}", stats);
+    let stats = get_context_stats(&sql, blocks)?.unwrap_or_default();
 
     Ok(stats)
 }
 
-fn get_context_stats(sql: &sqlite::Connection) -> Result<Option<ContextStats>, failure::Error> {
+fn get_context_stats(sql: &sqlite::Connection, blocks: Vec<BlockStats>) -> Result<Option<ContextStats>, failure::Error> {
     let mut cursor = sql
         .prepare(
             "SELECT
@@ -80,17 +77,17 @@ fn get_context_stats(sql: &sqlite::Connection) -> Result<Option<ContextStats>, f
 
     let stats = ContextStats {
         actions_count: row[0].as_integer().unwrap_or(0).try_into()?,
-        checkout_context: CheckoutCommit {
+        checkout_context: TimeStats {
             max: row[1].as_float().unwrap_or(0.0),
             mean: row[2].as_float().unwrap_or(0.0),
             total_time: row[3].as_float().unwrap_or(0.0),
         },
-        commit_context: CheckoutCommit {
+        commit_context: TimeStats {
             max: row[4].as_float().unwrap_or(0.0),
             mean: row[5].as_float().unwrap_or(0.0),
             total_time: row[6].as_float().unwrap_or(0.0),
         },
-        operations_context: Vec::new(),
+        operations_context: blocks,
     };
 
     return Ok(Some(stats));
@@ -182,14 +179,4 @@ fn get_blocks_stats(sql: &sqlite::Connection) -> Result<HashMap<String, BlockSta
     }
 
     Ok(blocks_map)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_read_db() {
-        make_context_stats().unwrap();
-    }
 }
