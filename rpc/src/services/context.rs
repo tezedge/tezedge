@@ -54,7 +54,10 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
     Ok(stats)
 }
 
-fn get_context_stats(sql: &sqlite::Connection, blocks: Vec<BlockStats>) -> Result<Option<ContextStats>, failure::Error> {
+fn get_context_stats(
+    sql: &sqlite::Connection,
+    blocks: Vec<BlockStats>,
+) -> Result<Option<ContextStats>, failure::Error> {
     let mut cursor = sql
         .prepare(
             "SELECT
@@ -151,7 +154,9 @@ fn get_actions_stats(
         .collect())
 }
 
-fn get_blocks_stats(sql: &sqlite::Connection) -> Result<HashMap<String, BlockStats>, failure::Error> {
+fn get_blocks_stats(
+    sql: &sqlite::Connection,
+) -> Result<HashMap<String, BlockStats>, failure::Error> {
     let mut blocks_map: HashMap<String, BlockStats> = HashMap::new();
 
     let mut cursor = sql
