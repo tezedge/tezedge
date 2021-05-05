@@ -7,7 +7,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use once_cell::sync::Lazy;
-use rusqlite::{Batch, Connection, Error as SQLError, named_params};
+use rusqlite::{named_params, Batch, Connection, Error as SQLError};
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
@@ -297,7 +297,10 @@ impl Timing {
         };
 
         sql.execute(
-            &format!("INSERT INTO {table} (hash) VALUES (?1);", table = table_name),
+            &format!(
+                "INSERT INTO {table} (hash) VALUES (?1);",
+                table = table_name
+            ),
             [&hash_string],
         )?;
 
@@ -314,7 +317,10 @@ impl Timing {
         table_name: &str,
         hash_string: &str,
     ) -> Result<Option<i64>, SQLError> {
-        let mut stmt = sql.prepare(&format!("SELECT id FROM {table} WHERE hash = ?1;", table = table_name))?;
+        let mut stmt = sql.prepare(&format!(
+            "SELECT id FROM {table} WHERE hash = ?1;",
+            table = table_name
+        ))?;
         let mut rows = stmt.query([hash_string])?;
 
         if let Some(row) = rows.next()? {
@@ -352,26 +358,14 @@ impl Timing {
     }
 
     fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
-        let block_id = self
-            .current_block
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap_or("NULL");
-        let operation_id = self
-            .current_operation
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap_or("NULL");
-        let context_id = self
-            .current_context
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap_or("NULL");
+        let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
+        let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
+        let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
 
         let key = if action.key.is_empty() {
-            "NULL".to_string()
+            None
         } else {
-            action.key.join("/")
+            Some(action.key.join("/"))
         };
 
         self.sql.execute(
@@ -381,7 +375,7 @@ impl Timing {
         VALUES
           (:name, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
             ",
-            named_params!{
+            named_params! {
                 ":name": &action.name,
                 ":key": &key,
                 ":irmin_time": &action.irmin_time,
@@ -389,7 +383,7 @@ impl Timing {
                 ":block_id": block_id,
                 ":operation_id": operation_id,
                 ":context_id": context_id
-            }
+            },
         )?;
 
         self.nactions = self
@@ -407,11 +401,7 @@ impl Timing {
 
     // Compute stats for the current block and global ones
     fn update_global_stats(&mut self) -> Result<(), SQLError> {
-        let block_id = self
-            .current_block
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap_or("NULL");
+        let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
 
         // Compute global stats
 
@@ -469,7 +459,7 @@ impl Timing {
                     ":action_name": name,
                     ":time_irmin": time_irmin.max(0.0),
                     ":time_tezedge": time_tezedge.max(0.0),
-                }
+                },
             )?;
         }
 
@@ -515,7 +505,7 @@ impl Timing {
                 ":irmin_time_mean": irmin_time_mean.max(0.0),
                 ":irmin_time_total": irmin_time_total.max(0.0),
                 ":block_id": block_id
-            }
+            },
         )?;
 
         self.sql.execute(
@@ -553,7 +543,7 @@ impl Timing {
                 ":irmin_commits_max": irmin_commits_max.max(0.0),
                 ":irmin_commits_mean": irmin_commits_mean.max(0.0),
                 ":irmin_commits_total": irmin_commits_total.max(0.0)
-            }
+            },
         )?;
 
         // Reset block stats
@@ -565,63 +555,9 @@ impl Timing {
     fn init_sqlite() -> Result<Connection, SQLError> {
         let connection = Connection::open("context_stats.db")?;
 
-        let queries =
-                "
-        PRAGMA foreign_keys = ON;
-        PRAGMA synchronous = OFF;
-        CREATE TABLE IF NOT EXISTS blocks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            hash TEXT UNIQUE,
-            tezedge_time_max REAL,
-            tezedge_time_mean REAL,
-            tezedge_time_total REAL,
-            irmin_time_max REAL,
-            irmin_time_mean REAL,
-            irmin_time_total REAL
-        );
-        CREATE TABLE IF NOT EXISTS operations (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
-        CREATE TABLE IF NOT EXISTS contexts (id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT UNIQUE);
-        CREATE TABLE IF NOT EXISTS block_details (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            action_name TEXT NOT NULL,
-            irmin_time REAL NOT NULL,
-            tezedge_time REAL NOT NULL,
-            block_id INTEGER DEFAULT NULL,
-            FOREIGN KEY(block_id) REFERENCES blocks(id)
-        );
-        CREATE TABLE IF NOT EXISTS actions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            key TEXT,
-            irmin_time REAL,
-            tezedge_time REAL,
-            block_id INTEGER DEFAULT NULL,
-            operation_id INTEGER DEFAULT NULL,
-            context_id INTEGER DEFAULT NULL,
-            FOREIGN KEY(block_id) REFERENCES blocks(id),
-            FOREIGN KEY(operation_id) REFERENCES operations(id),
-            FOREIGN KEY(context_id) REFERENCES contexts(id)
-        );
-        CREATE TABLE IF NOT EXISTS global_stats (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            actions_count INTEGER,
-            tezedge_checkouts_max REAL,
-            tezedge_checkouts_mean REAL,
-            tezedge_checkouts_total REAL,
-            irmin_checkouts_max REAL,
-            irmin_checkouts_mean REAL,
-            irmin_checkouts_total REAL,
-            tezedge_commits_max REAL,
-            tezedge_commits_mean REAL,
-            tezedge_commits_total REAL,
-            irmin_commits_max REAL,
-            irmin_commits_mean REAL,
-            irmin_commits_total REAL
-        );
-        INSERT INTO global_stats (id) VALUES (0) ON CONFLICT DO NOTHING;
-                ";
+        let schema = include_str!("schema_stats.sql");
 
-        let mut batch = Batch::new(&connection, queries);
+        let mut batch = Batch::new(&connection, schema);
         while let Some(mut stmt) = batch.next()? {
             stmt.execute([])?;
         }
@@ -658,15 +594,17 @@ mod tests {
 
         assert_ne!(block_id, other_block_id);
 
-        timing.insert_action(&Action {
-            name: "some_action".to_string(),
-            key: vec!["a", "b", "c"]
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-            irmin_time: 1.0,
-            tezedge_time: 2.0,
-        }).unwrap();
+        timing
+            .insert_action(&Action {
+                name: "some_action".to_string(),
+                key: vec!["a", "b", "c"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 1.0,
+                tezedge_time: 2.0,
+            })
+            .unwrap();
 
         timing.update_global_stats().unwrap();
     }
