@@ -1,6 +1,6 @@
+use rusqlite::Connection;
 use serde::Serialize;
 use std::{collections::HashMap, convert::TryInto};
-use rusqlite::Connection;
 
 const DB_PATH: &str = "context_stats.db";
 
@@ -64,9 +64,8 @@ fn get_context_stats(
     sql: &Connection,
     blocks: Vec<BlockStats>,
 ) -> Result<Option<ContextStats>, failure::Error> {
-    let mut stmt = sql
-        .prepare(
-            "
+    let mut stmt = sql.prepare(
+        "
          SELECT
            actions_count,
            tezedge_checkouts_max,
@@ -80,7 +79,7 @@ fn get_context_stats(
          WHERE
            id = 0;
             ",
-        )?;
+    )?;
 
     let mut rows = stmt.query([])?;
 
@@ -111,9 +110,8 @@ fn get_actions_stats(
     sql: &Connection,
     mut blocks_map: HashMap<String, BlockStats>,
 ) -> Result<Vec<BlockStats>, failure::Error> {
-    let mut stmt = sql
-        .prepare(
-            "
+    let mut stmt = sql.prepare(
+        "
          SELECT
             block_details.action_name,
             block_details.tezedge_time,
@@ -122,7 +120,7 @@ fn get_actions_stats(
             block_details
          JOIN blocks ON block_details.block_id = blocks.id
             ",
-        )?;
+    )?;
 
     let mut rows = stmt.query([])?;
 
@@ -139,7 +137,7 @@ fn get_actions_stats(
 
         let action_name: String = match row.get(0).unwrap_or(None) {
             Some(name) => name,
-            None => continue
+            None => continue,
         };
 
         let value = row.get(1).unwrap_or(0.0);
@@ -170,28 +168,25 @@ fn get_actions_stats(
         .collect())
 }
 
-fn get_blocks_stats(
-    sql: &Connection,
-) -> Result<HashMap<String, BlockStats>, failure::Error> {
+fn get_blocks_stats(sql: &Connection) -> Result<HashMap<String, BlockStats>, failure::Error> {
     let mut blocks_map: HashMap<String, BlockStats> = HashMap::new();
 
-    let mut stmt = sql
-        .prepare(
-            "SELECT
+    let mut stmt = sql.prepare(
+        "SELECT
             hash,
             tezedge_time_max,
             tezedge_time_mean,
             tezedge_time_total
          FROM
             blocks;",
-        )?;
+    )?;
 
     let mut rows = stmt.query([])?;
 
     while let Some(row) = rows.next()? {
         let block_hash: String = match row.get(0) {
             Ok(hash) => hash,
-            _ => continue
+            _ => continue,
         };
 
         let mut block = BlockStats::default();
@@ -244,12 +239,11 @@ mod tests {
           id = 0;
             ",
             [],
-        ).unwrap();
+        )
+        .unwrap();
 
-        sql.execute(
-            "INSERT INTO blocks (id, hash) VALUES (1, '1111');",
-            []
-        ).unwrap();
+        sql.execute("INSERT INTO blocks (id, hash) VALUES (1, '1111');", [])
+            .unwrap();
 
         sql.execute(
             "
@@ -259,8 +253,9 @@ mod tests {
           ('mem', 'a/b/c', 1.2, 1.3, 1, NULL, NULL),
           ('add', 'a/b/c/d', 1.5, 1.6, 1, NULL, NULL);
             ",
-            []
-        ).unwrap();
+            [],
+        )
+        .unwrap();
 
         sql.execute(
             "
@@ -270,8 +265,9 @@ mod tests {
            (1, 'mem', 1.2, 1.3),
            (1, 'add', 1.5, 1.6);
             ",
-            []
-        ).unwrap();
+            [],
+        )
+        .unwrap();
 
         let stats = make_stats(sql).unwrap();
 
