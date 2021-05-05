@@ -2,6 +2,8 @@ use serde::Serialize;
 use std::{collections::HashMap, convert::TryInto};
 use rusqlite::Connection;
 
+const DB_PATH: &str = "context_stats.db";
+
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
@@ -45,7 +47,7 @@ pub(crate) struct BlockStats {
 }
 
 pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
-    let sql = Connection::open("context_stats.db")?;
+    let sql = Connection::open(DB_PATH)?;
     make_stats(sql)
 }
 

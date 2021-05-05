@@ -10,6 +10,8 @@ use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError};
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
+const DB_PATH: &str = "context_stats.db";
+
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
@@ -553,7 +555,7 @@ impl Timing {
     }
 
     fn init_sqlite() -> Result<Connection, SQLError> {
-        let connection = Connection::open("context_stats.db")?;
+        let connection = Connection::open(DB_PATH)?;
 
         let schema = include_str!("schema_stats.sql");
 
