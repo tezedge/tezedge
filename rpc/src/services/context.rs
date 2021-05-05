@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::{collections::HashMap, convert::TryInto};
+use rusqlite::Connection;
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -44,7 +45,7 @@ pub(crate) struct BlockStats {
 }
 
 pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
-    let sql = sqlite::open("context_timing.sql")?;
+    let sql = Connection::open("context_stats.db")?;
 
     let blocks = get_blocks_stats(&sql)?;
     let blocks = get_actions_stats(&sql, blocks)?;
@@ -55,12 +56,13 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
 }
 
 fn get_context_stats(
-    sql: &sqlite::Connection,
+    sql: &Connection,
     blocks: Vec<BlockStats>,
 ) -> Result<Option<ContextStats>, failure::Error> {
-    let mut cursor = sql
+    let mut stmt = sql
         .prepare(
-            "SELECT
+            "
+         SELECT
            actions_count,
            tezedge_checkouts_max,
            tezedge_checkouts_mean,
@@ -69,26 +71,30 @@ fn get_context_stats(
            tezedge_commits_mean,
            tezedge_commits_total
          FROM
-           global_stats",
-        )?
-        .into_cursor();
+           global_stats
+         WHERE
+           id = 0;
+            ",
+        )?;
 
-    let row = match cursor.next()? {
+    let mut rows = stmt.query([])?;
+
+    let row = match rows.next()? {
         Some(row) => row,
         None => return Ok(None),
     };
 
     let stats = ContextStats {
-        actions_count: row[0].as_integer().unwrap_or(0).try_into()?,
+        actions_count: row.get(0).unwrap_or(0).try_into()?,
         checkout_context: TimeStats {
-            max: row[1].as_float().unwrap_or(0.0),
-            mean: row[2].as_float().unwrap_or(0.0),
-            total_time: row[3].as_float().unwrap_or(0.0),
+            max: row.get(1).unwrap_or(0.0),
+            mean: row.get(2).unwrap_or(0.0),
+            total_time: row.get(3).unwrap_or(0.0),
         },
         commit_context: TimeStats {
-            max: row[4].as_float().unwrap_or(0.0),
-            mean: row[5].as_float().unwrap_or(0.0),
-            total_time: row[6].as_float().unwrap_or(0.0),
+            max: row.get(4).unwrap_or(0.0),
+            mean: row.get(5).unwrap_or(0.0),
+            total_time: row.get(6).unwrap_or(0.0),
         },
         operations_context: blocks,
     };
@@ -97,10 +103,10 @@ fn get_context_stats(
 }
 
 fn get_actions_stats(
-    sql: &sqlite::Connection,
+    sql: &Connection,
     mut blocks_map: HashMap<String, BlockStats>,
 ) -> Result<Vec<BlockStats>, failure::Error> {
-    let mut cursor = sql
+    let mut stmt = sql
         .prepare(
             "
          SELECT
@@ -111,12 +117,13 @@ fn get_actions_stats(
             block_details
          JOIN blocks ON block_details.block_id = blocks.id
             ",
-        )?
-        .into_cursor();
+        )?;
 
-    while let Some(row) = cursor.next()? {
-        let block_hash = match row[2].as_string() {
-            Some(hash) => hash.to_string(),
+    let mut rows = stmt.query([])?;
+
+    while let Some(row) = rows.next()? {
+        let block_hash: String = match row.get(2).unwrap_or(None) {
+            Some(hash) => hash,
             None => continue,
         };
 
@@ -125,10 +132,14 @@ fn get_actions_stats(
             _ => continue,
         };
 
-        let action_name = row[0].as_string().unwrap_or("");
-        let value = row[1].as_float().unwrap_or(0.0);
+        let action_name: String = match row.get(0).unwrap_or(None) {
+            Some(name) => name,
+            None => continue
+        };
 
-        match action_name {
+        let value = row.get(1).unwrap_or(0.0);
+
+        match action_name.as_str() {
             "mem" => block.mem = value,
             "find" => block.find = value,
             "find_tree" => block.find_tree = value,
@@ -155,11 +166,11 @@ fn get_actions_stats(
 }
 
 fn get_blocks_stats(
-    sql: &sqlite::Connection,
+    sql: &Connection,
 ) -> Result<HashMap<String, BlockStats>, failure::Error> {
     let mut blocks_map: HashMap<String, BlockStats> = HashMap::new();
 
-    let mut cursor = sql
+    let mut stmt = sql
         .prepare(
             "SELECT
             hash,
@@ -168,20 +179,31 @@ fn get_blocks_stats(
             tezedge_time_total
          FROM
             blocks;",
-        )?
-        .into_cursor();
+        )?;
 
-    while let Some(row) = cursor.next()? {
-        let block_hash = row[0].as_string().unwrap();
+    let mut rows = stmt.query([])?;
+
+    while let Some(row) = rows.next()? {
+        let block_hash: String = row.get(0).unwrap();
 
         let mut block = BlockStats::default();
-        block.block_hash = block_hash.to_string();
-        block.max = row[1].as_float().unwrap_or(0.0);
-        block.mean = row[2].as_float().unwrap_or(0.0);
-        block.total = row[3].as_float().unwrap_or(0.0);
+        block.block_hash = block_hash.clone();
+        block.max = row.get(1).unwrap_or(0.0);
+        block.mean = row.get(2).unwrap_or(0.0);
+        block.total = row.get(3).unwrap_or(0.0);
 
-        blocks_map.insert(block_hash.to_string(), block);
+        blocks_map.insert(block_hash, block);
     }
 
     Ok(blocks_map)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_read_db() {
+        make_context_stats().unwrap();
+    }
 }
