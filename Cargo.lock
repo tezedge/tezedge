@@ -33,6 +33,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -885,7 +891,7 @@ version = "3.11.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f260e2fc850179ef410018660006951c1b55b79e8087e87111a2c388994b9b5"
 dependencies = [
- "ahash",
+ "ahash 0.3.8",
  "cfg-if 0.1.10",
  "num_cpus",
 ]
@@ -1085,6 +1091,18 @@ name = "fake-simd"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e88a8acf291dafb59c2d96e8f59828f3838bb1a70398823ade51a84de6a6deed"
+
+[[package]]
+name = "fallible-iterator"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4443176a9f2c162692bd3d352d745ef9413eec5782a80d8fd6f8a1ac692a07f7"
+
+[[package]]
+name = "fallible-streaming-iterator"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7360491ce676a36bf9bb3c56c1aa791658183a54d2744120f27285738d90465a"
 
 [[package]]
 name = "fastrand"
@@ -1512,6 +1530,18 @@ name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
+dependencies = [
+ "ahash 0.4.7",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d99cf782f0dc4372d26846bec3de7804ceb5df083c2d4462c0b8d2330e894fa8"
+dependencies = [
+ "hashbrown",
+]
 
 [[package]]
 name = "headers"
@@ -1939,6 +1969,16 @@ dependencies = [
  "cc",
  "libc",
  "pkg-config",
+]
+
+[[package]]
+name = "libsqlite3-sys"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19cb1effde5f834799ac5e5ef0e40d45027cd74f271b1de786ba8abb30e2164d"
+dependencies = [
+ "pkg-config",
+ "vcpkg",
 ]
 
 [[package]]
@@ -3056,11 +3096,11 @@ dependencies = [
  "rand 0.7.3",
  "rayon",
  "riker",
+ "rusqlite",
  "serde 1.0.123",
  "serde_json",
  "shell",
  "slog",
- "sqlite",
  "storage",
  "strum",
  "strum_macros",
@@ -3070,6 +3110,21 @@ dependencies = [
  "tezos_wrapper",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "rusqlite"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbc783b7ddae608338003bac1fa00b6786a75a9675fbd8e87243ecfdea3f6ed2"
+dependencies = [
+ "bitflags",
+ "fallible-iterator",
+ "fallible-streaming-iterator",
+ "hashlink",
+ "libsqlite3-sys",
+ "memchr",
+ "smallvec",
 ]
 
 [[package]]
@@ -3629,36 +3684,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sqlite"
-version = "0.26.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fb1a534c07ec276fbbe0e55a1c00814d8563da3a2f4d9d9d4c802bd1278db6a"
-dependencies = [
- "libc",
- "sqlite3-sys",
-]
-
-[[package]]
-name = "sqlite3-src"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a260b07ce75a0644c6f5891f34f46db9869e731838e95293469ab17999abcfa3"
-dependencies = [
- "cc",
- "pkg-config",
-]
-
-[[package]]
-name = "sqlite3-sys"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04d2f028faeb14352df7934b4771806f60d61ce61be1928ec92396d7492e2e54"
-dependencies = [
- "libc",
- "sqlite3-src",
-]
-
-[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4015,6 +4040,7 @@ dependencies = [
  "ocaml-interop",
  "ocaml-sys",
  "once_cell",
+ "rusqlite",
  "serde 1.0.123",
  "serde_json",
  "sled",
@@ -4022,7 +4048,6 @@ dependencies = [
  "slog-async",
  "slog-term",
  "snap",
- "sqlite",
  "storage",
  "strum",
  "strum_macros",

@@ -7,8 +7,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use once_cell::sync::Lazy;
-use sqlite::Error as SQLError;
-use sqlite::Value::Integer;
+use rusqlite::{Batch, Connection, Error as SQLError, named_params};
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
@@ -45,13 +44,11 @@ pub fn checkout(
 }
 
 pub fn commit(
-    rt: &OCamlRuntime,
-    new_context_hash: OCamlRef<OCamlContextHash>,
+    _rt: &OCamlRuntime,
+    _new_context_hash: OCamlRef<OCamlContextHash>,
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    let new_context_hash: ContextHash = new_context_hash.to_rust(rt);
-
     TIMING_CHANNEL
         .send(TimingMessage::Commit {
             irmin_time,
@@ -129,7 +126,7 @@ struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
-    /// Total number of actions
+    /// Total number of actions since start
     nactions: usize,
     /// Stats for all commits since start
     commits: Times,
@@ -137,7 +134,7 @@ struct Timing {
     checkouts: Times,
     /// Times in the current block, by action name
     times_in_current_block_by_name: HashMap<String, Times>,
-    sql: sqlite::Connection,
+    sql: Connection,
 }
 
 impl std::fmt::Debug for Timing {
@@ -271,7 +268,7 @@ impl Timing {
     }
 
     fn set_current<T>(
-        sql: &sqlite::Connection,
+        sql: &Connection,
         hash: Option<T>,
         current: &mut Option<(HashId, T)>,
         table_name: &str,
@@ -299,13 +296,10 @@ impl Timing {
             return Ok(());
         };
 
-        let insert_query = format!(
-            "INSERT INTO {table} (hash) VALUES ('{hash}');",
-            table = table_name,
-            hash = hash_string
-        );
-
-        sql.execute(insert_query)?;
+        sql.execute(
+            &format!("INSERT INTO {table} (hash) VALUES (?1);", table = table_name),
+            [&hash_string],
+        )?;
 
         let id = Self::get_id_on_table(sql, table_name, &hash_string)?
             .expect("Unable to find row after INSERT"); // This should never happen
@@ -316,20 +310,15 @@ impl Timing {
     }
 
     fn get_id_on_table(
-        sql: &sqlite::Connection,
+        sql: &Connection,
         table_name: &str,
         hash_string: &str,
     ) -> Result<Option<i64>, SQLError> {
-        let query = format!(
-            "SELECT id FROM {table} WHERE hash = '{hash}';",
-            table = table_name,
-            hash = hash_string
-        );
+        let mut stmt = sql.prepare(&format!("SELECT id FROM {table} WHERE hash = ?1;", table = table_name))?;
+        let mut rows = stmt.query([hash_string])?;
 
-        let mut cursor = sql.prepare(query)?.into_cursor();
-
-        if let Some([Integer(id), ..]) = cursor.next()? {
-            return Ok(Some(*id));
+        if let Some(row) = rows.next()? {
+            return Ok(Some(row.get(0)?));
         };
 
         Ok(None)
@@ -385,23 +374,23 @@ impl Timing {
             action.key.join("/")
         };
 
-        let query = format!(
+        self.sql.execute(
             "
         INSERT INTO actions
           (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
-          ('{name}', '{key}', {irmin_time}, {tezedge_time}, {block_id}, {operation_id}, {context_id});
+          (:name, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
             ",
-            name = &action.name,
-            key = &key,
-            irmin_time = &action.irmin_time,
-            tezedge_time = &action.tezedge_time,
-            block_id = block_id,
-            operation_id = operation_id,
-            context_id = context_id,
-        );
-
-        self.sql.execute(&query)?;
+            named_params!{
+                ":name": &action.name,
+                ":key": &key,
+                ":irmin_time": &action.irmin_time,
+                ":tezedge_time": &action.tezedge_time,
+                ":block_id": block_id,
+                ":operation_id": operation_id,
+                ":context_id": context_id
+            }
+        )?;
 
         self.nactions = self
             .nactions
@@ -465,33 +454,24 @@ impl Timing {
 
         // Compute stats for the current block, by action name
 
-        let values: Vec<String> = self
-            .times_in_current_block_by_name
-            .iter()
-            .map(|(name, times)| {
-                let (time_irmin, time_tezedge) = times.sum();
+        for (name, times) in &self.times_in_current_block_by_name {
+            let (time_irmin, time_tezedge) = times.sum();
 
-                format!(
-                    "({block_id}, '{action_name}', {time_irmin}, {time_tezedge})",
-                    block_id = block_id,
-                    action_name = name,
-                    time_irmin = time_irmin.max(0.0),
-                    time_tezedge = time_tezedge.max(0.0),
-                )
-            })
-            .collect();
-
-        let query = format!(
-            "
+            self.sql.execute(
+                "
              INSERT INTO block_details
                (block_id, action_name, irmin_time, tezedge_time)
              VALUES
-               {values};
-             ",
-            values = values.join(",")
-        );
-
-        self.sql.execute(query)?;
+               (:block_id, :action_name, :time_irmin, :time_tezedge);
+                ",
+                named_params! {
+                    ":block_id": &block_id,
+                    ":action_name": name,
+                    ":time_irmin": time_irmin.max(0.0),
+                    ":time_tezedge": time_tezedge.max(0.0),
+                }
+            )?;
+        }
 
         // Compute stats for all actions in the current block
 
@@ -513,68 +493,68 @@ impl Timing {
             .copied()
             .fold(f64::NEG_INFINITY, f64::max);
 
-        let query = format!(
+        self.sql.execute(
             "
         UPDATE
           blocks
         SET
-          tezedge_time_max = {tezedge_time_max},
-          tezedge_time_mean = {tezedge_time_mean},
-          tezedge_time_total = {tezedge_time_total},
-          irmin_time_max = {irmin_time_max},
-          irmin_time_mean = {irmin_time_mean},
-          irmin_time_total = {irmin_time_total}
+          tezedge_time_max = :tezedge_time_max,
+          tezedge_time_mean = :tezedge_time_mean,
+          tezedge_time_total = :tezedge_time_total,
+          irmin_time_max = :irmin_time_max,
+          irmin_time_mean = :irmin_time_mean,
+          irmin_time_total = :irmin_time_total
         WHERE
-          id = {block_id};
+          id = :block_id;
             ",
-            tezedge_time_max = tezedge_time_max.max(0.0),
-            tezedge_time_mean = tezedge_time_mean.max(0.0),
-            tezedge_time_total = tezedge_time_total.max(0.0),
-            irmin_time_max = irmin_time_max.max(0.0),
-            irmin_time_mean = irmin_time_mean.max(0.0),
-            irmin_time_total = irmin_time_total.max(0.0),
-            block_id = block_id
-        );
+            named_params! {
+                ":tezedge_time_max": tezedge_time_max.max(0.0),
+                ":tezedge_time_mean": tezedge_time_mean.max(0.0),
+                ":tezedge_time_total": tezedge_time_total.max(0.0),
+                ":irmin_time_max": irmin_time_max.max(0.0),
+                ":irmin_time_mean": irmin_time_mean.max(0.0),
+                ":irmin_time_total": irmin_time_total.max(0.0),
+                ":block_id": block_id
+            }
+        )?;
 
-        self.sql.execute(query)?;
-
-        let query = format!(
+        self.sql.execute(
             "
         UPDATE
           global_stats
         SET
-          actions_count = {actions_count},
-          tezedge_checkouts_max = {tezedge_checkouts_max},
-          tezedge_checkouts_mean = {tezedge_checkouts_mean},
-          tezedge_checkouts_total = {tezedge_checkouts_total},
-          irmin_checkouts_max = {irmin_checkouts_max},
-          irmin_checkouts_mean = {irmin_checkouts_mean},
-          irmin_checkouts_total = {irmin_checkouts_total},
-          tezedge_commits_max = {tezedge_commits_max},
-          tezedge_commits_mean = {tezedge_commits_mean},
-          tezedge_commits_total = {tezedge_commits_total},
-          irmin_commits_max = {irmin_commits_max},
-          irmin_commits_mean = {irmin_commits_mean},
-          irmin_commits_total = {irmin_commits_total}
+          actions_count = :actions_count,
+          tezedge_checkouts_max = :tezedge_checkouts_max,
+          tezedge_checkouts_mean = :tezedge_checkouts_mean,
+          tezedge_checkouts_total = :tezedge_checkouts_total,
+          irmin_checkouts_max = :irmin_checkouts_max,
+          irmin_checkouts_mean = :irmin_checkouts_mean,
+          irmin_checkouts_total = :irmin_checkouts_total,
+          tezedge_commits_max = :tezedge_commits_max,
+          tezedge_commits_mean = :tezedge_commits_mean,
+          tezedge_commits_total = :tezedge_commits_total,
+          irmin_commits_max = :irmin_commits_max,
+          irmin_commits_mean = :irmin_commits_mean,
+          irmin_commits_total = :irmin_commits_total
         WHERE
           id = 0;
             ",
-            actions_count = self.nactions,
-            tezedge_checkouts_max = tezedge_checkouts_max.max(0.0),
-            tezedge_checkouts_mean = tezedge_checkouts_mean.max(0.0),
-            tezedge_checkouts_total = tezedge_checkouts_total.max(0.0),
-            irmin_checkouts_max = irmin_checkouts_max.max(0.0),
-            irmin_checkouts_mean = irmin_checkouts_mean.max(0.0),
-            irmin_checkouts_total = irmin_checkouts_total.max(0.0),
-            tezedge_commits_max = tezedge_commits_max.max(0.0),
-            tezedge_commits_mean = tezedge_commits_mean.max(0.0),
-            tezedge_commits_total = tezedge_commits_total.max(0.0),
-            irmin_commits_max = irmin_commits_max.max(0.0),
-            irmin_commits_mean = irmin_commits_mean.max(0.0),
-            irmin_commits_total = irmin_commits_total.max(0.0)
-        );
-
-        self.sql.execute(query)?;
+            named_params! {
+                ":actions_count": &self.nactions,
+                ":tezedge_checkouts_max": tezedge_checkouts_max.max(0.0),
+                ":tezedge_checkouts_mean": tezedge_checkouts_mean.max(0.0),
+                ":tezedge_checkouts_total": tezedge_checkouts_total.max(0.0),
+                ":irmin_checkouts_max": irmin_checkouts_max.max(0.0),
+                ":irmin_checkouts_mean": irmin_checkouts_mean.max(0.0),
+                ":irmin_checkouts_total": irmin_checkouts_total.max(0.0),
+                ":tezedge_commits_max": tezedge_commits_max.max(0.0),
+                ":tezedge_commits_mean": tezedge_commits_mean.max(0.0),
+                ":tezedge_commits_total": tezedge_commits_total.max(0.0),
+                ":irmin_commits_max": irmin_commits_max.max(0.0),
+                ":irmin_commits_mean": irmin_commits_mean.max(0.0),
+                ":irmin_commits_total": irmin_commits_total.max(0.0)
+            }
+        )?;
 
         // Reset block stats
         self.times_in_current_block_by_name = HashMap::new();
@@ -582,11 +562,10 @@ impl Timing {
         Ok(())
     }
 
-    fn init_sqlite() -> Result<sqlite::Connection, SQLError> {
-        let connection = sqlite::open("context_timing.sql")?;
+    fn init_sqlite() -> Result<Connection, SQLError> {
+        let connection = Connection::open("context_stats.db")?;
 
-        connection
-            .execute(
+        let queries =
                 "
         PRAGMA foreign_keys = ON;
         PRAGMA synchronous = OFF;
@@ -640,8 +619,12 @@ impl Timing {
             irmin_commits_total REAL
         );
         INSERT INTO global_stats (id) VALUES (0) ON CONFLICT DO NOTHING;
-                ",
-            )?;
+                ";
+
+        let mut batch = Batch::new(&connection, queries);
+        while let Some(mut stmt) = batch.next()? {
+            stmt.execute([])?;
+        }
 
         Ok(connection)
     }
@@ -683,7 +666,7 @@ mod tests {
                 .collect(),
             irmin_time: 1.0,
             tezedge_time: 2.0,
-        });
+        }).unwrap();
 
         timing.update_global_stats().unwrap();
     }
