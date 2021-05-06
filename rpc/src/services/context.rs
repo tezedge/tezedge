@@ -1,7 +1,7 @@
 use crypto::hash::BlockHash;
 use rusqlite::Connection;
 use serde::Serialize;
-use std::{collections::HashMap, convert::TryInto};
+use std::collections::HashMap;
 
 const DB_PATH: &str = "context_stats.db";
 
@@ -33,11 +33,6 @@ struct Operation {
     find_tree: f64,
     add: f64,
     add_tree: f64,
-    equal: f64,
-    hash: f64,
-    kind: f64,
-    empty: f64,
-    is_empty: f64,
     list: f64,
     fold: f64,
     remove: f64,
@@ -109,11 +104,6 @@ fn make_block_stats_impl(
             find_tree: 0.0,
             add: 0.0,
             add_tree: 0.0,
-            equal: 0.0,
-            hash: 0.0,
-            kind: 0.0,
-            empty: 0.0,
-            is_empty: 0.0,
             list: 0.0,
             fold: 0.0,
             remove: 0.0,
@@ -125,11 +115,6 @@ fn make_block_stats_impl(
             "find_tree" => entry.find_tree = total,
             "add" => entry.add = total,
             "add_tree" => entry.add_tree = total,
-            "equal" => entry.equal = total,
-            "hash" => entry.hash = total,
-            "kind" => entry.kind = total,
-            "empty" => entry.empty = total,
-            "is_empty" => entry.is_empty = total,
             "list" => entry.list = total,
             "fold" => entry.fold = total,
             "remove" => entry.remove = total,
