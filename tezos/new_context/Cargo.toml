@@ -28,6 +28,9 @@ strum_macros = "0.20"
 tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
 crypto = { path = "../../crypto" }
+once_cell = "1.7.2"
+crossbeam-channel = "0.5.1"
+rusqlite = { version = "0.25.1", features = [] }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
