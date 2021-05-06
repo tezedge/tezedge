@@ -11,12 +11,12 @@ pub(crate) struct BlockStats {
     actions_count: usize,
     checkout_context_time: f64,
     commit_context_time: f64,
-    operations_context: Vec<Operation>,
+    operations_context: Vec<ActionStats>,
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct OperationData {
+struct ActionData {
     root: String,
     mean_time: f64,
     max_time: f64,
@@ -26,8 +26,8 @@ struct OperationData {
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct Operation {
-    data: OperationData,
+struct ActionStats {
+    data: ActionData,
     mem: f64,
     find: f64,
     find_tree: f64,
@@ -82,7 +82,7 @@ fn make_block_stats_impl(
 
     let mut rows = stmt.query([block_id])?;
 
-    let mut map: HashMap<String, Operation> = HashMap::default();
+    let mut map: HashMap<String, ActionStats> = HashMap::default();
 
     while let Some(row) = rows.next()? {
         let root: String = row.get(0)?;
@@ -91,8 +91,8 @@ fn make_block_stats_impl(
         let total: f64 = row.get(3)?;
         let count: usize = row.get(4)?;
 
-        let entry = map.entry(root.clone()).or_insert_with(|| Operation {
-            data: OperationData {
+        let entry = map.entry(root.clone()).or_insert_with(|| ActionStats {
+            data: ActionData {
                 root,
                 mean_time: 0.0,
                 max_time: 0.0,
