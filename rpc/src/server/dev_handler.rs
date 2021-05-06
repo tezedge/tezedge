@@ -7,7 +7,7 @@ use slog::warn;
 
 use crate::helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
-use crate::services::{base_services, dev_services};
+use crate::services::{base_services, context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
 
 pub async fn dev_blocks(
@@ -196,10 +196,20 @@ pub async fn context_stats(
     _: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    result_to_json_response(
-        dev_services::get_context_stats(env.tezedge_context()),
-        env.log(),
-    )
+    todo!()
+    // result_to_json_response(context::make_context_stats(), env.log())
+}
+
+pub async fn block_actions(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    result_to_json_response(context::make_block_stats(block_hash), env.log())
 }
 
 /// Get the version string
