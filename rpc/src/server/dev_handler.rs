@@ -209,17 +209,7 @@ pub async fn block_actions(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    todo!()
-
-    // use crate::encoding::chain::BlockInfo;
-    // result_to_json_response(context::make_context_stats(), env.log())
-    // result_to_json_response(
-    //     base_services::get_block(&chain_id, &block_hash, env.persistent_storage())
-    //         .map(|res| res.map(BlockInfo::from)),
-    //     env.log(),
-    // )
-
-    // result_to_json_response(context::make_context_stats(), env.log())
+    result_to_json_response(context::make_block_stats(block_hash), env.log())
 }
 
 /// Get the version string
