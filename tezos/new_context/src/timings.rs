@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
-
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
@@ -71,8 +69,6 @@ pub fn context_action(
     // investigate doing that later once everything is working properly.
     let name: String = action_name.to_rust(rt);
     let key: Vec<String> = key.to_rust(rt);
-    // let _ = (action_name, key, irmin_time, tezedge_time);
-    // TODO
 
     let action = Action {
         name,
@@ -105,37 +101,14 @@ enum TimingMessage {
 // Id of the hash in the database
 type HashId = String;
 
-#[derive(Default)]
-struct Times {
-    tezedge_times: Vec<f64>,
-    irmin_times: Vec<f64>,
-}
-
-impl<'a> std::iter::Sum<&'a Times> for Times {
-    fn sum<I: Iterator<Item = &'a Times>>(iter: I) -> Self {
-        let mut times = Times::default();
-
-        for elem in iter {
-            times.tezedge_times.extend_from_slice(&elem.tezedge_times);
-            times.irmin_times.extend_from_slice(&elem.irmin_times);
-        }
-
-        times
-    }
-}
-
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
-    /// Total number of actions since start
+    /// Number of actions in current block
     nactions: usize,
-    /// Stats for all commits since start
-    commits: Times,
-    /// Stats for all checkouts since start
-    checkouts: Times,
-    /// Times in the current block, by action name
-    times_in_current_block_by_name: HashMap<String, Times>,
+    /// Checkout time for the current block
+    checkout_time: Option<(f64, f64)>,
     sql: Connection,
 }
 
@@ -170,20 +143,6 @@ static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
     sender
 });
 
-impl Times {
-    fn add(&mut self, irmin_time: f64, tezedge_time: f64) {
-        self.irmin_times.push(irmin_time);
-        self.tezedge_times.push(tezedge_time);
-    }
-
-    fn sum(&self) -> (f64, f64) {
-        let irmin = self.irmin_times.iter().sum();
-        let tezedge = self.tezedge_times.iter().sum();
-
-        (irmin, tezedge)
-    }
-}
-
 fn start_timing(recv: Receiver<TimingMessage>) {
     let mut timing = Timing::new();
 
@@ -201,10 +160,8 @@ impl Timing {
             current_operation: None,
             current_context: None,
             nactions: 0,
-            commits: Times::default(),
-            checkouts: Times::default(),
-            times_in_current_block_by_name: HashMap::default(),
             sql,
+            checkout_time: None,
         }
     }
 
@@ -228,7 +185,7 @@ impl Timing {
     }
 
     pub fn hash_to_string(hash: &[u8]) -> String {
-        const HEXCHARS: &[u8] = b"0123456789ABCDEF";
+        const HEXCHARS: &[u8] = b"0123456789abcdef";
 
         let mut s = String::with_capacity(62);
         for byte in hash {
@@ -244,6 +201,8 @@ impl Timing {
         // Reset context and operation
         self.current_context = None;
         self.current_operation = None;
+        self.checkout_time = None;
+        self.nactions = 0;
 
         Ok(())
     }
@@ -338,25 +297,14 @@ impl Timing {
         irmin_time: f64,
         tezedge_time: f64,
     ) -> Result<(), SQLError> {
-        self.checkouts.add(irmin_time, tezedge_time);
         self.set_current_context(context_hash)?;
-        self.insert_action(&Action {
-            name: "checkout".to_string(),
-            key: vec![],
-            irmin_time,
-            tezedge_time,
-        })
+        self.checkout_time = Some((irmin_time, tezedge_time));
+
+        Ok(())
     }
 
     fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
-        self.commits.add(irmin_time, tezedge_time);
-        self.insert_action(&Action {
-            name: "commit".to_string(),
-            key: vec![],
-            irmin_time,
-            tezedge_time,
-        })?;
-        self.update_global_stats()
+        self.update_global_stats(irmin_time, tezedge_time)
     }
 
     fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
@@ -364,192 +312,73 @@ impl Timing {
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
 
-        let key = if action.key.is_empty() {
-            None
+        let (root, key) = if action.key.is_empty() {
+            (None, None)
         } else {
-            Some(action.key.join("/"))
+            let root = action.key[0].as_str();
+            let key = action.key.join("/");
+
+            (Some(root), Some(key))
         };
 
-        self.sql.execute(
+        let mut stmt = self.sql.prepare_cached(
             "
         INSERT INTO actions
-          (name, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
-          (:name, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
-            ",
-            named_params! {
-                ":name": &action.name,
-                ":key": &key,
-                ":irmin_time": &action.irmin_time,
-                ":tezedge_time": &action.tezedge_time,
-                ":block_id": block_id,
-                ":operation_id": operation_id,
-                ":context_id": context_id
-            },
+          (:name, :key_root, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
+            "
         )?;
+
+        stmt.execute(named_params! {
+            ":name": &action.name,
+            ":key_root": &root,
+            ":key": &key,
+            ":irmin_time": &action.irmin_time,
+            ":tezedge_time": &action.tezedge_time,
+            ":block_id": block_id,
+            ":operation_id": operation_id,
+            ":context_id": context_id
+        })?;
 
         self.nactions = self
             .nactions
             .checked_add(1)
             .expect("actions count overflowed");
 
-        self.times_in_current_block_by_name
-            .entry(action.name.clone())
-            .or_default()
-            .add(action.irmin_time, action.tezedge_time);
-
         Ok(())
     }
 
     // Compute stats for the current block and global ones
-    fn update_global_stats(&mut self) -> Result<(), SQLError> {
+    fn update_global_stats(
+        &mut self,
+        commit_time_irmin: f64,
+        commit_time_tezedge: f64,
+    ) -> Result<(), SQLError> {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
-
-        // Compute global stats
-
-        let tezedge_commits_total = self.commits.tezedge_times.iter().sum::<f64>();
-        let tezedge_commits_mean = tezedge_commits_total / self.commits.tezedge_times.len() as f64;
-        let tezedge_commits_max = self
-            .commits
-            .tezedge_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        let irmin_commits_total = self.commits.irmin_times.iter().sum::<f64>();
-        let irmin_commits_mean = irmin_commits_total / self.commits.irmin_times.len() as f64;
-        let irmin_commits_max = self
-            .commits
-            .irmin_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        let tezedge_checkouts_total = self.checkouts.tezedge_times.iter().sum::<f64>();
-        let tezedge_checkouts_mean =
-            tezedge_checkouts_total / self.checkouts.tezedge_times.len() as f64;
-        let tezedge_checkouts_max = self
-            .checkouts
-            .tezedge_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        let irmin_checkouts_total = self.checkouts.irmin_times.iter().sum::<f64>();
-        let irmin_checkouts_mean = irmin_checkouts_total / self.checkouts.irmin_times.len() as f64;
-        let irmin_checkouts_max = self
-            .checkouts
-            .irmin_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        // Compute stats for the current block, by action name
-
-        for (name, times) in &self.times_in_current_block_by_name {
-            let (time_irmin, time_tezedge) = times.sum();
-
-            self.sql.execute(
-                "
-             INSERT INTO block_details
-               (block_id, action_name, irmin_time, tezedge_time)
-             VALUES
-               (:block_id, :action_name, :time_irmin, :time_tezedge);
-                ",
-                named_params! {
-                    ":block_id": &block_id,
-                    ":action_name": name,
-                    ":time_irmin": time_irmin.max(0.0),
-                    ":time_tezedge": time_tezedge.max(0.0),
-                },
-            )?;
-        }
-
-        // Compute stats for all actions in the current block
-
-        let times: Times = self.times_in_current_block_by_name.values().sum();
-
-        let tezedge_time_total = times.tezedge_times.iter().sum::<f64>();
-        let tezedge_time_mean = tezedge_time_total / times.tezedge_times.len() as f64;
-        let tezedge_time_max = times
-            .tezedge_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
-
-        let irmin_time_total = times.irmin_times.iter().sum::<f64>();
-        let irmin_time_mean = irmin_time_total / times.irmin_times.len() as f64;
-        let irmin_time_max = times
-            .irmin_times
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, f64::max);
 
         self.sql.execute(
             "
         UPDATE
           blocks
         SET
-          tezedge_time_max = :tezedge_time_max,
-          tezedge_time_mean = :tezedge_time_mean,
-          tezedge_time_total = :tezedge_time_total,
-          irmin_time_max = :irmin_time_max,
-          irmin_time_mean = :irmin_time_mean,
-          irmin_time_total = :irmin_time_total
+          actions_count = :actions_count,
+          checkout_time_irmin = :checkout_time_irmin,
+          checkout_time_tezedge = :checkout_time_tezedge,
+          commit_time_irmin = :commit_time_irmin,
+          commit_time_tezedge = :commit_time_tezedge
         WHERE
           id = :block_id;
             ",
             named_params! {
-                ":tezedge_time_max": tezedge_time_max.max(0.0),
-                ":tezedge_time_mean": tezedge_time_mean.max(0.0),
-                ":tezedge_time_total": tezedge_time_total.max(0.0),
-                ":irmin_time_max": irmin_time_max.max(0.0),
-                ":irmin_time_mean": irmin_time_mean.max(0.0),
-                ":irmin_time_total": irmin_time_total.max(0.0),
+                ":actions_count": &self.nactions,
+                ":checkout_time_irmin": &self.checkout_time.as_ref().map(|(irmin, _)| irmin),
+                ":checkout_time_tezedge": &self.checkout_time.as_ref().map(|(_, tezedge)| tezedge),
+                ":commit_time_irmin": &commit_time_irmin,
+                ":commit_time_tezedge": &commit_time_tezedge,
                 ":block_id": block_id
             },
         )?;
-
-        self.sql.execute(
-            "
-        UPDATE
-          global_stats
-        SET
-          actions_count = :actions_count,
-          tezedge_checkouts_max = :tezedge_checkouts_max,
-          tezedge_checkouts_mean = :tezedge_checkouts_mean,
-          tezedge_checkouts_total = :tezedge_checkouts_total,
-          irmin_checkouts_max = :irmin_checkouts_max,
-          irmin_checkouts_mean = :irmin_checkouts_mean,
-          irmin_checkouts_total = :irmin_checkouts_total,
-          tezedge_commits_max = :tezedge_commits_max,
-          tezedge_commits_mean = :tezedge_commits_mean,
-          tezedge_commits_total = :tezedge_commits_total,
-          irmin_commits_max = :irmin_commits_max,
-          irmin_commits_mean = :irmin_commits_mean,
-          irmin_commits_total = :irmin_commits_total
-        WHERE
-          id = 0;
-            ",
-            named_params! {
-                ":actions_count": &self.nactions,
-                ":tezedge_checkouts_max": tezedge_checkouts_max.max(0.0),
-                ":tezedge_checkouts_mean": tezedge_checkouts_mean.max(0.0),
-                ":tezedge_checkouts_total": tezedge_checkouts_total.max(0.0),
-                ":irmin_checkouts_max": irmin_checkouts_max.max(0.0),
-                ":irmin_checkouts_mean": irmin_checkouts_mean.max(0.0),
-                ":irmin_checkouts_total": irmin_checkouts_total.max(0.0),
-                ":tezedge_commits_max": tezedge_commits_max.max(0.0),
-                ":tezedge_commits_mean": tezedge_commits_mean.max(0.0),
-                ":tezedge_commits_total": tezedge_commits_total.max(0.0),
-                ":irmin_commits_max": irmin_commits_max.max(0.0),
-                ":irmin_commits_mean": irmin_commits_mean.max(0.0),
-                ":irmin_commits_total": irmin_commits_total.max(0.0)
-            },
-        )?;
-
-        // Reset block stats
-        self.times_in_current_block_by_name = HashMap::new();
 
         Ok(())
     }
@@ -608,6 +437,97 @@ mod tests {
             })
             .unwrap();
 
-        timing.update_global_stats().unwrap();
+        timing.update_global_stats(1.0, 1.0).unwrap();
+    }
+
+    #[test]
+    fn test_actions_db() {
+        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        let context_hash = ContextHash::try_from_bytes(&vec![2; 32]).unwrap();
+
+        TIMING_CHANNEL
+            .send(TimingMessage::SetBlock(Some(block_hash)))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Checkout {
+                context_hash,
+                irmin_time: 1.0,
+                tezedge_time: 2.0,
+            })
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "add".to_string(),
+                key: vec!["a", "b", "c"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 1.0,
+                tezedge_time: 2.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "find".to_string(),
+                key: vec!["a", "b", "c"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 5.0,
+                tezedge_time: 6.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "find".to_string(),
+                key: vec!["a", "b", "c"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 50.0,
+                tezedge_time: 60.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "mem".to_string(),
+                key: vec!["m", "n", "o"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 10.0,
+                tezedge_time: 20.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "add".to_string(),
+                key: vec!["m", "n", "o"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 15.0,
+                tezedge_time: 26.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Action(Action {
+                name: "add".to_string(),
+                key: vec!["m", "n", "o"]
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect(),
+                irmin_time: 150.0,
+                tezedge_time: 260.0,
+            }))
+            .unwrap();
+        TIMING_CHANNEL
+            .send(TimingMessage::Commit {
+                irmin_time: 15.0,
+                tezedge_time: 20.0,
+            })
+            .unwrap();
+
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
