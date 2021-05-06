@@ -196,7 +196,30 @@ pub async fn context_stats(
     _: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    result_to_json_response(context::make_context_stats(), env.log())
+    todo!()
+    // result_to_json_response(context::make_context_stats(), env.log())
+}
+
+pub async fn block_actions(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    todo!()
+
+    // use crate::encoding::chain::BlockInfo;
+    // result_to_json_response(context::make_context_stats(), env.log())
+    // result_to_json_response(
+    //     base_services::get_block(&chain_id, &block_hash, env.persistent_storage())
+    //         .map(|res| res.map(BlockInfo::from)),
+    //     env.log(),
+    // )
+
+    // result_to_json_response(context::make_context_stats(), env.log())
 }
 
 /// Get the version string
