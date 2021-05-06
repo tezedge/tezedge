@@ -28,6 +28,7 @@ tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_wrapper = { path = "../tezos/wrapper" }
+rusqlite = "0.25.1"
 
 [dev-dependencies]
 assert-json-diff = "1.1"
