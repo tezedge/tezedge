@@ -257,9 +257,15 @@ impl Timing {
             return Ok(());
         };
 
+        // FIXME: this "OR IGNORE" is only valid for checkouts, if we get a duplicate when doing something
+        // else there may be a problem.
+        // Related to this, in general we want to avoid except/unwrap, because this will kill the thread and
+        // everything will stop working, it should be handled more gracefully if possible.
+        // Not a priority right now but we have to think about how to properly handle such situations, specially
+        // if this functionality gets extended to include more data about the context actions.
         sql.execute(
             &format!(
-                "INSERT INTO {table} (hash) VALUES (?1);",
+                "INSERT OR IGNORE INTO {table} (hash) VALUES (?1);",
                 table = table_name
             ),
             [&hash_string],
