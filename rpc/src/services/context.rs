@@ -89,6 +89,7 @@ impl RangeStats {
         self.one_to_ten_ms.compute_mean();
         self.ten_to_one_hundred_ms.compute_mean();
         self.one_hundred_ms_to_one_s.compute_mean();
+        self.one_to_ten_s.compute_mean();
         self.ten_to_one_hundred_s.compute_mean();
         self.one_hundred_s.compute_mean();
     }
@@ -123,15 +124,15 @@ impl ActionStatsWithRange {
 
 pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, failure::Error> {
     let sql = Connection::open(DB_PATH)?;
-    make_block_stats_impl(sql, block_hash)
+    make_block_stats_impl(&sql, block_hash)
 }
 
 pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
     let sql = Connection::open(DB_PATH)?;
-    make_context_stats_impl(sql)
+    make_context_stats_impl(&sql)
 }
 
-fn make_context_stats_impl(sql: Connection) -> Result<ContextStats, failure::Error> {
+fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
     let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions;")?;
 
     let mut rows = stmt.query([])?;
@@ -200,7 +201,7 @@ fn make_context_stats_impl(sql: Connection) -> Result<ContextStats, failure::Err
 }
 
 fn make_block_stats_impl(
-    sql: Connection,
+    sql: &Connection,
     block_hash: BlockHash,
 ) -> Result<BlockStats, failure::Error> {
     let block_hash = hash_to_string(block_hash.as_ref());
@@ -300,4 +301,70 @@ pub fn hash_to_string(hash: &[u8]) -> String {
         s.push(HEXCHARS[*byte as usize & 0xF] as char);
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use crypto::hash::HashTrait;
+    use rusqlite::Batch;
+
+    use super::*;
+
+    #[test]
+    fn test_read_db() {
+        let sql = Connection::open_in_memory().unwrap();
+
+        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        let block_hash_str = hash_to_string(block_hash.as_ref());
+
+        let schema = include_str!("../../../tezos/new_context/src/schema_stats.sql");
+        let mut batch = Batch::new(&sql, schema);
+        while let Some(mut stmt) = batch.next().unwrap() {
+            stmt.execute([]).unwrap();
+        }
+
+        sql.execute(
+            "
+            INSERT INTO blocks
+               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge)
+            VALUES
+               (1, ?1, 4, 10.0, 11.0);",
+            [block_hash_str]
+        ).unwrap();
+
+        sql.execute(
+            "
+        INSERT INTO actions
+          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+        VALUES
+          ('mem', 'a' ,'a/b/c', 1.2, 1.3, 1, NULL, NULL),
+          ('mem', 'a' ,'a/b/d', 5.2, 5.3, 1, NULL, NULL),
+          ('add', 'a' ,'a/b/c/d', 1.5, 1.6, 1, NULL, NULL),
+          ('add', 'm' ,'m/n/o', 1.5, 1.6, 1, NULL, NULL);
+            ",
+            [],
+        )
+           .unwrap();
+
+        let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
+
+        assert_eq!(block_stats.actions_count, 4);
+        assert_eq!(block_stats.checkout_context_time, 10.0);
+        assert_eq!(block_stats.commit_context_time, 11.0);
+        assert_eq!(block_stats.operations_context.len(), 2);
+
+        let action = block_stats.operations_context.iter().find(|a| a.data.root == "a").unwrap();
+        assert_eq!(action.data.root, "a");
+        assert_eq!(action.data.mean_time, 2.733333333333333);
+        assert_eq!(action.add, 1.6);
+        assert_eq!(action.fold, 0.0);
+
+        let context_stats = make_context_stats_impl(&sql).unwrap();
+
+        assert_eq!(context_stats.operations_context.len(), 2);
+
+        let action = context_stats.operations_context.iter().find(|a| a.root == "a").unwrap();
+        assert_eq!(action.mem.one_to_ten_s.mean_time, 3.3);
+        assert_eq!(action.mem.one_to_ten_s.count, 2);
+    }
 }
