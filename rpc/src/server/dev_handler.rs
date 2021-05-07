@@ -196,8 +196,7 @@ pub async fn context_stats(
     _: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    todo!()
-    // result_to_json_response(context::make_context_stats(), env.log())
+    result_to_json_response(context::make_context_stats(), env.log())
 }
 
 pub async fn block_actions(

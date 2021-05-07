@@ -75,7 +75,7 @@ pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<Met
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id",
-        dev_handler::block_actions,
+        shell_handler::chains_block_id,
     );
     routes.handle(
         hash_set![Method::GET],
@@ -264,6 +264,11 @@ pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<Met
         hash_set![Method::GET],
         "/stats/context",
         dev_handler::context_stats,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/stats/:chain_id/blocks/:block_id",
+        dev_handler::block_actions,
     );
 
     // DEPRECATED in ocaml but still used by python tests
