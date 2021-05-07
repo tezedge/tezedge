@@ -38,6 +38,13 @@ struct ActionStats {
     remove: f64,
 }
 
+impl ActionStats {
+    fn compute_mean(&mut self) {
+        let mean = self.data.total_time / self.data.actions_count as f64;
+        self.data.mean_time = mean.max(0.0);
+    }
+}
+
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
@@ -129,12 +136,12 @@ fn make_context_stats_impl(sql: Connection) -> Result<ContextStats, failure::Err
 
     let mut rows = stmt.query([])?;
 
-    let mut map = HashMap::new();
+    let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
 
     while let Some(row) = rows.next()? {
         let action_name = match row.get_ref(0)?.as_str() {
-            Ok(name) => name,
-            Err(_) => continue,
+            Ok(name) if !name.is_empty() => name,
+            _ => continue,
         };
 
         let root = match row.get_ref(1)?.as_str() {
@@ -216,7 +223,6 @@ fn make_block_stats_impl(
         SELECT
           key_root,
           name,
-          avg(tezedge_time),
           total(tezedge_time),
           count(tezedge_time)
         FROM
@@ -234,31 +240,30 @@ fn make_block_stats_impl(
     let mut map: HashMap<String, ActionStats> = HashMap::default();
 
     while let Some(row) = rows.next()? {
-        let root: String = row.get(0)?;
-        let action_name: String = row.get(1)?;
-        let _mean: f64 = row.get(2)?;
-        let total: f64 = row.get(3)?;
-        let count: usize = row.get(4)?;
+        let root = match row.get_ref(0)?.as_str() {
+            Ok(root) if !root.is_empty() => root,
+            _ => continue,
+        };
 
-        let entry = map.entry(root.clone()).or_insert_with(|| ActionStats {
-            data: ActionData {
-                root,
-                mean_time: 0.0,
-                max_time: 0.0,
-                total_time: 0.0,
-                actions_count: 0,
-            },
-            mem: 0.0,
-            find: 0.0,
-            find_tree: 0.0,
-            add: 0.0,
-            add_tree: 0.0,
-            list: 0.0,
-            fold: 0.0,
-            remove: 0.0,
-        });
+        let action_name = match row.get_ref(1)?.as_str() {
+            Ok(name) if !name.is_empty() => name,
+            _ => continue,
+        };
 
-        match action_name.as_str() {
+        let total: f64 = row.get(2)?;
+        let count: usize = row.get(3)?;
+
+        let entry = match map.get_mut(root) {
+            Some(entry) => entry,
+            None => {
+                let mut stats = ActionStats::default();
+                stats.data.root = root.to_string();
+                map.insert(root.to_string(), stats);
+                map.get_mut(root).unwrap()
+            }
+        };
+
+        match action_name {
             "mem" => entry.mem = total,
             "find" => entry.find = total,
             "find_tree" => entry.find_tree = total,
@@ -274,9 +279,8 @@ fn make_block_stats_impl(
         entry.data.total_time += total;
     }
 
-    for op in map.values_mut() {
-        let mean = op.data.total_time / op.data.actions_count as f64;
-        op.data.mean_time = mean.max(0.0);
+    for action in map.values_mut() {
+        action.compute_mean();
     }
 
     Ok(BlockStats {
