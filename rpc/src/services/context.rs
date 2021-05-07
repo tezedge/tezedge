@@ -329,8 +329,9 @@ mod tests {
                (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge)
             VALUES
                (1, ?1, 4, 10.0, 11.0);",
-            [block_hash_str]
-        ).unwrap();
+            [block_hash_str],
+        )
+        .unwrap();
 
         sql.execute(
             "
@@ -344,7 +345,7 @@ mod tests {
             ",
             [],
         )
-           .unwrap();
+        .unwrap();
 
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
 
@@ -353,7 +354,11 @@ mod tests {
         assert_eq!(block_stats.commit_context_time, 11.0);
         assert_eq!(block_stats.operations_context.len(), 2);
 
-        let action = block_stats.operations_context.iter().find(|a| a.data.root == "a").unwrap();
+        let action = block_stats
+            .operations_context
+            .iter()
+            .find(|a| a.data.root == "a")
+            .unwrap();
         assert_eq!(action.data.root, "a");
         assert_eq!(action.data.mean_time, 2.733333333333333);
         assert_eq!(action.add, 1.6);
@@ -363,7 +368,11 @@ mod tests {
 
         assert_eq!(context_stats.operations_context.len(), 2);
 
-        let action = context_stats.operations_context.iter().find(|a| a.root == "a").unwrap();
+        let action = context_stats
+            .operations_context
+            .iter()
+            .find(|a| a.root == "a")
+            .unwrap();
         assert_eq!(action.mem.one_to_ten_s.mean_time, 3.3);
         assert_eq!(action.mem.one_to_ten_s.count, 2);
     }
