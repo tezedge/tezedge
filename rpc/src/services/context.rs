@@ -38,9 +38,158 @@ struct ActionStats {
     remove: f64,
 }
 
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ContextStats {
+    operations_context: Vec<ActionStatsWithRange>,
+}
+
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct DetailedTime {
+    count: usize,
+    mean_time: f64,
+    max_time: f64,
+    total_time: f64,
+}
+
+impl DetailedTime {
+    fn compute_mean(&mut self) {
+        let mean = self.total_time / self.count as f64;
+        self.mean_time = mean.max(0.0);
+    }
+}
+
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RangeStats {
+    one_to_ten_us: DetailedTime,
+    ten_to_one_hundred_us: DetailedTime,
+    one_hundred_us_to_one_ms: DetailedTime,
+    one_to_ten_ms: DetailedTime,
+    ten_to_one_hundred_ms: DetailedTime,
+    one_hundred_ms_to_one_s: DetailedTime,
+    one_to_ten_s: DetailedTime,
+    ten_to_one_hundred_s: DetailedTime,
+    one_hundred_s: DetailedTime,
+}
+
+impl RangeStats {
+    fn compute_mean(&mut self) {
+        self.one_to_ten_us.compute_mean();
+        self.ten_to_one_hundred_us.compute_mean();
+        self.one_hundred_us_to_one_ms.compute_mean();
+        self.one_to_ten_ms.compute_mean();
+        self.ten_to_one_hundred_ms.compute_mean();
+        self.one_hundred_ms_to_one_s.compute_mean();
+        self.ten_to_one_hundred_s.compute_mean();
+        self.one_hundred_s.compute_mean();
+    }
+}
+
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ActionStatsWithRange {
+    root: String,
+    mem: RangeStats,
+    find: RangeStats,
+    find_tree: RangeStats,
+    add: RangeStats,
+    add_tree: RangeStats,
+    list: RangeStats,
+    fold: RangeStats,
+    remove: RangeStats,
+}
+
+impl ActionStatsWithRange {
+    fn compute_mean(&mut self) {
+        self.mem.compute_mean();
+        self.find.compute_mean();
+        self.find_tree.compute_mean();
+        self.add.compute_mean();
+        self.add_tree.compute_mean();
+        self.list.compute_mean();
+        self.fold.compute_mean();
+        self.remove.compute_mean();
+    }
+}
+
 pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, failure::Error> {
     let sql = Connection::open(DB_PATH)?;
     make_block_stats_impl(sql, block_hash)
+}
+
+pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
+    let sql = Connection::open(DB_PATH)?;
+    make_context_stats_impl(sql)
+}
+
+fn make_context_stats_impl(sql: Connection) -> Result<ContextStats, failure::Error> {
+    let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions;")?;
+
+    let mut rows = stmt.query([])?;
+
+    let mut map = HashMap::new();
+
+    while let Some(row) = rows.next()? {
+        let action_name = match row.get_ref(0)?.as_str() {
+            Ok(name) => name,
+            Err(_) => continue,
+        };
+
+        let root = match row.get_ref(1)?.as_str() {
+            Ok(root) if !root.is_empty() => root,
+            _ => continue,
+        };
+
+        let tezedge_time: f64 = row.get(2)?;
+
+        let entry = match map.get_mut(root) {
+            Some(entry) => entry,
+            None => {
+                let mut stats = ActionStatsWithRange::default();
+                stats.root = root.to_string();
+                map.insert(root.to_string(), stats);
+                map.get_mut(root).unwrap()
+            }
+        };
+
+        let range_stats = match action_name {
+            "mem" => &mut entry.mem,
+            "find" => &mut entry.find,
+            "find_tree" => &mut entry.find_tree,
+            "add" => &mut entry.add,
+            "add_tree" => &mut entry.add_tree,
+            "list" => &mut entry.list,
+            "fold" => &mut entry.fold,
+            "remove" => &mut entry.remove,
+            _ => continue,
+        };
+
+        let time = match tezedge_time {
+            t if t < 0.00001 => &mut range_stats.one_to_ten_us,
+            t if t < 0.0001 => &mut range_stats.ten_to_one_hundred_us,
+            t if t < 0.001 => &mut range_stats.one_hundred_us_to_one_ms,
+            t if t < 0.01 => &mut range_stats.one_to_ten_ms,
+            t if t < 0.1 => &mut range_stats.ten_to_one_hundred_ms,
+            t if t < 1.0 => &mut range_stats.one_hundred_ms_to_one_s,
+            t if t < 10.0 => &mut range_stats.one_to_ten_s,
+            t if t < 100.0 => &mut range_stats.ten_to_one_hundred_s,
+            _ => &mut range_stats.one_hundred_s,
+        };
+
+        time.count = time.count.saturating_add(1);
+        time.total_time += tezedge_time;
+        time.max_time = time.max_time.max(tezedge_time);
+    }
+
+    for action in map.values_mut() {
+        action.compute_mean();
+    }
+
+    Ok(ContextStats {
+        operations_context: map.into_iter().map(|(_, v)| v).collect(),
+    })
 }
 
 fn make_block_stats_impl(
