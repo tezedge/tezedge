@@ -133,7 +133,7 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
 }
 
 fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
-    let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions;")?;
+    let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions WHERE block_id IS NOT NULL;")?;
 
     let mut rows = stmt.query([])?;
 
