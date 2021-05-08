@@ -147,7 +147,9 @@ fn start_timing(recv: Receiver<TimingMessage>) {
     let mut timing = Timing::new();
 
     for msg in recv {
-        timing.process_msg(msg).unwrap();
+        if let Err(_err) = timing.process_msg(msg) {
+            // TODO: log error, and retry
+        }
     }
 }
 
