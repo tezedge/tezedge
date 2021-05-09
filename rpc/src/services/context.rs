@@ -217,7 +217,8 @@ fn make_block_stats_impl(
           key_root,
           name,
           total(tezedge_time),
-          count(tezedge_time)
+          count(tezedge_time),
+          max(tezedge_time)
         FROM
           actions
         WHERE
@@ -245,6 +246,7 @@ fn make_block_stats_impl(
 
         let total: f64 = row.get(2)?;
         let count: usize = row.get(3)?;
+        let max_time: f64 = row.get(4)?;
 
         let entry = match map.get_mut(root) {
             Some(entry) => entry,
@@ -268,6 +270,7 @@ fn make_block_stats_impl(
 
         entry.data.actions_count += count;
         entry.data.total_time += total;
+        entry.data.max_time = entry.data.max_time.max(max_time);
     }
 
     for action in map.values_mut() {
