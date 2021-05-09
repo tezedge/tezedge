@@ -33,8 +33,6 @@ struct ActionStats {
     find_tree: f64,
     add: f64,
     add_tree: f64,
-    list: f64,
-    fold: f64,
     remove: f64,
 }
 
@@ -104,8 +102,6 @@ struct ActionStatsWithRange {
     find_tree: RangeStats,
     add: RangeStats,
     add_tree: RangeStats,
-    list: RangeStats,
-    fold: RangeStats,
     remove: RangeStats,
 }
 
@@ -116,8 +112,6 @@ impl ActionStatsWithRange {
         self.find_tree.compute_mean();
         self.add.compute_mean();
         self.add_tree.compute_mean();
-        self.list.compute_mean();
-        self.fold.compute_mean();
         self.remove.compute_mean();
     }
 }
@@ -168,8 +162,6 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             "find_tree" => &mut entry.find_tree,
             "add" => &mut entry.add,
             "add_tree" => &mut entry.add_tree,
-            "list" => &mut entry.list,
-            "fold" => &mut entry.fold,
             "remove" => &mut entry.remove,
             _ => continue,
         };
@@ -270,8 +262,6 @@ fn make_block_stats_impl(
             "find_tree" => entry.find_tree = total,
             "add" => entry.add = total,
             "add_tree" => entry.add_tree = total,
-            "list" => entry.list = total,
-            "fold" => entry.fold = total,
             "remove" => entry.remove = total,
             _ => {}
         }
@@ -362,7 +352,6 @@ mod tests {
         assert_eq!(action.data.root, "a");
         assert_eq!(action.data.mean_time, 2.733333333333333);
         assert_eq!(action.add, 1.6);
-        assert_eq!(action.fold, 0.0);
 
         let context_stats = make_context_stats_impl(&sql).unwrap();
 
