@@ -72,13 +72,13 @@ pub fn context_action(
     // investigate doing that later once everything is working properly.
 
     let action_name = rt.get(action_name);
-    let action_name = match unsafe { action_name.as_str_unchecked() } {
-        "mem" => ActionKind::Mem,
-        "find" => ActionKind::Find,
-        "find_tree" => ActionKind::FindTree,
-        "add" => ActionKind::Add,
-        "add_tree" => ActionKind::AddTree,
-        "remove" => ActionKind::Remove,
+    let action_name = match action_name.as_bytes() {
+        b"mem" => ActionKind::Mem,
+        b"find" => ActionKind::Find,
+        b"find_tree" => ActionKind::FindTree,
+        b"add" => ActionKind::Add,
+        b"add_tree" => ActionKind::AddTree,
+        b"remove" => ActionKind::Remove,
         _ => return,
     };
 
