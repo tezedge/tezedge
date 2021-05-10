@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS actions (
   FOREIGN KEY(context_id) REFERENCES contexts(id)
 );
 
-CREATE TABLE IF NOT EXISTS global_range_stats (
+CREATE TABLE IF NOT EXISTS global_action_stats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
 
   root TEXT NOT NULL,

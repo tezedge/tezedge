@@ -103,7 +103,7 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
       one_hundred_s_mean_time,
       one_hundred_s_max_time,
       one_hundred_s_total_time
-    FROM global_range_stats;
+    FROM global_action_stats;
        ",
     )?;
 
@@ -341,7 +341,7 @@ mod tests {
 
         sql.execute(
             "
-        INSERT INTO global_range_stats
+        INSERT INTO global_action_stats
           (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time)
         VALUES
           ('mem', 'a', 2, 1.3, 1.4, 1.5),

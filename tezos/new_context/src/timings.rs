@@ -70,17 +70,51 @@ pub fn context_action(
     // TODO - Bruno: it is possible to avoid these conversions by borrowing the internal
     // &str directly. Since we want this function to add as little overhead as possible
     // investigate doing that later once everything is working properly.
-    let name: String = action_name.to_rust(rt);
+
+    let action_name = rt.get(action_name);
+    let action_name = match unsafe { action_name.as_str_unchecked() } {
+        "mem" => ActionKind::Mem,
+        "find" => ActionKind::Find,
+        "find_tree" => ActionKind::FindTree,
+        "add" => ActionKind::Add,
+        "add_tree" => ActionKind::AddTree,
+        "remove" => ActionKind::Remove,
+        _ => return,
+    };
+
     let key: Vec<String> = key.to_rust(rt);
 
     let action = Action {
-        name,
+        action_name,
         key,
         irmin_time,
         tezedge_time,
     };
 
     TIMING_CHANNEL.send(TimingMessage::Action(action)).unwrap();
+}
+
+#[derive(Debug)]
+enum ActionKind {
+    Mem,
+    Find,
+    FindTree,
+    Add,
+    AddTree,
+    Remove,
+}
+
+impl ActionKind {
+    fn to_str(&self) -> &'static str {
+        match self {
+            ActionKind::Mem => "mem",
+            ActionKind::Find => "find",
+            ActionKind::FindTree => "find_tree",
+            ActionKind::Add => "add",
+            ActionKind::AddTree => "add_tree",
+            ActionKind::Remove => "remove",
+        }
+    }
 }
 
 // TODO: add tree_action
@@ -195,7 +229,7 @@ impl std::fmt::Debug for Timing {
 
 #[derive(Debug)]
 struct Action {
-    name: String,
+    action_name: ActionKind,
     key: Vec<String>,
     irmin_time: f64,
     tezedge_time: f64,
@@ -391,6 +425,7 @@ impl Timing {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
+        let action_name = action.action_name.to_str();
 
         if block_id.is_none() {
             return Ok(());
@@ -415,7 +450,7 @@ impl Timing {
         )?;
 
         stmt.execute(named_params! {
-            ":name": &action.name,
+            ":name": action_name,
             ":key_root": &root,
             ":key": &key,
             ":irmin_time": &action.irmin_time,
@@ -430,7 +465,6 @@ impl Timing {
             .checked_add(1)
             .expect("actions count overflowed");
 
-        let action_name = action.name.as_str();
         let root = match root {
             Some(root) => root,
             None => return Ok(()),
@@ -447,14 +481,13 @@ impl Timing {
             }
         };
 
-        let action_stats = match action_name {
-            "mem" => &mut entry.mem,
-            "find" => &mut entry.find,
-            "find_tree" => &mut entry.find_tree,
-            "add" => &mut entry.add,
-            "add_tree" => &mut entry.add_tree,
-            "remove" => &mut entry.remove,
-            _ => return Ok(()),
+        let action_stats = match action.action_name {
+            ActionKind::Mem => &mut entry.mem,
+            ActionKind::Find => &mut entry.find,
+            ActionKind::FindTree => &mut entry.find_tree,
+            ActionKind::Add => &mut entry.add,
+            ActionKind::AddTree => &mut entry.add_tree,
+            ActionKind::Remove => &mut entry.remove,
         };
 
         let time = match tezedge_time {
@@ -531,31 +564,24 @@ impl Timing {
         action_name: &str,
         range_stats: &RangeStats,
     ) -> Result<(), SQLError> {
-        let mut query = self
-            .sql
-            .prepare_cached(
-                "
-        INSERT OR IGNORE INTO global_range_stats
+        let mut query = self.sql.prepare_cached(
+            "
+        INSERT OR IGNORE INTO global_action_stats
           (root, action_name)
         VALUES
           (:root, :action_name)
             ",
-            )
-            .unwrap();
+        )?;
 
-        query
-            .execute(named_params! {
-                ":root": root,
-                ":action_name": action_name,
-            })
-            .unwrap();
+        query.execute(named_params! {
+            ":root": root,
+            ":action_name": action_name,
+        })?;
 
-        let mut query = self
-            .sql
-            .prepare_cached(
-                "
+        let mut query = self.sql.prepare_cached(
+            "
         UPDATE
-          global_range_stats
+          global_action_stats
         SET
           one_to_ten_us_count = :one_to_ten_us_count,
           one_to_ten_us_mean_time = :one_to_ten_us_mean_time,
@@ -596,8 +622,7 @@ impl Timing {
         WHERE
           root = :root AND action_name = :action_name;
         ",
-            )
-            .unwrap();
+        )?;
 
         query.execute(
             named_params! {
@@ -640,7 +665,7 @@ impl Timing {
                 ":one_hundred_s_max_time": &range_stats.one_hundred_s.max_time,
                 ":one_hundred_s_total_time": &range_stats.one_hundred_s.total_time,
             },
-        ).unwrap();
+        )?;
 
         Ok(())
     }
@@ -690,7 +715,7 @@ mod tests {
 
         timing
             .insert_action(&Action {
-                name: "some_action".to_string(),
+                action_name: ActionKind::Mem,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -720,7 +745,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "add".to_string(),
+                action_name: ActionKind::Add,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -731,7 +756,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "find".to_string(),
+                action_name: ActionKind::Find,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -742,7 +767,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "find".to_string(),
+                action_name: ActionKind::Find,
                 key: vec!["a", "b", "c"]
                     .iter()
                     .map(ToString::to_string)
@@ -753,7 +778,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "mem".to_string(),
+                action_name: ActionKind::Mem,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)
@@ -764,7 +789,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "add".to_string(),
+                action_name: ActionKind::Add,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)
@@ -775,7 +800,7 @@ mod tests {
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Action(Action {
-                name: "add".to_string(),
+                action_name: ActionKind::Add,
                 key: vec!["m", "n", "o"]
                     .iter()
                     .map(ToString::to_string)
