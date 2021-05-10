@@ -5,17 +5,17 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field}, has_encoding_test};
+use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{HasEncoding, Encoding, Field}, has_encoding_test, nom::NomReader};
 
 use crate::non_cached_data;
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
 
 /// Holds informations about chain compatibility, features compatibility...
-#[derive(Serialize, Deserialize, Getters, Clone, tezos_encoding::HasEncoding, tezos_encoding::NomReader)]
+#[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader)]
 pub struct NetworkVersion {
     #[get = "pub"]
-    #[encoding(BoundedString("CHAIN_NAME_MAX_LENGTH"))]
+    #[encoding(string = "CHAIN_NAME_MAX_LENGTH")]
     chain_name: String,
     #[get = "pub"]
     distributed_db_version: u16,

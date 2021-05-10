@@ -17,6 +17,3 @@ pub mod json_writer;
 pub mod ser;
 pub mod nom;
 pub mod raw;
-
-pub use tezos_encoding_derive::HasEncoding;
-pub use tezos_encoding_derive::NomReader;

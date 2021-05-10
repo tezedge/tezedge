@@ -14,6 +14,9 @@ use crate::ser::Error;
 use crate::types::Value;
 use bytes::Buf;
 
+
+pub use tezos_encoding_derive::HasEncoding;
+
 #[derive(Debug, Clone)]
 pub struct Field {
     name: String,

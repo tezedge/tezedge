@@ -17,10 +17,25 @@ pub const UINT_8: &str ="Uint8";
 pub const UINT_16: &str ="Uint16";
 
 pub const ENCODING: Symbol = Symbol("encoding");
-pub const SIZED: Symbol = Symbol("Sized");
-pub const BYTES: Symbol = Symbol("Bytes");
-pub const STRING: Symbol = Symbol("String");
-pub const BOUNDED_STRING: Symbol = Symbol("BoundedString");
+pub const BYTES: Symbol = Symbol("bytes");
+pub const STRING: Symbol = Symbol("string");
+
+pub const SIZED: Symbol = Symbol("sized");
+pub const LIST: Symbol = Symbol("list");
+pub const BOUNDED: Symbol = Symbol("bounded");
+pub const DYNAMIC: Symbol = Symbol("dynamic");
+
+pub const TAGS: Symbol = Symbol("tags");
+pub const TAG: Symbol = Symbol("tag");
+
+lazy_static::lazy_static! {
+    pub static ref PRIMITIVE_MAPPING: std::collections::HashMap<Symbol, &'static str> = {
+        use crate::symbol::rust::*;
+        use crate::symbol::*;
+        [(U8, UINT_8), (U16, UINT_16)].iter().cloned().collect()
+    };
+}
+
 
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, word: &Symbol) -> bool {

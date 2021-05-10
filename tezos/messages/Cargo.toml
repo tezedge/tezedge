@@ -31,6 +31,10 @@ harness = false
 name = "connection"
 harness = false
 
+[[bench]]
+name = "ack"
+harness = false
+
 [dev-dependencies]
 assert-json-diff = "1.1"
 criterion = "0.3"

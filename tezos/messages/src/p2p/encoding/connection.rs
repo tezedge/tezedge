@@ -11,22 +11,22 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncoding, HasEncodingTest}, has_encoding_test};
+use tezos_encoding::{binary_reader::{BinaryReaderError, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncodingTest, HasEncoding}, has_encoding_test, nom::NomReader};
 
 
-use crate::{non_cached_data, p2p::binary_message::BinaryMessageNom};
+use crate::{non_cached_data, p2p::binary_message::BinaryMessage};
 use crate::p2p::binary_message::BinaryChunk;
 use crate::p2p::encoding::version::NetworkVersion;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, tezos_encoding::HasEncoding, tezos_encoding::NomReader)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct ConnectionMessage {
     port: u16,
     #[get = "pub"]
-    #[encoding(Sized("CRYPTO_KEY_SIZE", Bytes))]
+    #[encoding(sized = "CRYPTO_KEY_SIZE", bytes)]
     public_key: Vec<u8>,
-    #[encoding(Sized("POW_SIZE", Bytes))]
+    #[encoding(sized = "POW_SIZE", bytes)]
     proof_of_work_stamp: Vec<u8>,
-    #[encoding(Sized("NONCE_SIZE", Bytes))]
+    #[encoding(sized = "NONCE_SIZE", bytes)]
     message_nonce: Vec<u8>,
     #[get = "pub"]
     version: NetworkVersion,
@@ -34,6 +34,37 @@ pub struct ConnectionMessage {
 
 /*
 impl tezos_encoding::nom::NomReader for ConnectionMessage {
+    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
+        {
+            let (bytes, port) =
+                nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
+            let (bytes, public_key) = nom::combinator::flat_map(
+                nom::bytes::complete::take(CRYPTO_KEY_SIZE),
+                nom::combinator::map(nom::combinator::rest, Vec::from),
+            )(bytes)?;
+            let (bytes, proof_of_work_stamp) = nom::combinator::flat_map(
+                nom::bytes::complete::take(POW_SIZE),
+                nom::combinator::map(nom::combinator::rest, Vec::from),
+            )(bytes)?;
+            let (bytes, message_nonce) = nom::combinator::flat_map(
+                nom::bytes::complete::take(NONCE_SIZE),
+                nom::combinator::map(nom::combinator::rest, Vec::from),
+            )(bytes)?;
+            let (bytes, version) =
+                <NetworkVersion as tezos_encoding::nom::NomReader>::from_bytes(bytes)?;
+            Ok((
+                bytes,
+                ConnectionMessage {
+                    port,
+                    public_key,
+                    proof_of_work_stamp,
+                    message_nonce,
+                    version,
+                },
+            ))
+        }
+    }
+
     fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
         let (bytes, port) = nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
         let (bytes, public_key) = nom::combinator::map_parser(
@@ -106,7 +137,7 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
 
     fn try_from(value: BinaryChunk) -> Result<Self, Self::Error> {
         let cursor = Cursor::new(value.content());
-        <ConnectionMessage as BinaryMessageNom>::from_bytes(cursor.into_inner())
+        <ConnectionMessage as BinaryMessage>::from_bytes(cursor.into_inner())
     }
 }
 

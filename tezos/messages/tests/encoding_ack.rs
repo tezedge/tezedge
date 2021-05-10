@@ -3,7 +3,7 @@
 
 use failure::Error;
 
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::{BinaryMessage, BinaryMessageNom, BinaryMessageRaw};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -18,7 +18,21 @@ fn can_serialize_ack() -> Result<(), Error> {
 #[test]
 fn can_deserialize_ack() -> Result<(), Error> {
     let message_bytes = hex::decode("00")?;
-    let message = AckMessage::from_bytes(message_bytes)?;
+    let message = <AckMessage as BinaryMessage>::from_bytes(message_bytes)?;
+    Ok(assert_eq!(AckMessage::Ack, message))
+}
+
+#[test]
+fn can_deserialize_ack_nom() -> Result<(), Error> {
+    let message_bytes = hex::decode("00")?;
+    let message = <AckMessage as BinaryMessageNom>::from_bytes(&message_bytes)?;
+    Ok(assert_eq!(AckMessage::Ack, message))
+}
+
+#[test]
+fn can_deserialize_ack_raw() -> Result<(), Error> {
+    let message_bytes = hex::decode("00")?;
+    let message = <AckMessage as BinaryMessageRaw>::from_bytes(&message_bytes)?;
     Ok(assert_eq!(AckMessage::Ack, message))
 }
 
@@ -33,7 +47,21 @@ fn can_serialize_nack() -> Result<(), Error> {
 #[test]
 fn can_deserialize_nack() -> Result<(), Error> {
     let message_bytes = hex::decode("ff")?;
-    let message = AckMessage::from_bytes(message_bytes)?;
+    let message = <AckMessage as BinaryMessage>::from_bytes(message_bytes)?;
+    Ok(assert_eq!(AckMessage::NackV0, message))
+}
+
+#[test]
+fn can_deserialize_nack_nom() -> Result<(), Error> {
+    let message_bytes = hex::decode("ff")?;
+    let message = <AckMessage as BinaryMessageNom>::from_bytes(message_bytes)?;
+    Ok(assert_eq!(AckMessage::NackV0, message))
+}
+
+#[test]
+fn can_deserialize_nack_raw() -> Result<(), Error> {
+    let message_bytes = hex::decode("ff")?;
+    let message = <AckMessage as BinaryMessageRaw>::from_bytes(message_bytes)?;
     Ok(assert_eq!(AckMessage::NackV0, message))
 }
 
@@ -51,7 +79,33 @@ fn can_serialize_nack_with_list() -> Result<(), Error> {
 #[test]
 fn can_deserialize_nack_with_list() -> Result<(), Error> {
     let message_bytes = hex::decode("010002000000120000000e3132372e302e302e313a39383332")?;
-    let message = AckMessage::from_bytes(message_bytes)?;
+    let message = <AckMessage as BinaryMessage>::from_bytes(message_bytes)?;
+    Ok(assert_eq!(
+        AckMessage::Nack(NackInfo::new(
+            NackMotive::UnknownChainName,
+            &vec![String::from("127.0.0.1:9832")]
+        )),
+        message,
+    ))
+}
+
+#[test]
+fn can_deserialize_nack_with_list_nom() -> Result<(), Error> {
+    let message_bytes = hex::decode("010002000000120000000e3132372e302e302e313a39383332")?;
+    let message = <AckMessage as BinaryMessageNom>::from_bytes(message_bytes)?;
+    Ok(assert_eq!(
+        AckMessage::Nack(NackInfo::new(
+            NackMotive::UnknownChainName,
+            &vec![String::from("127.0.0.1:9832")]
+        )),
+        message,
+    ))
+}
+
+#[test]
+fn can_deserialize_nack_with_list_raw() -> Result<(), Error> {
+    let message_bytes = hex::decode("010002000000120000000e3132372e302e302e313a39383332")?;
+    let message = <AckMessage as BinaryMessageRaw>::from_bytes(message_bytes)?;
     Ok(assert_eq!(
         AckMessage::Nack(NackInfo::new(
             NackMotive::UnknownChainName,

@@ -1,124 +1,135 @@
 extern crate proc_macro;
 
-use proc_macro2::TokenStream;
-use quote::ToTokens;
-use syn::{parse_macro_input, DeriveInput, Meta, Type};
+use proc_macro::TokenStream;
+use syn::{parse_macro_input, DeriveInput};
 
+mod common;
+mod encoding;
 mod symbol;
+mod make;
+mod enc;
+mod nom;
 
-/// Checks that the type is `Vec<u8>`
-fn is_vec_u8(ty: &syn::Type) -> bool {
-    match ty {
-        syn::Type::Path(path) => {
-            if path.path.segments.len() == 1 {
-                let segm = path.path.segments.last().unwrap();
-                if segm.ident == symbol::rust::VEC {
-                    match &segm.arguments {
-                        syn::PathArguments::AngleBracketed(args) => {
-                            if args.args.len() == 1 {
-                                match args.args.last().unwrap() {
-                                    syn::GenericArgument::Type(Type::Path(path))
-                                        if path.path == symbol::rust::U8 =>
-                                    {
-                                        return true
-                                    }
-                                    _ => (),
-                                }
-                            }
-                        }
-                        _ => (),
-                    }
-                }
-            }
-        }
-        _ => (),
+#[proc_macro_derive(HasEncoding, attributes(encoding))]
+pub fn derive_tezos_encoding(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let encoding = match crate::make::make_encoding(&input) {
+        Ok(encoding) => encoding,
+        Err(e) => return e.into_compile_error().into(),
     };
-    false
+    let tokens = crate::enc::generate_encoding_for_data(&encoding);
+    tokens.into()
 }
 
-fn is_string(ty: &syn::Type) -> bool {
-    match ty {
-        syn::Type::Path(path) if path.path == symbol::rust::STRING => true,
-        _ => false,
-    }
+#[proc_macro_derive(NomReader, attributes(encoding))]
+pub fn derive_nom_reader(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let encoding = match crate::make::make_encoding(&input) {
+        Ok(encoding) => encoding,
+        Err(e) => return e.into_compile_error().into(),
+    };
+    let tokens = crate::nom::generate_nom_read_for_data(&encoding);
+    tokens.into()
 }
 
-/// Finds `encoding` attribute and parse its content
-fn get_encoding_meta(attrs: &[syn::Attribute]) -> Result<Option<syn::Meta>, syn::Error> {
-    let encoding_attr = attrs.iter().find(|attr| attr.path == symbol::ENCODING);
-    match encoding_attr {
-        None => Ok(None),
-        Some(encoding_meta) => {
-            let meta = encoding_meta.parse_meta();
-            match meta {
-                Ok(syn::Meta::List(m)) => {
-                    if m.nested.len() != 1 {
-                        return Err(syn::Error::new_spanned(
-                            &encoding_meta.to_token_stream(),
-                            "Unexpected number of `encoding` attrubute nested attributes",
-                        ));
-                    }
-                    match m.nested.into_iter().next().unwrap() {
-                        syn::NestedMeta::Meta(m) => Ok(Some(m)),
-                        _ => Err(syn::Error::new_spanned(
-                            &encoding_meta.to_token_stream(),
-                            "Unexpected kind of `encoding` nested attribute",
-                        )),
-                    }
-                }
-                Ok(_) => Err(syn::Error::new_spanned(
-                    &encoding_meta.to_token_stream(),
-                    format!(
-                        "Unexpected kind of `encoding` attrubute: {:?}",
-                        encoding_meta
-                    ),
-                )),
-                Err(e) => Err(e),
+/*
+
+#[proc_macro_derive(HasEncoding, attributes(encoding))]
+pub fn derive_tezos_encoding(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let expanded = enc::derive_encoding(input);
+    expanded.into()
+}
+
+#[proc_macro_derive(NomReader, attributes(encoding))]
+pub fn derive_nom_reader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let expanded = nom::derive_nom_reader(input);
+    expanded.into()
+}
+///
+///
+/// /// Visit Rust data declaration suitable for encoding
+struct DataVisitor {}
+
+trait DataHandler {
+    fn on_struct(&self, data: &syn::DataStruct, err: &Errors) -> TokenStream;
+    fn on_field(&self, field: &syn::Field, err: &Errors) -> TokenStream;
+    fn on_enum(&self, data: &syn::DataEnum, err: &Errors) -> TokenStream;
+    fn on_variant(&self, variant: &syn::Variant, err: &Errors) -> TokenStream;
+}
+
+impl DataVisitor {
+    pub fn visit_data(
+        &self,
+        data: &syn::Data,
+        err: &Errors,
+        handler: impl DataHandler,
+    ) -> TokenStream {
+        match data {
+            syn::Data::Struct(data) => handler.on_struct(data, err),
+            syn::Data::Enum(data) => handler.on_enum(data, err),
+            syn::Data::Union(e) => {
+                err.spanned(e.union_token, "Only `struct` types supported");
+                TokenStream::new()
             }
         }
     }
-}
 
-/// Handles different kinds of encoding specified in attrubutes
-trait EncodingHandler {
-    /// Handles bare type, as if no encoding has been specified.
-    fn on_type(&self, ty: &syn::Type) -> TokenStream;
-    /// Handles `Bytes` encoding.
-    fn on_bytes(&self) -> TokenStream;
-    /// Handles `String` encoding.
-    fn on_string(&self) -> TokenStream;
-    /// Handles `BoundedString(size)` encoding.
-    fn on_bounded_string(&self, size: &syn::Expr) -> TokenStream;
-    /// Handles `Sized(size, inner)` encoding.
-    fn on_sized(&self, ty: &syn::Type, size: &syn::Expr, inner: Option<&syn::Meta>) -> TokenStream;
-}
-
-fn spanned_error<T: ToTokens, U: std::fmt::Display>(tokens: T, message: U) -> TokenStream {
-    syn::Error::new_spanned(tokens, message).into_compile_error()
-}
-
-fn attribute_error<T: ToTokens, U: std::fmt::Display>(
-    name: &syn::Path,
-    tokens: T,
-    message: U,
-) -> TokenStream {
-    spanned_error(
-        tokens,
-        format!("Attribute `{}`: {}", quote::quote! {#name}, message),
-    )
+    pub fn visit_fields(
+        &self,
+        data: &syn::DataStruct,
+        err: &Errors,
+        handler: impl DataHandler,
+    ) -> Vec<TokenStream> {
+        match data.fields {
+            syn::Fields::Named(ref fields) => fields
+                .named
+                .iter()
+                .map(|f| handler.on_field(f, err))
+                .collect(),
+            _ => {
+                err.spanned(data.fields, "Only named fields `struct` is supported");
+                Vec::new()
+            }
+        }
+    }
 }
 
 /// Visits encoding attrubutes and calls `handler`'s appropriate method, see [EncodingHandler].
 struct EncodingVisitor {}
 
+/// Handles different kinds of encoding specified in attrubutes
+trait EncodingHandler {
+    /// Handles bare type, as if no encoding has been specified.
+    fn on_type(&self, ty: &syn::Type, err: &Errors) -> TokenStream;
+    /// Handles `Bytes` encoding.
+    fn on_bytes(&self, err: &Errors) -> TokenStream;
+    /// Handles `String` encoding.
+    fn on_string(&self, err: &Errors) -> TokenStream;
+    /// Handles `BoundedString(size)` encoding.
+    fn on_bounded_string(&self, size: &syn::Expr, err: &Errors) -> TokenStream;
+    /// Handles `Sized(size, inner)` encoding.
+    fn on_sized(
+        &self,
+        ty: &syn::Type,
+        size: &syn::Expr,
+        inner: Option<&syn::Meta>,
+        err: &Errors,
+    ) -> TokenStream;
+}
+
 impl EncodingVisitor {
-    fn _modifier<'a>(meta_list: &'a syn::MetaList) -> Result<Option<&'a syn::Meta>, TokenStream> {
+    fn _modifier<'a>(
+        meta_list: &'a syn::MetaList,
+        err: &Errors,
+    ) -> Result<Option<&'a syn::Meta>, syn::Error> {
         let mut it = meta_list.nested.iter();
         let inner = match it.next() {
             Some(syn::NestedMeta::Meta(m)) => Some(m),
             None => None,
             _ => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     "Wrong `inner` parameter",
@@ -139,14 +150,14 @@ impl EncodingVisitor {
                 Err(e) => return Err(e.into_compile_error()),
             },
             Some(_) => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     format!("Expecting string literal as `{}` attribute", param),
                 ))
             }
             None => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     format!("Missing `{}` attribute", param),
@@ -157,7 +168,7 @@ impl EncodingVisitor {
             Some(syn::NestedMeta::Meta(m)) => Some(m),
             None => None,
             _ => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     "Wrong `inner` parameter",
@@ -178,14 +189,14 @@ impl EncodingVisitor {
                 Err(e) => return Err(e.into_compile_error()),
             },
             Some(_) => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     format!("Expecting string literal as `{}` attribute", param),
                 ))
             }
             None => {
-                return Err(attribute_error(
+                return Err(attr_error(
                     &meta_list.path,
                     &meta_list,
                     format!("Missing `{}` attribute", param),
@@ -195,10 +206,16 @@ impl EncodingVisitor {
         Ok(param)
     }
 
-    pub fn visit<T: EncodingHandler>(
+    fn visit(field: &syn::Field, err: &Errors) -> TokenStream {
+        let meta = get_encoding_meta(field.attrs, err);
+        self.visit_type_encoding(field.ty, meta)
+    }
+
+    fn visit_type_encoding<T: EncodingHandler>(
         &self,
         ty: &Type,
         meta: Option<&Meta>,
+
         handler: &T,
     ) -> TokenStream {
         match meta {
@@ -256,9 +273,7 @@ mod enc {
     use quote::quote;
     use syn::spanned::Spanned;
 
-    use crate::{
-        get_encoding_meta, spanned_error, symbol::Symbol, EncodingHandler, EncodingVisitor,
-    };
+    use crate::{DataHandler, EncodingHandler, EncodingVisitor, Errors, get_encoding_meta, spanned_error, symbol::Symbol};
 
     lazy_static! {
         static ref DIRECT_MAPPING: std::collections::HashMap<Symbol, &'static str> = {
@@ -290,16 +305,81 @@ mod enc {
     }
 
     struct EncodingGenerator {
-        visitor: EncodingVisitor,
+        data_visitor: DataVisitor,
+        encoding_visitor: EncodingVisitor,
+        input: &syn::DeriveInput,
+        name_str: String,
     }
 
     impl EncodingGenerator {
-        fn new() -> Self {
-            let visitor = EncodingVisitor {};
-            EncodingGenerator { visitor }
+        fn new(input: &syn::DeriveInput) -> Self {
+            let data_visitor = DataVisitor {};
+            let encoding_visitor = EncodingVisitor {};
+            let name_str = input.ident.to_string();
+            EncodingGenerator {
+                data_visitor,
+                encoding_visitor,
+                input,
+                name_str,
+            }
         }
-        fn generate(&self, ty: &syn::Type, meta: Option<&syn::Meta>) -> TokenStream {
-            self.visitor.visit(ty, meta, self)
+
+        fn generate(&self, err: &Errors) -> TokenStream {
+            let name = self.input.ident;
+            let name_str = self.name_str;
+            let encoding_static_name = syn::Ident::new(
+                &format!("__TEZOS_ENCODING_{}", name_str.to_uppercase()),
+                name.span(),
+            );
+            let data_encoding = self.data_visitor.visit_data(self.input.data, err, self);
+            let encoding = self.encoding_visitor.visit(self.input.attrs, err, self);
+            quote! {
+                lazy_static::lazy_static! {
+                    #[allow(non_upper_case_globals)]
+                    static ref #encoding_static_name: tezos_encoding::encoding::Encoding = #data_encoding;
+                }
+
+                impl tezos_encoding::encoding::HasEncoding for #name {
+                    fn encoding() -> &'static tezos_encoding::encoding::Encoding {
+                        &#encoding_static_name
+                    }
+                }
+            }
+        }
+    }
+
+    impl DataHandler for EncodingGenerator {
+        fn on_struct(&self, data: &syn::DataStruct, err: &Errors) -> TokenStream {
+            let name = self.name_str;
+            let fields_encoding = self.data_visitor.visit_fields(data, err, self);
+            quote! {
+                tezos_encoding::encoding::Encoding::Obj(
+                    #name,
+                    vec![
+                        #(#fields_encoding),*
+                    ]
+                )
+            }
+        }
+
+        fn on_field(&self, field: &syn::Field, err: &Errors) -> TokenStream {
+            let field_encoding = self.encoding_visitor.visit_type_attribute(field, err, self);
+            let name = field
+                .ident
+                .as_ref()
+                .map(|i| format!("{}", &i))
+                .unwrap_or(String::new());
+            quote! {
+                tezos_encoding::encoding::Field::new(#name, #field_encoding),
+            }
+        }
+
+        fn on_enum(&self, data: &syn::DataEnum, err: &Errors) -> TokenStream {
+            todo!()
+        }
+
+        fn on_variant(&self, variant: &syn::Variant, err: &Errors) -> TokenStream {
+            todo!()
         }
     }
 
@@ -352,28 +432,54 @@ mod enc {
             .unwrap_or_else(|err| err.to_compile_error())
     }
 
-    pub fn struct_fields_encoding(data: &syn::Data) -> TokenStream {
-        match data {
-            syn::Data::Struct(data) => match data.fields {
-                syn::Fields::Named(ref fields) => {
-                    let recurse = fields.named.iter().map(|f| {
-                        let name = f
-                            .ident
-                            .as_ref()
-                            .map(|i| format!("{}", &i))
-                            .unwrap_or(String::new());
-                        let encoding = generate_field_encoding(f);
-                        quote! {
-                            tezos_encoding::encoding::Field::new(#name, #encoding),
-                        }
-                    });
+    pub fn struct_encoding(data: &syn::DataStruct, name: &str) -> TokenStream {
+        match data.fields {
+            syn::Fields::Named(ref fields) => {
+                let recurse = fields.named.iter().map(|f| {
+                    let name = f
+                        .ident
+                        .as_ref()
+                        .map(|i| format!("{}", &i))
+                        .unwrap_or(String::new());
+                    let encoding = generate_field_encoding(f);
                     quote! {
-                        #(#recurse)*
+                        tezos_encoding::encoding::Field::new(#name, #encoding),
                     }
+                });
+                quote! {
+                    tezos_encoding::encoding::Encoding::Obj(
+                        #name,
+                        vec![
+                            #(#recurse)*
+                        ]
+                    )
                 }
-                _ => spanned_error(&data.fields, "Only `struct` with named fields supported"),
-            },
-            syn::Data::Enum(e) => spanned_error(e.enum_token, "Only `struct` types supported"),
+            }
+            _ => spanned_error(&data.fields, "Only `struct` with named fields supported"),
+        }
+    }
+
+    fn generate_tag_encoding(variant: &syn::Variant) -> TokenStream {}
+
+    fn enum_encoding(data: &syn::DataEnum) -> TokenStream {
+        let tags_encoding = data.variants.iter().map(|v| {
+            let tag_encoding = generate_tag_encoding(v);
+            quote!(#tag_encoding)
+        });
+        quote! {
+            Encoding::Tags(
+                size_of::<xxx>,
+                TagMap::new(vec![
+                    #(#tags_encoding),*
+                ]),
+            )
+        }
+    }
+
+    pub fn data_encoding(data: &syn::Data, name: &str) -> TokenStream {
+        match data {
+            syn::Data::Struct(data) => struct_encoding(data, name),
+            syn::Data::Enum(data) => enum_encoding(data),
             syn::Data::Union(e) => spanned_error(e.union_token, "Only `struct` types supported"),
         }
     }
@@ -385,16 +491,11 @@ mod enc {
             &format!("__TEZOS_ENCODING_{}", name.to_string().to_uppercase()),
             name.span(),
         );
-        let fields_encoding = struct_fields_encoding(&input.data);
+        let data_encoding = data_encoding(&input.data, &name_str);
         quote! {
             lazy_static::lazy_static! {
                 #[allow(non_upper_case_globals)]
-                static ref #encoding_static_name: tezos_encoding::encoding::Encoding = tezos_encoding::encoding::Encoding::Obj(
-                    #name_str,
-                    vec![
-                        #fields_encoding
-                    ]
-                );
+                static ref #encoding_static_name: tezos_encoding::encoding::Encoding = #data_encoding;
             }
 
             impl tezos_encoding::encoding::HasEncoding for #name {
@@ -539,20 +640,7 @@ mod nom {
     }
 }
 
-#[proc_macro_derive(HasEncoding, attributes(encoding))]
-pub fn derive_tezos_encoding(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let expanded = enc::derive_encoding(input);
-    expanded.into()
-}
-
-#[proc_macro_derive(NomReader, attributes(encoding))]
-pub fn derive_nom_reader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let expanded = nom::derive_nom_reader(input);
-    expanded.into()
-}
-
+*/
 /*
 fn get_lit_str(lit: Lit) -> String {
     match lit {
