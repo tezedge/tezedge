@@ -11,7 +11,7 @@ use rusqlite::{named_params, Batch, Connection, Error as SQLError};
 use serde::Serialize;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
-const DB_PATH: &str = "context_stats.db";
+pub const DB_PATH: &str = "context_stats.db";
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
@@ -180,6 +180,23 @@ impl RangeStats {
         self.ten_to_one_hundred_s.compute_mean();
         self.one_hundred_s.compute_mean();
     }
+
+    fn add_time(&mut self, tezedge_time: f64) {
+        let time = match tezedge_time {
+            t if t < 0.00001 => &mut self.one_to_ten_us,
+            t if t < 0.0001 => &mut self.ten_to_one_hundred_us,
+            t if t < 0.001 => &mut self.one_hundred_us_to_one_ms,
+            t if t < 0.01 => &mut self.one_to_ten_ms,
+            t if t < 0.1 => &mut self.ten_to_one_hundred_ms,
+            t if t < 1.0 => &mut self.one_hundred_ms_to_one_s,
+            t if t < 10.0 => &mut self.one_to_ten_s,
+            t if t < 100.0 => &mut self.ten_to_one_hundred_s,
+            _ => &mut self.one_hundred_s,
+        };
+        time.count = time.count.saturating_add(1);
+        time.total_time += tezedge_time;
+        time.max_time = time.max_time.max(tezedge_time);
+    }
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -214,6 +231,8 @@ struct Timing {
     /// Checkout time for the current block
     checkout_time: Option<(f64, f64)>,
     global_stats: HashMap<String, ActionStatsWithRange>,
+    commit_stats: RangeStats,
+    checkout_stats: RangeStats,
     sql: Connection,
 }
 
@@ -279,6 +298,8 @@ impl Timing {
             current_context: None,
             nactions: 0,
             global_stats: HashMap::default(),
+            commit_stats: Default::default(),
+            checkout_stats: Default::default(),
             sql,
             checkout_time: None,
         }
@@ -411,6 +432,11 @@ impl Timing {
         irmin_time: f64,
         tezedge_time: f64,
     ) -> Result<(), SQLError> {
+        if self.current_block.is_none() {
+            return Ok(());
+        }
+
+        self.checkout_stats.add_time(tezedge_time);
         self.set_current_context(context_hash)?;
         self.checkout_time = Some((irmin_time, tezedge_time));
 
@@ -418,18 +444,23 @@ impl Timing {
     }
 
     fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
+        if self.current_block.is_none() {
+            return Ok(());
+        }
+
+        self.commit_stats.add_time(tezedge_time);
         self.update_global_stats(irmin_time, tezedge_time)
     }
 
     fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
+        if self.current_block.is_none() {
+            return Ok(());
+        }
+
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
         let action_name = action.action_name.to_str();
-
-        if block_id.is_none() {
-            return Ok(());
-        }
 
         let (root, key) = if action.key.is_empty() {
             (None, None)
@@ -490,21 +521,7 @@ impl Timing {
             ActionKind::Remove => &mut entry.remove,
         };
 
-        let time = match tezedge_time {
-            t if t < 0.00001 => &mut action_stats.one_to_ten_us,
-            t if t < 0.0001 => &mut action_stats.ten_to_one_hundred_us,
-            t if t < 0.001 => &mut action_stats.one_hundred_us_to_one_ms,
-            t if t < 0.01 => &mut action_stats.one_to_ten_ms,
-            t if t < 0.1 => &mut action_stats.ten_to_one_hundred_ms,
-            t if t < 1.0 => &mut action_stats.one_hundred_ms_to_one_s,
-            t if t < 10.0 => &mut action_stats.one_to_ten_s,
-            t if t < 100.0 => &mut action_stats.ten_to_one_hundred_s,
-            _ => &mut action_stats.one_hundred_s,
-        };
-
-        time.count = time.count.saturating_add(1);
-        time.total_time += tezedge_time;
-        time.max_time = time.max_time.max(tezedge_time);
+        action_stats.add_time(tezedge_time);
 
         Ok(())
     }
@@ -554,6 +571,11 @@ impl Timing {
             self.insert_action_stats(root, "add_tree", &action_stats.add_tree)?;
             self.insert_action_stats(root, "remove", &action_stats.remove)?;
         }
+
+        self.checkout_stats.compute_mean();
+        self.commit_stats.compute_mean();
+        self.insert_action_stats("commit", "commit", &self.commit_stats)?;
+        self.insert_action_stats("checkout", "checkout", &self.checkout_stats)?;
 
         Ok(())
     }

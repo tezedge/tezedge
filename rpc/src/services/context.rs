@@ -3,9 +3,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use tezos_new_context::timings::{hash_to_string, ActionStatsWithRange};
-
-const DB_PATH: &str = "context_stats.db";
+use tezos_new_context::timings::{hash_to_string, ActionStatsWithRange, RangeStats, DB_PATH};
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -48,6 +46,8 @@ impl ActionStats {
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
+    commit_context: RangeStats,
+    checkout_context: RangeStats,
     operations_context: Vec<ActionStatsWithRange>,
 }
 
@@ -103,13 +103,16 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
       one_hundred_s_mean_time,
       one_hundred_s_max_time,
       one_hundred_s_total_time
-    FROM global_action_stats;
+    FROM
+      global_action_stats;
        ",
     )?;
 
     let mut rows = stmt.query([])?;
 
     let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
+    let mut commit_stats = RangeStats::default();
+    let mut checkout_stats = RangeStats::default();
 
     while let Some(row) = rows.next()? {
         let action_name = match row.get_ref(0)?.as_str() {
@@ -122,24 +125,29 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             _ => continue,
         };
 
-        let entry = match map.get_mut(root) {
-            Some(entry) => entry,
-            None => {
-                let mut stats = ActionStatsWithRange::default();
-                stats.root = root.to_string();
-                map.insert(root.to_string(), stats);
-                map.get_mut(root).unwrap()
+        let mut action_stats = match action_name {
+            "commit" => &mut commit_stats,
+            "checkout" => &mut checkout_stats,
+            _ => {
+                let entry = match map.get_mut(root) {
+                    Some(entry) => entry,
+                    None => {
+                        let mut stats = ActionStatsWithRange::default();
+                        stats.root = root.to_string();
+                        map.insert(root.to_string(), stats);
+                        map.get_mut(root).unwrap()
+                    }
+                };
+                match action_name {
+                    "mem" => &mut entry.mem,
+                    "find" => &mut entry.find,
+                    "find_tree" => &mut entry.find_tree,
+                    "add" => &mut entry.add,
+                    "add_tree" => &mut entry.add_tree,
+                    "remove" => &mut entry.remove,
+                    _ => continue,
+                }
             }
-        };
-
-        let action_stats = match action_name {
-            "mem" => &mut entry.mem,
-            "find" => &mut entry.find,
-            "find_tree" => &mut entry.find_tree,
-            "add" => &mut entry.add,
-            "add_tree" => &mut entry.add_tree,
-            "remove" => &mut entry.remove,
-            _ => continue,
         };
 
         action_stats.one_to_ten_us.count = row.get(2)?;
@@ -180,8 +188,13 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
         action_stats.one_hundred_s.total_time = row.get(37)?;
     }
 
+    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    operations_context.sort_by(|a, b| a.root.cmp(&b.root));
+
     Ok(ContextStats {
-        operations_context: map.into_iter().map(|(_, v)| v).collect(),
+        operations_context,
+        commit_context: commit_stats,
+        checkout_context: checkout_stats,
     })
 }
 
@@ -346,7 +359,9 @@ mod tests {
         VALUES
           ('mem', 'a', 2, 1.3, 1.4, 1.5),
           ('mem', 'b', 3, 10.3, 10.4, 10.5),
-          ('add', 'b', 4, 20.3, 20.4, 20.5);
+          ('add', 'b', 4, 20.3, 20.4, 20.5),
+          ('commit', 'commit', 4, 30.3, 30.4, 30.5),
+          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5);
             ",
             [],
         )
@@ -355,6 +370,8 @@ mod tests {
         let context_stats = make_context_stats_impl(&sql).unwrap();
 
         assert_eq!(context_stats.operations_context.len(), 2);
+        assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
+        assert_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
         let action = context_stats
             .operations_context
