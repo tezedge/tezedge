@@ -8,6 +8,7 @@ pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStrea
     let nom_read = generate_nom_read(&data.encoding);
     quote_spanned! {
         data.name.span()=>
+        #[allow(unused_parens)]
         impl tezos_encoding::nom::NomReader for #name {
             fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
                 #nom_read(bytes)
