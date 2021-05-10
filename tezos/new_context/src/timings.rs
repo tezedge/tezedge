@@ -388,6 +388,10 @@ impl Timing {
         let operation_id = self.current_operation.as_ref().map(|(id, _)| id.as_str());
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
 
+        if block_id.is_none() {
+            return Ok(());
+        }
+
         let (root, key) = if action.key.is_empty() {
             (None, None)
         } else {

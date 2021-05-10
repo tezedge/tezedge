@@ -58,13 +58,6 @@ struct DetailedTime {
     total_time: f64,
 }
 
-impl DetailedTime {
-    fn compute_mean(&mut self) {
-        let mean = self.total_time / self.count as f64;
-        self.mean_time = mean.max(0.0);
-    }
-}
-
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct RangeStats {
@@ -79,20 +72,6 @@ struct RangeStats {
     one_hundred_s: DetailedTime,
 }
 
-impl RangeStats {
-    fn compute_mean(&mut self) {
-        self.one_to_ten_us.compute_mean();
-        self.ten_to_one_hundred_us.compute_mean();
-        self.one_hundred_us_to_one_ms.compute_mean();
-        self.one_to_ten_ms.compute_mean();
-        self.ten_to_one_hundred_ms.compute_mean();
-        self.one_hundred_ms_to_one_s.compute_mean();
-        self.one_to_ten_s.compute_mean();
-        self.ten_to_one_hundred_s.compute_mean();
-        self.one_hundred_s.compute_mean();
-    }
-}
-
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct ActionStatsWithRange {
@@ -103,17 +82,6 @@ struct ActionStatsWithRange {
     add: RangeStats,
     add_tree: RangeStats,
     remove: RangeStats,
-}
-
-impl ActionStatsWithRange {
-    fn compute_mean(&mut self) {
-        self.mem.compute_mean();
-        self.find.compute_mean();
-        self.find_tree.compute_mean();
-        self.add.compute_mean();
-        self.add_tree.compute_mean();
-        self.remove.compute_mean();
-    }
 }
 
 pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, failure::Error> {
@@ -127,7 +95,50 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
 }
 
 fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
-    let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions WHERE block_id IS NOT NULL;")?;
+    let mut stmt = sql.prepare(
+        "
+    SELECT
+      action_name,
+      root,
+      one_to_ten_us_count,
+      one_to_ten_us_mean_time,
+      one_to_ten_us_max_time,
+      one_to_ten_us_total_time,
+      ten_to_one_hundred_us_count,
+      ten_to_one_hundred_us_mean_time,
+      ten_to_one_hundred_us_max_time,
+      ten_to_one_hundred_us_total_time,
+      one_hundred_us_to_one_ms_count,
+      one_hundred_us_to_one_ms_mean_time,
+      one_hundred_us_to_one_ms_max_time,
+      one_hundred_us_to_one_ms_total_time,
+      one_to_ten_ms_count,
+      one_to_ten_ms_mean_time,
+      one_to_ten_ms_max_time,
+      one_to_ten_ms_total_time,
+      ten_to_one_hundred_ms_count,
+      ten_to_one_hundred_ms_mean_time,
+      ten_to_one_hundred_ms_max_time,
+      ten_to_one_hundred_ms_total_time,
+      one_hundred_ms_to_one_s_count,
+      one_hundred_ms_to_one_s_mean_time,
+      one_hundred_ms_to_one_s_max_time,
+      one_hundred_ms_to_one_s_total_time,
+      one_to_ten_s_count,
+      one_to_ten_s_mean_time,
+      one_to_ten_s_max_time,
+      one_to_ten_s_total_time,
+      ten_to_one_hundred_s_count,
+      ten_to_one_hundred_s_mean_time,
+      ten_to_one_hundred_s_max_time,
+      ten_to_one_hundred_s_total_time,
+      one_hundred_s_count,
+      one_hundred_s_mean_time,
+      one_hundred_s_max_time,
+      one_hundred_s_total_time
+    FROM global_range_stats;
+       ",
+    )?;
 
     let mut rows = stmt.query([])?;
 
@@ -143,8 +154,6 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             Ok(root) if !root.is_empty() => root,
             _ => continue,
         };
-
-        let tezedge_time: f64 = row.get(2)?;
 
         let entry = match map.get_mut(root) {
             Some(entry) => entry,
@@ -166,25 +175,42 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             _ => continue,
         };
 
-        let time = match tezedge_time {
-            t if t < 0.00001 => &mut range_stats.one_to_ten_us,
-            t if t < 0.0001 => &mut range_stats.ten_to_one_hundred_us,
-            t if t < 0.001 => &mut range_stats.one_hundred_us_to_one_ms,
-            t if t < 0.01 => &mut range_stats.one_to_ten_ms,
-            t if t < 0.1 => &mut range_stats.ten_to_one_hundred_ms,
-            t if t < 1.0 => &mut range_stats.one_hundred_ms_to_one_s,
-            t if t < 10.0 => &mut range_stats.one_to_ten_s,
-            t if t < 100.0 => &mut range_stats.ten_to_one_hundred_s,
-            _ => &mut range_stats.one_hundred_s,
-        };
-
-        time.count = time.count.saturating_add(1);
-        time.total_time += tezedge_time;
-        time.max_time = time.max_time.max(tezedge_time);
-    }
-
-    for action in map.values_mut() {
-        action.compute_mean();
+        range_stats.one_to_ten_us.count = row.get(2)?;
+        range_stats.one_to_ten_us.mean_time = row.get(3)?;
+        range_stats.one_to_ten_us.max_time = row.get(4)?;
+        range_stats.one_to_ten_us.total_time = row.get(5)?;
+        range_stats.ten_to_one_hundred_us.count = row.get(6)?;
+        range_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
+        range_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
+        range_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
+        range_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
+        range_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
+        range_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
+        range_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
+        range_stats.one_to_ten_ms.count = row.get(14)?;
+        range_stats.one_to_ten_ms.mean_time = row.get(15)?;
+        range_stats.one_to_ten_ms.max_time = row.get(16)?;
+        range_stats.one_to_ten_ms.total_time = row.get(17)?;
+        range_stats.ten_to_one_hundred_ms.count = row.get(18)?;
+        range_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
+        range_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
+        range_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
+        range_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
+        range_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
+        range_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
+        range_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
+        range_stats.one_to_ten_s.count = row.get(26)?;
+        range_stats.one_to_ten_s.mean_time = row.get(27)?;
+        range_stats.one_to_ten_s.max_time = row.get(28)?;
+        range_stats.one_to_ten_s.total_time = row.get(29)?;
+        range_stats.ten_to_one_hundred_s.count = row.get(30)?;
+        range_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
+        range_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
+        range_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
+        range_stats.one_hundred_s.count = row.get(34)?;
+        range_stats.one_hundred_s.mean_time = row.get(35)?;
+        range_stats.one_hundred_s.max_time = row.get(36)?;
+        range_stats.one_hundred_s.total_time = row.get(37)?;
     }
 
     Ok(ContextStats {
@@ -355,6 +381,20 @@ mod tests {
         assert_eq!(action.data.root, "a");
         assert_eq!(action.data.mean_time, 2.733333333333333);
         assert_eq!(action.add, 1.6);
+        assert_eq!(action.find_tree, 0.0);
+
+        sql.execute(
+            "
+        INSERT INTO global_range_stats
+          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time)
+        VALUES
+          ('mem', 'a', 2, 1.3, 1.4, 1.5),
+          ('mem', 'b', 3, 10.3, 10.4, 10.5),
+          ('add', 'b', 4, 20.3, 20.4, 20.5);
+            ",
+            [],
+        )
+        .unwrap();
 
         let context_stats = make_context_stats_impl(&sql).unwrap();
 
@@ -365,7 +405,17 @@ mod tests {
             .iter()
             .find(|a| a.root == "a")
             .unwrap();
-        assert_eq!(action.mem.one_to_ten_s.mean_time, 3.3);
-        assert_eq!(action.mem.one_to_ten_s.count, 2);
+        assert_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
+        assert_eq!(action.mem.one_to_ten_us.count, 2);
+
+        let action = context_stats
+            .operations_context
+            .iter()
+            .find(|a| a.root == "b")
+            .unwrap();
+        assert_eq!(action.mem.one_to_ten_us.mean_time, 10.3);
+        assert_eq!(action.mem.one_to_ten_us.count, 3);
+        assert_eq!(action.add.one_to_ten_us.mean_time, 20.3);
+        assert_eq!(action.add.one_to_ten_us.count, 4);
     }
 }
