@@ -3,6 +3,8 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
 
+use tezos_new_context::timings::{hash_to_string, ActionStatsWithRange};
+
 const DB_PATH: &str = "context_stats.db";
 
 #[derive(Debug, Serialize, Default)]
@@ -47,41 +49,6 @@ impl ActionStats {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
     operations_context: Vec<ActionStatsWithRange>,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DetailedTime {
-    count: usize,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct RangeStats {
-    one_to_ten_us: DetailedTime,
-    ten_to_one_hundred_us: DetailedTime,
-    one_hundred_us_to_one_ms: DetailedTime,
-    one_to_ten_ms: DetailedTime,
-    ten_to_one_hundred_ms: DetailedTime,
-    one_hundred_ms_to_one_s: DetailedTime,
-    one_to_ten_s: DetailedTime,
-    ten_to_one_hundred_s: DetailedTime,
-    one_hundred_s: DetailedTime,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct ActionStatsWithRange {
-    root: String,
-    mem: RangeStats,
-    find: RangeStats,
-    find_tree: RangeStats,
-    add: RangeStats,
-    add_tree: RangeStats,
-    remove: RangeStats,
 }
 
 pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, failure::Error> {
@@ -165,7 +132,7 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             }
         };
 
-        let range_stats = match action_name {
+        let action_stats = match action_name {
             "mem" => &mut entry.mem,
             "find" => &mut entry.find,
             "find_tree" => &mut entry.find_tree,
@@ -175,42 +142,42 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             _ => continue,
         };
 
-        range_stats.one_to_ten_us.count = row.get(2)?;
-        range_stats.one_to_ten_us.mean_time = row.get(3)?;
-        range_stats.one_to_ten_us.max_time = row.get(4)?;
-        range_stats.one_to_ten_us.total_time = row.get(5)?;
-        range_stats.ten_to_one_hundred_us.count = row.get(6)?;
-        range_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
-        range_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
-        range_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
-        range_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
-        range_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
-        range_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
-        range_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
-        range_stats.one_to_ten_ms.count = row.get(14)?;
-        range_stats.one_to_ten_ms.mean_time = row.get(15)?;
-        range_stats.one_to_ten_ms.max_time = row.get(16)?;
-        range_stats.one_to_ten_ms.total_time = row.get(17)?;
-        range_stats.ten_to_one_hundred_ms.count = row.get(18)?;
-        range_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
-        range_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
-        range_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
-        range_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
-        range_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
-        range_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
-        range_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
-        range_stats.one_to_ten_s.count = row.get(26)?;
-        range_stats.one_to_ten_s.mean_time = row.get(27)?;
-        range_stats.one_to_ten_s.max_time = row.get(28)?;
-        range_stats.one_to_ten_s.total_time = row.get(29)?;
-        range_stats.ten_to_one_hundred_s.count = row.get(30)?;
-        range_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
-        range_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
-        range_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
-        range_stats.one_hundred_s.count = row.get(34)?;
-        range_stats.one_hundred_s.mean_time = row.get(35)?;
-        range_stats.one_hundred_s.max_time = row.get(36)?;
-        range_stats.one_hundred_s.total_time = row.get(37)?;
+        action_stats.one_to_ten_us.count = row.get(2)?;
+        action_stats.one_to_ten_us.mean_time = row.get(3)?;
+        action_stats.one_to_ten_us.max_time = row.get(4)?;
+        action_stats.one_to_ten_us.total_time = row.get(5)?;
+        action_stats.ten_to_one_hundred_us.count = row.get(6)?;
+        action_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
+        action_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
+        action_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
+        action_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
+        action_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
+        action_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
+        action_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
+        action_stats.one_to_ten_ms.count = row.get(14)?;
+        action_stats.one_to_ten_ms.mean_time = row.get(15)?;
+        action_stats.one_to_ten_ms.max_time = row.get(16)?;
+        action_stats.one_to_ten_ms.total_time = row.get(17)?;
+        action_stats.ten_to_one_hundred_ms.count = row.get(18)?;
+        action_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
+        action_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
+        action_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
+        action_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
+        action_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
+        action_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
+        action_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
+        action_stats.one_to_ten_s.count = row.get(26)?;
+        action_stats.one_to_ten_s.mean_time = row.get(27)?;
+        action_stats.one_to_ten_s.max_time = row.get(28)?;
+        action_stats.one_to_ten_s.total_time = row.get(29)?;
+        action_stats.ten_to_one_hundred_s.count = row.get(30)?;
+        action_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
+        action_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
+        action_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
+        action_stats.one_hundred_s.count = row.get(34)?;
+        action_stats.one_hundred_s.mean_time = row.get(35)?;
+        action_stats.one_hundred_s.max_time = row.get(36)?;
+        action_stats.one_hundred_s.total_time = row.get(37)?;
     }
 
     Ok(ContextStats {
@@ -294,7 +261,7 @@ fn make_block_stats_impl(
             _ => {}
         }
 
-        entry.data.actions_count += count;
+        entry.data.actions_count = entry.data.actions_count.saturating_add(count);
         entry.data.total_time += total;
         entry.data.max_time = entry.data.max_time.max(max_time);
     }
@@ -309,17 +276,6 @@ fn make_block_stats_impl(
         commit_context_time: commit_time,
         operations_context: map.into_iter().map(|(_, v)| v).collect(),
     })
-}
-
-pub fn hash_to_string(hash: &[u8]) -> String {
-    const HEXCHARS: &[u8] = b"0123456789abcdef";
-
-    let mut s = String::with_capacity(62);
-    for byte in hash {
-        s.push(HEXCHARS[*byte as usize >> 4] as char);
-        s.push(HEXCHARS[*byte as usize & 0xF] as char);
-    }
-    s
 }
 
 #[cfg(test)]

@@ -8,6 +8,7 @@ use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError};
+use serde::Serialize;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 const DB_PATH: &str = "context_stats.db";
@@ -103,12 +104,13 @@ enum TimingMessage {
 // Id of the hash in the database
 type HashId = String;
 
-#[derive(Debug, Default)]
-struct DetailedTime {
-    count: usize,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailedTime {
+    pub count: usize,
+    pub mean_time: f64,
+    pub max_time: f64,
+    pub total_time: f64,
 }
 
 impl DetailedTime {
@@ -118,17 +120,18 @@ impl DetailedTime {
     }
 }
 
-#[derive(Debug, Default)]
-struct RangeStats {
-    one_to_ten_us: DetailedTime,
-    ten_to_one_hundred_us: DetailedTime,
-    one_hundred_us_to_one_ms: DetailedTime,
-    one_to_ten_ms: DetailedTime,
-    ten_to_one_hundred_ms: DetailedTime,
-    one_hundred_ms_to_one_s: DetailedTime,
-    one_to_ten_s: DetailedTime,
-    ten_to_one_hundred_s: DetailedTime,
-    one_hundred_s: DetailedTime,
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RangeStats {
+    pub one_to_ten_us: DetailedTime,
+    pub ten_to_one_hundred_us: DetailedTime,
+    pub one_hundred_us_to_one_ms: DetailedTime,
+    pub one_to_ten_ms: DetailedTime,
+    pub ten_to_one_hundred_ms: DetailedTime,
+    pub one_hundred_ms_to_one_s: DetailedTime,
+    pub one_to_ten_s: DetailedTime,
+    pub ten_to_one_hundred_s: DetailedTime,
+    pub one_hundred_s: DetailedTime,
 }
 
 impl RangeStats {
@@ -145,15 +148,16 @@ impl RangeStats {
     }
 }
 
-#[derive(Debug, Default)]
-struct ActionStatsWithRange {
-    root: String,
-    mem: RangeStats,
-    find: RangeStats,
-    find_tree: RangeStats,
-    add: RangeStats,
-    add_tree: RangeStats,
-    remove: RangeStats,
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionStatsWithRange {
+    pub root: String,
+    pub mem: RangeStats,
+    pub find: RangeStats,
+    pub find_tree: RangeStats,
+    pub add: RangeStats,
+    pub add_tree: RangeStats,
+    pub remove: RangeStats,
 }
 
 impl ActionStatsWithRange {
@@ -220,6 +224,17 @@ fn start_timing(recv: Receiver<TimingMessage>) {
     }
 }
 
+pub fn hash_to_string(hash: &[u8]) -> String {
+    const HEXCHARS: &[u8] = b"0123456789abcdef";
+
+    let mut s = String::with_capacity(62);
+    for byte in hash {
+        s.push(HEXCHARS[*byte as usize >> 4] as char);
+        s.push(HEXCHARS[*byte as usize & 0xF] as char);
+    }
+    s
+}
+
 impl Timing {
     fn new() -> Timing {
         let sql = Self::init_sqlite().unwrap();
@@ -252,17 +267,6 @@ impl Timing {
                 tezedge_time,
             } => self.insert_commit(irmin_time, tezedge_time),
         }
-    }
-
-    pub fn hash_to_string(hash: &[u8]) -> String {
-        const HEXCHARS: &[u8] = b"0123456789abcdef";
-
-        let mut s = String::with_capacity(62);
-        for byte in hash {
-            s.push(HEXCHARS[*byte as usize >> 4] as char);
-            s.push(HEXCHARS[*byte as usize & 0xF] as char);
-        }
-        s
     }
 
     fn set_current_block(&mut self, block_hash: Option<BlockHash>) -> Result<(), SQLError> {
@@ -320,7 +324,7 @@ impl Timing {
         };
 
         let hash = hash.unwrap();
-        let hash_string = Self::hash_to_string(hash.as_ref());
+        let hash_string = hash_to_string(hash.as_ref());
 
         if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string)? {
             current.replace((id.to_string(), hash));
