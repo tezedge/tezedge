@@ -47,7 +47,7 @@ fn generage_primitive_encoding(ident: &syn::Ident) -> TokenStream {
 
 fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
     let name_str = encoding.name.to_string();
-    let fields_encoding = encoding.fields.iter().map(generate_field_encoding);
+    let fields_encoding = encoding.fields.iter().filter_map(generate_field_encoding);
     quote_spanned! { encoding.name.span()=>
         tezos_encoding::encoding::Encoding::Obj(#name_str, vec![
             #(#fields_encoding),*
@@ -55,10 +55,12 @@ fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
     }
 }
 
-fn generate_field_encoding<'a>(field: &FieldEncoding<'a>) -> TokenStream {
-    let name = field.name.to_string();
-    let encoding = generate_encoding(&field.encoding);
-    quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding))
+fn generate_field_encoding<'a>(field: &FieldEncoding<'a>) -> Option<TokenStream> {
+    field.encoding.as_ref().map(|encoding| {
+        let name = field.name.to_string();
+        let encoding = generate_encoding(&encoding);
+        quote_spanned!(field.name.span()=> tezos_encoding::encoding::Field::new(#name, #encoding))
+    })
 }
 
 fn generate_enum_encoding(encoding: &EnumEncoding) -> TokenStream {

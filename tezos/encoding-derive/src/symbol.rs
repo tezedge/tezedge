@@ -16,6 +16,10 @@ pub mod rust {
 pub const UINT_8: &str ="Uint8";
 pub const UINT_16: &str ="Uint16";
 
+/// Attribute name used to mark field/variant as ignored.
+pub const SKIP: Symbol = Symbol("skip");
+
+/// Attribute used to specify maximal size/lengh.
 pub const MAX: Symbol = Symbol("max");
 
 pub const ENCODING: Symbol = Symbol("encoding");

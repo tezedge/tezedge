@@ -49,19 +49,32 @@ fn make_struct_encoding<'a>(
 fn make_fields<'a>(
     fields: impl IntoIterator<Item = &'a syn::Field>,
 ) -> Result<Vec<FieldEncoding<'a>>> {
-    let mut res = Vec::new();
-    for field in fields {
-        res.push(make_field(field)?);
-    }
-    Ok(res)
+    fields.into_iter().map(make_field).collect()
+}
+
+fn skip_field(meta: &Vec<syn::Meta>) -> bool {
+    meta.iter().find(|meta| {
+        if let syn::Meta::Path(path) = meta {
+            path == symbol::SKIP
+        } else {
+            false
+        }
+    })
+    .is_some()
 }
 
 fn make_field<'a>(field: &'a syn::Field) -> Result<FieldEncoding<'a>> {
     let meta = &mut get_encoding_meta(&field.attrs)?;
+    let skip = skip_field(meta);
     let name = field.ident.as_ref().unwrap();
-    let encoding = make_type_encoding(&field.ty, meta)?;
-    let encoding = add_encoding_bounds(meta, encoding)?;
-    assert_empty_meta(meta)?;
+    let encoding = if skip {
+        None
+    } else {
+        let encoding = make_type_encoding(&field.ty, meta)?;
+        let encoding = add_encoding_bounds(meta, encoding)?;
+        assert_empty_meta(meta)?;
+        Some(encoding)
+    };
     Ok(FieldEncoding { name, encoding })
 }
 
@@ -123,15 +136,15 @@ fn make_type_path_encoding<'a>(
         }
     } else if segment.ident == symbol::rust::STRING {
         let string_meta = get_attribute(meta, &symbol::STRING)?;
-                let span = string_meta
-                    .as_ref()
-                    .map(Spanned::span)
-                    .unwrap_or_else(|| segment.ident.span());
-                let size = string_meta
-                    .as_ref()
-                    .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
-                    .transpose()?
-                    .flatten();
+        let span = string_meta
+            .as_ref()
+            .map(Spanned::span)
+            .unwrap_or_else(|| segment.ident.span());
+        let size = string_meta
+            .as_ref()
+            .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
+            .transpose()?
+            .flatten();
         Encoding::String(size, span)
     } else {
         if symbol::PRIMITIVE_MAPPING.contains_key(segment.ident.to_string().as_str()) {
@@ -163,15 +176,15 @@ fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result
     let mut default_id = 0;
     let mut tags = Vec::new();
     for variant in variants {
-        let tag = make_tag(variant, default_id)?;
+        let meta = &mut get_encoding_meta(&variant.attrs)?;
+        let tag = make_tag(variant, meta, default_id)?;
         default_id = default_id + 1;
         tags.push(tag);
     }
     Ok(tags)
 }
 
-fn make_tag(variant: &syn::Variant, default_id: u16) -> Result<Tag> {
-    let meta = &mut get_encoding_meta(&variant.attrs)?;
+fn make_tag<'a>(variant: &'a syn::Variant, meta: &mut Vec<syn::Meta>, default_id: u16) -> Result<Tag<'a>> {
     let id = get_attribute_value(meta, &symbol::TAG)?
         .map(|lit| {
             if let syn::Lit::Int(int_lit) = lit {

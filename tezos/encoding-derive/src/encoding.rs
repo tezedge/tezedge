@@ -16,7 +16,7 @@ pub struct StructEncoding<'a> {
 #[derive(Debug)]
 pub struct FieldEncoding<'a> {
     pub name: &'a syn::Ident,
-    pub encoding: Encoding<'a>,
+    pub encoding: Option<Encoding<'a>>,
 }
 
 #[derive(Debug)]

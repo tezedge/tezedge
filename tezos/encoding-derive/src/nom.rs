@@ -1,6 +1,6 @@
 use crate::encoding::*;
 use proc_macro2::{Span, TokenStream};
-use quote::quote_spanned;
+use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 
 pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
@@ -52,7 +52,7 @@ fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
     let field_nom_read = encoding
         .fields
         .iter()
-        .map(|field| generate_nom_read(&field.encoding));
+        .map(|field| field.encoding.as_ref().map(|encoding| generate_nom_read(&encoding)).unwrap_or_else(|| quote!(|input| Ok((input, Default::default())))));
     quote_spanned! {
         encoding.name.span()=>
         nom::combinator::map(
