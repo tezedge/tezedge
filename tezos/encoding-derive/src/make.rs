@@ -77,7 +77,8 @@ fn make_type_path_encoding<'a>(
     meta: &mut Vec<syn::Meta>,
 ) -> Result<Encoding<'a>> {
     let segment = path.segments.last().unwrap();
-    let encoding = if segment.ident == symbol::rust::VEC { // `Vec<something>`
+    let encoding = if segment.ident == symbol::rust::VEC {
+        // `Vec<something>`
         let element_encoding = match &segment.arguments {
             syn::PathArguments::AngleBracketed(args) => {
                 if args.args.len() != 1 {
@@ -99,17 +100,39 @@ fn make_type_path_encoding<'a>(
         match element_encoding {
             Encoding::Primitive(ident) if ident == symbol::rust::U8 => {
                 // `Vec<u8>` is encoded as bytes
-                let _ = get_attribute(meta, &symbol::BYTES)?;
-                Encoding::Bytes
+                let meta = get_attribute(meta, &symbol::BYTES)?;
+                let span = meta
+                    .as_ref()
+                    .map(Spanned::span)
+                    .unwrap_or_else(|| segment.span());
+                Encoding::Bytes(span)
             }
             _ => {
-                let size = get_attribute_value_parsed(meta, &symbol::LIST)?;
-                Encoding::List(size, Box::new(element_encoding))
+                let list_meta = get_attribute(meta, &symbol::LIST)?;
+                let span = list_meta
+                    .as_ref()
+                    .map(Spanned::span)
+                    .unwrap_or_else(|| segment.ident.span());
+                let size = list_meta
+                    .as_ref()
+                    .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
+                    .transpose()?
+                    .flatten();
+                Encoding::List(size, Box::new(element_encoding), span)
             }
         }
     } else if segment.ident == symbol::rust::STRING {
-        let size = get_attribute_value_parsed(meta, &symbol::STRING)?;
-        Encoding::String(size)
+        let string_meta = get_attribute(meta, &symbol::STRING)?;
+                let span = string_meta
+                    .as_ref()
+                    .map(Spanned::span)
+                    .unwrap_or_else(|| segment.ident.span());
+                let size = string_meta
+                    .as_ref()
+                    .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
+                    .transpose()?
+                    .flatten();
+        Encoding::String(size, span)
     } else {
         if symbol::PRIMITIVE_MAPPING.contains_key(segment.ident.to_string().as_str()) {
             Encoding::Primitive(&segment.ident)
@@ -129,7 +152,11 @@ fn make_enum_encoding<'a>(
     let tag_type = get_attribute_value_parsed(meta, &symbol::TAGS)?
         .unwrap_or_else(|| syn::Ident::new("u8", data.enum_token.span()));
     let tags = make_tags(&data.variants)?;
-    Ok(EnumEncoding { name, tag_type, tags })
+    Ok(EnumEncoding {
+        name,
+        tag_type,
+        tags,
+    })
 }
 
 fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result<Vec<Tag<'a>>> {
@@ -153,12 +180,7 @@ fn make_tag(variant: &syn::Variant, default_id: u16) -> Result<Tag> {
                 Err(error(lit, "Integer literal expected"))
             }
         })
-        .unwrap_or_else(|| {
-            Ok(syn::LitInt::new(
-                &default_id.to_string(),
-                variant.span(),
-            ))
-        })?;
+        .unwrap_or_else(|| Ok(syn::LitInt::new(&default_id.to_string(), variant.span())))?;
     let name = &variant.ident;
     let encoding = match &variant.fields {
         syn::Fields::Named(_) => {
@@ -185,24 +207,28 @@ fn add_encoding_bounds<'a>(
 ) -> Result<Encoding<'a>> {
     let mut encoding = encoding;
     while let Some(attr) = meta.pop() {
+        let span = attr.span();
         encoding = match attr {
             syn::Meta::Path(path) if path == symbol::DYNAMIC => {
-                Encoding::Dynamic(None, Box::new(encoding))
+                Encoding::Dynamic(None, Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. }) if path == symbol::SIZED => {
-                Encoding::Sized(parse_value(&lit)?, Box::new(encoding))
+                Encoding::Sized(parse_value(&lit)?, Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
                 if path == symbol::BOUNDED =>
             {
-                Encoding::Bounded(parse_value(&lit)?, Box::new(encoding))
+                Encoding::Bounded(parse_value(&lit)?, Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
                 if path == symbol::DYNAMIC =>
             {
-                Encoding::Dynamic(Some(parse_value(&lit)?), Box::new(encoding))
+                Encoding::Dynamic(Some(parse_value(&lit)?), Box::new(encoding), span)
             }
-            _ => { meta.push(attr); return Ok(encoding); }
+            _ => {
+                meta.push(attr);
+                return Ok(encoding);
+            }
         };
     }
     Ok(encoding)
@@ -216,15 +242,34 @@ fn assert_empty_meta(meta: &Vec<syn::Meta>) -> Result<()> {
     }
 }
 
-fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<Option<()>> {
-    match meta.pop() {
-        Some(syn::Meta::Path(path)) if path == *name => Ok(Some(())),
-        Some(m) => {
-            meta.push(m);
-            Ok(None)
-        }
+fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<Option<syn::Meta>> {
+    match meta.last() {
+        Some(syn::Meta::Path(path)) if path == *name => Ok(meta.pop()),
+        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => Ok(meta.pop()),
+        Some(syn::Meta::List(list)) if list.path == *name => Ok(meta.pop()),
         _ => Ok(None),
     }
+}
+
+fn get_value<'a>(
+    meta: &'a syn::Meta,
+    _attr: &symbol::Symbol,
+    is_default: bool,
+) -> Result<Option<&'a syn::Lit>> {
+    match meta {
+        syn::Meta::Path(_) => Ok(None),
+        syn::Meta::NameValue(name_value) if is_default => Ok(Some(&name_value.lit)),
+        _ => Ok(None),
+    }
+}
+
+fn get_value_parsed<T: syn::parse::Parse>(
+    meta: &syn::Meta,
+    name: &symbol::Symbol,
+    is_default: bool,
+) -> Result<Option<T>> {
+    let lit = get_value(meta, name, is_default)?;
+    lit.as_ref().map(|lit| parse_value(lit)).transpose()
 }
 
 fn get_attribute_value(
@@ -248,9 +293,7 @@ fn get_attribute_value_parsed<T: syn::parse::Parse>(
     name: &symbol::Symbol,
 ) -> Result<Option<T>> {
     let lit = get_attribute_value(meta, name)?;
-    lit.as_ref()
-        .map(|lit| parse_value(lit))
-        .map_or_else(|| Ok(None), |val| val.map(Some))
+    lit.as_ref().map(|lit| parse_value(lit)).transpose()
 }
 
 fn parse_value<T: syn::parse::Parse>(lit: &syn::Lit) -> Result<T> {

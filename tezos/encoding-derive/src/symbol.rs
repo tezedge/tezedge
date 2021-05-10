@@ -16,6 +16,8 @@ pub mod rust {
 pub const UINT_8: &str ="Uint8";
 pub const UINT_16: &str ="Uint16";
 
+pub const MAX: Symbol = Symbol("max");
+
 pub const ENCODING: Symbol = Symbol("encoding");
 pub const BYTES: Symbol = Symbol("bytes");
 pub const STRING: Symbol = Symbol("string");

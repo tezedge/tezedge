@@ -1,3 +1,5 @@
+use proc_macro2::Span;
+
 
 #[derive(Debug)]
 pub struct DataWithEncoding<'a> {
@@ -35,13 +37,13 @@ pub struct Tag<'a> {
 pub enum Encoding<'a> {
     Unit,
     Primitive(&'a syn::Ident),
-    Bytes,
+    Bytes(Span),
     Path(&'a syn::Path),
     Struct(StructEncoding<'a>),
     Enum(EnumEncoding<'a>),
-    String(Option<syn::Expr>),
-    List(Option<syn::Expr>, Box<Encoding<'a>>),
-    Sized(syn::Expr, Box<Encoding<'a>>),
-    Bounded(syn::Expr, Box<Encoding<'a>>),
-    Dynamic(Option<syn::Expr>, Box<Encoding<'a>>),
+    String(Option<syn::Expr>, Span),
+    List(Option<syn::Expr>, Box<Encoding<'a>>, Span),
+    Sized(syn::Expr, Box<Encoding<'a>>, Span),
+    Bounded(syn::Expr, Box<Encoding<'a>>, Span),
+    Dynamic(Option<syn::Expr>, Box<Encoding<'a>>, Span),
 }

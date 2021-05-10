@@ -1,5 +1,6 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 use crate::encoding::*;
 
 pub fn generate_encoding_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
@@ -27,15 +28,15 @@ fn generate_encoding<'a>(encoding: &Encoding<'a>) -> TokenStream {
     match encoding {
         Encoding::Unit => quote!(tezos_encoding::encoding::Encoding::Unit),
         Encoding::Primitive(primitive) => generage_primitive_encoding(primitive),
-        Encoding::Bytes => quote!(tezos_encoding::encoding::Encoding::Bytes),
-        Encoding::Path(path) => quote!(#path::encoding().clone()),
+        Encoding::Bytes(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Bytes),
+        Encoding::Path(path) => quote_spanned!(path.span()=> #path::encoding().clone()),
         Encoding::Struct(encoding) => generate_struct_encoding(encoding),
         Encoding::Enum(encoding) => generate_enum_encoding(encoding),
-        Encoding::String(size) => generate_string_encoding(size),
-        Encoding::List(size, encoding) => generate_list_encoding(size, encoding),
-        Encoding::Sized(size, encoding) => generate_sized_encoding(size, encoding),
-        Encoding::Bounded(size, encoding) => generate_bounded_encoding(size, encoding),
-        Encoding::Dynamic(size, encoding) => generate_dynamic_encoding(size, encoding),
+        Encoding::String(size, span) => generate_string_encoding(size, *span),
+        Encoding::List(size, encoding, span) => generate_list_encoding(size, encoding, *span),
+        Encoding::Sized(size, encoding, span) => generate_sized_encoding(size, encoding, *span),
+        Encoding::Bounded(size, encoding, span) => generate_bounded_encoding(size, encoding, *span),
+        Encoding::Dynamic(size, encoding, span) => generate_dynamic_encoding(size, encoding, *span),
     }
 }
 
@@ -80,26 +81,30 @@ fn generate_tag_encoding<'a>(tag: &Tag<'a>) -> TokenStream {
     quote_spanned!(tag.name.span()=> tezos_encoding::encoding::Tag::new(#id, #name, #encoding))
 }
 
-fn generate_string_encoding(size: &Option<syn::Expr>) -> TokenStream {
-    size.as_ref().map_or_else(|| quote!(tezos_encoding::encoding::Encoding::String), |size| quote!(tezos_encoding::encoding::Encoding::BoundedString(#size)))
+fn generate_string_encoding(size: &Option<syn::Expr>, span: Span) -> TokenStream {
+    size.as_ref().map_or_else(
+        || quote_spanned!(span=> tezos_encoding::encoding::Encoding::String),
+        |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedString(#size)))
 }
 
-fn generate_list_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>) -> TokenStream {
+fn generate_list_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
-    size.as_ref().map_or_else(|| quote!(tezos_encoding::encoding::Encoding::List(Box::new(#encoding))), |size| quote!(tezos_encoding::encoding::Encoding::BoundedList(#size, Box::new(#encoding))))
+    size.as_ref().map_or_else(|| quote_spanned!(span=> tezos_encoding::encoding::Encoding::List(Box::new(#encoding))), |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedList(#size, Box::new(#encoding))))
 }
 
-fn generate_sized_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>) -> TokenStream {
+fn generate_sized_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
-    quote!(tezos_encoding::encoding::Encoding::Sized(#size, Box::new(#encoding)))
+    quote_spanned!(span=> tezos_encoding::encoding::Encoding::Sized(#size, Box::new(#encoding)))
 }
 
-fn generate_bounded_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>) -> TokenStream {
+fn generate_bounded_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
-    quote!(tezos_encoding::encoding::Encoding::Bounded(#size, Box::new(#encoding)))
+    quote_spanned!(span=> tezos_encoding::encoding::Encoding::Bounded(#size, Box::new(#encoding)))
 }
 
-fn generate_dynamic_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>) -> TokenStream {
+fn generate_dynamic_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
-    size.as_ref().map_or_else(|| quote!(tezos_encoding::encoding::Encoding::Dynamic(Box::new(#encoding))), |size| quote!(tezos_encoding::encoding::Encoding::BoundedDynamic(#size, Box::new(#encoding))))
+    size.as_ref().map_or_else(
+        || quote_spanned!(span=> tezos_encoding::encoding::Encoding::Dynamic(Box::new(#encoding))),
+        |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedDynamic(#size, Box::new(#encoding))))
 }
