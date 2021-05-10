@@ -36,3 +36,57 @@ CREATE TABLE IF NOT EXISTS actions (
   FOREIGN KEY(operation_id) REFERENCES operations(id),
   FOREIGN KEY(context_id) REFERENCES contexts(id)
 );
+
+CREATE TABLE IF NOT EXISTS global_range_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  root TEXT NOT NULL,
+  action_name TEXT NOT NULL,
+
+  one_to_ten_us_count REAL DEFAULT 0.0,
+  one_to_ten_us_mean_time REAL DEFAULT 0.0,
+  one_to_ten_us_max_time REAL DEFAULT 0.0,
+  one_to_ten_us_total_time REAL DEFAULT 0.0,
+
+  ten_to_one_hundred_us_count REAL DEFAULT 0.0,
+  ten_to_one_hundred_us_mean_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_us_max_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_us_total_time REAL DEFAULT 0.0,
+
+  one_hundred_us_to_one_ms_count REAL DEFAULT 0.0,
+  one_hundred_us_to_one_ms_mean_time REAL DEFAULT 0.0,
+  one_hundred_us_to_one_ms_max_time REAL DEFAULT 0.0,
+  one_hundred_us_to_one_ms_total_time REAL DEFAULT 0.0,
+
+  one_to_ten_ms_count REAL DEFAULT 0.0,
+  one_to_ten_ms_mean_time REAL DEFAULT 0.0,
+  one_to_ten_ms_max_time REAL DEFAULT 0.0,
+  one_to_ten_ms_total_time REAL DEFAULT 0.0,
+
+  ten_to_one_hundred_ms_count REAL DEFAULT 0.0,
+  ten_to_one_hundred_ms_mean_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_ms_max_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_ms_total_time REAL DEFAULT 0.0,
+
+  one_hundred_ms_to_one_s_count REAL DEFAULT 0.0,
+  one_hundred_ms_to_one_s_mean_time REAL DEFAULT 0.0,
+  one_hundred_ms_to_one_s_max_time REAL DEFAULT 0.0,
+  one_hundred_ms_to_one_s_total_time REAL DEFAULT 0.0,
+
+  one_to_ten_s_count REAL DEFAULT 0.0,
+  one_to_ten_s_mean_time REAL DEFAULT 0.0,
+  one_to_ten_s_max_time REAL DEFAULT 0.0,
+  one_to_ten_s_total_time REAL DEFAULT 0.0,
+
+  ten_to_one_hundred_s_count REAL DEFAULT 0.0,
+  ten_to_one_hundred_s_mean_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_s_max_time REAL DEFAULT 0.0,
+  ten_to_one_hundred_s_total_time REAL DEFAULT 0.0,
+
+  one_hundred_s_count REAL DEFAULT 0.0,
+  one_hundred_s_mean_time REAL DEFAULT 0.0,
+  one_hundred_s_max_time REAL DEFAULT 0.0,
+  one_hundred_s_total_time REAL DEFAULT 0.0,
+
+  UNIQUE(root, action_name)
+);

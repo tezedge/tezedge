@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashMap;
+
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
@@ -101,6 +103,70 @@ enum TimingMessage {
 // Id of the hash in the database
 type HashId = String;
 
+#[derive(Debug, Default)]
+struct DetailedTime {
+    count: usize,
+    mean_time: f64,
+    max_time: f64,
+    total_time: f64,
+}
+
+impl DetailedTime {
+    fn compute_mean(&mut self) {
+        let mean = self.total_time / self.count as f64;
+        self.mean_time = mean.max(0.0);
+    }
+}
+
+#[derive(Debug, Default)]
+struct RangeStats {
+    one_to_ten_us: DetailedTime,
+    ten_to_one_hundred_us: DetailedTime,
+    one_hundred_us_to_one_ms: DetailedTime,
+    one_to_ten_ms: DetailedTime,
+    ten_to_one_hundred_ms: DetailedTime,
+    one_hundred_ms_to_one_s: DetailedTime,
+    one_to_ten_s: DetailedTime,
+    ten_to_one_hundred_s: DetailedTime,
+    one_hundred_s: DetailedTime,
+}
+
+impl RangeStats {
+    fn compute_mean(&mut self) {
+        self.one_to_ten_us.compute_mean();
+        self.ten_to_one_hundred_us.compute_mean();
+        self.one_hundred_us_to_one_ms.compute_mean();
+        self.one_to_ten_ms.compute_mean();
+        self.ten_to_one_hundred_ms.compute_mean();
+        self.one_hundred_ms_to_one_s.compute_mean();
+        self.one_to_ten_s.compute_mean();
+        self.ten_to_one_hundred_s.compute_mean();
+        self.one_hundred_s.compute_mean();
+    }
+}
+
+#[derive(Debug, Default)]
+struct ActionStatsWithRange {
+    root: String,
+    mem: RangeStats,
+    find: RangeStats,
+    find_tree: RangeStats,
+    add: RangeStats,
+    add_tree: RangeStats,
+    remove: RangeStats,
+}
+
+impl ActionStatsWithRange {
+    fn compute_mean(&mut self) {
+        self.mem.compute_mean();
+        self.find.compute_mean();
+        self.find_tree.compute_mean();
+        self.add.compute_mean();
+        self.add_tree.compute_mean();
+        self.remove.compute_mean();
+    }
+}
+
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
@@ -109,6 +175,7 @@ struct Timing {
     nactions: usize,
     /// Checkout time for the current block
     checkout_time: Option<(f64, f64)>,
+    global_stats: HashMap<String, ActionStatsWithRange>,
     sql: Connection,
 }
 
@@ -162,6 +229,7 @@ impl Timing {
             current_operation: None,
             current_context: None,
             nactions: 0,
+            global_stats: HashMap::default(),
             sql,
             checkout_time: None,
         }
@@ -354,6 +422,49 @@ impl Timing {
             .checked_add(1)
             .expect("actions count overflowed");
 
+        let action_name = action.name.as_str();
+        let root = match root {
+            Some(root) => root,
+            None => return Ok(()),
+        };
+        let tezedge_time: f64 = action.tezedge_time;
+
+        let entry = match self.global_stats.get_mut(root) {
+            Some(entry) => entry,
+            None => {
+                let mut stats = ActionStatsWithRange::default();
+                stats.root = root.to_string();
+                self.global_stats.insert(root.to_string(), stats);
+                self.global_stats.get_mut(root).unwrap()
+            }
+        };
+
+        let action_stats = match action_name {
+            "mem" => &mut entry.mem,
+            "find" => &mut entry.find,
+            "find_tree" => &mut entry.find_tree,
+            "add" => &mut entry.add,
+            "add_tree" => &mut entry.add_tree,
+            "remove" => &mut entry.remove,
+            _ => return Ok(()),
+        };
+
+        let time = match tezedge_time {
+            t if t < 0.00001 => &mut action_stats.one_to_ten_us,
+            t if t < 0.0001 => &mut action_stats.ten_to_one_hundred_us,
+            t if t < 0.001 => &mut action_stats.one_hundred_us_to_one_ms,
+            t if t < 0.01 => &mut action_stats.one_to_ten_ms,
+            t if t < 0.1 => &mut action_stats.ten_to_one_hundred_ms,
+            t if t < 1.0 => &mut action_stats.one_hundred_ms_to_one_s,
+            t if t < 10.0 => &mut action_stats.one_to_ten_s,
+            t if t < 100.0 => &mut action_stats.ten_to_one_hundred_s,
+            _ => &mut action_stats.one_hundred_s,
+        };
+
+        time.count = time.count.saturating_add(1);
+        time.total_time += tezedge_time;
+        time.max_time = time.max_time.max(tezedge_time);
+
         Ok(())
     }
 
@@ -388,12 +499,148 @@ impl Timing {
             },
         )?;
 
+        for action in self.global_stats.values_mut() {
+            action.compute_mean();
+        }
+
+        for (root, action_stats) in self.global_stats.iter() {
+            let root = root.as_str();
+
+            self.insert_action_stats(root, "mem", &action_stats.mem)?;
+            self.insert_action_stats(root, "find", &action_stats.find)?;
+            self.insert_action_stats(root, "find_tree", &action_stats.find_tree)?;
+            self.insert_action_stats(root, "add", &action_stats.add)?;
+            self.insert_action_stats(root, "add_tree", &action_stats.add_tree)?;
+            self.insert_action_stats(root, "remove", &action_stats.remove)?;
+        }
+
+        Ok(())
+    }
+
+    fn insert_action_stats(
+        &self,
+        root: &str,
+        action_name: &str,
+        range_stats: &RangeStats,
+    ) -> Result<(), SQLError> {
+        let mut query = self
+            .sql
+            .prepare_cached(
+                "
+        INSERT OR IGNORE INTO global_range_stats
+          (root, action_name)
+        VALUES
+          (:root, :action_name)
+            ",
+            )
+            .unwrap();
+
+        query
+            .execute(named_params! {
+                ":root": root,
+                ":action_name": action_name,
+            })
+            .unwrap();
+
+        let mut query = self
+            .sql
+            .prepare_cached(
+                "
+        UPDATE
+          global_range_stats
+        SET
+          one_to_ten_us_count = :one_to_ten_us_count,
+          one_to_ten_us_mean_time = :one_to_ten_us_mean_time,
+          one_to_ten_us_max_time = :one_to_ten_us_max_time,
+          one_to_ten_us_total_time = :one_to_ten_us_total_time,
+          ten_to_one_hundred_us_count = :ten_to_one_hundred_us_count,
+          ten_to_one_hundred_us_mean_time = :ten_to_one_hundred_us_mean_time,
+          ten_to_one_hundred_us_max_time = :ten_to_one_hundred_us_max_time,
+          ten_to_one_hundred_us_total_time = :ten_to_one_hundred_us_total_time,
+          one_hundred_us_to_one_ms_count = :one_hundred_us_to_one_ms_count,
+          one_hundred_us_to_one_ms_mean_time = :one_hundred_us_to_one_ms_mean_time,
+          one_hundred_us_to_one_ms_max_time = :one_hundred_us_to_one_ms_max_time,
+          one_hundred_us_to_one_ms_total_time = :one_hundred_us_to_one_ms_total_time,
+          one_to_ten_ms_count = :one_to_ten_ms_count,
+          one_to_ten_ms_mean_time = :one_to_ten_ms_mean_time,
+          one_to_ten_ms_max_time = :one_to_ten_ms_max_time,
+          one_to_ten_ms_total_time = :one_to_ten_ms_total_time,
+          ten_to_one_hundred_ms_count = :ten_to_one_hundred_ms_count,
+          ten_to_one_hundred_ms_mean_time = :ten_to_one_hundred_ms_mean_time,
+          ten_to_one_hundred_ms_max_time = :ten_to_one_hundred_ms_max_time,
+          ten_to_one_hundred_ms_total_time = :ten_to_one_hundred_ms_total_time,
+          one_hundred_ms_to_one_s_count = :one_hundred_ms_to_one_s_count,
+          one_hundred_ms_to_one_s_mean_time = :one_hundred_ms_to_one_s_mean_time,
+          one_hundred_ms_to_one_s_max_time = :one_hundred_ms_to_one_s_max_time,
+          one_hundred_ms_to_one_s_total_time = :one_hundred_ms_to_one_s_total_time,
+          one_to_ten_s_count = :one_to_ten_s_count,
+          one_to_ten_s_mean_time = :one_to_ten_s_mean_time,
+          one_to_ten_s_max_time = :one_to_ten_s_max_time,
+          one_to_ten_s_total_time = :one_to_ten_s_total_time,
+          ten_to_one_hundred_s_count = :ten_to_one_hundred_s_count,
+          ten_to_one_hundred_s_mean_time = :ten_to_one_hundred_s_mean_time,
+          ten_to_one_hundred_s_max_time = :ten_to_one_hundred_s_max_time,
+          ten_to_one_hundred_s_total_time = :ten_to_one_hundred_s_total_time,
+          one_hundred_s_count = :one_hundred_s_count,
+          one_hundred_s_mean_time = :one_hundred_s_mean_time,
+          one_hundred_s_max_time = :one_hundred_s_max_time,
+          one_hundred_s_total_time = :one_hundred_s_total_time
+        WHERE
+          root = :root AND action_name = :action_name;
+        ",
+            )
+            .unwrap();
+
+        query.execute(
+            named_params! {
+                ":root": root,
+                ":action_name": action_name,
+                ":one_to_ten_us_count": &range_stats.one_to_ten_us.count,
+                ":one_to_ten_us_mean_time": &range_stats.one_to_ten_us.mean_time,
+                ":one_to_ten_us_max_time": &range_stats.one_to_ten_us.max_time,
+                ":one_to_ten_us_total_time": &range_stats.one_to_ten_us.total_time,
+                ":ten_to_one_hundred_us_count": &range_stats.ten_to_one_hundred_us.count,
+                ":ten_to_one_hundred_us_mean_time": &range_stats.ten_to_one_hundred_us.mean_time,
+                ":ten_to_one_hundred_us_max_time": &range_stats.ten_to_one_hundred_us.max_time,
+                ":ten_to_one_hundred_us_total_time": &range_stats.ten_to_one_hundred_us.total_time,
+                ":one_hundred_us_to_one_ms_count": &range_stats.one_hundred_us_to_one_ms.count,
+                ":one_hundred_us_to_one_ms_mean_time": &range_stats.one_hundred_us_to_one_ms.mean_time,
+                ":one_hundred_us_to_one_ms_max_time": &range_stats.one_hundred_us_to_one_ms.max_time,
+                ":one_hundred_us_to_one_ms_total_time": &range_stats.one_hundred_us_to_one_ms.total_time,
+                ":one_to_ten_ms_count": &range_stats.one_to_ten_ms.count,
+                ":one_to_ten_ms_mean_time": &range_stats.one_to_ten_ms.mean_time,
+                ":one_to_ten_ms_max_time": &range_stats.one_to_ten_ms.max_time,
+                ":one_to_ten_ms_total_time": &range_stats.one_to_ten_ms.total_time,
+                ":ten_to_one_hundred_ms_count": &range_stats.ten_to_one_hundred_ms.count,
+                ":ten_to_one_hundred_ms_mean_time": &range_stats.ten_to_one_hundred_ms.mean_time,
+                ":ten_to_one_hundred_ms_max_time": &range_stats.ten_to_one_hundred_ms.max_time,
+                ":ten_to_one_hundred_ms_total_time": &range_stats.ten_to_one_hundred_ms.total_time,
+                ":one_hundred_ms_to_one_s_count": &range_stats.one_hundred_ms_to_one_s.count,
+                ":one_hundred_ms_to_one_s_mean_time": &range_stats.one_hundred_ms_to_one_s.mean_time,
+                ":one_hundred_ms_to_one_s_max_time": &range_stats.one_hundred_ms_to_one_s.max_time,
+                ":one_hundred_ms_to_one_s_total_time": &range_stats.one_hundred_ms_to_one_s.total_time,
+                ":one_to_ten_s_count": &range_stats.one_to_ten_s.count,
+                ":one_to_ten_s_mean_time": &range_stats.one_to_ten_s.mean_time,
+                ":one_to_ten_s_max_time": &range_stats.one_to_ten_s.max_time,
+                ":one_to_ten_s_total_time": &range_stats.one_to_ten_s.total_time,
+                ":ten_to_one_hundred_s_count": &range_stats.ten_to_one_hundred_s.count,
+                ":ten_to_one_hundred_s_mean_time": &range_stats.ten_to_one_hundred_s.mean_time,
+                ":ten_to_one_hundred_s_max_time": &range_stats.ten_to_one_hundred_s.max_time,
+                ":ten_to_one_hundred_s_total_time": &range_stats.ten_to_one_hundred_s.total_time,
+                ":one_hundred_s_count": &range_stats.one_hundred_s.count,
+                ":one_hundred_s_mean_time": &range_stats.one_hundred_s.mean_time,
+                ":one_hundred_s_max_time": &range_stats.one_hundred_s.max_time,
+                ":one_hundred_s_total_time": &range_stats.one_hundred_s.total_time,
+            },
+        ).unwrap();
+
         Ok(())
     }
 
     fn init_sqlite() -> Result<Connection, SQLError> {
-        let connection = Connection::open(DB_PATH)?;
+        std::fs::remove_file(DB_PATH).ok();
 
+        let connection = Connection::open(DB_PATH)?;
         let schema = include_str!("schema_stats.sql");
 
         let mut batch = Batch::new(&connection, schema);
