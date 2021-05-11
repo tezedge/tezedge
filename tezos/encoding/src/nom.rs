@@ -22,13 +22,35 @@ pub trait NomReader: Sized {
     fn from_bytes(bytes: &[u8]) -> NomResult<Self>;
 }
 
-impl<T: HashTrait> NomReader for T {
-    fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
-        map(take(Self::hash_size()), |bytes| {
-            Self::try_from_bytes(bytes).unwrap()
-        })(bytes)
-    }
+macro_rules! hash_nom_reader {
+	($hash_name:ident) => {
+        impl NomReader for crypto::hash::$hash_name {
+            fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
+                map(take(Self::hash_size()), |bytes| {
+                    Self::try_from_bytes(bytes).unwrap()
+                })(bytes)
+            }
+        }
+	};
 }
+
+hash_nom_reader!(ChainId);
+hash_nom_reader!(BlockHash);
+hash_nom_reader!(BlockMetadataHash);
+hash_nom_reader!(OperationHash);
+hash_nom_reader!(OperationListListHash);
+hash_nom_reader!(OperationMetadataHash);
+hash_nom_reader!(OperationMetadataListListHash);
+hash_nom_reader!(ContextHash);
+hash_nom_reader!(ProtocolHash);
+hash_nom_reader!(ContractKt1Hash);
+hash_nom_reader!(ContractTz1Hash);
+hash_nom_reader!(ContractTz2Hash);
+hash_nom_reader!(ContractTz3Hash);
+hash_nom_reader!(CryptoboxPublicKeyHash);
+hash_nom_reader!(PublicKeyEd25519);
+hash_nom_reader!(PublicKeySecp256k1);
+hash_nom_reader!(PublicKeyP256);
 
 /// Reads a boolean value.
 #[inline]
