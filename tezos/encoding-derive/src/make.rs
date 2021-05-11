@@ -231,11 +231,19 @@ fn add_encoding_bounds<'a>(
     while let Some(attr) = meta.pop() {
         let span = attr.span();
         encoding = match attr {
+            syn::Meta::Path(path) if path == symbol::LIST => {
+                Encoding::List(None, Box::new(encoding), span)
+            }
             syn::Meta::Path(path) if path == symbol::DYNAMIC => {
                 Encoding::Dynamic(None, Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. }) if path == symbol::SIZED => {
                 Encoding::Sized(parse_value(&lit)?, Box::new(encoding), span)
+            }
+            syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
+                if path == symbol::LIST =>
+            {
+                Encoding::List(Some(parse_value(&lit)?), Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
                 if path == symbol::BOUNDED =>
