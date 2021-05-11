@@ -36,11 +36,17 @@ fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
 }
 
 lazy_static::lazy_static! {
-    static ref PRIMITIVE_NUMBERS_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
+    static ref PRIMITIVE_BYTES_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
         use crate::encoding::PrimitiveEncoding::*;
         vec![
             (Int8, "i8"),
             (Uint8, "u8"),
+        ]
+    };
+
+    static ref PRIMITIVE_NUMBERS_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
+        use crate::encoding::PrimitiveEncoding::*;
+        vec![
             (Int16, "i16"),
             (Uint16, "u16"),
             (Int31, "i32"),
@@ -52,6 +58,12 @@ lazy_static::lazy_static! {
     };
 }
 
+fn get_primitive_byte_mapping(kind: PrimitiveEncoding) -> Option<&'static str> {
+    PRIMITIVE_BYTES_MAPPING
+        .iter()
+        .find_map(|(k, s)| if kind == *k { Some(*s) } else { None })
+}
+
 fn get_primitive_number_mapping(kind: PrimitiveEncoding) -> Option<&'static str> {
     PRIMITIVE_NUMBERS_MAPPING
         .iter()
@@ -61,8 +73,9 @@ fn get_primitive_number_mapping(kind: PrimitiveEncoding) -> Option<&'static str>
 fn generage_primitive_nom_read(kind: PrimitiveEncoding, span: Span) -> TokenStream {
     match kind {
         PrimitiveEncoding::Int8
-        | PrimitiveEncoding::Uint8
-        | PrimitiveEncoding::Int16
+        | PrimitiveEncoding::Uint8 =>
+            generate_byte_nom_read(get_primitive_byte_mapping(kind).unwrap(), span),
+        PrimitiveEncoding::Int16
         | PrimitiveEncoding::Uint16
         | PrimitiveEncoding::Int31
         | PrimitiveEncoding::Int32
@@ -73,6 +86,11 @@ fn generage_primitive_nom_read(kind: PrimitiveEncoding, span: Span) -> TokenStre
         }
         PrimitiveEncoding::Bool => quote_spanned!(span=> tezos_encoding::nom::boolean),
     }
+}
+
+fn generate_byte_nom_read(num: &str, span: Span) -> TokenStream {
+    let ty = syn::Ident::new(num, span);
+    quote_spanned!(span=> nom::number::complete::#ty)
 }
 
 fn generate_number_nom_read(num: &str, span: Span) -> TokenStream {
