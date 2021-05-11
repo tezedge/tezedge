@@ -14,13 +14,15 @@ use nom::{
 };
 pub use tezos_encoding_derive::NomReader;
 
+pub type NomResult<'a, T> = nom::IResult<&'a [u8], T>;
+
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self>;
+    fn from_bytes(bytes: &[u8]) -> NomResult<Self>;
 }
 
 impl<T: HashTrait> NomReader for T {
-    fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
+    fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
         map(take(Self::hash_size()), |bytes| Self::try_from_bytes(bytes).unwrap())(bytes)
     }
 }

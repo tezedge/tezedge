@@ -10,7 +10,7 @@ pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStrea
         data.name.span()=>
         #[allow(unused_parens)]
         impl tezos_encoding::nom::NomReader for #name {
-            fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
+            fn from_bytes(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
                 #nom_read(bytes)
             }
         }
