@@ -20,9 +20,11 @@ pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStrea
 fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
     match encoding {
         Encoding::Unit => unreachable!(),
-        Encoding::Primitive(primitive) => generage_primitive_nom_read(primitive),
+        Encoding::Primitive(primitive, span) => generage_primitive_nom_read(*primitive, *span),
         Encoding::Bytes(span) => generate_bytes_nom_read(*span),
-        Encoding::Path(path) => quote_spanned!(path.span()=> <#path as tezos_encoding::nom::NomReader>::from_bytes),
+        Encoding::Path(path) => {
+            quote_spanned!(path.span()=> <#path as tezos_encoding::nom::NomReader>::from_bytes)
+        }
         Encoding::Struct(encoding) => generate_struct_nom_read(encoding),
         Encoding::Enum(encoding) => generate_enum_nom_read(encoding),
         Encoding::String(size, span) => generate_string_nom_read(size, *span),
@@ -33,12 +35,49 @@ fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
     }
 }
 
-fn generage_primitive_nom_read(ident: &syn::Ident) -> TokenStream {
-    generate_number_nom_read(ident)
+lazy_static::lazy_static! {
+    static ref PRIMITIVE_NUMBERS_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
+        use crate::encoding::PrimitiveEncoding::*;
+        vec![
+            (Int8, "i8"),
+            (Uint8, "u8"),
+            (Int16, "i16"),
+            (Uint16, "u16"),
+            (Int31, "i32"),
+            (Int32, "i32"),
+            (Uint32, "u32"),
+            (Float, "f64"),
+            (Timestamp, "u64"),
+        ]
+    };
 }
 
-fn generate_number_nom_read(ty: &syn::Ident) -> TokenStream {
-    quote_spanned!(ty.span()=> nom::number::complete::#ty(nom::number::Endianness::Big))
+fn get_primitive_number_mapping(kind: PrimitiveEncoding) -> Option<&'static str> {
+    PRIMITIVE_NUMBERS_MAPPING
+        .iter()
+        .find_map(|(k, s)| if kind == *k { Some(*s) } else { None })
+}
+
+fn generage_primitive_nom_read(kind: PrimitiveEncoding, span: Span) -> TokenStream {
+    match kind {
+        PrimitiveEncoding::Int8
+        | PrimitiveEncoding::Uint8
+        | PrimitiveEncoding::Int16
+        | PrimitiveEncoding::Uint16
+        | PrimitiveEncoding::Int31
+        | PrimitiveEncoding::Int32
+        | PrimitiveEncoding::Uint32
+        | PrimitiveEncoding::Float
+        | PrimitiveEncoding::Timestamp => {
+            generate_number_nom_read(get_primitive_number_mapping(kind).unwrap(), span)
+        }
+        PrimitiveEncoding::Bool => quote_spanned!(span=> tezos_encoding::nom::boolean),
+    }
+}
+
+fn generate_number_nom_read(num: &str, span: Span) -> TokenStream {
+    let ty = syn::Ident::new(num, span);
+    quote_spanned!(span=> nom::number::complete::#ty(nom::number::Endianness::Big))
 }
 
 fn generate_bytes_nom_read(span: Span) -> TokenStream {
@@ -49,10 +88,13 @@ fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
     let field1 = encoding.fields.iter().map(|field| field.name);
     let field2 = field1.clone();
-    let field_nom_read = encoding
-        .fields
-        .iter()
-        .map(|field| field.encoding.as_ref().map(|encoding| generate_nom_read(&encoding)).unwrap_or_else(|| quote!(|input| Ok((input, Default::default())))));
+    let field_nom_read = encoding.fields.iter().map(|field| {
+        field
+            .encoding
+            .as_ref()
+            .map(|encoding| generate_nom_read(&encoding))
+            .unwrap_or_else(|| quote!(|input| Ok((input, Default::default()))))
+    });
     quote_spanned! {
         encoding.name.span()=>
         nom::combinator::map(
@@ -86,7 +128,9 @@ fn generate_tag_nom_read<'a>(
     let id = &tag.id;
     let tag_name = tag.name;
     let nom_read = match &tag.encoding {
-        Encoding::Unit => quote_spanned!(tag_name.span()=> |bytes| Ok((bytes, #enum_name::#tag_name))),
+        Encoding::Unit => {
+            quote_spanned!(tag_name.span()=> |bytes| Ok((bytes, #enum_name::#tag_name)))
+        }
         encoding => {
             let nom_read = generate_nom_read(&encoding);
             quote_spanned!(tag_name.span()=> nom::combinator::map(#nom_read, #enum_name::#tag_name))

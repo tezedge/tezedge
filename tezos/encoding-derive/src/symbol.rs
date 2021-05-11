@@ -7,14 +7,25 @@ pub struct Symbol(&'static str);
 pub mod rust {
     use super::*;
 
-    pub const STRING: Symbol = Symbol("String");
+    pub const I8: Symbol = Symbol("i8");
     pub const U8: Symbol = Symbol("u8");
+    pub const I16: Symbol = Symbol("i16");
     pub const U16: Symbol = Symbol("u16");
+    pub const I32: Symbol = Symbol("i32");
+    pub const U32: Symbol = Symbol("u32");
+    pub const F64: Symbol = Symbol("f64");
+    pub const BOOL: Symbol = Symbol("bool");
+
+    pub const STRING: Symbol = Symbol("String");
+
     pub const VEC: Symbol = Symbol("Vec");
 }
 
-pub const UINT_8: &str ="Uint8";
-pub const UINT_16: &str ="Uint16";
+/// Built-in primitive encoding to use.
+pub const BUILTIN: Symbol = Symbol("builtin");
+
+/// Kind of built-in primitive encoding to use.
+pub const KIND: Symbol = Symbol("kind");
 
 /// Attribute name used to mark field/variant as ignored.
 pub const SKIP: Symbol = Symbol("skip");
@@ -33,15 +44,6 @@ pub const DYNAMIC: Symbol = Symbol("dynamic");
 
 pub const TAGS: Symbol = Symbol("tags");
 pub const TAG: Symbol = Symbol("tag");
-
-lazy_static::lazy_static! {
-    pub static ref PRIMITIVE_MAPPING: std::collections::HashMap<Symbol, &'static str> = {
-        use crate::symbol::rust::*;
-        use crate::symbol::*;
-        [(U8, UINT_8), (U16, UINT_16)].iter().cloned().collect()
-    };
-}
-
 
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, word: &Symbol) -> bool {

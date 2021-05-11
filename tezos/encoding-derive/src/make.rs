@@ -111,14 +111,20 @@ fn make_type_path_encoding<'a>(
             }
         };
         match element_encoding {
-            Encoding::Primitive(ident) if ident == symbol::rust::U8 => {
-                // `Vec<u8>` is encoded as bytes
-                let meta = get_attribute(meta, &symbol::BYTES)?;
-                let span = meta
-                    .as_ref()
-                    .map(Spanned::span)
-                    .unwrap_or_else(|| segment.span());
-                Encoding::Bytes(span)
+            Encoding::Primitive(PrimitiveEncoding::Uint8, span) => {
+                if let Some(list_meta) = get_attribute(meta, &symbol::LIST)? {
+                    let span = list_meta.span();
+                    let size = get_value_parsed(&list_meta, &symbol::MAX, true)?;
+                    Encoding::List(size, Box::new(element_encoding), span)
+                } else {
+                    // `Vec<u8>` is encoded as bytes
+                    let meta = get_attribute(meta, &symbol::BYTES)?;
+                    let span = meta
+                        .as_ref()
+                        .map(Spanned::span)
+                        .unwrap_or_else(|| span);
+                    Encoding::Bytes(span)
+                }
             }
             _ => {
                 let list_meta = get_attribute(meta, &symbol::LIST)?;
@@ -147,8 +153,11 @@ fn make_type_path_encoding<'a>(
             .flatten();
         Encoding::String(size, span)
     } else {
-        if symbol::PRIMITIVE_MAPPING.contains_key(segment.ident.to_string().as_str()) {
-            Encoding::Primitive(&segment.ident)
+        if let Some(meta_type) = get_attribute(meta, &symbol::BUILTIN)? {
+            let builtin = get_value_parsed(&meta_type, &symbol::KIND, true)?.ok_or_else(|| error(&meta_type, "Missing value"))?;
+            Encoding::Primitive(builtin, meta_type.span())
+        } else if let Some(builtin) = get_primitive_mapping(&segment.ident) {
+            Encoding::Primitive(builtin.clone(), segment.ident.span())
         } else {
             Encoding::Path(path)
         }
@@ -344,6 +353,30 @@ fn get_encoding_meta<'a>(
         })
         .unwrap_or_else(|| Ok(Vec::new()))
 }
+
+
+lazy_static::lazy_static! {
+    pub static ref PRIMITIVE_MAPPING: Vec<(symbol::Symbol, PrimitiveEncoding)> = {
+        use crate::symbol::rust::*;
+        use crate::encoding::PrimitiveEncoding::*;
+        vec![
+            (I8, Int8),
+            (U8, Uint8),
+            (I16, Int16),
+            (U16, Uint16),
+            (I32, Int32),
+            (U32, Uint32),
+            (F64, Float),
+            (BOOL, Bool),
+        ]
+    };
+}
+
+/// Returns [PrimitiveEncoding] instance corresponding to the type `ident`.
+fn get_primitive_mapping(ident: &syn::Ident) -> Option<PrimitiveEncoding> {
+    PRIMITIVE_MAPPING.iter().find_map(|(i, p)| if ident.eq(i) { Some(*p) } else { None })
+}
+
 
 fn error(tokens: impl quote::ToTokens, message: impl std::fmt::Display) -> syn::Error {
     syn::Error::new_spanned(tokens, message)

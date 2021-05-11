@@ -2556,6 +2556,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-display"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7271152b3c46c07c729698e7a5248e2744466b3446d222c97a0b1315925a97b1"
+dependencies = [
+ "once_cell",
+ "parse-display-derive",
+ "regex",
+]
+
+[[package]]
+name = "parse-display-derive"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a9f3e41b237b77c99c09686481c235964ff5878229412b226c451f3e809f4f"
+dependencies = [
+ "once_cell",
+ "proc-macro2 1.0.24",
+ "quote 1.0.9",
+ "regex",
+ "regex-syntax",
+ "syn 1.0.60",
+]
+
+[[package]]
 name = "path-tree"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3943,6 +3968,7 @@ name = "tezos_encoding_derive"
 version = "0.1.0"
 dependencies = [
  "lazy_static",
+ "parse-display",
  "proc-macro2 1.0.24",
  "quote 1.0.9",
  "syn 1.0.60",

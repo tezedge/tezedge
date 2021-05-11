@@ -5,12 +5,13 @@ use std::{
 
 use crypto::hash::HashTrait;
 use nom::{
+    branch::alt,
     bytes::complete::*,
     combinator::*,
     error::{FromExternalError, ParseError},
     multi::*,
     number::{complete::*, Endianness},
-    IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice,
+    IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice, UnspecializedInput,
 };
 pub use tezos_encoding_derive::NomReader;
 
@@ -23,8 +24,23 @@ pub trait NomReader: Sized {
 
 impl<T: HashTrait> NomReader for T {
     fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
-        map(take(Self::hash_size()), |bytes| Self::try_from_bytes(bytes).unwrap())(bytes)
+        map(take(Self::hash_size()), |bytes| {
+            Self::try_from_bytes(bytes).unwrap()
+        })(bytes)
     }
+}
+
+/// Reads a boolean value.
+#[inline]
+pub fn boolean<I, E>(input: I) -> IResult<I, bool, E>
+where
+    I: Clone + InputIter<Item = u8> + InputLength + InputTake + UnspecializedInput,
+    E: ParseError<I>,
+{
+    alt((
+        map(tag(&[crate::types::BYTE_VAL_TRUE][..]), |_| true),
+        map(tag(&[crate::types::BYTE_VAL_FALSE][..]), |_| false),
+    ))(input)
 }
 
 /// Reads all available bytes into a [Vec]. Used in conjunction with [sized].
@@ -165,14 +181,12 @@ where
         let max = std::cmp::min(max, input.input_len());
         let bounded = input.slice(std::ops::RangeTo { end: max });
         match f.parse(bounded) {
-            Ok((rest, parsed)) => {
-                Ok((
-                    input.slice(std::ops::RangeFrom {
-                        start: max - rest.input_len(),
-                    }),
-                    parsed,
-                ))
-            }
+            Ok((rest, parsed)) => Ok((
+                input.slice(std::ops::RangeFrom {
+                    start: max - rest.input_len(),
+                }),
+                parsed,
+            )),
             e => e,
         }
     }

@@ -1,4 +1,5 @@
 use proc_macro2::Span;
+use parse_display::{Display, FromStr};
 
 
 #[derive(Debug)]
@@ -36,7 +37,7 @@ pub struct Tag<'a> {
 #[derive(Debug)]
 pub enum Encoding<'a> {
     Unit,
-    Primitive(&'a syn::Ident),
+    Primitive(PrimitiveEncoding, Span),
     Bytes(Span),
     Path(&'a syn::Path),
     Struct(StructEncoding<'a>),
@@ -46,4 +47,31 @@ pub enum Encoding<'a> {
     Sized(syn::Expr, Box<Encoding<'a>>, Span),
     Bounded(syn::Expr, Box<Encoding<'a>>, Span),
     Dynamic(Option<syn::Expr>, Box<Encoding<'a>>, Span),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Display, FromStr)]
+pub enum PrimitiveEncoding {
+    Int8,
+    Uint8,
+    Int16,
+    Uint16,
+    Int31,
+    Int32,
+    Uint32,
+    Float,
+    Bool,
+    Timestamp,
+}
+
+impl PrimitiveEncoding {
+    pub fn make_ident(&self, span: Span) -> syn::Ident {
+        syn::Ident::new(&self.to_string(), span)
+    }
+}
+
+impl syn::parse::Parse for PrimitiveEncoding {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let name: syn::Ident = input.parse()?;
+        name.to_string().parse().map_err(|_| input.error("Unrecognized primitive encoding"))
+    }
 }
