@@ -8,7 +8,7 @@ use nom::{
     bytes::complete::*,
     combinator::*,
     error::{FromExternalError, ParseError},
-    multi::fold_many0,
+    multi::*,
     number::{complete::*, Endianness},
     IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice,
 };
@@ -105,14 +105,14 @@ where
 
 /// Parses input by applying parser `f` to it no more than `max` times.
 #[inline]
-pub fn bounded_list<I, O, E, F>(_max: usize, f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
+pub fn bounded_list<I, O, E, F>(max: usize, f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
 where
     F: Parser<I, O, E>,
     I: InputLength + InputTake + InputIter + Clone + PartialEq,
     O: Clone,
     E: ParseError<I>,
 {
-    fold_many0(f, Vec::new(), |mut list, item| {
+    fold_many_m_n(0, max, f, Vec::new(), |mut list, item| {
         list.push(item);
         list
     })
