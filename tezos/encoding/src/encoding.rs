@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crypto::hash::HashType;
+use crypto::hash::{HashTrait, HashType};
 
 use crate::binary_reader::BinaryReaderError;
 use crate::ser::Error;
@@ -356,6 +356,41 @@ impl Encoding {
 pub trait HasEncoding {
     fn encoding() -> &'static Encoding;
 }
+
+
+macro_rules! hash_has_encoding {
+	($hash_name:ident, $enc_ref_name:ident) => {
+        lazy_static::lazy_static! {
+            static ref $enc_ref_name: Encoding = {
+                Encoding::Hash(crypto::hash::$hash_name::hash_type())
+            };
+        }
+
+        impl HasEncoding for crypto::hash::$hash_name {
+            fn encoding() -> &'static Encoding {
+                &$enc_ref_name
+            }
+        }
+	};
+}
+
+hash_has_encoding!(ChainId, CHAIN_ID);
+hash_has_encoding!(BlockHash, BLOCK_HASH);
+hash_has_encoding!(BlockMetadataHash, BLOCK_METADATA_HASH);
+hash_has_encoding!(OperationHash, OPERATION_HASH);
+hash_has_encoding!(OperationListListHash, OPERATION_LIST_LIST_HASH);
+hash_has_encoding!(OperationMetadataHash, OPERATION_METADATA_HASH);
+hash_has_encoding!(OperationMetadataListListHash, OPERATION_METADATA_LIST_LIST_HASH);
+hash_has_encoding!(ContextHash, CONTEXT_HASH);
+hash_has_encoding!(ProtocolHash, PROTOCOL_HASH);
+hash_has_encoding!(ContractKt1Hash, CONTRACT_KT1HASH);
+hash_has_encoding!(ContractTz1Hash, CONTRACT_TZ1HASH);
+hash_has_encoding!(ContractTz2Hash, CONTRACT_TZ2HASH);
+hash_has_encoding!(ContractTz3Hash, CONTRACT_TZ3HASH);
+hash_has_encoding!(CryptoboxPublicKeyHash, CRYPTOBOX_PUBLIC_KEY_HASH);
+hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
+hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
+hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
 
 /// Indicates that type has it's own ser/de schema, to be used with new derived schema.
 pub trait HasEncodingTest {

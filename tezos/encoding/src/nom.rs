@@ -3,6 +3,7 @@ use std::{
     str::Utf8Error,
 };
 
+use crypto::hash::HashTrait;
 use nom::{
     bytes::complete::*,
     combinator::*,
@@ -16,6 +17,12 @@ pub use tezos_encoding_derive::NomReader;
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
     fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self>;
+}
+
+impl<T: HashTrait> NomReader for T {
+    fn from_bytes(bytes: &[u8]) -> IResult<&[u8], Self> {
+        map(take(Self::hash_size()), |bytes| Self::try_from_bytes(bytes).unwrap())(bytes)
+    }
 }
 
 /// Reads all available bytes into a [Vec]. Used in conjunction with [sized].
