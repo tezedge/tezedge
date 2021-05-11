@@ -11,7 +11,7 @@ use nom::{
     error::{FromExternalError, ParseError},
     multi::*,
     number::{complete::*, Endianness},
-    IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice, UnspecializedInput,
+    IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice,
 };
 pub use tezos_encoding_derive::NomReader;
 
@@ -54,10 +54,9 @@ hash_nom_reader!(PublicKeyP256);
 
 /// Reads a boolean value.
 #[inline]
-pub fn boolean<I, E>(input: I) -> IResult<I, bool, E>
+pub fn boolean<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], bool, E>
 where
-    I: Clone + InputIter<Item = u8> + InputLength + InputTake + UnspecializedInput,
-    E: ParseError<I>,
+    E: ParseError<&'a [u8]>,
 {
     alt((
         map(tag(&[crate::types::BYTE_VAL_TRUE][..]), |_| true),
@@ -219,6 +218,24 @@ mod test {
     use nom::error::Error;
 
     use super::*;
+
+    #[test]
+    fn test_boolean() {
+        let res: NomResult<bool> = boolean(&[0xff]);
+        assert_eq!(res, Ok((&[][..], true)));
+
+        let res: NomResult<bool> = boolean(&[0x00]);
+        assert_eq!(res, Ok((&[][..], false)));
+
+        let res: NomResult<bool> = boolean(&[0x01]);
+        assert_eq!(
+            res,
+            Err(nom::Err::Error(Error::new(
+                &[0x01][..],
+                nom::error::ErrorKind::Tag
+            )))
+        );
+    }
 
     #[test]
     fn test_size() {
