@@ -222,6 +222,35 @@ impl ActionStatsWithRange {
     }
 }
 
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct ActionData {
+    root: String,
+    mean_time: f64,
+    max_time: f64,
+    total_time: f64,
+    actions_count: usize,
+}
+
+#[derive(Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ActionStats {
+    data: ActionData,
+    mem: f64,
+    find: f64,
+    find_tree: f64,
+    add: f64,
+    add_tree: f64,
+    remove: f64,
+}
+
+impl ActionStats {
+    fn compute_mean(&mut self) {
+        let mean = self.data.total_time / self.data.actions_count as f64;
+        self.data.mean_time = mean.max(0.0);
+    }
+}
+
 struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
@@ -230,6 +259,7 @@ struct Timing {
     nactions: usize,
     /// Checkout time for the current block
     checkout_time: Option<(f64, f64)>,
+    block_stats: HashMap<String, ActionStats>,
     global_stats: HashMap<String, ActionStatsWithRange>,
     commit_stats: RangeStats,
     checkout_stats: RangeStats,
@@ -299,9 +329,10 @@ impl Timing {
             nactions: 0,
             global_stats: HashMap::default(),
             commit_stats: Default::default(),
+            block_stats: HashMap::default(),
             checkout_stats: Default::default(),
-            sql,
             checkout_time: None,
+            sql,
         }
     }
 
@@ -332,6 +363,7 @@ impl Timing {
         self.current_operation = None;
         self.checkout_time = None;
         self.nactions = 0;
+        self.block_stats = HashMap::default();
 
         Ok(())
     }
@@ -449,7 +481,10 @@ impl Timing {
         }
 
         self.commit_stats.add_time(tezedge_time);
-        self.update_global_stats(irmin_time, tezedge_time)
+        self.sync_global_stats(irmin_time, tezedge_time)?;
+        self.sync_block_stats()?;
+
+        Ok(())
     }
 
     fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
@@ -491,6 +526,8 @@ impl Timing {
             ":context_id": context_id
         })?;
 
+        drop(stmt);
+
         self.nactions = self
             .nactions
             .checked_add(1)
@@ -500,8 +537,14 @@ impl Timing {
             Some(root) => root,
             None => return Ok(()),
         };
-        let tezedge_time: f64 = action.tezedge_time;
 
+        self.add_block_stats(root, &action);
+        self.add_global_stats(root, &action);
+
+        Ok(())
+    }
+
+    fn add_global_stats(&mut self, root: &str, action: &Action) {
         let entry = match self.global_stats.get_mut(root) {
             Some(entry) => entry,
             None => {
@@ -521,13 +564,84 @@ impl Timing {
             ActionKind::Remove => &mut entry.remove,
         };
 
-        action_stats.add_time(tezedge_time);
+        action_stats.add_time(action.tezedge_time);
+    }
+
+    fn add_block_stats(&mut self, root: &str, action: &Action) {
+        let entry = match self.block_stats.get_mut(root) {
+            Some(entry) => entry,
+            None => {
+                let mut stats = ActionStats::default();
+                stats.data.root = root.to_string();
+                self.block_stats.insert(root.to_string(), stats);
+                self.block_stats.get_mut(root).unwrap()
+            }
+        };
+
+        let action_value = match action.action_name {
+            ActionKind::Mem => &mut entry.mem,
+            ActionKind::Find => &mut entry.find,
+            ActionKind::FindTree => &mut entry.find_tree,
+            ActionKind::Add => &mut entry.add,
+            ActionKind::AddTree => &mut entry.add_tree,
+            ActionKind::Remove => &mut entry.remove,
+        };
+
+        let tezedge_time = action.tezedge_time;
+
+        *action_value += tezedge_time;
+        entry.data.actions_count = entry.data.actions_count.saturating_add(1);
+        entry.data.total_time += tezedge_time;
+        entry.data.max_time = entry.data.max_time.max(tezedge_time);
+    }
+
+    fn sync_block_stats(&mut self) -> Result<(), SQLError> {
+        for action in self.block_stats.values_mut() {
+            action.compute_mean();
+        }
+
+        let block_id = self
+            .current_block
+            .as_ref()
+            .map(|(id, _)| id.as_str())
+            .unwrap();
+
+        for (root, action_stats) in self.block_stats.iter() {
+            let root = root.as_str();
+
+            let mut query = self.sql.prepare_cached(
+                "
+            INSERT INTO block_action_stats
+              (root, block_id, mean_time, max_time, total_time, actions_count,
+               mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
+            VALUES
+              (:root, :block_id, :mean_time, :max_time, :total_time, :actions_count,
+               :mem_time, :find_time, :find_tree_time, :add_time, :add_tree_time,
+               :remove_time)
+                ",
+            )?;
+
+            query.execute(named_params! {
+                ":root": root,
+                ":block_id": block_id,
+                ":mean_time": action_stats.data.mean_time,
+                ":max_time": action_stats.data.max_time,
+                ":total_time": action_stats.data.total_time,
+                ":actions_count": action_stats.data.actions_count,
+                ":mem_time": action_stats.mem,
+                ":add_time": action_stats.add,
+                ":add_tree_time": action_stats.add_tree,
+                ":find_time": action_stats.find,
+                ":find_tree_time": action_stats.find_tree,
+                ":remove_time": action_stats.remove,
+            })?;
+        }
 
         Ok(())
     }
 
     // Compute stats for the current block and global ones
-    fn update_global_stats(
+    fn sync_global_stats(
         &mut self,
         commit_time_irmin: f64,
         commit_time_tezedge: f64,
@@ -560,6 +674,8 @@ impl Timing {
         for action in self.global_stats.values_mut() {
             action.compute_mean();
         }
+        self.checkout_stats.compute_mean();
+        self.commit_stats.compute_mean();
 
         for (root, action_stats) in self.global_stats.iter() {
             let root = root.as_str();
@@ -572,8 +688,6 @@ impl Timing {
             self.insert_action_stats(root, "remove", &action_stats.remove)?;
         }
 
-        self.checkout_stats.compute_mean();
-        self.commit_stats.compute_mean();
         self.insert_action_stats("commit", "commit", &self.commit_stats)?;
         self.insert_action_stats("checkout", "checkout", &self.checkout_stats)?;
 
@@ -747,7 +861,7 @@ mod tests {
             })
             .unwrap();
 
-        timing.update_global_stats(1.0, 1.0).unwrap();
+        timing.sync_global_stats(1.0, 1.0).unwrap();
     }
 
     #[test]

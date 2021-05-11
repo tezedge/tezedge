@@ -37,6 +37,27 @@ CREATE TABLE IF NOT EXISTS actions (
   FOREIGN KEY(context_id) REFERENCES contexts(id)
 );
 
+CREATE TABLE IF NOT EXISTS block_action_stats (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  root TEXT NOT NULL,
+
+  mean_time REAL DEFAULT 0.0,
+  max_time REAL DEFAULT 0.0,
+  total_time REAL DEFAULT 0.0,
+  actions_count INTEGER DEFAULT 0,
+
+  mem_time REAL DEFAULT 0.0,
+  find_time REAL DEFAULT 0.0,
+  find_tree_time REAL DEFAULT 0.0,
+  add_time REAL DEFAULT 0.0,
+  add_tree_time REAL DEFAULT 0.0,
+  remove_time REAL DEFAULT 0.0,
+
+  block_id INTEGER DEFAULT NULL,
+  FOREIGN KEY(block_id) REFERENCES blocks(id)
+);
+
 CREATE TABLE IF NOT EXISTS global_action_stats (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
 

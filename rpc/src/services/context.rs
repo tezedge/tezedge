@@ -36,13 +36,6 @@ struct ActionStats {
     remove: f64,
 }
 
-impl ActionStats {
-    fn compute_mean(&mut self) {
-        let mean = self.data.total_time / self.data.actions_count as f64;
-        self.data.mean_time = mean.max(0.0);
-    }
-}
-
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
@@ -217,77 +210,66 @@ fn make_block_stats_impl(
         }
     )?;
 
-    let mut stmt = sql.prepare(
-        "
+    let mut stmt = sql
+        .prepare(
+            "
         SELECT
-          key_root,
-          name,
-          total(tezedge_time),
-          count(tezedge_time),
-          max(tezedge_time)
+          root,
+          mean_time,
+          max_time,
+          total_time,
+          actions_count,
+          mem_time,
+          add_time,
+          add_tree_time,
+          find_time,
+          find_tree_time,
+          remove_time
         FROM
-          actions
+          block_action_stats
         WHERE
-          block_id = ?
-        GROUP BY
-          key_root,
-          name
+          block_id = ?;
         ",
-    )?;
+        )
+        .unwrap();
 
     let mut rows = stmt.query([block_id])?;
 
     let mut map: HashMap<String, ActionStats> = HashMap::default();
 
     while let Some(row) = rows.next()? {
-        let root = match row.get_ref(0)?.as_str() {
-            Ok(root) if !root.is_empty() => root,
+        let root: String = match row.get(0) {
+            Ok(root) => root,
             _ => continue,
         };
 
-        let action_name = match row.get_ref(1)?.as_str() {
-            Ok(name) if !name.is_empty() => name,
-            _ => continue,
+        let action_stats = ActionStats {
+            data: ActionData {
+                mean_time: row.get(1)?,
+                max_time: row.get(2)?,
+                total_time: row.get(3)?,
+                actions_count: row.get(4)?,
+                root: root.clone(),
+            },
+            mem: row.get(5)?,
+            add: row.get(6)?,
+            add_tree: row.get(7)?,
+            find: row.get(8)?,
+            find_tree: row.get(9)?,
+            remove: row.get(10)?,
         };
 
-        let total: f64 = row.get(2)?;
-        let count: usize = row.get(3)?;
-        let max_time: f64 = row.get(4)?;
-
-        let entry = match map.get_mut(root) {
-            Some(entry) => entry,
-            None => {
-                let mut stats = ActionStats::default();
-                stats.data.root = root.to_string();
-                map.insert(root.to_string(), stats);
-                map.get_mut(root).unwrap()
-            }
-        };
-
-        match action_name {
-            "mem" => entry.mem = total,
-            "find" => entry.find = total,
-            "find_tree" => entry.find_tree = total,
-            "add" => entry.add = total,
-            "add_tree" => entry.add_tree = total,
-            "remove" => entry.remove = total,
-            _ => {}
-        }
-
-        entry.data.actions_count = entry.data.actions_count.saturating_add(count);
-        entry.data.total_time += total;
-        entry.data.max_time = entry.data.max_time.max(max_time);
+        map.insert(root, action_stats);
     }
 
-    for action in map.values_mut() {
-        action.compute_mean();
-    }
+    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
     Ok(BlockStats {
         actions_count,
         checkout_context_time: checkout_time,
         commit_context_time: commit_time,
-        operations_context: map.into_iter().map(|(_, v)| v).collect(),
+        operations_context,
     })
 }
 
@@ -323,13 +305,12 @@ mod tests {
 
         sql.execute(
             "
-        INSERT INTO actions
-          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+        INSERT INTO block_action_stats
+          (root, block_id, mean_time, max_time, total_time, actions_count,
+           mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
         VALUES
-          ('mem', 'a' ,'a/b/c', 1.2, 1.3, 1, NULL, NULL),
-          ('mem', 'a' ,'a/b/d', 5.2, 5.3, 1, NULL, NULL),
-          ('add', 'a' ,'a/b/c/d', 1.5, 1.6, 1, NULL, NULL),
-          ('add', 'm' ,'m/n/o', 1.5, 1.6, 1, NULL, NULL);
+          ('a', 1, 100.5, 3.0, 4.0, 40, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6),
+          ('m', 1, 100.6, 30.0, 40.0, 400, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6);
             ",
             [],
         )
@@ -348,9 +329,9 @@ mod tests {
             .find(|a| a.data.root == "a")
             .unwrap();
         assert_eq!(action.data.root, "a");
-        assert_eq!(action.data.mean_time, 2.733333333333333);
-        assert_eq!(action.add, 1.6);
-        assert_eq!(action.find_tree, 0.0);
+        assert_eq!(action.data.mean_time, 100.5);
+        assert_eq!(action.add, 1.4);
+        assert_eq!(action.find_tree, 1.3);
 
         sql.execute(
             "
