@@ -66,9 +66,9 @@ impl From<io::Error> for HashingError {
 }
 
 /// Inode representation used for hashing directories with >256 entries.
-enum Inode {
+enum Inode<'a> {
     Empty,
-    Value(Vec<(Rc<String>, Node)>),
+    Value(Vec<(Rc<String>, &'a Node)>),
     Tree {
         depth: u32,
         children: usize,
@@ -90,15 +90,14 @@ fn index(depth: u32, name: &str) -> u32 {
 // IMPORTANT: entries must be sorted in lexicographic order of the name
 // Because we use `OrdMap`, this holds true when we iterate the items, but this is
 // something to keep in mind if the representation of `Tree` changes.
-fn partition_entries(depth: u32, entries: &[(&Rc<String>, &Node)]) -> Result<Inode, HashingError> {
+fn partition_entries<'a>(depth: u32, entries: &[(&Rc<String>, &'a Node)]) -> Result<Inode<'a>, HashingError> {
     if entries.is_empty() {
         Ok(Inode::Empty)
     } else if entries.len() <= 32 {
         Ok(Inode::Value(
             entries
                 .iter()
-                .cloned()
-                .map(|(s, n)| (s.clone(), n.clone()))
+                .map(|(s, n)| (Rc::clone(*s), *n))
                 .collect(),
         ))
     } else {
