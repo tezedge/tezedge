@@ -47,7 +47,7 @@ lazy_static::lazy_static! {
             (Int32, "i32"),
             (Uint32, "u32"),
             (Float, "f64"),
-            (Timestamp, "u64"),
+            (Timestamp, "i64"),
         ]
     };
 }
