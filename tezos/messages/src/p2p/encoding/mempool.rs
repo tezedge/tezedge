@@ -6,20 +6,25 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{HashType, OperationHash};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::MEMPOOL_MAX_SIZE;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default, Getters)]
+#[derive(Clone, Serialize, Deserialize, Debug, Default, Getters, HasEncoding, NomReader, PartialEq)]
+#[encoding(bounded = "MEMPOOL_MAX_SIZE")]
 pub struct Mempool {
     #[get = "pub"]
+    #[encoding(dynamic, list)]
     known_valid: Vec<OperationHash>,
     #[get = "pub"]
+    #[encoding(dynamic, dynamic, list)]
     pending: Vec<OperationHash>,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -38,7 +43,7 @@ impl Mempool {
 }
 
 cached_data!(Mempool, body);
-has_encoding!(Mempool, MEMPOOL_ENCODING, {
+has_encoding_test!(Mempool, MEMPOOL_ENCODING, {
     Encoding::bounded(
         MEMPOOL_MAX_SIZE,
         Encoding::Obj(
@@ -58,3 +63,14 @@ has_encoding!(Mempool, MEMPOOL_ENCODING, {
         ),
     )
 });
+
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    #[test]
+    fn test_mempool_encoding_schema() {
+        assert_encodings_match!(super::Mempool);
+    }
+}

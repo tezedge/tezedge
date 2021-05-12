@@ -140,4 +140,9 @@ mod test {
         assert_encodings_match!(super::CurrentBranchMessage);
     }
 
+    #[test]
+    fn test_get_current_branch_encoding_schema() {
+        assert_encodings_match!(super::GetCurrentBranchMessage);
+    }
+
 }

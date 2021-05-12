@@ -5,8 +5,9 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{ChainId, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest};
+use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
@@ -15,15 +16,17 @@ use super::block_header::BlockHeader;
 use super::limits::BLOCK_HEADER_MAX_SIZE;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, PartialEq)]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
     #[get = "pub"]
+    #[encoding(dynamic = "BLOCK_HEADER_MAX_SIZE")]
     current_block_header: BlockHeader,
     #[get = "pub"]
     current_mempool: Mempool,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -43,27 +46,28 @@ impl CurrentHeadMessage {
 }
 
 cached_data!(CurrentHeadMessage, body);
-has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
+has_encoding_test!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
     Encoding::Obj(
         "CurrentHeadMessage",
         vec![
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new(
                 "current_block_header",
-                Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding().clone()),
+                Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding_test().clone()),
             ),
-            Field::new("current_mempool", Mempool::encoding().clone()),
+            Field::new("current_mempool", Mempool::encoding_test().clone()),
         ],
     )
 });
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
 
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -77,9 +81,29 @@ impl GetCurrentHeadMessage {
 }
 
 cached_data!(GetCurrentHeadMessage, body);
-has_encoding!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
+has_encoding_test!(GetCurrentHeadMessage, GET_CURRENT_HEAD_MESSAGE_ENCODING, {
     Encoding::Obj(
         "GetCurrentHeadMessage",
         vec![Field::new("chain_id", Encoding::Hash(HashType::ChainId))],
     )
 });
+
+#[cfg(test)]
+mod test {
+    use std::{fs::File, io::Read, path::PathBuf};
+
+    use tezos_encoding::assert_encodings_match;
+
+    use crate::p2p::binary_message::{BinaryMessageNom, BinaryMessageSerde};
+
+    #[test]
+    fn test_current_head_encoding_schema() {
+        assert_encodings_match!(super::CurrentHeadMessage);
+    }
+
+    #[test]
+    fn test_get_current_head_encoding_schema() {
+        assert_encodings_match!(super::GetCurrentHeadMessage);
+    }
+
+}
