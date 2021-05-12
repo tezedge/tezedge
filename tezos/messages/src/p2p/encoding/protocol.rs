@@ -12,6 +12,10 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::{GET_PROTOCOLS_MAX_LENGTH, PROTOCOL_COMPONENT_MAX_SIZE};
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProtocolMessage {
     protocol: Protocol,
@@ -29,6 +33,8 @@ has_encoding!(ProtocolMessage, PROTOCOL_MESSAGE_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Component {
     name: String,
@@ -52,6 +58,7 @@ has_encoding!(Component, COMPONENT_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Protocol {
     expected_env_version: i16,
@@ -89,6 +96,7 @@ has_encoding!(Protocol, PROTOCOL_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetProtocolsMessage {
     get_protocols: Vec<ProtocolHash>,

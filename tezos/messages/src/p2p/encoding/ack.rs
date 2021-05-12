@@ -10,10 +10,14 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
 use tezos_encoding::has_encoding;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 use crate::non_cached_data;
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum AckMessage {
     Ack,
@@ -21,6 +25,7 @@ pub enum AckMessage {
     Nack(NackInfo),
 }
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, PartialEq)]
 pub enum NackMotive {
     NoMotive,
@@ -51,6 +56,7 @@ impl fmt::Debug for NackMotive {
     }
 }
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Getters, PartialEq)]
 pub struct NackInfo {
     #[get = "pub"]

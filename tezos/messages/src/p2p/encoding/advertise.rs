@@ -13,6 +13,10 @@ use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct AdvertiseMessage {
     #[get = "pub"]

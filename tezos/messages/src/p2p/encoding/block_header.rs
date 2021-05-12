@@ -14,6 +14,9 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 use super::limits::{BLOCK_HEADER_MAX_SIZE, GET_BLOCK_HEADERS_MAX_LENGTH};
 
 pub type Fitness = Vec<Vec<u8>>;
@@ -36,6 +39,7 @@ pub fn display_fitness(fitness: &Fitness) -> String {
         .join("::")
 }
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct BlockHeaderMessage {
     #[get = "pub"]
@@ -69,6 +73,7 @@ impl From<BlockHeaderMessage> for BlockHeader {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetBlockHeadersMessage {
     #[get = "pub"]
@@ -106,6 +111,7 @@ has_encoding!(
 );
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Builder, Getters, CopyGetters)]
 pub struct BlockHeader {
     #[get_copy = "pub"]

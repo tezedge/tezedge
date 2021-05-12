@@ -19,6 +19,10 @@ use crate::non_cached_data;
 use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
 use crate::p2p::encoding::version::NetworkVersion;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct ConnectionMessage {
     port: u16,
