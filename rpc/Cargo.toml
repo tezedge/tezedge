@@ -27,6 +27,7 @@ storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
 tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
+tezos_timing = { path = "../tezos/timing" }
 tezos_wrapper = { path = "../tezos/wrapper" }
 rusqlite = "0.25.1"
 

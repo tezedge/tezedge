@@ -11,8 +11,6 @@ use storage::context::actions::context_action_storage::{
     contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
     ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
 };
-use storage::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
-use storage::context::{ContextApi, TezedgeContext};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
 };
@@ -133,12 +131,6 @@ pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
 pub(crate) fn get_stats_memory_protocol_runners() -> MemoryStatsResult<Vec<MemoryData>> {
     let memory = Memory::new();
     memory.get_memory_stats_protocol_runners()
-}
-
-pub(crate) fn get_context_stats(
-    context: &TezedgeContext,
-) -> Result<MerkleStoragePerfReport, failure::Error> {
-    Ok(context.get_merkle_stats()?)
 }
 
 pub(crate) fn get_cycle_length_for_block(

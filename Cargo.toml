@@ -16,6 +16,7 @@ members = [
     "tezos/wrapper",
     "tezos/context",
     "tezos/new_context",
+    "tezos/timing",
     "networking",
     "shell",
     "storage",
