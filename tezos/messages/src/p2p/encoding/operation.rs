@@ -12,28 +12,30 @@ use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, HashType, OperationHash},
 };
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::has_encoding;
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest, SchemaType};
+use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct OperationMessage {
     #[get = "pub"]
     operation: Operation,
 
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
 cached_data!(OperationMessage, body);
-has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
+has_encoding_test!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
     Encoding::Obj(
         "OperationMessage",
-        vec![Field::new("operation", Operation::encoding().clone())],
+        vec![Field::new("operation", Operation::encoding_test().clone())],
     )
 });
 
@@ -53,12 +55,14 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
 pub struct Operation {
     branch: BlockHash,
+    #[encoding(list = "OPERATION_MAX_SIZE")]
     data: Vec<u8>,
 
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -104,7 +108,7 @@ impl TryFrom<DecodedOperation> for Operation {
 }
 
 cached_data!(Operation, body);
-has_encoding!(Operation, OPERATION_ENCODING, {
+has_encoding_test!(Operation, OPERATION_ENCODING, {
     Encoding::Obj(
         "Operation",
         vec![
@@ -139,12 +143,14 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct GetOperationsMessage {
     #[get = "pub"]
+    #[encoding(dynamic, list = "GET_OPERATIONS_MAX_LENGTH")]
     get_operations: Vec<OperationHash>,
 
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -158,7 +164,7 @@ impl GetOperationsMessage {
 }
 
 cached_data!(GetOperationsMessage, body);
-has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
+has_encoding_test!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
     Encoding::Obj(
         "GetOperationsMessage",
         vec![Field::new(
@@ -170,3 +176,21 @@ has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
         )],
     )
 });
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    use super::*;
+
+    #[test]
+    fn test_operation_encoding_schema() {
+        assert_encodings_match!(OperationMessage);
+    }
+
+    #[test]
+    fn test_get_operations_encoding_schema() {
+        assert_encodings_match!(GetOperationsMessage);
+    }
+
+}
