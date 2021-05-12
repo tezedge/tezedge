@@ -35,6 +35,10 @@ harness = false
 name = "ack"
 harness = false
 
+[[bench]]
+name = "block_header"
+harness = false
+
 [dev-dependencies]
 assert-json-diff = "1.1"
 criterion = "0.3"
