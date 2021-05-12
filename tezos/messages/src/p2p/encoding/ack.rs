@@ -193,3 +193,14 @@ has_encoding_test!(AckMessage, ACK_MESSAGE_ENCODING, {
         ]),
     )
 });
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    #[test]
+    fn test_ack_encoding_schema() {
+        assert_encodings_match!(super::AckMessage);
+    }
+
+}

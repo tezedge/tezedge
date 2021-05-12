@@ -32,59 +32,6 @@ pub struct ConnectionMessage {
     version: NetworkVersion,
 }
 
-/*
-impl tezos_encoding::nom::NomReader for ConnectionMessage {
-    fn from_bytes(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
-        {
-            let (bytes, port) =
-                nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
-            let (bytes, public_key) = nom::combinator::flat_map(
-                nom::bytes::complete::take(CRYPTO_KEY_SIZE),
-                nom::combinator::map(nom::combinator::rest, Vec::from),
-            )(bytes)?;
-            let (bytes, proof_of_work_stamp) = nom::combinator::flat_map(
-                nom::bytes::complete::take(POW_SIZE),
-                nom::combinator::map(nom::combinator::rest, Vec::from),
-            )(bytes)?;
-            let (bytes, message_nonce) = nom::combinator::flat_map(
-                nom::bytes::complete::take(NONCE_SIZE),
-                nom::combinator::map(nom::combinator::rest, Vec::from),
-            )(bytes)?;
-            let (bytes, version) =
-                <NetworkVersion as tezos_encoding::nom::NomReader>::from_bytes(bytes)?;
-            Ok((
-                bytes,
-                ConnectionMessage {
-                    port,
-                    public_key,
-                    proof_of_work_stamp,
-                    message_nonce,
-                    version,
-                },
-            ))
-        }
-    }
-
-    fn from_bytes_nom(bytes: &[u8]) -> nom::IResult<&[u8], Self> {
-        let (bytes, port) = nom::number::complete::u16(nom::number::Endianness::Big)(bytes)?;
-        let (bytes, public_key) = nom::combinator::map_parser(
-            nom::bytes::complete::take(CRYPTO_KEY_SIZE),
-            nom::combinator::map(nom::combinator::rest, Vec::from)
-        )(bytes)?;
-        let (bytes, proof_of_work_stamp) = nom::combinator::map_parser(
-            nom::bytes::complete::take(POW_SIZE),
-            nom::combinator::map(nom::combinator::rest, Vec::from)
-        )(bytes)?;
-        let (bytes, message_nonce) = nom::combinator::map_parser(
-            nom::bytes::complete::take(NONCE_SIZE),
-            nom::combinator::map(nom::combinator::rest, Vec::from)
-        )(bytes)?;
-        let (bytes, version) = NetworkVersion::from_bytes_nom(bytes)?;
-        Ok((bytes, ConnectionMessage { port, public_key, proof_of_work_stamp, message_nonce, version }))
-    }
-}
-*/
-
 impl ConnectionMessage {
     pub fn try_new(
         port: u16,
@@ -163,3 +110,14 @@ has_encoding_test!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
         ],
     )
 });
+
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    #[test]
+    fn test_connection_encoding_schema() {
+        assert_encodings_match!(super::ConnectionMessage);
+    }
+}

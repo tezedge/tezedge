@@ -162,7 +162,7 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum HashType {
     // "\087\082\000" (* Net(15) *)
     ChainId,

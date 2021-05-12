@@ -433,6 +433,98 @@ macro_rules! has_encoding_test {
     };
 }
 
+
+pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
+    match (new, old) {
+        (Encoding::Unit, Encoding::Unit) => (),
+        (Encoding::Int8, Encoding::Int8) => (),
+        (Encoding::Uint8, Encoding::Uint8) => (),
+        (Encoding::Int16, Encoding::Int16) => (),
+        (Encoding::Uint16, Encoding::Uint16) => (),
+        (Encoding::Int31, Encoding::Int31) => (),
+        (Encoding::Int32, Encoding::Int32) => (),
+        (Encoding::Uint32, Encoding::Uint32) => (),
+        (Encoding::Int64, Encoding::Int64) => (),
+        (Encoding::RangedInt, Encoding::RangedInt) => (),
+        (Encoding::Z, Encoding::Z) => (),
+        (Encoding::Mutez, Encoding::Mutez) => (),
+        (Encoding::Float, Encoding::Float) => (),
+        (Encoding::RangedFloat, Encoding::RangedFloat) => (),
+        (Encoding::Bool, Encoding::Bool) => (),
+        (Encoding::String, Encoding::String) => (),
+        (Encoding::Timestamp, Encoding::Timestamp) => (),
+        (Encoding::Bytes, Encoding::Bytes) => (),
+        (Encoding::Enum, Encoding::Enum) => (),
+
+        (Encoding::BoundedString(new_size), Encoding::BoundedString(old_size)) => assert_eq!(new_size, old_size),
+
+        (Encoding::Tags(new_size, new), Encoding::Tags(old_size, old)) => {
+            assert_eq!(new_size, old_size);
+            let mut new_tags = new.tags().collect::<Vec<_>>();
+            new_tags.sort_by_key(|tag| tag.id);
+            let mut old_tags = old.tags().collect::<Vec<_>>();
+            old_tags.sort_by_key(|tag| tag.id);
+            for (new, old) in new_tags.iter().zip(old_tags.iter()) {
+                assert_eq!(new.get_id(), old.get_id());
+                assert_eq!(new.get_variant(), old.get_variant());
+                assert_encodings_match(new.get_encoding(), &old.get_encoding());
+            }
+        }
+
+        (Encoding::Obj(new_name, new_fields), Encoding::Obj(old_name, old_fields)) => {
+            assert_eq!(new_name, old_name);
+            for (new_field, old_field) in new_fields.iter().zip(old_fields.iter()) {
+                assert_eq!(new_field.name, old_field.name);
+                assert_encodings_match(new_field.get_encoding(), old_field.get_encoding());
+            }
+        }
+
+        (Encoding::Tup(new), Encoding::Tup(old)) => {
+            assert_eq!(new.len(), old.len());
+            for (new, old) in new.iter().zip(old.iter()) {
+                assert_encodings_match(new, old);
+            }
+        }
+
+        (Encoding::List(new), Encoding::List(old)) |
+        (Encoding::Dynamic(new), Encoding::Dynamic(old)) |
+        (Encoding::Option(new), Encoding::Option(old)) |
+        (Encoding::OptionalField(new), Encoding::OptionalField(old)) |
+        (Encoding::Greedy(new), Encoding::Greedy(old)) => assert_encodings_match(new, old),
+
+        (Encoding::BoundedList(new_size, new), Encoding::BoundedList(old_size, old)) |
+        (Encoding::BoundedDynamic(new_size, new), Encoding::BoundedDynamic(old_size, old)) |
+        (Encoding::Sized(new_size, new), Encoding::Sized(old_size, old)) |
+        (Encoding::Bounded(new_size, new), Encoding::Bounded(old_size, old)) => { assert_eq!(new_size, old_size); assert_encodings_match(new, old); }
+
+        (Encoding::Hash(new), Encoding::Hash(old)) => assert_eq!(*new, *old),
+
+        (new, Encoding::Split(split)) => assert_encodings_match(new, &split(SchemaType::Binary)),
+        (Encoding::Custom(_), Encoding::Custom(_)) => (),
+        (new, old) => panic!("Unmatched encodings: {:?} and {:?}", new, old),
+    }
+}
+
+#[macro_export]
+macro_rules! assert_encodings_match {
+	($ty:path) => {
+		$crate::encoding::assert_encodings_match(
+            <$ty as tezos_encoding::encoding::HasEncoding>::encoding(),
+            <$ty as tezos_encoding::encoding::HasEncodingTest>::encoding_test()
+        );
+	};
+}
+
+#[macro_export]
+macro_rules! test_encodings_match {
+	($fun:ident, $ty:ident) => {
+		#[test]
+        fn $fun() {
+            $crate::assert_encodings_match!(super::$ty)
+        }
+	};
+}
+
 #[cfg(test)]
 mod tests {
     use crate::binary_reader::BinaryReader;

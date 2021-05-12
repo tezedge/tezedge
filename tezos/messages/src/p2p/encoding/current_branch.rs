@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::has_encoding;
+use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
@@ -16,13 +17,14 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, PartialEq)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
     chain_id: ChainId,
     #[get = "pub"]
     current_branch: CurrentBranch,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -37,7 +39,7 @@ impl CurrentBranchMessage {
 }
 
 cached_data!(CurrentBranchMessage, body);
-has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
+has_encoding_test!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
     Encoding::Obj(
         "CurrentBranchMessage",
         vec![
@@ -48,14 +50,17 @@ has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, PartialEq)]
 pub struct CurrentBranch {
     #[get = "pub"]
+    #[encoding(dynamic = "super::limits::BLOCK_HEADER_MAX_SIZE")]
     current_head: BlockHeader,
     /// These hashes go from the top of the chain to the bottom (to genesis)
     #[get = "pub"]
+    #[encoding(list = "CURRENT_BRANCH_HISTORY_MAX_LENGTH")]
     history: Vec<BlockHash>,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -70,7 +75,7 @@ impl CurrentBranch {
 }
 
 cached_data!(CurrentBranch, body);
-has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
+has_encoding_test!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
     Encoding::Obj(
         "CurrentBranch",
         vec![
@@ -96,11 +101,12 @@ has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,
 
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -114,7 +120,7 @@ impl GetCurrentBranchMessage {
 }
 
 cached_data!(GetCurrentBranchMessage, body);
-has_encoding!(
+has_encoding_test!(
     GetCurrentBranchMessage,
     GET_CURRENT_BRANCH_MESSAGE_ENCODING,
     {
@@ -124,3 +130,14 @@ has_encoding!(
         )
     }
 );
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    #[test]
+    fn test_current_branch_encoding_schema() {
+        assert_encodings_match!(super::CurrentBranchMessage);
+    }
+
+}
