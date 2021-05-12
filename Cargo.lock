@@ -3158,6 +3158,7 @@ dependencies = [
  "tezos_api",
  "tezos_context",
  "tezos_messages",
+ "tezos_timing",
  "tezos_wrapper",
  "tokio",
  "url",
@@ -4104,7 +4105,6 @@ dependencies = [
  "bytes 1.0.1",
  "clap",
  "commitlog",
- "crossbeam-channel",
  "crypto",
  "derive_builder",
  "failure",
@@ -4116,8 +4116,6 @@ dependencies = [
  "leb128",
  "ocaml-interop",
  "ocaml-sys",
- "once_cell",
- "rusqlite",
  "serde 1.0.123",
  "serde_json",
  "sled",
@@ -4131,6 +4129,18 @@ dependencies = [
  "tezos-sys",
  "tezos_api",
  "tezos_messages",
+ "tezos_timing",
+]
+
+[[package]]
+name = "tezos_timing"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "crypto",
+ "once_cell",
+ "rusqlite",
+ "serde 1.0.123",
 ]
 
 [[package]]
