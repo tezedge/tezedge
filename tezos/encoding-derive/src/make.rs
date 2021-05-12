@@ -100,9 +100,6 @@ fn make_type_path_encoding<'a>(
     match &segment.arguments {
         syn::PathArguments::None => make_basic_encoding_from_type(&path, meta),
         syn::PathArguments::AngleBracketed(args) => {
-            if segment.ident != symbol::rust::VEC {
-                return Err(error_spanned(args, "Only `Vec` supports type parameters"));
-            }
             if args.args.len() != 1 {
                 return Err(error_spanned(&args.args, "Expected single argument"));
             }
@@ -111,7 +108,13 @@ fn make_type_path_encoding<'a>(
                 syn::GenericArgument::Type(ty) => make_type_encoding(ty, meta)?,
                 _ => return Err(error_spanned(arg, "Only type generic parameters supported")),
             };
-            let encoding = make_list_encoding_from_type(path, meta, inner_encoding)?;
+            let encoding = if segment.ident == symbol::rust::VEC {
+                make_list_encoding_from_type(path, meta, inner_encoding)?
+            } else if segment.ident == symbol::rust::OPTION {
+                make_optional_field_encoding_from_type(path, meta, inner_encoding)?
+            } else {
+                return Err(error_spanned(args, "Only `Vec<_>` and `Option<_>` are supported"));
+            };
             let encoding = make_bounded_encoding(meta, encoding)?;
             Ok(encoding)
         }
@@ -268,6 +271,7 @@ fn make_composite_encoding<'a>(
         let size = meta.len();
         encoding = make_bounded_encoding(meta, encoding)?;
         encoding = make_list_encoding_from_meta(meta, encoding)?;
+        encoding = make_optional_field_encoding_from_meta(meta, encoding)?;
         if meta.len() == size {
             assert_empty_meta(meta)?;
             return Ok(encoding);
@@ -306,6 +310,29 @@ fn make_list_encoding_from_type<'a>(
         Encoding::List(None, Box::new(encoding), ty.span())
     };
     Ok(encoding)
+}
+
+/// Consumes `option` attribute and creates `OptionField` encoding, returning `encoding` otherwise.
+fn make_optional_field_encoding_from_meta<'a>(
+    meta: &mut Vec<syn::Meta>,
+    encoding: Encoding<'a>,
+) -> Result<Encoding<'a>> {
+    let encoding = if let Some(option) = get_attribute_no_param(meta, &symbol::OPTION)? {
+        Encoding::OptionField(Box::new(encoding), option.span)
+    } else {
+        encoding
+    };
+    Ok(encoding)
+}
+
+/// Consumes `option` attribute and creates `OptionField` encoding, returning `encoding` otherwise.
+fn make_optional_field_encoding_from_type<'a>(
+    ty: &'a syn::Path,
+    meta: &mut Vec<syn::Meta>,
+    encoding: Encoding<'a>,
+) -> Result<Encoding<'a>> {
+    let _ = get_attribute_no_param(meta, &symbol::OPTION)?;
+    Ok(Encoding::OptionField(Box::new(encoding), ty.span()))
 }
 
 /// Applies bounded encodings specified in meta attributes to `encoding`.

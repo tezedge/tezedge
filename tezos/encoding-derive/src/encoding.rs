@@ -40,10 +40,15 @@ pub enum Encoding<'a> {
     Primitive(PrimitiveEncoding, Span),
     Bytes(Span),
     Path(&'a syn::Path),
+
+    String(Option<syn::Expr>, Span),
+
     Struct(StructEncoding<'a>),
     Enum(EnumEncoding<'a>),
-    String(Option<syn::Expr>, Span),
+
+    OptionField(Box<Encoding<'a>>, Span),
     List(Option<syn::Expr>, Box<Encoding<'a>>, Span),
+
     Sized(syn::Expr, Box<Encoding<'a>>, Span),
     Bounded(syn::Expr, Box<Encoding<'a>>, Span),
     Dynamic(Option<syn::Expr>, Box<Encoding<'a>>, Span),

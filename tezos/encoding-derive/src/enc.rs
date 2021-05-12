@@ -30,9 +30,10 @@ fn generate_encoding<'a>(encoding: &Encoding<'a>) -> TokenStream {
         Encoding::Primitive(primitive, span) => generage_primitive_encoding(*primitive, *span),
         Encoding::Bytes(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Bytes),
         Encoding::Path(path) => quote_spanned!(path.span()=> #path::encoding().clone()),
+        Encoding::String(size, span) => generate_string_encoding(size, *span),
         Encoding::Struct(encoding) => generate_struct_encoding(encoding),
         Encoding::Enum(encoding) => generate_enum_encoding(encoding),
-        Encoding::String(size, span) => generate_string_encoding(size, *span),
+        Encoding::OptionField(encoding, span) => generate_optional_field_encoding(encoding, *span),
         Encoding::List(size, encoding, span) => generate_list_encoding(size, encoding, *span),
         Encoding::Sized(size, encoding, span) => generate_sized_encoding(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_encoding(size, encoding, *span),
@@ -92,6 +93,11 @@ fn generate_string_encoding(size: &Option<syn::Expr>, span: Span) -> TokenStream
 fn generate_list_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
     size.as_ref().map_or_else(|| quote_spanned!(span=> tezos_encoding::encoding::Encoding::List(Box::new(#encoding))), |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedList(#size, Box::new(#encoding))))
+}
+
+fn generate_optional_field_encoding<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
+    let encoding = generate_encoding(encoding);
+    quote_spanned!(span=> tezos_encoding::encoding::Encoding::OptionalField(Box::new(#encoding)))
 }
 
 fn generate_sized_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>, span: Span) -> TokenStream {

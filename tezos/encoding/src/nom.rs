@@ -5,12 +5,13 @@ use std::{
 
 use crypto::hash::HashTrait;
 use nom::{
-    branch::alt,
+    branch::*,
     bytes::complete::*,
     combinator::*,
     error::{FromExternalError, ParseError},
     multi::*,
     number::{complete::*, Endianness},
+    sequence::*,
     IResult, InputIter, InputLength, InputTake, Offset, Parser, Slice,
 };
 pub use tezos_encoding_derive::NomReader;
@@ -121,11 +122,27 @@ where
 pub fn sized<I, O, E, F>(size: usize, f: F) -> impl FnMut(I) -> IResult<I, O, E>
 where
     F: Parser<I, O, E>,
-    I: InputLength + InputTake + InputIter + Clone,
+    I: InputLength + InputTake + InputIter<Item = u8> + Clone,
     E: ParseError<I>,
 {
     map_parser(take(size), f)
 }
+
+/// Parses optional field. Byte `0x00` indicates absence of the field,
+/// byte `0xff` preceedes encoding of the existing field.
+#[inline]
+pub fn optional_field<'a, O, E, F>(parser: F) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Option<O>, E>
+where
+    F: Parser<&'a [u8], O, E>,
+    O: Clone,
+    E: ParseError<&'a [u8]>,
+{
+    alt((
+        preceded(tag(0x00u8.to_be_bytes()), success(None)),
+        preceded(tag(0xffu8.to_be_bytes()), map(parser, Some)),
+    ))
+}
+
 
 /// Parses input by applying parser `f` to it.
 #[inline]
@@ -266,6 +283,24 @@ mod test {
         let input = &[0, 1, 2, 3];
         let res: IResult<&[u8], Vec<u8>> = bytes(input);
         assert_eq!(res, Ok((&[][..], vec![0, 1, 2, 3])))
+    }
+
+    #[test]
+    fn test_optional_field() {
+        let res: NomResult<Option<u8>> = optional_field(u8)(&[0x00, 0x01][..]);
+        assert_eq!(res, Ok((&[0x01][..], None)));
+
+        let res: NomResult<Option<u8>> = optional_field(u8)(&[0xff, 0x01][..]);
+        assert_eq!(res, Ok((&[][..], Some(0x01))));
+
+        let res = optional_field(u8)(&[0x01, 0x01][..]);
+        assert_eq!(
+            res,
+            Err(nom::Err::Error(Error::new(
+                &[0x01, 0x01][..],
+                nom::error::ErrorKind::Tag
+            )))
+        );
     }
 
     #[test]

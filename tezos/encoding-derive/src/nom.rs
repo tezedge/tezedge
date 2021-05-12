@@ -28,6 +28,7 @@ fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
         Encoding::Struct(encoding) => generate_struct_nom_read(encoding),
         Encoding::Enum(encoding) => generate_enum_nom_read(encoding),
         Encoding::String(size, span) => generate_string_nom_read(size, *span),
+        Encoding::OptionField(encoding, span) => generate_optional_field_nom_read(encoding, *span),
         Encoding::List(size, encoding, span) => generate_list_nom_read(size, encoding, *span),
         Encoding::Sized(size, encoding, span) => generate_sized_nom_read(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_nom_read(size, encoding, *span),
@@ -168,6 +169,14 @@ fn generate_string_nom_read(size: &Option<syn::Expr>, span: Span) -> TokenStream
         || quote_spanned!(span=> tezos_encoding::nom::string),
         |size| quote_spanned!(span=> tezos_encoding::nom::bounded_string(#size)),
     )
+}
+
+fn generate_optional_field_nom_read<'a>(
+    encoding: &Encoding<'a>,
+    span: Span,
+) -> TokenStream {
+    let nom_read = generate_nom_read(encoding);
+    quote_spanned!(span=> tezos_encoding::nom::optional_field(#nom_read))
 }
 
 fn generate_list_nom_read<'a>(

@@ -19,6 +19,7 @@ pub mod rust {
     pub const STRING: Symbol = Symbol("String");
 
     pub const VEC: Symbol = Symbol("Vec");
+    pub const OPTION: Symbol = Symbol("Option");
 }
 
 /// Built-in primitive encoding to use.
@@ -39,6 +40,7 @@ pub const MAX: Symbol = Symbol("max");
 pub const ENCODING: Symbol = Symbol("encoding");
 pub const BYTES: Symbol = Symbol("bytes");
 pub const STRING: Symbol = Symbol("string");
+pub const OPTION: Symbol = Symbol("option");
 
 pub const SIZED: Symbol = Symbol("sized");
 pub const SIZE: Symbol = Symbol("size");
