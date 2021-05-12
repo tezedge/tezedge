@@ -27,6 +27,9 @@ pub const BUILTIN: Symbol = Symbol("builtin");
 /// Kind of built-in primitive encoding to use.
 pub const KIND: Symbol = Symbol("kind");
 
+/// Composite encoding
+pub const COMPOSITE: Symbol = Symbol("composite");
+
 /// Attribute name used to mark field/variant as ignored.
 pub const SKIP: Symbol = Symbol("skip");
 
@@ -38,6 +41,9 @@ pub const BYTES: Symbol = Symbol("bytes");
 pub const STRING: Symbol = Symbol("string");
 
 pub const SIZED: Symbol = Symbol("sized");
+pub const SIZE: Symbol = Symbol("size");
+
+
 pub const LIST: Symbol = Symbol("list");
 pub const BOUNDED: Symbol = Symbol("bounded");
 pub const DYNAMIC: Symbol = Symbol("dynamic");

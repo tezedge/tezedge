@@ -1,3 +1,4 @@
+use proc_macro2::Span;
 use syn::spanned::Spanned;
 
 use crate::common::Result;
@@ -21,10 +22,13 @@ fn make_data_with_encoding<'a>(
         }
         syn::Data::Enum(data_enum) => Encoding::Enum(make_enum_encoding(data_enum, name, meta)?),
         syn::Data::Union(data_union) => {
-            return Err(error(data_union.union_token, "`union` is not supported"))
+            return Err(error_spanned(
+                data_union.union_token,
+                "`union` is not supported",
+            ))
         }
     };
-    let encoding = add_encoding_bounds(meta, encoding)?;
+    let encoding = make_bounded_encoding(meta, encoding)?;
     assert_empty_meta(meta)?;
     Ok(DataWithEncoding { name, encoding })
 }
@@ -37,7 +41,7 @@ fn make_struct_encoding<'a>(
     let fields = match &data.fields {
         syn::Fields::Named(fields_named) => make_fields(&fields_named.named)?,
         _ => {
-            return Err(error(
+            return Err(error_spanned(
                 &data.fields,
                 "Only structures with named fields supported",
             ))
@@ -53,14 +57,15 @@ fn make_fields<'a>(
 }
 
 fn skip_field(meta: &Vec<syn::Meta>) -> bool {
-    meta.iter().find(|meta| {
-        if let syn::Meta::Path(path) = meta {
-            path == symbol::SKIP
-        } else {
-            false
-        }
-    })
-    .is_some()
+    meta.iter()
+        .find(|meta| {
+            if let syn::Meta::Path(path) = meta {
+                path == symbol::SKIP
+            } else {
+                false
+            }
+        })
+        .is_some()
 }
 
 fn make_field<'a>(field: &'a syn::Field) -> Result<FieldEncoding<'a>> {
@@ -71,99 +76,333 @@ fn make_field<'a>(field: &'a syn::Field) -> Result<FieldEncoding<'a>> {
         None
     } else {
         let encoding = make_type_encoding(&field.ty, meta)?;
-        let encoding = add_encoding_bounds(meta, encoding)?;
+        let encoding = make_bounded_encoding(meta, encoding)?;
         assert_empty_meta(meta)?;
         Some(encoding)
     };
     Ok(FieldEncoding { name, encoding })
 }
 
+/// Creates encoding from the type `ty` and meta attributes.
 fn make_type_encoding<'a>(ty: &'a syn::Type, meta: &mut Vec<syn::Meta>) -> Result<Encoding<'a>> {
     match ty {
         syn::Type::Path(type_path) => make_type_path_encoding(&type_path.path, meta),
-        _ => Err(error(ty, "Unsupported type")),
+        _ => Err(error_spanned(ty, "Unsupported type")),
     }
 }
 
+/// Creates encoding from the type path `ty` (e.g. `mod::ty` or `u8`) and meta attributes.
 fn make_type_path_encoding<'a>(
     path: &'a syn::Path,
     meta: &mut Vec<syn::Meta>,
 ) -> Result<Encoding<'a>> {
     let segment = path.segments.last().unwrap();
-    let encoding = if segment.ident == symbol::rust::VEC {
-        // `Vec<something>`
-        let element_encoding = match &segment.arguments {
-            syn::PathArguments::AngleBracketed(args) => {
-                if args.args.len() != 1 {
-                    return Err(error(&args.args, "Expected single argument"));
-                }
-                let arg = args.args.last().unwrap();
-                match arg {
-                    syn::GenericArgument::Type(ty) => make_type_encoding(ty, meta)?,
-                    _ => return Err(error(arg, "Only type generic parameters supported")),
-                }
+    match &segment.arguments {
+        syn::PathArguments::None => make_basic_encoding_from_type(&path, meta),
+        syn::PathArguments::AngleBracketed(args) => {
+            if segment.ident != symbol::rust::VEC {
+                return Err(error_spanned(args, "Only `Vec` supports type parameters"));
             }
-            _ => {
-                return Err(error(
-                    &segment.arguments,
-                    "Only angle-bracketed generic arguments are supported",
-                ))
+            if args.args.len() != 1 {
+                return Err(error_spanned(&args.args, "Expected single argument"));
             }
-        };
-        match element_encoding {
-            Encoding::Primitive(PrimitiveEncoding::Uint8, span) => {
-                if let Some(list_meta) = get_attribute(meta, &symbol::LIST)? {
-                    let span = list_meta.span();
-                    let size = get_value_parsed(&list_meta, &symbol::MAX, true)?;
-                    Encoding::List(size, Box::new(element_encoding), span)
-                } else {
-                    // `Vec<u8>` is encoded as bytes
-                    let meta = get_attribute(meta, &symbol::BYTES)?;
-                    let span = meta
-                        .as_ref()
-                        .map(Spanned::span)
-                        .unwrap_or_else(|| span);
-                    Encoding::Bytes(span)
-                }
-            }
-            _ => {
-                let list_meta = get_attribute(meta, &symbol::LIST)?;
-                let span = list_meta
-                    .as_ref()
-                    .map(Spanned::span)
-                    .unwrap_or_else(|| segment.ident.span());
-                let size = list_meta
-                    .as_ref()
-                    .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
-                    .transpose()?
-                    .flatten();
-                Encoding::List(size, Box::new(element_encoding), span)
-            }
+            let arg = args.args.last().unwrap();
+            let inner_encoding = match arg {
+                syn::GenericArgument::Type(ty) => make_type_encoding(ty, meta)?,
+                _ => return Err(error_spanned(arg, "Only type generic parameters supported")),
+            };
+            let encoding = make_list_encoding_from_type(path, meta, inner_encoding)?;
+            let encoding = make_bounded_encoding(meta, encoding)?;
+            Ok(encoding)
         }
-    } else if segment.ident == symbol::rust::STRING {
-        let string_meta = get_attribute(meta, &symbol::STRING)?;
-        let span = string_meta
-            .as_ref()
-            .map(Spanned::span)
-            .unwrap_or_else(|| segment.ident.span());
-        let size = string_meta
-            .as_ref()
-            .map(|meta| get_value_parsed(meta, &symbol::MAX, true))
-            .transpose()?
-            .flatten();
-        Encoding::String(size, span)
+        _ => {
+            return Err(error_spanned(
+                &segment.arguments,
+                "Only angle-bracketed generic arguments are supported",
+            ))
+        }
+    }
+}
+
+/// Constructs encoding for a non-parameterized type.
+///
+/// TODO: describe cases.
+fn make_basic_encoding_from_type<'a>(
+    path: &'a syn::Path,
+    meta: &mut Vec<syn::Meta>,
+) -> Result<Encoding<'a>> {
+    let ident = &path.segments.last().unwrap().ident;
+    let encoding = if let Some(mapped) = get_rust_to_primitive_mapping(&ident) {
+        // direct mapping from Rust type to encoding
+        assert_builtin_encoding(meta, &mapped)?;
+        Encoding::Primitive(mapped, ident.span())
+    } else if ident == symbol::rust::STRING {
+        // String type is mapped to String encoding.
+        let string_attr =
+            get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?;
+        Encoding::String(
+            string_attr.map(|param| param.param).flatten(),
+            ident.span(),
+        )
+    } else if let Some(builtin) =
+        get_attribute_with_param(meta, &symbol::BUILTIN, Some(&symbol::KIND), true)?
+    {
+        // Built-in encoding is specified.
+        Encoding::Primitive(builtin.param, builtin.span)
+    } else if let Some(meta) = get_composite_meta(meta)? {
+        // return immediately to not consume other meta attributes
+        // TODO: check this
+        return make_composite_encoding(path, meta);
     } else {
-        if let Some(meta_type) = get_attribute(meta, &symbol::BUILTIN)? {
-            let builtin = get_value_parsed(&meta_type, &symbol::KIND, true)?.ok_or_else(|| error(&meta_type, "Missing value"))?;
-            Encoding::Primitive(builtin, meta_type.span())
-        } else if let Some(builtin) = get_primitive_mapping(&segment.ident) {
-            Encoding::Primitive(builtin.clone(), segment.ident.span())
-        } else {
-            Encoding::Path(path)
-        }
+        Encoding::Path(path)
     };
-    let encoding = add_encoding_bounds(meta, encoding)?;
+    let encoding = make_bounded_encoding(meta, encoding)?;
     Ok(encoding)
+}
+
+/// Consumes the rightmost meta attribute to make basic encoding.
+fn get_basic_encoding_from_meta<'a>(
+    _ty: &'a syn::Path,
+    meta: &mut Vec<syn::Meta>,
+) -> Result<Option<Encoding<'a>>> {
+    let encoding = if let Some(bytes) = get_attribute_no_param(meta, &symbol::STRING)? {
+        Encoding::Bytes(bytes.span)
+    } else if let Some(string) =
+        get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?
+    {
+        Encoding::String(string.param, string.span)
+    } else if let Some(builtin) =
+        get_attribute_with_param(meta, &symbol::BUILTIN, Some(&symbol::KIND), true)?
+    {
+        Encoding::Primitive(builtin.param, builtin.span)
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(encoding))
+}
+
+/// Creates basic encoding by consumes the rightmost meta attribute.
+fn make_basic_encoding_from_meta<'a>(ty: &'a syn::Path, meta: &mut Vec<syn::Meta>) -> Result<Encoding<'a>> {
+    get_basic_encoding_from_meta(ty, meta)?.ok_or(error_spanned(ty, "No basic encoding specified"))
+}
+
+/// Returns content of the `composite` attribute.
+fn get_composite_meta(meta: &mut Vec<syn::Meta>) -> Result<Option<Vec<syn::Meta>>> {
+    if let Some(composite) = get_attribute(meta, &symbol::COMPOSITE)? {
+        if let syn::Meta::List(list) = composite {
+            let list = list
+                .nested
+                .into_iter()
+                .map(|nested| {
+                    if let syn::NestedMeta::Meta(meta) = nested {
+                        Ok(meta)
+                    } else {
+                        Err(error_spanned(nested, "Invalid nested attribute type"))
+                    }
+                })
+                .collect::<Result<_>>()?;
+            Ok(Some(list))
+        } else {
+            Err(error_spanned(composite, "Invalid attribute type"))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// Asserts that meta attribute corresponds to the specified built-in encoding `kind`.
+fn assert_builtin_encoding(meta: &mut Vec<syn::Meta>, kind: &PrimitiveEncoding) -> Result<()> {
+    if let Some(builtin) = get_attribute_with_param::<PrimitiveEncoding>(
+        meta,
+        &symbol::BUILTIN,
+        Some(&symbol::KIND),
+        true,
+    )? {
+        if *kind != builtin.param {
+            return Err(error(
+                builtin.span,
+                "Built-in encoding does not match the type",
+            ));
+        }
+    } else if let Some(string) = get_attribute(meta, &symbol::STRING)? {
+        return Err(error_spanned(
+            string,
+            "String encoding can be used only with `String` type",
+        ));
+    }
+    Ok(())
+}
+
+/*
+fn assert_string_encoding(meta: &mut Vec<syn::Meta>, kind: &PrimitiveEncoding) -> Result<()> {
+    if let Some(builtin) = get_attribute_with_param::<PrimitiveEncoding>(
+        meta,
+        &symbol::BUILTIN,
+        Some(&symbol::KIND),
+        true,
+    )? {
+        if *kind != builtin.param {
+            return Err(error(
+                builtin.span,
+                "Built-in encoding does not match the type",
+            ));
+        }
+    } else if let Some(string) = get_attribute_with(meta, &symbol::STRING)? {
+        return Err(error_spanned(
+            string,
+            "String encoding can be used only with `String` type",
+        ));
+    }
+    Ok(())
+}
+*/
+
+/// Constructs encoding from the content of the `composite` meta attribute.
+fn make_composite_encoding<'a>(
+    ty: &'a syn::Path,
+    mut meta: Vec<syn::Meta>,
+) -> Result<Encoding<'a>> {
+    let meta = &mut meta;
+    let mut encoding = make_basic_encoding_from_meta(ty, meta)?;
+    loop {
+        let size = meta.len();
+        encoding = make_bounded_encoding(meta, encoding)?;
+        encoding = make_list_encoding_from_meta(meta, encoding)?;
+        if meta.len() == size {
+            assert_empty_meta(meta)?;
+            return Ok(encoding);
+        }
+    }
+}
+
+/// Consumes `list` attribute and creates `List` encoding, returning `encoding` otherwise.
+fn make_list_encoding_from_meta<'a>(
+    meta: &mut Vec<syn::Meta>,
+    encoding: Encoding<'a>,
+) -> Result<Encoding<'a>> {
+    let encoding = if let Some(list) = get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)? {
+        Encoding::List(list.param, Box::new(encoding), list.span)
+    } else {
+        encoding
+    };
+    Ok(encoding)
+}
+
+/// Consumes `list` attribute and creates `List` encoding, returning `encoding` otherwise.
+fn make_list_encoding_from_type<'a>(
+    ty: &'a syn::Path,
+    meta: &mut Vec<syn::Meta>,
+    encoding: Encoding<'a>,
+) -> Result<Encoding<'a>> {
+    let encoding = if let Some(bytes_meta) = get_attribute_no_param(meta, &symbol::BYTES)? {
+        if let Encoding::Primitive(PrimitiveEncoding::Uint8, _) = encoding {
+            Encoding::Bytes(bytes_meta.span)
+        } else {
+            return Err(error_spanned(ty, "Incompatible type for `bytes` encoding"))
+        }
+    } else if let Some(list_meta) = get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)? {
+        Encoding::List(list_meta.param, Box::new(encoding), list_meta.span)
+    } else {
+        Encoding::List(None, Box::new(encoding), ty.span())
+    };
+    Ok(encoding)
+}
+
+/// Applies bounded encodings specified in meta attributes to `encoding`.
+fn make_bounded_encoding<'a>(
+    meta: &mut Vec<syn::Meta>,
+    mut encoding: Encoding<'a>,
+) -> Result<Encoding<'a>> {
+    loop {
+        if meta.is_empty() {
+            return Ok(encoding);
+        }
+        encoding = if let Some(sized) =
+            get_attribute_with_param(meta, &symbol::SIZED, Some(&symbol::SIZE), true)?
+        {
+            Encoding::Sized(sized.param, Box::new(encoding), sized.span)
+        } else if let Some(bounded) =
+            get_attribute_with_param(meta, &symbol::BOUNDED, Some(&symbol::MAX), true)?
+        {
+            Encoding::Bounded(bounded.param, Box::new(encoding), bounded.span)
+        } else if let Some(dynamic) =
+            get_attribute_with_option(meta, &symbol::DYNAMIC, Some(&symbol::MAX), true)?
+        {
+            Encoding::Dynamic(dynamic.param, Box::new(encoding), dynamic.span)
+        } else {
+            return Ok(encoding);
+        };
+    }
+}
+
+/// Attribute parameter and span.
+///
+/// ```none
+/// #[encoding(list = "MAX")]
+/// parameter----------^^^
+/// span-------^^^^^^^^^^^^
+/// ```
+struct AttrWithParam<T> {
+    param: T,
+    span: Span,
+}
+
+/// Gets attribute named `name` with an optional parameter named `attr`.
+fn get_attribute_with_option<'a, T: syn::parse::Parse>(
+    meta: &'a mut Vec<syn::Meta>,
+    name: &symbol::Symbol,
+    attr: Option<&symbol::Symbol>,
+    is_default: bool,
+) -> Result<Option<AttrWithParam<Option<T>>>> {
+    get_attribute(meta, name)?
+        .map(|meta| {
+            let param = get_value_parsed(&meta, attr, is_default)?;
+            Ok(AttrWithParam {
+                param,
+                span: meta.span(),
+            })
+        })
+        .transpose()
+}
+
+/// Gets attribute named `name` with a mandatory parameter named `attr`.
+fn get_attribute_with_param<'a, T: syn::parse::Parse>(
+    meta: &'a mut Vec<syn::Meta>,
+    name: &symbol::Symbol,
+    attr: Option<&symbol::Symbol>,
+    is_default: bool,
+) -> Result<Option<AttrWithParam<T>>> {
+    get_attribute(meta, name)?
+        .map(|meta| {
+            if let Some(param) = get_value_parsed(&meta, attr, is_default)? {
+                Ok(AttrWithParam {
+                    param,
+                    span: meta.span(),
+                })
+            } else {
+                Err(error_spanned(meta, "Parameter is required"))
+            }
+        })
+        .transpose()
+}
+
+/// Gets attribute named `name` checking that it does not have any parameters.
+fn get_attribute_no_param<'a>(
+    meta: &'a mut Vec<syn::Meta>,
+    name: &symbol::Symbol,
+) -> Result<Option<AttrWithParam<()>>> {
+    get_attribute(meta, name)?
+        .map(|meta| {
+            if let syn::Meta::Path(_) = meta {
+                Ok(AttrWithParam {
+                    param: (),
+                    span: meta.span(),
+                })
+            } else {
+                Err(error_spanned(meta, "Parameter is unexpected"))
+            }
+        })
+        .transpose()
 }
 
 fn make_enum_encoding<'a>(
@@ -193,36 +432,44 @@ fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result
     Ok(tags)
 }
 
-fn make_tag<'a>(variant: &'a syn::Variant, meta: &mut Vec<syn::Meta>, default_id: u16) -> Result<Tag<'a>> {
+fn make_tag<'a>(
+    variant: &'a syn::Variant,
+    meta: &mut Vec<syn::Meta>,
+    default_id: u16,
+) -> Result<Tag<'a>> {
     let id = get_attribute_value(meta, &symbol::TAG)?
         .map(|lit| {
             if let syn::Lit::Int(int_lit) = lit {
                 Ok(int_lit)
             } else {
-                Err(error(lit, "Integer literal expected"))
+                Err(error_spanned(lit, "Integer literal expected"))
             }
         })
         .unwrap_or_else(|| Ok(syn::LitInt::new(&default_id.to_string(), variant.span())))?;
     let name = &variant.ident;
     let encoding = match &variant.fields {
         syn::Fields::Named(_) => {
-            return Err(error(variant, "Named fields are not supported for enums"))
+            return Err(error_spanned(
+                variant,
+                "Named fields are not supported for enums",
+            ))
         }
         syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
             let ty = &fields.unnamed.first().unwrap().ty;
             match ty {
                 syn::Type::Path(type_path) => Encoding::Path(&type_path.path),
-                _ => return Err(error(ty, "Unsupported type for enum variant")),
+                _ => return Err(error_spanned(ty, "Unsupported type for enum variant")),
             }
         }
         syn::Fields::Unnamed(fields) => {
-            return Err(error(fields, "Only single field is supported"))
+            return Err(error_spanned(fields, "Only single field is supported"))
         }
         syn::Fields::Unit => Encoding::Unit,
     };
     Ok(Tag { id, name, encoding })
 }
 
+/*
 fn add_encoding_bounds<'a>(
     meta: &mut Vec<syn::Meta>,
     encoding: Encoding<'a>,
@@ -240,9 +487,7 @@ fn add_encoding_bounds<'a>(
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. }) if path == symbol::SIZED => {
                 Encoding::Sized(parse_value(&lit)?, Box::new(encoding), span)
             }
-            syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
-                if path == symbol::LIST =>
-            {
+            syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. }) if path == symbol::LIST => {
                 Encoding::List(Some(parse_value(&lit)?), Box::new(encoding), span)
             }
             syn::Meta::NameValue(syn::MetaNameValue { path, lit, .. })
@@ -263,10 +508,11 @@ fn add_encoding_bounds<'a>(
     }
     Ok(encoding)
 }
+ */
 
 fn assert_empty_meta(meta: &Vec<syn::Meta>) -> Result<()> {
     if let Some(attr) = meta.last() {
-        Err(error(attr, "Unrecognized attribute"))
+        Err(error_spanned(attr, "Unrecognized attribute"))
     } else {
         Ok(())
     }
@@ -283,7 +529,7 @@ fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<Opt
 
 fn get_value<'a>(
     meta: &'a syn::Meta,
-    _attr: &symbol::Symbol,
+    _attr: Option<&symbol::Symbol>,
     is_default: bool,
 ) -> Result<Option<&'a syn::Lit>> {
     match meta {
@@ -295,7 +541,7 @@ fn get_value<'a>(
 
 fn get_value_parsed<T: syn::parse::Parse>(
     meta: &syn::Meta,
-    name: &symbol::Symbol,
+    name: Option<&symbol::Symbol>,
     is_default: bool,
 ) -> Result<Option<T>> {
     let lit = get_value(meta, name, is_default)?;
@@ -329,7 +575,7 @@ fn get_attribute_value_parsed<T: syn::parse::Parse>(
 fn parse_value<T: syn::parse::Parse>(lit: &syn::Lit) -> Result<T> {
     match lit {
         syn::Lit::Str(lit_str) => lit_str.parse(),
-        _ => Err(error(lit, "Non-string literal")),
+        _ => Err(error_spanned(lit, "Non-string literal")),
     }
 }
 
@@ -348,11 +594,11 @@ fn get_encoding_meta<'a>(
                             .into_iter()
                             .map(|nested| match nested {
                                 syn::NestedMeta::Meta(meta) => Ok(meta),
-                                _ => Err(error(nested, "Unexpected literal")),
+                                _ => Err(error_spanned(nested, "Unexpected literal")),
                             })
                             .collect()
                     } else {
-                        Err(error(meta, "Attribute list is expected"))
+                        Err(error_spanned(meta, "Attribute list is expected"))
                     }
                 }))
             } else {
@@ -362,9 +608,8 @@ fn get_encoding_meta<'a>(
         .unwrap_or_else(|| Ok(Vec::new()))
 }
 
-
 lazy_static::lazy_static! {
-    pub static ref PRIMITIVE_MAPPING: Vec<(symbol::Symbol, PrimitiveEncoding)> = {
+    pub static ref RUST_TO_PRIMITIVE_MAPPING: Vec<(symbol::Symbol, PrimitiveEncoding)> = {
         use crate::symbol::rust::*;
         use crate::encoding::PrimitiveEncoding::*;
         vec![
@@ -381,11 +626,16 @@ lazy_static::lazy_static! {
 }
 
 /// Returns [PrimitiveEncoding] instance corresponding to the type `ident`.
-fn get_primitive_mapping(ident: &syn::Ident) -> Option<PrimitiveEncoding> {
-    PRIMITIVE_MAPPING.iter().find_map(|(i, p)| if ident.eq(i) { Some(*p) } else { None })
+fn get_rust_to_primitive_mapping(ident: &syn::Ident) -> Option<PrimitiveEncoding> {
+    RUST_TO_PRIMITIVE_MAPPING
+        .iter()
+        .find_map(|(i, p)| if ident.eq(i) { Some(*p) } else { None })
 }
 
-
-fn error(tokens: impl quote::ToTokens, message: impl std::fmt::Display) -> syn::Error {
+fn error_spanned(tokens: impl quote::ToTokens, message: impl std::fmt::Display) -> syn::Error {
     syn::Error::new_spanned(tokens, message)
+}
+
+fn error(span: Span, message: impl std::fmt::Display) -> syn::Error {
+    syn::Error::new(span, message)
 }
