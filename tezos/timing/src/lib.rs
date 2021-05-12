@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::collections::HashMap;
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
