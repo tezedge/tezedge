@@ -73,17 +73,6 @@ where
     map(rest, Vec::from)(input)
 }
 
-/// Reads Tesoz string encoded as a 32-bit length followed by the string bytes.
-#[inline]
-pub fn string<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], String, E>
-where
-    E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
-{
-    map_res(flat_map(size, take), |bytes| {
-        std::str::from_utf8(bytes).map(str::to_string)
-    })(input)
-}
-
 /// Reads size encoded as 4-bytes big-endian unsigned.
 #[inline]
 fn size<I, E>(input: I) -> IResult<I, u32, E>
@@ -104,6 +93,17 @@ where
     verify(size, move |m| (*m as usize) <= max)
 }
 
+/// Reads Tesoz string encoded as a 32-bit length followed by the string bytes.
+#[inline]
+pub fn string<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], String, E>
+where
+    E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
+{
+    map_res(length_data(size), |bytes| {
+        std::str::from_utf8(bytes).map(str::to_string)
+    })(input)
+}
+
 /// Returns parser that reads Tesoz string encoded as a 32-bit length followed by the string bytes,
 /// checking that the lengh of the string does not exceed `max`.
 #[inline]
@@ -111,7 +111,7 @@ pub fn bounded_string<'a, E>(max: usize) -> impl FnMut(&'a [u8]) -> IResult<&'a 
 where
     E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
 {
-    map_res(flat_map(bounded_size(max), take), |bytes| {
+    map_res(length_data(bounded_size(max)), |bytes| {
         std::str::from_utf8(bytes).map(str::to_string)
     })
 }
