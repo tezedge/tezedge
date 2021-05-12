@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
 
-use tezos_new_context::timings::{hash_to_string, ActionStatsWithRange, RangeStats, DB_PATH};
+use tezos_timing::{hash_to_string, ActionStatsWithRange, RangeStats, DB_PATH};
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -287,7 +287,7 @@ mod tests {
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
         let block_hash_str = hash_to_string(block_hash.as_ref());
 
-        let schema = include_str!("../../../tezos/new_context/src/schema_stats.sql");
+        let schema = include_str!("../../../tezos/timing/src/schema_stats.sql");
         let mut batch = Batch::new(&sql, schema);
         while let Some(mut stmt) = batch.next().unwrap() {
             stmt.execute([]).unwrap();
