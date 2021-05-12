@@ -106,4 +106,14 @@ mod test {
         assert_encodings_match!(super::GetCurrentHeadMessage);
     }
 
+    #[test]
+    fn test_decode_current_head_33k() {
+        let dir = std::env::var("CARGO_MANIFEST_DIR").expect("`CARGO_MANIFEST_DIR` is not set");
+        let path = PathBuf::from(dir).join("resources").join("current-head-big.msg");
+        let data = File::open(path).and_then(|mut file| { let mut data = Vec::new(); file.read_to_end(&mut data)?; Ok(data)}).unwrap();
+        let serde = <super::CurrentHeadMessage as BinaryMessageSerde>::from_bytes(&data).expect("Binary message is unreadable by serde");
+        let nom = <super::CurrentHeadMessage as BinaryMessageNom>::from_bytes(&data).expect("Binary message is unreadable by nom");
+        assert_eq!(serde, nom);
+    }
+
 }

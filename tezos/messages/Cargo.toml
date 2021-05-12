@@ -39,9 +39,17 @@ harness = false
 name = "block_header"
 harness = false
 
+[[bench]]
+name = "current_head"
+harness = false
+
+[[bench]]
+name = "current_branch"
+harness = false
+
 [dev-dependencies]
 assert-json-diff = "1.1"
-criterion = "0.3"
+criterion = { version = "0.3", features = ["html_reports"]}
 csv = "1.1"
 serde_json = "1.0"
 tezos_identity = { path = "../identity" }
