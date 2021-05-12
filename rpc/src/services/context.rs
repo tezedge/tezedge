@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use serde::Serialize;
 use std::collections::HashMap;
 
-const DB_PATH: &str = "context_stats.db";
+use tezos_timing::{hash_to_string, ActionStatsWithRange, RangeStats, DB_PATH};
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -36,84 +36,12 @@ struct ActionStats {
     remove: f64,
 }
 
-impl ActionStats {
-    fn compute_mean(&mut self) {
-        let mean = self.data.total_time / self.data.actions_count as f64;
-        self.data.mean_time = mean.max(0.0);
-    }
-}
-
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ContextStats {
+    commit_context: RangeStats,
+    checkout_context: RangeStats,
     operations_context: Vec<ActionStatsWithRange>,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct DetailedTime {
-    count: usize,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
-}
-
-impl DetailedTime {
-    fn compute_mean(&mut self) {
-        let mean = self.total_time / self.count as f64;
-        self.mean_time = mean.max(0.0);
-    }
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct RangeStats {
-    one_to_ten_us: DetailedTime,
-    ten_to_one_hundred_us: DetailedTime,
-    one_hundred_us_to_one_ms: DetailedTime,
-    one_to_ten_ms: DetailedTime,
-    ten_to_one_hundred_ms: DetailedTime,
-    one_hundred_ms_to_one_s: DetailedTime,
-    one_to_ten_s: DetailedTime,
-    ten_to_one_hundred_s: DetailedTime,
-    one_hundred_s: DetailedTime,
-}
-
-impl RangeStats {
-    fn compute_mean(&mut self) {
-        self.one_to_ten_us.compute_mean();
-        self.ten_to_one_hundred_us.compute_mean();
-        self.one_hundred_us_to_one_ms.compute_mean();
-        self.one_to_ten_ms.compute_mean();
-        self.ten_to_one_hundred_ms.compute_mean();
-        self.one_hundred_ms_to_one_s.compute_mean();
-        self.one_to_ten_s.compute_mean();
-        self.ten_to_one_hundred_s.compute_mean();
-        self.one_hundred_s.compute_mean();
-    }
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct ActionStatsWithRange {
-    root: String,
-    mem: RangeStats,
-    find: RangeStats,
-    find_tree: RangeStats,
-    add: RangeStats,
-    add_tree: RangeStats,
-    remove: RangeStats,
-}
-
-impl ActionStatsWithRange {
-    fn compute_mean(&mut self) {
-        self.mem.compute_mean();
-        self.find.compute_mean();
-        self.find_tree.compute_mean();
-        self.add.compute_mean();
-        self.add_tree.compute_mean();
-        self.remove.compute_mean();
-    }
 }
 
 pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, failure::Error> {
@@ -127,11 +55,57 @@ pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
 }
 
 fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
-    let mut stmt = sql.prepare("SELECT name, key_root, tezedge_time FROM actions WHERE block_id IS NOT NULL;")?;
+    let mut stmt = sql.prepare(
+        "
+    SELECT
+      action_name,
+      root,
+      one_to_ten_us_count,
+      one_to_ten_us_mean_time,
+      one_to_ten_us_max_time,
+      one_to_ten_us_total_time,
+      ten_to_one_hundred_us_count,
+      ten_to_one_hundred_us_mean_time,
+      ten_to_one_hundred_us_max_time,
+      ten_to_one_hundred_us_total_time,
+      one_hundred_us_to_one_ms_count,
+      one_hundred_us_to_one_ms_mean_time,
+      one_hundred_us_to_one_ms_max_time,
+      one_hundred_us_to_one_ms_total_time,
+      one_to_ten_ms_count,
+      one_to_ten_ms_mean_time,
+      one_to_ten_ms_max_time,
+      one_to_ten_ms_total_time,
+      ten_to_one_hundred_ms_count,
+      ten_to_one_hundred_ms_mean_time,
+      ten_to_one_hundred_ms_max_time,
+      ten_to_one_hundred_ms_total_time,
+      one_hundred_ms_to_one_s_count,
+      one_hundred_ms_to_one_s_mean_time,
+      one_hundred_ms_to_one_s_max_time,
+      one_hundred_ms_to_one_s_total_time,
+      one_to_ten_s_count,
+      one_to_ten_s_mean_time,
+      one_to_ten_s_max_time,
+      one_to_ten_s_total_time,
+      ten_to_one_hundred_s_count,
+      ten_to_one_hundred_s_mean_time,
+      ten_to_one_hundred_s_max_time,
+      ten_to_one_hundred_s_total_time,
+      one_hundred_s_count,
+      one_hundred_s_mean_time,
+      one_hundred_s_max_time,
+      one_hundred_s_total_time
+    FROM
+      global_action_stats;
+       ",
+    )?;
 
     let mut rows = stmt.query([])?;
 
     let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
+    let mut commit_stats = RangeStats::default();
+    let mut checkout_stats = RangeStats::default();
 
     while let Some(row) = rows.next()? {
         let action_name = match row.get_ref(0)?.as_str() {
@@ -144,51 +118,76 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
             _ => continue,
         };
 
-        let tezedge_time: f64 = row.get(2)?;
-
-        let entry = match map.get_mut(root) {
-            Some(entry) => entry,
-            None => {
-                let mut stats = ActionStatsWithRange::default();
-                stats.root = root.to_string();
-                map.insert(root.to_string(), stats);
-                map.get_mut(root).unwrap()
+        let mut action_stats = match action_name {
+            "commit" => &mut commit_stats,
+            "checkout" => &mut checkout_stats,
+            _ => {
+                let entry = match map.get_mut(root) {
+                    Some(entry) => entry,
+                    None => {
+                        let mut stats = ActionStatsWithRange::default();
+                        stats.root = root.to_string();
+                        map.insert(root.to_string(), stats);
+                        map.get_mut(root).unwrap()
+                    }
+                };
+                match action_name {
+                    "mem" => &mut entry.mem,
+                    "find" => &mut entry.find,
+                    "find_tree" => &mut entry.find_tree,
+                    "add" => &mut entry.add,
+                    "add_tree" => &mut entry.add_tree,
+                    "remove" => &mut entry.remove,
+                    _ => continue,
+                }
             }
         };
 
-        let range_stats = match action_name {
-            "mem" => &mut entry.mem,
-            "find" => &mut entry.find,
-            "find_tree" => &mut entry.find_tree,
-            "add" => &mut entry.add,
-            "add_tree" => &mut entry.add_tree,
-            "remove" => &mut entry.remove,
-            _ => continue,
-        };
-
-        let time = match tezedge_time {
-            t if t < 0.00001 => &mut range_stats.one_to_ten_us,
-            t if t < 0.0001 => &mut range_stats.ten_to_one_hundred_us,
-            t if t < 0.001 => &mut range_stats.one_hundred_us_to_one_ms,
-            t if t < 0.01 => &mut range_stats.one_to_ten_ms,
-            t if t < 0.1 => &mut range_stats.ten_to_one_hundred_ms,
-            t if t < 1.0 => &mut range_stats.one_hundred_ms_to_one_s,
-            t if t < 10.0 => &mut range_stats.one_to_ten_s,
-            t if t < 100.0 => &mut range_stats.ten_to_one_hundred_s,
-            _ => &mut range_stats.one_hundred_s,
-        };
-
-        time.count = time.count.saturating_add(1);
-        time.total_time += tezedge_time;
-        time.max_time = time.max_time.max(tezedge_time);
+        action_stats.one_to_ten_us.count = row.get(2)?;
+        action_stats.one_to_ten_us.mean_time = row.get(3)?;
+        action_stats.one_to_ten_us.max_time = row.get(4)?;
+        action_stats.one_to_ten_us.total_time = row.get(5)?;
+        action_stats.ten_to_one_hundred_us.count = row.get(6)?;
+        action_stats.ten_to_one_hundred_us.mean_time = row.get(7)?;
+        action_stats.ten_to_one_hundred_us.max_time = row.get(8)?;
+        action_stats.ten_to_one_hundred_us.total_time = row.get(9)?;
+        action_stats.one_hundred_us_to_one_ms.count = row.get(10)?;
+        action_stats.one_hundred_us_to_one_ms.mean_time = row.get(11)?;
+        action_stats.one_hundred_us_to_one_ms.max_time = row.get(12)?;
+        action_stats.one_hundred_us_to_one_ms.total_time = row.get(13)?;
+        action_stats.one_to_ten_ms.count = row.get(14)?;
+        action_stats.one_to_ten_ms.mean_time = row.get(15)?;
+        action_stats.one_to_ten_ms.max_time = row.get(16)?;
+        action_stats.one_to_ten_ms.total_time = row.get(17)?;
+        action_stats.ten_to_one_hundred_ms.count = row.get(18)?;
+        action_stats.ten_to_one_hundred_ms.mean_time = row.get(19)?;
+        action_stats.ten_to_one_hundred_ms.max_time = row.get(20)?;
+        action_stats.ten_to_one_hundred_ms.total_time = row.get(21)?;
+        action_stats.one_hundred_ms_to_one_s.count = row.get(22)?;
+        action_stats.one_hundred_ms_to_one_s.mean_time = row.get(23)?;
+        action_stats.one_hundred_ms_to_one_s.max_time = row.get(24)?;
+        action_stats.one_hundred_ms_to_one_s.total_time = row.get(25)?;
+        action_stats.one_to_ten_s.count = row.get(26)?;
+        action_stats.one_to_ten_s.mean_time = row.get(27)?;
+        action_stats.one_to_ten_s.max_time = row.get(28)?;
+        action_stats.one_to_ten_s.total_time = row.get(29)?;
+        action_stats.ten_to_one_hundred_s.count = row.get(30)?;
+        action_stats.ten_to_one_hundred_s.mean_time = row.get(31)?;
+        action_stats.ten_to_one_hundred_s.max_time = row.get(32)?;
+        action_stats.ten_to_one_hundred_s.total_time = row.get(33)?;
+        action_stats.one_hundred_s.count = row.get(34)?;
+        action_stats.one_hundred_s.mean_time = row.get(35)?;
+        action_stats.one_hundred_s.max_time = row.get(36)?;
+        action_stats.one_hundred_s.total_time = row.get(37)?;
     }
 
-    for action in map.values_mut() {
-        action.compute_mean();
-    }
+    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    operations_context.sort_by(|a, b| a.root.cmp(&b.root));
 
     Ok(ContextStats {
-        operations_context: map.into_iter().map(|(_, v)| v).collect(),
+        operations_context,
+        commit_context: commit_stats,
+        checkout_context: checkout_stats,
     })
 }
 
@@ -211,89 +210,67 @@ fn make_block_stats_impl(
         }
     )?;
 
-    let mut stmt = sql.prepare(
-        "
+    let mut stmt = sql
+        .prepare(
+            "
         SELECT
-          key_root,
-          name,
-          total(tezedge_time),
-          count(tezedge_time),
-          max(tezedge_time)
+          root,
+          mean_time,
+          max_time,
+          total_time,
+          actions_count,
+          mem_time,
+          add_time,
+          add_tree_time,
+          find_time,
+          find_tree_time,
+          remove_time
         FROM
-          actions
+          block_action_stats
         WHERE
-          block_id = ?
-        GROUP BY
-          key_root,
-          name
+          block_id = ?;
         ",
-    )?;
+        )
+        .unwrap();
 
     let mut rows = stmt.query([block_id])?;
 
     let mut map: HashMap<String, ActionStats> = HashMap::default();
 
     while let Some(row) = rows.next()? {
-        let root = match row.get_ref(0)?.as_str() {
-            Ok(root) if !root.is_empty() => root,
+        let root: String = match row.get(0) {
+            Ok(root) => root,
             _ => continue,
         };
 
-        let action_name = match row.get_ref(1)?.as_str() {
-            Ok(name) if !name.is_empty() => name,
-            _ => continue,
+        let action_stats = ActionStats {
+            data: ActionData {
+                mean_time: row.get(1)?,
+                max_time: row.get(2)?,
+                total_time: row.get(3)?,
+                actions_count: row.get(4)?,
+                root: root.clone(),
+            },
+            mem: row.get(5)?,
+            add: row.get(6)?,
+            add_tree: row.get(7)?,
+            find: row.get(8)?,
+            find_tree: row.get(9)?,
+            remove: row.get(10)?,
         };
 
-        let total: f64 = row.get(2)?;
-        let count: usize = row.get(3)?;
-        let max_time: f64 = row.get(4)?;
-
-        let entry = match map.get_mut(root) {
-            Some(entry) => entry,
-            None => {
-                let mut stats = ActionStats::default();
-                stats.data.root = root.to_string();
-                map.insert(root.to_string(), stats);
-                map.get_mut(root).unwrap()
-            }
-        };
-
-        match action_name {
-            "mem" => entry.mem = total,
-            "find" => entry.find = total,
-            "find_tree" => entry.find_tree = total,
-            "add" => entry.add = total,
-            "add_tree" => entry.add_tree = total,
-            "remove" => entry.remove = total,
-            _ => {}
-        }
-
-        entry.data.actions_count += count;
-        entry.data.total_time += total;
-        entry.data.max_time = entry.data.max_time.max(max_time);
+        map.insert(root, action_stats);
     }
 
-    for action in map.values_mut() {
-        action.compute_mean();
-    }
+    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
     Ok(BlockStats {
         actions_count,
         checkout_context_time: checkout_time,
         commit_context_time: commit_time,
-        operations_context: map.into_iter().map(|(_, v)| v).collect(),
+        operations_context,
     })
-}
-
-pub fn hash_to_string(hash: &[u8]) -> String {
-    const HEXCHARS: &[u8] = b"0123456789abcdef";
-
-    let mut s = String::with_capacity(62);
-    for byte in hash {
-        s.push(HEXCHARS[*byte as usize >> 4] as char);
-        s.push(HEXCHARS[*byte as usize & 0xF] as char);
-    }
-    s
 }
 
 #[cfg(test)]
@@ -310,7 +287,7 @@ mod tests {
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
         let block_hash_str = hash_to_string(block_hash.as_ref());
 
-        let schema = include_str!("../../../tezos/new_context/src/schema_stats.sql");
+        let schema = include_str!("../../../tezos/timing/src/schema_stats.sql");
         let mut batch = Batch::new(&sql, schema);
         while let Some(mut stmt) = batch.next().unwrap() {
             stmt.execute([]).unwrap();
@@ -328,13 +305,12 @@ mod tests {
 
         sql.execute(
             "
-        INSERT INTO actions
-          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+        INSERT INTO block_action_stats
+          (root, block_id, mean_time, max_time, total_time, actions_count,
+           mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
         VALUES
-          ('mem', 'a' ,'a/b/c', 1.2, 1.3, 1, NULL, NULL),
-          ('mem', 'a' ,'a/b/d', 5.2, 5.3, 1, NULL, NULL),
-          ('add', 'a' ,'a/b/c/d', 1.5, 1.6, 1, NULL, NULL),
-          ('add', 'm' ,'m/n/o', 1.5, 1.6, 1, NULL, NULL);
+          ('a', 1, 100.5, 3.0, 4.0, 40, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6),
+          ('m', 1, 100.6, 30.0, 40.0, 400, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6);
             ",
             [],
         )
@@ -353,19 +329,47 @@ mod tests {
             .find(|a| a.data.root == "a")
             .unwrap();
         assert_eq!(action.data.root, "a");
-        assert_eq!(action.data.mean_time, 2.733333333333333);
-        assert_eq!(action.add, 1.6);
+        assert_eq!(action.data.mean_time, 100.5);
+        assert_eq!(action.add, 1.4);
+        assert_eq!(action.find_tree, 1.3);
+
+        sql.execute(
+            "
+        INSERT INTO global_action_stats
+          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time)
+        VALUES
+          ('mem', 'a', 2, 1.3, 1.4, 1.5),
+          ('mem', 'b', 3, 10.3, 10.4, 10.5),
+          ('add', 'b', 4, 20.3, 20.4, 20.5),
+          ('commit', 'commit', 4, 30.3, 30.4, 30.5),
+          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5);
+            ",
+            [],
+        )
+        .unwrap();
 
         let context_stats = make_context_stats_impl(&sql).unwrap();
 
         assert_eq!(context_stats.operations_context.len(), 2);
+        assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
+        assert_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
         let action = context_stats
             .operations_context
             .iter()
             .find(|a| a.root == "a")
             .unwrap();
-        assert_eq!(action.mem.one_to_ten_s.mean_time, 3.3);
-        assert_eq!(action.mem.one_to_ten_s.count, 2);
+        assert_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
+        assert_eq!(action.mem.one_to_ten_us.count, 2);
+
+        let action = context_stats
+            .operations_context
+            .iter()
+            .find(|a| a.root == "b")
+            .unwrap();
+        assert_eq!(action.mem.one_to_ten_us.mean_time, 10.3);
+        assert_eq!(action.mem.one_to_ten_us.count, 3);
+        assert_eq!(action.add.one_to_ten_us.mean_time, 20.3);
+        assert_eq!(action.add.one_to_ten_us.count, 4);
     }
 }
