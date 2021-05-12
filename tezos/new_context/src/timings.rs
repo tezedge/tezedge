@@ -60,10 +60,6 @@ pub fn context_action(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    // TODO - Bruno: it is possible to avoid these conversions by borrowing the internal
-    // &str directly. Since we want this function to add as little overhead as possible
-    // investigate doing that later once everything is working properly.
-
     let action_name = rt.get(action_name);
     let action_name = match action_name.as_bytes() {
         b"mem" => ActionKind::Mem,
