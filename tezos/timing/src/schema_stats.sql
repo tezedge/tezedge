@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS global_action_stats (
 
   root TEXT NOT NULL,
   action_name TEXT NOT NULL,
+  total_time REAL DEFAULT 0.0,
+  actions_count INTEGER DEFAULT 0,
 
   one_to_ten_us_count INTEGER DEFAULT 0,
   one_to_ten_us_mean_time REAL DEFAULT 0.0,

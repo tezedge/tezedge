@@ -95,7 +95,9 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
       one_hundred_s_count,
       one_hundred_s_mean_time,
       one_hundred_s_max_time,
-      one_hundred_s_total_time
+      one_hundred_s_total_time,
+      total_time,
+      actions_count
     FROM
       global_action_stats;
        ",
@@ -179,9 +181,18 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
         action_stats.one_hundred_s.mean_time = row.get(35)?;
         action_stats.one_hundred_s.max_time = row.get(36)?;
         action_stats.one_hundred_s.total_time = row.get(37)?;
+        action_stats.total_time = row.get(38)?;
+        action_stats.actions_count = row.get(39)?;
     }
 
-    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    let mut operations_context: Vec<_> = map
+        .into_iter()
+        .map(|(_, mut v)| {
+            v.compute_total();
+            v
+        })
+        .collect();
+
     operations_context.sort_by(|a, b| a.root.cmp(&b.root));
 
     Ok(ContextStats {
@@ -336,13 +347,13 @@ mod tests {
         sql.execute(
             "
         INSERT INTO global_action_stats
-          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time)
+          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time, actions_count, total_time)
         VALUES
-          ('mem', 'a', 2, 1.3, 1.4, 1.5),
-          ('mem', 'b', 3, 10.3, 10.4, 10.5),
-          ('add', 'b', 4, 20.3, 20.4, 20.5),
-          ('commit', 'commit', 4, 30.3, 30.4, 30.5),
-          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5);
+          ('mem', 'a', 2, 1.3, 1.4, 1.5, 1, 2.0),
+          ('mem', 'b', 3, 10.3, 10.4, 10.5, 1, 2.0),
+          ('add', 'b', 4, 20.3, 20.4, 20.5, 1, 2.0),
+          ('commit', 'commit', 4, 30.3, 30.4, 30.5, 1, 2.0),
+          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5, 1, 2.0);
             ",
             [],
         )
@@ -352,6 +363,7 @@ mod tests {
 
         assert_eq!(context_stats.operations_context.len(), 2);
         assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
+        assert_eq!(context_stats.commit_context.actions_count, 1);
         assert_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
         let action = context_stats
@@ -361,6 +373,8 @@ mod tests {
             .unwrap();
         assert_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
         assert_eq!(action.mem.one_to_ten_us.count, 2);
+        assert_eq!(action.total_time, 2.0);
+        assert_eq!(action.mem.total_time, 2.0);
 
         let action = context_stats
             .operations_context

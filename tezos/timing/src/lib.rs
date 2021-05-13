@@ -74,6 +74,8 @@ impl DetailedTime {
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RangeStats {
+    pub total_time: f64,
+    pub actions_count: usize,
     pub one_to_ten_us: DetailedTime,
     pub ten_to_one_hundred_us: DetailedTime,
     pub one_hundred_us_to_one_ms: DetailedTime,
@@ -99,6 +101,9 @@ impl RangeStats {
     }
 
     fn add_time(&mut self, tezedge_time: f64) {
+        self.total_time += tezedge_time;
+        self.actions_count = self.actions_count.saturating_add(1);
+
         let time = match tezedge_time {
             t if t < 0.00001 => &mut self.one_to_ten_us,
             t if t < 0.0001 => &mut self.ten_to_one_hundred_us,
@@ -120,6 +125,8 @@ impl RangeStats {
 #[serde(rename_all = "camelCase")]
 pub struct ActionStatsWithRange {
     pub root: String,
+    pub total_time: f64,
+    pub actions_count: usize,
     pub mem: RangeStats,
     pub find: RangeStats,
     pub find_tree: RangeStats,
@@ -136,6 +143,24 @@ impl ActionStatsWithRange {
         self.add.compute_mean();
         self.add_tree.compute_mean();
         self.remove.compute_mean();
+    }
+
+    pub fn compute_total(&mut self) {
+        self.total_time = self.mem.total_time
+            + self.find.total_time
+            + self.find_tree.total_time
+            + self.add.total_time
+            + self.add_tree.total_time
+            + self.remove.total_time;
+
+        self.actions_count = self
+            .mem
+            .actions_count
+            .saturating_add(self.find.actions_count)
+            .saturating_add(self.find_tree.actions_count)
+            .saturating_add(self.add.actions_count)
+            .saturating_add(self.add_tree.actions_count)
+            .saturating_add(self.remove.actions_count);
     }
 }
 
@@ -464,7 +489,10 @@ impl Timing {
         let entry = match self.global_stats.get_mut(root) {
             Some(entry) => entry,
             None => {
-                let stats = ActionStatsWithRange { root: root.to_string(), ..Default::default() };
+                let stats = ActionStatsWithRange {
+                    root: root.to_string(),
+                    ..Default::default()
+                };
                 self.global_stats.insert(root.to_string(), stats);
                 self.global_stats.get_mut(root).unwrap()
             }
@@ -479,6 +507,8 @@ impl Timing {
             ActionKind::Remove => &mut entry.remove,
         };
 
+        entry.actions_count = entry.actions_count.saturating_add(1);
+        entry.total_time += action.tezedge_time;
         action_stats.add_time(action.tezedge_time);
     }
 
@@ -635,6 +665,8 @@ impl Timing {
         UPDATE
           global_action_stats
         SET
+          total_time = :total_time,
+          actions_count = :actions_count,
           one_to_ten_us_count = :one_to_ten_us_count,
           one_to_ten_us_mean_time = :one_to_ten_us_mean_time,
           one_to_ten_us_max_time = :one_to_ten_us_max_time,
@@ -680,6 +712,8 @@ impl Timing {
             named_params! {
                 ":root": root,
                 ":action_name": action_name,
+                ":total_time": &range_stats.total_time,
+                ":actions_count": &range_stats.actions_count,
                 ":one_to_ten_us_count": &range_stats.one_to_ten_us.count,
                 ":one_to_ten_us_mean_time": &range_stats.one_to_ten_us.mean_time,
                 ":one_to_ten_us_max_time": &range_stats.one_to_ten_us.max_time,
