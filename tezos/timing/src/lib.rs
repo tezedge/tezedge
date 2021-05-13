@@ -125,6 +125,8 @@ impl RangeStats {
 #[serde(rename_all = "camelCase")]
 pub struct ActionStatsWithRange {
     pub root: String,
+    pub total_time_read: f64,
+    pub total_time_write: f64,
     pub total_time: f64,
     pub actions_count: usize,
     pub mem: RangeStats,
@@ -146,12 +148,13 @@ impl ActionStatsWithRange {
     }
 
     pub fn compute_total(&mut self) {
-        self.total_time = self.mem.total_time
-            + self.find.total_time
-            + self.find_tree.total_time
-            + self.add.total_time
-            + self.add_tree.total_time
-            + self.remove.total_time;
+        self.total_time_read =
+            self.mem.total_time + self.find.total_time + self.find_tree.total_time;
+
+        self.total_time_write =
+            self.add.total_time + self.add_tree.total_time + self.remove.total_time;
+
+        self.total_time = self.total_time_read + self.total_time_write;
 
         self.actions_count = self
             .mem
