@@ -73,9 +73,9 @@ fn get_primitive_number_mapping(kind: PrimitiveEncoding) -> Option<&'static str>
 
 fn generage_primitive_nom_read(kind: PrimitiveEncoding, span: Span) -> TokenStream {
     match kind {
-        PrimitiveEncoding::Int8
-        | PrimitiveEncoding::Uint8 =>
-            generate_byte_nom_read(get_primitive_byte_mapping(kind).unwrap(), span),
+        PrimitiveEncoding::Int8 | PrimitiveEncoding::Uint8 => {
+            generate_byte_nom_read(get_primitive_byte_mapping(kind).unwrap(), span)
+        }
         PrimitiveEncoding::Int16
         | PrimitiveEncoding::Uint16
         | PrimitiveEncoding::Int31
@@ -104,16 +104,32 @@ fn generate_bytes_nom_read(span: Span) -> TokenStream {
 }
 
 fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
+    let generate_nom_read = match encoding.fields.len() {
+        0 => generate_struct_no_fields_nom_read,
+        1 => generate_struct_one_field_nom_read,
+        _ => generate_struct_many_fields_nom_read,
+    };
+    generate_nom_read(encoding)
+}
+
+fn generate_struct_no_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
+    let name = encoding.name;
+    quote_spanned!(encoding.name.span()=> nom::combinator::success(#name {}))
+}
+
+fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream {
+    let name = encoding.name;
+    let field = encoding.fields.first().unwrap();
+    let field_name = field.name;
+    let field_nom_read = generate_struct_field_nom_read(field);
+    quote_spanned!(encoding.name.span()=> nom::combinator::map(#field_nom_read, |#field_name| #name { #field_name }))
+}
+
+fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
     let name = encoding.name;
     let field1 = encoding.fields.iter().map(|field| field.name);
     let field2 = field1.clone();
-    let field_nom_read = encoding.fields.iter().map(|field| {
-        field
-            .encoding
-            .as_ref()
-            .map(|encoding| generate_nom_read(&encoding))
-            .unwrap_or_else(|| quote!(|input| Ok((input, Default::default()))))
-    });
+    let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
     quote_spanned! {
         encoding.name.span()=>
         nom::combinator::map(
@@ -123,6 +139,14 @@ fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
             |(#(#field1),*)| #name { #(#field2),* }
         )
     }
+}
+
+fn generate_struct_field_nom_read(field: &FieldEncoding) -> TokenStream {
+    field
+        .encoding
+        .as_ref()
+        .map(|encoding| generate_nom_read(encoding))
+        .unwrap_or_else(|| quote!(|input| Ok((input, Default::default()))))
 }
 
 fn generate_enum_nom_read(encoding: &EnumEncoding) -> TokenStream {
@@ -171,10 +195,7 @@ fn generate_string_nom_read(size: &Option<syn::Expr>, span: Span) -> TokenStream
     )
 }
 
-fn generate_optional_field_nom_read<'a>(
-    encoding: &Encoding<'a>,
-    span: Span,
-) -> TokenStream {
+fn generate_optional_field_nom_read<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
     quote_spanned!(span=> tezos_encoding::nom::optional_field(#nom_read))
 }
