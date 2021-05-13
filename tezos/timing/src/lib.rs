@@ -166,30 +166,41 @@ impl ActionStatsWithRange {
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct ActionData {
-    root: String,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
-    actions_count: usize,
+pub struct ActionData {
+    pub root: String,
+    pub actions_count: usize,
+    pub tezedge_mean_time: f64,
+    pub tezedge_max_time: f64,
+    pub tezedge_total_time: f64,
+    pub irmin_mean_time: f64,
+    pub irmin_max_time: f64,
+    pub irmin_total_time: f64,
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionStats {
-    data: ActionData,
-    mem: f64,
-    find: f64,
-    find_tree: f64,
-    add: f64,
-    add_tree: f64,
-    remove: f64,
+    pub data: ActionData,
+    pub tezedge_mem: f64,
+    pub tezedge_find: f64,
+    pub tezedge_find_tree: f64,
+    pub tezedge_add: f64,
+    pub tezedge_add_tree: f64,
+    pub tezedge_remove: f64,
+    pub irmin_mem: f64,
+    pub irmin_find: f64,
+    pub irmin_find_tree: f64,
+    pub irmin_add: f64,
+    pub irmin_add_tree: f64,
+    pub irmin_remove: f64,
 }
 
 impl ActionStats {
     fn compute_mean(&mut self) {
-        let mean = self.data.total_time / self.data.actions_count as f64;
-        self.data.mean_time = mean.max(0.0);
+        let mean = self.data.tezedge_total_time / self.data.actions_count as f64;
+        self.data.tezedge_mean_time = mean.max(0.0);
+        let mean = self.data.irmin_total_time / self.data.actions_count as f64;
+        self.data.irmin_mean_time = mean.max(0.0);
     }
 }
 
@@ -537,21 +548,25 @@ impl Timing {
             }
         };
 
-        let action_value = match action.action_name {
-            ActionKind::Mem => &mut entry.mem,
-            ActionKind::Find => &mut entry.find,
-            ActionKind::FindTree => &mut entry.find_tree,
-            ActionKind::Add => &mut entry.add,
-            ActionKind::AddTree => &mut entry.add_tree,
-            ActionKind::Remove => &mut entry.remove,
+        let (value_tezedge, value_irmin) = match action.action_name {
+            ActionKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
+            ActionKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
+            ActionKind::FindTree => (&mut entry.tezedge_find_tree, &mut entry.irmin_find_tree),
+            ActionKind::Add => (&mut entry.tezedge_add, &mut entry.irmin_add),
+            ActionKind::AddTree => (&mut entry.tezedge_add_tree, &mut entry.irmin_add_tree),
+            ActionKind::Remove => (&mut entry.tezedge_remove, &mut entry.irmin_remove),
         };
 
         let tezedge_time = action.tezedge_time;
+        let irmin_time = action.irmin_time;
 
-        *action_value += tezedge_time;
+        *value_tezedge += tezedge_time;
+        *value_irmin += irmin_time;
         entry.data.actions_count = entry.data.actions_count.saturating_add(1);
-        entry.data.total_time += tezedge_time;
-        entry.data.max_time = entry.data.max_time.max(tezedge_time);
+        entry.data.tezedge_total_time += tezedge_time;
+        entry.data.tezedge_max_time = entry.data.tezedge_max_time.max(tezedge_time);
+        entry.data.irmin_total_time += irmin_time;
+        entry.data.irmin_max_time = entry.data.irmin_max_time.max(irmin_time);
     }
 
     fn sync_block_stats(&mut self) -> Result<(), SQLError> {
@@ -571,28 +586,42 @@ impl Timing {
             let mut query = self.sql.prepare_cached(
                 "
             INSERT INTO block_action_stats
-              (root, block_id, mean_time, max_time, total_time, actions_count,
-               mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
+              (root, block_id, actions_count,
+               tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_find_time,
+               tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
+               irmin_mean_time, irmin_max_time, irmin_total_time, irmin_mem_time, irmin_find_time,
+               irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
             VALUES
-              (:root, :block_id, :mean_time, :max_time, :total_time, :actions_count,
-               :mem_time, :find_time, :find_tree_time, :add_time, :add_tree_time,
-               :remove_time)
+              (:root, :block_id, :actions_count,
+               :tezedge_mean_time, :tezedge_max_time, :tezedge_total_time, :tezedge_mem_time, :tezedge_find_time,
+               :tezedge_find_tree_time, :tezedge_add_time, :tezedge_add_tree_time, :tezedge_remove_time,
+               :irmin_mean_time, :irmin_max_time, :irmin_total_time, :irmin_mem_time, :irmin_find_time,
+               :irmin_find_tree_time, :irmin_add_time, :irmin_add_tree_time, :irmin_remove_time)
                 ",
             )?;
 
             query.execute(named_params! {
                 ":root": root,
                 ":block_id": block_id,
-                ":mean_time": action_stats.data.mean_time,
-                ":max_time": action_stats.data.max_time,
-                ":total_time": action_stats.data.total_time,
                 ":actions_count": action_stats.data.actions_count,
-                ":mem_time": action_stats.mem,
-                ":add_time": action_stats.add,
-                ":add_tree_time": action_stats.add_tree,
-                ":find_time": action_stats.find,
-                ":find_tree_time": action_stats.find_tree,
-                ":remove_time": action_stats.remove,
+                ":tezedge_mean_time": action_stats.data.tezedge_mean_time,
+                ":tezedge_max_time": action_stats.data.tezedge_max_time,
+                ":tezedge_total_time": action_stats.data.tezedge_total_time,
+                ":irmin_mean_time": action_stats.data.irmin_mean_time,
+                ":irmin_max_time": action_stats.data.irmin_max_time,
+                ":irmin_total_time": action_stats.data.irmin_total_time,
+                ":tezedge_mem_time": action_stats.tezedge_mem,
+                ":tezedge_add_time": action_stats.tezedge_add,
+                ":tezedge_add_tree_time": action_stats.tezedge_add_tree,
+                ":tezedge_find_time": action_stats.tezedge_find,
+                ":tezedge_find_tree_time": action_stats.tezedge_find_tree,
+                ":tezedge_remove_time": action_stats.tezedge_remove,
+                ":irmin_mem_time": action_stats.irmin_mem,
+                ":irmin_add_time": action_stats.irmin_add,
+                ":irmin_add_tree_time": action_stats.irmin_add_tree,
+                ":irmin_find_time": action_stats.irmin_find,
+                ":irmin_find_tree_time": action_stats.irmin_find_tree,
+                ":irmin_remove_time": action_stats.irmin_remove,
             })?;
         }
 
@@ -848,6 +877,7 @@ mod tests {
             })
             .unwrap();
 
+        timing.sync_block_stats().unwrap();
         timing.sync_global_stats(1.0, 1.0).unwrap();
     }
 

@@ -42,17 +42,29 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
 
   root TEXT NOT NULL,
 
-  mean_time REAL DEFAULT 0.0,
-  max_time REAL DEFAULT 0.0,
-  total_time REAL DEFAULT 0.0,
   actions_count INTEGER DEFAULT 0,
 
-  mem_time REAL DEFAULT 0.0,
-  find_time REAL DEFAULT 0.0,
-  find_tree_time REAL DEFAULT 0.0,
-  add_time REAL DEFAULT 0.0,
-  add_tree_time REAL DEFAULT 0.0,
-  remove_time REAL DEFAULT 0.0,
+  tezedge_mean_time REAL DEFAULT 0.0,
+  tezedge_max_time REAL DEFAULT 0.0,
+  tezedge_total_time REAL DEFAULT 0.0,
+
+  tezedge_mem_time REAL DEFAULT 0.0,
+  tezedge_find_time REAL DEFAULT 0.0,
+  tezedge_find_tree_time REAL DEFAULT 0.0,
+  tezedge_add_time REAL DEFAULT 0.0,
+  tezedge_add_tree_time REAL DEFAULT 0.0,
+  tezedge_remove_time REAL DEFAULT 0.0,
+
+  irmin_mean_time REAL DEFAULT 0.0,
+  irmin_max_time REAL DEFAULT 0.0,
+  irmin_total_time REAL DEFAULT 0.0,
+
+  irmin_mem_time REAL DEFAULT 0.0,
+  irmin_find_time REAL DEFAULT 0.0,
+  irmin_find_tree_time REAL DEFAULT 0.0,
+  irmin_add_time REAL DEFAULT 0.0,
+  irmin_add_tree_time REAL DEFAULT 0.0,
+  irmin_remove_time REAL DEFAULT 0.0,
 
   block_id INTEGER DEFAULT NULL,
   FOREIGN KEY(block_id) REFERENCES blocks(id)
