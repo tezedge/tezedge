@@ -5,7 +5,7 @@
 //!
 //! A document describing the algorithm can be found [here](https://github.com/tarides/tezos-context-hash).
 
-use std::{array::TryFromSliceError, convert::TryInto, io, rc::Rc};
+use std::{array::TryFromSliceError, convert::TryInto, io};
 
 use blake2::digest::{InvalidOutputSize, Update, VariableOutput};
 use blake2::VarBlake2b;
@@ -13,11 +13,11 @@ use failure::Fail;
 
 use ocaml::ocaml_hash_string;
 
-use crate::ContextValue;
 use crate::{
     persistent::BincodeEncoded,
     working_tree::{Commit, Entry, Node, NodeKind, Tree},
 };
+use crate::{working_tree::KeyFragment, ContextValue};
 
 mod ocaml;
 
@@ -68,7 +68,7 @@ impl From<io::Error> for HashingError {
 /// Inode representation used for hashing directories with >256 entries.
 enum Inode<'a> {
     Empty,
-    Value(Vec<(Rc<String>, &'a Node)>),
+    Value(Vec<(KeyFragment, &'a Node)>),
     Tree {
         depth: u32,
         children: usize,
@@ -90,15 +90,15 @@ fn index(depth: u32, name: &str) -> u32 {
 // IMPORTANT: entries must be sorted in lexicographic order of the name
 // Because we use `OrdMap`, this holds true when we iterate the items, but this is
 // something to keep in mind if the representation of `Tree` changes.
-fn partition_entries<'a>(depth: u32, entries: &[(&Rc<String>, &'a Node)]) -> Result<Inode<'a>, HashingError> {
+fn partition_entries<'a>(
+    depth: u32,
+    entries: &[(&KeyFragment, &'a Node)],
+) -> Result<Inode<'a>, HashingError> {
     if entries.is_empty() {
         Ok(Inode::Empty)
     } else if entries.len() <= 32 {
         Ok(Inode::Value(
-            entries
-                .iter()
-                .map(|(s, n)| (Rc::clone(*s), *n))
-                .collect(),
+            entries.iter().map(|(s, n)| ((*s).clone(), *n)).collect(),
         ))
     } else {
         let children = entries.len();
@@ -106,7 +106,7 @@ fn partition_entries<'a>(depth: u32, entries: &[(&Rc<String>, &'a Node)]) -> Res
 
         // pointers = {p(i) | i <- [0..31], t(i) != Empty}
         for i in 0..=31 {
-            let entries_at_depth_and_index_i: Vec<(&Rc<String>, &Node)> = entries
+            let entries_at_depth_and_index_i: Vec<(&KeyFragment, &Node)> = entries
                 .iter()
                 .filter(|(name, _)| index(depth, name) == i)
                 .cloned()
@@ -232,7 +232,7 @@ fn hash_short_inode(tree: &Tree) -> Result<EntryHash, HashingError> {
 pub(crate) fn hash_tree(tree: &Tree) -> Result<EntryHash, HashingError> {
     // If there are >256 entries, we need to partition the tree and hash the resulting inode
     if tree.len() > 256 {
-        let entries: Vec<(&Rc<String>, &Node)> =
+        let entries: Vec<(&KeyFragment, &Node)> =
             tree.iter().map(|(s, n)| (s, n.as_ref())).collect();
         let inode = partition_entries(0, &entries)?;
         hash_long_inode(&inode)
@@ -423,7 +423,7 @@ mod tests {
             entry: RefCell::new(None),
             commited: Cell::new(false),
         };
-        dummy_tree.insert(Rc::new("a".to_string()), Rc::new(node));
+        dummy_tree.insert(Rc::new("a".to_string()).into(), Rc::new(node));
 
         // hexademical representation of above tree:
         //
@@ -536,7 +536,7 @@ mod tests {
                     entry: RefCell::new(None),
                     commited: Cell::new(false),
                 };
-                tree = tree.update(Rc::new(binding.name.clone()), Rc::new(node));
+                tree = tree.update(Rc::new(binding.name.clone()).into(), Rc::new(node));
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();

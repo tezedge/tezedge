@@ -13,7 +13,7 @@ derive_builder = "0.9"
 failure = "0.1"
 getset = "0.1"
 hex = "0.4"
-im = { version = "15.0.0", features = ["serde"] }
+im-rc = { version = "15.0.0", features = ["serde"] }
 lazy_static = "1.4"
 leb128 = "0.2"
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
