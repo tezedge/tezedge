@@ -17,7 +17,7 @@ use crate::{
     initializer::ContextKvStoreConfiguration,
     timings,
     working_tree::{working_tree::WorkingTree, NodeKind},
-    ContextKey, ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
+    ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
 };
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
@@ -69,6 +69,18 @@ impl From<TezedgeContext> for TezedgeContextFFI {
     fn from(index: TezedgeContext) -> Self {
         Self::new(index)
     }
+}
+
+fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&'a str> {
+    let mut key = rt.get(key);
+    let mut vector: Vec<&str> = Vec::with_capacity(128);
+
+    while let Some((head, tail)) = key.uncons() {
+        vector.push(unsafe { head.as_str_unchecked() });
+        key = tail;
+    }
+
+    vector
 }
 
 ocaml_export! {
@@ -189,7 +201,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = context.mem(&key)
             .map_err(|err| format!("{:?}", err));
@@ -218,7 +230,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = context.mem_tree(&key);
 
@@ -234,7 +246,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = context.find(&key)
             .map_err(|err| format!("{:?}", err));
@@ -251,7 +263,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = context.find_tree(&key)
             .map_err(|err| format!("{:?}", err));
@@ -270,7 +282,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
         let value: ContextValue = value.to_rust(rt);
 
         let result = context.add(&key, value)
@@ -290,7 +302,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
@@ -310,7 +322,7 @@ ocaml_export! {
         let ocaml_context = rt.get(context);
         let context: &TezedgeContextFFI = ocaml_context.borrow();
         let context = context.0.borrow().clone();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = context.delete(&key)
             .map_err(|err| format!("{:?}", err))
@@ -334,7 +346,7 @@ ocaml_export! {
         let offset = offset.map(|n| n as usize);
         let length: Option<i64> = length.to_rust(rt);
         let length = length.map(|n| n as usize);
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         // TODO: don't clone the string, implement `ToOCaml` trait for `Rc<_>`
         let result = context
@@ -399,7 +411,7 @@ ocaml_export! {
     ) -> OCaml<Result<bool, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = tree.mem(&key)
             .map_err(|err| format!("{:?}", err));
@@ -468,7 +480,7 @@ ocaml_export! {
     ) -> OCaml<bool> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = tree.mem_tree(&key);
 
@@ -483,7 +495,7 @@ ocaml_export! {
     ) -> OCaml<Result<Option<OCamlBytes>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = tree.find(&key)
             .map_err(|err| format!("{:?}", err));
@@ -499,7 +511,7 @@ ocaml_export! {
     ) -> OCaml<Result<Option<DynBox<WorkingTreeFFI>>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = tree.find_tree(&key)
             .map_err(|err| format!("{:?}", err));
@@ -516,7 +528,7 @@ ocaml_export! {
     ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
         let value: ContextValue = value.to_rust(rt);
 
         let result =  tree.add(&key, value)
@@ -534,7 +546,7 @@ ocaml_export! {
     ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
         let ocaml_new_tree = rt.get(new_tree);
         let new_tree: &WorkingTreeFFI = ocaml_new_tree.borrow();
 
@@ -552,7 +564,7 @@ ocaml_export! {
     ) -> OCaml<Result<DynBox<WorkingTreeFFI>, String>> {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         let result = tree.delete(&key)
             .map_err(|err| format!("{:?}", err));
@@ -574,7 +586,7 @@ ocaml_export! {
         let offset = offset.map(|n| n as usize);
         let length: Option<i64> = length.to_rust(rt);
         let length = length.map(|n| n as usize);
-        let key: ContextKey = key.to_rust(rt);
+        let key = make_key(rt, key);
 
         // TODO: don't clone the string, implement `ToOCaml` trait for `Rc<_>`
         let result = tree
