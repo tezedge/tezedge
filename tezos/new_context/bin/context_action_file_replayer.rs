@@ -334,6 +334,16 @@ impl StatsWriter {
     }
 }
 
+pub trait ActionKeySlices {
+    fn as_slices(&self) -> Vec<&str>;
+}
+
+impl ActionKeySlices for Vec<String> {
+    fn as_slices(&self) -> Vec<&str> {
+        self.iter().map(String::as_str).collect()
+    }
+}
+
 /// Resolve name and store path (if supports)
 fn resolve_context_kv_store(
     context_kv_store_configuration: &ContextKvStoreConfiguration,
@@ -435,19 +445,16 @@ fn main() -> Result<(), Error> {
                 }
                 ContextAction::Get { key, value, .. } => {
                     // FIXME: value can be `None`, fix ContextAction::Get
-                    let key: Vec<_> = key.iter().map(String::as_str).collect();
                     assert_eq!(
                         value.clone(),
-                        context.find(key.as_slice()).unwrap().unwrap()
+                        context.find(&key.as_slices()).unwrap().unwrap()
                     );
                 }
                 ContextAction::Mem { key, value, .. } => {
-                    let key: Vec<_> = key.iter().map(String::as_str).collect();
-                    assert_eq!(*value, context.mem(key.as_slice()).unwrap());
+                    assert_eq!(*value, context.mem(&key.as_slices()).unwrap());
                 }
                 ContextAction::DirMem { key, value, .. } => {
-                    let key: Vec<_> = key.iter().map(String::as_str).collect();
-                    assert_eq!(*value, context.mem_tree(key.as_slice()));
+                    assert_eq!(*value, context.mem_tree(&key.as_slices()));
                 }
                 _ => {}
             };
@@ -515,18 +522,15 @@ fn perform_context_action(
     // Write actions produce a new context, read actions return the original context
     let (context, new_tree_id) = match action {
         ContextAction::Get { key, .. } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            current_context.find(&key)?;
+            current_context.find(&key.as_slices())?;
             (context, None)
         }
         ContextAction::Mem { key, .. } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            current_context.mem(&key)?;
+            current_context.mem(&key.as_slices())?;
             (context, None)
         }
         ContextAction::DirMem { key, .. } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            current_context.mem_tree(&key);
+            current_context.mem_tree(&key.as_slices());
             (context, None)
         }
         ContextAction::Set {
@@ -534,36 +538,27 @@ fn perform_context_action(
             value,
             new_tree_id,
             ..
-        } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            (current_context.add(&key, value)?, Some(new_tree_id))
-        }
+        } => (
+            current_context.add(&key.as_slices(), value)?,
+            Some(new_tree_id),
+        ),
         ContextAction::Copy {
-            to_key,
+            to_key: key,
             from_key,
             new_tree_id,
             ..
-        } => {
-            let from_key: Vec<_> = from_key.iter().map(String::as_str).collect();
-            let to_key: Vec<_> = to_key.iter().map(String::as_str).collect();
-
-            (
-                current_context.copy(&from_key, &to_key)?.unwrap_or(context),
-                Some(new_tree_id),
-            )
-        }
+        } => (
+            current_context
+                .copy(&from_key.as_slices(), &key.as_slices())?
+                .unwrap_or(context),
+            Some(new_tree_id),
+        ),
         ContextAction::Delete {
             key, new_tree_id, ..
-        } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            (current_context.delete(&key)?, Some(new_tree_id))
-        }
+        } => (current_context.delete(&key.as_slices())?, Some(new_tree_id)),
         ContextAction::RemoveRecursively {
             key, new_tree_id, ..
-        } => {
-            let key: Vec<_> = key.iter().map(String::as_str).collect();
-            (current_context.delete(&key)?, Some(new_tree_id))
-        }
+        } => (current_context.delete(&key.as_slices())?, Some(new_tree_id)),
         ContextAction::Commit {
             new_context_hash,
             block_hash: Some(block_hash),
