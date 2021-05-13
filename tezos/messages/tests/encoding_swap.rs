@@ -1,7 +1,6 @@
 use crypto::hash::HashType;
 use failure::Error;
 use std::{convert::TryInto, iter};
-use tezos_encoding::binary_reader::{ActualSize, BinaryReaderErrorKind};
 use tezos_messages::p2p::binary_message::{BinaryMessage, BinaryMessageNom};
 use tezos_messages::p2p::encoding::limits::*;
 use tezos_messages::p2p::encoding::swap::*;
@@ -54,15 +53,7 @@ fn can_deserialize_swap_max_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_swap_point_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_POINT_OVER_MAX)?;
-    let err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
-    assert!(matches!(
-        err.kind(),
-        BinaryReaderErrorKind::EncodingBoundaryExceeded {
-            name: _,
-            boundary: P2P_POINT_MAX_SIZE,
-            actual: ActualSize::Exact(actual),
-        } if actual == P2P_POINT_MAX_SIZE + 1
-    ));
+    let _err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
@@ -76,11 +67,7 @@ fn can_t_deserialize_swap_point_max_plus_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_swap_peer_id_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_PEER_ID_OVER_MAX)?;
-    let err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
-    assert!(matches!(
-        err.kind(),
-        BinaryReaderErrorKind::Overflow { bytes: 1 }
-    ));
+    let _err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
