@@ -1,5 +1,5 @@
 use crypto::hash::BlockHash;
-use rusqlite::Connection;
+use rusqlite::{named_params, Connection};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -49,12 +49,15 @@ pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, fail
     make_block_stats_impl(&sql, block_hash)
 }
 
-pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
+pub(crate) fn make_context_stats(context_name: &str) -> Result<ContextStats, failure::Error> {
     let sql = Connection::open(DB_PATH)?;
-    make_context_stats_impl(&sql)
+    make_context_stats_impl(&sql, context_name)
 }
 
-fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
+fn make_context_stats_impl(
+    sql: &Connection,
+    context_name: &str,
+) -> Result<ContextStats, failure::Error> {
     let mut stmt = sql.prepare(
         "
     SELECT
@@ -99,11 +102,15 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
       total_time,
       actions_count
     FROM
-      global_action_stats;
+      global_action_stats
+    WHERE
+      context_name = :context_name
        ",
     )?;
 
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(named_params! {
+        ":context_name": context_name
+    })?;
 
     let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
     let mut commit_stats = RangeStats::default();
@@ -347,19 +354,20 @@ mod tests {
         sql.execute(
             "
         INSERT INTO global_action_stats
-          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time, actions_count, total_time)
+          (context_name, action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time,
+           one_to_ten_us_max_time, one_to_ten_us_total_time, actions_count, total_time)
         VALUES
-          ('mem', 'a', 2, 1.3, 1.4, 1.5, 1, 2.0),
-          ('mem', 'b', 3, 10.3, 10.4, 10.5, 1, 2.0),
-          ('add', 'b', 4, 20.3, 20.4, 20.5, 1, 2.0),
-          ('commit', 'commit', 4, 30.3, 30.4, 30.5, 1, 2.0),
-          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5, 1, 2.0);
+          ('tezedge', 'mem', 'a', 2, 1.3, 1.4, 1.5, 1, 2.0),
+          ('tezedge', 'mem', 'b', 3, 10.3, 10.4, 10.5, 1, 2.0),
+          ('tezedge', 'add', 'b', 4, 20.3, 20.4, 20.5, 1, 2.0),
+          ('tezedge', 'commit', 'commit', 4, 30.3, 30.4, 30.5, 1, 2.0),
+          ('tezedge', 'checkout', 'checkout', 5, 40.3, 40.4, 40.5, 1, 2.0);
             ",
             [],
         )
         .unwrap();
 
-        let context_stats = make_context_stats_impl(&sql).unwrap();
+        let context_stats = make_context_stats_impl(&sql, "tezedge").unwrap();
 
         assert_eq!(context_stats.operations_context.len(), 2);
         assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);

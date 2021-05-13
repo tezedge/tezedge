@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS global_action_stats (
 
   root TEXT NOT NULL,
   action_name TEXT NOT NULL,
+  context_name TEXT NOT NULL,
   total_time REAL DEFAULT 0.0,
   actions_count INTEGER DEFAULT 0,
 
@@ -111,5 +112,5 @@ CREATE TABLE IF NOT EXISTS global_action_stats (
   one_hundred_s_max_time REAL DEFAULT 0.0,
   one_hundred_s_total_time REAL DEFAULT 0.0,
 
-  UNIQUE(root, action_name)
+  UNIQUE(root, action_name, context_name)
 );
