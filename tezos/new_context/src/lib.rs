@@ -20,9 +20,9 @@ pub fn force_libtezos_linking() {
     tezos_sys::force_libtezos_linking();
 }
 
+use std::array::TryFromSliceError;
 use std::collections::BTreeMap;
 use std::num::TryFromIntError;
-use std::{array::TryFromSliceError, rc::Rc};
 
 use failure::Fail;
 use gc::GarbageCollectionError;
@@ -35,7 +35,7 @@ pub use hash::EntryHash;
 pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
-use working_tree::working_tree::WorkingTree;
+use working_tree::{working_tree::WorkingTree, KeyFragment};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -50,14 +50,15 @@ pub mod actions;
 pub mod kv_store;
 pub mod tezedge_context;
 
-pub type ContextKey = Vec<String>;
+pub type ContextKey<'a> = [&'a str];
+pub type ContextKeyOwned = Vec<String>;
 pub type ContextValue = Vec<u8>;
 
 /// An unique tree identifier during a block application
 pub type TreeId = i32;
 
 /// Tree in String form needed for JSON RPCs
-pub type StringTreeMap = BTreeMap<Rc<String>, StringTreeEntry>;
+pub type StringTreeMap = BTreeMap<KeyFragment, StringTreeEntry>;
 
 /// Tree in String form needed for JSON RPCs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +99,7 @@ where
         offset: Option<usize>,
         length: Option<usize>,
         key: &ContextKey,
-    ) -> Result<Vec<(Rc<String>, WorkingTree)>, ContextError>;
+    ) -> Result<Vec<(KeyFragment, WorkingTree)>, ContextError>;
     fn fold(&self, key: &ContextKey);
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
@@ -137,7 +138,7 @@ where
         &self,
         context_hash: &ContextHash,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError>;
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError>;
     // get entire context tree in string form for JSON RPC
     fn get_context_tree_by_prefix(
         &self,
@@ -267,7 +268,7 @@ impl<
 #[macro_export]
 macro_rules! context_key {
     ($key:expr) => {{
-        $key.split('/').map(str::to_string).collect::<Vec<String>>()
+        $key.split('/').collect::<Vec<&str>>()
     }};
     ($($arg:tt)*) => {{
         context_key!(format!($($arg)*))
