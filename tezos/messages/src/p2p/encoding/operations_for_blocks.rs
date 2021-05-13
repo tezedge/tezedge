@@ -7,16 +7,25 @@ use std::sync::Arc;
 use bytes::Buf;
 
 use getset::{CopyGetters, Getters};
-use nom::{branch::alt, bytes::complete::{tag, take}, combinator::{flat_map, into, map, success}, multi::many_till, sequence::preceded};
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take},
+    combinator::{flat_map, into, map, success, verify},
+    multi::many_till,
+    sequence::preceded,
+};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::{binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind}, nom::NomResult};
 use tezos_encoding::encoding::{CustomCodec, Encoding, Field, HasEncoding, HasEncodingTest};
+use tezos_encoding::nom::NomReader;
 use tezos_encoding::ser::Error;
 use tezos_encoding::types::Value;
+use tezos_encoding::{
+    binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind},
+    nom::NomResult,
+};
 use tezos_encoding::{has_encoding, has_encoding_test, safe};
-use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
@@ -38,7 +47,9 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 /// TODO: Implement mechanism for updating this, when Tezos implements this.
 pub const MAX_PASS_MERKLE_DEPTH: Option<usize> = Some(3);
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters, HasEncoding, NomReader)]
+#[derive(
+    Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters, HasEncoding, NomReader,
+)]
 pub struct OperationsForBlock {
     #[get = "pub"]
     hash: BlockHash,
@@ -149,7 +160,10 @@ cached_data!(PathRight, body);
 
 impl PathRight {
     pub fn new(left: Hash) -> Self {
-        Self { left, body: Default::default() }
+        Self {
+            left,
+            body: Default::default(),
+        }
     }
 }
 
@@ -166,7 +180,10 @@ cached_data!(PathLeft, body);
 
 impl PathLeft {
     pub fn new(right: Hash) -> Self {
-        Self { right, body: Default::default() }
+        Self {
+            right,
+            body: Default::default(),
+        }
     }
 }
 
@@ -224,11 +241,7 @@ impl Serialize for Path {
     }
 }
 
-
-has_encoding!(Path, PATH_ENCODING, {
-    PathCodec::get_encoding()
-});
-
+has_encoding!(Path, PATH_ENCODING, { PathCodec::get_encoding() });
 
 #[derive(Clone)]
 enum DecodePathNode {
@@ -243,21 +256,18 @@ impl From<Vec<u8>> for DecodePathNode {
 }
 
 fn hash(input: &[u8]) -> NomResult<Vec<u8>> {
-    map(take(HashType::OperationListListHash.size()), |slice: &[u8]| slice.to_vec())(input)
+    map(
+        take(HashType::OperationListListHash.size()),
+        |slice: &[u8]| slice.to_vec(),
+    )(input)
 }
 
 fn path_left(input: &[u8]) -> NomResult<DecodePathNode> {
-    preceded(
-        tag(0xf0u8.to_be_bytes()),
-        success(DecodePathNode::Left)
-    )(input)
+    preceded(tag(0xf0u8.to_be_bytes()), success(DecodePathNode::Left))(input)
 }
 
 fn path_right(input: &[u8]) -> NomResult<DecodePathNode> {
-    preceded(
-        tag(0x0fu8.to_be_bytes()),
-        into(hash)
-    )(input)
+    preceded(tag(0x0fu8.to_be_bytes()), into(hash))(input)
 }
 
 fn path_op(input: &[u8]) -> NomResult<()> {
@@ -267,18 +277,17 @@ fn path_op(input: &[u8]) -> NomResult<()> {
 fn path_complete(nodes: Vec<DecodePathNode>) -> impl FnMut(&[u8]) -> NomResult<Path> {
     move |mut input| {
         let mut res = Vec::new();
-        for node in nodes.clone() {
+        for node in nodes.clone().into_iter().rev() {
             match node {
                 DecodePathNode::Left => {
                     let (i, h) = hash(input)?;
                     res.push(PathItem::left(h));
                     input = i;
                 }
-                DecodePathNode::Right(h) => {
-                    res.push(PathItem::right(h))
-                }
+                DecodePathNode::Right(h) => res.push(PathItem::right(h)),
             }
         }
+        res.reverse();
         Ok((input, Path(res)))
     }
 }
@@ -286,8 +295,15 @@ fn path_complete(nodes: Vec<DecodePathNode>) -> impl FnMut(&[u8]) -> NomResult<P
 impl NomReader for Path {
     fn from_bytes(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
         flat_map(
-            map(many_till(alt((path_left, path_right)), path_op), |(v, _)| v),
-            path_complete
+            verify(
+                map(many_till(alt((path_left, path_right)), path_op), |(v, _)| v),
+                |nodes: &Vec<DecodePathNode>| {
+                    MAX_PASS_MERKLE_DEPTH
+                        .map(|v| v >= nodes.len())
+                        .unwrap_or(true)
+                },
+            ),
+            path_complete,
         )(bytes)
     }
 }
@@ -621,5 +637,4 @@ mod test {
     fn test_get_operations_for_block_encoding_schema() {
         assert_encodings_match!(GetOperationsForBlocksMessage);
     }
-
 }
