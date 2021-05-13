@@ -36,7 +36,10 @@ pub use hash::EntryHash;
 pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
-use working_tree::{working_tree::WorkingTree, KeyFragment};
+use working_tree::{
+    working_tree::{FoldDepth, TreeWalker, WorkingTree},
+    KeyFragment,
+};
 
 use crate::gc::GarbageCollector;
 use crate::working_tree::working_tree::MerkleError;
@@ -101,7 +104,11 @@ where
         length: Option<usize>,
         key: &ContextKey,
     ) -> Result<Vec<(KeyFragment, WorkingTree)>, ContextError>;
-    fn fold(&self, key: &ContextKey);
+    fn fold_iter(
+        &self,
+        depth: Option<FoldDepth>,
+        key: &ContextKey,
+    ) -> Result<TreeWalker, ContextError>;
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError>;
 }
