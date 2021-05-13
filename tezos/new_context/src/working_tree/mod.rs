@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    borrow::Borrow,
     cell::{Cell, RefCell},
     rc::Rc,
 };
@@ -14,10 +15,39 @@ use crate::ContextValue;
 pub mod working_tree;
 pub mod working_tree_stats;
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
+pub struct KeyFragment(Rc<String>);
+
+impl std::ops::Deref for KeyFragment {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Borrow<str> for KeyFragment {
+    fn borrow(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+impl Borrow<String> for KeyFragment {
+    fn borrow(&self) -> &String {
+        &self.0
+    }
+}
+
+impl From<Rc<String>> for KeyFragment {
+    fn from(value: Rc<String>) -> Self {
+        KeyFragment(value)
+    }
+}
+
 // Tree must be an ordered structure for consistent hash in hash_tree.
 // The entry names *must* be in lexicographical order, as required by the hashing algorithm.
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead.
-pub type Tree = im::OrdMap<Rc<String>, Rc<Node>>;
+pub type Tree = im_rc::OrdMap<KeyFragment, Rc<Node>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum NodeKind {
