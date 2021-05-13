@@ -193,10 +193,11 @@ pub async fn dev_stats_memory_protocol_runners(
 pub async fn context_stats(
     _: Request<Body>,
     _: Params,
-    _: Query,
+    query: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    result_to_json_response(context::make_context_stats(), env.log())
+    let context_name = query.get_str("context_name").unwrap_or("tezedge");
+    result_to_json_response(context::make_context_stats(context_name), env.log())
 }
 
 pub async fn block_actions(
