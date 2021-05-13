@@ -191,7 +191,7 @@ fn create_operations_for_blocks_encoded(depth: usize) -> Vec<u8> {
 fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
     let path = (0..depth)
         .map(|i| get_hash(i as u64, 32))
-        .map(|h| PathItem::Left(PathLeft::new(h, Default::default())))
+        .map(|h| PathItem::left(h))
         .collect();
     let message = PeerMessage::OperationsForBlocks(OperationsForBlocksMessage::new(
         OperationsForBlock::new(get_hash(0xffffffff_u64, 32).try_into().unwrap(), 0x01),

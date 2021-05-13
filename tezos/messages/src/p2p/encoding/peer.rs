@@ -6,47 +6,63 @@ use std::mem::size_of;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, Tag, TagMap};
-use tezos_encoding::has_encoding;
-
-use crate::cached_data;
-use crate::p2p::binary_message::cache::BinaryDataCache;
+use tezos_encoding::{encoding::{Encoding, Field, HasEncoding, HasEncodingTest, Tag, TagMap}, has_encoding_test};
+use tezos_encoding::nom::NomReader;
+use crate::non_cached_data;
 use crate::p2p::encoding::prelude::*;
 
 use super::limits::MESSAGE_MAX_SIZE;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[encoding(tags = "u16")]
 pub enum PeerMessage {
+    #[encoding(tag = 0x01)]
     Disconnect,
+    #[encoding(tag = 0x03)]
     Advertise(AdvertiseMessage),
+    #[encoding(tag = 0x04)]
     SwapRequest(SwapMessage),
+    #[encoding(tag = 0x05)]
     SwapAck(SwapMessage),
+    #[encoding(tag = 0x02)]
     Bootstrap,
+    #[encoding(tag = 0x10)]
     GetCurrentBranch(GetCurrentBranchMessage),
+    #[encoding(tag = 0x11)]
     CurrentBranch(CurrentBranchMessage),
+    #[encoding(tag = 0x12)]
     Deactivate(DeactivateMessage),
+    #[encoding(tag = 0x13)]
     GetCurrentHead(GetCurrentHeadMessage),
+    #[encoding(tag = 0x14)]
     CurrentHead(CurrentHeadMessage),
+    #[encoding(tag = 0x20)]
     GetBlockHeaders(GetBlockHeadersMessage),
+    #[encoding(tag = 0x21)]
     BlockHeader(BlockHeaderMessage),
+    #[encoding(tag = 0x30)]
     GetOperations(GetOperationsMessage),
+    #[encoding(tag = 0x31)]
     Operation(OperationMessage),
+    #[encoding(tag = 0x40)]
     GetProtocols(GetProtocolsMessage),
+    #[encoding(tag = 0x41)]
     Protocol(ProtocolMessage),
+    #[encoding(tag = 0x60)]
     GetOperationsForBlocks(GetOperationsForBlocksMessage),
+    #[encoding(tag = 0x61)]
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
-#[derive(Serialize, Deserialize, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader)]
+#[encoding(dynamic = "MESSAGE_MAX_SIZE")]
 pub struct PeerMessageResponse {
     #[get = "pub"]
     message: PeerMessage,
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
-cached_data!(PeerMessageResponse, body);
-has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
+non_cached_data!(PeerMessageResponse);
+has_encoding_test!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
     Encoding::bounded_dynamic(
         MESSAGE_MAX_SIZE,
         Encoding::Obj(
@@ -58,53 +74,53 @@ has_encoding!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
                     TagMap::new(vec![
                         Tag::new(0x01, "Disconnect", Encoding::Unit),
                         Tag::new(0x02, "Bootstrap", Encoding::Unit),
-                        Tag::new(0x03, "Advertise", AdvertiseMessage::encoding().clone()),
-                        Tag::new(0x04, "SwapRequest", SwapMessage::encoding().clone()),
-                        Tag::new(0x05, "SwapAck", SwapMessage::encoding().clone()),
+                        Tag::new(0x03, "Advertise", AdvertiseMessage::encoding_test().clone()),
+                        Tag::new(0x04, "SwapRequest", SwapMessage::encoding_test().clone()),
+                        Tag::new(0x05, "SwapAck", SwapMessage::encoding_test().clone()),
                         Tag::new(
                             0x10,
                             "GetCurrentBranch",
-                            GetCurrentBranchMessage::encoding().clone(),
+                            GetCurrentBranchMessage::encoding_test().clone(),
                         ),
                         Tag::new(
                             0x11,
                             "CurrentBranch",
-                            CurrentBranchMessage::encoding().clone(),
+                            CurrentBranchMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x12, "Deactivate", DeactivateMessage::encoding().clone()),
+                        Tag::new(0x12, "Deactivate", DeactivateMessage::encoding_test().clone()),
                         Tag::new(
                             0x13,
                             "GetCurrentHead",
-                            GetCurrentHeadMessage::encoding().clone(),
+                            GetCurrentHeadMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding().clone()),
+                        Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding_test().clone()),
                         Tag::new(
                             0x20,
                             "GetBlockHeaders",
-                            GetBlockHeadersMessage::encoding().clone(),
+                            GetBlockHeadersMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding().clone()),
+                        Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding_test().clone()),
                         Tag::new(
                             0x30,
                             "GetOperations",
-                            GetOperationsMessage::encoding().clone(),
+                            GetOperationsMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x31, "Operation", OperationMessage::encoding().clone()),
+                        Tag::new(0x31, "Operation", OperationMessage::encoding_test().clone()),
                         Tag::new(
                             0x40,
                             "GetProtocols",
-                            GetProtocolsMessage::encoding().clone(),
+                            GetProtocolsMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x41, "Protocol", ProtocolMessage::encoding().clone()),
+                        Tag::new(0x41, "Protocol", ProtocolMessage::encoding_test().clone()),
                         Tag::new(
                             0x60,
                             "GetOperationsForBlocks",
-                            GetOperationsForBlocksMessage::encoding().clone(),
+                            GetOperationsForBlocksMessage::encoding_test().clone(),
                         ),
                         Tag::new(
                             0x61,
                             "OperationsForBlocks",
-                            OperationsForBlocksMessage::encoding().clone(),
+                            OperationsForBlocksMessage::encoding_test().clone(),
                         ),
                     ]),
                 ),
@@ -117,7 +133,6 @@ impl From<PeerMessage> for PeerMessageResponse {
     fn from(message: PeerMessage) -> Self {
         PeerMessageResponse {
             message,
-            body: Default::default(),
         }
     }
 }
@@ -155,3 +170,16 @@ into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);
 into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
 into_peer_message!(GetOperationsMessage, GetOperations);
 into_peer_message!(OperationMessage, Operation);
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    use super::*;
+
+    #[test]
+    fn test_peer_message_response_encoding_schema() {
+        assert_encodings_match!(PeerMessageResponse);
+    }
+
+}

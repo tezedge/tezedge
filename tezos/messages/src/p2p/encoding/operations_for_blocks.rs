@@ -7,14 +7,16 @@ use std::sync::Arc;
 use bytes::Buf;
 
 use getset::{CopyGetters, Getters};
+use nom::{branch::alt, bytes::complete::{tag, take}, combinator::{flat_map, into, map, success}, multi::many_till, sequence::preceded};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, Hash, HashType};
-use tezos_encoding::binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind};
-use tezos_encoding::encoding::{CustomCodec, Encoding, Field, HasEncoding};
+use tezos_encoding::{binary_reader::{ActualSize, BinaryReaderError, BinaryReaderErrorKind}, nom::NomResult};
+use tezos_encoding::encoding::{CustomCodec, Encoding, Field, HasEncoding, HasEncodingTest};
 use tezos_encoding::ser::Error;
 use tezos_encoding::types::Value;
-use tezos_encoding::{has_encoding, safe};
+use tezos_encoding::{has_encoding, has_encoding_test, safe};
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
@@ -36,13 +38,14 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 /// TODO: Implement mechanism for updating this, when Tezos implements this.
 pub const MAX_PASS_MERKLE_DEPTH: Option<usize> = Some(3);
 
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters, HasEncoding, NomReader)]
 pub struct OperationsForBlock {
     #[get = "pub"]
     hash: BlockHash,
     #[get_copy = "pub"]
     validation_pass: i8,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -63,7 +66,7 @@ impl OperationsForBlock {
 }
 
 cached_data!(OperationsForBlock, body);
-has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
+has_encoding_test!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
     Encoding::Obj(
         "OperationsForBlock",
         vec![
@@ -73,15 +76,17 @@ has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
     )
 });
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters, HasEncoding, NomReader)]
 pub struct OperationsForBlocksMessage {
     #[get = "pub"]
     operations_for_block: OperationsForBlock,
     #[get = "pub"]
     operation_hashes_path: Path,
     #[get = "pub"]
+    #[encoding(bounded = "OPERATION_LIST_MAX_SIZE", list, dynamic)]
     operations: Vec<Operation>,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -101,7 +106,7 @@ impl OperationsForBlocksMessage {
 }
 
 cached_data!(OperationsForBlocksMessage, body);
-has_encoding!(
+has_encoding_test!(
     OperationsForBlocksMessage,
     OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
     {
@@ -117,7 +122,7 @@ has_encoding!(
                     "operations",
                     Encoding::bounded(
                         OPERATION_LIST_MAX_SIZE,
-                        Encoding::list(Encoding::dynamic(Operation::encoding().clone())),
+                        Encoding::list(Encoding::dynamic(Operation::encoding_test().clone())),
                     ),
                 ),
             ],
@@ -143,8 +148,8 @@ pub struct PathRight {
 cached_data!(PathRight, body);
 
 impl PathRight {
-    pub fn new(left: Hash, body: BinaryDataCache) -> Self {
-        Self { left, body }
+    pub fn new(left: Hash) -> Self {
+        Self { left, body: Default::default() }
     }
 }
 
@@ -160,8 +165,8 @@ pub struct PathLeft {
 cached_data!(PathLeft, body);
 
 impl PathLeft {
-    pub fn new(right: Hash, body: BinaryDataCache) -> Self {
-        Self { right, body }
+    pub fn new(right: Hash) -> Self {
+        Self { right, body: Default::default() }
     }
 }
 
@@ -174,10 +179,10 @@ pub enum PathItem {
 
 impl PathItem {
     pub fn right(left: Hash) -> PathItem {
-        PathItem::Right(PathRight::new(left, Default::default()))
+        PathItem::Right(PathRight::new(left))
     }
     pub fn left(right: Hash) -> PathItem {
-        PathItem::Left(PathLeft::new(right, Default::default()))
+        PathItem::Left(PathLeft::new(right))
     }
 }
 
@@ -218,12 +223,83 @@ impl Serialize for Path {
         seq.end()
     }
 }
+
+
+has_encoding!(Path, PATH_ENCODING, {
+    PathCodec::get_encoding()
+});
+
+
+#[derive(Clone)]
+enum DecodePathNode {
+    Left,
+    Right(Hash),
+}
+
+impl From<Vec<u8>> for DecodePathNode {
+    fn from(bytes: Vec<u8>) -> Self {
+        DecodePathNode::Right(bytes)
+    }
+}
+
+fn hash(input: &[u8]) -> NomResult<Vec<u8>> {
+    map(take(HashType::OperationListListHash.size()), |slice: &[u8]| slice.to_vec())(input)
+}
+
+fn path_left(input: &[u8]) -> NomResult<DecodePathNode> {
+    preceded(
+        tag(0xf0u8.to_be_bytes()),
+        success(DecodePathNode::Left)
+    )(input)
+}
+
+fn path_right(input: &[u8]) -> NomResult<DecodePathNode> {
+    preceded(
+        tag(0x0fu8.to_be_bytes()),
+        into(hash)
+    )(input)
+}
+
+fn path_op(input: &[u8]) -> NomResult<()> {
+    preceded(tag(0x00u8.to_be_bytes()), success(()))(input)
+}
+
+fn path_complete(nodes: Vec<DecodePathNode>) -> impl FnMut(&[u8]) -> NomResult<Path> {
+    move |mut input| {
+        let mut res = Vec::new();
+        for node in nodes.clone() {
+            match node {
+                DecodePathNode::Left => {
+                    let (i, h) = hash(input)?;
+                    res.push(PathItem::left(h));
+                    input = i;
+                }
+                DecodePathNode::Right(h) => {
+                    res.push(PathItem::right(h))
+                }
+            }
+        }
+        Ok((input, Path(res)))
+    }
+}
+
+impl NomReader for Path {
+    fn from_bytes(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+        flat_map(
+            map(many_till(alt((path_left, path_right)), path_op), |(v, _)| v),
+            path_complete
+        )(bytes)
+    }
+}
+
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct GetOperationsForBlocksMessage {
     #[get = "pub"]
+    #[encoding(dynamic, list = "GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH")]
     get_operations_for_blocks: Vec<OperationsForBlock>,
     #[serde(skip_serializing)]
+    #[encoding(skip)]
     body: BinaryDataCache,
 }
 
@@ -237,7 +313,7 @@ impl GetOperationsForBlocksMessage {
 }
 
 cached_data!(GetOperationsForBlocksMessage, body);
-has_encoding!(
+has_encoding_test!(
     GetOperationsForBlocksMessage,
     GET_OPERATIONS_FOR_BLOCKS_MESSAGE_ENCODING,
     {
@@ -484,29 +560,25 @@ impl CustomCodec for PathCodec {
 
     fn decode(&self, buf: &mut dyn Buf, _encoding: &Encoding) -> Result<Value, BinaryReaderError> {
         let mut hash = [0; HashType::OperationListListHash.size()];
-        enum PathNode {
-            Left,
-            Right(Hash),
-        }
         let mut nodes = Vec::new();
         loop {
             match safe!(buf, get_u8, u8) {
                 0xF0 => {
-                    nodes.push(PathNode::Left);
+                    nodes.push(DecodePathNode::Left);
                 }
                 0x0F => {
                     safe!(buf, hash.len(), buf.copy_to_slice(&mut hash));
-                    nodes.push(PathNode::Right(hash.to_vec()));
+                    nodes.push(DecodePathNode::Right(hash.to_vec()));
                 }
                 0x00 => {
                     let mut result = Vec::with_capacity(nodes.len());
                     for node in nodes.iter().rev() {
                         match node {
-                            PathNode::Left => {
+                            DecodePathNode::Left => {
                                 safe!(buf, hash.len(), buf.copy_to_slice(&mut hash));
                                 result.push(Self::mk_left(&hash));
                             }
-                            PathNode::Right(hash) => {
+                            DecodePathNode::Right(hash) => {
                                 result.push(Self::mk_right(&hash));
                             }
                         }
@@ -532,4 +604,22 @@ impl CustomCodec for PathCodec {
             }
         }
     }
+}
+
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    use super::*;
+
+    #[test]
+    fn test_operations_for_block_encoding_schema() {
+        assert_encodings_match!(OperationsForBlocksMessage);
+    }
+
+    #[test]
+    fn test_get_operations_for_block_encoding_schema() {
+        assert_encodings_match!(GetOperationsForBlocksMessage);
+    }
+
 }
