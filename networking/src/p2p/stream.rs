@@ -301,7 +301,7 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
     where
         M: BinaryMessage,
     {
-        let mut input_remaining = 0;
+        let mut input_size = 0;
         let mut input_data = vec![];
 
         loop {
@@ -312,22 +312,24 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
             match self.crypto.decrypt(&message_encrypted.content()) {
                 Ok(mut message_decrypted) => {
                     trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
-                    if input_remaining >= message_decrypted.len() {
-                        input_remaining -= message_decrypted.len();
-                    } else {
-                        input_remaining = 0;
-                    }
 
+                    if input_size == 0 {
+                        input_size = tezos_messages::p2p::peer_message_size(&message_decrypted)? + std::mem::size_of::<u32>();
+                    }
                     input_data.append(&mut message_decrypted);
 
-                    if input_remaining == 0 {
+                    if input_size <= input_data.len() {
                         match M::from_bytes(&input_data) {
                             Ok(message) => break Ok(message),
                             Err(e) => match e.kind() {
                                 BinaryReaderErrorKind::Underflow { bytes } => {
-                                    input_remaining += bytes
+                                    println!("underflow {} bytes", bytes);
+                                    break Err(e.into())
                                 }
-                                _ => break Err(e.into()),
+                                _ => {
+                                    println!("error {}", e);
+                                    break Err(e.into())
+                                }
                             },
                         }
                     }

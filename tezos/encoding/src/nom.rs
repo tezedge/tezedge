@@ -76,7 +76,7 @@ where
 
 /// Reads size encoded as 4-bytes big-endian unsigned.
 #[inline]
-fn size<I, E>(input: I) -> IResult<I, u32, E>
+pub fn size<I, E>(input: I) -> IResult<I, u32, E>
 where
     I: InputLength + InputIter<Item = u8> + Slice<RangeFrom<usize>>,
     E: ParseError<I>,

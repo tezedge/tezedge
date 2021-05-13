@@ -98,11 +98,12 @@ impl From<crate::bit_utils::BitsError> for BinaryReaderError {
     }
 }
 
-impl<T: std::fmt::Debug> From<nom::Err<T>> for BinaryReaderError {
-    fn from(error: nom::Err<T>) -> Self {
+impl From<nom::Err<nom::error::Error<&[u8]>>> for BinaryReaderError {
+    fn from(error: nom::Err<nom::error::Error<&[u8]>>) -> Self {
         BinaryReaderErrorKind::NomError { error: error.to_string() }.into()
     }
 }
+
 
 impl From<Utf8Error> for BinaryReaderError {
     fn from(error: Utf8Error) -> Self {
