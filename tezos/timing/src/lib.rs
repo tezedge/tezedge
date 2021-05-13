@@ -74,6 +74,8 @@ impl DetailedTime {
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct RangeStats {
+    pub total_time: f64,
+    pub actions_count: usize,
     pub one_to_ten_us: DetailedTime,
     pub ten_to_one_hundred_us: DetailedTime,
     pub one_hundred_us_to_one_ms: DetailedTime,
@@ -99,6 +101,9 @@ impl RangeStats {
     }
 
     fn add_time(&mut self, tezedge_time: f64) {
+        self.total_time += tezedge_time;
+        self.actions_count = self.actions_count.saturating_add(1);
+
         let time = match tezedge_time {
             t if t < 0.00001 => &mut self.one_to_ten_us,
             t if t < 0.0001 => &mut self.ten_to_one_hundred_us,
@@ -120,6 +125,10 @@ impl RangeStats {
 #[serde(rename_all = "camelCase")]
 pub struct ActionStatsWithRange {
     pub root: String,
+    pub total_time_read: f64,
+    pub total_time_write: f64,
+    pub total_time: f64,
+    pub actions_count: usize,
     pub mem: RangeStats,
     pub find: RangeStats,
     pub find_tree: RangeStats,
@@ -137,34 +146,64 @@ impl ActionStatsWithRange {
         self.add_tree.compute_mean();
         self.remove.compute_mean();
     }
+
+    pub fn compute_total(&mut self) {
+        self.total_time_read =
+            self.mem.total_time + self.find.total_time + self.find_tree.total_time;
+
+        self.total_time_write =
+            self.add.total_time + self.add_tree.total_time + self.remove.total_time;
+
+        self.total_time = self.total_time_read + self.total_time_write;
+
+        self.actions_count = self
+            .mem
+            .actions_count
+            .saturating_add(self.find.actions_count)
+            .saturating_add(self.find_tree.actions_count)
+            .saturating_add(self.add.actions_count)
+            .saturating_add(self.add_tree.actions_count)
+            .saturating_add(self.remove.actions_count);
+    }
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-struct ActionData {
-    root: String,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
-    actions_count: usize,
+pub struct ActionData {
+    pub root: String,
+    pub actions_count: usize,
+    pub tezedge_mean_time: f64,
+    pub tezedge_max_time: f64,
+    pub tezedge_total_time: f64,
+    pub irmin_mean_time: f64,
+    pub irmin_max_time: f64,
+    pub irmin_total_time: f64,
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionStats {
-    data: ActionData,
-    mem: f64,
-    find: f64,
-    find_tree: f64,
-    add: f64,
-    add_tree: f64,
-    remove: f64,
+    pub data: ActionData,
+    pub tezedge_mem: f64,
+    pub tezedge_find: f64,
+    pub tezedge_find_tree: f64,
+    pub tezedge_add: f64,
+    pub tezedge_add_tree: f64,
+    pub tezedge_remove: f64,
+    pub irmin_mem: f64,
+    pub irmin_find: f64,
+    pub irmin_find_tree: f64,
+    pub irmin_add: f64,
+    pub irmin_add_tree: f64,
+    pub irmin_remove: f64,
 }
 
 impl ActionStats {
     fn compute_mean(&mut self) {
-        let mean = self.data.total_time / self.data.actions_count as f64;
-        self.data.mean_time = mean.max(0.0);
+        let mean = self.data.tezedge_total_time / self.data.actions_count as f64;
+        self.data.tezedge_mean_time = mean.max(0.0);
+        let mean = self.data.irmin_total_time / self.data.actions_count as f64;
+        self.data.irmin_mean_time = mean.max(0.0);
     }
 }
 
@@ -179,9 +218,12 @@ struct Timing {
     /// Statistics for the current block
     block_stats: HashMap<String, ActionStats>,
     /// Global statistics
-    global_stats: HashMap<String, ActionStatsWithRange>,
-    commit_stats: RangeStats,
-    checkout_stats: RangeStats,
+    tezedge_global_stats: HashMap<String, ActionStatsWithRange>,
+    irmin_global_stats: HashMap<String, ActionStatsWithRange>,
+    tezedge_commit_stats: RangeStats,
+    irmin_commit_stats: RangeStats,
+    tezedge_checkout_stats: RangeStats,
+    irmin_checkout_stats: RangeStats,
     sql: Connection,
 }
 
@@ -246,11 +288,14 @@ impl Timing {
             current_operation: None,
             current_context: None,
             nactions: 0,
-            global_stats: HashMap::default(),
-            commit_stats: Default::default(),
-            block_stats: HashMap::default(),
-            checkout_stats: Default::default(),
             checkout_time: None,
+            block_stats: HashMap::default(),
+            tezedge_global_stats: HashMap::default(),
+            irmin_global_stats: HashMap::default(),
+            tezedge_commit_stats: Default::default(),
+            irmin_commit_stats: RangeStats::default(),
+            tezedge_checkout_stats: Default::default(),
+            irmin_checkout_stats: RangeStats::default(),
             sql,
         }
     }
@@ -387,7 +432,8 @@ impl Timing {
             return Ok(());
         }
 
-        self.checkout_stats.add_time(tezedge_time);
+        self.tezedge_checkout_stats.add_time(tezedge_time);
+        self.irmin_checkout_stats.add_time(tezedge_time);
         self.set_current_context(context_hash)?;
         self.checkout_time = Some((irmin_time, tezedge_time));
 
@@ -399,7 +445,8 @@ impl Timing {
             return Ok(());
         }
 
-        self.commit_stats.add_time(tezedge_time);
+        self.tezedge_commit_stats.add_time(tezedge_time);
+        self.irmin_commit_stats.add_time(tezedge_time);
         self.sync_global_stats(irmin_time, tezedge_time)?;
         self.sync_block_stats()?;
 
@@ -461,25 +508,36 @@ impl Timing {
     }
 
     fn add_global_stats(&mut self, root: &str, action: &Action) {
-        let entry = match self.global_stats.get_mut(root) {
-            Some(entry) => entry,
-            None => {
-                let stats = ActionStatsWithRange { root: root.to_string(), ..Default::default() };
-                self.global_stats.insert(root.to_string(), stats);
-                self.global_stats.get_mut(root).unwrap()
-            }
-        };
+        for (global_stats, time) in &mut [
+            (&mut self.tezedge_global_stats, action.tezedge_time),
+            (&mut self.irmin_global_stats, action.irmin_time),
+        ] {
+            let entry = match global_stats.get_mut(root) {
+                Some(entry) => entry,
+                None => {
+                    let stats = ActionStatsWithRange {
+                        root: root.to_string(),
+                        ..Default::default()
+                    };
+                    global_stats.insert(root.to_string(), stats);
+                    global_stats.get_mut(root).unwrap()
+                }
+            };
 
-        let action_stats = match action.action_name {
-            ActionKind::Mem => &mut entry.mem,
-            ActionKind::Find => &mut entry.find,
-            ActionKind::FindTree => &mut entry.find_tree,
-            ActionKind::Add => &mut entry.add,
-            ActionKind::AddTree => &mut entry.add_tree,
-            ActionKind::Remove => &mut entry.remove,
-        };
+            let time = *time;
+            let action_stats = match action.action_name {
+                ActionKind::Mem => &mut entry.mem,
+                ActionKind::Find => &mut entry.find,
+                ActionKind::FindTree => &mut entry.find_tree,
+                ActionKind::Add => &mut entry.add,
+                ActionKind::AddTree => &mut entry.add_tree,
+                ActionKind::Remove => &mut entry.remove,
+            };
 
-        action_stats.add_time(action.tezedge_time);
+            entry.actions_count = entry.actions_count.saturating_add(1);
+            entry.total_time += time;
+            action_stats.add_time(time);
+        }
     }
 
     fn add_block_stats(&mut self, root: &str, action: &Action) {
@@ -493,21 +551,25 @@ impl Timing {
             }
         };
 
-        let action_value = match action.action_name {
-            ActionKind::Mem => &mut entry.mem,
-            ActionKind::Find => &mut entry.find,
-            ActionKind::FindTree => &mut entry.find_tree,
-            ActionKind::Add => &mut entry.add,
-            ActionKind::AddTree => &mut entry.add_tree,
-            ActionKind::Remove => &mut entry.remove,
+        let (value_tezedge, value_irmin) = match action.action_name {
+            ActionKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
+            ActionKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
+            ActionKind::FindTree => (&mut entry.tezedge_find_tree, &mut entry.irmin_find_tree),
+            ActionKind::Add => (&mut entry.tezedge_add, &mut entry.irmin_add),
+            ActionKind::AddTree => (&mut entry.tezedge_add_tree, &mut entry.irmin_add_tree),
+            ActionKind::Remove => (&mut entry.tezedge_remove, &mut entry.irmin_remove),
         };
 
         let tezedge_time = action.tezedge_time;
+        let irmin_time = action.irmin_time;
 
-        *action_value += tezedge_time;
+        *value_tezedge += tezedge_time;
+        *value_irmin += irmin_time;
         entry.data.actions_count = entry.data.actions_count.saturating_add(1);
-        entry.data.total_time += tezedge_time;
-        entry.data.max_time = entry.data.max_time.max(tezedge_time);
+        entry.data.tezedge_total_time += tezedge_time;
+        entry.data.tezedge_max_time = entry.data.tezedge_max_time.max(tezedge_time);
+        entry.data.irmin_total_time += irmin_time;
+        entry.data.irmin_max_time = entry.data.irmin_max_time.max(irmin_time);
     }
 
     fn sync_block_stats(&mut self) -> Result<(), SQLError> {
@@ -527,28 +589,42 @@ impl Timing {
             let mut query = self.sql.prepare_cached(
                 "
             INSERT INTO block_action_stats
-              (root, block_id, mean_time, max_time, total_time, actions_count,
-               mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
+              (root, block_id, actions_count,
+               tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_find_time,
+               tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
+               irmin_mean_time, irmin_max_time, irmin_total_time, irmin_mem_time, irmin_find_time,
+               irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
             VALUES
-              (:root, :block_id, :mean_time, :max_time, :total_time, :actions_count,
-               :mem_time, :find_time, :find_tree_time, :add_time, :add_tree_time,
-               :remove_time)
+              (:root, :block_id, :actions_count,
+               :tezedge_mean_time, :tezedge_max_time, :tezedge_total_time, :tezedge_mem_time, :tezedge_find_time,
+               :tezedge_find_tree_time, :tezedge_add_time, :tezedge_add_tree_time, :tezedge_remove_time,
+               :irmin_mean_time, :irmin_max_time, :irmin_total_time, :irmin_mem_time, :irmin_find_time,
+               :irmin_find_tree_time, :irmin_add_time, :irmin_add_tree_time, :irmin_remove_time)
                 ",
             )?;
 
             query.execute(named_params! {
                 ":root": root,
                 ":block_id": block_id,
-                ":mean_time": action_stats.data.mean_time,
-                ":max_time": action_stats.data.max_time,
-                ":total_time": action_stats.data.total_time,
                 ":actions_count": action_stats.data.actions_count,
-                ":mem_time": action_stats.mem,
-                ":add_time": action_stats.add,
-                ":add_tree_time": action_stats.add_tree,
-                ":find_time": action_stats.find,
-                ":find_tree_time": action_stats.find_tree,
-                ":remove_time": action_stats.remove,
+                ":tezedge_mean_time": action_stats.data.tezedge_mean_time,
+                ":tezedge_max_time": action_stats.data.tezedge_max_time,
+                ":tezedge_total_time": action_stats.data.tezedge_total_time,
+                ":irmin_mean_time": action_stats.data.irmin_mean_time,
+                ":irmin_max_time": action_stats.data.irmin_max_time,
+                ":irmin_total_time": action_stats.data.irmin_total_time,
+                ":tezedge_mem_time": action_stats.tezedge_mem,
+                ":tezedge_add_time": action_stats.tezedge_add,
+                ":tezedge_add_tree_time": action_stats.tezedge_add_tree,
+                ":tezedge_find_time": action_stats.tezedge_find,
+                ":tezedge_find_tree_time": action_stats.tezedge_find_tree,
+                ":tezedge_remove_time": action_stats.tezedge_remove,
+                ":irmin_mem_time": action_stats.irmin_mem,
+                ":irmin_add_time": action_stats.irmin_add,
+                ":irmin_add_tree_time": action_stats.irmin_add_tree,
+                ":irmin_find_time": action_stats.irmin_find,
+                ":irmin_find_tree_time": action_stats.irmin_find_tree,
+                ":irmin_remove_time": action_stats.irmin_remove,
             })?;
         }
 
@@ -587,31 +663,52 @@ impl Timing {
             ":block_id": block_id
         })?;
 
-        for action in self.global_stats.values_mut() {
+        for action in self.tezedge_global_stats.values_mut() {
             action.compute_mean();
         }
-        self.checkout_stats.compute_mean();
-        self.commit_stats.compute_mean();
-
-        for (root, action_stats) in self.global_stats.iter() {
-            let root = root.as_str();
-
-            self.insert_action_stats(root, "mem", &action_stats.mem)?;
-            self.insert_action_stats(root, "find", &action_stats.find)?;
-            self.insert_action_stats(root, "find_tree", &action_stats.find_tree)?;
-            self.insert_action_stats(root, "add", &action_stats.add)?;
-            self.insert_action_stats(root, "add_tree", &action_stats.add_tree)?;
-            self.insert_action_stats(root, "remove", &action_stats.remove)?;
+        for action in self.irmin_global_stats.values_mut() {
+            action.compute_mean();
         }
+        self.tezedge_checkout_stats.compute_mean();
+        self.irmin_checkout_stats.compute_mean();
+        self.tezedge_commit_stats.compute_mean();
+        self.irmin_commit_stats.compute_mean();
 
-        self.insert_action_stats("commit", "commit", &self.commit_stats)?;
-        self.insert_action_stats("checkout", "checkout", &self.checkout_stats)?;
+        for (global_stats, commits, checkouts, name) in &mut [
+            (
+                &self.tezedge_global_stats,
+                &self.tezedge_commit_stats,
+                &self.tezedge_checkout_stats,
+                "tezedge",
+            ),
+            (
+                &self.irmin_global_stats,
+                &self.irmin_commit_stats,
+                &self.irmin_checkout_stats,
+                "irmin",
+            ),
+        ] {
+            for (root, action_stats) in global_stats.iter() {
+                let root = root.as_str();
+
+                self.insert_action_stats(name, root, "mem", &action_stats.mem)?;
+                self.insert_action_stats(name, root, "find", &action_stats.find)?;
+                self.insert_action_stats(name, root, "find_tree", &action_stats.find_tree)?;
+                self.insert_action_stats(name, root, "add", &action_stats.add)?;
+                self.insert_action_stats(name, root, "add_tree", &action_stats.add_tree)?;
+                self.insert_action_stats(name, root, "remove", &action_stats.remove)?;
+            }
+
+            self.insert_action_stats(name, "commit", "commit", commits)?;
+            self.insert_action_stats(name, "checkout", "checkout", checkouts)?;
+        }
 
         Ok(())
     }
 
     fn insert_action_stats(
         &self,
+        context_name: &str,
         root: &str,
         action_name: &str,
         range_stats: &RangeStats,
@@ -619,15 +716,16 @@ impl Timing {
         let mut query = self.sql.prepare_cached(
             "
         INSERT OR IGNORE INTO global_action_stats
-          (root, action_name)
+          (root, action_name, context_name)
         VALUES
-          (:root, :action_name)
+          (:root, :action_name, :context_name)
             ",
         )?;
 
         query.execute(named_params! {
             ":root": root,
             ":action_name": action_name,
+            ":context_name": context_name,
         })?;
 
         let mut query = self.sql.prepare_cached(
@@ -635,6 +733,8 @@ impl Timing {
         UPDATE
           global_action_stats
         SET
+          total_time = :total_time,
+          actions_count = :actions_count,
           one_to_ten_us_count = :one_to_ten_us_count,
           one_to_ten_us_mean_time = :one_to_ten_us_mean_time,
           one_to_ten_us_max_time = :one_to_ten_us_max_time,
@@ -672,7 +772,7 @@ impl Timing {
           one_hundred_s_max_time = :one_hundred_s_max_time,
           one_hundred_s_total_time = :one_hundred_s_total_time
         WHERE
-          root = :root AND action_name = :action_name;
+          root = :root AND action_name = :action_name AND context_name = :context_name;
         ",
         )?;
 
@@ -680,6 +780,9 @@ impl Timing {
             named_params! {
                 ":root": root,
                 ":action_name": action_name,
+                ":context_name": context_name,
+                ":total_time": &range_stats.total_time,
+                ":actions_count": &range_stats.actions_count,
                 ":one_to_ten_us_count": &range_stats.one_to_ten_us.count,
                 ":one_to_ten_us_mean_time": &range_stats.one_to_ten_us.mean_time,
                 ":one_to_ten_us_max_time": &range_stats.one_to_ten_us.max_time,
@@ -777,6 +880,7 @@ mod tests {
             })
             .unwrap();
 
+        timing.sync_block_stats().unwrap();
         timing.sync_global_stats(1.0, 1.0).unwrap();
     }
 
