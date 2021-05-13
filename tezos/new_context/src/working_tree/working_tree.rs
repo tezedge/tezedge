@@ -55,42 +55,18 @@ use std::{
 };
 
 use failure::Fail;
-use serde::Deserialize;
-use serde::Serialize;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::hash::EntryHash;
 use crate::hash::{hash_commit, hash_entry, hash_tree, HashingError};
 use crate::persistent;
 use crate::working_tree::working_tree_stats::{MerkleStoragePerfReport, TezedgeContextStatistics};
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
+use crate::{hash::EntryHash, ContextKeyOwned};
 use crate::{ContextKey, ContextValue, StringTreeEntry, StringTreeMap};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SetAction {
-    key: ContextKey,
-    value: ContextValue,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct CopyAction {
-    from_key: ContextKey,
-    to_key: ContextKey,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct RemoveAction {
-    key: ContextKey,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-enum Action {
-    Set(SetAction),
-    Copy(CopyAction),
-    Remove(RemoveAction),
-}
+use super::KeyFragment;
 
 // The 'working tree' can be either a Tree or a Value
 #[derive(Clone)]
@@ -277,7 +253,7 @@ impl WorkingTree {
         offset: Option<usize>,
         length: Option<usize>,
         key: &ContextKey,
-    ) -> Result<Vec<(Rc<String>, WorkingTree)>, MerkleError> {
+    ) -> Result<Vec<(KeyFragment, WorkingTree)>, MerkleError> {
         let root = self.get_working_tree_root_ref();
         let node = self.find_raw_tree(root.as_ref(), key)?;
 
@@ -294,7 +270,7 @@ impl WorkingTree {
                 Entry::Commit(_) => continue,
             };
 
-            children.push((Rc::clone(key), value));
+            children.push((key.clone(), value));
         }
 
         Ok(children)
@@ -345,7 +321,7 @@ impl WorkingTree {
     pub fn get_by_prefix(
         &self,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let root = self.get_working_tree_root_ref();
         self._get_key_values_by_prefix(root.as_ref(), prefix)
     }
@@ -371,7 +347,7 @@ impl WorkingTree {
 
         // find tree by path
         self.find_raw_tree(&tree, &path)
-            .map(|node| node.get(file).is_some())
+            .map(|node| node.get(*file).is_some())
             .or(Ok(false))
     }
 
@@ -387,7 +363,7 @@ impl WorkingTree {
         let node = self.find_raw_tree(&root, &path)?;
 
         // get file node from tree
-        let node = node.get(file).ok_or_else(|| MerkleError::ValueNotFound {
+        let node = node.get(*file).ok_or_else(|| MerkleError::ValueNotFound {
             key: self.key_to_string(key),
         })?;
 
@@ -405,7 +381,7 @@ impl WorkingTree {
         &self,
         path: &str,
         entry: &Entry,
-        entries: &mut Vec<(ContextKey, ContextValue)>,
+        entries: &mut Vec<(ContextKeyOwned, ContextValue)>,
     ) -> Result<(), MerkleError> {
         match entry {
             Entry::Blob(blob) => {
@@ -463,7 +439,7 @@ impl WorkingTree {
                     let entry = self.get_entry(&child_node)?;
                     let rdepth = depth.map(|d| d - 1);
                     new_tree.insert(
-                        Rc::clone(&key),
+                        key.clone(),
                         self.get_context_recursive(&fullpath, &entry, rdepth)?,
                     );
                 }
@@ -505,7 +481,7 @@ impl WorkingTree {
             let fullpath = self.key_to_string(prefix) + delimiter + key;
             let rdepth = depth.map(|d| d - 1);
             out.insert(
-                Rc::clone(&key),
+                key.clone(),
                 self.get_context_recursive(&fullpath, &entry, rdepth)?,
             );
         }
@@ -519,7 +495,7 @@ impl WorkingTree {
         &self,
         context_hash: &EntryHash,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         // let stat_updater =
         //     StatUpdater::new(MerkleStorageAction::GetKeyValuesByPrefix, Some(prefix));
 
@@ -536,9 +512,9 @@ impl WorkingTree {
         &self,
         root_tree: &Tree,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, MerkleError> {
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let prefixed_tree = self.find_raw_tree(root_tree, prefix)?;
-        let mut keyvalues: Vec<(ContextKey, ContextValue)> = Vec::new();
+        let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
         for (key, child_node) in prefixed_tree.iter() {
@@ -684,11 +660,11 @@ impl WorkingTree {
     /// * `new_node` - None for deletion, Some for inserting a hash under the key.
     fn compute_new_root_with_change(
         &self,
-        key: &[String],
+        key: &[&str],
         new_node: Option<Node>,
     ) -> Result<Entry, MerkleError> {
         let last = match key.last() {
-            Some(last) => last,
+            Some(last) => *last,
             None => match new_node {
                 Some(n) => {
                     // if there is a value we want to assigin - just
@@ -716,7 +692,7 @@ impl WorkingTree {
 
         match new_node {
             None => tree.remove(last),
-            Some(new_node) => tree.insert(Rc::new(last.to_string()), Rc::new(new_node)),
+            Some(new_node) => tree.insert(Rc::new(last.to_string()).into(), Rc::new(new_node)),
         };
 
         if tree.is_empty() {
@@ -733,9 +709,9 @@ impl WorkingTree {
     ///
     /// * `root` - reference to a tree in which we search
     /// * `key` - sought path
-    fn find_raw_tree(&self, root: &Tree, key: &[String]) -> Result<Tree, MerkleError> {
+    fn find_raw_tree(&self, root: &Tree, key: &[&str]) -> Result<Tree, MerkleError> {
         let first = match key.first() {
-            Some(first) => first,
+            Some(first) => *first,
             None => {
                 // terminate recursion if end of path was reached
                 return Ok(root.clone());
@@ -916,7 +892,7 @@ impl WorkingTree {
     }
 
     /// Convert key in string form to array form
-    fn string_to_key(&self, string: &str) -> ContextKey {
+    fn string_to_key(&self, string: &str) -> ContextKeyOwned {
         string.split('/').map(str::to_string).collect()
     }
 
