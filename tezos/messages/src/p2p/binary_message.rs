@@ -201,7 +201,7 @@ pub trait BinaryMessage: Sized {
 
 impl<T> BinaryMessage for T
 where
-    T: tezos_encoding::encoding::HasEncoding + cache::CachedData + DeserializeOwned + Serialize + Sized,
+    T: tezos_encoding::encoding::HasEncoding + cache::CachedData + BinaryMessageNom + Serialize + Sized,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
@@ -218,13 +218,7 @@ where
 
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
-        let bytes = bytes.as_ref();
-        let value = BinaryReader::new().read(bytes, &Self::encoding())?;
-        let mut myself: Self = deserialize_from_value(&value)?;
-        if let Some(cache_writer) = myself.cache_writer() {
-            cache_writer.put(bytes);
-        }
-        Ok(myself)
+        <Self as BinaryMessageNom>::from_bytes(bytes)
     }
 }
 
