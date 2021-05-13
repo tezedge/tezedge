@@ -13,15 +13,15 @@ use ocaml_interop::BoxRoot;
 
 use crate::{
     hash::EntryHash,
-    working_tree::{Commit, Entry, Tree},
+    working_tree::{working_tree_stats::MerkleStoragePerfReport, Commit, Entry, KeyFragment, Tree},
+};
+use crate::{
+    working_tree::working_tree::{FoldDepth, TreeWalker},
+    ContextKeyOwned,
 };
 use crate::{
     working_tree::working_tree::{MerkleError, WorkingTree},
     IndexApi,
-};
-use crate::{
-    working_tree::{working_tree_stats::MerkleStoragePerfReport, KeyFragment},
-    ContextKeyOwned,
 };
 use crate::{
     ContextError, ContextKey, ContextValue, ProtocolContextApi, ShellContextApi, StringTreeEntry,
@@ -189,8 +189,12 @@ impl ProtocolContextApi for TezedgeContext {
         self.tree.list(offset, length, key).map_err(Into::into)
     }
 
-    fn fold(&self, key: &ContextKey) {
-        self.tree.fold(key)
+    fn fold_iter(
+        &self,
+        depth: Option<FoldDepth>,
+        key: &ContextKey,
+    ) -> Result<TreeWalker, ContextError> {
+        Ok(self.tree.fold_iter(depth, key)?)
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {

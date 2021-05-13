@@ -6,7 +6,7 @@
 // TODO: extend init function
 
 use core::borrow::Borrow;
-use std::{cell::RefCell, convert::TryFrom};
+use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use ocaml_interop::*;
 
@@ -16,7 +16,10 @@ use crate::{
     initializer::initialize_tezedge_index,
     initializer::ContextKvStoreConfiguration,
     timings,
-    working_tree::{working_tree::WorkingTree, NodeKind},
+    working_tree::{
+        working_tree::{FoldDepth, TreeWalker, WorkingTree},
+        NodeKind,
+    },
     ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
     TezedgeContext, TezedgeIndex,
 };
@@ -43,9 +46,23 @@ impl_to_ocaml_polymorphic_variant! {
 
 type WorkingTreeFFI = WorkingTree;
 #[derive(Clone)]
+struct TreeWalkerFFI(Rc<RefCell<TreeWalker>>);
+#[derive(Clone)]
 struct TezedgeIndexFFI(RefCell<TezedgeIndex>);
 #[derive(Clone)]
 struct TezedgeContextFFI(RefCell<TezedgeContext>);
+
+impl TreeWalkerFFI {
+    fn new(walker: TreeWalker) -> Self {
+        Self(Rc::new(RefCell::new(walker)))
+    }
+}
+
+impl From<TreeWalker> for TreeWalkerFFI {
+    fn from(walker: TreeWalker) -> Self {
+        Self::new(walker)
+    }
+}
 
 impl TezedgeIndexFFI {
     fn new(index: TezedgeIndex) -> Self {
@@ -382,29 +399,34 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // TODO: fold
-    //  (** [fold ?depth t root ~init ~f] recursively folds over the trees
-    //      and values of [t]. The [f] callbacks are called with a key relative
-    //      to [root]. [f] is never called with an empty key for values; i.e.,
-    //      folding over a value is a no-op.
-    //
-    //      Elements are traversed in lexical order of keys.
-    //
-    //      The depth is 0-indexed. If [depth] is set (by default it is not), then [f]
-    //      is only called when the conditions described by the parameter is true:
-    //
-    //      - [Eq d] folds over nodes and contents of depth exactly [d].
-    //      - [Lt d] folds over nodes and contents of depth strictly less than [d].
-    //      - [Le d] folds over nodes and contents of depth less than or equal to [d].
-    //      - [Gt d] folds over nodes and contents of depth strictly more than [d].
-    //      - [Ge d] folds over nodes and contents of depth more than or equal to [d]. *)
-    //  val fold :
-    //    ?depth:[`Eq of int | `Le of int | `Lt of int | `Ge of int | `Gt of int] ->
-    //    t ->
-    //    key ->
-    //    init:'a ->
-    //    f:(key -> tree -> 'a -> 'a Lwt.t) ->
-    //    'a Lwt.t
+    fn tezedge_context_get_tree(
+        rt,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
+    ) -> OCaml<DynBox<WorkingTreeFFI>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let tree = Rc::clone(&context.0.borrow().tree);
+
+        tree.to_ocaml(rt)
+    }
+
+    fn tezedge_context_set_tree(
+        rt,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+    ) -> OCaml<DynBox<TezedgeContextFFI>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let mut context = context.0.borrow().clone();
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
+
+        context.tree = Rc::new(tree.clone());
+
+        let result = TezedgeContextFFI::new(context);
+
+        result.to_ocaml(rt)
+    }
 
     // Tree API
 
@@ -622,6 +644,42 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
+    // OCaml =
+    //  val fold :
+    //    ?depth:[`Eq of int | `Le of int | `Lt of int | `Ge of int | `Gt of int] ->
+    //    t ->
+    //    key ->
+    //    init:'a ->
+    //    f:(key -> tree -> 'a -> 'a Lwt.t) ->
+    //    'a Lwt.t
+    fn tezedge_tree_walker_make(
+        rt,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+        depth: OCamlRef<Option<FoldDepth>>,
+        key: OCamlRef<OCamlList<String>>,
+    ) -> OCaml<Result<DynBox<TreeWalkerFFI>, String>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
+        let key = make_key(rt, key);
+        let depth: Option<FoldDepth> = depth.to_rust(rt);
+        let result = tree.fold_iter(depth, &key)
+            .map_err(|err| format!("{:?}", err))
+            .map(TreeWalkerFFI::new);
+
+        result.to_ocaml(rt)
+    }
+
+    fn tezedge_tree_walker_next(
+        rt,
+        walker: OCamlRef<DynBox<TreeWalkerFFI>>,
+    ) -> OCaml<Option<(OCamlList<String>, DynBox<WorkingTreeFFI>)>> {
+        let ocaml_walker = rt.get(walker);
+        let walker: &TreeWalkerFFI = ocaml_walker.borrow();
+        let result = walker.0.borrow_mut().next();
+
+        result.to_ocaml(rt)
+    }
+
     // Timings
 
     fn tezedge_timing_set_block(
@@ -688,6 +746,12 @@ unsafe impl ToOCaml<DynBox<WorkingTreeFFI>> for WorkingTreeFFI {
     }
 }
 
+unsafe impl ToOCaml<DynBox<TreeWalkerFFI>> for TreeWalkerFFI {
+    fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<TreeWalkerFFI>> {
+        OCaml::box_value(rt, self.clone())
+    }
+}
+
 unsafe impl ToOCaml<DynBox<TezedgeContextFFI>> for TezedgeContextFFI {
     fn to_ocaml<'gc>(&self, rt: &'gc mut OCamlRuntime) -> OCaml<'gc, DynBox<TezedgeContextFFI>> {
         OCaml::box_value(rt, self.clone())
@@ -718,6 +782,8 @@ pub fn initialize_callbacks() {
             tezedge_context_mem_tree,
             tezedge_context_mem,
             tezedge_context_list,
+            tezedge_context_get_tree,
+            tezedge_context_set_tree,
             tezedge_context_empty,
         );
         initialize_tezedge_tree_callbacks(
@@ -730,6 +796,8 @@ pub fn initialize_callbacks() {
             tezedge_tree_mem_tree,
             tezedge_tree_mem,
             tezedge_tree_list,
+            tezedge_tree_walker_make,
+            tezedge_tree_walker_next,
             tezedge_tree_empty,
             tezedge_tree_is_empty,
             tezedge_tree_equal,

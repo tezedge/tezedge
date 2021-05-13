@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 use ocaml_interop::{
-    impl_from_ocaml_variant, OCamlBytes, OCamlFloat, OCamlInt, OCamlInt64, OCamlList,
+    impl_from_ocaml_polymorphic_variant, impl_from_ocaml_variant, OCamlBytes, OCamlFloat, OCamlInt,
+    OCamlInt64, OCamlList,
 };
 
-use crate::actions::ContextAction;
+use crate::{actions::ContextAction, working_tree::working_tree::FoldDepth};
 
 impl_from_ocaml_variant! {
     ContextAction {
@@ -122,5 +123,15 @@ impl_from_ocaml_variant! {
             end_time: OCamlFloat,
             key: OCamlList<OCamlBytes>,
         },
+    }
+}
+
+impl_from_ocaml_polymorphic_variant! {
+    FoldDepth {
+        Eq(n: OCamlInt) => FoldDepth::Eq(n),
+        Le(n: OCamlInt) => FoldDepth::Le(n),
+        Lt(n: OCamlInt) => FoldDepth::Lt(n),
+        Ge(n: OCamlInt) => FoldDepth::Ge(n),
+        Gt(n: OCamlInt) => FoldDepth::Gt(n),
     }
 }

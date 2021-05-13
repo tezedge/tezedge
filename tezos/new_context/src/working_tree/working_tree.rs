@@ -84,6 +84,142 @@ pub struct WorkingTree {
     stats: TezedgeContextStatistics, // TODO: move to context
 }
 
+#[derive(Clone, Copy)]
+pub enum FoldDepth {
+    Eq(i64), // folds over nodes and contents of depth exactly [d].
+    Lt(i64), // folds over nodes and contents of depth strictly less than [d].
+    Le(i64), // folds over nodes and contents of depth less than or equal to [d].
+    Gt(i64), // folds over nodes and contents of depth strictly more than [d].
+    Ge(i64), // folds over nodes and contents of depth more than or equal to [d].
+}
+
+impl FoldDepth {
+    /// `true` if for this depth the fold function should be applied
+    fn should_apply(self, depth: i64) -> bool {
+        match self {
+            Self::Eq(n) => depth == n,
+            Self::Lt(n) => depth < n,
+            Self::Le(n) => depth <= n,
+            Self::Gt(n) => depth > n,
+            Self::Ge(n) => depth >= n,
+        }
+    }
+
+    /// `true` if for this depth we should continue scanning the children
+    fn should_continue(self, depth: i64) -> bool {
+        match self {
+            Self::Eq(n) => depth < n,
+            Self::Lt(n) => depth < n - 1,
+            Self::Le(n) => depth < n,
+            Self::Gt(_) => true,
+            Self::Ge(_) => true,
+        }
+    }
+}
+
+struct TreeWalkerLevel {
+    key: ContextKeyOwned,
+    root: WorkingTree,
+    current_depth: i64,
+    yield_self: bool,
+    children_iter: Option<im_rc::ordmap::ConsumingIter<(KeyFragment, Rc<Node>)>>,
+}
+
+impl TreeWalkerLevel {
+    fn new(
+        key: ContextKeyOwned,
+        root: WorkingTree,
+        current_depth: i64,
+        depth: &Option<FoldDepth>,
+    ) -> Self {
+        let should_continue = depth
+            .map(|d| d.should_continue(current_depth))
+            .unwrap_or(true);
+
+        let children_iter = if should_continue {
+            if let WorkingTreeValue::Tree(tree) = &root.value {
+                // TODO: can this clone be avoided?
+                Some(tree.clone().into_iter())
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Self {
+            key,
+            root,
+            current_depth,
+            yield_self: depth.map(|d| d.should_apply(current_depth)).unwrap_or(true),
+            children_iter,
+        }
+    }
+}
+
+pub struct TreeWalker {
+    depth: Option<FoldDepth>,
+    stack: Vec<TreeWalkerLevel>,
+}
+
+impl TreeWalker {
+    fn new(key: ContextKeyOwned, root: WorkingTree, depth: Option<FoldDepth>) -> Self {
+        Self {
+            depth,
+            stack: vec![TreeWalkerLevel::new(key, root, 0, &depth)],
+        }
+    }
+
+    fn empty() -> Self {
+        Self {
+            depth: None,
+            stack: vec![],
+        }
+    }
+}
+
+impl Iterator for TreeWalker {
+    type Item = (ContextKeyOwned, WorkingTree);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(current_level) = self.stack.last_mut() {
+                if current_level.yield_self {
+                    current_level.yield_self = false;
+                    return Some((current_level.key.clone(), current_level.root.clone()));
+                }
+
+                if let Some(iter) = &mut current_level.children_iter {
+                    let current_depth = current_level.current_depth + 1;
+
+                    if let Some((k, node)) = iter.next() {
+                        // TODO: what to do with errors here?
+                        if let Ok(root) = current_level.root.node_tree(&node) {
+                            // TODO: this is not very efficient, maybe we need to improve the key representation
+                            let mut key = current_level.key.clone();
+                            key.push(k.to_string());
+
+                            self.stack.push(TreeWalkerLevel::new(
+                                key,
+                                root,
+                                current_depth,
+                                &self.depth,
+                            ));
+                        }
+
+                        continue;
+                    }
+                }
+
+                self.stack.pop();
+            } else {
+                // Nothing left, we are done iterating
+                return None;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Fail)]
 pub enum MerkleError {
     /// External libs errors
@@ -277,8 +413,55 @@ impl WorkingTree {
         Ok(children)
     }
 
-    pub fn fold(&self, _key: &ContextKey) {
-        todo!()
+    fn node_tree(&self, node: &Node) -> Result<Self, MerkleError> {
+        let entry = self.get_entry(&node)?;
+        let tree = match node.node_kind {
+            NodeKind::NonLeaf => WorkingTree {
+                index: self.index.clone(),
+                value: WorkingTreeValue::Tree(self.get_tree(&entry)?.clone()),
+                stats: TezedgeContextStatistics::default(),
+            },
+            NodeKind::Leaf => WorkingTree {
+                index: self.index.clone(),
+                value: WorkingTreeValue::Value(self.get_value(&entry)?.clone()),
+                stats: TezedgeContextStatistics::default(),
+            },
+        };
+        Ok(tree)
+    }
+
+    // From OCaml:
+    /*
+      [fold ?depth t root ~init ~f] recursively folds over the trees
+      and values of [t]. The [f] callbacks are called with a key relative
+      to [root]. [f] is never called with an empty key for values; i.e.,
+      folding over a value is a no-op.
+
+      Elements are traversed in lexical order of keys.
+
+      The depth is 0-indexed. If [depth] is set (by default it is not), then [f]
+      is only called when the conditions described by the parameter is true:
+
+      - [Eq d] folds over nodes and contents of depth exactly [d].
+      - [Lt d] folds over nodes and contents of depth strictly less than [d].
+      - [Le d] folds over nodes and contents of depth less than or equal to [d].
+      - [Gt d] folds over nodes and contents of depth strictly more than [d].
+      - [Ge d] folds over nodes and contents of depth more than or equal to [d].
+    */
+    pub fn fold_iter(
+        &self,
+        depth: Option<FoldDepth>,
+        key: &ContextKey,
+    ) -> Result<TreeWalker, MerkleError> {
+        if let Some(root) = self.find_tree(key)? {
+            Ok(TreeWalker::new(
+                vec![], // Key is relative to the root
+                root,
+                depth,
+            ))
+        } else {
+            Ok(TreeWalker::empty())
+        }
     }
 
     /// Get value from current working tree
@@ -853,6 +1036,20 @@ impl WorkingTree {
             }),
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
                 sought: "tree".to_string(),
+                found: "commit".to_string(),
+            }),
+        }
+    }
+
+    fn get_value<'e>(&self, entry: &'e Entry) -> Result<&'e ContextValue, MerkleError> {
+        match entry {
+            Entry::Blob(blob) => Ok(blob),
+            Entry::Tree(_) => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "blob".to_string(),
+                found: "tree".to_string(),
+            }),
+            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "blob".to_string(),
                 found: "commit".to_string(),
             }),
         }
