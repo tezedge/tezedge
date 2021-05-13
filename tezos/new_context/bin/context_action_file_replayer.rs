@@ -435,13 +435,19 @@ fn main() -> Result<(), Error> {
                 }
                 ContextAction::Get { key, value, .. } => {
                     // FIXME: value can be `None`, fix ContextAction::Get
-                    assert_eq!(value.clone(), context.find(key).unwrap().unwrap());
+                    let key: Vec<_> = key.iter().map(String::as_str).collect();
+                    assert_eq!(
+                        value.clone(),
+                        context.find(key.as_slice()).unwrap().unwrap()
+                    );
                 }
                 ContextAction::Mem { key, value, .. } => {
-                    assert_eq!(*value, context.mem(key).unwrap());
+                    let key: Vec<_> = key.iter().map(String::as_str).collect();
+                    assert_eq!(*value, context.mem(key.as_slice()).unwrap());
                 }
                 ContextAction::DirMem { key, value, .. } => {
-                    assert_eq!(*value, context.mem_tree(key));
+                    let key: Vec<_> = key.iter().map(String::as_str).collect();
+                    assert_eq!(*value, context.mem_tree(key.as_slice()));
                 }
                 _ => {}
             };
@@ -509,14 +515,17 @@ fn perform_context_action(
     // Write actions produce a new context, read actions return the original context
     let (context, new_tree_id) = match action {
         ContextAction::Get { key, .. } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
             current_context.find(&key)?;
             (context, None)
         }
         ContextAction::Mem { key, .. } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
             current_context.mem(&key)?;
             (context, None)
         }
         ContextAction::DirMem { key, .. } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
             current_context.mem_tree(&key);
             (context, None)
         }
@@ -525,22 +534,36 @@ fn perform_context_action(
             value,
             new_tree_id,
             ..
-        } => (current_context.add(&key, value)?, Some(new_tree_id)),
+        } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
+            (current_context.add(&key, value)?, Some(new_tree_id))
+        }
         ContextAction::Copy {
-            to_key: key,
+            to_key,
             from_key,
             new_tree_id,
             ..
-        } => (
-            current_context.copy(&from_key, &key)?.unwrap_or(context),
-            Some(new_tree_id),
-        ),
+        } => {
+            let from_key: Vec<_> = from_key.iter().map(String::as_str).collect();
+            let to_key: Vec<_> = to_key.iter().map(String::as_str).collect();
+
+            (
+                current_context.copy(&from_key, &to_key)?.unwrap_or(context),
+                Some(new_tree_id),
+            )
+        }
         ContextAction::Delete {
             key, new_tree_id, ..
-        } => (current_context.delete(&key)?, Some(new_tree_id)),
+        } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
+            (current_context.delete(&key)?, Some(new_tree_id))
+        }
         ContextAction::RemoveRecursively {
             key, new_tree_id, ..
-        } => (current_context.delete(&key)?, Some(new_tree_id)),
+        } => {
+            let key: Vec<_> = key.iter().map(String::as_str).collect();
+            (current_context.delete(&key)?, Some(new_tree_id))
+        }
         ContextAction::Commit {
             new_context_hash,
             block_hash: Some(block_hash),
