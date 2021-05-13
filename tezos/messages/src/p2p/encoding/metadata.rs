@@ -7,11 +7,12 @@ use getset::CopyGetters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::non_cached_data;
 
-#[derive(Serialize, Deserialize, CopyGetters, Clone)]
+#[derive(Serialize, Deserialize, CopyGetters, Clone, HasEncoding, NomReader)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,
@@ -39,7 +40,7 @@ impl fmt::Debug for MetadataMessage {
 }
 
 non_cached_data!(MetadataMessage);
-has_encoding!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
+has_encoding_test!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
     Encoding::Obj(
         "MetadataMessage",
         vec![
