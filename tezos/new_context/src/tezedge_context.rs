@@ -10,7 +10,6 @@ use std::{convert::TryFrom, rc::Rc};
 use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
 
-use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crate::{
     hash::EntryHash,
     working_tree::{Commit, Entry, Tree},
@@ -18,6 +17,10 @@ use crate::{
 use crate::{
     working_tree::working_tree::{MerkleError, WorkingTree},
     IndexApi,
+};
+use crate::{
+    working_tree::{working_tree_stats::MerkleStoragePerfReport, KeyFragment},
+    ContextKeyOwned,
 };
 use crate::{
     ContextError, ContextKey, ContextValue, ProtocolContextApi, ShellContextApi, StringTreeEntry,
@@ -145,7 +148,7 @@ impl ProtocolContextApi for TezedgeContext {
         offset: Option<usize>,
         length: Option<usize>,
         key: &ContextKey,
-    ) -> Result<Vec<(Rc<String>, WorkingTree)>, ContextError> {
+    ) -> Result<Vec<(KeyFragment, WorkingTree)>, ContextError> {
         self.tree.list(offset, length, key).map_err(Into::into)
     }
 
@@ -215,7 +218,7 @@ impl ShellContextApi for TezedgeContext {
         &self,
         context_hash: &ContextHash,
         prefix: &ContextKey,
-    ) -> Result<Option<Vec<(ContextKey, ContextValue)>>, ContextError> {
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         self.tree
             .get_key_values_by_prefix(&context_hash_arr, prefix)
