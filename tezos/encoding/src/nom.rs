@@ -183,7 +183,7 @@ where
     O: Clone,
     E: ParseError<I>,
 {
-    map_parser(flat_map(size, take), f)
+    length_value(size, all_consuming(f))
 }
 
 /// Parses dynamic block by reading 4-bytes size and applying the parser `f`
@@ -197,7 +197,7 @@ where
     O: Clone,
     E: ParseError<I>,
 {
-    map_parser(flat_map(bounded_size(max), take), f)
+    length_value(bounded_size(max), all_consuming(f))
 }
 
 /// Applies the parser `f` to the input, limiting it to `max` bytes at most.
@@ -362,8 +362,18 @@ mod test {
     #[test]
     fn test_dynamic() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
+
         let res: IResult<&[u8], Vec<u8>> = dynamic(bytes)(input);
         assert_eq!(res, Ok((&[0xffu8][..], vec![0x78; 3])));
+
+        let res: NomResult<u8> = dynamic(u8)(input);
+        assert_eq!(
+            res,
+            Err(nom::Err::Error(Error::new(
+                &input[5..7],
+                nom::error::ErrorKind::Eof
+            )))
+        );
     }
 
     #[test]
