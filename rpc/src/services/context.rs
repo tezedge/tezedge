@@ -1,39 +1,21 @@
 use crypto::hash::BlockHash;
-use rusqlite::Connection;
+use rusqlite::{named_params, Connection};
 use serde::Serialize;
 use std::collections::HashMap;
 
-use tezos_timing::{hash_to_string, ActionStatsWithRange, RangeStats, DB_PATH};
+use tezos_timing::{
+    hash_to_string, ActionData, ActionStats, ActionStatsWithRange, RangeStats, DB_PATH,
+};
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockStats {
     actions_count: usize,
-    checkout_context_time: f64,
-    commit_context_time: f64,
+    tezedge_checkout_context_time: f64,
+    tezedge_commit_context_time: f64,
+    irmin_checkout_context_time: f64,
+    irmin_commit_context_time: f64,
     operations_context: Vec<ActionStats>,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct ActionData {
-    root: String,
-    mean_time: f64,
-    max_time: f64,
-    total_time: f64,
-    actions_count: usize,
-}
-
-#[derive(Debug, Serialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct ActionStats {
-    data: ActionData,
-    mem: f64,
-    find: f64,
-    find_tree: f64,
-    add: f64,
-    add_tree: f64,
-    remove: f64,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -49,12 +31,15 @@ pub(crate) fn make_block_stats(block_hash: BlockHash) -> Result<BlockStats, fail
     make_block_stats_impl(&sql, block_hash)
 }
 
-pub(crate) fn make_context_stats() -> Result<ContextStats, failure::Error> {
+pub(crate) fn make_context_stats(context_name: &str) -> Result<ContextStats, failure::Error> {
     let sql = Connection::open(DB_PATH)?;
-    make_context_stats_impl(&sql)
+    make_context_stats_impl(&sql, context_name)
 }
 
-fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Error> {
+fn make_context_stats_impl(
+    sql: &Connection,
+    context_name: &str,
+) -> Result<ContextStats, failure::Error> {
     let mut stmt = sql.prepare(
         "
     SELECT
@@ -95,13 +80,19 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
       one_hundred_s_count,
       one_hundred_s_mean_time,
       one_hundred_s_max_time,
-      one_hundred_s_total_time
+      one_hundred_s_total_time,
+      total_time,
+      actions_count
     FROM
-      global_action_stats;
+      global_action_stats
+    WHERE
+      context_name = :context_name
        ",
     )?;
 
-    let mut rows = stmt.query([])?;
+    let mut rows = stmt.query(named_params! {
+        ":context_name": context_name
+    })?;
 
     let mut map: HashMap<String, ActionStatsWithRange> = HashMap::default();
     let mut commit_stats = RangeStats::default();
@@ -179,9 +170,18 @@ fn make_context_stats_impl(sql: &Connection) -> Result<ContextStats, failure::Er
         action_stats.one_hundred_s.mean_time = row.get(35)?;
         action_stats.one_hundred_s.max_time = row.get(36)?;
         action_stats.one_hundred_s.total_time = row.get(37)?;
+        action_stats.total_time = row.get(38)?;
+        action_stats.actions_count = row.get(39)?;
     }
 
-    let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
+    let mut operations_context: Vec<_> = map
+        .into_iter()
+        .map(|(_, mut v)| {
+            v.compute_total();
+            v
+        })
+        .collect();
+
     operations_context.sort_by(|a, b| a.root.cmp(&b.root));
 
     Ok(ContextStats {
@@ -197,17 +197,38 @@ fn make_block_stats_impl(
 ) -> Result<BlockStats, failure::Error> {
     let block_hash = hash_to_string(block_hash.as_ref());
 
-    let (block_id, actions_count, checkout_time, commit_time) = sql.query_row(
-        "SELECT id, actions_count, checkout_time_tezedge, commit_time_tezedge FROM blocks WHERE hash = ?1",
+    let (
+        block_id,
+        actions_count,
+        tezedge_checkout_time,
+        tezedge_commit_time,
+        irmin_checkout_time,
+        irmin_commit_time,
+    ) = sql.query_row(
+        "
+    SELECT
+      id,
+      actions_count,
+      checkout_time_tezedge,
+      commit_time_tezedge,
+      checkout_time_irmin,
+      commit_time_irmin
+    FROM
+      blocks
+    WHERE
+      hash = ?1;
+        ",
         [block_hash],
         |row| {
-            let block_id: usize = row.get(0)?;
-            let actions_count: usize = row.get(1)?;
-            let checkout_time: f64 = row.get(2)?;
-            let commit_time: f64 = row.get(3)?;
-
-            Ok((block_id, actions_count, checkout_time, commit_time))
-        }
+            Ok((
+                row.get::<_, usize>(0)?,
+                row.get::<_, usize>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, f64>(3)?,
+                row.get::<_, f64>(4)?,
+                row.get::<_, f64>(5)?,
+            ))
+        },
     )?;
 
     let mut stmt = sql
@@ -215,16 +236,25 @@ fn make_block_stats_impl(
             "
         SELECT
           root,
-          mean_time,
-          max_time,
-          total_time,
           actions_count,
-          mem_time,
-          add_time,
-          add_tree_time,
-          find_time,
-          find_tree_time,
-          remove_time
+          tezedge_mean_time,
+          tezedge_max_time,
+          tezedge_total_time,
+          irmin_mean_time,
+          irmin_max_time,
+          irmin_total_time,
+          tezedge_mem_time,
+          tezedge_add_time,
+          tezedge_add_tree_time,
+          tezedge_find_time,
+          tezedge_find_tree_time,
+          tezedge_remove_time,
+          irmin_mem_time,
+          irmin_add_time,
+          irmin_add_tree_time,
+          irmin_find_time,
+          irmin_find_tree_time,
+          irmin_remove_time
         FROM
           block_action_stats
         WHERE
@@ -245,18 +275,27 @@ fn make_block_stats_impl(
 
         let action_stats = ActionStats {
             data: ActionData {
-                mean_time: row.get(1)?,
-                max_time: row.get(2)?,
-                total_time: row.get(3)?,
-                actions_count: row.get(4)?,
                 root: root.clone(),
+                actions_count: row.get(1)?,
+                tezedge_mean_time: row.get(2)?,
+                tezedge_max_time: row.get(3)?,
+                tezedge_total_time: row.get(4)?,
+                irmin_mean_time: row.get(5)?,
+                irmin_max_time: row.get(6)?,
+                irmin_total_time: row.get(7)?,
             },
-            mem: row.get(5)?,
-            add: row.get(6)?,
-            add_tree: row.get(7)?,
-            find: row.get(8)?,
-            find_tree: row.get(9)?,
-            remove: row.get(10)?,
+            tezedge_mem: row.get(8)?,
+            tezedge_add: row.get(9)?,
+            tezedge_add_tree: row.get(10)?,
+            tezedge_find: row.get(11)?,
+            tezedge_find_tree: row.get(12)?,
+            tezedge_remove: row.get(13)?,
+            irmin_mem: row.get(14)?,
+            irmin_add: row.get(15)?,
+            irmin_add_tree: row.get(16)?,
+            irmin_find: row.get(17)?,
+            irmin_find_tree: row.get(18)?,
+            irmin_remove: row.get(19)?,
         };
 
         map.insert(root, action_stats);
@@ -267,8 +306,10 @@ fn make_block_stats_impl(
 
     Ok(BlockStats {
         actions_count,
-        checkout_context_time: checkout_time,
-        commit_context_time: commit_time,
+        tezedge_checkout_context_time: tezedge_checkout_time,
+        tezedge_commit_context_time: tezedge_commit_time,
+        irmin_checkout_context_time: irmin_checkout_time,
+        irmin_commit_context_time: irmin_commit_time,
         operations_context,
     })
 }
@@ -296,9 +337,9 @@ mod tests {
         sql.execute(
             "
             INSERT INTO blocks
-               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge)
+               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge, checkout_time_irmin, commit_time_irmin)
             VALUES
-               (1, ?1, 4, 10.0, 11.0);",
+               (1, ?1, 4, 10.0, 11.0, 12.0, 13.0);",
             [block_hash_str],
         )
         .unwrap();
@@ -306,11 +347,13 @@ mod tests {
         sql.execute(
             "
         INSERT INTO block_action_stats
-          (root, block_id, mean_time, max_time, total_time, actions_count,
-           mem_time, find_time, find_tree_time, add_time, add_tree_time, remove_time)
+          (root, block_id, actions_count, tezedge_mean_time, tezedge_max_time, tezedge_total_time,
+           tezedge_mem_time, tezedge_find_time, tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
+           irmin_mean_time, irmin_max_time, irmin_total_time,
+           irmin_mem_time, irmin_find_time, irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
         VALUES
-          ('a', 1, 100.5, 3.0, 4.0, 40, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6),
-          ('m', 1, 100.6, 30.0, 40.0, 400, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6);
+          ('a', 1, 40, 100.5, 3.0, 4.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+          ('m', 1, 400, 100.6, 30.0, 40.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
             ",
             [],
         )
@@ -319,8 +362,8 @@ mod tests {
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
 
         assert_eq!(block_stats.actions_count, 4);
-        assert_eq!(block_stats.checkout_context_time, 10.0);
-        assert_eq!(block_stats.commit_context_time, 11.0);
+        assert_eq!(block_stats.tezedge_checkout_context_time, 10.0);
+        assert_eq!(block_stats.tezedge_commit_context_time, 11.0);
         assert_eq!(block_stats.operations_context.len(), 2);
 
         let action = block_stats
@@ -329,29 +372,31 @@ mod tests {
             .find(|a| a.data.root == "a")
             .unwrap();
         assert_eq!(action.data.root, "a");
-        assert_eq!(action.data.mean_time, 100.5);
-        assert_eq!(action.add, 1.4);
-        assert_eq!(action.find_tree, 1.3);
+        assert_eq!(action.data.tezedge_mean_time, 100.5);
+        assert_eq!(action.tezedge_add, 1.4);
+        assert_eq!(action.tezedge_find_tree, 1.3);
 
         sql.execute(
             "
         INSERT INTO global_action_stats
-          (action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time, one_to_ten_us_max_time, one_to_ten_us_total_time)
+          (context_name, action_name, root, one_to_ten_us_count, one_to_ten_us_mean_time,
+           one_to_ten_us_max_time, one_to_ten_us_total_time, actions_count, total_time)
         VALUES
-          ('mem', 'a', 2, 1.3, 1.4, 1.5),
-          ('mem', 'b', 3, 10.3, 10.4, 10.5),
-          ('add', 'b', 4, 20.3, 20.4, 20.5),
-          ('commit', 'commit', 4, 30.3, 30.4, 30.5),
-          ('checkout', 'checkout', 5, 40.3, 40.4, 40.5);
+          ('tezedge', 'mem', 'a', 2, 1.3, 1.4, 1.5, 1, 2.0),
+          ('tezedge', 'mem', 'b', 3, 10.3, 10.4, 10.5, 1, 2.0),
+          ('tezedge', 'add', 'b', 4, 20.3, 20.4, 20.5, 1, 2.0),
+          ('tezedge', 'commit', 'commit', 4, 30.3, 30.4, 30.5, 1, 2.0),
+          ('tezedge', 'checkout', 'checkout', 5, 40.3, 40.4, 40.5, 1, 2.0);
             ",
             [],
         )
         .unwrap();
 
-        let context_stats = make_context_stats_impl(&sql).unwrap();
+        let context_stats = make_context_stats_impl(&sql, "tezedge").unwrap();
 
         assert_eq!(context_stats.operations_context.len(), 2);
         assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
+        assert_eq!(context_stats.commit_context.actions_count, 1);
         assert_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
         let action = context_stats
@@ -361,6 +406,8 @@ mod tests {
             .unwrap();
         assert_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
         assert_eq!(action.mem.one_to_ten_us.count, 2);
+        assert_eq!(action.total_time, 2.0);
+        assert_eq!(action.mem.total_time, 2.0);
 
         let action = context_stats
             .operations_context
