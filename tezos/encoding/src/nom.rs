@@ -16,7 +16,13 @@ use nom::{
 };
 pub use tezos_encoding_derive::NomReader;
 
-pub type NomResult<'a, T> = nom::IResult<&'a [u8], T>;
+pub type NomInput<'a> = &'a [u8];
+
+/// Error type used to parameterize `nom`.
+pub type NomError<'a> = nom::error::VerboseError<NomInput<'a>>;
+
+/// Nom result used in Tezedge (`&[u8]` as input, [NomError] as error type).
+pub type NomResult<'a, T> = nom::IResult<NomInput<'a>, T, NomError<'a>>;
 
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
@@ -24,7 +30,7 @@ pub trait NomReader: Sized {
 }
 
 macro_rules! hash_nom_reader {
-	($hash_name:ident) => {
+    ($hash_name:ident) => {
         impl NomReader for crypto::hash::$hash_name {
             fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
                 map(take(Self::hash_size()), |bytes| {
@@ -32,7 +38,7 @@ macro_rules! hash_nom_reader {
                 })(bytes)
             }
         }
-	};
+    };
 }
 
 hash_nom_reader!(ChainId);
@@ -131,7 +137,9 @@ where
 /// Parses optional field. Byte `0x00` indicates absence of the field,
 /// byte `0xff` preceedes encoding of the existing field.
 #[inline]
-pub fn optional_field<'a, O, E, F>(parser: F) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Option<O>, E>
+pub fn optional_field<'a, O, E, F>(
+    parser: F,
+) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Option<O>, E>
 where
     F: Parser<&'a [u8], O, E>,
     O: Clone,
@@ -142,7 +150,6 @@ where
         preceded(tag(0xffu8.to_be_bytes()), map(parser, Some)),
     ))
 }
-
 
 /// Parses input by applying parser `f` to it.
 #[inline]
@@ -232,8 +239,6 @@ where
 
 #[cfg(test)]
 mod test {
-    use nom::error::Error;
-
     use super::*;
 
     #[test]
@@ -245,43 +250,34 @@ mod test {
         assert_eq!(res, Ok((&[][..], false)));
 
         let res: NomResult<bool> = boolean(&[0x01]);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &[0x01][..],
-                nom::error::ErrorKind::Tag
-            )))
-        );
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_size() {
         let input = &[0xff, 0xff, 0xff, 0xff];
-        let res: IResult<&[u8], u32> = size(input);
+        let res: NomResult<u32> = size(input);
         assert_eq!(res, Ok((&[][..], 0xffffffff)))
     }
 
     #[test]
     fn test_bounded_size() {
         let input = &[0x00, 0x00, 0x00, 0x10];
-        let res: IResult<&[u8], u32> = bounded_size(100)(input);
+
+        let res: NomResult<u32> = bounded_size(100)(input);
         assert_eq!(res, Ok((&[][..], 0x10)));
-        let res: IResult<&[u8], u32> = bounded_size(0x10)(input);
+
+        let res: NomResult<u32> = bounded_size(0x10)(input);
         assert_eq!(res, Ok((&[][..], 0x10)));
-        let res: IResult<&[u8], u32> = bounded_size(0xf)(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[..],
-                nom::error::ErrorKind::Verify
-            )))
-        );
+
+        let res: NomResult<u32> = bounded_size(0xf)(input);
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_bytes() {
         let input = &[0, 1, 2, 3];
-        let res: IResult<&[u8], Vec<u8>> = bytes(input);
+        let res: NomResult<Vec<u8>> = bytes(input);
         assert_eq!(res, Ok((&[][..], vec![0, 1, 2, 3])))
     }
 
@@ -293,51 +289,42 @@ mod test {
         let res: NomResult<Option<u8>> = optional_field(u8)(&[0xff, 0x01][..]);
         assert_eq!(res, Ok((&[][..], Some(0x01))));
 
-        let res = optional_field(u8)(&[0x01, 0x01][..]);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &[0x01, 0x01][..],
-                nom::error::ErrorKind::Tag
-            )))
-        );
+        let res: NomResult<Option<u8>> = optional_field(u8)(&[0x01, 0x01][..]);
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_string() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
-        let res: IResult<&[u8], String> = string(input);
+        let res: NomResult<String> = string(input);
         assert_eq!(res, Ok((&[0xffu8][..], "xxx".to_string())))
     }
 
     #[test]
     fn test_bounded_string() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
-        let res: IResult<&[u8], String> = bounded_string(3)(input);
+
+        let res: NomResult<String> = bounded_string(3)(input);
         assert_eq!(res, Ok((&[0xffu8][..], "xxx".to_string())));
-        let res: IResult<&[u8], String> = bounded_string(4)(input);
+
+        let res: NomResult<String> = bounded_string(4)(input);
         assert_eq!(res, Ok((&[0xffu8][..], "xxx".to_string())));
-        let res: IResult<&[u8], String> = bounded_string(2)(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[..],
-                nom::error::ErrorKind::Verify
-            )))
-        );
+
+        let res: NomResult<String> = bounded_string(2)(input);
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_sized_bytes() {
         let input = &[0, 1, 2, 3, 4, 5, 6];
-        let res: IResult<&[u8], Vec<u8>> = sized(4, bytes)(input);
+        let res: NomResult<Vec<u8>> = sized(4, bytes)(input);
         assert_eq!(res, Ok((&[4, 5, 6][..], vec![0, 1, 2, 3])))
     }
 
     #[test]
     fn test_list() {
         let input = &[0, 1, 2, 3, 4, 5];
-        let res: IResult<&[u8], Vec<u16>> = list(u16(Endianness::Big))(input);
+        let res: NomResult<Vec<u16>> = list(u16(Endianness::Big))(input);
         assert_eq!(res, Ok((&[][..], vec![0x0001, 0x0203, 0x0405])));
     }
 
@@ -345,74 +332,56 @@ mod test {
     #[ignore]
     fn test_bounded_list() {
         let input = &[0, 1, 2, 3, 4, 5];
-        let res: IResult<&[u8], Vec<u16>> = bounded_list(4, u16(Endianness::Big))(input);
+
+        let res: NomResult<Vec<u16>> = bounded_list(4, u16(Endianness::Big))(input);
         assert_eq!(res, Ok((&[][..], vec![0x0001, 0x0203, 0x0405])));
-        let res: IResult<&[u8], Vec<u16>> = bounded_list(3, u16(Endianness::Big))(input);
+
+        let res: NomResult<Vec<u16>> = bounded_list(3, u16(Endianness::Big))(input);
         assert_eq!(res, Ok((&[][..], vec![0x0001, 0x0203, 0x0405])));
-        let res: IResult<&[u8], Vec<u16>> = bounded_list(2, u16(Endianness::Big))(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[..],
-                nom::error::ErrorKind::Verify
-            )))
-        );
+
+        let res: NomResult<Vec<u16>> = bounded_list(2, u16(Endianness::Big))(input);
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_dynamic() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
 
-        let res: IResult<&[u8], Vec<u8>> = dynamic(bytes)(input);
+        let res: NomResult<Vec<u8>> = dynamic(bytes)(input);
         assert_eq!(res, Ok((&[0xffu8][..], vec![0x78; 3])));
 
         let res: NomResult<u8> = dynamic(u8)(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[5..7],
-                nom::error::ErrorKind::Eof
-            )))
-        );
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_bounded_dynamic() {
         let input = &[0, 0, 0, 3, 0x78, 0x78, 0x78, 0xff];
-        let res: IResult<&[u8], Vec<u8>> = bounded_dynamic(4, bytes)(input);
+
+        let res: NomResult<Vec<u8>> = bounded_dynamic(4, bytes)(input);
         assert_eq!(res, Ok((&[0xffu8][..], vec![0x78; 3])));
-        let res: IResult<&[u8], Vec<u8>> = bounded_dynamic(3, bytes)(input);
+
+        let res: NomResult<Vec<u8>> = bounded_dynamic(3, bytes)(input);
         assert_eq!(res, Ok((&[0xffu8][..], vec![0x78; 3])));
-        let res: IResult<&[u8], Vec<u8>> = bounded_dynamic(2, bytes)(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[..],
-                nom::error::ErrorKind::Verify
-            )))
-        );
+
+        let res: NomResult<Vec<u8>> = bounded_dynamic(2, bytes)(input);
+        res.expect_err("Error is expected");
     }
 
     #[test]
     fn test_bounded() {
         let input = &[1, 2, 3, 4, 5];
 
-        let res: IResult<&[u8], Vec<u8>> = bounded(4, bytes)(input);
+        let res: NomResult<Vec<u8>> = bounded(4, bytes)(input);
         assert_eq!(res, Ok((&[5][..], vec![1, 2, 3, 4])));
 
-        let res: IResult<&[u8], Vec<u8>> = bounded(3, bytes)(input);
+        let res: NomResult<Vec<u8>> = bounded(3, bytes)(input);
         assert_eq!(res, Ok((&[4, 5][..], vec![1, 2, 3])));
 
-        let res: IResult<&[u8], Vec<u8>> = bounded(10, bytes)(input);
+        let res: NomResult<Vec<u8>> = bounded(10, bytes)(input);
         assert_eq!(res, Ok((&[][..], vec![1, 2, 3, 4, 5])));
 
-        let res: IResult<&[u8], u32> = bounded(3, u32(Endianness::Big))(input);
-        assert_eq!(
-            res,
-            Err(nom::Err::Error(Error::new(
-                &input[..3],
-                nom::error::ErrorKind::Eof
-            )))
-        );
+        let res: NomResult<u32> = bounded(3, u32(Endianness::Big))(input);
+        res.expect_err("Error is expected");
     }
 }

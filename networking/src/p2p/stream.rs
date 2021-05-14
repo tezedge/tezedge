@@ -25,7 +25,7 @@ use tezos_encoding::{
     binary_writer::BinaryWriterError,
 };
 use tezos_messages::p2p::binary_message::{
-    BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES,
+    BinaryChunk, BinaryChunkError, BinaryMessage, SizeFromChunk, CONTENT_LENGTH_FIELD_BYTES,
 };
 
 /// Max allowed content length in bytes when taking into account extra data added by encryption
@@ -299,7 +299,7 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
     /// Consume content of inner message reader into specific message
     pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
     where
-        M: BinaryMessage,
+        M: BinaryMessage + SizeFromChunk,
     {
         let mut input_size = 0;
         let mut input_data = vec![];
@@ -314,7 +314,7 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
                     trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
 
                     if input_size == 0 {
-                        input_size = tezos_messages::p2p::peer_message_size(&message_decrypted)? + std::mem::size_of::<u32>();
+                        input_size = M::size_from_chunk(&message_decrypted)?;
                     }
                     input_data.append(&mut message_decrypted);
 
@@ -324,11 +324,11 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
                             Err(e) => match e.kind() {
                                 BinaryReaderErrorKind::Underflow { bytes } => {
                                     println!("underflow {} bytes", bytes);
-                                    break Err(e.into())
+                                    break Err(e.into());
                                 }
                                 _ => {
                                     println!("error {}", e);
-                                    break Err(e.into())
+                                    break Err(e.into());
                                 }
                             },
                         }

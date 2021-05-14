@@ -6,10 +6,16 @@ use std::mem::size_of;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::{encoding::{Encoding, Field, HasEncoding, HasEncodingTest, Tag, TagMap}, has_encoding_test};
-use tezos_encoding::nom::NomReader;
-use crate::non_cached_data;
 use crate::p2p::encoding::prelude::*;
+use crate::{
+    non_cached_data,
+    p2p::{binary_message::SizeFromChunk, peer_message_size},
+};
+use tezos_encoding::nom::NomReader;
+use tezos_encoding::{
+    encoding::{Encoding, Field, HasEncoding, HasEncodingTest, Tag, TagMap},
+    has_encoding_test,
+};
 
 use super::limits::MESSAGE_MAX_SIZE;
 
@@ -87,19 +93,31 @@ has_encoding_test!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
                             "CurrentBranch",
                             CurrentBranchMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x12, "Deactivate", DeactivateMessage::encoding_test().clone()),
+                        Tag::new(
+                            0x12,
+                            "Deactivate",
+                            DeactivateMessage::encoding_test().clone(),
+                        ),
                         Tag::new(
                             0x13,
                             "GetCurrentHead",
                             GetCurrentHeadMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x14, "CurrentHead", CurrentHeadMessage::encoding_test().clone()),
+                        Tag::new(
+                            0x14,
+                            "CurrentHead",
+                            CurrentHeadMessage::encoding_test().clone(),
+                        ),
                         Tag::new(
                             0x20,
                             "GetBlockHeaders",
                             GetBlockHeadersMessage::encoding_test().clone(),
                         ),
-                        Tag::new(0x21, "BlockHeader", BlockHeaderMessage::encoding_test().clone()),
+                        Tag::new(
+                            0x21,
+                            "BlockHeader",
+                            BlockHeaderMessage::encoding_test().clone(),
+                        ),
                         Tag::new(
                             0x30,
                             "GetOperations",
@@ -131,9 +149,7 @@ has_encoding_test!(PeerMessageResponse, PEER_MESSAGE_RESPONSE_ENCODING, {
 
 impl From<PeerMessage> for PeerMessageResponse {
     fn from(message: PeerMessage) -> Self {
-        PeerMessageResponse {
-            message,
-        }
+        PeerMessageResponse { message }
     }
 }
 
@@ -171,6 +187,14 @@ into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
 into_peer_message!(GetOperationsMessage, GetOperations);
 into_peer_message!(OperationMessage, Operation);
 
+impl SizeFromChunk for PeerMessageResponse {
+    fn size_from_chunk(
+        bytes: impl AsRef<[u8]>,
+    ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
+        peer_message_size(bytes.as_ref()).map(|s| s + 4)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use tezos_encoding::assert_encodings_match;
@@ -181,5 +205,4 @@ mod test {
     fn test_peer_message_response_encoding_schema() {
         assert_encodings_match!(PeerMessageResponse);
     }
-
 }

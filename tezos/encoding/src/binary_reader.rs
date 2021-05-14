@@ -4,7 +4,10 @@
 //! Tezos binary data reader.
 
 use failure::ResultExt;
-use std::{fmt::{self, Display}, str::Utf8Error};
+use std::{
+    fmt::{self, Display},
+    str::Utf8Error,
+};
 
 use bit_vec::BitVec;
 use bytes::Buf;
@@ -98,19 +101,20 @@ impl From<crate::bit_utils::BitsError> for BinaryReaderError {
     }
 }
 
-impl From<nom::Err<nom::error::Error<&[u8]>>> for BinaryReaderError {
-    fn from(error: nom::Err<nom::error::Error<&[u8]>>) -> Self {
-        BinaryReaderErrorKind::NomError { error: error.to_string() }.into()
+impl<'a> From<nom::Err<crate::nom::NomError<'a>>> for BinaryReaderError {
+    fn from(error: nom::Err<crate::nom::NomError<'a>>) -> Self {
+        BinaryReaderErrorKind::NomError {
+            error: error.to_string(),
+        }
+        .into()
     }
 }
-
 
 impl From<Utf8Error> for BinaryReaderError {
     fn from(error: Utf8Error) -> Self {
         BinaryReaderErrorKind::Utf8Error { error }.into()
     }
 }
-
 
 /// Safely read from input buffer. If input buffer does not contain enough bytes to construct desired error is returned.
 #[macro_export]

@@ -5,11 +5,23 @@ use std::fmt;
 use std::mem::size_of;
 
 use getset::Getters;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take},
+    combinator::{map, success},
+    sequence::preceded,
+};
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::{binary_reader::{ActualSize, BinaryReaderErrorKind}, encoding::{Encoding, Field, HasEncoding, Tag, TagMap}, has_encoding_test, nom::NomReader, raw::RawReader};
+use tezos_encoding::{
+    binary_reader::{ActualSize, BinaryReaderErrorKind},
+    encoding::{Encoding, Field, HasEncoding, Tag, TagMap},
+    has_encoding_test,
+    nom::{size, NomReader, NomResult},
+    raw::RawReader,
+};
 
-use crate::non_cached_data;
+use crate::{non_cached_data, p2p::binary_message::SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
@@ -23,17 +35,39 @@ pub enum AckMessage {
     Nack(NackInfo),
 }
 
+impl SizeFromChunk for AckMessage {
+    fn size_from_chunk(
+        bytes: impl AsRef<[u8]>,
+    ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
+        let bytes = bytes.as_ref();
+        let res: NomResult<usize> = alt((
+            preceded(tag(0x00u8.to_be_bytes()), success(1)),
+            preceded(tag(0xffu8.to_be_bytes()), success(1)),
+            preceded(
+                tag(0x01u8.to_be_bytes()),
+                map(preceded(take(2usize), size), |s| (s as usize) + 3),
+            ),
+        ))(bytes);
+        let res = res.map(|(_, size)| size)?;
+        Ok(res)
+    }
+}
+
 #[derive(Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader)]
 pub struct NackInfo {
     #[get = "pub"]
     motive: NackMotive,
     #[get = "pub"]
-    #[encoding(dynamic, list = "NACK_PEERS_MAX_LENGTH", bounded = "P2P_POINT_MAX_SIZE")]
+    #[encoding(
+        dynamic,
+        list = "NACK_PEERS_MAX_LENGTH",
+        bounded = "P2P_POINT_MAX_SIZE"
+    )]
     potential_peers_to_connect: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader)]
-#[encoding(tags="u16")]
+#[encoding(tags = "u16")]
 pub enum NackMotive {
     NoMotive,
     TooManyConnections,
@@ -44,7 +78,9 @@ pub enum NackMotive {
 }
 
 impl RawReader for AckMessage {
-    fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
+    fn from_bytes(
+        bytes: &[u8],
+    ) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
         if bytes.len() < 1 {
             return Err(BinaryReaderErrorKind::Underflow { bytes: 1 }.into());
         }
@@ -70,37 +106,67 @@ impl NackInfo {
 }
 
 impl RawReader for NackInfo {
-    fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
+    fn from_bytes(
+        bytes: &[u8],
+    ) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
         let (bytes, motive) = <NackMotive as RawReader>::from_bytes(bytes)?;
         if bytes.len() < 4 {
-            return Err(BinaryReaderErrorKind::Underflow { bytes: 4 - bytes.len() }.into());
+            return Err(BinaryReaderErrorKind::Underflow {
+                bytes: 4 - bytes.len(),
+            }
+            .into());
         }
-        let dynamic_len: u32 = ((bytes[0] as u32) << 24) + ((bytes[1] as u32) << 16) + ((bytes[2] as u32) << 8) + bytes[3] as u32;
+        let dynamic_len: u32 = ((bytes[0] as u32) << 24)
+            + ((bytes[1] as u32) << 16)
+            + ((bytes[2] as u32) << 8)
+            + bytes[3] as u32;
         let dynamic_len = dynamic_len as usize;
-        let dynamic = &bytes[4..4+dynamic_len];
+        let dynamic = &bytes[4..4 + dynamic_len];
         let mut off = 0;
         let mut potential_peers_to_connect = Vec::new();
         while off != dynamic.len() {
             if potential_peers_to_connect.len() >= NACK_PEERS_MAX_LENGTH {
-                return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded { name: "BoundedString".to_string(), boundary: NACK_PEERS_MAX_LENGTH, actual: ActualSize::GreaterThan(NACK_PEERS_MAX_LENGTH) }.into());
+                return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                    name: "BoundedString".to_string(),
+                    boundary: NACK_PEERS_MAX_LENGTH,
+                    actual: ActualSize::GreaterThan(NACK_PEERS_MAX_LENGTH),
+                }
+                .into());
             }
             let max = std::cmp::min(P2P_POINT_MAX_SIZE, dynamic.len() - off);
             if max < 4 {
                 return Err(BinaryReaderErrorKind::Underflow { bytes: 4 - max }.into());
             }
-            let peer_len: u32 = ((dynamic[off] as u32) << 24) + ((dynamic[off+1] as u32) << 16) + ((dynamic[off+2] as u32) << 8) + dynamic[off+3] as u32;
+            let peer_len: u32 = ((dynamic[off] as u32) << 24)
+                + ((dynamic[off + 1] as u32) << 16)
+                + ((dynamic[off + 2] as u32) << 8)
+                + dynamic[off + 3] as u32;
             let peer_len = peer_len as usize;
             if peer_len >= P2P_POINT_MAX_SIZE {
-                return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded { name: "BoundedString".to_string(), boundary: P2P_POINT_MAX_SIZE, actual: ActualSize::GreaterThan(NACK_PEERS_MAX_LENGTH) }.into());
+                return Err(BinaryReaderErrorKind::EncodingBoundaryExceeded {
+                    name: "BoundedString".to_string(),
+                    boundary: P2P_POINT_MAX_SIZE,
+                    actual: ActualSize::GreaterThan(NACK_PEERS_MAX_LENGTH),
+                }
+                .into());
             }
             if max - 4 < peer_len {
-                return Err(BinaryReaderErrorKind::Underflow { bytes: peer_len - max + 4 }.into());
+                return Err(BinaryReaderErrorKind::Underflow {
+                    bytes: peer_len - max + 4,
+                }
+                .into());
             }
-            let peer = std::str::from_utf8(&dynamic[off+4..off+4+peer_len])?.to_string();
+            let peer = std::str::from_utf8(&dynamic[off + 4..off + 4 + peer_len])?.to_string();
             potential_peers_to_connect.push(peer);
             off += 4 + peer_len;
         }
-        Ok((&bytes[4+dynamic_len..], NackInfo { motive, potential_peers_to_connect }))
+        Ok((
+            &bytes[4 + dynamic_len..],
+            NackInfo {
+                motive,
+                potential_peers_to_connect,
+            },
+        ))
     }
 }
 
@@ -136,9 +202,14 @@ impl fmt::Debug for NackMotive {
 }
 
 impl RawReader for NackMotive {
-    fn from_bytes(bytes: &[u8]) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
+    fn from_bytes(
+        bytes: &[u8],
+    ) -> Result<(&[u8], Self), tezos_encoding::binary_reader::BinaryReaderError> {
         if bytes.len() < 2 {
-            return Err(BinaryReaderErrorKind::Underflow { bytes: 2 - bytes.len() }.into());
+            return Err(BinaryReaderErrorKind::Underflow {
+                bytes: 2 - bytes.len(),
+            }
+            .into());
         }
         let tag = ((bytes[0] as u16) << 8) + (bytes[1] as u16);
         match tag {
@@ -202,5 +273,4 @@ mod test {
     fn test_ack_encoding_schema() {
         assert_encodings_match!(super::AckMessage);
     }
-
 }

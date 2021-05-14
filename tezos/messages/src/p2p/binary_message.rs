@@ -9,11 +9,11 @@ use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::{binary_reader::BinaryReaderErrorKind, binary_writer};
 use tezos_encoding::de::from_value as deserialize_from_value;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::ser;
+use tezos_encoding::{binary_reader::BinaryReaderErrorKind, binary_writer};
 use tezos_encoding::{
     binary_reader::{BinaryReader, BinaryReaderError},
     binary_writer::BinaryWriterError,
@@ -198,10 +198,13 @@ pub trait BinaryMessage: Sized {
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
 }
 
-
 impl<T> BinaryMessage for T
 where
-    T: tezos_encoding::encoding::HasEncoding + cache::CachedData + BinaryMessageNom + Serialize + Sized,
+    T: tezos_encoding::encoding::HasEncoding
+        + cache::CachedData
+        + BinaryMessageNom
+        + Serialize
+        + Sized,
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
@@ -220,6 +223,12 @@ where
     fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
         <Self as BinaryMessageNom>::from_bytes(bytes)
     }
+}
+
+/// This trait is able to predict the exact size of the message from the first bytes of the message.
+pub trait SizeFromChunk {
+    /// Returns the size of the message.
+    fn size_from_chunk(bytes: impl AsRef<[u8]>) -> Result<usize, BinaryReaderError>;
 }
 
 /// Trait for binary encoding to implement via `nom`.
@@ -256,7 +265,7 @@ pub trait BinaryMessageNom: Sized {
 
 impl<T> BinaryMessageNom for T
 where
-    T: tezos_encoding::nom::NomReader + Sized
+    T: tezos_encoding::nom::NomReader + Sized,
 {
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
@@ -279,7 +288,7 @@ pub trait BinaryMessageRaw: Sized {
 
 impl<T> BinaryMessageRaw for T
 where
-    T: tezos_encoding::raw::RawReader
+    T: tezos_encoding::raw::RawReader,
 {
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
         let (bytes, myself) = tezos_encoding::raw::RawReader::from_bytes(buf.as_ref())?;

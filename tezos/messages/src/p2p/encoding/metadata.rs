@@ -10,7 +10,7 @@ use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding_test;
 use tezos_encoding::nom::NomReader;
 
-use crate::non_cached_data;
+use crate::{non_cached_data, p2p::binary_message::SizeFromChunk};
 
 #[derive(Serialize, Deserialize, CopyGetters, Clone, HasEncoding, NomReader)]
 pub struct MetadataMessage {
@@ -36,6 +36,14 @@ impl fmt::Debug for MetadataMessage {
             "[disable_mempool: {}, private_node: {:?}]",
             self.disable_mempool, self.private_node
         )
+    }
+}
+
+impl SizeFromChunk for MetadataMessage {
+    fn size_from_chunk(
+        _bytes: impl AsRef<[u8]>,
+    ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
+        Ok(2)
     }
 }
 
