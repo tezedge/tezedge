@@ -4,11 +4,11 @@ use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput};
 
 mod common;
-mod encoding;
-mod symbol;
-mod make;
 mod enc;
+mod encoding;
+mod make;
 mod nom;
+mod symbol;
 
 #[proc_macro_derive(HasEncoding, attributes(encoding))]
 pub fn derive_tezos_encoding(input: TokenStream) -> TokenStream {

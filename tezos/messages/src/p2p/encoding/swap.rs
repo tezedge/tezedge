@@ -6,8 +6,8 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::nom::NomReader;
 use tezos_encoding::has_encoding_test;
+use tezos_encoding::nom::NomReader;
 
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;

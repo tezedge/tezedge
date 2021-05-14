@@ -152,11 +152,20 @@ mod test {
     #[test]
     fn test_decode_current_branch_big() {
         let dir = std::env::var("CARGO_MANIFEST_DIR").expect("`CARGO_MANIFEST_DIR` is not set");
-        let path = PathBuf::from(dir).join("resources").join("current-branch-big.msg");
-        let data = File::open(path).and_then(|mut file| { let mut data = Vec::new(); file.read_to_end(&mut data)?; Ok(data)}).unwrap();
-        let serde = <super::CurrentBranchMessage as BinaryMessageSerde>::from_bytes(&data).expect("Binary message is unreadable by serde");
-        let nom = <super::CurrentBranchMessage as BinaryMessageNom>::from_bytes(&data).expect("Binary message is unreadable by nom");
+        let path = PathBuf::from(dir)
+            .join("resources")
+            .join("current-branch-big.msg");
+        let data = File::open(path)
+            .and_then(|mut file| {
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)?;
+                Ok(data)
+            })
+            .unwrap();
+        let serde = <super::CurrentBranchMessage as BinaryMessageSerde>::from_bytes(&data)
+            .expect("Binary message is unreadable by serde");
+        let nom = <super::CurrentBranchMessage as BinaryMessageNom>::from_bytes(&data)
+            .expect("Binary message is unreadable by nom");
         assert_eq!(serde, nom);
     }
-
 }

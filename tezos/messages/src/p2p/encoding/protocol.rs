@@ -133,5 +133,4 @@ mod test {
     fn test_get_protocol_encoding_schema() {
         assert_encodings_match!(GetProtocolsMessage);
     }
-
 }

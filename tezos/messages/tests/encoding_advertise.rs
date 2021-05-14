@@ -5,10 +5,10 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use failure::Error;
 
-use tezos_messages::p2p::{binary_message::BinaryMessageNom, encoding::prelude::*};
 use tezos_messages::p2p::{
     binary_message::BinaryMessage, encoding::limits::ADVERTISE_ID_LIST_MAX_LENGTH,
 };
+use tezos_messages::p2p::{binary_message::BinaryMessageNom, encoding::prelude::*};
 
 #[test]
 fn can_deserialize_advertise() -> Result<(), Error> {
@@ -102,14 +102,16 @@ fn can_deserialize_advertize_max_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_advertize_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(test_data::ADVERTISE_ENCODED_OVER_MAX)?;
-    let _err = <AdvertiseMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
+    let _err =
+        <AdvertiseMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
 #[test]
 fn can_t_deserialize_advertize_max_plus_nom() -> Result<(), Error> {
     let encoded = hex::decode(test_data::ADVERTISE_ENCODED_OVER_MAX)?;
-    let _err = <AdvertiseMessage as BinaryMessageNom>::from_bytes(encoded).expect_err("Error is expected");
+    let _err =
+        <AdvertiseMessage as BinaryMessageNom>::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 

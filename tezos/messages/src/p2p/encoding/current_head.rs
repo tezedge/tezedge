@@ -53,7 +53,10 @@ has_encoding_test!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
             Field::new("chain_id", Encoding::Hash(HashType::ChainId)),
             Field::new(
                 "current_block_header",
-                Encoding::bounded_dynamic(BLOCK_HEADER_MAX_SIZE, BlockHeader::encoding_test().clone()),
+                Encoding::bounded_dynamic(
+                    BLOCK_HEADER_MAX_SIZE,
+                    BlockHeader::encoding_test().clone(),
+                ),
             ),
             Field::new("current_mempool", Mempool::encoding_test().clone()),
         ],
@@ -109,11 +112,20 @@ mod test {
     #[test]
     fn test_decode_current_head_33k() {
         let dir = std::env::var("CARGO_MANIFEST_DIR").expect("`CARGO_MANIFEST_DIR` is not set");
-        let path = PathBuf::from(dir).join("resources").join("current-head-big.msg");
-        let data = File::open(path).and_then(|mut file| { let mut data = Vec::new(); file.read_to_end(&mut data)?; Ok(data)}).unwrap();
-        let serde = <super::CurrentHeadMessage as BinaryMessageSerde>::from_bytes(&data).expect("Binary message is unreadable by serde");
-        let nom = <super::CurrentHeadMessage as BinaryMessageNom>::from_bytes(&data).expect("Binary message is unreadable by nom");
+        let path = PathBuf::from(dir)
+            .join("resources")
+            .join("current-head-big.msg");
+        let data = File::open(path)
+            .and_then(|mut file| {
+                let mut data = Vec::new();
+                file.read_to_end(&mut data)?;
+                Ok(data)
+            })
+            .unwrap();
+        let serde = <super::CurrentHeadMessage as BinaryMessageSerde>::from_bytes(&data)
+            .expect("Binary message is unreadable by serde");
+        let nom = <super::CurrentHeadMessage as BinaryMessageNom>::from_bytes(&data)
+            .expect("Binary message is unreadable by nom");
         assert_eq!(serde, nom);
     }
-
 }

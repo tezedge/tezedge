@@ -192,5 +192,4 @@ mod test {
     fn test_get_operations_encoding_schema() {
         assert_encodings_match!(GetOperationsMessage);
     }
-
 }

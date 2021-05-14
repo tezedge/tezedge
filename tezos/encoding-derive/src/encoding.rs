@@ -1,6 +1,5 @@
-use proc_macro2::Span;
 use parse_display::{Display, FromStr};
-
+use proc_macro2::Span;
 
 #[derive(Debug)]
 pub struct DataWithEncoding<'a> {
@@ -77,6 +76,8 @@ impl PrimitiveEncoding {
 impl syn::parse::Parse for PrimitiveEncoding {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let name: syn::Ident = input.parse()?;
-        name.to_string().parse().map_err(|_| input.error("Unrecognized primitive encoding"))
+        name.to_string()
+            .parse()
+            .map_err(|_| input.error("Unrecognized primitive encoding"))
     }
 }

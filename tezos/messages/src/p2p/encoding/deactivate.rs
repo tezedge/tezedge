@@ -49,5 +49,4 @@ mod test {
     fn test_deactivate_encoding_schema() {
         assert_encodings_match!(DeactivateMessage);
     }
-
 }

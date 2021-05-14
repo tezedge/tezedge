@@ -1,7 +1,7 @@
+use crate::encoding::*;
 use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
-use crate::encoding::*;
 
 pub fn generate_encoding_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
     let name = data.name;
@@ -87,10 +87,15 @@ fn generate_tag_encoding<'a>(tag: &Tag<'a>) -> TokenStream {
 fn generate_string_encoding(size: &Option<syn::Expr>, span: Span) -> TokenStream {
     size.as_ref().map_or_else(
         || quote_spanned!(span=> tezos_encoding::encoding::Encoding::String),
-        |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedString(#size)))
+        |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedString(#size)),
+    )
 }
 
-fn generate_list_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_list_encoding<'a>(
+    size: &Option<syn::Expr>,
+    encoding: &Encoding<'a>,
+    span: Span,
+) -> TokenStream {
     let encoding = generate_encoding(encoding);
     size.as_ref().map_or_else(|| quote_spanned!(span=> tezos_encoding::encoding::Encoding::List(Box::new(#encoding))), |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedList(#size, Box::new(#encoding))))
 }
@@ -100,17 +105,29 @@ fn generate_optional_field_encoding<'a>(encoding: &Encoding<'a>, span: Span) -> 
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::OptionalField(Box::new(#encoding)))
 }
 
-fn generate_sized_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_sized_encoding<'a>(
+    size: &syn::Expr,
+    encoding: &Encoding<'a>,
+    span: Span,
+) -> TokenStream {
     let encoding = generate_encoding(encoding);
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::Sized(#size, Box::new(#encoding)))
 }
 
-fn generate_bounded_encoding<'a>(size: &syn::Expr, encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_bounded_encoding<'a>(
+    size: &syn::Expr,
+    encoding: &Encoding<'a>,
+    span: Span,
+) -> TokenStream {
     let encoding = generate_encoding(encoding);
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::Bounded(#size, Box::new(#encoding)))
 }
 
-fn generate_dynamic_encoding<'a>(size: &Option<syn::Expr>, encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_dynamic_encoding<'a>(
+    size: &Option<syn::Expr>,
+    encoding: &Encoding<'a>,
+    span: Span,
+) -> TokenStream {
     let encoding = generate_encoding(encoding);
     size.as_ref().map_or_else(
         || quote_spanned!(span=> tezos_encoding::encoding::Encoding::Dynamic(Box::new(#encoding))),

@@ -6,8 +6,11 @@ use std::net::SocketAddr;
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::{encoding::{Encoding, Field, HasEncoding}, has_encoding_test};
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::{
+    encoding::{Encoding, Field, HasEncoding},
+    has_encoding_test,
+};
 
 use super::limits::{ADVERTISE_ID_LIST_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 use crate::cached_data;

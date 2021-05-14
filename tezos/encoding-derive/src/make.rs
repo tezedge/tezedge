@@ -113,7 +113,10 @@ fn make_type_path_encoding<'a>(
             } else if segment.ident == symbol::rust::OPTION {
                 make_optional_field_encoding_from_type(path, meta, inner_encoding)?
             } else {
-                return Err(error_spanned(args, "Only `Vec<_>` and `Option<_>` are supported"));
+                return Err(error_spanned(
+                    args,
+                    "Only `Vec<_>` and `Option<_>` are supported",
+                ));
             };
             let encoding = make_bounded_encoding(meta, encoding)?;
             Ok(encoding)
@@ -143,10 +146,7 @@ fn make_basic_encoding_from_type<'a>(
         // String type is mapped to String encoding.
         let string_attr =
             get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?;
-        Encoding::String(
-            string_attr.map(|param| param.param).flatten(),
-            ident.span(),
-        )
+        Encoding::String(string_attr.map(|param| param.param).flatten(), ident.span())
     } else if let Some(builtin) =
         get_attribute_with_param(meta, &symbol::BUILTIN, Some(&symbol::KIND), true)?
     {
@@ -185,7 +185,10 @@ fn get_basic_encoding_from_meta<'a>(
 }
 
 /// Creates basic encoding by consumes the rightmost meta attribute.
-fn make_basic_encoding_from_meta<'a>(ty: &'a syn::Path, meta: &mut Vec<syn::Meta>) -> Result<Encoding<'a>> {
+fn make_basic_encoding_from_meta<'a>(
+    ty: &'a syn::Path,
+    meta: &mut Vec<syn::Meta>,
+) -> Result<Encoding<'a>> {
     get_basic_encoding_from_meta(ty, meta)?.ok_or(error_spanned(ty, "No basic encoding specified"))
 }
 
@@ -284,7 +287,9 @@ fn make_list_encoding_from_meta<'a>(
     meta: &mut Vec<syn::Meta>,
     encoding: Encoding<'a>,
 ) -> Result<Encoding<'a>> {
-    let encoding = if let Some(list) = get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)? {
+    let encoding = if let Some(list) =
+        get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)?
+    {
         Encoding::List(list.param, Box::new(encoding), list.span)
     } else {
         encoding
@@ -302,9 +307,11 @@ fn make_list_encoding_from_type<'a>(
         if let Encoding::Primitive(PrimitiveEncoding::Uint8, _) = encoding {
             Encoding::Bytes(bytes_meta.span)
         } else {
-            return Err(error_spanned(ty, "Incompatible type for `bytes` encoding"))
+            return Err(error_spanned(ty, "Incompatible type for `bytes` encoding"));
         }
-    } else if let Some(list_meta) = get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)? {
+    } else if let Some(list_meta) =
+        get_attribute_with_option(meta, &symbol::LIST, Some(&symbol::MAX), true)?
+    {
         Encoding::List(list_meta.param, Box::new(encoding), list_meta.span)
     } else {
         Encoding::List(None, Box::new(encoding), ty.span())

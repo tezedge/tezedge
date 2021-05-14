@@ -1,4 +1,7 @@
-use std::{borrow::Borrow, fmt::{self, Display}};
+use std::{
+    borrow::Borrow,
+    fmt::{self, Display},
+};
 use syn::{Ident, Path};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq)]
@@ -44,7 +47,6 @@ pub const OPTION: Symbol = Symbol("option");
 
 pub const SIZED: Symbol = Symbol("sized");
 pub const SIZE: Symbol = Symbol("size");
-
 
 pub const LIST: Symbol = Symbol("list");
 pub const BOUNDED: Symbol = Symbol("bounded");

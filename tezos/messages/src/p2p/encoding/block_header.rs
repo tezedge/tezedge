@@ -51,7 +51,10 @@ cached_data!(BlockHeaderMessage, body);
 has_encoding_test!(BlockHeaderMessage, BLOCK_HEADER_MESSAGE_ENCODING, {
     Encoding::Obj(
         "BlockHeaderMessage",
-        vec![Field::new("block_header", BlockHeader::encoding_test().clone())],
+        vec![Field::new(
+            "block_header",
+            BlockHeader::encoding_test().clone(),
+        )],
     )
 });
 
@@ -110,7 +113,18 @@ has_encoding_test!(
 );
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Builder, Getters, CopyGetters, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    PartialEq,
+    Debug,
+    Clone,
+    Builder,
+    Getters,
+    CopyGetters,
+    HasEncoding,
+    NomReader,
+)]
 #[encoding(bounded = "BLOCK_HEADER_MAX_SIZE")]
 pub struct BlockHeader {
     #[get_copy = "pub"]

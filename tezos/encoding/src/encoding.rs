@@ -14,7 +14,6 @@ use crate::ser::Error;
 use crate::types::Value;
 use bytes::Buf;
 
-
 pub use tezos_encoding_derive::HasEncoding;
 
 #[derive(Debug, Clone)]
@@ -357,9 +356,8 @@ pub trait HasEncoding {
     fn encoding() -> &'static Encoding;
 }
 
-
 macro_rules! hash_has_encoding {
-	($hash_name:ident, $enc_ref_name:ident) => {
+    ($hash_name:ident, $enc_ref_name:ident) => {
         lazy_static::lazy_static! {
             static ref $enc_ref_name: Encoding = {
                 Encoding::Hash(crypto::hash::$hash_name::hash_type())
@@ -371,7 +369,7 @@ macro_rules! hash_has_encoding {
                 &$enc_ref_name
             }
         }
-	};
+    };
 }
 
 hash_has_encoding!(ChainId, CHAIN_ID);
@@ -380,7 +378,10 @@ hash_has_encoding!(BlockMetadataHash, BLOCK_METADATA_HASH);
 hash_has_encoding!(OperationHash, OPERATION_HASH);
 hash_has_encoding!(OperationListListHash, OPERATION_LIST_LIST_HASH);
 hash_has_encoding!(OperationMetadataHash, OPERATION_METADATA_HASH);
-hash_has_encoding!(OperationMetadataListListHash, OPERATION_METADATA_LIST_LIST_HASH);
+hash_has_encoding!(
+    OperationMetadataListListHash,
+    OPERATION_METADATA_LIST_LIST_HASH
+);
 hash_has_encoding!(ContextHash, CONTEXT_HASH);
 hash_has_encoding!(ProtocolHash, PROTOCOL_HASH);
 hash_has_encoding!(ContractKt1Hash, CONTRACT_KT1HASH);
@@ -433,7 +434,6 @@ macro_rules! has_encoding_test {
     };
 }
 
-
 pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
     match (new, old) {
         (Encoding::Unit, Encoding::Unit) => (),
@@ -456,7 +456,9 @@ pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
         (Encoding::Bytes, Encoding::Bytes) => (),
         (Encoding::Enum, Encoding::Enum) => (),
 
-        (Encoding::BoundedString(new_size), Encoding::BoundedString(old_size)) => assert_eq!(new_size, old_size),
+        (Encoding::BoundedString(new_size), Encoding::BoundedString(old_size)) => {
+            assert_eq!(new_size, old_size)
+        }
 
         (Encoding::Tags(new_size, new), Encoding::Tags(old_size, old)) => {
             assert_eq!(new_size, old_size);
@@ -486,16 +488,19 @@ pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
             }
         }
 
-        (Encoding::List(new), Encoding::List(old)) |
-        (Encoding::Dynamic(new), Encoding::Dynamic(old)) |
-        (Encoding::Option(new), Encoding::Option(old)) |
-        (Encoding::OptionalField(new), Encoding::OptionalField(old)) |
-        (Encoding::Greedy(new), Encoding::Greedy(old)) => assert_encodings_match(new, old),
+        (Encoding::List(new), Encoding::List(old))
+        | (Encoding::Dynamic(new), Encoding::Dynamic(old))
+        | (Encoding::Option(new), Encoding::Option(old))
+        | (Encoding::OptionalField(new), Encoding::OptionalField(old))
+        | (Encoding::Greedy(new), Encoding::Greedy(old)) => assert_encodings_match(new, old),
 
-        (Encoding::BoundedList(new_size, new), Encoding::BoundedList(old_size, old)) |
-        (Encoding::BoundedDynamic(new_size, new), Encoding::BoundedDynamic(old_size, old)) |
-        (Encoding::Sized(new_size, new), Encoding::Sized(old_size, old)) |
-        (Encoding::Bounded(new_size, new), Encoding::Bounded(old_size, old)) => { assert_eq!(new_size, old_size); assert_encodings_match(new, old); }
+        (Encoding::BoundedList(new_size, new), Encoding::BoundedList(old_size, old))
+        | (Encoding::BoundedDynamic(new_size, new), Encoding::BoundedDynamic(old_size, old))
+        | (Encoding::Sized(new_size, new), Encoding::Sized(old_size, old))
+        | (Encoding::Bounded(new_size, new), Encoding::Bounded(old_size, old)) => {
+            assert_eq!(new_size, old_size);
+            assert_encodings_match(new, old);
+        }
 
         (Encoding::Hash(new), Encoding::Hash(old)) => assert_eq!(*new, *old),
 
@@ -507,22 +512,22 @@ pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
 
 #[macro_export]
 macro_rules! assert_encodings_match {
-	($ty:path) => {
-		$crate::encoding::assert_encodings_match(
+    ($ty:path) => {
+        $crate::encoding::assert_encodings_match(
             <$ty as tezos_encoding::encoding::HasEncoding>::encoding(),
-            <$ty as tezos_encoding::encoding::HasEncodingTest>::encoding_test()
+            <$ty as tezos_encoding::encoding::HasEncodingTest>::encoding_test(),
         );
-	};
+    };
 }
 
 #[macro_export]
 macro_rules! test_encodings_match {
-	($fun:ident, $ty:ident) => {
-		#[test]
+    ($fun:ident, $ty:ident) => {
+        #[test]
         fn $fun() {
             $crate::assert_encodings_match!(super::$ty)
         }
-	};
+    };
 }
 
 #[cfg(test)]

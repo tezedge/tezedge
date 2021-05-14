@@ -228,14 +228,15 @@ has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     )
 });
 
-
 impl crate::p2p::binary_message::BinaryMessage for ParametricConstants {
     fn as_bytes(&self) -> Result<Vec<u8>, tezos_encoding::binary_writer::BinaryWriterError> {
         // if cache not configured or empty, resolve by encoding
         tezos_encoding::binary_writer::write(self, &Self::encoding())
     }
 
-    fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
+    fn from_bytes<B: AsRef<[u8]>>(
+        buf: B,
+    ) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
         <Self as crate::p2p::binary_message::BinaryMessageSerde>::from_bytes(buf)
     }
 }

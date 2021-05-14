@@ -14,7 +14,9 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::MEMPOOL_MAX_SIZE;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Default, Getters, HasEncoding, NomReader, PartialEq)]
+#[derive(
+    Clone, Serialize, Deserialize, Debug, Default, Getters, HasEncoding, NomReader, PartialEq,
+)]
 #[encoding(bounded = "MEMPOOL_MAX_SIZE")]
 pub struct Mempool {
     #[get = "pub"]
@@ -63,7 +65,6 @@ has_encoding_test!(Mempool, MEMPOOL_ENCODING, {
         ),
     )
 });
-
 
 #[cfg(test)]
 mod test {

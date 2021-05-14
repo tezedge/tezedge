@@ -14,6 +14,6 @@ pub mod de;
 pub mod encoding;
 pub mod error_context;
 pub mod json_writer;
-pub mod ser;
 pub mod nom;
 pub mod raw;
+pub mod ser;
