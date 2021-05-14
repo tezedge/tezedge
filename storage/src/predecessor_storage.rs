@@ -9,7 +9,7 @@ use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
 use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
+    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
 };
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
@@ -99,13 +99,6 @@ impl PredecessorStorage {
         self.kv.get(key).map_err(StorageError::from)
     }
 
-    #[inline]
-    pub fn iter(
-        &self,
-        mode: IteratorMode<Self>,
-    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
-    }
 }
 
 impl BincodeEncoded for PredecessorKey {}

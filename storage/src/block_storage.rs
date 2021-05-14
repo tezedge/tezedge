@@ -8,13 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash};
 
-use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
-};
+use crate::commit_log::{CommitLogWithSchema, Location};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator, List};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{
-    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, Location,
-};
+use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema, SchemaError};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
@@ -104,7 +101,7 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 
-    fn iterator(&self) -> Result<TezedgeDatabaseIterator<BlockPrimaryIndex>, StorageError>;
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError>;
 }
 
 impl BlockStorage {
@@ -222,8 +219,8 @@ impl BlockStorage {
         &self,
         locations: I,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>
-    where
-        I: IntoIterator<Item = BlockStorageColumnsLocation>,
+        where
+            I: IntoIterator<Item=BlockStorageColumnsLocation>,
     {
         locations
             .into_iter()
@@ -377,7 +374,7 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<TezedgeDatabaseIterator<BlockPrimaryIndex>, StorageError> {
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
         self.primary_index.iterator()
     }
 }
@@ -447,10 +444,19 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::Start)
-            .map_err(StorageError::from)
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
+        let items = self.kv.find(IteratorMode::Start, None, Box::new(|(k, v)| {
+            Ok(true)
+        }))?;
+        let mut results = vec![];
+        for (k, _) in items.iter() {
+            let key = {
+                use crate::persistent::codec::Decoder;
+                <Self as KeyValueSchema>::Key::decode(k)
+            }?;
+            results.push(key)
+        }
+        Ok(results)
     }
 }
 
@@ -499,11 +505,16 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, Direction::Reverse))?
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let items = self.kv.find(IteratorMode::From(&from_level, Direction::Reverse), Some(limit), Box::new(|(k, v)| {
+            Ok(true)
+        }))?;
+        let mut results = vec![];
+        for (_, v) in items.iter() {
+            let value =
+                <Self as KeyValueSchema>::Value::decode(v)?;
+            results.push(value)
+        }
+        Ok(results)
     }
 
     fn get_blocks_directed(
@@ -512,11 +523,16 @@ impl BlockByLevelIndex {
         limit: usize,
         direction: Direction,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, direction))?
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let items = self.kv.find(IteratorMode::From(&from_level, direction), Some(limit), Box::new(|(k, v)| {
+            Ok(true)
+        }))?;
+        let mut results = vec![];
+        for (_, v) in items.iter() {
+            let value =
+                <Self as KeyValueSchema>::Value::decode(v)?;
+            results.push(value)
+        }
+        Ok(results)
     }
 
     fn get_blocks_by_nth_level(
@@ -525,12 +541,19 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, Direction::Reverse))?
-            .filter(|(level, _)| *level.as_ref().unwrap() % every_nth == 0)
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let items = self.kv.find(IteratorMode::From(&from_level, Direction::Reverse), Some(limit), Box::new( move |(k, v)| {
+            use crate::persistent::codec::Decoder;
+            let level =
+                <Self as KeyValueSchema>::Key::decode(v)?;
+            Ok(level % every_nth == 0)
+        }))?;
+        let mut results = vec![];
+        for (_, v) in items.iter() {
+            let value =
+                <Self as KeyValueSchema>::Value::decode(v)?;
+            results.push(value)
+        }
+        Ok(results)
     }
 }
 
@@ -559,7 +582,7 @@ pub struct BlockByContextHashIndex {
 }
 
 pub type BlockByContextHashIndexKV =
-    dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
+dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -605,28 +628,38 @@ impl KVStoreKeyValueSchema for BlockByContextHashIndex {
         Self::name()
     }
 }
+
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use failure::Error;
 
-    use crate::persistent::open_main_db;
-    use crate::persistent::DbConfiguration;
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+    use crate::persistent::open_main_db;
+    use crate::persistent::DbConfiguration;
+    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
         use rocksdb::{Cache, Options, DB};
-
-        let path = "__block_level_index_test";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
+        let mut db_path = PathBuf::new().join("__block_level_index_test");
+        if db_path.exists() {
+            std::fs::remove_dir_all(db_path.as_path()).unwrap();
         }
 
         {
-            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let config = RocksDbConfig {
+                cache_size: 96 * 1024 * 1024,
+                expected_db_version: 19,
+                db_path: db_path.join("db"),
+                system_storage_path: db_path.join("sys"),
+                columns: DbsRocksDbTableInitializer,
+                threads: Some(1),
+            };
+            let db = open_main_db(&cache,&config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
             let index = BlockByLevelIndex::new(Arc::new(db));
 
             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {

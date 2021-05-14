@@ -517,20 +517,25 @@ fn main() {
         tezos_env.main_chain_id().expect("Failed to decode chainId"),
         tezos_env.version.clone(),
     );
+    let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
+        .expect("Failed to initialize RocksDB cache (db)");
+
+
+
 
     // initialize dbs
     let maindb = initialize_maindb(
         &log,
+        &kv_cache,
+        &env.storage.db,
         &env.storage.db_path,
         env.storage.db.expected_db_version,
         &main_chain,
         env.storage.main_db,
     )
     .expect("Failed to initialize main db (sled) storage");
-    let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
-        .expect("Failed to initialize RocksDB cache (db)");
-    caches.push(kv_cache);
 
+    caches.push(kv_cache);
     let commit_logs = Arc::new(
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),

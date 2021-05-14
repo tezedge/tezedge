@@ -25,7 +25,7 @@ snap = "1.0.4"
 strum = "0.20"
 strum_macros = "0.20"
 bloomfilter = "1.0.5"
-notus = { git = "https://github.com/mambisi/notus.git"}
+zstd = "0.5.3+zstd.1.4.5"
 
 # local dependencies
 crypto = { path = "../crypto" }

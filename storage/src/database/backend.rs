@@ -1,5 +1,7 @@
 use crate::database::error::Error;
 use crate::Direction;
+use crate::persistent::SchemaError;
+
 #[derive(Clone)]
 pub enum BackendIteratorMode {
     Start,
@@ -19,20 +21,7 @@ pub trait TezedgeDatabaseBackendStore {
         batch: Vec<(Vec<u8>, Vec<u8>)>,
     ) -> Result<(), Error>;
     fn flush(&self) -> Result<usize, Error>;
-}
 
-pub type BackendIterator = dyn Iterator<Item = Result<(Vec<u8>, Vec<u8>), Error>>;
-
-pub trait TezedgeDatabaseBackendStoreIterator {
-    fn iterator(
-        &self,
-        column: &'static str,
-        mode: BackendIteratorMode,
-    ) -> Result<Box<BackendIterator>, Error>;
-    fn prefix_iterator(
-        &self,
-        column: &'static str,
-        key: &Vec<u8>,
-        max_key_len: usize,
-    ) -> Result<Box<BackendIterator>, Error>;
+    fn find(&self, column: &'static str, mode: BackendIteratorMode, limit : Option<usize>, filter : Box<dyn Fn((&[u8],&[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> ;
+    fn find_by_prefix(&self, column: &'static str,key: &Vec<u8>, max_key_len: usize,filter : Box<dyn Fn((&[u8],&[u8])) -> Result<bool,SchemaError>> ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 }

@@ -5,19 +5,20 @@ use std::path::Path;
 
 use derive_builder::Builder;
 
+use crate::commit_log::{CommitLogError, CommitLogs};
 use crate::database::error::Error as DatabaseError;
-use crate::database::notus_backend::NotusDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::database::tezedge_database::{
     TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
 };
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
+use crate::database::rockdb_backend::RocksDBBackend;
+use rocksdb::Cache;
+use crate::initializer::{DbsRocksDbTableInitializer, RocksDbColumnFactory, RocksDbConfig};
 
 pub mod codec;
-pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
@@ -38,33 +39,34 @@ impl Default for DbConfiguration {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-where
-    P: AsRef<Path>,
-    I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item=CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
 
 /// Open commit log at a given path.
-pub fn open_main_db<P>(
-    path: P,
+pub fn open_main_db<P, C: RocksDbColumnFactory>(
+    cache: &Cache,
+    config : &RocksDbConfig<C>,
+    _path: P,
     backend_config: TezedgeDatabaseBackendConfiguration,
 ) -> Result<TezedgeDatabase, DatabaseError>
-where
-    P: AsRef<Path>,
+    where
+        P: AsRef<Path>,
 {
-    let path = path.as_ref().to_path_buf();
-    let path = path.join("database");
     let backend = match backend_config {
         TezedgeDatabaseBackendConfiguration::Sled => {
-            TezedgeDatabaseBackendOptions::SledDB(SledDBBackend::new(path.as_path())?)
+            TezedgeDatabaseBackendOptions::SledDB(SledDBBackend::new(config.db_path.as_path())?)
         }
-        TezedgeDatabaseBackendConfiguration::Notus => {
-            TezedgeDatabaseBackendOptions::NotusDB(NotusDBBackend::new(path.as_path())?)
+        TezedgeDatabaseBackendConfiguration::RocksDB => {
+            TezedgeDatabaseBackendOptions::RocksDB(RocksDBBackend::new(cache, &config)?)
         }
     };
     Ok(TezedgeDatabase::new(backend))
 }
+
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement
 pub trait KeyValueSchema {

@@ -40,15 +40,14 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
-use crate::persistent::{
-    CommitLogError, CommitLogs, DBError, Decoder, Encoder, Flushable, SchemaError,
-};
+use crate::persistent::{DBError, Decoder, Encoder, Flushable, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
+pub mod commit_log;
 pub mod context;
 pub mod database;
 pub mod mempool_storage;
@@ -58,6 +57,7 @@ pub mod persistent;
 pub mod predecessor_storage;
 pub mod system_storage;
 
+use crate::commit_log::{CommitLogError, CommitLogs};
 use crate::database::tezedge_database::TezedgeDatabase;
 
 /// Extension of block header with block hash
@@ -529,14 +529,16 @@ pub mod initializer {
         Ok(db)
     }
 
-    pub fn initialize_maindb<P: AsRef<Path>>(
+    pub fn initialize_maindb<P: AsRef<Path>, C : RocksDbColumnFactory>(
         log: &Logger,
+        cache: &Cache,
+        config: &RocksDbConfig<C>,
         path: P,
         db_version: i64,
         expected_main_chain: &MainChain,
         backend_config: TezedgeDatabaseBackendConfiguration,
     ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
-        let db = Arc::new(open_main_db(path.as_ref(), backend_config)?);
+        let db = Arc::new(open_main_db(cache,config,path.as_ref(), backend_config)?);
 
         match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
@@ -754,8 +756,9 @@ pub mod tests_common {
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
-    use crate::database::notus_backend::NotusDBBackend;
+    use crate::database::sled_backend::SledDBBackend;
     use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
+    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -779,26 +782,39 @@ pub mod tests_common {
             remove_if_exists: bool,
             remove_on_destroy: bool,
         ) -> Result<Self, Error> {
-            let path = path.as_ref().to_path_buf();
+            let path_buf = path.as_ref().to_path_buf();
             // remove previous data if exists
-            if Path::new(&path).exists() && remove_if_exists {
-                fs::remove_dir_all(&path).unwrap();
+            if path_buf.exists() && remove_if_exists {
+                fs::remove_dir_all(&path_buf.as_path()).unwrap();
             }
 
-            let cfg = DbConfiguration::default();
+
+
 
             // create common RocksDB block cache to be shared among column families
 
             //Sled DB storage
-            let backend = NotusDBBackend::new(path.as_path())?;
-            let maindb = Arc::new(TezedgeDatabase::new(
-                TezedgeDatabaseBackendOptions::NotusDB(backend),
-            ));
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let config = RocksDbConfig {
+                cache_size: 96 * 1024 * 1024,
+                expected_db_version: 19,
+                db_path: path_buf.join("db"),
+                system_storage_path: path_buf.join("sys"),
+                columns: DbsRocksDbTableInitializer,
+                threads: Some(1),
+            };
 
+            let backend = database::rockdb_backend::RocksDBBackend::new(&cache, &config)?;
+            let maindb = Arc::new(TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(
+                backend,
+            )));
+
+            let path_buf = path.as_ref().to_path_buf();
+            let cfg = DbConfiguration::default();
             // context
             let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
             let context_kv_store = RocksDBBackend::new(Arc::new(open_kv(
-                path.join("context"),
+                path_buf.join("context"),
                 vec![RocksDBBackend::descriptor(&db_context_cache)],
                 &cfg,
             )?));
@@ -807,7 +823,7 @@ pub mod tests_common {
             // context actions storage
             let db_context_actions_cache = Cache::new_lru_cache(16 * 1024 * 1024)?; // 16 MB
             let kv_context_action = open_kv(
-                path.join("context_actions"),
+                path_buf.join("context_actions"),
                 vec![
                     context_action_storage::ContextActionStorage::descriptor(
                         &db_context_actions_cache,
@@ -836,7 +852,7 @@ pub mod tests_common {
                     Arc::new(Mutex::new(merkle)),
                     Some(Arc::new(kv_context_action)),
                 ),
-                path,
+                path : path_buf,
                 remove_on_destroy,
             })
         }

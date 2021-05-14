@@ -8,7 +8,7 @@ use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
+    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
 };
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
@@ -136,13 +136,6 @@ impl OperationsMetaStorage {
         self.kv.contains(block_hash).map_err(StorageError::from)
     }
 
-    #[inline]
-    pub fn iter(
-        &self,
-        mode: IteratorMode<Self>,
-    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
-    }
 }
 
 impl KeyValueSchema for OperationsMetaStorage {
@@ -415,6 +408,8 @@ mod tests {
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
     use crypto::hash::HashType;
+    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
+    use std::path::PathBuf;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
         let mut vec = bytes.to_vec();
@@ -497,16 +492,25 @@ mod tests {
     fn merge_meta_value_test() -> Result<(), Error> {
         use rocksdb::{Cache, Options, DB};
 
-        let path = "__opmeta_storage_mergetest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
+        let mut db_path = PathBuf::new();
+        db_path.join("__opmeta_storage_mergetest");
+        if db_path.exists() {
+            std::fs::remove_dir_all(db_path.as_path()).unwrap();
         }
 
         {
             let t = true as u8;
             let f = false as u8;
-
-            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled)?;
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let config = RocksDbConfig {
+                cache_size: 96 * 1024 * 1024,
+                expected_db_version: 19,
+                db_path: db_path.join("db"),
+                system_storage_path: db_path.join("sys"),
+                columns: DbsRocksDbTableInitializer,
+                threads: Some(1),
+            };
+            let db = open_main_db(&cache,&config,config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB)?;
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,

@@ -1,13 +1,11 @@
 use crate::block_storage::{BlockByContextHashIndex, BlockByLevelIndex, BlockPrimaryIndex};
 use crate::database::backend::{
-    BackendIterator, BackendIteratorMode, TezedgeDatabaseBackendStore,
-    TezedgeDatabaseBackendStoreIterator,
+    BackendIteratorMode, TezedgeDatabaseBackendStore,
 };
 use crate::database::error::Error;
-use crate::database::notus_backend::NotusDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::sequence::Sequences;
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
+use crate::persistent::{KeyValueSchema, SchemaError, Decoder, Encoder};
 use crate::{
     BlockMetaStorage, ChainMetaStorage, IteratorMode, OperationsMetaStorage, OperationsStorage,
     PredecessorStorage, SystemStorage,
@@ -20,6 +18,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use std::alloc::Global;
+use crate::context::ContextError::StorageError;
+use crate::database::rockdb_backend::RocksDBBackend;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -67,66 +68,23 @@ pub trait KVStore<S: KeyValueSchema> {
 }
 
 pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
-    /// Read all entries in database.
-    ///
-    /// # Arguments
-    /// * `mode` - Reading mode, specified by RocksDB, From start to end, from end to start, or from
-    /// arbitrary position to end.
-    fn iterator(&self, mode: IteratorMode<S>) -> Result<TezedgeDatabaseIterator<S>, Error>;
 
-    /// Starting from given key, read all entries to the end.
-    ///
-    /// # Arguments
-    /// * `key` - Key (specified by schema), from which to start reading entries
-    /// * `max_key_len` - max prefix key length
-    fn prefix_iterator(
-        &self,
-        key: &S::Key,
-        max_key_len: usize,
-    ) -> Result<TezedgeDatabaseIterator<S>, Error>;
+    fn find(&self, mode: IteratorMode<S>, limit : Option<usize>, filter: Box<dyn Fn((&[u8], &[u8]) ) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+
+    fn find_by_prefix(&self, key: &S::Key, max_key_len: usize, filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 }
 
-pub struct TezedgeDatabaseIterator<S: KeyValueSchema> {
-    data: PhantomData<S>,
-    inner: Box<BackendIterator>,
-}
-
-impl<S: KeyValueSchema> TezedgeDatabaseIterator<S> {
-    pub fn new(iter: Box<BackendIterator>) -> Self {
-        Self {
-            inner: iter,
-            data: PhantomData,
-        }
-    }
-}
-
-impl<S: KeyValueSchema> Iterator for TezedgeDatabaseIterator<S> {
-    type Item = (Result<S::Key, SchemaError>, Result<S::Value, SchemaError>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.inner.next() {
-            Some(i) => match i {
-                Ok((k, v)) => Some((S::Key::decode(&k), S::Value::decode(&v))),
-                Err(_) => {
-                    return None;
-                }
-            },
-            None => {
-                return None;
-            }
-        }
-    }
-}
+//Todo Change name
+pub type List<S> = Vec<(Result<<S as KeyValueSchema>::Key, SchemaError>, Result<<S as KeyValueSchema>::Value, SchemaError>)>;
 
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
-    NotusDB(NotusDBBackend),
+    RocksDB(RocksDBBackend),
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezedgeDatabaseBackendConfiguration {
-    Sled,
-    Notus,
+    Sled,RocksDB
 }
 
 impl TezedgeDatabaseBackendConfiguration {
@@ -141,7 +99,7 @@ impl TezedgeDatabaseBackendConfiguration {
     pub fn supported_values(&self) -> Vec<&'static str> {
         match self {
             Self::Sled => vec!["sled"],
-            Self::Notus => vec!["notus"],
+            Self::RocksDB => vec!["rocksdb"]
         }
     }
 }
@@ -168,16 +126,14 @@ impl FromStr for TezedgeDatabaseBackendConfiguration {
 }
 
 pub trait TezdegeDatabaseBackendKV:
-    TezedgeDatabaseBackendStore + TezedgeDatabaseBackendStoreIterator
-{
-}
+TezedgeDatabaseBackendStore
+{}
 
 pub type TezedgeDatabaseBackend = dyn TezdegeDatabaseBackendKV + Send + Sync;
 
 pub trait TezedgeDatabaseWithIterator<S: KVStoreKeyValueSchema>:
-    KVStore<S> + KVStoreWithSchemaIterator<S>
-{
-}
+KVStore<S> + KVStoreWithSchemaIterator<S>
+{}
 
 impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabase {}
 
@@ -186,6 +142,7 @@ pub struct RWStat {
     pub total: RW,
     pub columns: HashMap<String, RW>,
 }
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RW {
     pub reads: u64,
@@ -334,10 +291,10 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
                 stats: Arc::new(DatabaseStats::default()),
             },
-            TezedgeDatabaseBackendOptions::NotusDB(backend) => TezedgeDatabase {
+            TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase{
                 backend: Arc::new(backend),
-                stats: Arc::new(DatabaseStats::default()),
-            },
+                stats: Arc::new(Default::default())
+            }
         }
     }
 
@@ -404,7 +361,7 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 }
 
 impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase {
-    fn iterator(&self, mode: IteratorMode<S>) -> Result<TezedgeDatabaseIterator<S>, Error> {
+    fn find(&self, mode: IteratorMode<S>, limit: Option<usize>, filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let mode = match mode {
             IteratorMode::Start => BackendIteratorMode::Start,
             IteratorMode::End => BackendIteratorMode::End,
@@ -412,21 +369,12 @@ impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase 
                 BackendIteratorMode::From(key.encode()?, direction)
             }
         };
-
-        let iter = self.backend.iterator(S::column_name(), mode)?;
-        Ok(TezedgeDatabaseIterator::new(iter))
+        self.backend.find(S::column_name(), mode, limit,filter)
     }
 
-    fn prefix_iterator(
-        &self,
-        key: &<S as KeyValueSchema>::Key,
-        max_key_len: usize,
-    ) -> Result<TezedgeDatabaseIterator<S>, Error> {
+    fn find_by_prefix(&self, key: &<S as KeyValueSchema>::Key, max_key_len: usize ,filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let key = key.encode()?;
-        let iter = self
-            .backend
-            .prefix_iterator(S::column_name(), &key, max_key_len)?;
-        Ok(TezedgeDatabaseIterator::new(iter))
+        self.backend.find_by_prefix(S::column_name(), &key,max_key_len,filter)
     }
 }
 

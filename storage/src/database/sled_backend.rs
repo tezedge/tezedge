@@ -1,7 +1,6 @@
 use crate::block_meta_storage;
 use crate::database::backend::{
-    BackendIterator, BackendIteratorMode, TezedgeDatabaseBackendStore,
-    TezedgeDatabaseBackendStoreIterator,
+    BackendIteratorMode, TezedgeDatabaseBackendStore,
 };
 use crate::database::error::Error;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezdegeDatabaseBackendKV};
@@ -9,6 +8,8 @@ use crate::operations_meta_storage;
 use crate::{BlockMetaStorage, Direction, OperationsMetaStorage};
 use sled::{Config, IVec, Tree};
 use std::path::Path;
+use std::alloc::Global;
+use crate::persistent::SchemaError;
 
 pub struct SledDBBackend {
     db: sled::Db,
@@ -18,7 +19,9 @@ impl SledDBBackend {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let db = Config::default()
             .path(path)
-            .compression_factor(2)
+            .flush_every_ms(Some(1))
+            .cache_capacity(10_000)
+            .mode(sled::Mode::LowSpace)
             .open()
             .map_err(Error::from)?;
         Ok(Self { db })
@@ -90,17 +93,10 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
     fn flush(&self) -> Result<usize, Error> {
         self.db.flush().map_err(Error::from)
     }
-}
 
-impl TezdegeDatabaseBackendKV for SledDBBackend {}
-
-impl TezedgeDatabaseBackendStoreIterator for SledDBBackend {
-    fn iterator(
-        &self,
-        column: &'static str,
-        mode: BackendIteratorMode,
-    ) -> Result<Box<BackendIterator>, Error> {
+    fn find(&self, column: &'static str, mode: BackendIteratorMode, limit: Option<usize>, filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let tree = self.get_tree(column)?;
+
         let iter = match mode {
             BackendIteratorMode::Start => SledDBIterator::new(SledDBIteratorMode::Start, tree),
             BackendIteratorMode::End => SledDBIterator::new(SledDBIteratorMode::End, tree),
@@ -108,21 +104,44 @@ impl TezedgeDatabaseBackendStoreIterator for SledDBBackend {
                 SledDBIterator::new(SledDBIteratorMode::From(IVec::from(key), direction), tree)
             }
         };
-        Ok(Box::new(iter))
+        let mut results = Vec::new();
+        if let Some(limit) = limit {
+            let mut found = 0;
+            for result in iter.iter{
+                let (key, value) = result.map_err(Error::from)?;
+                if filter((key.as_ref(), value.as_ref()))? && found < limit {
+                    results.push((key.to_vec().into_boxed_slice(), value.to_vec().into_boxed_slice()));
+                    found += 1;
+                }
+            }
+        } else {
+            for result in iter.iter {
+                let (key, value) = result.map_err(Error::from)?;
+                if filter((key.as_ref(), value.as_ref()))? {
+                    results.push((key.to_vec().into_boxed_slice(), value.to_vec().into_boxed_slice()))
+                }
+            }
+        }
+        Ok(results)
     }
 
-    fn prefix_iterator(
-        &self,
-        column: &'static str,
-        key: &Vec<u8>,
-        max_key_len: usize,
-    ) -> Result<Box<BackendIterator>, Error> {
+    fn find_by_prefix(&self, column: &'static str, key: &Vec<u8>, max_key_len: usize,filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let tree = self.get_tree(column)?;
         let prefix_key = key[..max_key_len].to_vec();
         let iter = SledDBIterator::new(SledDBIteratorMode::Prefix(IVec::from(prefix_key)), tree);
-        Ok(Box::new(iter))
+        let mut results = Vec::new();
+        for result in iter.iter {
+            let (key, value) = result.map_err(Error::from)?;
+            if filter((key.as_ref(), value.as_ref()))? {
+                results.push((key.to_vec().into_boxed_slice(), value.to_vec().into_boxed_slice()))
+            }
+        }
+        Ok(results)
     }
 }
+
+impl TezdegeDatabaseBackendKV for SledDBBackend {}
+
 
 //sled iterator
 

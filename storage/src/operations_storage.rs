@@ -9,9 +9,7 @@ use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Encoder, KeyValueSchema, SchemaError, Decoder};
 use crate::{PersistentStorage, StorageError};
 use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 
@@ -72,13 +70,13 @@ impl OperationsStorageReader for OperationsStorage {
             validation_pass: 0,
         };
 
-        let mut operations = vec![];
-        for (_key, value) in self.kv.prefix_iterator(&key, HashType::BlockHash.size())? {
-            operations.push(value?);
+        let mut operations : Vec<OperationsForBlocksMessage> = vec![];
+        for (_key, value) in self.kv.find_by_prefix(&key, HashType::BlockHash.size(),Box::new(|(k, v)| {
+            Ok(true)
+        }))? {
+            operations.push(BincodeEncoded::decode(value.as_ref())?);
         }
-
         operations.sort_by_key(|v| v.operations_for_block().validation_pass());
-
         Ok(operations)
     }
 }

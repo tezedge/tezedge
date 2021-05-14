@@ -15,12 +15,10 @@ use crypto::hash::{
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseIterator, TezedgeDatabaseWithIterator,
+    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
 };
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
@@ -71,7 +69,7 @@ impl BlockMetaStorage {
         BlockMetaStorage {
             kv: persistent_storage.main_db(),
             predecessors_index: PredecessorStorage::new(persistent_storage),
-            additional_data_index: persistent_storage.db(),
+            additional_data_index: persistent_storage.main_db(),
         }
     }
 
@@ -206,14 +204,6 @@ impl BlockMetaStorage {
     #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.kv.get(block_hash).map_err(StorageError::from)
-    }
-
-    #[inline]
-    pub fn iter(
-        &self,
-        mode: IteratorMode<Self>,
-    ) -> Result<TezedgeDatabaseIterator<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
 
@@ -694,6 +684,7 @@ pub fn merge_meta_value(
     }
     result
 }
+
 pub fn merge_meta_value_notus(
     _new_key: &[u8],
     existing_val: Option<Vec<u8>>,
@@ -801,10 +792,10 @@ impl BlockAdditionalData {
 }
 
 impl
-    Into<(
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-    )> for BlockAdditionalData
+Into<(
+    Option<BlockMetadataHash>,
+    Option<OperationMetadataListListHash>,
+)> for BlockAdditionalData
 {
     fn into(
         self,
@@ -817,11 +808,11 @@ impl
 }
 
 impl
-    Into<(
-        Option<BlockMetadataHash>,
-        Option<OperationMetadataListListHash>,
-        u16,
-    )> for BlockAdditionalData
+Into<(
+    Option<BlockMetadataHash>,
+    Option<OperationMetadataListListHash>,
+    u16,
+)> for BlockAdditionalData
 {
     fn into(
         self,
@@ -852,20 +843,27 @@ impl RocksDbKeyValueSchema for BlockAdditionalData {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockAdditionalData {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
     use std::convert::TryInto;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use failure::Error;
     use rand::Rng;
 
-    use crate::persistent::open_main_db;
+    use crate::persistent::{open_main_db, DbConfiguration};
     use crate::tests_common::TmpStorage;
 
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -992,14 +990,22 @@ mod tests {
     #[test]
     fn merge_meta_value_test() {
         use rocksdb::{Options, DB};
-
-        let path = "__blockmeta_mergetest";
-        if Path::new(path).exists() {
-            std::fs::remove_dir_all(path).unwrap();
+        let mut db_path = PathBuf::new().join("__blockmeta_mergetest");
+        if db_path.exists() {
+            std::fs::remove_dir_all(db_path.as_path()).unwrap();
         }
 
         {
-            let db = open_main_db(path, TezedgeDatabaseBackendConfiguration::Sled).unwrap();
+            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
+            let config = RocksDbConfig {
+                cache_size: 96 * 1024 * 1024,
+                expected_db_version: 19,
+                db_path: db_path.join("db"),
+                system_storage_path: db_path.join("sys"),
+                columns: DbsRocksDbTableInitializer,
+                threads: Some(1),
+            };
+            let db = open_main_db(&cache, &config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
