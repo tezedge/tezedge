@@ -28,23 +28,7 @@ name = "message_benchmark"
 harness = false
 
 [[bench]]
-name = "connection"
-harness = false
-
-[[bench]]
-name = "ack"
-harness = false
-
-[[bench]]
-name = "block_header"
-harness = false
-
-[[bench]]
-name = "current_head"
-harness = false
-
-[[bench]]
-name = "current_branch"
+name = "decoders_benchmark"
 harness = false
 
 [dev-dependencies]
