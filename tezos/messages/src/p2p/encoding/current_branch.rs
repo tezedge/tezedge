@@ -154,7 +154,7 @@ mod test {
         let dir = std::env::var("CARGO_MANIFEST_DIR").expect("`CARGO_MANIFEST_DIR` is not set");
         let path = PathBuf::from(dir)
             .join("resources")
-            .join("current-branch-big.msg");
+            .join("current-branch.big.msg");
         let data = File::open(path)
             .and_then(|mut file| {
                 let mut data = Vec::new();
