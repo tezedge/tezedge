@@ -208,13 +208,6 @@ where
 {
     #[inline]
     fn as_bytes(&self) -> Result<Vec<u8>, BinaryWriterError> {
-        // check cache at first
-        if let Some(cache) = self.cache_reader() {
-            if let Some(data) = cache.get() {
-                return Ok(data);
-            }
-        }
-
         // if cache not configured or empty, resolve by encoding
         binary_writer::write(self, &Self::encoding())
     }
@@ -247,10 +240,7 @@ where
     fn from_bytes<B: AsRef<[u8]>>(bytes: B) -> Result<Self, BinaryReaderError> {
         let bytes = bytes.as_ref();
         let value = BinaryReader::new().read(bytes, &Self::encoding())?;
-        let mut myself: Self = deserialize_from_value(&value)?;
-        if let Some(cache_writer) = myself.cache_writer() {
-            cache_writer.put(bytes);
-        }
+        let myself: Self = deserialize_from_value(&value)?;
         Ok(myself)
     }
 }
