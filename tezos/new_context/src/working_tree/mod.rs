@@ -28,16 +28,6 @@ impl std::ops::Deref for KeyFragment {
     }
 }
 
-impl KeyFragment {
-    pub(crate) fn as_bytes(&self) -> &[u8] {
-        self.0.as_bytes()
-    }
-
-    pub(crate) fn to_string(&self) -> String {
-        self.0.to_string()
-    }
-}
-
 impl Borrow<str> for KeyFragment {
     fn borrow(&self) -> &str {
         &self.0
