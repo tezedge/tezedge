@@ -259,7 +259,13 @@ pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
 });
 
 fn start_timing(recv: Receiver<TimingMessage>) {
-    let mut timing = Timing::new();
+    #[cfg(not(test))]
+    let db_path = Some(DB_PATH.into());
+
+    #[cfg(test)]
+    let db_path = None;
+
+    let mut timing = Timing::new(db_path);
 
     for msg in recv {
         if let Err(_err) = timing.process_msg(msg) {
@@ -280,8 +286,8 @@ pub fn hash_to_string(hash: &[u8]) -> String {
 }
 
 impl Timing {
-    fn new() -> Timing {
-        let sql = Self::init_sqlite().unwrap();
+    fn new(db_path: Option<String>) -> Timing {
+        let sql = Self::init_sqlite(db_path).unwrap();
 
         Timing {
             current_block: None,
@@ -463,28 +469,40 @@ impl Timing {
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
         let action_name = action.action_name.to_str();
 
-        let (root, key) = if action.key.is_empty() {
+        let (root, key_id) = if action.key.is_empty() {
             (None, None)
         } else {
             let root = action.key[0].as_str();
             let key = action.key.join("/");
 
-            (Some(root), Some(key))
+            let mut stmt = self
+                .sql
+                .prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
+
+            stmt.execute([key.as_str()])?;
+
+            let mut stmt = self
+                .sql
+                .prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
+
+            let key_id: usize = stmt.query_row([key.as_str()], |row| row.get(0))?;
+
+            (Some(root), Some(key_id))
         };
 
         let mut stmt = self.sql.prepare_cached(
             "
         INSERT INTO actions
-          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+          (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
-          (:name, :key_root, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
+          (:name, :key_root, :key_id, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
             "
         )?;
 
         stmt.execute(named_params! {
             ":name": action_name,
             ":key_root": &root,
-            ":key": &key,
+            ":key_id": &key_id,
             ":irmin_time": &action.irmin_time,
             ":tezedge_time": &action.tezedge_time,
             ":block_id": block_id,
@@ -825,10 +843,15 @@ impl Timing {
         Ok(())
     }
 
-    fn init_sqlite() -> Result<Connection, SQLError> {
-        std::fs::remove_file(DB_PATH).ok();
+    fn init_sqlite(db_path: Option<String>) -> Result<Connection, SQLError> {
+        let connection = match db_path.as_ref() {
+            Some(path) => {
+                std::fs::remove_file(path).ok();
+                Connection::open(path)?
+            }
+            None => Connection::open_in_memory()?,
+        };
 
-        let connection = Connection::open(DB_PATH)?;
         let schema = include_str!("schema_stats.sql");
 
         let mut batch = Batch::new(&connection, schema);
@@ -848,7 +871,7 @@ mod tests {
 
     #[test]
     fn test_timing_db() {
-        let mut timing = Timing::new();
+        let mut timing = Timing::new(None);
 
         assert!(timing.current_block.is_none());
 
