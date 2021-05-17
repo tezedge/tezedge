@@ -25,11 +25,11 @@ pub trait UpdateIsBootstrapped {
 #[derive(Clone, Debug)]
 pub struct PeerBranchSynchronizationDone {
     peer: Arc<PeerId>,
-    to_level: Arc<Level>,
+    to_level: Level,
 }
 
 impl PeerBranchSynchronizationDone {
-    pub fn new(peer: Arc<PeerId>, to_level: Arc<Level>) -> Self {
+    pub fn new(peer: Arc<PeerId>, to_level: Level) -> Self {
         Self { peer, to_level }
     }
 
@@ -37,7 +37,7 @@ impl PeerBranchSynchronizationDone {
         &self.peer
     }
 
-    fn to_level(&self) -> &Arc<Level> {
+    fn to_level(&self) -> &Level {
         &self.to_level
     }
 }
@@ -126,7 +126,7 @@ impl SynchronizationBootstrapState {
 
         // lets update peer by public key hash
         if let Some(peer_to_level) = self.state.get_mut(peer_key) {
-            let update_to_level = new_update.to_level().as_ref();
+            let update_to_level = new_update.to_level();
             if *peer_to_level < *update_to_level {
                 *peer_to_level = *update_to_level;
                 target.set_is_bootstrapped(Self::consider_as_bootstrapped(
@@ -142,7 +142,7 @@ impl SynchronizationBootstrapState {
                 ));
             }
         } else {
-            let update_to_level = new_update.to_level().as_ref();
+            let update_to_level = new_update.to_level();
             self.state.insert(peer_key.clone(), *update_to_level);
             target.set_is_bootstrapped(Self::consider_as_bootstrapped(
                 *update_to_level,
@@ -201,7 +201,6 @@ impl SynchronizationBootstrapState {
 #[cfg(test)]
 pub mod tests {
     use std::sync::atomic::AtomicBool;
-    use std::sync::Arc;
     use std::time::Duration;
 
     use slog::Level;
@@ -237,7 +236,7 @@ pub mod tests {
         let mut peer_state2 = test_peer(&actor_system, network_channel, &tokio_runtime, 7776);
 
         let done_peer = |to_level, peer_state: &PeerState| -> PeerBranchSynchronizationDone {
-            PeerBranchSynchronizationDone::new(peer_state.peer_id.clone(), Arc::new(to_level))
+            PeerBranchSynchronizationDone::new(peer_state.peer_id.clone(), to_level)
         };
 
         // prepare empty states with threshold = 2

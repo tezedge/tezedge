@@ -7,8 +7,7 @@
 //! We dont handle unique requests accross different peers, but if we want to, we just need to add here some synchronization.
 //! Now we just handle unique requests per peer.
 
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use riker::actors::*;
@@ -23,11 +22,13 @@ use tezos_messages::p2p::encoding::prelude::{
     GetBlockHeadersMessage, GetOperationsForBlocksMessage, OperationsForBlock, PeerMessageResponse,
 };
 
-use crate::chain_feeder::{ApplyBlock, ChainFeederRef};
+use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
-use crate::state::peer_state::{DataQueues, MissingOperations, PeerState};
-use crate::state::{BlockApplyBatch, StateError};
-use crate::utils::{AtomicTryLock, AtomicTryLockGuard, CondvarResult};
+use crate::state::peer_state::{
+    BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
+};
+use crate::state::{ApplyBlockBatch, StateError};
+use crate::utils::CondvarResult;
 use crate::validation;
 use crate::validation::CanApplyStatus;
 
@@ -37,14 +38,11 @@ pub type DataRequesterRef = Arc<DataRequester>;
 /// Requester manages global request/response queues for data
 /// and also manages local queues for every peer.
 pub struct DataRequester {
-    block_meta_storage: BlockMetaStorage,
-    operations_meta_storage: OperationsMetaStorage,
+    pub(crate) block_meta_storage: BlockMetaStorage,
+    pub(crate) operations_meta_storage: OperationsMetaStorage,
 
     /// Chain feeder - actor, which is responsible to apply_block to context
     block_applier: ChainFeederRef,
-
-    /// Global try_lock, we want to limit sending request to block_applier and wait for the result
-    block_apply_try_lock: AtomicTryLock,
 }
 
 impl DataRequester {
@@ -57,7 +55,6 @@ impl DataRequester {
             block_meta_storage,
             operations_meta_storage,
             block_applier,
-            block_apply_try_lock: AtomicTryLock::create(),
         }
     }
 
@@ -66,10 +63,9 @@ impl DataRequester {
     /// Returns true if was scheduled and p2p message was sent
     pub fn fetch_block_headers(
         &self,
-        blocks_to_download: Vec<Arc<BlockHash>>,
+        mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
-        log: &Logger,
     ) -> Result<bool, StateError> {
         // check if empty
         if blocks_to_download.is_empty() {
@@ -90,18 +86,23 @@ impl DataRequester {
             return Ok(false);
         };
 
-        // fillter non-queued
-        let mut blocks_to_download = blocks_to_download
-            .into_iter()
-            .filter(|block_hash| !peer_queued_block_headers.contains(block_hash.as_ref()))
-            .collect::<Vec<Arc<BlockHash>>>();
-
-        // trim to max capacity
-        let blocks_to_download = if available_capacity < blocks_to_download.len() {
-            blocks_to_download.drain(0..available_capacity).collect()
-        } else {
-            blocks_to_download
-        };
+        // fillter non-queued and trim to queue capacity
+        blocks_to_download.retain(|block_hash| {
+            if peer_queued_block_headers.contains_key(block_hash.as_ref()) {
+                // already scheduled, so skip
+                false
+            } else {
+                // TODO: change this do contains, when fixed
+                let already_downloaded =
+                    if let Ok(Some(metadata)) = self.block_meta_storage.get(block_hash) {
+                        metadata.is_downloaded()
+                    } else {
+                        false
+                    };
+                !already_downloaded
+            }
+        });
+        blocks_to_download.truncate(available_capacity);
 
         // if empty finish
         if blocks_to_download.is_empty() {
@@ -109,7 +110,10 @@ impl DataRequester {
         }
 
         // add to queue
-        let _ = peer_queued_block_headers.extend(blocks_to_download.clone());
+        blocks_to_download.iter().cloned().for_each(|btd| {
+            peer_queued_block_headers.insert(btd, Instant::now());
+        });
+
         // release lock
         drop(peer_queued_block_headers);
 
@@ -142,27 +146,18 @@ impl DataRequester {
             );
         }
 
-        // peer request stats
-        match peer_queues.block_request_last.write() {
-            Ok(mut request_last) => *request_last = Instant::now(),
-            Err(e) => {
-                warn!(log, "Failed to update block_request_last from peer"; "reason" => format!("{}", e),
-                                "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
-            }
-        }
-
         Ok(true)
     }
 
     /// Tries to schedule blocks operations downloading from peer
     ///
     /// Returns true if was scheduled and p2p message was sent
-    pub fn fetch_block_operations(
+    pub fn fetch_block_operations<SC: FnMut(Arc<BlockHash>)>(
         &self,
-        blocks_to_download: Vec<Arc<BlockHash>>,
+        mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
-        log: &Logger,
+        mut on_operations_already_downloaded: SC,
     ) -> Result<bool, StateError> {
         // check if empty
         if blocks_to_download.is_empty() {
@@ -183,18 +178,10 @@ impl DataRequester {
             return Ok(false);
         };
 
-        // fillter non-queued
-        let mut blocks_to_download = blocks_to_download
-            .into_iter()
-            .filter(|block_hash| !peer_queued_block_headers.contains_key(block_hash.as_ref()))
-            .collect::<Vec<Arc<BlockHash>>>();
-
-        // trim to max capacity
-        let blocks_to_download = if available_capacity < blocks_to_download.len() {
-            blocks_to_download.drain(0..available_capacity).collect()
-        } else {
-            blocks_to_download
-        };
+        // fillter non-queued and trim to queue capacity
+        blocks_to_download
+            .retain(|block_hash| !peer_queued_block_headers.contains_key(block_hash.as_ref()));
+        blocks_to_download.truncate(available_capacity);
 
         // collect missing validation_passes
         let blocks_to_download: Vec<(Arc<BlockHash>, MissingOperations)> = blocks_to_download
@@ -205,12 +192,20 @@ impl DataRequester {
                         if !missing_operations.is_empty() {
                             Some((b, missing_operations.iter().map(|vp| *vp as i8).collect()))
                         } else {
+                            on_operations_already_downloaded(b);
                             None
                         }
                     } else {
+                        on_operations_already_downloaded(b);
                         None
                     }
                 } else {
+                    // this can happen, between calls in chain_state.rs:
+                    // block_storage.put_block_header
+                    // ..
+                    // self.process_block_header_operations
+                    //
+                    // we just wait for a next scheduling run
                     None
                 }
             })
@@ -222,7 +217,14 @@ impl DataRequester {
         }
 
         // add to queue
-        let _ = peer_queued_block_headers.extend(blocks_to_download.clone());
+        blocks_to_download
+            .iter()
+            .cloned()
+            .for_each(|(block, missing_operations)| {
+                let _ =
+                    peer_queued_block_headers.insert(block, (missing_operations, Instant::now()));
+            });
+
         // release lock
         drop(peer_queued_block_headers);
 
@@ -262,15 +264,6 @@ impl DataRequester {
             );
         }
 
-        // peer request stats
-        match peer_queues.block_operations_request_last.write() {
-            Ok(mut request_last) => *request_last = Instant::now(),
-            Err(e) => {
-                warn!(log, "Failed to update block_operations_request_last from peer"; "reason" => format!("{}", e),
-                                "peer_id" => peer.peer_id_marker.clone(), "peer_ip" => peer.peer_address.to_string(), "peer" => peer.peer_ref.name(), "peer_uri" => peer.peer_ref.uri().to_string());
-            }
-        }
-
         Ok(true)
     }
 
@@ -290,19 +283,11 @@ impl DataRequester {
             .queues
             .queued_block_headers
             .lock()?
-            .contains(block_hash)
+            .contains_key(block_hash)
         {
             warn!(log, "Received unexpected block header from peer"; "block_header_hash" => block_hash.to_base58_check());
             peer.message_stats.increment_unexpected_response_block();
             return Ok(None);
-        }
-
-        // peer response stats
-        match peer.queues.block_response_last.write() {
-            Ok(mut response_last) => *response_last = Instant::now(),
-            Err(e) => {
-                warn!(log, "Failed to update block_response_last from peer"; "reason" => format!("{}", e))
-            }
         }
 
         // if contains, return data lock, when this lock will go out if the scope, then drop will be triggered, and queues will be emptied
@@ -333,7 +318,7 @@ impl DataRequester {
             .lock()?
             .get_mut(block_hash)
         {
-            Some(missing_operations) => {
+            Some((missing_operations, _)) => {
                 if !missing_operations.contains(&validation_pass) {
                     warn!(log, "Received unexpected block header operation's validation pass from peer"; "block_header_hash" => block_hash.to_base58_check(), "validation_pass" => validation_pass);
                     peer.message_stats
@@ -349,14 +334,6 @@ impl DataRequester {
             }
         }
 
-        // peer response stats
-        match peer.queues.block_operations_response_last.write() {
-            Ok(mut response_last) => *response_last = Instant::now(),
-            Err(e) => {
-                warn!(log, "Failed to update block_operations_response_last from peer"; "reason" => format!("{}", e))
-            }
-        }
-
         // if contains, return data lock, when this lock will go out if the scope, then drop will be triggered, and queues will be emptied
         Ok(Some(RequestedOperationDataLock {
             validation_pass,
@@ -365,51 +342,20 @@ impl DataRequester {
         }))
     }
 
-    pub fn is_block_apply_try_lock_available(&self) -> bool {
-        self.block_apply_try_lock.is_available()
-    }
-
-    /// Tries to schedule block for applying, if passed all checks
-    ///
-    /// Returns true, only if was block apply trigger (means, block is completed and can be applied and it is not already applied)
-    pub fn try_schedule_apply_block(
-        &self,
-        chain_id: Arc<ChainId>,
-        batch: BlockApplyBatch,
-        bootstrapper: Option<PeerBranchBootstrapperRef>,
-    ) -> Result<bool, StateError> {
-        // try to get lock - we can schedule block apply batch just only one in time
-        match self.block_apply_try_lock.try_lock() {
-            Some(guard) => {
-                self.call_apply_block(chain_id, batch, None, bootstrapper, Some(guard))?;
-                Ok(true)
-            }
-            None => Ok(false),
-        }
-    }
-
     pub fn try_apply_block(
         &self,
         chain_id: Arc<ChainId>,
         block_hash: BlockHash,
         result_callback: Option<CondvarResult<(), failure::Error>>,
     ) -> Result<(), StateError> {
-        self.call_apply_block(
-            chain_id,
-            BlockApplyBatch::one(block_hash),
-            result_callback,
-            None,
-            None, /* no permit needed here */
-        )
+        self.call_apply_block(chain_id, ApplyBlockBatch::one(block_hash), result_callback)
     }
 
     fn call_apply_block(
         &self,
         chain_id: Arc<ChainId>,
-        batch: BlockApplyBatch,
+        batch: ApplyBlockBatch,
         result_callback: Option<CondvarResult<(), failure::Error>>,
-        bootstrapper: Option<PeerBranchBootstrapperRef>,
-        permit: Option<AtomicTryLockGuard>,
     ) -> Result<(), StateError> {
         // check batch, if the start block is ok and can be applied
         // if start is already applied, we fold the bath to next block (if any)
@@ -477,11 +423,22 @@ impl DataRequester {
 
         // try to call apply
         self.block_applier.tell(
-            ApplyBlock::new(chain_id, batch, result_callback, bootstrapper, permit),
+            ApplyBlock::new(chain_id, batch, result_callback, None, None),
             None,
         );
 
         Ok(())
+    }
+
+    pub fn call_schedule_apply_block(
+        &self,
+        chain_id: Arc<ChainId>,
+        batch: ApplyBlockBatch,
+        bootstrapper: Option<PeerBranchBootstrapperRef>,
+    ) {
+        // try to call apply
+        self.block_applier
+            .tell(ScheduleApplyBlock::new(chain_id, batch, bootstrapper), None);
     }
 }
 
@@ -489,9 +446,10 @@ impl DataRequester {
 /// but make sure that it was handled, and nobody will put the same data to queue, while we are handling them
 ///
 /// When this lock goes out of the scope, then queues will be clear for block_hash
+#[derive(Debug)]
 pub struct RequestedBlockDataLock {
-    block_hash: Arc<BlockHash>,
-    queued_block_headers: Arc<Mutex<HashSet<Arc<BlockHash>>>>,
+    pub block_hash: Arc<BlockHash>,
+    queued_block_headers: BlockHeaderQueueRef,
 }
 
 impl Drop for RequestedBlockDataLock {
@@ -506,16 +464,17 @@ impl Drop for RequestedBlockDataLock {
 /// but make sure that it was handled, and nobody will put the same data to queue, while we are handling them
 ///
 /// When this lock goes out of the scope, then queues will be clear for block_hash
+#[derive(Debug)]
 pub struct RequestedOperationDataLock {
     validation_pass: i8,
     block_hash: Arc<BlockHash>,
-    queued_block_operations: Arc<Mutex<HashMap<Arc<BlockHash>, MissingOperations>>>,
+    queued_block_operations: BlockOperationsQueueRef,
 }
 
 impl Drop for RequestedOperationDataLock {
     fn drop(&mut self) {
         if let Ok(mut queue) = self.queued_block_operations.lock() {
-            if let Some(missing_operations) = queue.get_mut(&self.block_hash) {
+            if let Some((missing_operations, _)) = queue.get_mut(&self.block_hash) {
                 missing_operations.remove(&self.validation_pass);
                 if missing_operations.is_empty() {
                     queue.remove(&self.block_hash);
@@ -541,7 +500,6 @@ mod tests {
     use serial_test::serial;
     use slog::Level;
 
-    use crypto::hash::ChainId;
     use networking::p2p::network_channel::NetworkChannel;
     use storage::tests_common::TmpStorage;
     use storage::{
@@ -553,11 +511,13 @@ mod tests {
     use crate::chain_feeder::{ChainFeeder, ChainFeederRef};
     use crate::shell_channel::ShellChannel;
     use crate::state::data_requester::DataRequester;
-    use crate::state::tests::block;
     use crate::state::tests::prerequisites::{
         create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
     };
-    use crate::state::{BlockApplyBatch, StateError};
+    use crate::state::tests::{block, block_ref};
+    use crate::state::ApplyBlockBatch;
+    use crate::state::StateError;
+    use crypto::hash::ChainId;
 
     macro_rules! assert_block_queue_contains {
         ($expected:expr, $queues:expr, $block:expr) => {{
@@ -567,7 +527,7 @@ mod tests {
                     .queued_block_headers
                     .lock()
                     .unwrap()
-                    .contains($block)
+                    .contains_key($block)
             );
         }};
     }
@@ -584,7 +544,7 @@ mod tests {
             );
 
             match $queues.queued_block_operations.lock().unwrap().get($block) {
-                Some(missing_operations) => assert_eq!(missing_operations, $validation_passes),
+                Some((missing_operations, _)) => assert_eq!(missing_operations, $validation_passes),
                 None => {
                     if $expected {
                         panic!("test failed");
@@ -626,21 +586,16 @@ mod tests {
             chain_feeder_mock,
         );
 
-        // try schedule nothiing
+        // try schedule nothing
         assert!(matches!(
-            data_requester.fetch_block_headers(vec![], &peer1.peer_id, &peer1.queues, &log),
+            data_requester.fetch_block_headers(vec![], &peer1.peer_id, &peer1.queues),
             Ok(false)
         ));
 
         // try schedule block1
-        let block1 = block(1);
+        let block1 = block_ref(1);
         assert!(matches!(
-            data_requester.fetch_block_headers(
-                vec![block1.clone()],
-                &peer1.peer_id,
-                &peer1.queues,
-                &log
-            ),
+            data_requester.fetch_block_headers(vec![block1.clone()], &peer1.peer_id, &peer1.queues),
             Ok(true)
         ));
 
@@ -649,12 +604,7 @@ mod tests {
 
         // try schedule block1 once more
         assert!(matches!(
-            data_requester.fetch_block_headers(
-                vec![block1.clone()],
-                &peer1.peer_id,
-                &peer1.queues,
-                &log
-            ),
+            data_requester.fetch_block_headers(vec![block1.clone()], &peer1.peer_id, &peer1.queues),
             Ok(false)
         ));
 
@@ -667,12 +617,7 @@ mod tests {
 
         // try schedule block1 once more while holding the lock (should not succeed, because block1 was not removed from queues, becuase we still hold the lock)
         assert!(matches!(
-            data_requester.fetch_block_headers(
-                vec![block1.clone()],
-                &peer1.peer_id,
-                &peer1.queues,
-                &log
-            ),
+            data_requester.fetch_block_headers(vec![block1.clone()], &peer1.peer_id, &peer1.queues),
             Ok(false)
         ));
 
@@ -684,7 +629,7 @@ mod tests {
 
         // we can reschedule it once more now
         assert!(matches!(
-            data_requester.fetch_block_headers(vec![block1], &peer1.peer_id, &peer1.queues, &log),
+            data_requester.fetch_block_headers(vec![block1], &peer1.peer_id, &peer1.queues),
             Ok(true)
         ));
 
@@ -713,19 +658,13 @@ mod tests {
         );
 
         // prepare missing operations in db for block with 4 validation_pass
-        let block1 = block(1);
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(
-                4,
-                10,
-                ChainId::from_base58_check("NetXgtSLGNJvNye")?,
-            ),
-        )?;
+        let block1 = block_ref(1);
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block1, &operations_meta_storage::Meta::new(4))?;
 
         // try schedule nothiing
         assert!(matches!(
-            data_requester.fetch_block_operations(vec![], &peer1.peer_id, &peer1.queues, &log),
+            data_requester.fetch_block_operations(vec![], &peer1.peer_id, &peer1.queues, |_| ()),
             Ok(false)
         ));
 
@@ -735,7 +674,7 @@ mod tests {
                 vec![block1.clone()],
                 &peer1.peer_id,
                 &peer1.queues,
-                &log
+                |_| ()
             ),
             Ok(true)
         ));
@@ -749,7 +688,7 @@ mod tests {
                 vec![block1.clone()],
                 &peer1.peer_id,
                 &peer1.queues,
-                &log
+                |_| ()
             ),
             Ok(false)
         ));
@@ -771,7 +710,7 @@ mod tests {
                 vec![block1.clone()],
                 &peer1.peer_id,
                 &peer1.queues,
-                &log
+                |_| ()
             ),
             Ok(false)
         ));
@@ -788,7 +727,7 @@ mod tests {
                 vec![block1.clone()],
                 &peer1.peer_id,
                 &peer1.queues,
-                &log
+                |_| ()
             ),
             Ok(false)
         ));
@@ -827,7 +766,7 @@ mod tests {
                 vec![block1],
                 &peer1.peer_id,
                 &peer1.queues,
-                &log
+                |_| ()
             ),
             Ok(true)
         ));
@@ -853,17 +792,15 @@ mod tests {
         );
 
         // prepare missing operations in db for block with 4 validation_pass
-        let block1 = block(1);
-        let batch_with_block1 = BlockApplyBatch::batch(block1.clone(), Vec::new());
+        let block1 = block_ref(1);
+        let batch_with_block1 = ApplyBlockBatch::batch(block1.clone(), Vec::new());
         let chain_id = Arc::new(ChainId::from_base58_check("NetXgtSLGNJvNye")?);
 
         // try call apply - no metadata
         assert!(matches!(
             data_requester.call_apply_block(
-            chain_id.clone(),
+                chain_id.clone(),
                 batch_with_block1.clone(),
-                None,
-                None,
                 None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("No metadata found")
@@ -880,7 +817,7 @@ mod tests {
             &block1,
             &block_meta_storage::Meta::new(
                 false,
-                Some(block0.as_ref().clone()),
+                Some(block0.clone()),
                 1,
                 chain_id.as_ref().clone(),
             ),
@@ -892,194 +829,27 @@ mod tests {
                 chain_id.clone(),
                 batch_with_block1.clone(),
                 None,
-                None,
-                None,
             ),
             Err(StateError::ProcessingError {reason}) if reason.contains("cannot be applied")
         ));
 
         // save operations - validation_pass 0 - no operations missing
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
-        )?;
+        OperationsMetaStorage::new(storage.storage())
+            .put(&block1, &operations_meta_storage::Meta::new(0))?;
 
         // try schedule - ok
         assert!(matches!(
-            data_requester.call_apply_block(chain_id, batch_with_block1, None, None, None),
+            data_requester.call_apply_block(chain_id.clone(), batch_with_block1.clone(), None),
             Ok(())
         ));
 
-        Ok(())
-    }
-
-    #[test]
-    #[serial]
-    fn test_try_schedule_apply_block_batch() -> Result<(), failure::Error> {
-        // prerequizities
-        let log = create_logger(Level::Debug);
-        let actor_system = create_test_actor_system(log.clone());
-        let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_batch")?;
-        let block_meta_storage = BlockMetaStorage::new(storage.storage());
-        let (chain_feeder_mock, chain_feeder_receiver) = chain_feeder_mock(&actor_system)?;
-
-        // requester instance
-        let data_requester = DataRequester::new(
-            BlockMetaStorage::new(storage.storage()),
-            OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock,
-        );
-        assert!(data_requester.is_block_apply_try_lock_available());
-
-        let chain_id = Arc::new(ChainId::from_base58_check("NetXgtSLGNJvNye")?);
-        let block1 = block(1);
-        let block2 = block(2);
-        let block3 = block(3);
-        let block4 = block(4);
-
-        // prepare first batch
-        let batch_with_block1 = BlockApplyBatch::batch(
-            block1.clone(),
-            vec![block2.clone(), block3.clone(), block4.clone()],
-        );
-
-        // save applied predecessor
-        let block0 = block(0);
-        block_meta_storage.put(
-            &block0,
-            &block_meta_storage::Meta::genesis_meta(&block0, chain_id.as_ref(), true),
-        )?;
-        // save block
+        // try call - is already applied
         block_meta_storage.put(
             &block1,
-            &block_meta_storage::Meta::new(
-                false,
-                Some(block0.as_ref().clone()),
-                1,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-        // save operations - validation_pass 0 - no operations missing
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block1,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
-        )?;
-
-        // try schedule batch - ok
-        let lock = data_requester.try_schedule_apply_block(
-            chain_id.clone(),
-            batch_with_block1.clone(),
-            None,
-        )?;
-        assert!(lock);
-        assert!(!data_requester.is_block_apply_try_lock_available());
-
-        // try schedule twice - not ok
-        assert!(matches!(
-            data_requester.try_schedule_apply_block(
-                chain_id.clone(),
-                batch_with_block1.clone(),
-                None,
-            ),
-            Ok(false)
-        ));
-        assert!(!data_requester.is_block_apply_try_lock_available());
-
-        // read event, which drops lock
-        assert!(chain_feeder_receiver.recv().is_ok());
-        assert!(data_requester.is_block_apply_try_lock_available());
-
-        // try schedule queue - ok
-        assert!(matches!(
-            data_requester.try_schedule_apply_block(
-                chain_id.clone(),
-                batch_with_block1.clone(),
-                None,
-            ),
-            Ok(true)
-        ));
-        assert!(!data_requester.is_block_apply_try_lock_available());
-        assert!(chain_feeder_receiver.recv().is_ok());
-        assert!(data_requester.is_block_apply_try_lock_available());
-
-        // try to apply if block1 is_already applied - testing shifting batch
-        // mark block1 as applied
-        block_meta_storage.put(
-            &block1,
-            &block_meta_storage::Meta::new(
-                true,
-                Some(block0.as_ref().clone()),
-                1,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-
-        // we are missing metadata for block2 so it should fail
-        assert!(matches!(
-            data_requester.try_schedule_apply_block(
-                chain_id.clone(),
-                batch_with_block1.clone(),
-                None,
-            ),
-            Err(StateError::ProcessingError {reason}) if reason.contains("No metadata found")
-        ));
-
-        // mark block2 as ready to be applied
-        block_meta_storage.put(
-            &block2,
-            &block_meta_storage::Meta::new(
-                false,
-                Some(block1.as_ref().clone()),
-                2,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-        OperationsMetaStorage::new(storage.storage()).put(
-            &block2,
-            &operations_meta_storage::Meta::new(0, 10, chain_id.as_ref().clone()),
+            &block_meta_storage::Meta::new(true, Some(block0), 1, chain_id.as_ref().clone()),
         )?;
         assert!(matches!(
-            data_requester.try_schedule_apply_block(
-                chain_id.clone(),
-                batch_with_block1.clone(),
-                None,
-            ),
-            Ok(true)
-        ));
-        assert!(!data_requester.is_block_apply_try_lock_available());
-        assert!(chain_feeder_receiver.recv().is_ok());
-        assert!(data_requester.is_block_apply_try_lock_available());
-
-        // try to apply if the whole batch is_already applied - testing shifting batch
-        block_meta_storage.put(
-            &block2,
-            &block_meta_storage::Meta::new(
-                true,
-                Some(block1.as_ref().clone()),
-                2,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-        block_meta_storage.put(
-            &block3,
-            &block_meta_storage::Meta::new(
-                true,
-                Some(block2.as_ref().clone()),
-                3,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-        block_meta_storage.put(
-            &block4,
-            &block_meta_storage::Meta::new(
-                true,
-                Some(block3.as_ref().clone()),
-                4,
-                chain_id.as_ref().clone(),
-            ),
-        )?;
-        assert!(matches!(
-            data_requester.try_schedule_apply_block(
+            data_requester.call_apply_block(
                 chain_id,
                 batch_with_block1,
                 None,
@@ -1108,9 +878,10 @@ mod tests {
                     Arc::new(Mutex::new(block_applier_event_sender)),
                     block_applier_run,
                     Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
+                    2,
                 )),
             )
-            .and_then(|feeder| Ok((feeder, block_applier_event_receiver)))
+            .map(|feeder| (feeder, block_applier_event_receiver))
             .map_err(|e| e.into())
     }
 }

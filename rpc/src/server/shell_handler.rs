@@ -294,8 +294,6 @@ pub async fn inject_operation(
     let operation_data_raw = hyper::body::aggregate(req).await?;
     let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
 
-    let shell_channel = env.shell_channel();
-
     let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
@@ -306,7 +304,7 @@ pub async fn inject_operation(
             chain_id,
             &operation_data,
             &env,
-            shell_channel,
+            env.mempool_channel(),
         ),
         env.log(),
     )

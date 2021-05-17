@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 use slog::{Drain, Level, Logger};
 
 use crypto::hash::OperationHash;
+use networking::ShellCompatibilityVersion;
+use shell::peer_manager::P2p;
+use shell::PeerConnectionThreshold;
 use tezos_messages::p2p::encoding::prelude::Operation;
 
 pub mod infra;
@@ -77,6 +80,18 @@ fn contains_all_keys(
         }
     }
     contains_counter == keys.len()
+}
+
+pub fn p2p_cfg_with_threshold(
+    mut cfg: (P2p, ShellCompatibilityVersion),
+    low: usize,
+    high: usize,
+    peers_for_bootstrap_threshold: usize,
+) -> (P2p, ShellCompatibilityVersion) {
+    cfg.0.peer_threshold =
+        PeerConnectionThreshold::try_new(low, high, Some(peers_for_bootstrap_threshold))
+            .expect("Invalid range");
+    cfg
 }
 
 /// Empty message

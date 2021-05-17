@@ -40,6 +40,7 @@ slog-async = "2.6"
 slog-term = "2.6"
 fs_extra = "1.2.0"
 zip = "0.5.5"
+tokio = { version = "1.2", features = ["sync"] }
 tezos_encoding = { path = "../tezos/encoding" }
 # TODO: TE-224 - this is not used directly, but test which using PROTOCOL_RUNNER fails without that (tezos_interop can be also replaced with tezos_client, and still works)
 tezos-sys = { path = "../tezos/sys" }

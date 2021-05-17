@@ -19,7 +19,10 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::PersistentStorage;
+use storage::{
+    block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
+    PersistentStorage,
+};
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
     BlockMetaStorage, BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage,
@@ -34,36 +37,47 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValidatedBlock};
 use crate::peer_branch_bootstrapper::{
-    BlockBatchApplied, BlockBatchApplyFailed, PeerBranchBootstrapperRef,
+    ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use crate::state::BlockApplyBatch;
-use crate::stats::apply_block_stats::BlockValidationTimer;
+use crate::state::ApplyBlockBatch;
+use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_condvar_result, AtomicTryLockGuard, CondvarResult};
+use crate::utils::{dispatch_condvar_result, CondvarResult};
+use std::collections::VecDeque;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
+
+/// How often to print stats in logs
+const LOG_INTERVAL: Duration = Duration::from_secs(60);
+
+/// BLocks are applied in batches, to optimize database unnecessery access between two blocks (predecessor data)
+/// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
+const BLOCK_APPLY_BATCH_MAX_TICKETS: usize = 2;
+
+pub type ApplyBlockPermit = OwnedSemaphorePermit;
 
 /// Message commands [`ChainFeeder`] to apply completed block.
 #[derive(Clone, Debug)]
 pub struct ApplyBlock {
-    batch: BlockApplyBatch,
+    batch: ApplyBlockBatch,
     chain_id: Arc<ChainId>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
     result_callback: Option<CondvarResult<(), failure::Error>>,
 
     /// Simple lock guard, for easy synchronization
-    permit: Option<Arc<AtomicTryLockGuard>>,
+    permit: Option<Arc<ApplyBlockPermit>>,
 }
 
 impl ApplyBlock {
     pub fn new(
         chain_id: Arc<ChainId>,
-        batch: BlockApplyBatch,
+        batch: ApplyBlockBatch,
         result_callback: Option<CondvarResult<(), failure::Error>>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
-        permit: Option<AtomicTryLockGuard>,
+        permit: Option<ApplyBlockPermit>,
     ) -> Self {
         Self {
             chain_id,
@@ -75,17 +89,64 @@ impl ApplyBlock {
     }
 }
 
+/// Message commands [`ChainFeeder`] to add to the queue for scheduling
+#[derive(Clone, Debug)]
+pub struct ScheduleApplyBlock {
+    batch: ApplyBlockBatch,
+    chain_id: Arc<ChainId>,
+    bootstrapper: Option<PeerBranchBootstrapperRef>,
+}
+
+impl ScheduleApplyBlock {
+    pub fn new(
+        chain_id: Arc<ChainId>,
+        batch: ApplyBlockBatch,
+        bootstrapper: Option<PeerBranchBootstrapperRef>,
+    ) -> Self {
+        Self {
+            chain_id,
+            batch,
+            bootstrapper,
+        }
+    }
+}
+
+/// Message commands [`ChainFeeder`] to log its internal stats.
+#[derive(Clone, Debug)]
+pub struct LogStats;
+
+/// Message tells [`ChainFeeder`] that batch is done, so it can log its internal stats or schedule more batches.
+#[derive(Clone, Debug)]
+pub struct ApplyBlockDone {
+    stats: ApplyBlockStats,
+}
+
 /// Internal queue commands
 pub(crate) enum Event {
-    ApplyBlock(ApplyBlock),
+    ApplyBlock(ApplyBlock, ChainFeederRef),
     ShuttingDown,
 }
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ShellChannelMsg, ApplyBlock)]
+#[actor(
+    ShellChannelMsg,
+    ApplyBlock,
+    ScheduleApplyBlock,
+    LogStats,
+    ApplyBlockDone
+)]
 pub struct ChainFeeder {
     /// Just for subscribing to shell shutdown channel
     shell_channel: ShellChannelRef,
+
+    /// We apply blocks by batches, and this queue will be like 'waiting room'
+    /// Blocks from the queue will be
+    queue: VecDeque<ScheduleApplyBlock>,
+
+    /// Semaphore for limiting block apply queue, guarding block_applier_event_sender
+    /// And also we want to limit QueueSender, because we have to points of produceing ApplyBlock event (bootstrap, inject block)
+    apply_block_tickets: Arc<Semaphore>,
+    apply_block_tickets_maximum: usize,
 
     /// Internal queue sender
     block_applier_event_sender: Arc<Mutex<QueueSender<Event>>>,
@@ -93,6 +154,9 @@ pub struct ChainFeeder {
     block_applier_run: Arc<AtomicBool>,
     /// Block applier thread
     block_applier_thread: SharedJoinHandle,
+
+    /// Statistics for applying blocks
+    apply_block_stats: ApplyBlockStats,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -136,6 +200,7 @@ impl ChainFeeder {
                 Arc::new(Mutex::new(block_applier_event_sender)),
                 block_applier_run,
                 Arc::new(Mutex::new(Some(block_applier_thread))),
+                BLOCK_APPLY_BATCH_MAX_TICKETS,
             )),
         )
     }
@@ -154,15 +219,53 @@ impl ChainFeeder {
             .map_err(|e| format_err!("Failed to send to queue, reason: {}", e))
     }
 
-    fn apply_completed_block(&self, msg: ApplyBlock, log: &Logger) {
+    fn apply_completed_block(&self, msg: ApplyBlock, chain_feeder: ChainFeederRef, log: &Logger) {
         // add request to queue
         let result_callback = msg.result_callback.clone();
-        if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg)) {
+        if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg, chain_feeder.clone())) {
             warn!(log, "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
             if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
                 warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
             }
+
+            // just ping chain_feeder
+            chain_feeder.tell(
+                ApplyBlockDone {
+                    stats: ApplyBlockStats::default(),
+                },
+                None,
+            );
         }
+    }
+
+    fn add_to_batch_queue(&mut self, msg: ScheduleApplyBlock) {
+        self.queue.push_back(msg);
+    }
+
+    fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
+        // try schedule batches as many permits we can get
+        while let Ok(permit) = self.apply_block_tickets.clone().try_acquire_owned() {
+            match self.queue.pop_front() {
+                Some(batch) => {
+                    self.apply_completed_block(
+                        ApplyBlock::new(
+                            batch.chain_id,
+                            batch.batch,
+                            None,
+                            batch.bootstrapper,
+                            Some(permit),
+                        ),
+                        chain_feeder.clone(),
+                        log,
+                    );
+                }
+                None => break,
+            }
+        }
+    }
+
+    fn update_stats(&mut self, new_stats: ApplyBlockStats) {
+        self.apply_block_stats.merge(new_stats);
     }
 }
 
@@ -172,21 +275,33 @@ impl
         Arc<Mutex<QueueSender<Event>>>,
         Arc<AtomicBool>,
         SharedJoinHandle,
+        usize,
     )> for ChainFeeder
 {
     fn create_args(
-        (shell_channel, block_applier_event_sender, block_applier_run, block_applier_thread): (
-            ShellChannelRef,
-            Arc<Mutex<QueueSender<Event>>>,
-            Arc<AtomicBool>,
-            SharedJoinHandle,
-        ),
-    ) -> Self {
-        ChainFeeder {
+        (
             shell_channel,
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
+            max_permits,
+        ): (
+            ShellChannelRef,
+            Arc<Mutex<QueueSender<Event>>>,
+            Arc<AtomicBool>,
+            SharedJoinHandle,
+            usize,
+        ),
+    ) -> Self {
+        ChainFeeder {
+            shell_channel,
+            queue: VecDeque::new(),
+            block_applier_event_sender,
+            block_applier_run,
+            block_applier_thread,
+            apply_block_stats: ApplyBlockStats::default(),
+            apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
+            apply_block_tickets_maximum: max_permits,
         }
     }
 }
@@ -196,6 +311,14 @@ impl Actor for ChainFeeder {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
+
+        ctx.schedule::<Self::Msg, _>(
+            LOG_INTERVAL / 2,
+            LOG_INTERVAL,
+            ctx.myself(),
+            None,
+            LogStats.into(),
+        );
     }
 
     fn post_stop(&mut self) {
@@ -227,7 +350,96 @@ impl Receive<ApplyBlock> for ChainFeeder {
         if !self.block_applier_run.load(Ordering::Acquire) {
             return;
         }
-        self.apply_completed_block(msg, &ctx.system.log());
+
+        self.apply_completed_block(msg, ctx.myself(), &ctx.system.log());
+    }
+}
+
+impl Receive<ScheduleApplyBlock> for ChainFeeder {
+    type Msg = ChainFeederMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ScheduleApplyBlock, _: Sender) {
+        if !self.block_applier_run.load(Ordering::Acquire) {
+            return;
+        }
+        self.add_to_batch_queue(msg);
+        self.process_batch_queue(ctx.myself(), &ctx.system.log());
+    }
+}
+
+impl Receive<ApplyBlockDone> for ChainFeeder {
+    type Msg = ChainFeederMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ApplyBlockDone, _: Sender) {
+        if !self.block_applier_run.load(Ordering::Acquire) {
+            return;
+        }
+        self.update_stats(msg.stats);
+        self.process_batch_queue(ctx.myself(), &ctx.system.log());
+    }
+}
+
+impl Receive<LogStats> for ChainFeeder {
+    type Msg = ChainFeederMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _: LogStats, _: Sender) {
+        let log = ctx.system.log();
+
+        // calculate applied stats
+        let (last_applied, last_applied_block_level, last_applied_block_elapsed_in_secs) = {
+            let applied_block_lasts_count = self.apply_block_stats.applied_block_lasts_count();
+
+            if *applied_block_lasts_count > 0 {
+                let validation = self.apply_block_stats.print_formatted_average_times();
+
+                // collect stats before clearing
+                let stats = format!(
+                    "({} blocks validated in time: {:?}, average times [{}]",
+                    applied_block_lasts_count,
+                    self.apply_block_stats.sum_validated_at_time(),
+                    validation,
+                );
+                let applied_block_level = *self.apply_block_stats.applied_block_level();
+                let applied_block_last = self
+                    .apply_block_stats
+                    .applied_block_last()
+                    .map(|i| i.elapsed().as_secs());
+
+                // clear stats for next run
+                self.apply_block_stats.clear_applied_block_lasts();
+
+                (stats, applied_block_level, applied_block_last)
+            } else {
+                (
+                    format!("({} blocks)", applied_block_lasts_count),
+                    None,
+                    None,
+                )
+            }
+        };
+
+        // count queue batches
+        let (waiting_batch_count, waiting_batch_blocks_count) =
+            self.queue
+                .iter()
+                .fold((0, 0), |(batches_count, blocks_count), next_batch| {
+                    (
+                        batches_count + 1,
+                        blocks_count + next_batch.batch.batch_total_size(),
+                    )
+                });
+        let queued_batch_count = self
+            .apply_block_tickets_maximum
+            .checked_sub(self.apply_block_tickets.available_permits())
+            .unwrap_or(0);
+
+        info!(log, "Blocks apply info";
+            "queued_batch_count" => queued_batch_count,
+            "waiting_batch_count" => waiting_batch_count,
+            "waiting_batch_blocks_count" => waiting_batch_blocks_count,
+            "last_applied" => last_applied,
+            "last_applied_batch_block_level" => last_applied_block_level,
+            "last_applied_batch_block_elapsed_in_secs" => last_applied_block_elapsed_in_secs);
     }
 }
 
@@ -433,7 +645,7 @@ fn feed_chain_to_protocol(
         // let's handle event, if any
         if let Ok(event) = block_applier_event_receiver.recv() {
             match event {
-                Event::ApplyBlock(request) => {
+                Event::ApplyBlock(request, chain_feeder) => {
                     // lets apply block batch
                     let ApplyBlock {
                         batch,
@@ -444,18 +656,47 @@ fn feed_chain_to_protocol(
                     } = request;
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
+                    let mut batch_stats = Some(ApplyBlockStats::default());
                     let mut condvar_result: Option<Result<(), failure::Error>> = None;
+                    let mut previous_block_data_cache: Option<(
+                        Arc<BlockHeaderWithHash>,
+                        BlockAdditionalData,
+                    )> = None;
 
                     // lets apply blocks in order
                     for block_to_apply in batch.take_all_blocks_to_apply() {
-                        debug!(log, "Applying block"; "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                        debug!(log, "Applying block";
+                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+
+                        if !apply_block_run.load(Ordering::Acquire) {
+                            info!(log, "Shutdown detected, so stopping block batch apply immediately";
+                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                            return Ok(());
+                        }
+
+                        let validated_at_timer = Instant::now();
+
+                        // prepare request and data for block
+                        // collect all required data for apply
+                        let load_metadata_timer = Instant::now();
+                        let apply_block_request_data = prepare_apply_request(
+                            &block_to_apply,
+                            chain_id.as_ref().clone(),
+                            block_storage,
+                            block_meta_storage,
+                            operations_storage,
+                            previous_block_data_cache,
+                        );
+                        let load_metadata_elapsed = load_metadata_timer.elapsed();
 
                         // apply block and handle result
                         match _apply_block(
                             chain_id.clone(),
                             block_to_apply.clone(),
+                            apply_block_request_data,
+                            validated_at_timer,
+                            load_metadata_elapsed,
                             block_storage,
-                            operations_storage,
                             block_meta_storage,
                             context,
                             protocol_controller,
@@ -464,10 +705,28 @@ fn feed_chain_to_protocol(
                         ) {
                             Ok(result) => {
                                 match result {
-                                    Some(validated_block) => {
+                                    Some((
+                                        validated_block,
+                                        block_additional_data,
+                                        block_validation_timer,
+                                    )) => {
                                         last_applied = Some(block_to_apply);
                                         if result_callback.is_some() {
                                             condvar_result = Some(Ok(()));
+                                        }
+                                        previous_block_data_cache = Some((
+                                            validated_block.block.clone(),
+                                            block_additional_data,
+                                        ));
+
+                                        // update state
+                                        if let Some(stats) = batch_stats.as_mut() {
+                                            stats.set_applied_block_level(
+                                                validated_block.block.header.level(),
+                                            );
+                                            stats.add_block_validation_stats(
+                                                &block_validation_timer,
+                                            );
                                         }
 
                                         // notify  chain current head manager (only for new applied block)
@@ -480,6 +739,7 @@ fn feed_chain_to_protocol(
                                                 "Block/batch is already applied"
                                             )));
                                         }
+                                        previous_block_data_cache = None;
                                     }
                                 }
                             }
@@ -503,12 +763,17 @@ fn feed_chain_to_protocol(
                                 if apply_block_run.load(Ordering::Acquire) {
                                     if let Some(bootstrapper) = bootstrapper.as_ref() {
                                         bootstrapper.tell(
-                                            BlockBatchApplyFailed {
+                                            ApplyBlockBatchFailed {
                                                 failed_block: block_to_apply.clone(),
                                             },
                                             None,
                                         );
                                     }
+                                }
+
+                                // we need to fire stats here (because we can throw error potentialy)
+                                if let Some(stats) = batch_stats.take() {
+                                    chain_feeder.tell(ApplyBlockDone { stats }, None);
                                 }
 
                                 // handle protocol error - continue or restart protocol runner?
@@ -542,10 +807,15 @@ fn feed_chain_to_protocol(
 
                     // notify after batch success done
                     if apply_block_run.load(Ordering::Acquire) {
+                        // fire stats
+                        if let Some(stats) = batch_stats.take() {
+                            chain_feeder.tell(ApplyBlockDone { stats }, None);
+                        }
+
                         if let Some(last_applied) = last_applied {
                             // notify bootstrapper just on the end of the success batch
                             if let Some(bootstrapper) = bootstrapper {
-                                bootstrapper.tell(BlockBatchApplied { last_applied }, None);
+                                bootstrapper.tell(ApplyBlockBatchDone { last_applied }, None);
                             }
                         }
                     }
@@ -566,45 +836,42 @@ fn feed_chain_to_protocol(
 fn _apply_block(
     chain_id: Arc<ChainId>,
     block_hash: Arc<BlockHash>,
+    apply_block_request_data: Result<
+        (
+            ApplyBlockRequest,
+            block_meta_storage::Meta,
+            Arc<BlockHeaderWithHash>,
+        ),
+        FeedChainError,
+    >,
+    validated_at_timer: Instant,
+    load_metadata_elapsed: Duration,
     block_storage: &BlockStorage,
-    operations_storage: &OperationsStorage,
     block_meta_storage: &BlockMetaStorage,
     context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     one_context: bool,
     log: &Logger,
-) -> Result<Option<ProcessValidatedBlock>, FeedChainError> {
-    // collect all required data for apply
-    let request = prepare_apply_request(
-        &block_hash,
-        chain_id.as_ref().clone(),
-        block_storage,
-        operations_storage,
-    )?;
+) -> Result<
+    Option<(
+        ProcessValidatedBlock,
+        BlockAdditionalData,
+        BlockValidationTimer,
+    )>,
+    FeedChainError,
+> {
+    // unwrap result
+    let (block_request, mut block_meta, block) = apply_block_request_data?;
 
-    let validated_at_timer = Instant::now();
-
-    // check if block is already applied (not necessery here)
-    let load_metadata_timer = Instant::now();
-    let mut current_head_meta = match block_meta_storage.get(&block_hash)? {
-        Some(meta) => {
-            if meta.is_applied() {
-                debug!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
-                return Ok(None);
-            }
-            meta
-        }
-        None => {
-            return Err(FeedChainError::ProcessingError {
-                reason: "Block metadata not found".to_string(),
-            });
-        }
-    };
-    let load_metadata_elapsed = load_metadata_timer.elapsed();
+    // check if not already applied
+    if block_meta.is_applied() {
+        info!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
+        return Ok(None);
+    }
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result = protocol_controller.apply_block(request)?;
+    let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
@@ -633,25 +900,25 @@ fn _apply_block(
     // Lets mark header as applied and store result
     // store success result
     let store_result_timer = Instant::now();
-    let _ = store_applied_block_result(
+    let block_additional_data = store_applied_block_result(
         block_storage,
         block_meta_storage,
         &block_hash,
         apply_block_result,
-        &mut current_head_meta,
+        &mut block_meta,
     )?;
     let store_result_elapsed = store_result_timer.elapsed();
 
-    Ok(Some(ProcessValidatedBlock::new(
-        block_hash,
-        chain_id,
-        Arc::new(BlockValidationTimer::new(
+    Ok(Some((
+        ProcessValidatedBlock::new(block, chain_id),
+        block_additional_data,
+        BlockValidationTimer::new(
             validated_at_timer.elapsed(),
             load_metadata_elapsed,
             protocol_call_elapsed,
             context_wait_elapsed,
             store_result_elapsed,
-        )),
+        ),
     )))
 }
 
@@ -660,18 +927,41 @@ fn prepare_apply_request(
     block_hash: &BlockHash,
     chain_id: ChainId,
     block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
     operations_storage: &OperationsStorage,
-) -> Result<ApplyBlockRequest, StorageError> {
+    predecessor_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<
+    (
+        ApplyBlockRequest,
+        block_meta_storage::Meta,
+        Arc<BlockHeaderWithHash>,
+    ),
+    FeedChainError,
+> {
     // get block header
-    let current_head = match block_storage.get(block_hash)? {
-        Some(block) => block,
-        None => return Err(StorageError::MissingKey),
+    let block = match block_storage.get(block_hash)? {
+        Some(block) => Arc::new(block),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    // get block_metadata
+    let block_meta = match block_meta_storage.get(&block_hash)? {
+        Some(meta) => meta,
+        None => {
+            return Err(FeedChainError::ProcessingError {
+                reason: "Block metadata not found".to_string(),
+            });
+        }
     };
 
     // get operations
     let operations = operations_storage.get_operations(block_hash)?;
 
-    // get predecessor metadata
+    // resolve predecessor data
     let (
         predecessor,
         (
@@ -679,22 +969,63 @@ fn prepare_apply_request(
             predecessor_ops_metadata_hash,
             predecessor_max_operations_ttl,
         ),
-    ) = match block_storage.get_with_additional_data(&current_head.header.predecessor())? {
-        Some((predecessor, predecessor_additional_data)) => {
-            (predecessor, predecessor_additional_data.into())
+    ) = resolve_block_data(
+        block.header.predecessor(),
+        block_storage,
+        block_meta_storage,
+        predecessor_data_cache,
+    )
+    .map(|(block, additional_data)| (block, additional_data.into()))?;
+
+    Ok((
+        ApplyBlockRequest {
+            chain_id,
+            block_header: block.header.as_ref().clone(),
+            pred_header: predecessor.header.as_ref().clone(),
+            operations: ApplyBlockRequest::convert_operations(operations),
+            max_operations_ttl: predecessor_max_operations_ttl as i32,
+            predecessor_block_metadata_hash,
+            predecessor_ops_metadata_hash,
+        },
+        block_meta,
+        block,
+    ))
+}
+
+fn resolve_block_data(
+    block_hash: &BlockHash,
+    block_storage: &BlockStorage,
+    block_meta_storage: &BlockMetaStorage,
+    block_data_cache: Option<(Arc<BlockHeaderWithHash>, BlockAdditionalData)>,
+) -> Result<(Arc<BlockHeaderWithHash>, BlockAdditionalData), FeedChainError> {
+    // check cache at first
+    if let Some(cached) = block_data_cache {
+        // if cached data are the same as requested, then use it from cache
+        if block_hash.eq(&cached.0.hash) {
+            return Ok(cached);
         }
-        None => return Err(StorageError::MissingKey),
+    }
+    // load data from database
+    let block = match block_storage.get(block_hash)? {
+        Some(header) => Arc::new(header),
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
     };
 
-    Ok(ApplyBlockRequest {
-        chain_id,
-        block_header: current_head.header.as_ref().clone(),
-        pred_header: predecessor.header.as_ref().clone(),
-        operations: ApplyBlockRequest::convert_operations(operations),
-        max_operations_ttl: predecessor_max_operations_ttl as i32,
-        predecessor_block_metadata_hash,
-        predecessor_ops_metadata_hash,
-    })
+    // predecessor additional data
+    let additional_data = match block_meta_storage.get_additional_data(block_hash)? {
+        Some(additional_data) => additional_data,
+        None => {
+            return Err(FeedChainError::StorageError {
+                error: StorageError::MissingKey,
+            });
+        }
+    };
+
+    Ok((block, additional_data))
 }
 
 /// This initializes ocaml runtime and protocol context,
@@ -740,6 +1071,7 @@ pub(crate) fn initialize_protocol_context(
             let store_result_timer = Instant::now();
             let genesis_with_hash = initialize_storage_with_genesis_block(
                 block_storage,
+                block_meta_storage,
                 &init_storage_data,
                 &tezos_env,
                 &genesis_context_hash,
@@ -769,20 +1101,26 @@ pub(crate) fn initialize_protocol_context(
             )?;
             let store_result_elapsed = store_result_timer.elapsed();
 
+            let mut stats = ApplyBlockStats::default();
+            stats.set_applied_block_level(genesis_with_hash.header.level());
+            stats.add_block_validation_stats(&BlockValidationTimer::new(
+                validated_at_timer.elapsed(),
+                load_metadata_elapsed,
+                protocol_call_elapsed,
+                context_wait_elapsed,
+                store_result_elapsed,
+            ));
+
+            info!(log, "Genesis commit stored successfully";
+                       "stats" => stats.print_formatted_average_times());
+
             // notify listeners
             if apply_block_run.load(Ordering::Acquire) {
                 // notify others that the block successfully applied
                 chain_current_head_manager.tell(
                     ProcessValidatedBlock::new(
-                        Arc::new(genesis_with_hash.hash),
+                        Arc::new(genesis_with_hash),
                         Arc::new(init_storage_data.chain_id.clone()),
-                        Arc::new(BlockValidationTimer::new(
-                            validated_at_timer.elapsed(),
-                            load_metadata_elapsed,
-                            protocol_call_elapsed,
-                            context_wait_elapsed,
-                            store_result_elapsed,
-                        )),
                     ),
                     None,
                 );

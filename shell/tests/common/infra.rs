@@ -15,6 +15,7 @@ use riker::system::SystemBuilder;
 use slog::{info, warn, Level, Logger};
 use tokio::runtime::Runtime;
 
+use common::contains_all_keys;
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
@@ -22,13 +23,15 @@ use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::context_listener::ContextListener;
+use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
-use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use shell::stats::apply_block_stats::init_empty_apply_block_stats;
+use shell::state::synchronization_state::{
+    init_synchronization_bootstrap_state_storage, SynchronizationBootstrapStateRef,
+};
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
@@ -42,7 +45,6 @@ use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::common;
-use common::contains_all_keys;
 
 pub struct NodeInfrastructure {
     name: String,
@@ -55,6 +57,7 @@ pub struct NodeInfrastructure {
     pub actor_system: ActorSystem,
     pub tmp_storage: TmpStorage,
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
 }
@@ -76,7 +79,10 @@ impl NodeInfrastructure {
 
         // environement
         let is_sandbox = false;
-        let p2p_threshold = PeerConnectionThreshold::try_new(1, 1, Some(0))?;
+        let p2p_threshold = match p2p.as_ref() {
+            Some((p2p, _)) => p2p.peer_threshold.clone(),
+            None => PeerConnectionThreshold::try_new(1, 1, Some(0))?,
+        };
         let identity = Arc::new(identity);
 
         // storage
@@ -157,8 +163,6 @@ impl NodeInfrastructure {
         let bootstrap_state = init_synchronization_bootstrap_state_storage(
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
         );
-        let apply_block_stats = init_empty_apply_block_stats();
-
         let tokio_runtime = create_tokio_runtime();
 
         // run actor's
@@ -171,6 +175,8 @@ impl NodeInfrastructure {
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+        let mempool_channel =
+            MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
         let _ = ContextListener::actor(
             &actor_system,
@@ -184,13 +190,14 @@ impl NodeInfrastructure {
         let chain_current_head_manager = ChainCurrentHeadManager::actor(
             &actor_system,
             shell_channel.clone(),
+            mempool_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.clone(),
             local_current_head_state.clone(),
             remote_current_head_state.clone(),
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
-            apply_block_stats.clone(),
+            false,
         )
         .expect("Failed to create chain current head manager");
         let block_applier = ChainFeeder::actor(
@@ -209,6 +216,7 @@ impl NodeInfrastructure {
             block_applier.clone(),
             network_channel.clone(),
             shell_channel.clone(),
+            mempool_channel.clone(),
             persistent_storage.clone(),
             tezos_readonly_api.clone(),
             init_storage_data.clone(),
@@ -216,8 +224,7 @@ impl NodeInfrastructure {
             local_current_head_state,
             remote_current_head_state,
             current_mempool_state_storage.clone(),
-            bootstrap_state,
-            apply_block_stats,
+            bootstrap_state.clone(),
             false,
             identity.clone(),
         )
@@ -225,6 +232,7 @@ impl NodeInfrastructure {
         let _ = MempoolPrevalidator::actor(
             &actor_system,
             shell_channel.clone(),
+            mempool_channel,
             &persistent_storage,
             current_mempool_state_storage.clone(),
             init_storage_data.chain_id,
@@ -262,6 +270,7 @@ impl NodeInfrastructure {
             actor_system,
             tmp_storage,
             current_mempool_state_storage,
+            bootstrap_state,
             tezos_env: tezos_env.clone(),
         })
     }
