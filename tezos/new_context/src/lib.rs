@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+#![feature(hash_set_entry)]
+
 // #![forbid(unsafe_code)]
 
 //! Implementation of the TezEdge context for the Tezos economic protocol
