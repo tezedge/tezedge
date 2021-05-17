@@ -692,7 +692,10 @@ impl WorkingTree {
 
         match new_node {
             None => tree.remove(last),
-            Some(new_node) => tree.insert(Rc::new(last.to_string()).into(), Rc::new(new_node)),
+            Some(new_node) => {
+                let last = self.index.get_str(last);
+                tree.insert(last.into(), Rc::new(new_node))
+            },
         };
 
         if tree.is_empty() {
@@ -726,8 +729,30 @@ impl WorkingTree {
             }
         };
 
-        // get entry by hash (from working tree or DB)
-        match self.get_entry(&child_node)? {
+        // get entry (from working tree)
+        if let Ok(entry) = child_node.entry.try_borrow() {
+            match &*entry {
+                Some(Entry::Tree(tree)) => {
+                    return self.find_raw_tree(tree, &key[1..]);
+                }
+                Some(Entry::Blob(_)) => return Ok(Tree::new()),
+                Some(Entry::Commit { .. }) => {
+                    return Err(MerkleError::FoundUnexpectedStructure {
+                        sought: "Tree/Blob".to_string(),
+                        found: "commit".to_string(),
+                    })
+                }
+                None => {}
+            }
+            drop(entry);
+        }
+
+        // get entry by hash (from DB)
+        let hash = child_node.get_hash()?;
+        let entry = self.get_entry_from_hash(&hash)?;
+        child_node.set_entry(&entry)?;
+
+        match entry {
             Entry::Tree(tree) => self.find_raw_tree(&tree, &key[1..]),
             Entry::Blob(_) => Ok(Tree::new()),
             Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
@@ -841,20 +866,9 @@ impl WorkingTree {
             return Ok(e);
         };
 
-        let hash = node
-            .entry_hash
-            .try_borrow()
-            .map_err(|_| MerkleError::InvalidState("The Entry hash is borrowed more than once"))?
-            .as_ref()
-            .copied()
-            .ok_or(MerkleError::InvalidState("Missing entry hash"))?;
-
+        let hash = node.get_hash()?;
         let entry = self.get_entry_from_hash(&hash)?;
-
-        node.entry
-            .try_borrow_mut()
-            .map_err(|_| MerkleError::InvalidState("The Entry is borrowed more than once"))?
-            .replace(entry.clone());
+        node.set_entry(&entry)?;
 
         Ok(entry)
     }
