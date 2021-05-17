@@ -354,7 +354,7 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err))
             .map(|v| {
                 v.into_iter()
-                    .map(|(s, tree)| ((*s).clone(), tree))
+                    .map(|(s, tree)| (s.to_string(), tree))
                     .collect::<Vec<_>>()
             });
 
@@ -594,7 +594,7 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err))
             .map(|v| {
                 v.into_iter()
-                    .map(|(s, tree)| ((*s).clone(), tree))
+                    .map(|(s, tree)| (s.to_string(), tree))
                     .collect::<Vec<_>>()
             });
 

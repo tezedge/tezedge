@@ -1,10 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{
-    cell::{Ref, RefCell},
-    convert::TryInto,
-};
+use std::{cell::{Ref, RefCell}, collections::HashSet, convert::TryInto};
 use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
@@ -38,6 +35,7 @@ pub struct PatchContextFunction {}
 pub struct TezedgeIndex {
     pub repository: Rc<RefCell<ContextKeyValueStore>>,
     pub patch_context: Rc<BoxRoot<Option<PatchContextFunction>>>,
+    pub strings: Rc<RefCell<StringInterner>>,
 }
 
 impl TezedgeIndex {
@@ -49,7 +47,13 @@ impl TezedgeIndex {
         Self {
             repository,
             patch_context,
+            strings: Default::default(),
         }
+    }
+
+    pub fn get_str(&self, s: &str) -> Rc<str> {
+        let mut strings = self.strings.borrow_mut();
+        strings.get_str(s)
     }
 }
 
@@ -81,6 +85,23 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         } else {
             Ok(None)
         }
+    }
+}
+
+#[derive(Default)]
+pub struct StringInterner {
+    strings: HashSet<Rc<str>>
+}
+
+impl StringInterner {
+    fn get_str(&mut self, s: &str) -> Rc<str> {
+        if s.len() >= 30 {
+            return Rc::from(s);
+        }
+
+        self.strings.get_or_insert_with(s, |s| {
+            Rc::from(s)
+        }).clone()
     }
 }
 
