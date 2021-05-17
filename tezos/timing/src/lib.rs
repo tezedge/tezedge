@@ -439,7 +439,7 @@ impl Timing {
         }
 
         self.tezedge_checkout_stats.add_time(tezedge_time);
-        self.irmin_checkout_stats.add_time(tezedge_time);
+        self.irmin_checkout_stats.add_time(irmin_time);
         self.set_current_context(context_hash)?;
         self.checkout_time = Some((irmin_time, tezedge_time));
 
@@ -452,7 +452,7 @@ impl Timing {
         }
 
         self.tezedge_commit_stats.add_time(tezedge_time);
-        self.irmin_commit_stats.add_time(tezedge_time);
+        self.irmin_commit_stats.add_time(irmin_time);
         self.sync_global_stats(irmin_time, tezedge_time)?;
         self.sync_block_stats()?;
 
