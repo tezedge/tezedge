@@ -469,28 +469,40 @@ impl Timing {
         let context_id = self.current_context.as_ref().map(|(id, _)| id.as_str());
         let action_name = action.action_name.to_str();
 
-        let (root, key) = if action.key.is_empty() {
+        let (root, key_id) = if action.key.is_empty() {
             (None, None)
         } else {
             let root = action.key[0].as_str();
             let key = action.key.join("/");
 
-            (Some(root), Some(key))
+            let mut stmt = self
+                .sql
+                .prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
+
+            stmt.execute([key.as_str()])?;
+
+            let mut stmt = self
+                .sql
+                .prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
+
+            let key_id: usize = stmt.query_row([key.as_str()], |row| row.get(0))?;
+
+            (Some(root), Some(key_id))
         };
 
         let mut stmt = self.sql.prepare_cached(
             "
         INSERT INTO actions
-          (name, key_root, key, irmin_time, tezedge_time, block_id, operation_id, context_id)
+          (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
-          (:name, :key_root, :key, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
+          (:name, :key_root, :key_id, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
             "
         )?;
 
         stmt.execute(named_params! {
             ":name": action_name,
             ":key_root": &root,
-            ":key": &key,
+            ":key_id": &key_id,
             ":irmin_time": &action.irmin_time,
             ":tezedge_time": &action.tezedge_time,
             ":block_id": block_id,
