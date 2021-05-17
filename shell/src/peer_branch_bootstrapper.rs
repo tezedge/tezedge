@@ -34,7 +34,7 @@ const SCHEDULE_ONE_TIMER_DELAY: Duration = Duration::from_secs(15);
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Message commands [`PeerBranchBootstrapper`] to disconnect peer if any of bootstraping pipelines are stalled
+/// Message commands [`PeerBranchBootstrapper`] to disconnect peer if any of bootstrapping pipelines are stalled
 #[derive(Clone, Debug)]
 pub struct DisconnectStalledBootstraps;
 

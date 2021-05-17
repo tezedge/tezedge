@@ -892,7 +892,7 @@ impl BranchState {
             let mut applied_blocks =
                 block_state_db.remove_with_all_predecessors(&last_applied_block);
             if !applied_blocks.contains(&last_applied_block) {
-                applied_blocks.insert(block_state_db.get_block_ref(&last_applied_block));
+                applied_blocks.insert(last_applied_block);
             }
             self.block_applied(&mut applied_blocks, block_state_db);
         }

@@ -321,9 +321,7 @@ pub enum VotesError {
 
 impl From<failure::Error> for VotesError {
     fn from(error: failure::Error) -> Self {
-        VotesError::ServiceError {
-            reason: error.into(),
-        }
+        VotesError::ServiceError { reason: error }
     }
 }
 

@@ -29,7 +29,9 @@ use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
-use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::state::synchronization_state::{
+    init_synchronization_bootstrap_state_storage, SynchronizationBootstrapStateRef,
+};
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
@@ -55,6 +57,7 @@ pub struct NodeInfrastructure {
     pub actor_system: ActorSystem,
     pub tmp_storage: TmpStorage,
     pub current_mempool_state_storage: CurrentMempoolStateStorageRef,
+    pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
 }
@@ -76,7 +79,10 @@ impl NodeInfrastructure {
 
         // environement
         let is_sandbox = false;
-        let p2p_threshold = PeerConnectionThreshold::try_new(1, 1, Some(0))?;
+        let p2p_threshold = match p2p.as_ref() {
+            Some((p2p, _)) => p2p.peer_threshold.clone(),
+            None => PeerConnectionThreshold::try_new(1, 1, Some(0))?,
+        };
         let identity = Arc::new(identity);
 
         // storage
@@ -218,7 +224,7 @@ impl NodeInfrastructure {
             local_current_head_state,
             remote_current_head_state,
             current_mempool_state_storage.clone(),
-            bootstrap_state,
+            bootstrap_state.clone(),
             false,
             identity.clone(),
         )
@@ -264,6 +270,7 @@ impl NodeInfrastructure {
             actor_system,
             tmp_storage,
             current_mempool_state_storage,
+            bootstrap_state,
             tezos_env: tezos_env.clone(),
         })
     }

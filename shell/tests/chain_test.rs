@@ -155,6 +155,117 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
 #[ignore]
 #[test]
 #[serial]
+fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
+) -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level);
+
+    let db = common::test_cases_data::current_branch_on_level_3::init_data(&log);
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&db.tezos_env)
+        .expect("no environment configuration");
+
+    // we need here test also bootstrap status
+    let p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 1, 2, 1);
+
+    // start node
+    let node = crate::common::infra::NodeInfrastructure::start(
+        TmpStorage::create(common::prepare_empty_dir("__test_07"))?,
+        &common::prepare_empty_dir("__test_07_context"),
+        "test_process_bootstrapping_current_branch_on_level3_then_current_heads",
+        &tezos_env,
+        None,
+        Some(p2p_cfg),
+        NODE_IDENTITY.clone(),
+        (log, log_level),
+        vec![],
+        (false, false),
+    )?;
+
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head(
+        "genesis",
+        node.tezos_env.genesis_header_hash()?,
+        (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+
+    // check not bootstrapped
+    assert!(!node
+        .bootstrap_state
+        .read()
+        .expect("Failed to get lock")
+        .is_bootstrapped());
+
+    // connect mocked node peer with test data set
+    let clocks = Instant::now();
+    let mut mocked_peer_node = common::test_node_peer::TestNodePeer::connect(
+        "TEST_PEER_NODE".to_string(),
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
+        tezos_identity::Identity::generate(0f64)?,
+        node.log.clone(),
+        &node.tokio_runtime,
+        common::test_cases_data::current_branch_on_level_3::serve_data,
+    );
+
+    // send current_head with level4
+    mocked_peer_node.send_msg(CurrentHeadMessage::new(
+        node.tezos_env.main_chain_id()?,
+        db.block_header(4)?,
+        Mempool::default(),
+    ))?;
+    // send current_head with level5
+    mocked_peer_node.send_msg(CurrentHeadMessage::new(
+        node.tezos_env.main_chain_id()?,
+        db.block_header(5)?,
+        Mempool::default(),
+    ))?;
+    // send current_head with level6
+    mocked_peer_node.send_msg(CurrentHeadMessage::new(
+        node.tezos_env.main_chain_id()?,
+        db.block_header(6)?,
+        Mempool::default(),
+    ))?;
+    // send current_head with level7
+    mocked_peer_node.send_msg(CurrentHeadMessage::new(
+        node.tezos_env.main_chain_id()?,
+        db.block_header(7)?,
+        Mempool::default(),
+    ))?;
+
+    // wait for current head on level 3
+    node.wait_for_new_current_head(
+        "7",
+        db.block_hash(7)?,
+        (Duration::from_secs(60), Duration::from_millis(750)),
+    )?;
+
+    // check context stored for all blocks
+    node.wait_for_context(
+        "ctx_7",
+        db.context_hash(7)?,
+        (Duration::from_secs(5), Duration::from_millis(150)),
+    )?;
+    println!("\nProcessed current_branch[7] in {:?}!\n", clocks.elapsed());
+
+    // check not bootstrapped
+    assert!(node
+        .bootstrap_state
+        .read()
+        .expect("Failed to get lock")
+        .is_bootstrapped());
+
+    // stop nodes
+    drop(mocked_peer_node);
+    drop(node);
+
+    Ok(())
+}
+
+#[ignore]
+#[test]
+#[serial]
 fn test_process_reorg_with_different_current_branches() -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();

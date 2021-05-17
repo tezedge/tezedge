@@ -43,16 +43,6 @@ lazy_static! {
     pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64).unwrap();
 }
 
-fn p2p_cfg_with_threshold(
-    mut cfg: (P2p, ShellCompatibilityVersion),
-    low: usize,
-    high: usize,
-) -> (P2p, ShellCompatibilityVersion) {
-    cfg.0.peer_threshold =
-        PeerConnectionThreshold::try_new(low, high, Some(0)).expect("Invalid range");
-    cfg
-}
-
 #[ignore]
 #[test]
 #[serial]
@@ -80,10 +70,11 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         "test_peer_threshold",
         &tezos_env,
         patch_context,
-        Some(p2p_cfg_with_threshold(
+        Some(common::p2p_cfg_with_threshold(
             NODE_P2P_CFG.clone(),
             0,
             peer_threshold_high,
+            0,
         )),
         NODE_IDENTITY.clone(),
         (log, log_level),

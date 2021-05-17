@@ -317,8 +317,6 @@ impl Receive<SendMessage> for Peer {
         let tx = self.net.tx.clone();
         let peer_id_marker = self.peer_id_marker.clone();
 
-
-
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
