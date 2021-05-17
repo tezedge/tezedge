@@ -22,16 +22,22 @@ CREATE TABLE IF NOT EXISTS contexts (
   hash TEXT UNIQUE
 );
 
+CREATE TABLE IF NOT EXISTS keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT NOT NULL UNIQUE
+);
+
 CREATE TABLE IF NOT EXISTS actions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT,
   key_root TEXT,
-  key TEXT,
+  key_id INTEGER DEFAULT NULL,
   irmin_time REAL,
   tezedge_time REAL,
   block_id INTEGER DEFAULT NULL,
   operation_id INTEGER DEFAULT NULL,
   context_id INTEGER DEFAULT NULL,
+  FOREIGN KEY(key_id) REFERENCES keys(id),
   FOREIGN KEY(block_id) REFERENCES blocks(id),
   FOREIGN KEY(operation_id) REFERENCES operations(id),
   FOREIGN KEY(context_id) REFERENCES contexts(id)
