@@ -259,7 +259,13 @@ pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
 });
 
 fn start_timing(recv: Receiver<TimingMessage>) {
-    let mut timing = Timing::new();
+    #[cfg(not(test))]
+    let db_path = Some(DB_PATH.into());
+
+    #[cfg(test)]
+    let db_path = None;
+
+    let mut timing = Timing::new(db_path);
 
     for msg in recv {
         if let Err(_err) = timing.process_msg(msg) {
@@ -280,8 +286,8 @@ pub fn hash_to_string(hash: &[u8]) -> String {
 }
 
 impl Timing {
-    fn new() -> Timing {
-        let sql = Self::init_sqlite().unwrap();
+    fn new(db_path: Option<String>) -> Timing {
+        let sql = Self::init_sqlite(db_path).unwrap();
 
         Timing {
             current_block: None,
@@ -825,10 +831,15 @@ impl Timing {
         Ok(())
     }
 
-    fn init_sqlite() -> Result<Connection, SQLError> {
-        std::fs::remove_file(DB_PATH).ok();
+    fn init_sqlite(db_path: Option<String>) -> Result<Connection, SQLError> {
+        let connection = match db_path.as_ref() {
+            Some(path) => {
+                std::fs::remove_file(path).ok();
+                Connection::open(path)?
+            }
+            None => Connection::open_in_memory()?,
+        };
 
-        let connection = Connection::open(DB_PATH)?;
         let schema = include_str!("schema_stats.sql");
 
         let mut batch = Batch::new(&connection, schema);
@@ -848,7 +859,7 @@ mod tests {
 
     #[test]
     fn test_timing_db() {
-        let mut timing = Timing::new();
+        let mut timing = Timing::new(None);
 
         assert!(timing.current_block.is_none());
 
