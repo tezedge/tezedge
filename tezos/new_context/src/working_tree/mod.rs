@@ -12,14 +12,16 @@ use serde::{Deserialize, Serialize};
 use crate::hash::{hash_entry, EntryHash, HashingError};
 use crate::ContextValue;
 
+use self::working_tree::MerkleError;
+
 pub mod working_tree;
 pub mod working_tree_stats;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
-pub struct KeyFragment(Rc<String>);
+pub struct KeyFragment(Rc<str>);
 
 impl std::ops::Deref for KeyFragment {
-    type Target = String;
+    type Target = str;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -28,18 +30,18 @@ impl std::ops::Deref for KeyFragment {
 
 impl Borrow<str> for KeyFragment {
     fn borrow(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl Borrow<String> for KeyFragment {
-    fn borrow(&self) -> &String {
         &self.0
     }
 }
 
-impl From<Rc<String>> for KeyFragment {
-    fn from(value: Rc<String>) -> Self {
+impl From<&str> for KeyFragment {
+    fn from(value: &str) -> Self {
+        KeyFragment(Rc::from(value))
+    }
+}
+
+impl From<Rc<str>> for KeyFragment {
+    fn from(value: Rc<str>) -> Self {
         KeyFragment(value)
     }
 }
@@ -115,6 +117,24 @@ impl Node {
                 Ok(hash)
             }
         }
+    }
+
+    pub fn get_hash(&self) -> Result<EntryHash, MerkleError> {
+        self.entry_hash
+            .try_borrow()
+            .map_err(|_| MerkleError::InvalidState("The Entry hash is borrowed more than once"))?
+            .as_ref()
+            .copied()
+            .ok_or(MerkleError::InvalidState("Missing entry hash"))
+    }
+
+    fn set_entry(&self, entry: &Entry) -> Result<(), MerkleError> {
+        self.entry
+            .try_borrow_mut()
+            .map_err(|_| MerkleError::InvalidState("The Entry is borrowed more than once"))?
+            .replace(entry.clone());
+
+        Ok(())
     }
 }
 
