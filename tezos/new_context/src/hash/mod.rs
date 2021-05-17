@@ -423,7 +423,7 @@ mod tests {
             entry: RefCell::new(None),
             commited: Cell::new(false),
         };
-        dummy_tree.insert(Rc::new("a".to_string()).into(), Rc::new(node));
+        dummy_tree.insert("a".into(), Rc::new(node));
 
         // hexademical representation of above tree:
         //
@@ -536,7 +536,7 @@ mod tests {
                     entry: RefCell::new(None),
                     commited: Cell::new(false),
                 };
-                tree = tree.update(Rc::new(binding.name.clone()).into(), Rc::new(node));
+                tree = tree.update(binding.name.as_str().into(), Rc::new(node));
             }
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
