@@ -1,7 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::{Ref, RefCell}, collections::HashSet, convert::TryInto};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashSet,
+    convert::TryInto,
+};
 use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
@@ -86,11 +90,23 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
             Ok(None)
         }
     }
+
+    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError> {
+        let commit_hash_arr: EntryHash = last_commit_hash.as_ref().as_slice().try_into()?;
+        Ok(self
+            .repository
+            .borrow_mut()
+            .block_applied(commit_hash_arr)?)
+    }
+
+    fn cycle_started(&mut self) -> Result<(), ContextError> {
+        Ok(self.repository.borrow_mut().new_cycle_started()?)
+    }
 }
 
 #[derive(Default)]
 pub struct StringInterner {
-    strings: HashSet<Rc<str>>
+    strings: HashSet<Rc<str>>,
 }
 
 impl StringInterner {
@@ -99,9 +115,7 @@ impl StringInterner {
             return Rc::from(s);
         }
 
-        self.strings.get_or_insert_with(s, |s| {
-            Rc::from(s)
-        }).clone()
+        self.strings.get_or_insert_with(s, |s| Rc::from(s)).clone()
     }
 }
 
@@ -264,19 +278,6 @@ impl ShellContextApi for TezedgeContext {
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
         Ok(self.tree.get_merkle_stats()?)
-    }
-
-    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError> {
-        let commit_hash_arr: EntryHash = last_commit_hash.as_ref().as_slice().try_into()?;
-        Ok(self
-            .index
-            .repository
-            .borrow_mut()
-            .block_applied(commit_hash_arr)?)
-    }
-
-    fn cycle_started(&mut self) -> Result<(), ContextError> {
-        Ok(self.index.repository.borrow_mut().new_cycle_started()?)
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {

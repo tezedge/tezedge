@@ -487,9 +487,9 @@ fn main() -> Result<(), Error> {
                 let commit_hash =
                     ContextHash::try_from(new_context_hash.clone()).expect("Invalid commit hash");
 
-                context.block_applied(commit_hash).unwrap();
+                context.index.block_applied(commit_hash).unwrap();
                 if counter > 0 && counter % params.blocks_per_cycle == 0 {
-                    context.cycle_started().unwrap();
+                    context.index.cycle_started().unwrap();
                     cycle_counter += 1;
                 }
             }
