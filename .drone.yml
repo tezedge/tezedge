@@ -481,7 +481,7 @@ steps:
     OCAML_LOG_ENABLED: false
     LD_LIBRARY_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/ffi
     PROTOCOL_RUNNER: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/protocol-runner
-    CARGO_MANIFEST_DIR: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/test_data
+    CARGO_MANIFEST_DIR: /tests/build_${DRONE_BUILD_NUMBER}/test_data
     OUT_DIR: .
   commands:
     - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrapping_current_branch_on_level3_then_current_heads
