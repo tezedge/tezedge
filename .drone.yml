@@ -499,18 +499,20 @@ steps:
   pull: if-not-exists
   user: root
   volumes:
+    - name: tests
+      path: /tests
     - name: build
       path: /artifacts
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
     OCAML_LOG_ENABLED: false
-    LD_LIBRARY_PATH: /artifacts/ffi
-    PROTOCOL_RUNNER: /artifacts/protocol-runner
-    CARGO_MANIFEST_DIR: /artifacts/test_data
+    LD_LIBRARY_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/ffi
+    PROTOCOL_RUNNER: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/protocol-runner
+    CARGO_MANIFEST_DIR: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/test_data
     OUT_DIR: .
   commands:
-    - /artifacts/shell_chain_test --nocapture --ignored test_process_bootstrapping_current_branch_on_level3_then_current_heads
+    - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrapping_current_branch_on_level3_then_current_heads
 
 - name: bootstrap-and-mempool-with_stats-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
