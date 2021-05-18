@@ -838,6 +838,7 @@ mod tests {
         assert_eq!(res, AlertResult::Incresed(expected));
     }
 
+    #[ignore]
     #[test]
     fn test_multiple_node_stuck_alert() {
         let node1_tag = "tezedge";
