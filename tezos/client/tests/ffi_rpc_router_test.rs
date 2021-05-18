@@ -63,6 +63,7 @@ fn init_test_protocol_context(
         enable_testchain: false,
         readonly: false,
         sandbox_json_patch_context: Some(test_data::get_patch_context()),
+        context_stats_db_path: None,
     };
 
     let result = client::init_protocol_context(context_config).unwrap();

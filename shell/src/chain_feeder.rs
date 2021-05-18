@@ -1065,7 +1065,7 @@ pub(crate) fn initialize_protocol_context(
     let context_init_info = protocol_controller.init_protocol_for_write(
         need_commit_genesis,
         &init_storage_data.patch_context,
-        init_storage_data.timing_db_path.as_path(),
+        init_storage_data.context_stats_db_path.clone(),
     )?;
 
     let protocol_call_elapsed = protocol_call_timer.elapsed();

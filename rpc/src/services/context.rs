@@ -1,7 +1,7 @@
 use crypto::hash::BlockHash;
 use rusqlite::{named_params, Connection, OptionalExtension};
 use serde::Serialize;
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::PathBuf};
 
 use tezos_timing::{
     hash_to_string, ActionData, ActionStats, ActionStatsWithRange, RangeStats, FILENAME_DB,
@@ -27,22 +27,34 @@ pub(crate) struct ContextStats {
 }
 
 pub(crate) fn make_block_stats(
-    db_path: &Path,
+    db_path: Option<&PathBuf>,
     block_hash: BlockHash,
 ) -> Result<Option<BlockStats>, failure::Error> {
-    let mut db_path = db_path.to_path_buf();
-    db_path.push(FILENAME_DB);
+    let db_path = match db_path {
+        Some(db_path) => {
+            let mut db_path = db_path.to_path_buf();
+            db_path.push(FILENAME_DB);
+            db_path
+        }
+        None => PathBuf::from(FILENAME_DB)
+    };
 
     let sql = Connection::open(db_path)?;
     make_block_stats_impl(&sql, block_hash)
 }
 
 pub(crate) fn make_context_stats(
-    db_path: &Path,
+    db_path: Option<&PathBuf>,
     context_name: &str,
 ) -> Result<ContextStats, failure::Error> {
-    let mut db_path = db_path.to_path_buf();
-    db_path.push(FILENAME_DB);
+    let db_path = match db_path {
+        Some(db_path) => {
+            let mut db_path = db_path.to_path_buf();
+            db_path.push(FILENAME_DB);
+            db_path
+        }
+        None => PathBuf::from(FILENAME_DB)
+    };
 
     let sql = Connection::open(db_path)?;
     make_context_stats_impl(&sql, context_name)

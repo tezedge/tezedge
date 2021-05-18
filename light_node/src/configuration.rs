@@ -180,7 +180,7 @@ pub trait MultipleValueArg: IntoEnumIterator {
 pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
-    pub timing_db_path: PathBuf,
+    pub context_stats_db_path: PathBuf,
     pub context_storage_configuration: TezosContextStorageConfiguration,
     pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
@@ -972,7 +972,7 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path");
-                let timing_db_path = get_final_path(&tezos_data_dir, path);
+                let context_stats_db_path = get_final_path(&tezos_data_dir, path);
 
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
@@ -1126,7 +1126,7 @@ impl Environment {
                     context_storage_configuration,
                     db,
                     db_path,
-                    timing_db_path,
+                    context_stats_db_path,
                     compute_context_action_tree_hashes,
                     context_action_recorders,
                     context_kv_store,

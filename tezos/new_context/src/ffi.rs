@@ -654,7 +654,9 @@ ocaml_export! {
         rt,
         db_path: OCamlRef<String>,
     ) {
-        timings::init_timing(rt, db_path);
+        let db_path: String = db_path.to_rust(rt);
+
+        timings::init_timing(db_path);
         OCaml::unit()
     }
 }

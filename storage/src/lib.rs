@@ -212,7 +212,7 @@ pub struct StorageInitInfo {
     pub chain_id: ChainId,
     pub genesis_block_header_hash: BlockHash,
     pub patch_context: Option<PatchContext>,
-    pub timing_db_path: PathBuf,
+    pub context_stats_db_path: Option<PathBuf>,
 
     // TODO: TE-447 - remove one_context when integration done
     pub one_context: bool,
@@ -225,7 +225,7 @@ pub fn resolve_storage_init_chain_data(
     context_storage_configuration: &TezosContextStorageConfiguration,
     patch_context: &Option<PatchContext>,
     one_context: bool,
-    timing_db_path: &Path,
+    context_stats_db_path: Option<PathBuf>,
     log: &Logger,
 ) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
@@ -233,7 +233,7 @@ pub fn resolve_storage_init_chain_data(
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
         patch_context: patch_context.clone(),
         one_context,
-        timing_db_path: timing_db_path.to_owned(),
+        context_stats_db_path: context_stats_db_path.clone(),
     };
 
     info!(
@@ -244,7 +244,7 @@ pub fn resolve_storage_init_chain_data(
         "init_data.genesis_header" => format!("{:?}", init_data.genesis_block_header_hash.to_base58_check()),
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_storage_configuration" => format!("{:?}", context_storage_configuration),
-        "timing_db_path" => format!("{:?}", timing_db_path),
+        "context_stats_db_path" => format!("{:?}", context_stats_db_path),
         "one_context" => one_context,
         "patch_context" => match patch_context {
                 Some(pc) => format!("{:?}", pc),

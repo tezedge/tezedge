@@ -73,7 +73,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     tezos_without_context_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
-    timing_db_path: PathBuf,
+    context_stats_db_path: Option<PathBuf>,
 
     // TODO: TE-447 - remove one_context when integration done
     pub one_context: bool,
@@ -98,7 +98,7 @@ impl RpcServiceEnvironment {
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         one_context: bool,
-        timing_db_path: PathBuf,
+        context_stats_db_path: Option<PathBuf>,
         log: &Logger,
     ) -> Self {
         Self {
@@ -119,7 +119,7 @@ impl RpcServiceEnvironment {
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
             one_context,
-            timing_db_path,
+            context_stats_db_path,
         }
     }
 }

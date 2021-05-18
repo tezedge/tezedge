@@ -133,7 +133,7 @@ pub struct TezosContextConfiguration {
     pub enable_testchain: bool,
     pub readonly: bool,
     pub sandbox_json_patch_context: Option<PatchContext>,
-    pub timing_db_path: Option<PathBuf>,
+    pub context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]

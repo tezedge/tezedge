@@ -83,9 +83,7 @@ pub fn context_action(
     TIMING_CHANNEL.send(TimingMessage::Action(action)).unwrap();
 }
 
-pub fn init_timing(rt: &OCamlRuntime, db_path: OCamlRef<String>) {
-    let db_path: String = db_path.to_rust(rt);
-
+pub fn init_timing(db_path: String) {
     TIMING_CHANNEL
         .send(TimingMessage::InitTiming {
             db_path: Some(db_path.into()),

@@ -578,7 +578,7 @@ fn main() {
             &env.storage.context_storage_configuration,
             &env.storage.patch_context,
             env.storage.one_context,
-            &env.storage.timing_db_path,
+            Some(env.storage.context_stats_db_path.clone()),
             &log,
         ) {
             Ok(init_data) => {
