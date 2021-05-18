@@ -90,8 +90,9 @@ ocaml_export! {
         rt,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
     ) -> OCaml<DynBox<TezedgeIndexFFI>> {
-        // TODO: make this configurable through a parameter
-        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMemGC, BoxRoot::new(rt.get(patch_context)));
+        // TODO: make the storage configurable through a parameter
+        let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);
+        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMemGC, patch_context);
         OCaml::box_value(rt, index.into())
     }
 
@@ -109,7 +110,7 @@ ocaml_export! {
         let ocaml_index = rt.get(index);
         let index: &TezedgeIndexFFI = ocaml_index.borrow();
         let index = index.0.borrow().clone();
-        index.patch_context.get(rt)
+        index.patch_context.to_ocaml(rt)
     }
 
     // OCaml = val exists : index -> Context_hash.t -> bool Lwt.t
