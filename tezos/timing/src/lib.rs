@@ -262,7 +262,6 @@ pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
 });
 
 fn start_timing(recv: Receiver<TimingMessage>) {
-    let mut msgs = Vec::new();
     let mut db_path: Option<PathBuf> = None;
 
     for msg in &recv {
@@ -271,13 +270,13 @@ fn start_timing(recv: Receiver<TimingMessage>) {
                 db_path = path.clone();
                 break;
             }
-            msg => msgs.push(msg),
+            _ => {},
         }
     }
 
     let mut timing = Timing::new(db_path);
 
-    for msg in msgs.into_iter().chain(recv) {
+    for msg in recv {
         if let Err(_err) = timing.process_msg(msg) {
             // TODO: log error, and retry
         }
