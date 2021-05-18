@@ -4,7 +4,7 @@
 //! This sub module provides different KV alternatives for context persistence
 
 use std::array::TryFromSliceError;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::PoisonError;
 
 use blake2::digest::InvalidOutputSize;
@@ -12,7 +12,7 @@ use failure::Fail;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::hash::{hash_entry, HashingError};
+use crate::hash::HashingError;
 use crate::persistent::{DBError, KeyValueStoreBackend};
 use crate::working_tree::Entry;
 use crate::{ContextKeyValueStoreSchema, EntryHash};
@@ -23,7 +23,10 @@ pub mod mark_sweep_gced;
 pub trait GarbageCollector {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError>;
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError>;
+    fn block_applied(
+        &mut self,
+        referenced_older_entries: HashSet<EntryHash>,
+    ) -> Result<(), GarbageCollectionError>;
 }
 
 pub trait NotGarbageCollected {}
@@ -33,7 +36,10 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
         Ok(())
     }
 
-    fn block_applied(&mut self, _commit: EntryHash) -> Result<(), GarbageCollectionError> {
+    fn block_applied(
+        &mut self,
+        _referenced_older_entries: HashSet<EntryHash>,
+    ) -> Result<(), GarbageCollectionError> {
         Ok(())
     }
 }
@@ -41,63 +47,15 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 /// helper function for fetching and deserializing entry from the store
 pub fn fetch_entry_from_store(
     store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-    hash: EntryHash,
+    hash: &EntryHash,
+    path: &str,
 ) -> Result<Entry, GarbageCollectionError> {
     match store.get(&hash)? {
         None => Err(GarbageCollectionError::EntryNotFound {
-            hash: HashType::ContextHash.hash_to_b58check(&hash)?,
+            hash: HashType::ContextHash.hash_to_b58check(hash)?,
+            path: path.to_string(),
         }),
         Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
-    }
-}
-
-pub fn collect_hashes_recursively(
-    entry: &Entry,
-    cache: HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-) -> Result<HashMap<EntryHash, HashSet<EntryHash>>, GarbageCollectionError> {
-    let mut entries = HashSet::new();
-    let mut c = cache;
-    collect_hashes(entry, &mut entries, &mut c, store)?;
-    Ok(c)
-}
-
-/// collects entries from tree like structure recursively
-pub fn collect_hashes(
-    entry: &Entry,
-    batch: &mut HashSet<EntryHash>,
-    cache: &mut HashMap<EntryHash, HashSet<EntryHash>>,
-    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-) -> Result<(), GarbageCollectionError> {
-    batch.insert(hash_entry(entry)?);
-
-    match cache.get(&hash_entry(entry)?) {
-        // if we know subtree already lets just use it
-        Some(v) => {
-            batch.extend(v);
-            Ok(())
-        }
-        None => {
-            match entry {
-                Entry::Blob(_) => Ok(()),
-                Entry::Tree(tree) => {
-                    // Go through all descendants and gather errors. Remap error if there is a failure
-                    // anywhere in the recursion paths. TODO: is revert possible?
-                    let mut b = HashSet::new();
-                    for (_, child_node) in tree.iter() {
-                        let entry = fetch_entry_from_store(store, child_node.entry_hash()?)?;
-                        collect_hashes(&entry, &mut b, cache, store)?;
-                    }
-                    cache.insert(hash_entry(entry)?, b.clone());
-                    batch.extend(b);
-                    Ok(())
-                }
-                Entry::Commit(commit) => {
-                    let entry = fetch_entry_from_store(store, commit.root_hash)?;
-                    Ok(collect_hashes(&entry, batch, cache, store)?)
-                }
-            }
-        }
     }
 }
 
@@ -121,8 +79,8 @@ pub enum GarbageCollectionError {
     GarbageCollectorError { error: String },
     #[fail(display = "Mutex/lock lock error! Reason: {:?}", reason)]
     LockError { reason: String },
-    #[fail(display = "Entry not found in store: {:?}", hash)]
-    EntryNotFound { hash: String },
+    #[fail(display = "Entry not found in store: path={:?} hash={:?}", path, hash)]
+    EntryNotFound { hash: String, path: String },
     #[fail(display = "Failed to convert hash into string: {}", error)]
     HashToStringError { error: FromBytesError },
     #[fail(display = "Failed to encode hash: {}", error)]

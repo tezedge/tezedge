@@ -91,12 +91,14 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         }
     }
 
-    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError> {
-        let commit_hash_arr: EntryHash = last_commit_hash.as_ref().as_slice().try_into()?;
+    fn block_applied(
+        &self,
+        referenced_older_entries: HashSet<EntryHash>,
+    ) -> Result<(), ContextError> {
         Ok(self
             .repository
             .borrow_mut()
-            .block_applied(commit_hash_arr)?)
+            .block_applied(referenced_older_entries)?)
     }
 
     fn cycle_started(&mut self) -> Result<(), ContextError> {
@@ -205,9 +207,10 @@ impl ShellContextApi for TezedgeContext {
     ) -> Result<ContextHash, ContextError> {
         // Entries to be inserted are obtained from the commit call and written here
         let date: u64 = date.try_into()?;
-        let (commit_hash, batch) =
+        let (commit_hash, batch, referenced_older_entries) =
             self.tree
                 .prepare_commit(date, author, message, self.parent_commit_hash)?;
+        self.index.block_applied(referenced_older_entries)?;
         // FIXME: only write entries if there are any, empty commits should not produce anything
         self.index.repository.borrow_mut().write_batch(batch)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
@@ -223,7 +226,7 @@ impl ShellContextApi for TezedgeContext {
     ) -> Result<ContextHash, ContextError> {
         // FIXME: does more work than needed, just calculate the hash, no batch
         let date: u64 = date.try_into()?;
-        let (commit_hash, _batch) =
+        let (commit_hash, _batch, _referenced_older_entries) =
             self.tree
                 .prepare_commit(date, author, message, self.parent_commit_hash)?;
         let commit_hash = ContextHash::try_from(&commit_hash[..])?;
