@@ -466,7 +466,7 @@ fn main() -> Result<(), Error> {
 
             if let ContextAction::Commit {
                 block_hash,
-                new_context_hash,
+                //new_context_hash,
                 ..
             } = &action
             {
@@ -484,10 +484,11 @@ fn main() -> Result<(), Error> {
                         / 1024
                 );
 
-                let commit_hash =
-                    ContextHash::try_from(new_context_hash.clone()).expect("Invalid commit hash");
+                // TODO: probably not needed now that the commit takes care of it, remove
+                //let commit_hash =
+                //    ContextHash::try_from(new_context_hash.clone()).expect("Invalid commit hash");
 
-                context.index.block_applied(commit_hash).unwrap();
+                //context.index.block_applied(commit_hash).unwrap();
                 if counter > 0 && counter % params.blocks_per_cycle == 0 {
                     context.index.cycle_started().unwrap();
                     cycle_counter += 1;

@@ -51,6 +51,7 @@ use std::{
     array::TryFromSliceError,
     borrow::Cow,
     cell::{Cell, RefCell},
+    collections::HashSet,
     rc::Rc,
 };
 
@@ -542,7 +543,14 @@ impl WorkingTree {
         author: String,
         message: String,
         parent_commit_hash: Option<EntryHash>,
-    ) -> Result<(EntryHash, Vec<(EntryHash, ContextValue)>), MerkleError> {
+    ) -> Result<
+        (
+            EntryHash,
+            Vec<(EntryHash, ContextValue)>,
+            HashSet<EntryHash>,
+        ),
+        MerkleError,
+    > {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
         let root_hash = self.get_working_tree_root_hash()?;
         let root = self.get_working_tree_root_ref();
@@ -558,13 +566,20 @@ impl WorkingTree {
 
         // produce entries to be persisted to storage
         let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
-        self.get_entries_recursively(&entry, None, Some(root.as_ref()), &mut batch)?;
+        let mut referenced_older_entries: HashSet<EntryHash> = HashSet::new();
+        self.get_entries_recursively(
+            &entry,
+            None,
+            Some(root.as_ref()),
+            &mut batch,
+            &mut referenced_older_entries,
+        )?;
 
         let commit_hash = hash_commit(&new_commit)?;
 
         //stat_updater.update_execution_stats(&mut self.stats);
 
-        Ok((commit_hash, batch))
+        Ok((commit_hash, batch, referenced_older_entries))
     }
 
     /// Returns a new version of the WorkingTree with the tree replaced
@@ -775,6 +790,7 @@ impl WorkingTree {
         entry_hash: Option<EntryHash>,
         root: Option<&Tree>,
         batch: &mut Vec<(EntryHash, ContextValue)>,
+        referenced_older_entries: &mut HashSet<EntryHash>,
     ) -> Result<(), MerkleError> {
         let entry_hash = match entry_hash {
             None => hash_entry(entry)?,
@@ -791,6 +807,7 @@ impl WorkingTree {
                 tree.iter()
                     .map(|(_, child_node)| {
                         if child_node.commited.get() {
+                            referenced_older_entries.insert(child_node.entry_hash()?);
                             return Ok(());
                         }
                         child_node.commited.set(true);
@@ -807,6 +824,7 @@ impl WorkingTree {
                                 child_node.entry_hash.borrow().clone(),
                                 None,
                                 batch,
+                                referenced_older_entries,
                             ),
                         }
                     })
@@ -821,7 +839,7 @@ impl WorkingTree {
                     Some(root) => Entry::Tree(root.clone()),
                     None => self.get_entry_from_hash(&commit.root_hash)?,
                 };
-                self.get_entries_recursively(&entry, None, None, batch)
+                self.get_entries_recursively(&entry, None, None, batch, referenced_older_entries)
             }
         }
     }

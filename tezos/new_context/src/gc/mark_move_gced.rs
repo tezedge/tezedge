@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 use std::ops::{Deref, DerefMut};
@@ -10,7 +9,6 @@ use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use crypto::hash::HashType;
 use failure::Error;
 
 use crate::hash::EntryHash;
@@ -18,10 +16,7 @@ use crate::persistent::database::DBError;
 use crate::persistent::KeyValueStoreBackend;
 use crate::working_tree::Entry;
 use crate::{
-    gc::{
-        collect_hashes_recursively, fetch_entry_from_store, GarbageCollectionError,
-        GarbageCollector,
-    },
+    gc::{GarbageCollectionError, GarbageCollector},
     persistent::{Flushable, Persistable},
 };
 use crate::{ContextKeyValueStoreSchema, ContextValue};
@@ -104,7 +99,6 @@ pub struct MarkMoveGCed<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>> {
     _thread: thread::JoinHandle<()>,
     /// Channel to communicate with GC thread from main thread
     msg: Mutex<mpsc::Sender<CmdMsg>>,
-    cache: HashMap<EntryHash, HashSet<EntryHash>>,
 }
 
 impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync + Default>
@@ -134,7 +128,6 @@ impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync
             is_busy: busy_ref,
             msg_cnt: msg_cnt_ref,
             current: Default::default(),
-            cache: HashMap::new(),
         }
     }
 
@@ -376,17 +369,21 @@ fn kvstore_gc_thread_fn<T: KeyValueStoreBackend<ContextKeyValueStoreSchema>>(
                 match entry {
                     Entry::Blob(_) => {}
                     Entry::Tree(tree) => {
+                        // Push every entry in this directory
                         for node in tree.values() {
                             todo_keys.push(node.entry_hash()?);
                         }
                     }
                     Entry::Commit(commit) => {
+                        // Push the root tree for this commit
                         todo_keys.push(commit.root_hash);
                     }
                 }
             }
         }
 
+        // If we have reused key sets for more cycles than we want to keep, and we are
+        // done collecting the old cycle, we drop that set.
         if reused_keys.len() > len && reused_keys[0].is_empty() && todo_keys.is_empty() {
             drop(reused_keys.drain(..1));
             drop(stores.write()?.drain(..1));
@@ -401,34 +398,9 @@ impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Send + Sync
         self.new_cycle_started()
     }
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError> {
-        let commit_entry = fetch_entry_from_store(
-            self.deref() as &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-            commit,
-        )?;
-
-        match commit_entry {
-            Entry::Commit { .. } => {
-                let cache = collect_hashes_recursively(
-                    &commit_entry,
-                    std::mem::take(&mut self.cache),
-                    self.deref() as &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-                )?;
-
-                let reused = cache.get(&commit);
-                if let Some(r) = reused {
-                    self.mark_reused(r)?;
-                }
-                self.cache = cache.clone();
-                Ok(())
-            }
-            _ => Err(GarbageCollectionError::GarbageCollectorError {
-                error: format!(
-                    "{} is not a commit",
-                    HashType::ContextHash.hash_to_b58check(&commit)?
-                ),
-            }),
-        }
+    fn block_applied(&mut self, entries: HashSet<EntryHash>) -> Result<(), GarbageCollectionError> {
+        self.mark_reused(&entries)?;
+        Ok(())
     }
 }
 
