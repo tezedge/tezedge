@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #![feature(hash_set_entry)]
-
 // #![forbid(unsafe_code)]
 
 //! Implementation of the TezEdge context for the Tezos economic protocol
@@ -113,6 +112,10 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError>;
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
+    // called after a block is applied
+    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError>;
+    // called when a new cycle starts
+    fn cycle_started(&mut self) -> Result<(), ContextError>;
 }
 
 /// Context API used by the Shell
@@ -153,10 +156,6 @@ where
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError>;
     // get stats from merkle storage
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
-
-    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError>;
-
-    fn cycle_started(&mut self) -> Result<(), ContextError>;
 
     fn get_memory_usage(&self) -> Result<usize, ContextError>;
 }
