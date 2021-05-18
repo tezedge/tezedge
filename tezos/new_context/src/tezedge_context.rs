@@ -38,14 +38,14 @@ pub struct PatchContextFunction {}
 #[derive(Clone)]
 pub struct TezedgeIndex {
     pub repository: Rc<RefCell<ContextKeyValueStore>>,
-    pub patch_context: Rc<BoxRoot<Option<PatchContextFunction>>>,
+    pub patch_context: Rc<Option<BoxRoot<PatchContextFunction>>>,
     pub strings: Rc<RefCell<StringInterner>>,
 }
 
 impl TezedgeIndex {
     pub fn new(
         repository: Rc<RefCell<ContextKeyValueStore>>,
-        patch_context: BoxRoot<Option<PatchContextFunction>>,
+        patch_context: Option<BoxRoot<PatchContextFunction>>,
     ) -> Self {
         let patch_context = Rc::new(patch_context);
         Self {
