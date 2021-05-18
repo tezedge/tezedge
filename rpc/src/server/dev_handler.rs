@@ -5,10 +5,13 @@ use failure::format_err;
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
+use crate::{
+    helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID},
+    result_option_to_json_response,
+};
 
 pub async fn dev_blocks(
     _: Request<Body>,
@@ -215,7 +218,7 @@ pub async fn block_actions(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
     let db_path = env.timing_db_path.as_path();
 
-    result_to_json_response(context::make_block_stats(db_path, block_hash), env.log())
+    result_option_to_json_response(context::make_block_stats(db_path, block_hash), env.log())
 }
 
 /// Get the version string

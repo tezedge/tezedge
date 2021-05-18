@@ -1,5 +1,5 @@
 use crypto::hash::BlockHash;
-use rusqlite::{named_params, Connection};
+use rusqlite::{named_params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::{collections::HashMap, path::Path};
 
@@ -29,7 +29,7 @@ pub(crate) struct ContextStats {
 pub(crate) fn make_block_stats(
     db_path: &Path,
     block_hash: BlockHash,
-) -> Result<BlockStats, failure::Error> {
+) -> Result<Option<BlockStats>, failure::Error> {
     let mut db_path = db_path.to_path_buf();
     db_path.push(FILENAME_DB);
 
@@ -206,7 +206,7 @@ fn make_context_stats_impl(
 fn make_block_stats_impl(
     sql: &Connection,
     block_hash: BlockHash,
-) -> Result<BlockStats, failure::Error> {
+) -> Result<Option<BlockStats>, failure::Error> {
     let block_hash = hash_to_string(block_hash.as_ref());
 
     let (
@@ -216,8 +216,9 @@ fn make_block_stats_impl(
         tezedge_commit_time,
         irmin_checkout_time,
         irmin_commit_time,
-    ) = sql.query_row(
-        "
+    ) = match sql
+        .query_row(
+            "
     SELECT
       id,
       actions_count,
@@ -230,18 +231,23 @@ fn make_block_stats_impl(
     WHERE
       hash = ?1;
         ",
-        [block_hash],
-        |row| {
-            Ok((
-                row.get::<_, usize>(0)?,
-                row.get::<_, usize>(1)?,
-                row.get::<_, f64>(2)?,
-                row.get::<_, f64>(3)?,
-                row.get::<_, f64>(4)?,
-                row.get::<_, f64>(5)?,
-            ))
-        },
-    )?;
+            [block_hash],
+            |row| {
+                Ok((
+                    row.get::<_, usize>(0)?,
+                    row.get::<_, usize>(1)?,
+                    row.get::<_, f64>(2)?,
+                    row.get::<_, f64>(3)?,
+                    row.get::<_, f64>(4)?,
+                    row.get::<_, f64>(5)?,
+                ))
+            },
+        )
+        .optional()?
+    {
+        Some(row) => row,
+        None => return Ok(None),
+    };
 
     let mut stmt = sql
         .prepare(
@@ -275,7 +281,10 @@ fn make_block_stats_impl(
         )
         .unwrap();
 
-    let mut rows = stmt.query([block_id])?;
+    let mut rows = match stmt.query([block_id]).optional()? {
+        Some(rows) => rows,
+        None => return Ok(None),
+    };
 
     let mut map: HashMap<String, ActionStats> = HashMap::default();
 
@@ -316,14 +325,14 @@ fn make_block_stats_impl(
     let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
     operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
-    Ok(BlockStats {
+    Ok(Some(BlockStats {
         actions_count,
         tezedge_checkout_context_time: tezedge_checkout_time,
         tezedge_commit_context_time: tezedge_commit_time,
         irmin_checkout_context_time: irmin_checkout_time,
         irmin_commit_context_time: irmin_commit_time,
         operations_context,
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -371,7 +380,7 @@ mod tests {
         )
         .unwrap();
 
-        let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
+        let block_stats = make_block_stats_impl(&sql, block_hash).unwrap().unwrap();
 
         assert_eq!(block_stats.actions_count, 4);
         assert_eq!(block_stats.tezedge_checkout_context_time, 10.0);
@@ -430,5 +439,9 @@ mod tests {
         assert_eq!(action.mem.one_to_ten_us.count, 3);
         assert_eq!(action.add.one_to_ten_us.mean_time, 20.3);
         assert_eq!(action.add.one_to_ten_us.count, 4);
+
+        let block_hash = BlockHash::try_from_bytes(&vec![32; 32]).unwrap();
+        let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
+        assert!(block_stats.is_none());
     }
 }
