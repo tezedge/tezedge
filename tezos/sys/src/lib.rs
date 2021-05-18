@@ -48,6 +48,7 @@ extern "C" {
         tezedge_index_checkout: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_index_exists: unsafe extern "C" fn(isize, isize) -> isize,
         tezedge_index_close: unsafe extern "C" fn(isize) -> isize,
+        tezedge_index_block_applied: unsafe extern "C" fn(isize, isize, isize) -> isize,
         tezedge_index_init: unsafe extern "C" fn(isize) -> isize,
     );
 
