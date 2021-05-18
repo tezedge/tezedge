@@ -354,11 +354,11 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to bootstrap database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
-        .arg(Arg::with_name("timing-db-path")
-            .long("timing-db-path")
+        .arg(Arg::with_name("context-stats-db-path")
+            .long("context-stats-db-path")
             .takes_value(true)
             .value_name("PATH")
-            .help("Path to timing database directory.
+            .help("Path to context-stats database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
@@ -690,7 +690,7 @@ fn validate_required_args(args: &clap::ArgMatches) {
         )),
     );
     validate_required_arg(args, "bootstrap-db-path", None);
-    validate_required_arg(args, "timing-db-path", None);
+    validate_required_arg(args, "context-stats-db-path", None);
     validate_required_arg(args, "p2p-port", None);
     validate_required_arg(args, "protocol-runner", None);
     validate_required_arg(args, "rpc-port", None);
@@ -968,7 +968,7 @@ impl Environment {
                 let db_path = get_final_path(&tezos_data_dir, path);
 
                 let path = args
-                    .value_of("timing-db-path")
+                    .value_of("context-stats-db-path")
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path");
