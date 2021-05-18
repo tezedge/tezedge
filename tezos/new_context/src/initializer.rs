@@ -4,7 +4,7 @@
 use std::cell::RefCell;
 use std::{path::PathBuf, rc::Rc};
 
-use ocaml_interop::{BoxRoot, OCaml};
+use ocaml_interop::BoxRoot;
 
 use crate::gc::mark_move_gced::MarkMoveGCed;
 use crate::kv_store::{
@@ -26,7 +26,7 @@ pub enum ContextKvStoreConfiguration {
 // TODO: are errors not possible here? recheck that
 pub fn initialize_tezedge_index(
     context_kv_store: &ContextKvStoreConfiguration,
-    patch_context: BoxRoot<Option<PatchContextFunction>>,
+    patch_context: Option<BoxRoot<PatchContextFunction>>,
 ) -> TezedgeIndex {
     TezedgeIndex::new(
         match context_kv_store {
@@ -52,7 +52,6 @@ pub fn initialize_tezedge_index(
 pub fn initialize_tezedge_context(
     context_kv_store: &ContextKvStoreConfiguration,
 ) -> Result<TezedgeContext, failure::Error> {
-    let patch_context = OCaml::none().root();
-    let index = initialize_tezedge_index(context_kv_store, patch_context);
+    let index = initialize_tezedge_index(context_kv_store, None);
     Ok(TezedgeContext::new(index, None, None))
 }
