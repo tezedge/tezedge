@@ -1,7 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{cell::{Ref, RefCell}, collections::HashSet, convert::TryInto};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashSet,
+    convert::TryInto,
+};
 use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
@@ -90,7 +94,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 
 #[derive(Default)]
 pub struct StringInterner {
-    strings: HashSet<Rc<str>>
+    strings: HashSet<Rc<str>>,
 }
 
 impl StringInterner {
@@ -99,9 +103,7 @@ impl StringInterner {
             return Rc::from(s);
         }
 
-        self.strings.get_or_insert_with(s, |s| {
-            Rc::from(s)
-        }).clone()
+        self.strings.get_or_insert_with(s, |s| Rc::from(s)).clone()
     }
 }
 

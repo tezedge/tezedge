@@ -57,6 +57,7 @@ extern "C" {
         tezedge_timing_set_operation: unsafe extern "C" fn(isize) -> isize,
         tezedge_timing_commit: unsafe extern "C" fn(isize, f64, f64) -> isize,
         tezedge_timing_context_action: unsafe extern "C" fn(isize, isize, f64, f64) -> isize,
+        tezedge_timing_init: unsafe extern "C" fn(isize) -> isize,
     );
 }
 

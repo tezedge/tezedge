@@ -180,6 +180,7 @@ pub trait MultipleValueArg: IntoEnumIterator {
 pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
+    pub timing_db_path: PathBuf,
     pub context_storage_configuration: TezosContextStorageConfiguration,
     pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
@@ -352,6 +353,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("PATH")
             .help("Path to bootstrap database directory.
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("timing-db-path")
+            .long("timing-db-path")
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to timing database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
@@ -683,6 +690,7 @@ fn validate_required_args(args: &clap::ArgMatches) {
         )),
     );
     validate_required_arg(args, "bootstrap-db-path", None);
+    validate_required_arg(args, "timing-db-path", None);
     validate_required_arg(args, "p2p-port", None);
     validate_required_arg(args, "protocol-runner", None);
     validate_required_arg(args, "rpc-port", None);
@@ -959,6 +967,13 @@ impl Environment {
                     .expect("Provided value cannot be converted to path");
                 let db_path = get_final_path(&tezos_data_dir, path);
 
+                let path = args
+                    .value_of("timing-db-path")
+                    .unwrap_or("")
+                    .parse::<PathBuf>()
+                    .expect("Provided value cannot be converted to path");
+                let timing_db_path = get_final_path(&tezos_data_dir, path);
+
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
                         .parse::<usize>()
@@ -1111,6 +1126,7 @@ impl Environment {
                     context_storage_configuration,
                     db,
                     db_path,
+                    timing_db_path,
                     compute_context_action_tree_hashes,
                     context_action_recorders,
                     context_kv_store,

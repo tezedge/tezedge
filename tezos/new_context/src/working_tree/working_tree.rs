@@ -695,7 +695,7 @@ impl WorkingTree {
             Some(new_node) => {
                 let last = self.index.get_str(last);
                 tree.insert(last.into(), Rc::new(new_node))
-            },
+            }
         };
 
         if tree.is_empty() {
