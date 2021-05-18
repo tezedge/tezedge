@@ -71,35 +71,7 @@ steps:
     - rm -rf /tmp/sandbox/tezos-node
     - rm -rf /tmp/sandbox/tezos-client
     - rm -rf /home/tezos/data/
-    # - rm -rf /artifacts/*
-    # - rm -rf /tmp/tezos-src/*
 
-# - name: prepare-directory-structure
-#   image: simplestakingcom/tezedge-ci-builder:latest
-#   user: root
-#   volumes:
-#     - name: build
-#       path: /artifacts
-#     - name: sandbox-data
-#       path: /tmp/sandbox
-#     - name: tezos-src
-#       path: /tmp/tezos-src
-#     - name: ids
-#       path: /home/appuser/.ssh
-#   commands:
-    
-#     # Modify permissions for ssh key
-#     - chown appuser /home/appuser/.ssh/id_rsa
-#     - chown appuser /home/appuser/.ssh
-#     - chmod 600 /home/appuser/.ssh/id_rsa
-#     - ls -la /home/appuser/.ssh
-#     # distribute the directory structure
-#     - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress $${BUILD_ARTIFACTS_PATH}/ dev@65.21.119.66:/usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-#     - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress $${BUILD_ARTIFACTS_PATH}/ dev@65.21.119.67:/usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-#     - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress $${BUILD_ARTIFACTS_PATH}/ dev@65.21.119.68:/usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-#     - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress $${BUILD_ARTIFACTS_PATH}/ dev@65.21.119.69:/usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-#     - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress $${BUILD_ARTIFACTS_PATH}/ dev@65.21.119.70:/usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-  
 image_pull_secrets:
   - docker_pull_secret
 
