@@ -4,13 +4,10 @@
 use std::collections::HashMap;
 use std::collections::{HashSet, VecDeque};
 
-use crypto::hash::HashType;
-
-use crate::gc::{collect_hashes, fetch_entry_from_store, GarbageCollectionError, GarbageCollector};
+use crate::gc::{GarbageCollectionError, GarbageCollector};
 use crate::hash::EntryHash;
 use crate::persistent::database::DBError;
 use crate::persistent::KeyValueStoreBackend;
-use crate::working_tree::Entry;
 use crate::{ContextKeyValueStoreSchema, ContextValue};
 
 /// Garbage Collected Key Value Store
@@ -70,27 +67,10 @@ impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Default> Ma
 
     fn store_entries_referenced_by_commit(
         &mut self,
-        commit: EntryHash,
+        referenced_older_entries: HashSet<EntryHash>,
     ) -> Result<(), GarbageCollectionError> {
-        let commit_entry = fetch_entry_from_store(&self.store, commit)?;
-
-        match commit_entry {
-            Entry::Commit { .. } => {
-                let mut entries = HashSet::new();
-                collect_hashes(&commit_entry, &mut entries, &mut self.cache, &self.store)?;
-
-                // remove keys non used in current block
-                self.cache.retain(|k, _| entries.contains(k));
-                self.mark_reused(entries.into_iter().collect());
-                Ok(())
-            }
-            _ => Err(GarbageCollectionError::GarbageCollectorError {
-                error: format!(
-                    "{} is not a commit",
-                    HashType::ContextHash.hash_to_b58check(&commit)?
-                ),
-            }),
-        }
+        self.mark_reused(referenced_older_entries);
+        Ok(())
     }
 }
 
@@ -101,8 +81,11 @@ impl<T: 'static + KeyValueStoreBackend<ContextKeyValueStoreSchema> + Default> Ga
         self.new_cycle_started()
     }
 
-    fn block_applied(&mut self, commit: EntryHash) -> Result<(), GarbageCollectionError> {
-        self.store_entries_referenced_by_commit(commit)
+    fn block_applied(
+        &mut self,
+        referenced_older_entries: HashSet<EntryHash>,
+    ) -> Result<(), GarbageCollectionError> {
+        self.store_entries_referenced_by_commit(referenced_older_entries)
     }
 }
 
