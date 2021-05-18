@@ -21,9 +21,9 @@ pub fn force_libtezos_linking() {
     tezos_sys::force_libtezos_linking();
 }
 
-use std::array::TryFromSliceError;
 use std::collections::BTreeMap;
 use std::num::TryFromIntError;
+use std::{array::TryFromSliceError, collections::HashSet};
 
 use failure::Fail;
 use gc::GarbageCollectionError;
@@ -113,7 +113,10 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     // checkout context for hash
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<T>, ContextError>;
     // called after a block is applied
-    fn block_applied(&mut self, last_commit_hash: ContextHash) -> Result<(), ContextError>;
+    fn block_applied(
+        &self,
+        referenced_older_entries: HashSet<EntryHash>,
+    ) -> Result<(), ContextError>;
     // called when a new cycle starts
     fn cycle_started(&mut self) -> Result<(), ContextError>;
 }
