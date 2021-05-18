@@ -18,7 +18,7 @@ pub mod working_tree;
 pub mod working_tree_stats;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
-pub struct KeyFragment(Rc<str>);
+pub struct KeyFragment(pub(crate) Rc<str>);
 
 impl std::ops::Deref for KeyFragment {
     type Target = str;
