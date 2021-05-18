@@ -36,7 +36,7 @@ pub(crate) fn make_block_stats(
             db_path.push(FILENAME_DB);
             db_path
         }
-        None => PathBuf::from(FILENAME_DB)
+        None => PathBuf::from(FILENAME_DB),
     };
 
     let sql = Connection::open(db_path)?;
@@ -53,7 +53,7 @@ pub(crate) fn make_context_stats(
             db_path.push(FILENAME_DB);
             db_path
         }
-        None => PathBuf::from(FILENAME_DB)
+        None => PathBuf::from(FILENAME_DB),
     };
 
     let sql = Connection::open(db_path)?;

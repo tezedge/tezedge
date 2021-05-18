@@ -270,7 +270,7 @@ fn start_timing(recv: Receiver<TimingMessage>) {
                 db_path = path.clone();
                 break;
             }
-            _ => {},
+            _ => {}
         }
     }
 
