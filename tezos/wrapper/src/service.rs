@@ -66,6 +66,7 @@ struct InitProtocolContextParams {
     readonly: bool,
     turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
+    context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -170,6 +171,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     enable_testchain: params.enable_testchain,
                     readonly: params.readonly,
                     sandbox_json_patch_context: params.patch_context,
+                    context_stats_db_path: params.context_stats_db_path,
                 };
                 let res = Proto::init_protocol_context(context_config);
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
@@ -641,6 +643,7 @@ impl ProtocolController {
         enable_testchain: bool,
         readonly: bool,
         patch_context: Option<PatchContext>,
+        context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         // try to check if was at least one write success, other words, if context was already created on file system
         {
@@ -675,6 +678,7 @@ impl ProtocolController {
                 readonly,
                 turn_off_context_raw_inspector: self.configuration.event_server_path.is_none(),
                 patch_context,
+                context_stats_db_path,
             },
         ))?;
 
@@ -739,6 +743,7 @@ impl ProtocolController {
         &self,
         commit_genesis: bool,
         patch_context: &Option<PatchContext>,
+        context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
@@ -748,6 +753,7 @@ impl ProtocolController {
             self.configuration.enable_testchain,
             false,
             patch_context.clone(),
+            context_stats_db_path,
         )
     }
 
@@ -762,6 +768,7 @@ impl ProtocolController {
             false,
             self.configuration.enable_testchain,
             true,
+            None,
             None,
         )
     }

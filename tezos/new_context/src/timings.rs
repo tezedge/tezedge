@@ -82,3 +82,11 @@ pub fn context_action(
 
     TIMING_CHANNEL.send(TimingMessage::Action(action)).unwrap();
 }
+
+pub fn init_timing(db_path: String) {
+    TIMING_CHANNEL
+        .send(TimingMessage::InitTiming {
+            db_path: Some(db_path.into()),
+        })
+        .unwrap();
+}
