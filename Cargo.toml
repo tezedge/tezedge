@@ -24,6 +24,7 @@ members = [
     "storage",
     "sandbox",
     "light_node",
+    "new_node",
     "monitoring",
     "protocol_runner",
     "rpc",
