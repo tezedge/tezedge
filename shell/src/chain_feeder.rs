@@ -619,6 +619,7 @@ fn feed_chain_to_protocol(
     log: &Logger,
 ) -> Result<(), FeedChainError> {
     // at first we initialize protocol runtime and ffi context
+
     initialize_protocol_context(
         &apply_block_run,
         chain_current_head_manager,
@@ -1061,8 +1062,12 @@ pub(crate) fn initialize_protocol_context(
 
     // initialize protocol context runtime
     let protocol_call_timer = Instant::now();
-    let context_init_info = protocol_controller
-        .init_protocol_for_write(need_commit_genesis, &init_storage_data.patch_context)?;
+    let context_init_info = protocol_controller.init_protocol_for_write(
+        need_commit_genesis,
+        &init_storage_data.patch_context,
+        init_storage_data.context_stats_db_path.clone(),
+    )?;
+
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     info!(log, "Protocol context initialized"; "context_init_info" => format!("{:?}", &context_init_info), "need_commit_genesis" => need_commit_genesis);
 
