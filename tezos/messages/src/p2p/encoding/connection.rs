@@ -23,17 +23,16 @@ use crate::p2p::encoding::version::NetworkVersion;
     Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated,
 )]
 pub struct ConnectionMessage {
-    #[get = "pub"]
-    port: u16,
+    pub port: u16,
     #[get = "pub"]
     #[encoding(sized = "CRYPTO_KEY_SIZE", bytes)]
-    public_key: Vec<u8>,
+    pub public_key: Vec<u8>,
     #[encoding(sized = "POW_SIZE", bytes)]
-    proof_of_work_stamp: Vec<u8>,
+    pub proof_of_work_stamp: Vec<u8>,
     #[encoding(sized = "NONCE_SIZE", bytes)]
-    message_nonce: Vec<u8>,
+    pub message_nonce: Vec<u8>,
     #[get = "pub"]
-    version: NetworkVersion,
+    pub version: NetworkVersion,
 }
 
 impl ConnectionMessage {
