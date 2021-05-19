@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use getset::Getters;
 use hyper::service::{make_service_fn, service_fn};
@@ -69,6 +72,8 @@ pub struct RpcServiceEnvironment {
     tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     tezos_without_context_api: Arc<TezosApiConnectionPool>,
+    #[get = "pub(crate)"]
+    context_stats_db_path: Option<PathBuf>,
 
     // TODO: TE-447 - remove one_context when integration done
     pub one_context: bool,
@@ -93,6 +98,7 @@ impl RpcServiceEnvironment {
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         one_context: bool,
+        context_stats_db_path: Option<PathBuf>,
         log: &Logger,
     ) -> Self {
         Self {
@@ -113,6 +119,7 @@ impl RpcServiceEnvironment {
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
             one_context,
+            context_stats_db_path,
         }
     }
 }
