@@ -106,6 +106,8 @@ impl_to_ocaml_record! {
         readonly: bool,
         sandbox_json_patch_context: Option<(String, String)> =>
             sandbox_json_patch_context.clone().map(|pc| (pc.key, pc.json)),
+        context_stats_db_path: Option<String> =>
+            context_stats_db_path.clone().map(|pb| pb.to_string_lossy().into_owned()),
     }
 }
 
