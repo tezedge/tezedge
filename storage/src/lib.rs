@@ -225,7 +225,7 @@ pub fn resolve_storage_init_chain_data(
     context_storage_configuration: &TezosContextStorageConfiguration,
     patch_context: &Option<PatchContext>,
     one_context: bool,
-    context_stats_db_path: Option<PathBuf>,
+    context_stats_db_path: &Option<PathBuf>,
     log: &Logger,
 ) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {

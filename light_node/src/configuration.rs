@@ -180,7 +180,7 @@ pub trait MultipleValueArg: IntoEnumIterator {
 pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
-    pub context_stats_db_path: PathBuf,
+    pub context_stats_db_path: Option<PathBuf>,
     pub context_storage_configuration: TezosContextStorageConfiguration,
     pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
@@ -690,7 +690,6 @@ fn validate_required_args(args: &clap::ArgMatches) {
         )),
     );
     validate_required_arg(args, "bootstrap-db-path", None);
-    validate_required_arg(args, "context-stats-db-path", None);
     validate_required_arg(args, "p2p-port", None);
     validate_required_arg(args, "protocol-runner", None);
     validate_required_arg(args, "rpc-port", None);
@@ -967,12 +966,12 @@ impl Environment {
                     .expect("Provided value cannot be converted to path");
                 let db_path = get_final_path(&tezos_data_dir, path);
 
-                let path = args
+                let context_stats_db_path = args
                     .value_of("context-stats-db-path")
-                    .unwrap_or("")
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path");
-                let context_stats_db_path = get_final_path(&tezos_data_dir, path);
+                    .map(|value| {
+                        let path = value.parse::<PathBuf>().expect("Provided value cannot be converted to path");
+                        get_final_path(&tezos_data_dir, path)
+                    });
 
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
