@@ -112,6 +112,7 @@ impl NodeInfrastructure {
             &context_storage_configuration,
             &patch_context,
             one_context,
+            &None,
             &log,
         )
         .expect("Failed to resolve init storage chain data");

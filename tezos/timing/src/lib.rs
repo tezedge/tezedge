@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
@@ -9,7 +9,7 @@ use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError};
 use serde::Serialize;
 
-pub const DB_PATH: &str = "context_stats.db";
+pub const FILENAME_DB: &str = "context_stats.db";
 
 #[derive(Debug)]
 pub enum ActionKind {
@@ -50,6 +50,9 @@ pub enum TimingMessage {
         tezedge_time: f64,
     },
     Action(Action),
+    InitTiming {
+        db_path: Option<PathBuf>,
+    },
 }
 
 // Id of the hash in the database
@@ -259,11 +262,17 @@ pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
 });
 
 fn start_timing(recv: Receiver<TimingMessage>) {
-    #[cfg(not(test))]
-    let db_path = Some(DB_PATH.into());
+    let mut db_path: Option<PathBuf> = None;
 
-    #[cfg(test)]
-    let db_path = None;
+    for msg in &recv {
+        match msg {
+            TimingMessage::InitTiming { db_path: path } => {
+                db_path = path.clone();
+                break;
+            }
+            _ => {}
+        }
+    }
 
     let mut timing = Timing::new(db_path);
 
@@ -286,7 +295,7 @@ pub fn hash_to_string(hash: &[u8]) -> String {
 }
 
 impl Timing {
-    fn new(db_path: Option<String>) -> Timing {
+    fn new(db_path: Option<PathBuf>) -> Timing {
         let sql = Self::init_sqlite(db_path).unwrap();
 
         Timing {
@@ -322,6 +331,7 @@ impl Timing {
                 irmin_time,
                 tezedge_time,
             } => self.insert_commit(irmin_time, tezedge_time),
+            TimingMessage::InitTiming { .. } => Ok(()),
         }
     }
 
@@ -843,11 +853,17 @@ impl Timing {
         Ok(())
     }
 
-    fn init_sqlite(db_path: Option<String>) -> Result<Connection, SQLError> {
-        let connection = match db_path.as_ref() {
-            Some(path) => {
-                std::fs::remove_file(path).ok();
-                Connection::open(path)?
+    fn init_sqlite(db_path: Option<PathBuf>) -> Result<Connection, SQLError> {
+        let connection = match db_path {
+            Some(mut path) => {
+                if !path.is_dir() {
+                    std::fs::create_dir_all(&path).ok();
+                }
+
+                path.push(FILENAME_DB);
+
+                std::fs::remove_file(&path).ok();
+                Connection::open(&path)?
             }
             None => Connection::open_in_memory()?,
         };
@@ -912,6 +928,9 @@ mod tests {
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
         let context_hash = ContextHash::try_from_bytes(&vec![2; 32]).unwrap();
 
+        TIMING_CHANNEL
+            .send(TimingMessage::InitTiming { db_path: None })
+            .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::SetBlock(Some(block_hash)))
             .unwrap();

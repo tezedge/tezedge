@@ -54,6 +54,7 @@ fn test_init_empty_context_for_all_enviroment_nets() {
             enable_testchain: false,
             readonly: false,
             sandbox_json_patch_context: None,
+            context_stats_db_path: None,
         };
 
         match client::init_protocol_context(context_config) {
@@ -120,6 +121,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
         enable_testchain: false,
         readonly: false,
         sandbox_json_patch_context: Some(patch_context),
+        context_stats_db_path: None,
     };
 
     match client::init_protocol_context(context_config) {
@@ -175,6 +177,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
         enable_testchain: false,
         readonly: false,
         sandbox_json_patch_context: None,
+        context_stats_db_path: None,
     };
 
     match client::init_protocol_context(context_config) {
