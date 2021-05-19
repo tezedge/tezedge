@@ -156,6 +156,7 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         readonly: false,
         context_stats_db_path: None,
         sandbox_json_patch_context: None,
+        context_stats_db_path: None,
     };
 
     let result = client::init_protocol_context(context_config).unwrap();
