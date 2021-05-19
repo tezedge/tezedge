@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt::Debug;
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 use std::{convert::TryFrom, fmt};
+use std::{fmt::Debug, path::PathBuf};
 
 use derive_builder::Builder;
 use failure::Fail;
@@ -133,6 +133,7 @@ pub struct TezosContextConfiguration {
     pub enable_testchain: bool,
     pub readonly: bool,
     pub sandbox_json_patch_context: Option<PatchContext>,
+    pub context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Builder)]
