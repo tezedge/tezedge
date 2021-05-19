@@ -67,7 +67,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
                         if flag_readonly {
                             proto.init_protocol_for_read()?
                         } else {
-                            proto.init_protocol_for_write(false, &None)?
+                            proto.init_protocol_for_write(false, &None, None)?
                         }
                     }),
                     Err(e) => Err(format_err!("{:?}", e)),
@@ -203,7 +203,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
 
     let mut write_api = write_context_commands.try_accept(Duration::from_secs(3))?;
     let genesis_context_hash = write_api
-        .init_protocol_for_write(true, &None)?
+        .init_protocol_for_write(true, &None, None)?
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
     write_api.shutdown()?;

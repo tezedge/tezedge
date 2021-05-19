@@ -5,10 +5,13 @@ use failure::format_err;
 use hyper::{Body, Request};
 use slog::warn;
 
-use crate::helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
+use crate::{
+    helpers::{parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID},
+    result_option_to_json_response,
+};
 
 pub async fn dev_blocks(
     _: Request<Body>,
@@ -197,7 +200,12 @@ pub async fn context_stats(
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
     let context_name = query.get_str("context_name").unwrap_or("tezedge");
-    result_to_json_response(context::make_context_stats(context_name), env.log())
+    let db_path = env.context_stats_db_path.as_ref();
+
+    result_to_json_response(
+        context::make_context_stats(db_path, context_name),
+        env.log(),
+    )
 }
 
 pub async fn block_actions(
@@ -208,8 +216,9 @@ pub async fn block_actions(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let db_path = env.context_stats_db_path.as_ref();
 
-    result_to_json_response(context::make_block_stats(block_hash), env.log())
+    result_option_to_json_response(context::make_block_stats(db_path, block_hash), env.log())
 }
 
 /// Get the version string

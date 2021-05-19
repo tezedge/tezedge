@@ -70,6 +70,7 @@ fn test_storage() -> Result<(), Error> {
         &context_storage_configuration,
         &None,
         false,
+        &None,
         &log,
     );
     assert!(init_data.is_ok());
