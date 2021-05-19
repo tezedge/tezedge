@@ -670,6 +670,16 @@ ocaml_export! {
         timings::context_action(rt, action_name, key, irmin_time, tezedge_time);
         OCaml::unit()
     }
+
+    fn tezedge_timing_init(
+        rt,
+        db_path: OCamlRef<String>,
+    ) {
+        let db_path: String = db_path.to_rust(rt);
+
+        timings::init_timing(db_path);
+        OCaml::unit()
+    }
 }
 
 unsafe impl ToOCaml<DynBox<WorkingTreeFFI>> for WorkingTreeFFI {
@@ -739,6 +749,7 @@ pub fn initialize_callbacks() {
             tezedge_timing_set_operation,
             tezedge_timing_commit,
             tezedge_timing_context_action,
+            tezedge_timing_init,
         );
     }
 }
