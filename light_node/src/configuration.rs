@@ -966,12 +966,12 @@ impl Environment {
                     .expect("Provided value cannot be converted to path");
                 let db_path = get_final_path(&tezos_data_dir, path);
 
-                let context_stats_db_path = args
-                    .value_of("context-stats-db-path")
-                    .map(|value| {
-                        let path = value.parse::<PathBuf>().expect("Provided value cannot be converted to path");
-                        get_final_path(&tezos_data_dir, path)
-                    });
+                let context_stats_db_path = args.value_of("context-stats-db-path").map(|value| {
+                    let path = value
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path");
+                    get_final_path(&tezos_data_dir, path)
+                });
 
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
