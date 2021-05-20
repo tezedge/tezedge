@@ -94,12 +94,11 @@ pub(crate) fn live_blocks(
 ) -> Result<Vec<String>, failure::Error> {
     let persistent_storage = env.persistent_storage();
 
-    let block_storage = BlockStorage::new(persistent_storage);
     let block_meta_storage = BlockMetaStorage::new(persistent_storage);
 
     // get max_ttl for requested block
-    let max_ttl: usize = match block_storage.get_with_additional_data(&block_hash)? {
-        Some((_, json_data)) => json_data.max_operations_ttl().into(),
+    let max_ttl: usize = match block_meta_storage.get_additional_data(&block_hash)? {
+        Some(additional_data) => additional_data.max_operations_ttl().into(),
         None => bail!(
             "Max_ttl not found for block id: {}",
             block_hash.to_base58_check()

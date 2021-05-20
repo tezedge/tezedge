@@ -25,21 +25,47 @@ impl fmt::Display for DiskSpaceData {
     }
 }
 
-#[derive(Serialize, Debug, Getters)]
+#[derive(Clone, Serialize, Debug, Getters, CopyGetters, Eq, PartialEq, Default)]
 pub struct NodeInfo {
     #[get = "pub(crate)"]
     level: u64,
+
     block_hash: String,
+
     #[get = "pub(crate)"]
     timestamp: String,
+
+    #[get = "pub(crate)"]
+    protocol: u64,
+
+    #[get = "pub(crate)"]
+    cycle_position: u64,
+
+    #[get = "pub(crate)"]
+    voting_period_position: u64,
+
+    #[get = "pub(crate)"]
+    voting_period: String,
 }
 
 impl NodeInfo {
-    pub fn new(level: u64, block_hash: String, timestamp: String) -> Self {
+    pub fn new(
+        level: u64,
+        block_hash: String,
+        timestamp: String,
+        protocol: u64,
+        cycle_position: u64,
+        voting_period_position: u64,
+        voting_period: String,
+    ) -> Self {
         Self {
             level,
             block_hash,
             timestamp,
+            protocol,
+            cycle_position,
+            voting_period,
+            voting_period_position,
         }
     }
 }
@@ -48,8 +74,8 @@ impl fmt::Display for NodeInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\n\tLevel: {}\n\tBlock hash: {}\n\tTimestamp: {}",
-            self.level, self.block_hash, self.timestamp,
+            "\n\tLevel: {}\n\tCycle position: {}\n\tProtocol: {}\n\tVoting period: {}\n\tVoting period position: {}",
+            self.level, self.cycle_position, self.protocol, self.voting_period, self.voting_period_position
         )
     }
 }

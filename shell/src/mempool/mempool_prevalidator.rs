@@ -24,7 +24,7 @@ use slog::{debug, info, trace, warn, Logger};
 use crypto::hash::{BlockHash, ChainId, OperationHash};
 use storage::chain_meta_storage::{ChainMetaStorage, ChainMetaStorageReader};
 use storage::mempool_storage::MempoolOperationType;
-use storage::PersistentStorage;
+use storage::{BlockHeaderWithHash, PersistentStorage};
 use storage::{BlockStorage, BlockStorageReader, MempoolStorage, StorageError};
 use tezos_api::ffi::{
     Applied, BeginConstructionRequest, PrevalidatorWrapper, ValidateOperationRequest,
@@ -35,21 +35,22 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
+use crate::mempool::mempool_channel::{
+    subscribe_to_mempool_channel, MempoolChannelMsg, MempoolChannelRef, MempoolOperationReceived,
+};
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
-use crate::subscription::{
-    subscribe_to_shell_events, subscribe_to_shell_new_current_head, subscribe_to_shell_shutdown,
-};
+use crate::subscription::subscribe_to_shell_shutdown;
 use crate::utils::{dispatch_condvar_result, CondvarResult};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ShellChannelMsg)]
+#[actor(ShellChannelMsg, MempoolChannelMsg)]
 pub struct MempoolPrevalidator {
-    /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
+    mempool_channel: MempoolChannelRef,
 
     validator_event_sender: Arc<Mutex<QueueSender<Event>>>,
     validator_run: Arc<AtomicBool>,
@@ -57,7 +58,7 @@ pub struct MempoolPrevalidator {
 }
 
 enum Event {
-    NewHead(BlockHash, Arc<BlockHeader>),
+    NewHead(Arc<BlockHeaderWithHash>),
     ValidateOperation(
         OperationHash,
         MempoolOperationType,
@@ -73,6 +74,7 @@ impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
+        mempool_channel: MempoolChannelRef,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
@@ -133,6 +135,7 @@ impl MempoolPrevalidator {
             MempoolPrevalidator::name(),
             Props::new_args((
                 shell_channel,
+                mempool_channel,
                 validator_run,
                 Arc::new(Mutex::new(Some(validator_thread))),
                 Arc::new(Mutex::new(validator_event_sender)),
@@ -153,32 +156,43 @@ impl MempoolPrevalidator {
         _: &Context<MempoolPrevalidatorMsg>,
         msg: ShellChannelMsg,
     ) -> Result<(), Error> {
+        if let ShellChannelMsg::ShuttingDown(_) = msg {
+            self.validator_event_sender
+                .lock()
+                .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
+                .send(Event::ShuttingDown)?;
+        }
+        Ok(())
+    }
+
+    fn process_mempool_channel_message(
+        &mut self,
+        _: &Context<MempoolPrevalidatorMsg>,
+        msg: MempoolChannelMsg,
+    ) -> Result<(), Error> {
         match msg {
-            ShellChannelMsg::NewCurrentHead(head, block) => {
+            MempoolChannelMsg::ResetMempool(block) => {
                 // add NewHead to queue
                 self.validator_event_sender
                     .lock()
                     .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-                    .send(Event::NewHead(head.into(), block.header.clone()))?;
+                    .send(Event::NewHead(block))?;
             }
-            ShellChannelMsg::MempoolOperationReceived(operation) => {
+            MempoolChannelMsg::ValidateOperation(MempoolOperationReceived {
+                operation_hash,
+                operation_type,
+                result_callback,
+            }) => {
                 // add operation to queue for validation
                 self.validator_event_sender
                     .lock()
                     .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
                     .send(Event::ValidateOperation(
-                        operation.operation_hash.clone(),
-                        operation.operation_type,
-                        operation.result_callback,
+                        operation_hash,
+                        operation_type,
+                        result_callback,
                     ))?;
             }
-            ShellChannelMsg::ShuttingDown(_) => {
-                self.validator_event_sender
-                    .lock()
-                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-                    .send(Event::ShuttingDown)?;
-            }
-            _ => (),
         }
 
         Ok(())
@@ -188,14 +202,16 @@ impl MempoolPrevalidator {
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
+        MempoolChannelRef,
         Arc<AtomicBool>,
         SharedJoinHandle,
         Arc<Mutex<QueueSender<Event>>>,
     )> for MempoolPrevalidator
 {
     fn create_args(
-        (shell_channel, validator_run, validator_thread, validator_event_sender): (
+        (shell_channel, mempool_channel, validator_run, validator_thread, validator_event_sender): (
             ShellChannelRef,
+            MempoolChannelRef,
             Arc<AtomicBool>,
             SharedJoinHandle,
             Arc<Mutex<QueueSender<Event>>>,
@@ -203,6 +219,7 @@ impl
     ) -> Self {
         MempoolPrevalidator {
             shell_channel,
+            mempool_channel,
             validator_run,
             validator_thread,
             validator_event_sender,
@@ -215,8 +232,7 @@ impl Actor for MempoolPrevalidator {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
+        subscribe_to_mempool_channel(&self.mempool_channel, ctx.myself());
     }
 
     fn post_stop(&mut self) {
@@ -247,6 +263,19 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
             Ok(_) => (),
             Err(e) => {
                 warn!(ctx.system.log(), "Mempool - failed to process shell channel message"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<MempoolChannelMsg> for MempoolPrevalidator {
+    type Msg = MempoolPrevalidatorMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: MempoolChannelMsg, _: Sender) {
+        match self.process_mempool_channel_message(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Mempool - failed to process mempool channel message"; "reason" => format!("{:?}", e))
             }
         }
     }
@@ -314,13 +343,18 @@ fn process_prevalidation(
         // 1. at first let's handle event
         if let Ok(event) = validator_event_receiver.recv() {
             match event {
-                Event::NewHead(header_hash, header) => {
+                Event::NewHead(header) => {
                     debug!(log, "Mempool - new head received, so begin construction a new context";
-                                "received_block_hash" => header_hash.to_base58_check());
+                                "received_block_hash" => header.hash.to_base58_check());
 
                     // try to begin construction new context
-                    let (prevalidator, head) =
-                        begin_construction(&api, &chain_id, header_hash, header, &log)?;
+                    let (prevalidator, head) = begin_construction(
+                        &api,
+                        &chain_id,
+                        header.hash.clone(),
+                        header.header.clone(),
+                        &log,
+                    )?;
 
                     // reinitialize state for new prevalidator and head
                     let operations_to_delete = current_mempool_state_storage
@@ -451,7 +485,7 @@ fn begin_construction(
     // try to begin construction
     let result = match api.begin_construction(BeginConstructionRequest {
         chain_id: chain_id.clone(),
-        predecessor: (&*block_header).clone(),
+        predecessor: block_header.as_ref().clone(),
         protocol_data: None,
     }) {
         Ok(prevalidator) => (Some(prevalidator), Some(block_hash)),

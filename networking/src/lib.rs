@@ -52,6 +52,8 @@ pub struct LocalPeerInfo {
     identity: Arc<Identity>,
     /// version of shell/network protocol which we are compatible with
     version: Arc<ShellCompatibilityVersion>,
+    /// Target number for proof-of-work
+    pow_target: f64,
 }
 
 impl LocalPeerInfo {
@@ -59,11 +61,13 @@ impl LocalPeerInfo {
         listener_port: u16,
         identity: Arc<Identity>,
         version: Arc<ShellCompatibilityVersion>,
+        pow_target: f64,
     ) -> Self {
         LocalPeerInfo {
             listener_port,
             identity,
             version,
+            pow_target,
         }
     }
 

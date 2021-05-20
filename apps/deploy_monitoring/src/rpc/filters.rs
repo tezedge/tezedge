@@ -18,15 +18,23 @@ pub fn filters(
         .allow_methods(vec!["GET"]);
 
     // TODO: TE-499 - (multiple nodes) rework this to load from a config, where all the nodes all defined
-    let ocaml_resource_utilization_storage = resource_utilization_storage.get("ocaml").unwrap();
     let tezedge_resource_utilization_storage = resource_utilization_storage.get("tezedge").unwrap();
-
-    get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage.clone())
-        .or(get_tezedge_measurements_filter(
-            log,
-            tezedge_resource_utilization_storage.clone(),
-        ))
-        .with(cors)
+    if let Some(ocaml_resource_utilization_storage) = resource_utilization_storage.get("ocaml") {
+        get_ocaml_measurements_filter(log.clone(), ocaml_resource_utilization_storage.clone())
+            .or(get_tezedge_measurements_filter(
+                log,
+                tezedge_resource_utilization_storage.clone(),
+            ))
+            .with(cors)
+    } else {
+        // This is just a hack to enable only tezedge node
+        get_ocaml_measurements_filter(log.clone(), ResourceUtilizationStorage::default())
+            .or(get_tezedge_measurements_filter(
+                log,
+                tezedge_resource_utilization_storage.clone(),
+            ))
+            .with(cors)
+    }
 }
 
 pub fn get_tezedge_measurements_filter(

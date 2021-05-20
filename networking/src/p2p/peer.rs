@@ -16,14 +16,18 @@ use tokio::net::TcpStream;
 use tokio::runtime::Handle;
 use tokio::time::timeout;
 
-use crypto::nonce::{self, Nonce, NoncePair};
 use crypto::{
     blake2b::Blake2bError,
     crypto_box::{CryptoKey, PrecomputedKey, PublicKey},
+    proof_of_work::PowError,
 };
 use crypto::{
     crypto_box::PublicKeyError,
     hash::{CryptoboxPublicKeyHash, Hash},
+};
+use crypto::{
+    nonce::{self, Nonce, NoncePair},
+    proof_of_work::check_proof_of_work,
 };
 use tezos_encoding::{
     binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
@@ -67,6 +71,8 @@ pub enum PeerError {
     CryptoError { error: crypto::CryptoError },
     #[fail(display = "Public key error: {}", _0)]
     PublicKeyError(PublicKeyError),
+    #[fail(display = "Not enough proof of work: {}", _0)]
+    PowError(PowError),
 }
 
 impl From<BinaryWriterError> for PeerError {
@@ -316,6 +322,7 @@ impl Receive<SendMessage> for Peer {
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
         let peer_id_marker = self.peer_id_marker.clone();
+
         self.tokio_executor.spawn(async move {
             let mut tx_lock = tx.lock().await;
             if let Some(tx) = tx_lock.as_mut() {
@@ -431,6 +438,26 @@ pub async fn bootstrap(
     let connection_message =
         ConnectionMessage::from_bytes(received_connection_message_bytes.content())?;
 
+    // create PublicKey from received bytes from remote peer
+    let peer_public_key = PublicKey::from_bytes(connection_message.public_key())?;
+
+    let connecting_to_self = peer_public_key == info.identity.public_key;
+    if connecting_to_self {
+        warn!(log, "Detected self connection");
+        // treat as if nack was received
+        return Err(PeerError::NackWithMotiveReceived {
+            nack_info: NackInfo::new(NackMotive::AlreadyConnected, &[]),
+        });
+    }
+
+    // make sure the peer performed enough crypto calculations
+    if let Err(e) = check_proof_of_work(
+        &received_connection_message_bytes.raw()[4..60],
+        info.pow_target,
+    ) {
+        return Err(PeerError::PowError(e));
+    }
+
     // generate local and remote nonce
     let NoncePair {
         local: nonce_local,
@@ -441,9 +468,6 @@ pub async fn bootstrap(
         msg.incoming,
     )?;
 
-    // create PublicKey from received bytes from remote peer
-    let peer_public_key = PublicKey::from_bytes(connection_message.public_key())?;
-
     // pre-compute encryption key
     let precomputed_key = PrecomputedKey::precompute(&peer_public_key, &info.identity.secret_key);
 
@@ -453,19 +477,9 @@ pub async fn bootstrap(
     let log = log.new(o!("peer_id" => peer_id_marker.clone()));
 
     // from now on all messages will be encrypted
-    let mut msg_tx =
-        EncryptedMessageWriter::new(msg_tx, precomputed_key.clone(), nonce_local, log.clone());
     let mut msg_rx =
-        EncryptedMessageReader::new(msg_rx, precomputed_key, nonce_remote, log.clone());
-
-    let connecting_to_self = peer_public_key == info.identity.public_key;
-    if connecting_to_self {
-        debug!(log, "Detected self connection");
-        // treat as if nack was received
-        return Err(PeerError::NackWithMotiveReceived {
-            nack_info: NackInfo::new(NackMotive::AlreadyConnected, &[]),
-        });
-    }
+        EncryptedMessageReader::new(msg_rx, precomputed_key.clone(), nonce_remote, log.clone());
+    let mut msg_tx = EncryptedMessageWriter::new(msg_tx, precomputed_key, nonce_local, log.clone());
 
     // send metadata
     let metadata = MetadataMessage::new(msg.disable_mempool, msg.private_node);
@@ -475,15 +489,14 @@ pub async fn bootstrap(
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
     debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
 
+    let peer_version = connection_message.version();
+
     let compatible_network_version =
-        match supported_protocol_version.choose_compatible_version(connection_message.version()) {
+        match supported_protocol_version.choose_compatible_version(peer_version) {
             Ok(compatible_version) => compatible_version,
             Err(nack_motive) => {
                 // send nack
-                if connection_message
-                    .version()
-                    .supports_nack_with_list_and_motive()
-                {
+                if peer_version.supports_nack_with_list_and_motive() {
                     timeout(
                         IO_TIMEOUT,
                         msg_tx.write_message(&AckMessage::Nack(NackInfo::new(nack_motive, &[]))),
@@ -502,9 +515,9 @@ pub async fn bootstrap(
                     ),
                     incompatible_version: format!(
                         "{}/distributed_db_version {}/p2p_version {}",
-                        connection_message.version().chain_name(),
-                        connection_message.version().distributed_db_version(),
-                        connection_message.version().p2p_version()
+                        peer_version.chain_name(),
+                        peer_version.distributed_db_version(),
+                        peer_version.p2p_version()
                     ),
                 });
             }
@@ -581,7 +594,7 @@ async fn begin_process_incoming(
                                 .into(),
                                 topic: NetworkChannelTopic::NetworkEvents.into(),
                             },
-                            Some(myself.clone().into()),
+                            None,
                         );
                     }
                 }

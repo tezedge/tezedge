@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.4.0] - 2021-05-20
+
+### Changed
+- Optimize the Staging Area Tree part of Context Storage
+- Shell memory optimizations
+- Changed bootstrap current_branch/head algo
+- New Drone CI with parallel runs
+
+### Security
+
+- Added Proof-of-work checking to hand-shake
+
 ## [1.3.1] - 2021-04-14
 
 ### Added
@@ -367,7 +379,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/tezedge/tezedge/releases/v1.4.0
 [1.3.1]: https://github.com/tezedge/tezedge/releases/v1.3.1
 [1.2.0]: https://github.com/tezedge/tezedge/releases/v1.2.0
 [1.1.4]: https://github.com/tezedge/tezedge/releases/v1.1.4

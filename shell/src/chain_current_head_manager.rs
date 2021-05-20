@@ -14,38 +14,29 @@ use std::sync::Arc;
 use riker::actors::*;
 use slog::{debug, info, warn};
 
-use crypto::hash::{BlockHash, ChainId};
-use storage::PersistentStorage;
-use storage::{BlockStorage, BlockStorageReader, StorageInitInfo};
+use crypto::hash::ChainId;
+use storage::StorageInitInfo;
+use storage::{BlockHeaderWithHash, PersistentStorage};
 
+use crate::mempool::mempool_channel::{MempoolChannelMsg, MempoolChannelRef, MempoolChannelTopic};
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::head_state::{CurrentHeadRef, HeadResult, HeadState};
 use crate::state::synchronization_state::SynchronizationBootstrapStateRef;
 use crate::state::StateError;
-use crate::stats::apply_block_stats::{ApplyBlockStatsRef, BlockValidationTimer};
 
 /// Message commands [`ChainCurrentHeadManager`] to process applied block.
 /// Chain_feeder propagates if block successfully validated and applied
 /// This is not the same as NewCurrentHead, not every applied block is set as NewCurrentHead (reorg - several headers on same level, duplicate header ...)
 #[derive(Clone, Debug)]
 pub struct ProcessValidatedBlock {
-    pub block: Arc<BlockHash>,
+    pub block: Arc<BlockHeaderWithHash>,
     chain_id: Arc<ChainId>,
-    validation_timer: Arc<BlockValidationTimer>,
 }
 
 impl ProcessValidatedBlock {
-    pub fn new(
-        block: Arc<BlockHash>,
-        chain_id: Arc<ChainId>,
-        validation_timer: Arc<BlockValidationTimer>,
-    ) -> Self {
-        Self {
-            block,
-            chain_id,
-            validation_timer,
-        }
+    pub fn new(block: Arc<BlockHeaderWithHash>, chain_id: Arc<ChainId>) -> Self {
+        Self { block, chain_id }
     }
 }
 
@@ -55,8 +46,8 @@ pub struct ChainCurrentHeadManager {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
 
-    /// Block storage
-    block_storage: Box<dyn BlockStorageReader>,
+    /// Dedicated channel for mempool
+    mempool_channel: MempoolChannelRef,
 
     /// Helps to manage current head
     head_state: HeadState,
@@ -65,8 +56,8 @@ pub struct ChainCurrentHeadManager {
     /// Holds "best" known remote head
     remote_current_head_state: CurrentHeadRef,
 
-    /// Internal stats
-    apply_block_stats: ApplyBlockStatsRef,
+    /// check if mempool is supported
+    p2p_disable_mempool: bool,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -77,25 +68,27 @@ impl ChainCurrentHeadManager {
     pub fn actor(
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
+        mempool_channel: MempoolChannelRef,
         persistent_storage: PersistentStorage,
         init_storage_data: StorageInitInfo,
         local_current_head_state: CurrentHeadRef,
         remote_current_head_state: CurrentHeadRef,
         current_mempool_state: CurrentMempoolStateStorageRef,
         current_bootstrap_state: SynchronizationBootstrapStateRef,
-        apply_block_stats: ApplyBlockStatsRef,
+        p2p_disable_mempool: bool,
     ) -> Result<ChainCurrentHeadManagerRef, CreateError> {
         sys.actor_of_props::<ChainCurrentHeadManager>(
             ChainCurrentHeadManager::name(),
             Props::new_args((
                 shell_channel,
+                mempool_channel,
                 persistent_storage,
                 init_storage_data,
                 local_current_head_state,
                 remote_current_head_state,
                 current_mempool_state,
                 current_bootstrap_state,
-                apply_block_stats,
+                p2p_disable_mempool,
             )),
         )
     }
@@ -120,26 +113,7 @@ impl ChainCurrentHeadManager {
         ctx: &Context<ChainCurrentHeadManagerMsg>,
         validated_block: ProcessValidatedBlock,
     ) -> Result<(), StateError> {
-        let ProcessValidatedBlock {
-            block,
-            chain_id,
-            validation_timer,
-        } = validated_block;
-
-        // TODO: TE-369 - check if just block metadata with fitness is not enought?
-
-        // read block
-        let block = match self.block_storage.get(&block)? {
-            Some(block) => Arc::new(block),
-            None => {
-                return Err(StateError::ProcessingError {
-                    reason: format!(
-                        "Block/json_data not found for block_hash: {}",
-                        block.to_base58_check()
-                    ),
-                });
-            }
-        };
+        let ProcessValidatedBlock { block, chain_id } = validated_block;
 
         // we try to set it as "new current head", if some means set, if none means just ignore block
         if let Some((new_head, new_head_result)) =
@@ -152,7 +126,6 @@ impl ChainCurrentHeadManager {
             );
 
             // notify other actors that new current head was changed
-            // (this also notifies [mempool_prevalidator])
             self.shell_channel.tell(
                 Publish {
                     msg: ShellChannelMsg::NewCurrentHead(new_head.clone(), block.clone()),
@@ -193,6 +166,18 @@ impl ChainCurrentHeadManager {
             // we can do this, only if we are bootstrapped,
             // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
             if is_bootstrapped {
+                // notify mempool if enabled
+                if !self.p2p_disable_mempool {
+                    self.mempool_channel.tell(
+                        Publish {
+                            msg: MempoolChannelMsg::ResetMempool(block),
+                            topic: MempoolChannelTopic.into(),
+                        },
+                        None,
+                    );
+                }
+
+                // advertise new branch or new head
                 match new_head_result {
                     HeadResult::BranchSwitch => {
                         self.shell_channel.tell(
@@ -223,16 +208,7 @@ impl ChainCurrentHeadManager {
                     }
                 }
             }
-
-            // update internal state
-            let mut apply_block_stats = self.apply_block_stats.write()?;
-            apply_block_stats.set_applied_block_level(*new_head.level());
         }
-
-        // add to stats
-        self.apply_block_stats
-            .write()?
-            .add_block_validation_stats(validation_timer);
 
         Ok(())
     }
@@ -269,39 +245,42 @@ impl ChainCurrentHeadManager {
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
+        MempoolChannelRef,
         PersistentStorage,
         StorageInitInfo,
         CurrentHeadRef,
         CurrentHeadRef,
         CurrentMempoolStateStorageRef,
         SynchronizationBootstrapStateRef,
-        ApplyBlockStatsRef,
+        bool,
     )> for ChainCurrentHeadManager
 {
     fn create_args(
         (
             shell_channel,
+            mempool_channel,
             persistent_storage,
             init_storage_data,
             local_current_head_state,
             remote_current_head_state,
             current_mempool_state,
             current_bootstrap_state,
-            apply_block_stats,
+            p2p_disable_mempool,
         ): (
             ShellChannelRef,
+            MempoolChannelRef,
             PersistentStorage,
             StorageInitInfo,
             CurrentHeadRef,
             CurrentHeadRef,
             CurrentMempoolStateStorageRef,
             SynchronizationBootstrapStateRef,
-            ApplyBlockStatsRef,
+            bool,
         ),
     ) -> Self {
         ChainCurrentHeadManager {
             shell_channel,
-            block_storage: Box::new(BlockStorage::new(&persistent_storage)),
+            mempool_channel,
             head_state: HeadState::new(
                 &persistent_storage,
                 local_current_head_state,
@@ -311,7 +290,7 @@ impl
             ),
             current_bootstrap_state,
             remote_current_head_state,
-            apply_block_stats,
+            p2p_disable_mempool,
         }
     }
 }

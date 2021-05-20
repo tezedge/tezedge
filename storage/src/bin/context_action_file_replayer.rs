@@ -5,7 +5,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 use std::io::{BufReader, Read, Seek, SeekFrom};
-use std::sync::RwLock;
+use std::sync::Mutex;
 use std::{fs, path::PathBuf, sync::Arc};
 
 use clap::{App, Arg};
@@ -270,8 +270,8 @@ impl StatsWriter {
         self.output.flush().unwrap();
     }
 
-    fn update(&mut self, block_nr: usize, merkle: Arc<RwLock<MerkleStorage>>) {
-        let m = merkle.read().unwrap();
+    fn update(&mut self, block_nr: usize, merkle: Arc<Mutex<MerkleStorage>>) {
+        let m = merkle.lock().unwrap();
 
         let report = m.get_merkle_stats().unwrap();
         let usage = report.kv_store_stats;
@@ -412,7 +412,7 @@ fn main() -> Result<(), Error> {
 
     let mut global_cache_holder = GlobalRocksDbCacheHolder::with_capacity(1);
     // create merkle storage
-    let merkle = Arc::new(RwLock::new(initialize_merkle(
+    let merkle = Arc::new(Mutex::new(initialize_merkle(
         &params.context_kv_store,
         &mocked_test_main_chain,
         &log,
@@ -481,7 +481,7 @@ fn main() -> Result<(), Error> {
                     hex::encode(&block_hash.clone().unwrap().clone()),
                     messages.len(),
                     merkle.clone()
-                        .read()
+                        .lock()
                         .unwrap()
                         .get_memory_usage()
                         .unwrap()

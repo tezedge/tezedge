@@ -88,6 +88,7 @@ fn test_storage() -> Result<(), Error> {
     let new_context_hash = "CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE".try_into()?;
     let _ = initialize_storage_with_genesis_block(
         &block_storage,
+        &block_meta_storage,
         &init_data,
         &tezos_env,
         &new_context_hash,
@@ -190,7 +191,7 @@ fn test_storage() -> Result<(), Error> {
         ops_metadata_hashes: None,
         ops_metadata_hash: None,
     };
-    let (block_json_data, block_additional_data) = store_applied_block_result(
+    let block_additional_data = store_applied_block_result(
         &block_storage,
         &block_meta_storage,
         &block.hash,
@@ -216,8 +217,8 @@ fn test_storage() -> Result<(), Error> {
     assert!(metadata.is_applied());
 
     // check additional
-    let (_, data) = block_storage
-        .get_with_additional_data(&block.hash)?
+    let data = block_meta_storage
+        .get_additional_data(&block.hash)?
         .expect("No additional data was saved");
     assert_eq!(
         data.max_operations_ttl(),
@@ -250,18 +251,6 @@ fn test_storage() -> Result<(), Error> {
     );
     assert_eq!(
         data.operations_proto_metadata_json(),
-        &apply_result.operations_proto_metadata_json
-    );
-    assert_eq!(
-        block_json_data.block_header_proto_json(),
-        &apply_result.block_header_proto_json
-    );
-    assert_eq!(
-        block_json_data.block_header_proto_metadata_json(),
-        &apply_result.block_header_proto_metadata_json
-    );
-    assert_eq!(
-        block_json_data.operations_proto_metadata_json(),
         &apply_result.operations_proto_metadata_json
     );
 

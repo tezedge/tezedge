@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -48,6 +49,7 @@ impl TestNodePeer {
         connect_to_node_port: u16,
         shell_compatibility_version: ShellCompatibilityVersion,
         identity: Identity,
+        pow_target: f64,
         log: Logger,
         tokio_runtime: &Runtime,
         handle_message_callback: fn(
@@ -78,6 +80,7 @@ impl TestNodePeer {
                             1235,
                             identity,
                             Arc::new(shell_compatibility_version),
+                            pow_target,
                         ));
                         let bootstrap = Bootstrap::outgoing(
                             stream,
@@ -119,6 +122,68 @@ impl TestNodePeer {
             tokio_executor,
             tx,
             test_mempool,
+        }
+    }
+
+    pub fn try_connect(
+        name: &'static str,
+        connect_to_node_port: u16,
+        shell_compatibility_version: ShellCompatibilityVersion,
+        identity: Identity,
+        pow_target: f64,
+        log: Logger,
+        tokio_runtime: &Runtime,
+    ) -> Result<(), failure::Error> {
+        let server_address = format!("0.0.0.0:{}", connect_to_node_port)
+            .parse::<SocketAddr>()
+            .expect("Failed to parse server address");
+        let tokio_executor = tokio_runtime.handle().clone();
+        let identity = Arc::new(identity);
+        let (tx, rx) = channel();
+        {
+            let log = log.clone();
+            tokio_executor.spawn(async move {
+                // init socket connection to server node
+                let result = match timeout(CONNECT_TIMEOUT, TcpStream::connect(&server_address)).await {
+                    Ok(Ok(stream)) => {
+                        // authenticate
+                        let local = Arc::new(LocalPeerInfo::new(
+                            1235,
+                            identity,
+                            Arc::new(shell_compatibility_version),
+                            pow_target,
+                        ));
+                        let bootstrap = Bootstrap::outgoing(
+                            stream,
+                            server_address,
+                            false,
+                            false,
+                        );
+
+                        match peer::bootstrap(bootstrap, local, &log).await {
+                            Ok(BootstrapOutput(..)) => {
+                                info!(log, "[{}] Connection successful", name; "ip" => server_address);
+
+                                Ok(())
+                            }
+                            Err(e) => {
+                                error!(log, "[{}] Connection bootstrap failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
+                                Err(e)
+                            }
+                        }
+                    }
+                    Ok(Err(e)) => {
+                        error!(log, "[{}] Connection failed", name; "ip" => server_address, "reason" => format!("{:?}", e));
+                        Err(e.into())
+                    }
+                    Err(e) => {
+                        error!(log, "[{}] Connection timed out", name; "ip" => server_address);
+                        Err(e.into())
+                    }
+                };
+                tx.send(result).expect("Failed to send the result")
+            });
+            Ok(rx.recv().expect("Failed to receive the result")?)
         }
     }
 

@@ -12,7 +12,7 @@ use slog::{error, info, Logger};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep, Duration};
 
-use crate::configuration::{AlertThresholds, DeployMonitoringEnvironment};
+use crate::configuration::DeployMonitoringEnvironment;
 use crate::constants::MEASUREMENTS_MAX_CAPACITY;
 use crate::deploy_with_compose::{
     cleanup_docker, restart_sandbox, restart_stack, stop_with_compose,
@@ -36,10 +36,17 @@ pub fn start_deploy_monitoring(
     log: Logger,
     running: Arc<AtomicBool>,
     cleanup_data: bool,
+    tezedge_only: bool,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor =
-        DeployMonitor::new(compose_file_path, docker, slack, log.clone(), cleanup_data);
+    let deploy_monitor = DeployMonitor::new(
+        compose_file_path,
+        docker,
+        slack,
+        log.clone(),
+        cleanup_data,
+        tezedge_only,
+    );
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_stack().await {
@@ -57,10 +64,17 @@ pub fn start_sandbox_monitoring(
     log: Logger,
     running: Arc<AtomicBool>,
     cleanup_data: bool,
+    tezedge_only: bool,
 ) -> JoinHandle<()> {
     let docker = Docker::new();
-    let deploy_monitor =
-        DeployMonitor::new(compose_file_path, docker, slack, log.clone(), cleanup_data);
+    let deploy_monitor = DeployMonitor::new(
+        compose_file_path,
+        docker,
+        slack,
+        log.clone(),
+        cleanup_data,
+        tezedge_only,
+    );
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = deploy_monitor.monitor_sandbox_launcher().await {
@@ -72,22 +86,35 @@ pub fn start_sandbox_monitoring(
 }
 
 pub fn start_resource_monitoring(
-    interval: u64,
+    env: &DeployMonitoringEnvironment,
     log: Logger,
     running: Arc<AtomicBool>,
     resource_utilization: ResourceUtilizationStorageMap,
-    alert_thresholds: AlertThresholds,
     slack: Option<SlackServer>,
 ) -> JoinHandle<()> {
-    let alerts = Alerts::new(alert_thresholds);
-    let mut resource_monitor =
-        ResourceMonitor::new(resource_utilization, None, alerts, log.clone(), slack);
+    let DeployMonitoringEnvironment {
+        tezedge_alert_thresholds,
+        ocaml_alert_thresholds,
+        resource_monitor_interval,
+        ..
+    } = env;
+
+    let alerts = Alerts::new(*tezedge_alert_thresholds, *ocaml_alert_thresholds);
+    let mut resource_monitor = ResourceMonitor::new(
+        resource_utilization,
+        HashMap::new(),
+        alerts,
+        log.clone(),
+        slack,
+    );
+
+    let resource_monitor_interval = *resource_monitor_interval;
     tokio::spawn(async move {
         while running.load(Ordering::Acquire) {
             if let Err(e) = resource_monitor.take_measurement().await {
                 error!(log, "Resource monitoring error: {}", e);
             }
-            sleep(Duration::from_secs(interval)).await;
+            sleep(Duration::from_secs(resource_monitor_interval)).await;
         }
     })
 }
@@ -110,20 +137,36 @@ pub async fn shutdown_and_cleanup(
 }
 
 pub async fn start_stack(
-    compose_file_path: &PathBuf,
-    alert_thresholds: AlertThresholds,
+    env: &DeployMonitoringEnvironment,
     slack: Option<SlackServer>,
     log: &Logger,
-    cleanup_data: bool,
 ) -> Result<(), failure::Error> {
     info!(log, "Starting tezedge stack");
 
+    let DeployMonitoringEnvironment {
+        cleanup_volumes,
+        compose_file_path,
+        tezedge_alert_thresholds,
+        ocaml_alert_thresholds,
+        tezedge_only,
+        ..
+    } = env;
+
     // cleanup possible dangling containers/volumes and start the stack
-    restart_stack(compose_file_path, log, cleanup_data).await;
+    restart_stack(&compose_file_path, log, *cleanup_volumes, *tezedge_only).await;
     if let Some(slack_server) = slack {
         slack_server.send_message("Tezedge stack started").await?;
         slack_server
-            .send_message(&format!("Alert thresholds set to: {}", alert_thresholds))
+            .send_message(&format!(
+                "Alert thresholds for tezedge nodes set to: {}",
+                tezedge_alert_thresholds
+            ))
+            .await?;
+        slack_server
+            .send_message(&format!(
+                "Alert thresholds for ocaml nodes set to: {}",
+                ocaml_alert_thresholds
+            ))
             .await?;
     }
     Ok(())
@@ -157,15 +200,21 @@ pub async fn spawn_sandbox(
         .expect("Sandbox failed to start");
 
     info!(log, "Creating docker image monitor");
-    let deploy_handle = start_sandbox_monitoring(
-        env.compose_file_path.clone(),
-        slack_server.clone(),
-        env.image_monitor_interval,
-        log.clone(),
-        running.clone(),
-        env.cleanup_volumes,
-    );
-    vec![deploy_handle]
+    if let Some(image_monitor_interval) = env.image_monitor_interval {
+        let deploy_handle = start_sandbox_monitoring(
+            env.compose_file_path.clone(),
+            slack_server.clone(),
+            image_monitor_interval,
+            log.clone(),
+            running.clone(),
+            env.cleanup_volumes,
+            env.tezedge_only,
+        );
+
+        vec![deploy_handle]
+    } else {
+        vec![]
+    }
 }
 
 pub async fn spawn_node_stack(
@@ -174,25 +223,24 @@ pub async fn spawn_node_stack(
     log: &Logger,
     running: Arc<AtomicBool>,
 ) -> Vec<JoinHandle<()>> {
-    start_stack(
-        &env.compose_file_path,
-        env.alert_thresholds,
-        slack_server.clone(),
-        &log,
-        env.cleanup_volumes,
-    )
-    .await
-    .expect("Stack failed to start");
+    start_stack(&env, slack_server.clone(), &log)
+        .await
+        .expect("Stack failed to start");
 
-    info!(log, "Creating docker image monitor");
-    let deploy_handle = start_deploy_monitoring(
-        env.compose_file_path.clone(),
-        slack_server.clone(),
-        env.image_monitor_interval,
-        log.clone(),
-        running.clone(),
-        env.cleanup_volumes,
-    );
+    let mut handles = Vec::new();
+
+    if let Some(image_monitor_interval) = env.image_monitor_interval {
+        let deploy_handle = start_deploy_monitoring(
+            env.compose_file_path.clone(),
+            slack_server.clone(),
+            image_monitor_interval,
+            log.clone(),
+            running.clone(),
+            env.cleanup_volumes,
+            env.tezedge_only,
+        );
+        handles.push(deploy_handle);
+    }
 
     // TODO: TE-499 - (multiple nodes) rework this to load from a config, where all the nodes all defined
     // create a thread safe VecDeque for each node's resource utilization data
@@ -203,25 +251,29 @@ pub async fn spawn_node_stack(
             MEASUREMENTS_MAX_CAPACITY,
         ))),
     );
-    storage_map.insert(
-        "ocaml",
-        Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(
-            MEASUREMENTS_MAX_CAPACITY,
-        ))),
-    );
+    if !env.tezedge_only {
+        storage_map.insert(
+            "ocaml",
+            Arc::new(RwLock::new(VecDeque::<ResourceUtilization>::with_capacity(
+                MEASUREMENTS_MAX_CAPACITY,
+            ))),
+        );
+    }
 
     info!(log, "Creating reosurces monitor");
     let resources_handle = start_resource_monitoring(
-        env.resource_monitor_interval,
+        &env,
         log.clone(),
         running.clone(),
         storage_map.clone(),
-        env.alert_thresholds,
         slack_server.clone(),
     );
 
+    handles.push(resources_handle);
+
     info!(log, "Starting rpc server on port {}", &env.rpc_port);
     let rpc_server_handle = rpc::spawn_rpc_server(env.rpc_port, log.clone(), storage_map.clone());
+    handles.push(rpc_server_handle);
 
-    vec![deploy_handle, resources_handle, rpc_server_handle]
+    handles
 }

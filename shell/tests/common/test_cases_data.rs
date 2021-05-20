@@ -134,6 +134,39 @@ pub mod sandbox_branch_1_level3 {
     }
 }
 
+pub mod sandbox_branch_1_no_level {
+    use std::sync::Once;
+
+    use lazy_static::lazy_static;
+    use slog::{info, Logger};
+
+    use tezos_api::environment::TezosEnvironment;
+    use tezos_api::ffi::PatchContext;
+
+    use crate::common::samples::read_data_zip;
+    use crate::common::test_data::Db;
+
+    lazy_static! {
+        pub static ref DB: Db = Db::init_db(read_data_zip(
+            "sandbox_branch_1_level3.zip",
+            TezosEnvironment::Sandbox
+        ),);
+    }
+
+    pub fn init_data(log: &Logger) -> (&'static Db, Option<PatchContext>) {
+        static INIT_DATA: Once = Once::new();
+        INIT_DATA.call_once(|| {
+            info!(log, "Initializing test data sandbox_branch_1_no_level...");
+            let _ = DB.block_hash(1);
+            info!(log, "Test data sandbox_branch_1_no_level initialized!");
+        });
+        (
+            &DB,
+            Some(super::read_patch_context("sandbox-patch-context.json")),
+        )
+    }
+}
+
 pub mod sandbox_branch_2_level4 {
     use std::sync::Once;
 

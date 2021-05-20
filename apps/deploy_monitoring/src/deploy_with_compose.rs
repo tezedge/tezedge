@@ -11,7 +11,7 @@ use crate::constants::{DEBUGGER_PORT, EXPLORER_PORT, OCAML_PORT, TEZEDGE_PORT};
 use crate::image::{DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger};
 use crate::node::{OcamlNode, TezedgeNode};
 
-pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
+pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_only: bool) {
     info!(log, "Tezedge explorer is starting");
     start_with_compose(compose_file_path, Explorer::NAME, "explorer");
     wait_for_start(&format!("http://localhost:{}", EXPLORER_PORT)).await;
@@ -31,14 +31,16 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger) {
     .await;
     info!(log, "Tezedge node is running");
 
-    info!(log, "Ocaml node is starting");
-    start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
-    wait_for_start(&format!(
-        "http://localhost:{}/chains/main/blocks/head/header",
-        OCAML_PORT
-    ))
-    .await;
-    info!(log, "Ocaml node is running");
+    if !tezedge_only {
+        info!(log, "Ocaml node is starting");
+        start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
+        wait_for_start(&format!(
+            "http://localhost:{}/chains/main/blocks/head/header",
+            OCAML_PORT
+        ))
+        .await;
+        info!(log, "Ocaml node is running");
+    }
 }
 
 pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
@@ -53,17 +55,27 @@ pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     info!(log, "Sandbox launcher running");
 }
 
-pub async fn restart_stack(compose_file_path: &PathBuf, log: &Logger, cleanup_data: bool) {
+pub async fn restart_stack(
+    compose_file_path: &PathBuf,
+    log: &Logger,
+    cleanup_data: bool,
+    tezedge_only: bool,
+) {
     stop_with_compose(compose_file_path);
     cleanup_docker(cleanup_data);
-    launch_stack(compose_file_path, log).await;
+    launch_stack(compose_file_path, log, tezedge_only).await;
 }
 
-pub async fn shutdown_and_update(compose_file_path: &PathBuf, log: &Logger, cleanup_data: bool) {
+pub async fn shutdown_and_update(
+    compose_file_path: &PathBuf,
+    log: &Logger,
+    cleanup_data: bool,
+    tezedge_only: bool,
+) {
     stop_with_compose(compose_file_path);
     cleanup_docker_system();
     update_with_compose(compose_file_path);
-    restart_stack(compose_file_path, log, cleanup_data).await;
+    restart_stack(compose_file_path, log, cleanup_data, tezedge_only).await;
 }
 
 pub async fn restart_sandbox(compose_file_path: &PathBuf, log: &Logger) {

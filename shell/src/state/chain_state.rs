@@ -10,6 +10,7 @@ use slog::Logger;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use crypto::seeded_step::{Seed, Step};
+use networking::PeerId;
 use storage::block_meta_storage::Meta;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
@@ -25,8 +26,8 @@ use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::peer_branch_bootstrapper::{
-    PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, StartBranchBootstraping,
-    UpdateBlockState, UpdateOperationsState,
+    PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
+    StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
 use crate::shell_channel::ShellChannelRef;
 use crate::state::bootstrap_state::InnerBlockState;
@@ -40,10 +41,17 @@ use crate::validation;
 ///
 /// Note: if needed, cound be refactored to cfg and struct
 pub(crate) mod bootstrap_constants {
+    use std::time::Duration;
+
     use crate::state::peer_state::DataQueuesLimits;
 
-    /// We can controll speedup of downloading blocks from network
-    pub(crate) const MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT: i8 = 2;
+    /// Timeout for request of block header
+    pub(crate) const BLOCK_HEADER_TIMEOUT: Duration = Duration::from_secs(30);
+    /// Timeout for request of block operations
+    pub(crate) const BLOCK_OPERATIONS_TIMEOUT: Duration = Duration::from_secs(30);
+
+    /// If we have empty bootstrap pipelines for along time, we disconnect peer, means, peer is not provoding us a new current heads/branches
+    pub(crate) const MISSING_NEW_BRANCH_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(90);
 
     /// We can validate just few branches/head from one peer, so we limit it by this constant
     pub(crate) const MAX_BOOTSTRAP_BRANCHES_PER_PEER: usize = 2;
@@ -73,13 +81,16 @@ pub struct BlockchainState {
     block_meta_storage: BlockMetaStorage,
     ///persistent chain metadata storage
     chain_meta_storage: ChainMetaStorage,
-    // Operations storage
+    /// Operations storage
     operations_storage: OperationsStorage,
     /// Operations metadata storage
     operations_meta_storage: OperationsMetaStorage,
 
     /// Utility for managing different data requests (block, operations, block apply)
     requester: DataRequesterRef,
+
+    /// Actor resposible for bootstrapping branches of peers per one chain_id
+    peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
     /// Common shell channel
     shell_channel: ShellChannelRef,
@@ -102,6 +113,7 @@ impl BlockchainState {
                 OperationsMetaStorage::new(&persistent_storage),
                 block_applier,
             )),
+            peer_branch_bootstrapper: None,
             block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
@@ -115,6 +127,10 @@ impl BlockchainState {
 
     pub(crate) fn requester(&self) -> &DataRequesterRef {
         &self.requester
+    }
+
+    pub(crate) fn peer_branch_bootstrapper(&self) -> Option<&PeerBranchBootstrapperRef> {
+        self.peer_branch_bootstrapper.as_ref()
     }
 
     pub(crate) fn data_queues_limits(&self) -> DataQueuesLimits {
@@ -377,7 +393,7 @@ impl BlockchainState {
 
         // collect for every block if it is applied and get the "last applied" = highest block index
         let mut last_applied_idx: Option<usize> = None;
-        let branch_history_locator_lowest_level_first: Vec<(Arc<BlockHash>, bool)> = history
+        let branch_history_locator_lowest_level_first: Vec<(BlockHash, bool)> = history
             .into_iter()
             .rev()
             .enumerate()
@@ -387,16 +403,16 @@ impl BlockchainState {
                         if metadata.is_applied() {
                             last_applied_idx = Some(idx);
                         }
-                        (Arc::new(history_block_hash), metadata.is_applied())
+                        (history_block_hash, metadata.is_applied())
                     }
-                    _ => (Arc::new(history_block_hash), false),
+                    _ => (history_block_hash, false),
                 }
             })
             .collect();
 
         // prepare bootstrap pipeline for this history according to last known applied block (if None, then use genesis)
         // and we are just interested in history after last applied block
-        let (last_applied_block, missing_history): (Arc<BlockHash>, Vec<Arc<BlockHash>>) =
+        let (last_applied_block, missing_history): (BlockHash, Vec<BlockHash>) =
             match last_applied_idx {
                 Some(last_applied_idx) => {
                     // we split history
@@ -416,7 +432,7 @@ impl BlockchainState {
                     } else {
                         // fall back to start from genesis
                         (
-                            self.chain_genesis_block_hash.clone(),
+                            self.chain_genesis_block_hash.as_ref().clone(),
                             branch_history_locator_lowest_level_first
                                 .into_iter()
                                 .map(|(b, _)| b)
@@ -427,7 +443,7 @@ impl BlockchainState {
                 None => {
                     // fall back to start from genesis
                     (
-                        self.chain_genesis_block_hash.clone(),
+                        self.chain_genesis_block_hash.as_ref().clone(),
                         branch_history_locator_lowest_level_first
                             .into_iter()
                             .map(|(b, _)| b)
@@ -438,18 +454,17 @@ impl BlockchainState {
 
         // if we miss something, we will run "peer branch bootstrapper"
         if !missing_history.is_empty() {
-            if peer.peer_branch_bootstrapper.is_none() {
-                peer.peer_branch_bootstrapper = Some(
+            if self.peer_branch_bootstrapper.is_none() {
+                self.peer_branch_bootstrapper = Some(
                     PeerBranchBootstrapper::actor(
                         sys,
-                        peer.peer_id.clone(),
-                        peer.queues.clone(),
+                        self.chain_id.clone(),
                         self.requester.clone(),
                         self.shell_channel.clone(),
-                        self.block_meta_storage.clone(),
-                        self.operations_meta_storage.clone(),
                         PeerBranchBootstrapperConfiguration::new(
-                            bootstrap_constants::MAX_BOOTSTRAP_INTERVAL_LOOK_AHEAD_COUNT,
+                            bootstrap_constants::BLOCK_HEADER_TIMEOUT,
+                            bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,
+                            bootstrap_constants::MISSING_NEW_BRANCH_BOOTSTRAP_TIMEOUT,
                             bootstrap_constants::MAX_BOOTSTRAP_BRANCHES_PER_PEER,
                             bootstrap_constants::MAX_BLOCK_APPLY_BATCH,
                         ),
@@ -460,14 +475,15 @@ impl BlockchainState {
                 );
             };
 
-            // start bootstrapping
-            if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+            if let Some(peer_branch_bootstrapper) = self.peer_branch_bootstrapper.as_ref() {
                 peer_branch_bootstrapper.tell(
                     StartBranchBootstraping::new(
+                        peer.peer_id.clone(),
+                        peer.queues.clone(),
                         self.chain_id.clone(),
                         last_applied_block,
                         missing_history,
-                        Arc::new(block_header.header.level()),
+                        block_header.header.level(),
                     ),
                     None,
                 );
@@ -483,9 +499,9 @@ impl BlockchainState {
     /// Returns bool - true, if it is a new block or false for previosly stored
     pub fn process_block_header_from_peer(
         &mut self,
-        peer: &mut PeerState,
         received_block: &BlockHeaderWithHash,
         log: &Logger,
+        peer_id: &Arc<PeerId>,
     ) -> Result<bool, StorageError> {
         // store block
         let is_new_block = self.block_storage.put_block_header(received_block)?;
@@ -499,16 +515,15 @@ impl BlockchainState {
         let (are_operations_complete, _) = self.process_block_header_operations(received_block)?;
 
         // ping branch bootstrapper with received block and actual state
-        if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+        if let Some(peer_branch_bootstrapper) = self.peer_branch_bootstrapper() {
             peer_branch_bootstrapper.tell(
                 UpdateBlockState::new(
-                    Arc::new(received_block.hash.clone()),
-                    Arc::new(received_block.header.predecessor().clone()),
+                    received_block.hash.clone(),
                     InnerBlockState {
-                        block_downloaded: true,
                         applied: block_metadata.is_applied(),
                         operations_downloaded: are_operations_complete,
                     },
+                    peer_id.clone(),
                 ),
                 None,
             );
@@ -561,9 +576,7 @@ impl BlockchainState {
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         match self.operations_meta_storage.get(&block_header.hash)? {
             Some(meta) => Ok((meta.is_complete(), meta.get_missing_validation_passes())),
-            None => self
-                .operations_meta_storage
-                .put_block_header(block_header, self.chain_id.as_ref().clone()),
+            None => self.operations_meta_storage.put_block_header(block_header),
         }
     }
 
@@ -580,7 +593,7 @@ impl BlockchainState {
             Some(meta) => Ok(meta.is_complete()),
             None => self
                 .operations_meta_storage
-                .put_block_header(block_header, self.chain_id.as_ref().clone())
+                .put_block_header(block_header)
                 .map(|(is_complete, _)| is_complete),
         }
     }
@@ -590,14 +603,14 @@ impl BlockchainState {
     /// Returns true, if new block is successfully downloaded by this call
     pub fn process_block_operations_from_peer(
         &mut self,
-        peer: &mut PeerState,
-        block_hash: &BlockHash,
+        block_hash: BlockHash,
         message: &OperationsForBlocksMessage,
+        peer_id: &Arc<PeerId>,
     ) -> Result<bool, StateError> {
         // TODO: TE-369 - optimize double check
         // we need to differ this flag
         let (are_operations_complete, was_block_finished_now) =
-            if self.operations_meta_storage.is_complete(block_hash)? {
+            if self.operations_meta_storage.is_complete(&block_hash)? {
                 (true, false)
             } else {
                 // update operations metadata for block
@@ -607,9 +620,9 @@ impl BlockchainState {
 
         if are_operations_complete {
             // ping branch bootstrapper with received operations
-            if let Some(peer_branch_bootstrapper) = &peer.peer_branch_bootstrapper {
+            if let Some(peer_branch_bootstrapper) = self.peer_branch_bootstrapper.as_ref() {
                 peer_branch_bootstrapper.tell(
-                    UpdateOperationsState::new(Arc::new(block_hash.clone())),
+                    UpdateOperationsState::new(block_hash, peer_id.clone()),
                     None,
                 );
             }

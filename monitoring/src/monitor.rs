@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
-use slog::{warn, Logger};
+use slog::{info, warn, Logger};
 
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
@@ -16,15 +16,16 @@ use shell::subscription::{
 };
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
-use storage::{
-    BlockStorage, BlockStorageReader, ChainMetaStorage, IteratorMode, OperationsMetaStorage,
-};
+use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
 use crate::websocket::handler_messages::HandlerMessage;
 use crate::{
     monitors::*, websocket::handler_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
 };
+
+/// How often to print stats in logs
+const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Debug)]
 pub enum BroadcastSignal {
@@ -33,19 +34,31 @@ pub enum BroadcastSignal {
     PeerUpdate(PeerConnectionStatus),
 }
 
+#[derive(Clone, Debug)]
+pub struct LogStats;
+
 pub type MonitorRef = ActorRef<MonitorMsg>;
 
-#[actor(BroadcastSignal, NetworkChannelMsg, SystemEvent, ShellChannelMsg)]
+#[actor(
+    BroadcastSignal,
+    NetworkChannelMsg,
+    SystemEvent,
+    ShellChannelMsg,
+    LogStats
+)]
 pub struct Monitor {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
     msg_channel: ActorRef<WebsocketHandlerMsg>,
-    // Monitors
+    /// Monitors
     peer_monitors: HashMap<ActorUri, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
     block_application_monitor: ApplicationMonitor,
     chain_monitor: ChainMonitor,
+
+    /// Count of received messages from the last log
+    actor_received_messages_count: usize,
 }
 
 impl Monitor {
@@ -96,6 +109,10 @@ impl Monitor {
             warn!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
         }
     }
+
+    fn get_and_clear_actor_received_messages_count(&mut self) -> usize {
+        std::mem::replace(&mut self.actor_received_messages_count, 0)
+    }
 }
 
 impl
@@ -128,6 +145,7 @@ impl
             blocks_monitor,
             block_application_monitor: ApplicationMonitor::new(),
             chain_monitor,
+            actor_received_messages_count: 0,
         }
     }
 }
@@ -149,6 +167,13 @@ impl Actor for Monitor {
             None,
             BroadcastSignal::PublishPeerStatistics,
         );
+        ctx.schedule::<Self::Msg, _>(
+            LOG_INTERVAL / 2,
+            LOG_INTERVAL,
+            ctx.myself(),
+            None,
+            LogStats.into(),
+        );
         ctx.schedule(
             Duration::from_secs_f32(1.5),
             Duration::from_secs(1),
@@ -159,6 +184,7 @@ impl Actor for Monitor {
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
+        self.actor_received_messages_count += 1;
         self.receive(ctx, msg, sender);
     }
 
@@ -169,6 +195,7 @@ impl Actor for Monitor {
         sender: Option<BasicActorRef>,
     ) {
         if let SystemMsg::Event(evt) = msg {
+            self.actor_received_messages_count += 1;
             self.receive(ctx, evt, sender);
         }
     }
@@ -229,7 +256,7 @@ impl Receive<BroadcastSignal> for Monitor {
 impl Receive<NetworkChannelMsg> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _sender: Sender) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _: Sender) {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                 let key = peer_id.peer_ref.uri();
@@ -311,18 +338,18 @@ fn initialize_monitors(
         iter.for_each(|(k, _)| {
             if let Ok(key) = k {
                 if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
-                    chain_monitor.process_block_header(header_with_hash.header.level());
+                    let block_level = header_with_hash.header.level();
+                    chain_monitor.process_block_header(block_level);
                     downloaded_headers += 1;
-                }
-            }
-        })
-    }
-    if let Ok(iter) = operations_meta_storage.iter(IteratorMode::Start) {
-        iter.for_each(|(_, v)| {
-            if let Ok(v) = v {
-                if v.is_complete() {
-                    chain_monitor.process_block_operations(v.level());
-                    downloaded_blocks += 1;
+
+                    if let Ok(is_complete) =
+                        operations_meta_storage.is_complete(&header_with_hash.hash)
+                    {
+                        if is_complete {
+                            chain_monitor.process_block_operations(block_level);
+                            downloaded_blocks += 1;
+                        }
+                    }
                 }
             }
         })
@@ -344,4 +371,15 @@ fn initialize_monitors(
     let block_monitor = BlocksMonitor::new(4096, downloaded_blocks);
 
     (chain_monitor, block_monitor, bootstrap_monitor)
+}
+
+impl Receive<LogStats> for Monitor {
+    type Msg = MonitorMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, _: LogStats, _: Sender) {
+        info!(ctx.system.log(), "Monitoring info";
+                   "actor_received_messages_count" => self.get_and_clear_actor_received_messages_count(),
+                   "peers_count" => self.peer_monitors.len(),
+        );
+    }
 }
