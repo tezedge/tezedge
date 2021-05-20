@@ -20,9 +20,12 @@ use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
-use tezos_identity::Identity;
 
 pub mod common;
+
+pub const TRIVIAL_POW_TARGET: f64 = 0f64;
+pub const MINIMAL_POW_TARGET: f64 = 8f64;
+pub const DEFAULT_POW_TARGET: f64 = crypto::proof_of_work::ProofOfWork::DEFAULT_TARGET;
 
 lazy_static! {
     pub static ref SHELL_COMPATIBILITY_VERSION: ShellCompatibilityVersion = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![0], vec![0]);
@@ -40,7 +43,90 @@ lazy_static! {
         },
         SHELL_COMPATIBILITY_VERSION.clone(),
     );
-    pub static ref NODE_IDENTITY: Identity = tezos_identity::Identity::generate(0f64).unwrap();
+}
+
+#[ignore]
+#[test]
+#[serial]
+fn test_proof_of_work_ok() -> Result<(), failure::Error> {
+    test_proof_of_work("pow_ok", MINIMAL_POW_TARGET, MINIMAL_POW_TARGET, true)
+}
+
+#[ignore]
+#[test]
+#[serial]
+fn test_proof_of_work_fail() -> Result<(), failure::Error> {
+    test_proof_of_work("pow_fail", MINIMAL_POW_TARGET, TRIVIAL_POW_TARGET, false)
+}
+
+fn test_proof_of_work(
+    name: &str,
+    node_pow_target: f64,
+    peer_pow_target: f64,
+    should_succeed: bool,
+) -> Result<(), failure::Error> {
+    // logger
+    let log_level = common::log_level();
+    let log = common::create_logger(log_level);
+    let node_log = log.new(slog::o!("role" => "NODE"));
+    let peer_log = log.new(slog::o!("role" => "PEER"));
+
+    // prepare env data
+    let (tezos_env, patch_context) = {
+        let (db, patch_context) =
+            common::test_cases_data::sandbox_branch_1_no_level::init_data(&log);
+        (db.tezos_env, patch_context)
+    };
+    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+        .get(&tezos_env)
+        .expect("no environment configuration");
+
+    // start node
+    slog::info!(node_log, "Generating node identity..."; "pow_target" => node_pow_target);
+    let node_identity = tezos_identity::Identity::generate(node_pow_target)?;
+    slog::info!(node_log, "Node identity generated");
+    let node = common::infra::NodeInfrastructure::start(
+        TmpStorage::create(common::prepare_empty_dir(&format!("__test_{}", name)))?,
+        &common::prepare_empty_dir(&format!("__test_{}_context", name)),
+        "test_peer_threshold",
+        &tezos_env,
+        patch_context,
+        Some(NODE_P2P_CFG.clone()),
+        node_identity,
+        node_pow_target,
+        (node_log, log_level),
+        vec![],
+        (false, false),
+    )?;
+
+    // wait for storage initialization to genesis
+    node.wait_for_new_current_head(
+        "genesis",
+        node.tezos_env.genesis_header_hash()?,
+        (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+
+    slog::info!(peer_log, "Generating peer identity..."; "pow_target" => peer_pow_target);
+    let peer_identity = tezos_identity::Identity::generate(peer_pow_target)?;
+    slog::info!(peer_log, "Peer identity generated");
+    let result = common::test_node_peer::TestNodePeer::try_connect(
+        "TEST_PEER",
+        NODE_P2P_CFG.0.listener_port,
+        NODE_P2P_CFG.1.clone(),
+        peer_identity,
+        peer_pow_target,
+        peer_log.clone(),
+        &node.tokio_runtime,
+    );
+
+    if should_succeed {
+        result.expect("Expected connection to succeed");
+    } else {
+        result.expect_err("Expected connection to fail");
+    }
+    slog::info!(peer_log, "Done connecting");
+
+    Ok(())
 }
 
 #[ignore]
@@ -76,7 +162,8 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
             peer_threshold_high,
             0,
         )),
-        NODE_IDENTITY.clone(),
+        tezos_identity::Identity::generate(TRIVIAL_POW_TARGET)?,
+        TRIVIAL_POW_TARGET,
         (log, log_level),
         vec![],
         (false, false),
@@ -105,7 +192,9 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
                 peer_name,
                 NODE_P2P_CFG.0.listener_port,
                 NODE_P2P_CFG.1.clone(),
-                tezos_identity::Identity::generate(0f64).expect("failed to generate identity"),
+                tezos_identity::Identity::generate(TRIVIAL_POW_TARGET)
+                    .expect("failed to generate identity"),
+                TRIVIAL_POW_TARGET,
                 node.log.clone(),
                 &node.tokio_runtime,
                 common::test_cases_data::sandbox_branch_1_level3::serve_data,
