@@ -462,36 +462,40 @@ steps:
   pull: if-not-exists
   user: root
   volumes:
+    - name: tests
+      path: /tests
     - name: build
       path: /artifacts
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
     OCAML_LOG_ENABLED: false
-    LD_LIBRARY_PATH: /artifacts/ffi
-    PROTOCOL_RUNNER: /artifacts/protocol-runner
-    CARGO_MANIFEST_DIR: /artifacts/test_data
+    LD_LIBRARY_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/ffi
+    PROTOCOL_RUNNER: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/protocol-runner
+    CARGO_MANIFEST_DIR: /tests/build_${DRONE_BUILD_NUMBER}/test_data
     OUT_DIR: .
   commands:
-    - /artifacts/p2p_test --nocapture --ignored test_proof_of_work_ok
+    - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_ok
 
 - name: p2p-pow-test-fail
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
+    - name: tests
+      path: /tests
     - name: build
       path: /artifacts
   environment:
     RUST_BACKTRACE: 1
     LOG_LEVEL: debug
     OCAML_LOG_ENABLED: false
-    LD_LIBRARY_PATH: /artifacts/ffi
-    PROTOCOL_RUNNER: /artifacts/protocol-runner
-    CARGO_MANIFEST_DIR: /artifacts/test_data
+    LD_LIBRARY_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/ffi
+    PROTOCOL_RUNNER: /artifacts/build_${DRONE_BUILD_NUMBER}/build_files/protocol-runner
+    CARGO_MANIFEST_DIR: /tests/build_${DRONE_BUILD_NUMBER}/test_data
     OUT_DIR: .
   commands:
-    - /artifacts/p2p_test --nocapture --ignored test_proof_of_work_fail
+    - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_fail
 
 - name: record/replay-context-action-file-test
   image: simplestakingcom/tezedge-ci-builder:latest
