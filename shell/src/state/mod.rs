@@ -76,10 +76,10 @@ impl ApplyBlockBatch {
         }
     }
 
-    pub fn start_batch(block_hash: Arc<BlockHash>) -> Self {
+    pub fn start_batch(block_hash: Arc<BlockHash>, expected_size: usize) -> Self {
         Self {
             block_to_apply: block_hash,
-            successors: Vec::new(),
+            successors: Vec::with_capacity(expected_size),
         }
     }
 

@@ -1,13 +1,4 @@
 ##############################################################################################################
-# Drone contains these pipelines:
-# - standalone-tests (just rust tests)
-# - sandbox-inject-operation (runs sandboxed ocaml and rust nodes and checks p2p, rpc between them, using tezos_client)
-# - connect-from-different-network-test (runs ocaml nodes and rust node)
-# - delphinet-big-offline-tests (runs snapshoted local ocaml nodes and rust node - more robust then others)
-# - edo2net-offline-tests (runs snapshoted local ocaml nodes and rust node - uses tezos/tezos:master_4b80b7ae_20210225173318)
-# - mainnet-offline-tests (runs snapshoted local ocaml nodes and rust node)
-# - carthagenet-legacy-offline-tests (runs snapshoted local ocaml nodes and rust node - works just on older v8.0 image)
-##############################################################################################################
 # Ocaml stuff is based on image tezos/tezos:v8 (if released new one, fell free to upgrade it here)
 ##############################################################################################################
 
@@ -104,7 +95,7 @@ trigger:
 # - aslo copies files needed from git for other pipelines
 ##############################################################################################################
 kind: pipeline
-name: build-and-tests
+name: build
 
 workspace:
   path: /drone/src
@@ -122,6 +113,8 @@ steps:
   volumes:
     - name: build
       path: /artifacts
+    - name: tests
+      path: /tests
     - name: sandbox-data
       path: /tmp/sandbox
     - name: tezos-src
@@ -140,17 +133,15 @@ steps:
     # build and unit-test
     - cargo clean
     - cargo build --release --workspace
+    - cargo test --release --workspace --no-run
     # collect binary artefacts
-    # - mkdir $${BUILD_ARTIFACTS_PATH}
-    # - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
-    # - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    # - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
-    # - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
     - mkdir $${BUILD_ARTIFACTS_PATH}
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
+    - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - mkdir $${TEST_ARTIFACTS_PATH}/tests
     # copy binaries
     - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
@@ -175,83 +166,6 @@ steps:
     - cp ./light_node/etc/drone/wait_file.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh
     - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
     - cp ./light_node/etc/tezedge/tezedge_drone.config $${BUILD_ARTIFACTS_PATH}/build_files/tezedge/
-    # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
-    - chmod 600 /home/appuser/.ssh/id_rsa
-    - ls -la /home/appuser/.ssh
-    # copy build files to all other runner machines
-    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
-    
-image_pull_secrets:
-  - docker_pull_secret
-
-depends_on:
-  - prepare-and-cleanup
-
-volumes:
-  - name: build
-    host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: sandbox-data
-    host:
-      path: /usr/local/etc/tezedge-ci/data/sandbox
-  - name: cache
-    host:
-      path: /usr/local/etc/tezedge-ci/cache
-  - name: tezos-src
-    host:
-      path: /usr/local/etc/tezedge-ci/tezos-src
-  - name: ids
-    host:
-      path: /usr/local/etc/tezedge-ci/id
-
-trigger:
-  branch:
-    - master
-    - develop
-
----
-##############################################################################################################
-kind: pipeline
-name: tests-and-benchmarks
-
-workspace:
-  path: /drone/src
-
-environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
-  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-
-steps:
-
-- name: build-tests-and-run-unit-tests
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cargo test --release --workspace
-    # build and run benches
-      # just compile all benches
-    - cargo bench --no-run -- --nocapture
-      # run benches except tezos_messages (they have special step)
-    - cargo bench --workspace --exclude tezos_messages --exclude networking --exclude tezos_interop -- --nocapture
-      # run all other test benches
-    - cargo bench --tests -- --nocapture
-    # - mkdir -p $${BUILD_ARTIFACTS_PATH}/test_data/tests/resources
-    # - mkdir $${TEST_ARTIFACTS_PATH}/tests
-    - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - mkdir $${TEST_ARTIFACTS_PATH}/tests
     # copy test binaries
     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test
     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test
@@ -262,15 +176,16 @@ steps:
     - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    # copy build files to all other runner machines
     # Modify permissions for ssh key
     - chown appuser /home/appuser/.ssh/id_rsa
     - chown appuser /home/appuser/.ssh
     - chmod 600 /home/appuser/.ssh/id_rsa
     - ls -la /home/appuser/.ssh
     # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
     - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER}
-
 
 image_pull_secrets:
   - docker_pull_secret
@@ -306,7 +221,90 @@ trigger:
 ---
 ##############################################################################################################
 kind: pipeline
-name: standalone-tests-and-benchmarks
+name: unit-tests-and-benchmarks
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: run-unit-tests
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cargo test --release --workspace
+
+- name: run-benchmarks
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    # build and run benches
+      # just compile all benches
+    - cargo bench --no-run -- --nocapture
+      # run benches except tezos_messages (they have special step)
+    - cargo bench --workspace --exclude tezos_messages --exclude networking --exclude tezos_interop -- --nocapture
+      # run all other test benches
+    - cargo bench --tests -- --nocapture
+
+image_pull_secrets:
+  - docker_pull_secret
+
+depends_on:
+  - prepare-and-cleanup
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/cache
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+
+---
+##############################################################################################################
+kind: pipeline
+name: integration-tests
+
+clone:
+  disable: true
 
 workspace:
   path: /drone/src
@@ -316,73 +314,6 @@ environment:
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
 
 steps:
-
-# this is not triggered on pull request, because there is complex bench comparison on PR
-- name: benchmarks
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    # message_benchmark
-    - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
-    - cargo bench --bench message_benchmark -- --noplot
-    # stream_benchmark
-    - echo "" && echo "" && echo "...stream_benchmark..." && echo "" && echo ""
-    - cargo bench --bench stream_benchmark -- --noplot
-    # interop_benchmark
-    - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
-    - cargo bench --bench interop_benchmark -- --noplot
-    # interop_benchmark
-    - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
-    - cargo bench --bench predecessor_benchmarks -- --noplot
-  when:
-    ref:
-      exclude:
-        - refs/pull/*/head
-
-# prepare and compiles (async) bench for target branch (only for PR)
-- name: compile-benchmarks-for-target-branch
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: cache
-      path: /tmp/tezedge-cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    - cd /tmp/tezedge-cache
-    - rm -rf tezedge
-    - target_branch=$${DRONE_TARGET_BRANCH}
-    - echo "...checkouting target branch - $target_branch"
-    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
-    # message_benchmark
-    - cd /tmp/tezedge-cache/tezedge/tezos/messages
-    - cargo bench --bench message_benchmark --no-run
-    # stream_benchmark
-    - cd /tmp/tezedge-cache/tezedge/networking
-    - cargo bench --bench stream_benchmark --no-run
-    # interop_benchmark
-    - cd /tmp/tezedge-cache/tezedge/tezos/interop
-    - cargo bench --bench interop_benchmark --no-run
-    # predecessor_benchmarks
-    - cd /tmp/tezedge-cache/tezedge/storage
-    - cargo bench --bench predecessor_benchmarks --no-run
-    # this step is async, so we will sync later on this file
-    - echo > /tmp/tezedge-cache/tezedge/tezos/messages/build.done
-  when:
-    ref:
-      - refs/pull/*/head
 
 - name: protocol-runner/pool-test
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -567,86 +498,198 @@ steps:
     - echo "... replay context action file with sled..."
     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/tezedge-cache/context-replay --context-kv-store sled
 
-- name: compare-benchmarks-to-target-branch
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: cache
-      path: /tmp/tezedge-cache
-    - name: tests
-      path: /tests
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    # we should have here precompiled target branch
-    - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 240
-    - branch=$(git status | grep "On branch")
-    - echo "...running bench for git - $branch"
-    # message_benchmark - target
-    - cd /tmp/tezedge-cache/tezedge/tezos/messages
-    - cargo bench --bench message_benchmark --no-run
-    - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
-    - critcmp --export message_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/message_benchmark_target_branch_result.json
-    # stream_benchmark - target
-    - cd /tmp/tezedge-cache/tezedge/networking
-    - cargo bench --bench stream_benchmark --no-run
-    - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_target_branch_result
-    - critcmp --export stream_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/stream_benchmark_target_branch_result.json
-    # interop_benchmark - target
-    - cd /tmp/tezedge-cache/tezedge/tezos/interop
-    - cargo bench --bench interop_benchmark --no-run
-    - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_target_branch_result
-    - critcmp --export interop_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/interop_benchmark_target_branch_result.json
-    # predecessor_benchmarks - target
-    - cd /tmp/tezedge-cache/tezedge/storage
-    - cargo bench --bench predecessor_benchmarks --no-run
-    - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_target_branch_result
-    - critcmp --export predecessor_benchmarks_target_branch_result > $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_target_branch_result.json
-    # checkout current branch
-    - current_branch=$${DRONE_SOURCE_BRANCH}
-    - git reset --hard origin/$current_branch && git checkout $current_branch
-    - branch=$(git status | grep "On branch")
-    - echo "...running bench for git - $branch"
-    # message_benchmark - current
-    - cd /tmp/tezedge-cache/tezedge/tezos/messages
-    - cargo bench --bench message_benchmark --no-run
-    - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
-    - critcmp --export message_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/message_benchmark_current_branch_result.json
-    # stream_benchmark - current
-    - cd /tmp/tezedge-cache/tezedge/networking
-    - cargo bench --bench stream_benchmark --no-run
-    - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_current_branch_result
-    - critcmp --export stream_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/stream_benchmark_current_branch_result.json
-    # interop_benchmark - current
-    - cd /tmp/tezedge-cache/tezedge/tezos/interop
-    - cargo bench --bench interop_benchmark --no-run
-    - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_current_branch_result
-    - critcmp --export interop_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/interop_benchmark_current_branch_result.json
-    # predecessor_benchmarks - current
-    - cd /tmp/tezedge-cache/tezedge/storage
-    - cargo bench --bench predecessor_benchmarks --no-run
-    - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_current_branch_result
-    - critcmp --export predecessor_benchmarks_current_branch_result > $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_current_branch_result.json
-    # compare results
-    - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
-    - critcmp $${BUILD_ARTIFACTS_PATH}/message_benchmark_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/message_benchmark_current_branch_result.json --list
-    - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
-    - critcmp $${BUILD_ARTIFACTS_PATH}/interop_benchmark_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/interop_benchmark_current_branch_result.json --list
-    - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
-    - critcmp $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_current_branch_result.json --list
-  when:
-    ref:
-      - refs/pull/*/head
-  # TODO: needs rework and speedup with new CI
-  detach: true
+depends_on:
+  - build
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/cache
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+
+---
+##############################################################################################################
+kind: pipeline
+name: criterion-benchmarks
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+  # this is not triggered on pull request, because there is complex bench comparison on PR
+  - name: benchmarks
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # message_benchmark
+      - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
+      - cargo bench --bench message_benchmark -- --noplot
+      # stream_benchmark
+      - echo "" && echo "" && echo "...stream_benchmark..." && echo "" && echo ""
+      - cargo bench --bench stream_benchmark -- --noplot
+      # interop_benchmark
+      - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
+      - cargo bench --bench interop_benchmark -- --noplot
+      # interop_benchmark
+      - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
+      - cargo bench --bench predecessor_benchmarks -- --noplot
+    when:
+      ref:
+        exclude:
+          - refs/pull/*/head
+
+  # prepare and compiles (async) bench for target branch (only for PR)
+  - name: compile-benchmarks-for-target-branch
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /tmp/tezedge-cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd /tmp/tezedge-cache
+      - rm -rf tezedge
+      - target_branch=$${DRONE_TARGET_BRANCH}
+      - echo "...checkouting target branch - $target_branch"
+      - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
+      # message_benchmark
+      - cd /tmp/tezedge-cache/tezedge/tezos/messages
+      - cargo bench --bench message_benchmark --no-run
+      # stream_benchmark
+      - cd /tmp/tezedge-cache/tezedge/networking
+      - cargo bench --bench stream_benchmark --no-run
+      # interop_benchmark
+      - cd /tmp/tezedge-cache/tezedge/tezos/interop
+      - cargo bench --bench interop_benchmark --no-run
+      # predecessor_benchmarks
+      - cd /tmp/tezedge-cache/tezedge/storage
+      - cargo bench --bench predecessor_benchmarks --no-run
+      # this step is async, so we will sync later on this file
+      - echo > /tmp/tezedge-cache/tezedge/tezos/messages/build.done
+    when:
+      ref:
+        - refs/pull/*/head
+
+  - name: compare-benchmarks-to-target-branch
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /tmp/tezedge-cache
+      - name: tests
+        path: /tests
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # we should have here precompiled target branch
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "/tmp/tezedge-cache/tezedge/tezos/messages/build.done" 240
+      - branch=$(git status | grep "On branch")
+      - echo "...running bench for git - $branch"
+      # message_benchmark - target
+      - cd /tmp/tezedge-cache/tezedge/tezos/messages
+      - cargo bench --bench message_benchmark --no-run
+      - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
+      - critcmp --export message_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/message_benchmark_target_branch_result.json
+      # stream_benchmark - target
+      - cd /tmp/tezedge-cache/tezedge/networking
+      - cargo bench --bench stream_benchmark --no-run
+      - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_target_branch_result
+      - critcmp --export stream_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/stream_benchmark_target_branch_result.json
+      # interop_benchmark - target
+      - cd /tmp/tezedge-cache/tezedge/tezos/interop
+      - cargo bench --bench interop_benchmark --no-run
+      - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_target_branch_result
+      - critcmp --export interop_benchmark_target_branch_result > $${BUILD_ARTIFACTS_PATH}/interop_benchmark_target_branch_result.json
+      # predecessor_benchmarks - target
+      - cd /tmp/tezedge-cache/tezedge/storage
+      - cargo bench --bench predecessor_benchmarks --no-run
+      - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_target_branch_result
+      - critcmp --export predecessor_benchmarks_target_branch_result > $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_target_branch_result.json
+      # checkout current branch
+      - current_branch=$${DRONE_SOURCE_BRANCH}
+      - git reset --hard origin/$current_branch && git checkout $current_branch
+      - branch=$(git status | grep "On branch")
+      - echo "...running bench for git - $branch"
+      # message_benchmark - current
+      - cd /tmp/tezedge-cache/tezedge/tezos/messages
+      - cargo bench --bench message_benchmark --no-run
+      - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
+      - critcmp --export message_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/message_benchmark_current_branch_result.json
+      # stream_benchmark - current
+      - cd /tmp/tezedge-cache/tezedge/networking
+      - cargo bench --bench stream_benchmark --no-run
+      - cargo bench --bench stream_benchmark -- --noplot --save-baseline stream_benchmark_current_branch_result
+      - critcmp --export stream_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/stream_benchmark_current_branch_result.json
+      # interop_benchmark - current
+      - cd /tmp/tezedge-cache/tezedge/tezos/interop
+      - cargo bench --bench interop_benchmark --no-run
+      - cargo bench --bench interop_benchmark -- --noplot --save-baseline interop_benchmark_current_branch_result
+      - critcmp --export interop_benchmark_current_branch_result > $${BUILD_ARTIFACTS_PATH}/interop_benchmark_current_branch_result.json
+      # predecessor_benchmarks - current
+      - cd /tmp/tezedge-cache/tezedge/storage
+      - cargo bench --bench predecessor_benchmarks --no-run
+      - cargo bench --bench predecessor_benchmarks -- --noplot --save-baseline predecessor_benchmarks_current_branch_result
+      - critcmp --export predecessor_benchmarks_current_branch_result > $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_current_branch_result.json
+      # compare results
+      - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
+      - critcmp $${BUILD_ARTIFACTS_PATH}/message_benchmark_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/message_benchmark_current_branch_result.json --list
+      - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
+      - critcmp $${BUILD_ARTIFACTS_PATH}/interop_benchmark_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/interop_benchmark_current_branch_result.json --list
+      - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
+      - critcmp $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_target_branch_result.json $${BUILD_ARTIFACTS_PATH}/predecessor_benchmarks_current_branch_result.json --list
+    when:
+      ref:
+        - refs/pull/*/head
+    # TODO: needs rework and speedup with new CI
+    detach: true
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
+  - unit-tests-and-benchmarks
 
 image_pull_secrets:
   - docker_pull_secret
@@ -683,9 +726,6 @@ trigger:
 kind: pipeline
 name: tezos-python-tests
 
-# clone:
-#   disable: true
-
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
@@ -718,7 +758,7 @@ steps:
     - cp /tmp/tezos-src/modified/python-tests/daemons/node.py /tmp/tezos-src/unmodified/tezos/tests_python/daemons/node.py
     - cp /tmp/tezos-src/modified/python-tests/launchers/sandbox.py /tmp/tezos-src/unmodified/tezos/tests_python/launchers/sandbox.py
     - cp /tmp/tezos-src/modified/python-tests/tools/constants.py /tmp/tezos-src/unmodified/tezos/tests_python/tools/constants.py
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/tezos-src/unmodified/tezos/sandbox-patch-context.json
+    - cp /tmp/sandbox/sandbox-patch-context.json /tmp/tezos-src/unmodified/tezos/sandbox-patch-context.json
     # copy binaries to the test
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/light-node /tmp/tezos-src/unmodified/tezos/
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /tmp/tezos-src/unmodified/tezos/
@@ -907,6 +947,9 @@ volumes:
   - name: build
     host:
       path: /usr/local/etc/tezedge-ci/build/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
   - name: tezos-src
     host:
       path: /usr/local/etc/tezedge-ci/tezos-src
@@ -917,8 +960,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 #############################################################################################################
 # This pipeline runs the python test framwork tests from the tezos repository against tezos ocaml nodes
@@ -1007,7 +1049,7 @@ trigger:
     - TODO_TE-275
 
 depends_on:
-  - build-and-tests
+  - build
 
 #############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
@@ -1215,8 +1257,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline runs tezedge node with sandbox configuration and does transfer with tezos_client
@@ -1225,8 +1266,8 @@ depends_on:
 kind: pipeline
 name: sandbox-carthage-node-tests
 
-# clone:
-#   disable: true
+clone:
+  disable: true
 
 environment:
   SODIUM_USE_PKG_CONFIG: 1
@@ -1254,14 +1295,6 @@ steps:
     - rm -rf /tmp/sandbox/light-node
     - rm -rf /tmp/sandbox/tezos-node
     - rm -rf /tmp/sandbox/tezos-client
-    # copy sandbox resources
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json /tmp/sandbox/
 
 # run empty rust node and wait for it
 - name: tezedge-node-sandbox-run
@@ -1462,8 +1495,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration againts ocaml node with different network cfg
@@ -1606,8 +1638,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node,
@@ -1915,8 +1946,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline runs tezedge node with edo2net configuration againts ocaml node with edo2net snapshot
@@ -2132,8 +2162,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline runs tezedge node with carthagenet configuration againts ocaml node with carthagenet snapshot
@@ -2353,8 +2382,7 @@ trigger:
     - DISABLE
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 
 ##############################################################################################################
@@ -2575,8 +2603,7 @@ trigger:
     - develop
 
 depends_on:
-  - build-and-tests
-  - tests-and-benchmarks
+  - build
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
@@ -2622,6 +2649,8 @@ trigger:
   event: push
 
 depends_on:
+  - unit-tests-and-benchmarks
+  - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
   - tezos-python-tests
@@ -2679,6 +2708,8 @@ trigger:
   event: tag
 
 depends_on:
+  - unit-tests-and-benchmarks
+  - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
   - tezos-python-tests

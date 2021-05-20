@@ -11,9 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use itertools::Itertools;
-use rand::seq::SliceRandom;
-use rand::Rng;
 use riker::actors::*;
 use slog::{info, warn, Logger};
 
@@ -347,13 +344,6 @@ impl BootstrapState {
     }
 
     pub fn schedule_blocks_to_download(&mut self, filter_peer: &Arc<PeerId>, log: &Logger) {
-        // Simple scheduler/limiter for the same requests,
-        // for example, we could have 50 peers on the same level, and all required the same block,
-        // so it is unnecessesary to trigger 50-times the same request, because we just overload ourself
-        // (this has meaning only if [filter_peer.is_none])
-        let mut missing_blocks_scheduler: HashMap<BlockRef, Vec<ActorUri>> = HashMap::default();
-
-        // 1. collect missing blocks for peers
         let BootstrapState {
             peers,
             block_state_db,
@@ -361,18 +351,14 @@ impl BootstrapState {
             ..
         } = self;
 
-        for PeerBootstrapState {
+        // collect missing blocks for peers
+        if let Some(PeerBootstrapState {
             peer_id,
             peer_queues,
             branches,
             ..
-        } in peers.values_mut()
+        }) = peers.get_mut(&filter_peer.peer_ref.uri())
         {
-            // filter processing by peer (if requested)
-            if !filter_peer.peer_ref.eq(&peer_id.peer_ref) {
-                continue;
-            }
-
             // check peers blocks queue
             let (already_queued, mut available_queue_capacity) = match peer_queues
                 .get_already_queued_block_headers_and_max_capacity()
@@ -381,7 +367,7 @@ impl BootstrapState {
                 Err(e) => {
                     warn!(log, "Failed to get available blocks queue capacity for peer, so ignore this run for peer"; "reason" => e,
                         "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                    continue;
+                    return;
                 }
             };
 
@@ -403,78 +389,25 @@ impl BootstrapState {
                     .unwrap_or(0);
             }
 
-            // add missing blocks for peer to scheduler
-            for missing_block in missing_blocks {
-                if let Some(peers) = missing_blocks_scheduler.get_mut(&missing_block) {
-                    if !peers.contains(&peer_id.peer_ref.uri()) {
-                        peers.push(peer_id.peer_ref.uri().clone());
-                    }
-                } else {
-                    missing_blocks_scheduler
-                        .insert(missing_block, vec![peer_id.peer_ref.uri().clone()]);
-                }
+            // schedule blocks to download
+            if let Err(e) =
+                data_requester.fetch_block_headers(missing_blocks, peer_id, &peer_queues)
+            {
+                warn!(log, "Failed to schedule block headers for download from peer"; "reason" => e,
+                        "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
             }
         }
-
-        // 2. randomize peer selection, where there are more then one peer
-        let mut rng = rand::thread_rng();
-        let missing_blocks_scheduler = missing_blocks_scheduler
-            .into_iter()
-            .filter_map(|(block_ref, mut peers)| {
-                if peers.len() == 1 {
-                    Some((block_ref, peers))
-                } else if peers.len() > 1 {
-                    // select random peers
-                    let rand_count = rng.gen_range(1, peers.len());
-                    peers.shuffle(&mut rng);
-                    peers.truncate(rand_count);
-                    Some((block_ref, peers))
-                } else {
-                    None
-                }
-            })
-            .flat_map(|(block_ref, peers)| {
-                peers
-                    .into_iter()
-                    .map(|peer| (peer, block_ref.clone()))
-                    .collect::<Vec<_>>()
-            })
-            .into_group_map();
-
-        // 3. try schedule requests to p2p
-        missing_blocks_scheduler
-            .into_iter()
-            .for_each(|(peer_ref_uri, missing_blocks)| {
-                if let Some(peer_state) = peers.get(&peer_ref_uri) {
-                    let peer_id = &peer_state.peer_id;
-                    if let Err(e) = data_requester.fetch_block_headers(
-                        missing_blocks,
-                        peer_id,
-                        &peer_state.peer_queues,
-                    ) {
-                        warn!(log, "Failed to schedule block headers for download from peer"; "reason" => e,
-                        "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                    }
-                };
-            });
     }
 
     pub fn schedule_operations_to_download(&mut self, filter_peer: &Arc<PeerId>, log: &Logger) {
-        let mut missing_blocks_scheduler: HashMap<BlockRef, Vec<ActorUri>> = HashMap::default();
-
-        // 1. collect missing blocks for peers
-        for PeerBootstrapState {
+        // collect missing blocks for peers
+        if let Some(PeerBootstrapState {
             peer_id,
             peer_queues,
             branches,
             ..
-        } in self.peers.values_mut()
+        }) = self.peers.get_mut(&filter_peer.peer_ref.uri())
         {
-            // filter processing by peer (if requested)
-            if !filter_peer.peer_ref.eq(&peer_id.peer_ref) {
-                continue;
-            }
-
             // check peers blocks queue
             let (already_queued, mut available_queue_capacity) = match peer_queues
                 .get_already_queued_block_operations_and_max_capacity()
@@ -483,7 +416,7 @@ impl BootstrapState {
                 Err(e) => {
                     warn!(log, "Failed to get available operations queue capacity for peer, so ignore this run for peer"; "reason" => e,
                         "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                    continue;
+                    return;
                 }
             };
 
@@ -503,72 +436,26 @@ impl BootstrapState {
                     .unwrap_or(0);
             }
 
-            // add missing blocks for peer to scheduler
-            for missing_block in missing_blocks {
-                if let Some(peers) = missing_blocks_scheduler.get_mut(&missing_block) {
-                    if !peers.contains(&peer_id.peer_ref.uri()) {
-                        peers.push(peer_id.peer_ref.uri().clone());
-                    }
-                } else {
-                    missing_blocks_scheduler
-                        .insert(missing_block, vec![peer_id.peer_ref.uri().clone()]);
-                }
-            }
-        }
-
-        // 2. randomize peer selection, where there are more then one peer
-        let mut rng = rand::thread_rng();
-        let missing_blocks_scheduler = missing_blocks_scheduler
-            .into_iter()
-            .filter_map(|(block_ref, mut peers)| {
-                if peers.len() == 1 {
-                    Some((block_ref, peers))
-                } else if peers.len() > 1 {
-                    // select random peers
-                    let rand_count = rng.gen_range(1, peers.len());
-                    peers.shuffle(&mut rng);
-                    peers.truncate(rand_count);
-                    Some((block_ref, peers))
-                } else {
-                    None
-                }
-            })
-            .flat_map(|(block_ref, peers)| {
-                peers
-                    .into_iter()
-                    .map(|peer| (peer, block_ref.clone()))
-                    .collect::<Vec<_>>()
-            })
-            .into_group_map();
-
-        // 3. try schedule requests to p2p (also handle already downloaded block operations)
-        let mut already_downloaded: HashSet<Arc<BlockHash>> = HashSet::default();
-        missing_blocks_scheduler
-            .into_iter()
-            .for_each(|(peer_ref_uri, missing_blocks)| {
-                if let Some(peer_state) = self.peers.get(&peer_ref_uri) {
-                    let peer_id = &peer_state.peer_id;
-                    // try schedule
-                    if let Err(e) = self.data_requester.fetch_block_operations(
-                        missing_blocks,
-                        peer_id,
-                        &peer_state.peer_queues,
-                        |already_downloaded_block| {
-                            let _ = already_downloaded.insert(already_downloaded_block);
-                        },
-                    ) {
-                        warn!(log, "Failed to schedule block operations for download from peer"; "reason" => e,
+            // try schedule requests to p2p (also handle already downloaded block operations)
+            let mut already_downloaded: HashSet<Arc<BlockHash>> = HashSet::default();
+            if let Err(e) = self.data_requester.fetch_block_operations(
+                missing_blocks,
+                peer_id,
+                &peer_queues,
+                |already_downloaded_block| {
+                    let _ = already_downloaded.insert(already_downloaded_block);
+                },
+            ) {
+                warn!(log, "Failed to schedule block operations for download from peer"; "reason" => e,
                         "peer_id" => peer_id.peer_id_marker.clone(), "peer_ip" => peer_id.peer_address.to_string(), "peer" => peer_id.peer_ref.name(), "peer_uri" => peer_id.peer_ref.uri().to_string());
-                    }
-                };
-            });
-
-        // clear already downloaded
-        already_downloaded
-            .drain()
-            .for_each(|already_downloaded_block| {
-                self.block_operations_downloaded(&already_downloaded_block)
-            });
+            }
+            // clear already downloaded
+            already_downloaded
+                .drain()
+                .for_each(|already_downloaded_block| {
+                    self.block_operations_downloaded(&already_downloaded_block)
+                });
+        }
     }
 
     pub fn schedule_blocks_for_apply(
@@ -586,15 +473,10 @@ impl BootstrapState {
             ..
         } = self;
 
-        for PeerBootstrapState {
-            branches, peer_id, ..
-        } in peers.values_mut()
+        if let Some(PeerBootstrapState {
+            peer_id, branches, ..
+        }) = peers.get_mut(&filter_peer.peer_ref.uri())
         {
-            // filter processing by peer (if requested)
-            if !filter_peer.peer_ref.eq(&peer_id.peer_ref) {
-                continue;
-            }
-
             // check unprocessed downloaded intervals
             let mut branches_to_remove: HashSet<Level> = HashSet::default();
             for branch in branches.iter_mut() {
@@ -737,7 +619,7 @@ pub struct BranchState {
     missing_operations: HashSet<BlockRef>,
 
     /// Ordered blocks for this branch, which are ready to apply
-    blocks_to_apply: Vec<BlockRef>,
+    blocks_to_apply: Vec<BlockHash>,
 }
 
 impl BranchState {
@@ -749,10 +631,10 @@ impl BranchState {
         to_level: Level,
         block_state_db: &mut BlockStateDb,
     ) -> BranchState {
-        let start_block = block_state_db.get_block_ref(&start_block);
+        let start_block = block_state_db.get_block_ref(start_block);
         let blocks = blocks
             .into_iter()
-            .map(|block_hash| block_state_db.get_block_ref(&block_hash))
+            .map(|block_hash| block_state_db.get_block_ref(block_hash))
             .collect::<Vec<_>>();
 
         BranchState {
@@ -765,7 +647,7 @@ impl BranchState {
 
     /// Returns true if any interval contains requested block
     pub fn contains_block_to_apply(&self, block: &BlockHash) -> bool {
-        if self.blocks_to_apply.iter().any(|b| b.as_ref().eq(block)) {
+        if self.blocks_to_apply.iter().any(|b| b.eq(block)) {
             return true;
         }
 
@@ -784,8 +666,6 @@ impl BranchState {
         new_missing_history: &[BlockHash],
         block_state_db: &mut BlockStateDb,
     ) -> bool {
-        let mut new_intervals = Vec::new();
-
         if let Some(last_interval) = self.intervals.last() {
             // we need to find this last block in new_bootstrap
             if let Some(found_position) = new_missing_history
@@ -796,22 +676,20 @@ impl BranchState {
                 if (found_position + 1) < new_missing_history.len() {
                     let extended_missing_history = new_missing_history[(found_position + 1)..]
                         .iter()
-                        .map(|bh| block_state_db.get_block_ref(bh))
+                        .map(|bh| block_state_db.get_block_ref(bh.clone()))
                         .collect::<Vec<_>>();
 
                     // split to intervals
-                    new_intervals.extend(BranchInterval::split(
-                        last_interval.end.clone(),
-                        extended_missing_history,
-                    ));
+                    let new_intervals =
+                        BranchInterval::split(last_interval.end.clone(), extended_missing_history);
+
+                    if !new_intervals.is_empty() {
+                        self.intervals.extend(new_intervals);
+                        self.to_level = *new_bootstrap_level;
+                        return true;
+                    }
                 }
             }
-        }
-
-        if !new_intervals.is_empty() {
-            self.intervals.extend(new_intervals);
-            self.to_level = *new_bootstrap_level;
-            return true;
         }
 
         false
@@ -933,8 +811,6 @@ impl BranchState {
         chain_id: &Arc<ChainId>,
         peer_branch_bootstrapper: &PeerBranchBootstrapperRef,
     ) -> Result<(), StateError> {
-        let mut batch_for_apply: Option<ApplyBlockBatch> = None;
-
         // we can apply blocks just from the first "scheduled" interval
         // interval is removed all the time, when the last block of the interval is applied
         for interval in self.intervals.iter_mut() {
@@ -952,6 +828,7 @@ impl BranchState {
             }
         }
 
+        let mut batch_for_apply: Option<ApplyBlockBatch> = None;
         let mut last_applied = None;
         let mut last_already_scheduled = None;
 
@@ -961,7 +838,7 @@ impl BranchState {
             match block_state_db.blocks.get(b) {
                 Some(_) => {
                     // skip already scheduled/applied
-                    last_already_scheduled = Some(b.clone());
+                    last_already_scheduled = Some(b);
                     // continue to check next block
                     continue;
                 }
@@ -971,7 +848,7 @@ impl BranchState {
                         Some(block_metadata) => {
                             // check if already applied
                             if block_metadata.is_applied() {
-                                last_already_scheduled = Some(b.clone());
+                                last_already_scheduled = Some(b);
                                 last_applied = Some(b.clone());
                                 continue;
                             }
@@ -992,7 +869,8 @@ impl BranchState {
                                 Ok(true)
                             ) {
                                 // if operations not found, stop scheduling and trigger operations download, we need to wait
-                                self.missing_operations.insert(b.clone());
+                                self.missing_operations
+                                    .insert(block_state_db.get_block_ref(b.clone()));
                                 break;
                             }
 
@@ -1009,16 +887,17 @@ impl BranchState {
 
                             // add to the cache state
                             let state = BlockState {
-                                predecessor_block_hash: block_state_db.get_block_ref(&predecessor),
+                                predecessor_block_hash: block_state_db.get_block_ref(predecessor),
                             };
-                            block_state_db
-                                .blocks
-                                .insert(block_state_db.get_block_ref(&b), state);
-                            last_already_scheduled = Some(b.clone());
+
+                            // block ref
+                            let block_ref = block_state_db.get_block_ref(b.clone());
+
+                            block_state_db.blocks.insert(block_ref.clone(), state);
 
                             // start batch or continue existing one
                             if let Some(mut batch) = batch_for_apply {
-                                batch.add_successor(b.clone());
+                                batch.add_successor(block_ref);
                                 if batch.successors_size() >= max_block_apply_batch {
                                     // schedule batch
                                     data_requester.call_schedule_apply_block(
@@ -1032,8 +911,13 @@ impl BranchState {
                                     batch_for_apply = Some(batch);
                                 }
                             } else {
-                                batch_for_apply = Some(ApplyBlockBatch::start_batch(b.clone()));
+                                batch_for_apply = Some(ApplyBlockBatch::start_batch(
+                                    block_ref,
+                                    max_block_apply_batch,
+                                ));
                             }
+
+                            last_already_scheduled = Some(b);
                         }
                         None => {
                             return Err(StateError::ProcessingError {
@@ -1062,7 +946,7 @@ impl BranchState {
             if let Some(position) = self
                 .blocks_to_apply
                 .iter()
-                .position(|b| b.as_ref().eq(&last_already_scheduled))
+                .position(|b| b.eq(last_already_scheduled))
             {
                 for _ in 0..(position + 1) {
                     if !self.blocks_to_apply.is_empty() {
@@ -1077,7 +961,7 @@ impl BranchState {
             let mut applied_blocks =
                 block_state_db.remove_with_all_predecessors(&last_applied_block);
             if !applied_blocks.contains(&last_applied_block) {
-                applied_blocks.insert(last_applied_block);
+                applied_blocks.insert(block_state_db.get_block_ref(last_applied_block.clone()));
             }
             self.block_applied(&mut applied_blocks, block_state_db);
         }
@@ -1097,8 +981,8 @@ impl BranchState {
         let mut remove_to_block_idx_inclusive = None;
         for (block_idx, block) in self.blocks_to_apply.iter().enumerate() {
             if applied_blocks.contains(block) {
+                // find highest
                 remove_to_block_idx_inclusive = Some(block_idx);
-                break;
             }
         }
         // we want to remove all blocks before this applied blocks, we dont need them anymore
@@ -1285,14 +1169,17 @@ impl BranchInterval {
         &self,
         block_state_db: &BlockStateDb,
         data_requester: &DataRequester,
-    ) -> Result<Vec<BlockRef>, StateError> {
+    ) -> Result<Vec<BlockHash>, StateError> {
         if !matches!(self.state, BranchIntervalState::Downloaded) {
             // if interval is not downloaded, there is nothing to do
             return Ok(vec![]);
         }
 
-        // collect all blocks from end to start
-        let mut interval_blocks = Vec::with_capacity(2);
+        // if end of interval is scheduled for apply, just finish, nothing more to apply here
+        if block_state_db.blocks.contains_key(&self.end) {
+            // if scheduled for apply, just finish, nothing more to apply
+            return Ok(vec![]);
+        }
 
         // start with end
         if let Some(end_metadata) = data_requester.block_meta_storage.get(&self.end)? {
@@ -1301,21 +1188,19 @@ impl BranchInterval {
                 return Ok(vec![]);
             }
 
-            // if scheduled for apply or applied, just finish
-            if block_state_db.blocks.contains_key(&self.end) {
-                // if applied, just finish, nothing more to apply
-                return Ok(vec![]);
-            }
+            // TODO: we should maybe estimated and calculate count in interval when shifting [find_last_known_predecessor]
+            // collect all blocks from end to start
+            let mut interval_blocks = Vec::with_capacity(128);
 
             // now start add for apply
-            interval_blocks.push(self.end.clone());
+            interval_blocks.push(self.end.as_ref().clone());
 
             // iterate predecessor to the start
             let mut predecessor_selector = end_metadata.take_predecessor();
             while let Some(predecessor) = predecessor_selector {
                 // if scheduled for apply or applied, just finish
                 if block_state_db.blocks.contains_key(&predecessor) {
-                    // if applied, just finish, nothing more to apply
+                    // if scheduled for apply, just finish, nothing more to apply
                     break;
                 }
 
@@ -1327,15 +1212,16 @@ impl BranchInterval {
                             break;
                         }
 
-                        // predecessor is not scheduled or applied, so we add it
-                        interval_blocks.push(block_state_db.get_block_ref(&predecessor));
-
                         // if reached start of interval, just finish, we are at the end of interval
                         if self.start.as_ref().eq(&predecessor) {
+                            // predecessor is not scheduled or applied, so we add it
+                            interval_blocks.push(predecessor);
                             break;
                         }
                         // if reached seek of interval, just finish, we are at the end of interval
                         if self.seek.as_ref().eq(&predecessor) {
+                            // predecessor is not scheduled or applied, so we add it
+                            interval_blocks.push(predecessor);
                             break;
                         }
 
@@ -1343,9 +1229,15 @@ impl BranchInterval {
                         match predecessor_metadata.take_predecessor() {
                             Some(pred_predecessor) => {
                                 if pred_predecessor.eq(&predecessor) {
+                                    // predecessor is not scheduled or applied, so we add it
+                                    interval_blocks.push(predecessor);
+
                                     // found genesis
                                     break;
                                 } else {
+                                    // predecessor is not scheduled or applied, so we add it
+                                    interval_blocks.push(predecessor);
+
                                     Some(pred_predecessor)
                                 }
                             }
@@ -1369,23 +1261,30 @@ impl BranchInterval {
                     }
                 }
             }
-        }
 
-        // reverse interval
-        interval_blocks.reverse();
+            // reverse interval
+            interval_blocks.reverse();
 
-        // check if end matches interval
-        let is_end_ok = if let Some(last) = interval_blocks.last() {
-            last.as_ref().eq(&self.end)
-        } else {
-            false
-        };
+            // check if end matches interval
+            let is_end_ok = if let Some(last) = interval_blocks.last() {
+                self.end.as_ref().eq(last)
+            } else {
+                false
+            };
 
-        if is_end_ok {
-            Ok(interval_blocks)
+            if is_end_ok {
+                Ok(interval_blocks)
+            } else {
+                Err(StateError::ProcessingError {
+                    reason: format!("Invalid interval, is_end_ok: {}", is_end_ok),
+                })
+            }
         } else {
             Err(StateError::ProcessingError {
-                reason: format!("Invalid interval, is_end_ok: {}", is_end_ok),
+                reason: format!(
+                    "Invalid interval, missing end block: {}",
+                    self.end.to_base58_check()
+                ),
             })
         }
     }
@@ -1437,7 +1336,7 @@ fn find_last_known_predecessor(
                         if predecessor.eq(&block_from) {
                             // stop on genesis
                             return (
-                                Some((block_state_db.get_block_ref(&predecessor), true)),
+                                Some((block_state_db.get_block_ref(predecessor), true)),
                                 None,
                             );
                         }
@@ -1461,11 +1360,11 @@ fn find_last_known_predecessor(
     while let Some(block) = predecessor_selector {
         // check if we can close interval from cache
         if block_state_db.blocks.contains_key(&block) {
-            return (Some((block_state_db.get_block_ref(&block), true)), None);
+            return (Some((block_state_db.get_block_ref(block), true)), None);
         }
 
         if block_to.as_ref().eq(&block) {
-            return (Some((block_state_db.get_block_ref(&block), true)), None);
+            return (Some((block_state_db.get_block_ref(block), true)), None);
         }
 
         // find and check predecessor block
@@ -1474,20 +1373,20 @@ fn find_last_known_predecessor(
                 if block_metadata.is_applied() {
                     // if block is already applied, we finish, there is no need to continue
                     return (
-                        Some((block_state_db.get_block_ref(&block), true)),
-                        Some(block_state_db.get_block_ref(&block)),
+                        Some((block_state_db.get_block_ref(block.clone()), true)),
+                        Some(block_state_db.get_block_ref(block)),
                     );
                 }
 
                 if !block_metadata.is_downloaded() {
-                    return (Some((block_state_db.get_block_ref(&block), false)), None);
+                    return (Some((block_state_db.get_block_ref(block), false)), None);
                 } else {
                     // check missing operations
                     if !matches!(
                         data_requester.operations_meta_storage.is_complete(&block),
                         Ok(true)
                     ) {
-                        missing_operations.insert(block_state_db.get_block_ref(&block));
+                        missing_operations.insert(block_state_db.get_block_ref(block.clone()));
                     }
 
                     // check predecessor
@@ -1496,7 +1395,7 @@ fn find_last_known_predecessor(
                             if predecessor.eq(&block) {
                                 // stop on genesis
                                 return (
-                                    Some((block_state_db.get_block_ref(&predecessor), true)),
+                                    Some((block_state_db.get_block_ref(predecessor), true)),
                                     None,
                                 );
                             }
@@ -1504,14 +1403,14 @@ fn find_last_known_predecessor(
                         }
                         None => {
                             // should not happen, once predecessor will not be Option, it will be removed
-                            return (Some((block_state_db.get_block_ref(&block), false)), None);
+                            return (Some((block_state_db.get_block_ref(block), false)), None);
                         }
                     }
                 }
             }
             _ => {
                 // if any problem or not found, we try to download the header
-                return (Some((block_state_db.get_block_ref(&block), false)), None);
+                return (Some((block_state_db.get_block_ref(block), false)), None);
             }
         }
     }
@@ -1565,11 +1464,11 @@ impl BlockStateDb {
     }
 
     /// Checks existing BlockRef from db, to minimalize BlockHash creation in memory
-    pub fn get_block_ref(&self, block_hash: &BlockHash) -> BlockRef {
-        if let Some((block_ref, _)) = self.blocks.get_key_value(block_hash) {
+    pub fn get_block_ref(&self, block_hash: BlockHash) -> BlockRef {
+        if let Some((block_ref, _)) = self.blocks.get_key_value(&block_hash) {
             block_ref.clone()
         } else {
-            Arc::new(block_hash.clone())
+            Arc::new(block_hash)
         }
     }
 
