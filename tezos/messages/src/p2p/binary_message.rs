@@ -150,14 +150,18 @@ pub mod cache {
                 fn cache_reader(
                     &self,
                 ) -> Option<&dyn $crate::p2p::binary_message::cache::CacheReader> {
-                    Some(&self.$property_cache_name)
+                    // TODO: WIP: disable cache
+                    // Some(&self.$property_cache_name)
+                    None
                 }
 
                 #[inline]
                 fn cache_writer(
                     &mut self,
                 ) -> Option<&mut dyn $crate::p2p::binary_message::cache::CacheWriter> {
-                    Some(&mut self.$property_cache_name)
+                    // TODO: WIP: disable cache
+                    // Some(&mut self.$property_cache_name)
+                    None
                 }
             }
         };
