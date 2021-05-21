@@ -28,6 +28,7 @@ use crate::slack::SlackServer;
 pub mod alerts;
 pub mod deploy;
 pub mod resource;
+pub mod snapshot;
 
 pub fn start_deploy_monitoring(
     compose_file_path: PathBuf,
@@ -115,6 +116,30 @@ pub fn start_resource_monitoring(
                 error!(log, "Resource monitoring error: {}", e);
             }
             sleep(Duration::from_secs(resource_monitor_interval)).await;
+        }
+    })
+}
+
+pub fn start_snapshot_monitoring(
+    env: DeployMonitoringEnvironment,
+    log: Logger,
+    running: Arc<AtomicBool>,
+    slack: Option<SlackServer>,
+) -> JoinHandle<()> {
+    let mut snapshot_monitor = snapshot::SnapshotMonitor::new(log.clone(), env.compose_file_path.clone(), env.snapshot_levels.clone(), slack);
+    tokio::spawn(async move {
+        while running.load(Ordering::Acquire) {
+            // if let Err(e) = snapshot_monitor.monitor_snapshotting().await {
+            //     error!(log, "Deploy monitoring error: {}", e);
+            // }
+            // sleep(Duration::from_secs(env.snapshot_monitor_interval)).await;
+
+            // TODO: Cleanup this abomination please
+            match snapshot_monitor.monitor_snapshotting().await {
+                Ok(true) => break,
+                Ok(false) => sleep(Duration::from_secs(env.snapshot_monitor_interval)).await,
+                Err(e) => error!(log, "Deploy monitoring error: {}", e)
+            }
         }
     })
 }
@@ -270,6 +295,16 @@ pub async fn spawn_node_stack(
     );
 
     handles.push(resources_handle);
+
+    info!(log, "Creating snapshotting handle");
+    let snapshotting_handle = start_snapshot_monitoring(
+        env.clone(),
+        log.clone(),
+        running, 
+        slack_server,
+    );
+
+    handles.push(snapshotting_handle);
 
     info!(log, "Starting rpc server on port {}", &env.rpc_port);
     let rpc_server_handle = rpc::spawn_rpc_server(env.rpc_port, log.clone(), storage_map.clone());
