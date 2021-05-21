@@ -7,7 +7,9 @@ use tezos_api::ffi::*;
 /// Provides trait that must be implemented by a protocol runner.
 pub trait ProtocolApi {
     /// Apply block
-    fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError>;
+    fn apply_block(
+        request: ApplyBlockRequest,
+    ) -> Result<(ApplyBlockResponse, FfiTimer), ApplyBlockError>;
 
     /// Begin application new block
     fn begin_application(

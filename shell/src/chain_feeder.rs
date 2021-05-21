@@ -871,18 +871,22 @@ fn _apply_block(
 
     // try apply block
     let protocol_call_timer = Instant::now();
-    let apply_block_result = protocol_controller.apply_block(block_request)?;
+    let (apply_block_result, apply_block_timer) = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
                         "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                        "validation_result_message" => &apply_block_result.validation_result_message);
+                        "validation_result_message" => &apply_block_result.validation_result_message,
+                        "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
+                        "apply_block_timer" => format!("{}", &apply_block_timer));
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
         info!(log, "Block was validated with protocol with long processing";
                            "block_header_hash" => block_hash.to_base58_check(),
                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
+                           "validation_result_message" => &apply_block_result.validation_result_message,
+                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
+                           "apply_block_timer" => format!("{}", &apply_block_timer));
     }
 
     // we need to check and wait for context_hash to be 100% sure, that everything is ok
@@ -894,7 +898,8 @@ fn _apply_block(
                            "block_header_hash" => block_hash.to_base58_check(),
                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
                            "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
+                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed),
+                           "apply_block_timer" => format!("{}", &apply_block_timer));
     }
 
     // Lets mark header as applied and store result
@@ -1134,7 +1139,7 @@ pub(crate) fn initialize_protocol_context(
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
     (Duration::from_secs(60 * 60 * 2), Duration::from_millis(15));
 const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
-const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
+const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(1);
 
 /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
 pub fn wait_for_context(

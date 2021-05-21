@@ -6,12 +6,12 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
-    PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
-    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-    ValidateOperationRequest, ValidateOperationResponse,
+    ComputePathResponse, ContextDataError, FfiTimer, GenesisChain, GetDataError,
+    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse,
+    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_interop::ffi;
 
@@ -76,7 +76,9 @@ pub fn genesis_result_data(
 /// - block and operations data are correctly stored in Tezos chain/storage
 /// - new current head is evaluated
 /// - returns validation_result.message
-pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
+pub fn apply_block(
+    request: ApplyBlockRequest,
+) -> Result<(ApplyBlockResponse, FfiTimer), ApplyBlockError> {
     // check operations count by validation_pass
     if (request.block_header.validation_pass() as usize) != request.operations.len() {
         return Err(ApplyBlockError::IncompleteOperations {

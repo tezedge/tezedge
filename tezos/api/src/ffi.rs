@@ -1,9 +1,10 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt::Debug;
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 use std::{convert::TryFrom, fmt};
+use std::fmt::Debug;
+use std::time::Duration;
 
 use derive_builder::Builder;
 use failure::Fail;
@@ -142,6 +143,25 @@ pub struct ApplyBlockResponse {
     /// Note: This is calculated from ops_metadata_hashes - we need this in request
     ///       This is calculated as merkle tree hash, like operation paths
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct FfiTimer {
+    pub runtime_execute_start: Duration,
+    pub request_to_boxroot: Duration,
+    pub ffi_direct_call: Duration,
+    pub rt_get_to_result: Duration,
+    pub response_to_rust: Duration,
+}
+
+impl std::fmt::Debug for FfiTimer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "[runtime_execute_start: {:?} + request_to_boxroot: {:?} + ffi_direct_call: {:?} + rt_get_to_result: {:?} + response_to_rust: {:?}]",
+            self.runtime_execute_start, self.request_to_boxroot, self.ffi_direct_call, self.rt_get_to_result, self.response_to_rust
+        )
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

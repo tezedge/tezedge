@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::convert::AsRef;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use failure::Fail;
 use lazy_static::lazy_static;
@@ -76,10 +76,18 @@ struct GenesisResultDataParams {
     genesis_max_operations_ttl: u16,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApplyBlockProtoApiTimer {
+    proto_api_timer: Duration,
+}
+
 /// This event message is generated as a response to the `ProtocolMessage` command.
 #[derive(Serialize, Deserialize, Debug, IntoStaticStr)]
 enum NodeMessage {
-    ApplyBlockResult(Result<ApplyBlockResponse, ApplyBlockError>),
+    ApplyBlockResult(
+        Result<(ApplyBlockResponse, FfiTimer), ApplyBlockError>,
+        ApplyBlockProtoApiTimer,
+    ),
     AssertEncodingForProtocolDataResult(Result<(), ProtocolDataError>),
     BeginApplicationResult(Result<BeginApplicationResponse, BeginApplicationError>),
     BeginConstructionResult(Result<PrevalidatorWrapper, BeginConstructionError>),
@@ -122,8 +130,15 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
     while let Ok(cmd) = rx.receive() {
         match cmd {
             ProtocolMessage::ApplyBlockCall(request) => {
+                let proto_ffi_call_timer = Instant::now();
                 let res = Proto::apply_block(request);
-                tx.send(&NodeMessage::ApplyBlockResult(res))?;
+                let proto_ffi_call_timer = proto_ffi_call_timer.elapsed();
+                tx.send(&NodeMessage::ApplyBlockResult(
+                    res,
+                    ApplyBlockProtoApiTimer {
+                        proto_api_timer: proto_ffi_call_timer,
+                    },
+                ))?;
             }
             ProtocolMessage::AssertEncodingForProtocolDataCall(protocol_hash, protocol_data) => {
                 let res = Proto::assert_encoding_for_protocol_data(protocol_hash, protocol_data);
@@ -381,10 +396,31 @@ struct IpcIO {
 
 /// Encapsulate IPC communication.
 pub struct ProtocolController {
+    // TODO: treba tu RefCell
     io: RefCell<IpcIO>,
     configuration: ProtocolEndpointConfiguration,
     /// Indicates that was triggered shutting down
     shutting_down: bool,
+}
+
+pub struct ApplyBlockTimer {
+    ipc_send_timer: Duration,
+    ipc_receive_timer: Duration,
+    proto_ffi_timer: ApplyBlockProtoApiTimer,
+    ffi_timer: FfiTimer,
+}
+
+impl std::fmt::Display for ApplyBlockTimer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(ipc_send_elapsed: {:?}, ipc_receive_elapsed: {:?}, proto_ffi_timer: {:?} -> {:?})",
+            self.ipc_send_timer,
+            self.ipc_receive_timer,
+            self.proto_ffi_timer.proto_api_timer,
+            self.ffi_timer,
+        )
+    }
 }
 
 /// Provides convenience methods for IPC communication.
@@ -405,17 +441,33 @@ impl ProtocolController {
     pub fn apply_block(
         &self,
         request: ApplyBlockRequest,
-    ) -> Result<ApplyBlockResponse, ProtocolServiceError> {
+    ) -> Result<(ApplyBlockResponse, ApplyBlockTimer), ProtocolServiceError> {
+        let ipc_send_timer = Instant::now();
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::ApplyBlockCall(request))?;
+        let ipc_send_timer = ipc_send_timer.elapsed();
 
         // this might take a while, so we will use unusually long timeout
+        let ipc_receive_timer = Instant::now();
         match io.rx.try_receive(
             Some(Self::APPLY_BLOCK_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
-            NodeMessage::ApplyBlockResult(result) => {
-                result.map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
+            NodeMessage::ApplyBlockResult(result, proto_ffi_timer) => {
+                let ipc_receive_timer = ipc_receive_timer.elapsed();
+                result
+                    .map_err(|err| ProtocolError::ApplyBlockError { reason: err }.into())
+                    .map(|(response, ffi_timer)| {
+                        (
+                            response,
+                            ApplyBlockTimer {
+                                ipc_send_timer,
+                                ipc_receive_timer,
+                                proto_ffi_timer,
+                                ffi_timer,
+                            },
+                        )
+                    })
             }
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),

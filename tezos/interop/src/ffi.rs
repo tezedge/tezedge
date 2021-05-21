@@ -3,6 +3,7 @@
 
 use std::convert::TryFrom;
 use std::sync::Once;
+use std::time::Instant;
 
 use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
@@ -253,9 +254,58 @@ macro_rules! call_helper {
     };
 }
 
+macro_rules! call_helper_timed {
+    (tezos_ffi::$f:ident($request:ident)) => {{
+        let runtime_execute_start = Instant::now();
+        runtime::execute(move |rt: &mut OCamlRuntime| {
+            let runtime_execute_start = runtime_execute_start.elapsed();
+
+            let request_to_boxroot = Instant::now();
+            let ocaml_request = $request.to_boxroot(rt);
+            let request_to_boxroot = request_to_boxroot.elapsed();
+
+            let ffi_direct_call = Instant::now();
+            let result = tezos_ffi::$f(rt, &ocaml_request);
+            let ffi_direct_call = ffi_direct_call.elapsed();
+
+            let rt_get_to_result = Instant::now();
+            let result = rt.get(&result).to_result();
+            let rt_get_to_result = rt_get_to_result.elapsed();
+
+            match result {
+                Ok(response) => {
+                    let response_to_rust = Instant::now();
+                    let response = response.to_rust();
+                    let response_to_rust = response_to_rust.elapsed();
+
+                    Ok((
+                        response,
+                        FfiTimer {
+                            runtime_execute_start,
+                            request_to_boxroot,
+                            ffi_direct_call,
+                            rt_get_to_result,
+                            response_to_rust,
+                        },
+                    ))
+                }
+                Err(e) => Err(CallError::from(e.to_rust::<TezosErrorTrace>())),
+            }
+        })
+        .unwrap_or_else(|p| {
+            Err(CallError::FailedToCall {
+                error_id: "@OCamlBlockPanic".to_owned(),
+                trace_message: p.to_string(),
+            })
+        })
+    }};
+}
+
 /// Applies block to context
-pub fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, CallError> {
-    call_helper!(tezos_ffi::apply_block(request))
+pub fn apply_block(
+    request: ApplyBlockRequest,
+) -> Result<(ApplyBlockResponse, FfiTimer), CallError> {
+    call_helper_timed!(tezos_ffi::apply_block(request))
 }
 
 /// Begin construction initializes prevalidator and context for new operations based on current head

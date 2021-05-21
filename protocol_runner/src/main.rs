@@ -158,7 +158,7 @@ mod tezos {
         ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
         BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-        ComputePathResponse, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
+        ComputePathResponse, FfiTimer, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
         HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
         PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
         ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
@@ -171,7 +171,9 @@ mod tezos {
     pub struct NativeTezosLib;
 
     impl ProtocolApi for NativeTezosLib {
-        fn apply_block(request: ApplyBlockRequest) -> Result<ApplyBlockResponse, ApplyBlockError> {
+        fn apply_block(
+            request: ApplyBlockRequest,
+        ) -> Result<(ApplyBlockResponse, FfiTimer), ApplyBlockError> {
             apply_block(request)
         }
 
