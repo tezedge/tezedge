@@ -71,8 +71,14 @@ pub fn default_table_options(_cache: &Cache) -> Options {
     let mut db_opts = Options::default();
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
+    // TODO: pretty good - overall under 1.2GB
+    // db_opts.set_level_compaction_dynamic_level_bytes(true);
+    // db_opts.set_write_buffer_size(32 * 1024 * 1024);
+    // https://www.arangodb.com/docs/stable/tutorials-reduce-memory-footprint.html#wal--write-buffers
+    db_opts.set_max_total_wal_size(4 * 1024 * 1024);
+    db_opts.set_write_buffer_size(16 * 1024 * 1024);
+    db_opts.set_max_write_buffer_size_to_maintain(32 * 1024 * 1024);
     db_opts.set_level_compaction_dynamic_level_bytes(false);
-    db_opts.set_write_buffer_size(32 * 1024 * 1024);
 
     // block table options
     let mut table_options = BlockBasedOptions::default();
