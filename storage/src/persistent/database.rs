@@ -71,7 +71,8 @@ pub fn default_table_options(_cache: &Cache) -> Options {
     let mut db_opts = Options::default();
 
     // https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-    db_opts.set_level_compaction_dynamic_level_bytes(true);
+    db_opts.set_level_compaction_dynamic_level_bytes(false);
+    db_opts.set_write_buffer_size(32 * 1024 * 1024);
 
     // block table options
     let mut table_options = BlockBasedOptions::default();

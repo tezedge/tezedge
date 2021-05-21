@@ -16,7 +16,7 @@ use tezos_messages::p2p::encoding::prelude::{Mempool, Operation};
 ///     - are being processed sequentially, after validation, they are moved to `validation_result`
 /// - `operations`
 ///     - kind of cache, contains operation data
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct MempoolState {
     /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
     /// So, we keep it in-memory here

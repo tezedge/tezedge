@@ -103,7 +103,7 @@ pub struct TezosRuntimeConfiguration {
     pub compute_context_action_tree_hashes: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Builder)]
 pub struct ApplyBlockRequest {
     pub chain_id: ChainId,
     pub block_header: BlockHeader,
@@ -144,7 +144,7 @@ pub struct ApplyBlockResponse {
     pub ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct PrevalidatorWrapper {
     pub chain_id: ChainId,
     pub protocol: ProtocolHash,
@@ -166,32 +166,32 @@ impl fmt::Debug for PrevalidatorWrapper {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BeginApplicationRequest {
     pub chain_id: ChainId,
     pub pred_header: BlockHeader,
     pub block_header: BlockHeader,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BeginApplicationResponse {
     pub result: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct BeginConstructionRequest {
     pub chain_id: ChainId,
     pub predecessor: BlockHeader,
     pub protocol_data: Option<Vec<u8>>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValidateOperationRequest {
     pub prevalidator: PrevalidatorWrapper,
     pub operation: Operation,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ValidateOperationResponse {
     pub prevalidator: PrevalidatorWrapper,
     pub result: ValidateOperationResult,
@@ -200,7 +200,7 @@ pub struct ValidateOperationResponse {
 pub type OperationProtocolDataJson = String;
 pub type ErrorListJson = String;
 
-#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct OperationProtocolDataJsonWithErrorListJson {
     pub protocol_data_json: OperationProtocolDataJson,
     pub error_json: ErrorListJson,
@@ -220,7 +220,7 @@ trait HasOperationHash {
     fn operation_hash(&self) -> &OperationHash;
 }
 
-#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Applied {
     pub hash: OperationHash,
     pub protocol_data_json: OperationProtocolDataJson,
@@ -243,7 +243,7 @@ impl fmt::Debug for Applied {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct Errored {
     pub hash: OperationHash,
     pub is_endorsement: Option<bool>,
@@ -267,7 +267,7 @@ impl fmt::Debug for Errored {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq, Default)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct ValidateOperationResult {
     pub applied: Vec<Applied>,
     pub refused: Vec<Errored>,
@@ -316,7 +316,7 @@ impl ValidateOperationResult {
 }
 
 /// Init protocol context result
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Serialize, Deserialize)]
 pub struct InitProtocolContextResult {
     pub supported_protocol_hashes: Vec<ProtocolHash>,
     /// Presents only if was genesis commited to context
@@ -343,7 +343,7 @@ impl fmt::Debug for InitProtocolContextResult {
 }
 
 /// Commit genesis result
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CommitGenesisResult {
     pub block_header_proto_json: String,
     pub block_header_proto_metadata_json: String,
@@ -366,7 +366,7 @@ pub struct TezosErrorTrace {
     pub trace_json: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum CallError {
     #[fail(
         display = "Failed to call - error_id: {} message: {:?}!",
@@ -490,7 +490,7 @@ impl From<CallError> for ApplyBlockError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum BeginApplicationError {
     #[fail(display = "Failed to begin application - message: {}!", message)]
     FailedToBeginApplication { message: String },
@@ -529,7 +529,7 @@ impl From<CallError> for BeginApplicationError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum BeginConstructionError {
     #[fail(display = "Failed to begin construction - message: {}!", message)]
     FailedToBeginConstruction { message: String },
@@ -568,7 +568,7 @@ impl From<CallError> for BeginConstructionError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum ValidateOperationError {
     #[fail(display = "Failed to validate operation - message: {}!", message)]
     FailedToValidateOperation { message: String },
@@ -633,7 +633,7 @@ impl From<FromBytesError> for ProtocolDataError {
 
 pub type Json = String;
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
@@ -642,19 +642,19 @@ pub struct RpcRequest {
     pub accept: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct HelpersPreapplyBlockRequest {
     pub protocol_rpc_request: ProtocolRpcRequest,
     pub predecessor_block_metadata_hash: Option<BlockMetadataHash>,
     pub predecessor_ops_metadata_hash: Option<OperationMetadataListListHash>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct HelpersPreapplyResponse {
     pub body: Json,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum ProtocolRpcResponse {
     RPCConflict(Option<String>),
     RPCCreated(Option<String>),
@@ -667,7 +667,7 @@ pub enum ProtocolRpcResponse {
     RPCUnauthorized,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub enum RpcMethod {
     DELETE,
     GET,
@@ -692,13 +692,13 @@ impl TryFrom<&str> for RpcMethod {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct RpcArgDesc {
     pub name: String,
     pub descr: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum ProtocolRpcError {
     #[fail(display = "RPC: cannot parse body: {}", _0)]
     RPCErrorCannotParseBody(String),
@@ -719,7 +719,7 @@ pub enum ProtocolRpcError {
     FailedToCallProtocolRpc(String),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Builder, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ProtocolRpcRequest {
     pub block_header: BlockHeader,
     pub chain_arg: String,
@@ -728,7 +728,7 @@ pub struct ProtocolRpcRequest {
     pub request: RpcRequest,
 }
 
-#[derive(Serialize, Deserialize, Debug, Fail, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Fail)]
 pub enum HelpersPreapplyError {
     #[fail(display = "Failed to call protocol rpc - message: {}!", message)]
     FailedToCallProtocolRpc { message: String },
@@ -756,7 +756,7 @@ impl From<CallError> for HelpersPreapplyError {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ComputePathRequest {
     pub operations: Vec<Vec<OperationHash>>,
 }
@@ -780,7 +780,7 @@ impl TryFrom<&Vec<Vec<Operation>>> for ComputePathRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ComputePathResponse {
     pub operations_hashes_path: Vec<Path>,
 }

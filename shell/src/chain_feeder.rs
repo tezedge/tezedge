@@ -666,11 +666,11 @@ fn feed_chain_to_protocol(
                     // lets apply blocks in order
                     for block_to_apply in batch.take_all_blocks_to_apply() {
                         debug!(log, "Applying block";
-                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                                    "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
 
                         if !apply_block_run.load(Ordering::Acquire) {
                             info!(log, "Shutdown detected, so stopping block batch apply immediately";
-                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check(), "sender" => sender_to_string(&bootstrapper));
+                                       "block_header_hash" => block_to_apply.to_base58_check(), "chain_id" => chain_id.to_base58_check());
                             return Ok(());
                         }
 
@@ -1129,13 +1129,6 @@ pub(crate) fn initialize_protocol_context(
     }
 
     Ok(())
-}
-
-fn sender_to_string(sender: &Option<PeerBranchBootstrapperRef>) -> String {
-    match sender {
-        Some(sender) => format!("{}-{}", sender.name(), sender.uri().to_string()),
-        None => "--none--".to_string(),
-    }
 }
 
 const CONTEXT_WAIT_DURATION: (Duration, Duration) =
