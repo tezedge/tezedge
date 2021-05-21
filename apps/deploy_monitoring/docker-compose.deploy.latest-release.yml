@@ -89,10 +89,11 @@ services:
   explorer:
     image: simplestakingcom/tezedge-explorer:latest-release
     environment:
-      - SANDBOX=http://${HOSTNAME}.dev.tezedge.com:3030
-      - DEBUGGER=http://${HOSTNAME}.dev.tezedge.com:17732
+      - SANDBOX=http://116.202.128.230:3030
+      - DEBUGGER=http://116.202.128.230:17732
+      - MEMORYPROFILER=http://116.202.128.230:17832
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge","p2p_port":9732,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","STORAGE_BLOCK","NETWORK_ACTION","LOGS_ACTION"]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","ws":false,"monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","NETWORK_ACTION","LOGS_ACTION"]}]
+      - API=[{"id":"rust","name":"rust.116.202.128.230","http":"http://116.202.128.230:18732","ws":"ws://116.202.128.230:4927","monitoring":"http://116.202.128.230:38732/resources/tezedge","p2p_port":9732,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","STORAGE_BLOCK","NETWORK_ACTION","LOGS_ACTION"]},{"id":"ocaml","name":"ocaml.116.202.128.230","http":"http://116.202.128.230:18733","ws":false,"monitoring":"http://116.202.128.230:38732/resources/ocaml","p2p_port":9733,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","NETWORK_ACTION","LOGS_ACTION"]}]
     ports:
       - "80:80"
 volumes:
