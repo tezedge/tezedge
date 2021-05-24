@@ -40,15 +40,17 @@ pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, Fro
 /// Enum representing different Tezos environment.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezosEnvironment {
+    Mainnet,
+    Sandbox,
+    Zeronet,
     Alphanet,
     Babylonnet,
     Carthagenet,
     Delphinet,
     Edonet,
     Edo2net,
-    Mainnet,
-    Zeronet,
-    Sandbox,
+    Florencenet,
+    Granadanet,
 }
 
 impl TezosEnvironment {
@@ -63,19 +65,27 @@ impl TezosEnvironment {
     pub fn supported_values(&self) -> Vec<&'static str> {
         match self {
             TezosEnvironment::Mainnet => vec!["mainnet"],
+            TezosEnvironment::Sandbox => vec!["sandbox"],
+            TezosEnvironment::Zeronet => vec!["zeronet"],
             TezosEnvironment::Alphanet => vec!["alphanet"],
             TezosEnvironment::Babylonnet => vec!["babylonnet", "babylon"],
             TezosEnvironment::Carthagenet => vec!["carthagenet", "carthage"],
             TezosEnvironment::Delphinet => vec!["delphinet", "delphi"],
             TezosEnvironment::Edonet => vec!["edonet", "edo"],
             TezosEnvironment::Edo2net => vec!["edo2net", "edo2"],
-            TezosEnvironment::Zeronet => vec!["zeronet"],
-            TezosEnvironment::Sandbox => vec!["sandbox"],
+            TezosEnvironment::Florencenet => vec!["florencenet", "florence"],
+            TezosEnvironment::Granadanet => vec!["granadanet", "granada"],
         }
     }
 
     pub fn check_deprecated_network(&self) -> Option<String> {
         match self {
+            TezosEnvironment::Mainnet => None,
+            TezosEnvironment::Sandbox => None,
+            TezosEnvironment::Zeronet => Some(Self::deprecated_testnet_notice(
+                TezosEnvironment::Zeronet,
+                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            )),
             TezosEnvironment::Alphanet => Some(Self::deprecated_testnet_notice(
                 TezosEnvironment::Alphanet,
                 vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
@@ -95,13 +105,34 @@ impl TezosEnvironment {
                 TezosEnvironment::Edo2net,
             )),
             TezosEnvironment::Edo2net => None,
-            TezosEnvironment::Mainnet => None,
-            TezosEnvironment::Zeronet => Some(Self::deprecated_testnet_notice(
-                TezosEnvironment::Zeronet,
-                vec![TezosEnvironment::Delphinet, TezosEnvironment::Edo2net],
+            // TODO: remove, when florence supported
+            TezosEnvironment::Florencenet => Some(Self::not_yet_fully_supported_testnet_notice(
+                TezosEnvironment::Florencenet,
             )),
-            TezosEnvironment::Sandbox => None,
+            TezosEnvironment::Granadanet => Some(Self::not_yet_fully_supported_testnet_notice(
+                TezosEnvironment::Granadanet,
+            )),
         }
+    }
+
+    fn not_yet_fully_supported_testnet_notice(selected_network: TezosEnvironment) -> String {
+        let mut selected = selected_network.supported_values();
+        selected.sort();
+        format!(
+            "\n\n\n\n////////////////////////////////////////// \
+            \n//      !!! COOMING SOON TESTNET !!!      //\
+            \n////////////////////////////////////////// \
+            \n// Selected network: {:?} \
+            \n// Is not fully supported yet, \
+            \n// but will be soon. \
+            \n// Possible problems: \
+            \n// - no peers to connect \
+            \n// - no data to download \
+            \n// - no block application \
+            \n// - RPCs missing \
+            \n//////////////////////////////////////////\n\n\n\n",
+            selected
+        )
     }
 
     fn deprecated_testnet_notice(
@@ -176,6 +207,69 @@ impl FromStr for TezosEnvironment {
 /// Initializes hard-code configuration according to different Tezos git branches (genesis_chain.ml, node_config_file.ml)
 fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     let mut env: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = HashMap::new();
+
+    env.insert(
+        TezosEnvironment::Mainnet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2018-06-30T16:07:32Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
+                protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "boot.tzbeta.net".to_string(),
+                "116.202.172.21".to_string(), /* giganode_1 */
+                "95.216.45.62".to_string(),   /* giganode_2 */
+            ],
+            version: "TEZOS_MAINNET".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                user_activated_upgrades: vec![
+                    (
+                        28082_i32,
+                        "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
+                    ),
+                    (
+                        204761_i32,
+                        "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
+                    ),
+                ],
+                user_activated_protocol_overrides: vec![
+                    (
+                        "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
+                        "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
+                    ),
+                    (
+                        "PtEdoTezd3RHSC31mpxxo1npxFjoWWcFgQtxapi51Z8TLu6v6Uq".to_string(),
+                        "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA".to_string(),
+                    ),
+                ],
+            },
+            enable_testchain: false,
+            patch_context_genesis_parameters: None,
+        },
+    );
+
+    env.insert(
+        TezosEnvironment::Zeronet,
+        TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2019-08-06T15:18:56Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94".to_string(),
+                protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "bootstrap.zeronet.fun".to_string(),
+                "bootzero.tzbeta.net".to_string(),
+            ],
+            version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: None,
+        },
+    );
 
     env.insert(
         TezosEnvironment::Alphanet,
@@ -332,68 +426,58 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     env.insert(TezosEnvironment::Edonet, edo2net_cfg.clone());
     env.insert(TezosEnvironment::Edo2net, edo2net_cfg);
 
-    env.insert(
-        TezosEnvironment::Mainnet,
-        TezosEnvironmentConfiguration {
-            genesis: GenesisChain {
-                time: "2018-06-30T16:07:32Z".to_string(),
-                block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".to_string(),
-                protocol: "Ps9mPmXaRzmzk35gbAYNCAw6UXdE2qoABTHbN2oEEc1qM7CwT9P".to_string(),
-            },
-            bootstrap_lookup_addresses: vec![
-                "boot.tzbeta.net".to_string(),
-                "116.202.172.21".to_string(), /* giganode_1 */
-                "95.216.45.62".to_string(),   /* giganode_2 */
-            ],
-            version: "TEZOS_MAINNET".to_string(),
-            protocol_overrides: ProtocolOverrides {
-                user_activated_upgrades: vec![
-                    (
-                        28082_i32,
-                        "PsYLVpVvgbLhAhoqAkMFUo6gudkJ9weNXhUYCiLDzcUpFpkk8Wt".to_string(),
-                    ),
-                    (
-                        204761_i32,
-                        "PsddFKi32cMJ2qPjf43Qv5GDWLDPZb3T3bF6fLKiF5HtvHNU7aP".to_string(),
-                    ),
-                ],
-                user_activated_protocol_overrides: vec![
-                    (
-                        "PsBABY5HQTSkA4297zNHfsZNKtxULfL18y95qb3m53QJiXGmrbU".to_string(),
-                        "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS".to_string(),
-                    ),
-                    (
-                        "PtEdoTezd3RHSC31mpxxo1npxFjoWWcFgQtxapi51Z8TLu6v6Uq".to_string(),
-                        "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA".to_string(),
-                    ),
-                ],
-            },
-            enable_testchain: false,
-            patch_context_genesis_parameters: None,
+    env.insert(TezosEnvironment::Florencenet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2021-03-04T20:00:00Z".to_string(),
+            block: "BMFCHw1mv3A71KpTuGD3MoFnkHk9wvTYjUzuR9QqiUumKGFG6pM".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
         },
-    );
+        bootstrap_lookup_addresses: vec![
+            "florencenoba.tznode.net".to_string(),
+            "florencenobanet.kaml.fr".to_string(),
+            "florencenobanet.tezos.co.il".to_string(),
+            "florencenobanet.boot.tez.ie".to_string(),
+            "florencenobanet.smartpy.io:9733".to_string(),
+        ],
+        version: "TEZOS_FLORENCENOBANET_2021-03-04T20:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuix6Lv8vnrz6uDe1w8uaXY7YktitAxn6EHdy2jdzq5n5hZo94n" }"#.to_string(),
+        }),
+    });
 
-    env.insert(
-        TezosEnvironment::Zeronet,
-        TezosEnvironmentConfiguration {
-            genesis: GenesisChain {
-                time: "2019-08-06T15:18:56Z".to_string(),
-                block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94".to_string(),
-                protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV".to_string(),
-            },
-            bootstrap_lookup_addresses: vec![
-                "bootstrap.zeronet.fun".to_string(),
-                "bootzero.tzbeta.net".to_string(),
-            ],
-            version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
-            protocol_overrides: ProtocolOverrides {
-                user_activated_upgrades: vec![],
-                user_activated_protocol_overrides: vec![],
-            },
-            enable_testchain: true,
-            patch_context_genesis_parameters: None,
+    env.insert(TezosEnvironment::Granadanet, TezosEnvironmentConfiguration {
+        genesis: GenesisChain {
+            time: "2021-05-21T15:00:00Z".to_string(),
+            block: "BLockGenesisGenesisGenesisGenesisGenesisd4299hBGVoU".to_string(),
+            protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
         },
-    );
+        bootstrap_lookup_addresses: vec![
+            "granadanet.smartpy.io".to_string(),
+            "granadanet.tezos.co.il".to_string(),
+            "granadanet.kaml.fr".to_string(),
+        ],
+        version: "TEZOS_GRANADANET_2021-05-21T15:00:00Z".to_string(),
+        protocol_overrides: ProtocolOverrides {
+            user_activated_upgrades: vec![
+                (
+                    4095_i32,
+                    "PsGraNadatF72MEA6sTufJB2uVKtRXbDMbJo7SNzKjAfdx9bP5q".to_string(),
+                ),
+            ],
+            user_activated_protocol_overrides: vec![],
+        },
+        enable_testchain: true,
+        patch_context_genesis_parameters: Some(PatchContext {
+            key: "sandbox_parameter".to_string(),
+            json: r#"{ "genesis_pubkey": "edpkuix6Lv8vnrz6uDe1w8uaXY7YktitAxn6EHdy2jdzq5n5hZo94n" }"#.to_string(),
+        }),
+    });
 
     env.insert(TezosEnvironment::Sandbox, TezosEnvironmentConfiguration {
         genesis: GenesisChain {

@@ -150,9 +150,9 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
     )
     .unwrap();
 
-    let genesis_commit_hash = match result.clone().genesis_commit_hash {
+    let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
         None => panic!("we needed commit_genesis and here should be result of it"),
-        Some(cr) => cr,
+        Some(cr) => cr.clone(),
     };
 
     (

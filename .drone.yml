@@ -221,7 +221,7 @@ trigger:
 ---
 ##############################################################################################################
 kind: pipeline
-name: unit-tests-and-benchmarks
+name: unit-tests
 
 workspace:
   path: /drone/src
@@ -245,27 +245,6 @@ steps:
     RUST_BACKTRACE: 1
   commands:
     - cargo test --release --workspace
-
-- name: run-benchmarks
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-    RUST_BACKTRACE: 1
-  commands:
-    # build and run benches
-      # just compile all benches
-    - cargo bench --no-run -- --nocapture
-      # run benches except tezos_messages (they have special step)
-    - cargo bench --workspace --exclude tezos_messages --exclude networking --exclude tezos_interop -- --nocapture
-      # run all other test benches
-    - cargo bench --tests -- --nocapture
 
 image_pull_secrets:
   - docker_pull_secret
@@ -572,7 +551,7 @@ trigger:
 ---
 ##############################################################################################################
 kind: pipeline
-name: criterion-benchmarks
+name: benchmarks
 
 workspace:
   path: /drone/src
@@ -583,8 +562,29 @@ environment:
 
 steps:
 
+  - name: run-benchmarks
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+      - name: ids
+        path: /home/appuser/.ssh
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # build and run benches
+      # just compile all benches
+      - cargo bench --no-run -- --nocapture
+      # run benches except tezos_messages (they have special step)
+      - cargo bench --workspace --exclude tezos_messages --exclude networking --exclude tezos_interop -- --nocapture
+      # run all other test benches
+      - cargo bench --tests -- --nocapture
+
   # this is not triggered on pull request, because there is complex bench comparison on PR
-  - name: benchmarks
+  - name: criterion-benchmarks
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -728,8 +728,7 @@ steps:
     detach: true
 
 depends_on:
-  - build
-  - unit-tests-and-benchmarks
+  - prepare-and-cleanup
 
 image_pull_secrets:
   - docker_pull_secret
@@ -2646,6 +2645,228 @@ depends_on:
   - build
 
 ##############################################################################################################
+# This pipeline runs tezedge node with florencenet configuration againts ocaml node with florencenet snapshot
+##############################################################################################################
+---
+kind: pipeline
+name: florencenet-offline-tests
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  SODIUM_USE_PKG_CONFIG: 1
+  # Both tezos/sys and tezos/interop are used for compatibility with old and new versions
+  LD_LIBRARY_PATH: ./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+
+steps:
+  - name: cleanup-node-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: tezedge-node-data
+        path: /tmp/tezedge_developer
+    commands:
+      - rm -rf /tmp/tezedge_developer/light-node
+      - rm -rf /tmp/tezedge_developer/tezos-node
+
+  # just run ocaml 3 florencenet snapshoted nodes
+  - name: ocaml-node-run-1
+    user: root
+    image: tezos/tezos:v9.0
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-1
+        path: /home/tezos/data
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${BUILD_ARTIFACTS_PATH}/ocaml_ip1.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_1.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-run-2
+    user: root
+    image: tezos/tezos:v9.0
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-2
+        path: /home/tezos/data
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${BUILD_ARTIFACTS_PATH}/ocaml_ip2.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-run-3
+    user: root
+    image: tezos/tezos:v9.0
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-3
+        path: /home/tezos/data
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${BUILD_ARTIFACTS_PATH}/ocaml_ip3.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: wait-for-ocaml-snapshoted-nodes
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+
+  - name: tezedge-updated-node-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezedge-node-data
+        path: /tmp/tezedge_developer
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      # TODO: remove
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params /artifacts
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params /artifacts
+      - PEERS=$(cat $${BUILD_ARTIFACTS_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${BUILD_ARTIFACTS_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${BUILD_ARTIFACTS_PATH}/ocaml_ip3.txt)
+      - echo "peers - $PEERS"
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /tmp/tezedge_developer/
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732
+
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    # TODO: remove, when florence supported
+    detach: true
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
+
+  # run both indexers on background to fill data
+  - name: tz-indexer-tezedge
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-tezedge-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_PORT: 18732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=131"]
+
+  - name: tz-indexer-ocaml
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-ocaml-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_PORT: 8732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=131"]
+
+  # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: rpc-test
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    # TODO: remove, when florence supported
+    detach: true
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+  # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: indexer-test
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    # TODO: remove, when florence supported
+    detach: true
+    commands:
+      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: ocaml-node-florencenet-snapshot-data-1
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-1
+  - name: ocaml-node-florencenet-snapshot-data-2
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-2
+  - name: ocaml-node-florencenet-snapshot-data-3
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-3
+  - name: tezedge-node-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node
+  - name: indexer-tezedge-data
+    temp: {}
+  - name: indexer-ocaml-data
+    temp: {}
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
 ##############################################################################################################
 ---
@@ -2689,7 +2910,8 @@ trigger:
   event: push
 
 depends_on:
-  - unit-tests-and-benchmarks
+  - unit-tests
+  - benchmarks
   - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
@@ -2698,6 +2920,7 @@ depends_on:
   - delphinet-big-offline-tests
   - edo2net-offline-tests
   - mainnet-offline-tests
+  - florencenet-offline-tests
   - carthagenet-legacy-offline-tests
 
 ##############################################################################################################
@@ -2748,7 +2971,8 @@ trigger:
   event: tag
 
 depends_on:
-  - unit-tests-and-benchmarks
+  - unit-tests
+  - benchmarks
   - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
@@ -2757,4 +2981,5 @@ depends_on:
   - delphinet-big-offline-tests
   - edo2net-offline-tests
   - mainnet-offline-tests
+  - florencenet-offline-tests
   - carthagenet-legacy-offline-tests
