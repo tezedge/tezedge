@@ -703,7 +703,7 @@ fn feed_chain_to_protocol(
                             block_meta_storage,
                             context,
                             protocol_controller,
-                            init_storage_data.one_context,
+                            init_storage_data,
                             &log,
                         ) {
                             Ok(result) => {
@@ -853,7 +853,7 @@ fn _apply_block(
     block_meta_storage: &BlockMetaStorage,
     context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
-    one_context: bool,
+    storage_init_info: &StorageInitInfo,
     log: &Logger,
 ) -> Result<
     Option<(
@@ -867,7 +867,7 @@ fn _apply_block(
     let (block_request, mut block_meta, block) = apply_block_request_data?;
 
     // check if not already applied
-    if block_meta.is_applied() {
+    if block_meta.is_applied() && storage_init_info.replay.is_none() {
         info!(log, "Block is already applied (feeder)"; "block" => block_hash.to_base58_check());
         return Ok(None);
     }
@@ -876,10 +876,11 @@ fn _apply_block(
     let protocol_call_timer = Instant::now();
     let apply_block_result = protocol_controller.apply_block(block_request)?;
     let protocol_call_elapsed = protocol_call_timer.elapsed();
+
     debug!(log, "Block was applied";
-                        "block_header_hash" => block_hash.to_base58_check(),
-                        "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                        "validation_result_message" => &apply_block_result.validation_result_message);
+           "block_header_hash" => block_hash.to_base58_check(),
+           "context_hash" => apply_block_result.context_hash.to_base58_check(),
+           "validation_result_message" => &apply_block_result.validation_result_message);
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
         info!(log, "Block was validated with protocol with long processing";
@@ -891,7 +892,11 @@ fn _apply_block(
     // we need to check and wait for context_hash to be 100% sure, that everything is ok
     let context_wait_timer = Instant::now();
     // TODO - TE-261: wait_for_context will not be needed anymore
-    wait_for_context(context, &apply_block_result.context_hash, one_context)?;
+    wait_for_context(
+        context,
+        &apply_block_result.context_hash,
+        storage_init_info.one_context,
+    )?;
     let context_wait_elapsed = context_wait_timer.elapsed();
     if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
         info!(log, "Block was applied with long context processing";
@@ -1052,11 +1057,12 @@ pub(crate) fn initialize_protocol_context(
 
     // we must check if genesis is applied, if not then we need "commit_genesis" to context
     let load_metadata_timer = Instant::now();
-    let need_commit_genesis =
-        match block_meta_storage.get(&init_storage_data.genesis_block_header_hash)? {
+    let need_commit_genesis = init_storage_data.replay.is_some()
+        || match block_meta_storage.get(&init_storage_data.genesis_block_header_hash)? {
             Some(genesis_meta) => !genesis_meta.is_applied(),
             None => true,
         };
+
     let load_metadata_elapsed = load_metadata_timer.elapsed();
     trace!(log, "Looking for genesis if applied"; "need_commit_genesis" => need_commit_genesis);
 
