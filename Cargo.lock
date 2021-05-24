@@ -2004,7 +2004,9 @@ name = "light-node"
 version = "1.6.0"
 dependencies = [
  "clap",
+ "crypto",
  "failure",
+ "fs_extra",
  "futures",
  "jemallocator",
  "logging",
