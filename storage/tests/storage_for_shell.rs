@@ -71,6 +71,7 @@ fn test_storage() -> Result<(), Error> {
         &None,
         false,
         &None,
+        &None,
         &log,
     );
     assert!(init_data.is_ok());

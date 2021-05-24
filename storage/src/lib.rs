@@ -206,6 +206,13 @@ impl slog::Value for StorageError {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Replay {
+    pub from_block: Option<BlockHash>,
+    pub to_block: BlockHash,
+    pub fail_above: std::time::Duration,
+}
+
 /// Struct represent init information about storage on startup
 #[derive(Clone, Serialize, Deserialize)]
 pub struct StorageInitInfo {
@@ -213,6 +220,7 @@ pub struct StorageInitInfo {
     pub genesis_block_header_hash: BlockHash,
     pub patch_context: Option<PatchContext>,
     pub context_stats_db_path: Option<PathBuf>,
+    pub replay: Option<Replay>,
 
     // TODO: TE-447 - remove one_context when integration done
     pub one_context: bool,
@@ -226,6 +234,7 @@ pub fn resolve_storage_init_chain_data(
     patch_context: &Option<PatchContext>,
     one_context: bool,
     context_stats_db_path: &Option<PathBuf>,
+    replay: &Option<Replay>,
     log: &Logger,
 ) -> Result<StorageInitInfo, StorageError> {
     let init_data = StorageInitInfo {
@@ -233,6 +242,7 @@ pub fn resolve_storage_init_chain_data(
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
         patch_context: patch_context.clone(),
         one_context,
+        replay: replay.clone(),
         context_stats_db_path: context_stats_db_path.clone(),
     };
 

@@ -98,6 +98,14 @@ macro_rules! define_hash {
             }
         }
 
+        impl std::str::FromStr for $name {
+            type Err = FromBase58CheckError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Self::from_base58_check(s)
+            }
+        }
+
         impl HashTrait for $name {
             fn hash_type() -> HashType {
                 HashType::$name
