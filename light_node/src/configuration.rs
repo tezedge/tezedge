@@ -21,6 +21,7 @@ use slog::{Drain, Duplicate, Logger, Never, SendSyncRefUnwindSafeDrain};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+use crypto::hash::BlockHash;
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use shell::peer_manager::P2p;
@@ -34,7 +35,7 @@ use storage::initializer::{
     ContextActionsRocksDbTableInitializer, ContextKvStoreConfiguration,
     ContextRocksDbTableInitializer, DbsRocksDbTableInitializer, RocksDbConfig,
 };
-use storage::PersistentStorage;
+use storage::{PersistentStorage, Replay};
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::{
@@ -263,6 +264,7 @@ pub struct Environment {
     pub storage: Storage,
     pub identity: Identity,
     pub ffi: Ffi,
+    pub replay: Option<Replay>,
 
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
@@ -301,21 +303,25 @@ pub fn tezos_app() -> App<'static, 'static> {
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(Arg::with_name("validate-cfg-identity-and-stop")
             .long("validate-cfg-identity-and-stop")
+            .global(true)
             .takes_value(false)
             .help("Validate configuration and generated identity, than just stops application"))
         .arg(Arg::with_name("config-file")
             .long("config-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Configuration file with start-up arguments (same format as cli arguments)")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
         .arg(Arg::with_name("tezos-context-storage")
             .long("tezos-context-storage")
+            .global(true)
             .takes_value(true)
             .value_name("NAME")
             .help("Context storage to use (irmin/tezedge/both)"))
         .arg(Arg::with_name("tezos-data-dir")
             .long("tezos-data-dir")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("A directory for Tezos OCaml runtime storage (context/store)")
@@ -338,59 +344,69 @@ pub fn tezos_app() -> App<'static, 'static> {
             }))
         .arg(Arg::with_name("identity-file")
             .long("identity-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("identity-expected-pow")
             .long("identity-expected-pow")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Expected power of identity for node. It is used to generate new identity. Default: 26.0")
             .validator(parse_validator_fn!(f64, "Value must be a valid f64 number for expected_pow")))
         .arg(Arg::with_name("bootstrap-db-path")
             .long("bootstrap-db-path")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to bootstrap database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("context-stats-db-path")
             .long("context-stats-db-path")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to context-stats database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("db-context-cfg-max-threads")
             .long("db-context-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("db-context-actions-cfg-max-threads")
             .long("db-context-actions-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
+            .global(true)
             .takes_value(true)
             .conflicts_with("peers")
             .conflicts_with("private-node")
             .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
         .arg(Arg::with_name("disable-bootstrap-lookup")
             .long("disable-bootstrap-lookup")
+            .global(true)
             .takes_value(false)
             .conflicts_with("bootstrap-lookup-address")
             .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
         .arg(Arg::with_name("log")
             .long("log")
+            .global(true)
             .takes_value(true)
             .multiple(true)
             .value_name("STRING")
@@ -398,31 +414,37 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Set the logger target. Default: terminal"))
         .arg(Arg::with_name("log-file")
             .long("log-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("log-format")
             .long("log-format")
+            .global(true)
             .takes_value(true)
             .possible_values(&["json", "simple"])
             .help("Set output format of the log"))
         .arg(Arg::with_name("log-level")
             .long("log-level")
+            .global(true)
             .takes_value(true)
             .value_name("LEVEL")
             .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
             .help("Set log level"))
         .arg(Arg::with_name("ocaml-log-enabled")
             .long("ocaml-log-enabled")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Flag for turn on/off logging in Tezos OCaml runtime"))
         .arg(Arg::with_name("disable-mempool")
             .long("disable-mempool")
+            .global(true)
             .help("Enable or disable mempool"))
         .arg(Arg::with_name("private-node")
             .long("private-node")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .requires("peers")
@@ -430,35 +452,41 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
         .arg(Arg::with_name("network")
             .long("network")
+            .global(true)
             .takes_value(true)
             .possible_values(&TezosEnvironment::possible_values())
             .help("Choose the Tezos environment")
         )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
+            .global(true)
             .takes_value(true)
             .value_name("PORT")
             .help("Socket listening port for p2p for communication with tezos world")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("rpc-port")
             .long("rpc-port")
+            .global(true)
             .takes_value(true)
             .value_name("PORT")
             .help("Rust server RPC port for communication with rust node")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("enable-testchain")
             .long("enable-testchain")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Flag for enable/disable test chain switching for block applying. Default: false"))
         .arg(Arg::with_name("websocket-address")
             .long("websocket-address")
+            .global(true)
             .takes_value(true)
             .value_name("IP:PORT")
             .help("Websocket address where various node metrics and statistics are available")
             .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
         .arg(Arg::with_name("peers")
             .long("peers")
+            .global(true)
             .takes_value(true)
             .value_name("IP:PORT")
             .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
@@ -475,24 +503,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             }))
         .arg(Arg::with_name("peer-thresh-low")
             .long("peer-thresh-low")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Minimal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("peer-thresh-high")
             .long("peer-thresh-high")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Maximal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("synchronization-thresh")
             .long("synchronization-thresh")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Maximal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("protocol-runner")
             .long("protocol-runner")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a tezos protocol runner executable")
@@ -501,24 +533,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-pool-max-connections")
                     .long("ffi-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-connection-timeout-in-secs")
                     .long("ffi-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-max-lifetime-in-secs")
                     .long("ffi-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-idle-timeout-in-secs")
                     .long("ffi-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -528,24 +564,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-trpap-pool-max-connections")
                     .long("ffi-trpap-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-connection-timeout-in-secs")
                     .long("ffi-trpap-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-max-lifetime-in-secs")
                     .long("ffi-trpap-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-idle-timeout-in-secs")
                     .long("ffi-trpap-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -555,24 +595,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-twcap-pool-max-connections")
                     .long("ffi-twcap-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-connection-timeout-in-secs")
                     .long("ffi-twcap-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-max-lifetime-in-secs")
                     .long("ffi-twcap-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-idle-timeout-in-secs")
                     .long("ffi-twcap-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -580,24 +624,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             ])
         .arg(Arg::with_name("init-sapling-spend-params-file")
             .long("init-sapling-spend-params-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-spend.params")
         )
         .arg(Arg::with_name("init-sapling-output-params-file")
             .long("init-sapling-output-params-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-output.params")
         )
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("actions-store-backend")
             .long("actions-store-backend")
+            .global(true)
             .takes_value(true)
             // TODO: hard to override, do as single atribute commanseparated
             // .multiple(true)
@@ -606,26 +654,87 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("one-context")
             .long("one-context")
+            .global(true)
             .takes_value(false)
             .help("TODO: TE-447 - temp/hack argument to turn off TezEdge second context"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
+            .global(true)
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
             .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'inmem-gc', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .required(false)
             .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }));
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }))
+        .subcommand(
+            clap::SubCommand::with_name("replay")
+                .arg(Arg::with_name("from-block")
+                     .long("from-block")
+                     .takes_value(true)
+                     .value_name("HASH")
+                     .display_order(0)
+                     .help("Block from which we start the replay")
+                     .validator(|value| {
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                     })
+                )
+                .arg(Arg::with_name("to-block")
+                     .long("to-block")
+                     .takes_value(true)
+                     .value_name("HASH")
+                     .display_order(0)
+                     .required(true)
+                     .help("Replay until this block")
+                     .validator(|value| {
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                     })
+                )
+                .arg(Arg::with_name("target-path")
+                     .long("target-path")
+                     .takes_value(true)
+                     .value_name("PATH")
+                     .display_order(1)
+                     .required(true)
+                     .help("A directory for the replay")
+                     .validator(|v| {
+                         let dir = Path::new(&v);
+                         if dir.exists() {
+                             if dir.is_dir() {
+                                 Ok(())
+                             } else {
+                                 Err(format!("Required replay data dir '{}' exists, but is not a directory!", v))
+                             }
+                         } else {
+                             // Tezos data dir does not exists, try to create it
+                             if let Err(e) = fs::create_dir_all(dir) {
+                                 Err(format!("Unable to create required replay data dir '{}': {} ", v, e))
+                             } else {
+                                 Ok(())
+                             }
+                         }
+                     }))
+                .arg(Arg::with_name("fail-above")
+                     .long("fail-above")
+                     .takes_value(true)
+                     .value_name("NUM")
+                     .display_order(1)
+                     .required(false)
+                     .help("Panic if the block application took longer than this number of milliseconds")
+                     .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+                )
+        );
     app
 }
 
@@ -813,11 +922,51 @@ impl Environment {
             .unwrap_or("both")
             .parse::<TezosContextStorageChoice>()
             .expect("Provided value cannot be converted to a context storage option");
-        let tezos_data_dir: PathBuf = args
+        let mut tezos_data_dir: PathBuf = args
             .value_of("tezos-data-dir")
             .unwrap_or("")
             .parse::<PathBuf>()
             .expect("Provided value cannot be converted to path");
+
+        let replay = args.subcommand_matches("replay").map(|args| {
+            let target_path = args
+                .value_of("target-path")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path");
+
+            let to_block = args
+                .value_of("to-block")
+                .unwrap()
+                .parse::<BlockHash>()
+                .expect("Provided value cannot be converted to BlockHash");
+
+            let from_block = args.value_of("from-block").map(|b| {
+                b.parse::<BlockHash>()
+                    .expect("Provided value cannot be converted to BlockHash")
+            });
+
+            let fail_above = std::time::Duration::from_millis(
+                args.value_of("fail-above")
+                    .unwrap_or(&format!("{}", u64::MAX))
+                    .parse::<u64>()
+                    .expect("Provided value cannot be converted to number"),
+            );
+
+            let mut options = fs_extra::dir::CopyOptions::default();
+            options.content_only = true;
+            options.overwrite = true;
+
+            fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
+
+            tezos_data_dir = target_path;
+
+            Replay {
+                from_block,
+                to_block,
+                fail_above,
+            }
+        });
 
         let log_targets: HashSet<String> = match args.values_of("log") {
             Some(v) => v.map(String::from).collect(),
@@ -1220,6 +1369,7 @@ impl Environment {
                         .expect("Provided value cannot be converted to path"),
                 },
             },
+            replay,
             tokio_threads: args
                 .value_of("tokio-threads")
                 .unwrap_or("0")

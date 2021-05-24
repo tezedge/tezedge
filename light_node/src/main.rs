@@ -2,21 +2,18 @@
 // SPDX-License-Identifier: MIT
 // #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use std::{path::PathBuf, sync::Condvar};
 
 use riker::actors::*;
 use slog::{debug, error, info, warn, Logger};
 
+use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
-use shell::chain_current_head_manager::ChainCurrentHeadManager;
-use shell::chain_feeder::ChainFeeder;
-use shell::chain_manager::ChainManager;
-use shell::context_listener::ContextListener;
 use shell::mempool::init_mempool_state_storage;
 use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
@@ -24,12 +21,19 @@ use shell::peer_manager::PeerManager;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
+use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
+use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
+use shell::{context_listener::ContextListener, shell_channel::ShellChannelRef};
 use storage::context::TezedgeContext;
-use storage::initializer::{
-    initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
-};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
+use storage::{
+    initializer::{
+        initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
+    },
+    BlockMetaStorage, Replay,
+};
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -167,6 +171,7 @@ fn block_on_actors(
     identity: Arc<Identity>,
     persistent_storage: PersistentStorage,
     tezedge_context: TezedgeContext,
+    mut blocks_replay: Option<Vec<Arc<BlockHash>>>,
     log: Logger,
 ) {
     // if feeding is started, than run chain manager
@@ -302,7 +307,7 @@ fn block_on_actors(
     .expect("Failed to create chain feeder");
     let _ = ChainManager::actor(
         &actor_system,
-        block_applier,
+        block_applier.clone(),
         network_channel.clone(),
         shell_channel.clone(),
         mempool_channel.clone(),
@@ -370,21 +375,31 @@ fn block_on_actors(
     )
     .expect("Failed to create RPC server");
 
-    // TODO: TE-386 - controlled startup
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    if let Some(blocks) = blocks_replay.take() {
+        return schedule_replay_blocks(
+            blocks,
+            &init_storage_data,
+            block_applier,
+            shell_channel.clone(),
+            log.clone(),
+        );
+    } else {
+        // TODO: TE-386 - controlled startup
+        std::thread::sleep(std::time::Duration::from_secs(2));
 
-    // and than open p2p and others
-    let _ = PeerManager::actor(
-        &actor_system,
-        network_channel,
-        shell_channel.clone(),
-        tokio_runtime.handle().clone(),
-        identity,
-        shell_compatibility_version,
-        env.p2p,
-        env.identity.expected_pow,
-    )
-    .expect("Failed to create peer manager");
+        // and than open p2p and others
+        let _ = PeerManager::actor(
+            &actor_system,
+            network_channel,
+            shell_channel.clone(),
+            tokio_runtime.handle().clone(),
+            identity,
+            shell_compatibility_version,
+            env.p2p,
+            env.identity.expected_pow,
+        )
+        .expect("Failed to create peer manager");
+    }
 
     info!(log, "Actors initialized");
 
@@ -434,6 +449,109 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
     if let Some(deprecation_notice) = env.tezos_network.check_deprecated_network() {
         warn!(log, "Deprecated network: {}", deprecation_notice);
     }
+}
+
+fn schedule_replay_blocks(
+    blocks: Vec<Arc<BlockHash>>,
+    init_storage_data: &StorageInitInfo,
+    block_applier: ChainFeederRef,
+    shell_channel: ShellChannelRef,
+    log: Logger,
+) {
+    let chain_id = Arc::new(init_storage_data.chain_id.clone());
+    let pair = Arc::new((Mutex::new(None), Condvar::new()));
+    let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
+    let nblocks = blocks.len();
+
+    for (index, block) in blocks.into_iter().enumerate() {
+        let batch = ApplyBlockBatch::one((&*block).clone());
+        let result_callback = Some(Arc::clone(&pair));
+
+        let now = std::time::Instant::now();
+        block_applier.tell(
+            ApplyBlock::new(Arc::clone(&chain_id), batch, result_callback, None, None),
+            None,
+        );
+
+        let (lock, cvar) = &*pair;
+        let lock = lock.lock().unwrap();
+        let result = cvar.wait(lock).unwrap();
+        let time = now.elapsed();
+
+        let hash = block.to_base58_check();
+        let percent = (index as f64 / nblocks as f64) / 100.0;
+
+        if let Some(Err(_)) = &*result {
+            replay_shutdown(shell_channel.clone());
+            panic!(
+                "{:.5}% Block {} failed in {:?}. Result={:?}",
+                percent, hash, time, result
+            );
+        } else if time > fail_above && index > 0 {
+            replay_shutdown(shell_channel.clone());
+            panic!(
+                "{:.5}% Block {} processed in {:?}. Result={:?}",
+                percent, hash, time, result
+            );
+        } else {
+            info!(
+                log,
+                "{:.5}% Block {} applied in {:?}. Result={:?}", percent, hash, time, result
+            );
+        }
+    }
+
+    replay_shutdown(shell_channel);
+}
+
+fn replay_shutdown(shell_channel: ShellChannelRef) {
+    shell_channel.tell(
+        Publish {
+            msg: ShuttingDown.into(),
+            topic: ShellChannelTopic::ShellShutdown.into(),
+        },
+        None,
+    );
+
+    // give actors some time to shut down
+    std::thread::sleep(Duration::from_secs(2));
+}
+
+fn collect_replayed_blocks(
+    persistent_storage: &PersistentStorage,
+    replay: &Replay,
+) -> Vec<Arc<BlockHash>> {
+    let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let from_block = replay.from_block.as_ref();
+    let mut block_hash = replay.to_block.clone();
+    let mut blocks = Vec::new();
+    let mut first_block_reached = false;
+
+    while let Ok(Some(block_meta)) = block_meta_storage.get(&block_hash) {
+        blocks.push(Arc::new(block_hash.clone()));
+
+        first_block_reached = block_meta.level() == 1;
+        if from_block == Some(&block_hash) || first_block_reached {
+            break;
+        }
+
+        block_hash = match block_meta.predecessor() {
+            Some(block) => block.clone(),
+            None => break,
+        }
+    }
+
+    blocks.reverse();
+    match (from_block, blocks.get(0)) {
+        (Some(block), first) if blocks.is_empty() || block != &**first.unwrap() => {
+            panic!("Unable to find block {:?}", block);
+        }
+        (None, _) if !first_block_reached => {
+            panic!("Unable to find first block");
+        }
+        _ => {}
+    }
+    blocks
 }
 
 fn main() {
@@ -580,9 +698,15 @@ fn main() {
             &env.storage.patch_context,
             env.storage.one_context,
             &env.storage.context_stats_db_path,
+            &env.replay,
             &log,
         ) {
             Ok(init_data) => {
+                let blocks_replay = env
+                    .replay
+                    .as_ref()
+                    .map(|replay| collect_replayed_blocks(&persistent_storage, replay));
+
                 info!(log, "Databases loaded successfully");
                 block_on_actors(
                     env,
@@ -591,6 +715,7 @@ fn main() {
                     Arc::new(tezos_identity),
                     persistent_storage,
                     tezedge_context,
+                    blocks_replay,
                     log,
                 )
             }
