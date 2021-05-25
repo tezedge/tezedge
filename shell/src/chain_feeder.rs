@@ -876,7 +876,8 @@ fn _apply_block(
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
                         "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                        "validation_result_message" => &apply_block_result.validation_result_message);
+                        "validation_result_message" => &apply_block_result.validation_result_message,
+                        "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()));
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
         info!(log, "Block was validated with protocol with long processing";
