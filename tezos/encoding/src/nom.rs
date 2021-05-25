@@ -1,15 +1,13 @@
-use std::{ops::RangeFrom, str::Utf8Error};
-
 use crypto::hash::HashTrait;
 use nom::{
     branch::*,
     bytes::complete::*,
     combinator::*,
-    error::{ErrorKind, FromExternalError, ParseError},
+    error::ErrorKind,
     multi::*,
     number::{complete::*, Endianness},
     sequence::*,
-    Err, IResult, InputIter, InputLength, InputTake, Parser, Slice,
+    Err, InputLength, Parser, Slice,
 };
 pub use tezos_encoding_derive::NomReader;
 
@@ -192,10 +190,7 @@ hash_nom_reader!(PublicKeyP256);
 
 /// Reads a boolean value.
 #[inline(always)]
-pub fn boolean<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], bool, E>
-where
-    E: ParseError<&'a [u8]>,
-{
+pub fn boolean(input: NomInput) -> NomResult<bool> {
     alt((
         map(tag(&[crate::types::BYTE_VAL_TRUE][..]), |_| true),
         map(tag(&[crate::types::BYTE_VAL_FALSE][..]), |_| false),
@@ -204,20 +199,13 @@ where
 
 /// Reads all available bytes into a [Vec]. Used in conjunction with [sized].
 #[inline(always)]
-pub fn bytes<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], Vec<u8>, E>
-where
-    E: ParseError<&'a [u8]>,
-{
+pub fn bytes(input: NomInput) -> NomResult<Vec<u8>> {
     map(rest, Vec::from)(input)
 }
 
 /// Reads size encoded as 4-bytes big-endian unsigned.
 #[inline(always)]
-pub fn size<I, E>(input: I) -> IResult<I, u32, E>
-where
-    I: InputLength + InputIter<Item = u8> + Slice<RangeFrom<usize>>,
-    E: ParseError<I>,
-{
+pub fn size(input: NomInput) -> NomResult<u32> {
     u32(Endianness::Big)(input)
 }
 
@@ -240,10 +228,7 @@ fn bounded_size<'a>(
 
 /// Reads Tesoz string encoded as a 32-bit length followed by the string bytes.
 #[inline(always)]
-pub fn string<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], String, E>
-where
-    E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
-{
+pub fn string(input: NomInput) -> NomResult<String> {
     map_res(length_data(size), |bytes| {
         std::str::from_utf8(bytes).map(str::to_string)
     })(input)
@@ -261,11 +246,9 @@ pub fn bounded_string<'a>(max: usize) -> impl FnMut(NomInput<'a>) -> NomResult<'
 
 /// Parser that applies specified parser to the fixed length slice of input.
 #[inline(always)]
-pub fn sized<I, O, E, F>(size: usize, f: F) -> impl FnMut(I) -> IResult<I, O, E>
+pub fn sized<'a, O, F>(size: usize, f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
-    F: Parser<I, O, E>,
-    I: InputLength + InputTake + InputIter<Item = u8> + Clone,
-    E: ParseError<I>,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
 {
     map_parser(take(size), f)
 }
@@ -273,13 +256,10 @@ where
 /// Parses optional field. Byte `0x00` indicates absence of the field,
 /// byte `0xff` preceedes encoding of the existing field.
 #[inline(always)]
-pub fn optional_field<'a, O, E, F>(
-    parser: F,
-) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Option<O>, E>
+pub fn optional_field<'a, O, F>(parser: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, Option<O>>
 where
-    F: Parser<&'a [u8], O, E>,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
-    E: ParseError<&'a [u8]>,
 {
     alt((
         preceded(tag(0x00u8.to_be_bytes()), success(None)),
@@ -289,12 +269,10 @@ where
 
 /// Parses input by applying parser `f` to it.
 #[inline(always)]
-pub fn list<I, O, E, F>(f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
+pub fn list<'a, O, F>(f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, Vec<O>>
 where
-    F: Parser<I, O, E>,
-    I: InputLength + InputTake + InputIter + Clone + PartialEq,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
-    E: ParseError<I>,
 {
     fold_many0(f, Vec::new(), |mut list, item| {
         list.push(item);
@@ -337,12 +315,10 @@ where
 
 /// Parses dynamic block by reading 4-bytes size and applying the parser `f` to the following sequence of bytes of that size.
 #[inline(always)]
-pub fn dynamic<I, O, E, F>(f: F) -> impl FnMut(I) -> IResult<I, O, E>
+pub fn dynamic<'a, O, F>(f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
-    F: Parser<I, O, E>,
-    I: InputLength + InputTake + InputIter<Item = u8> + Slice<RangeFrom<usize>> + Clone,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
-    E: ParseError<I>,
 {
     length_value(size, all_consuming(f))
 }
