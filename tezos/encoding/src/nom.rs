@@ -159,6 +159,7 @@ pub trait NomReader: Sized {
 macro_rules! hash_nom_reader {
     ($hash_name:ident) => {
         impl NomReader for crypto::hash::$hash_name {
+            #[inline(always)]
             fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
                 map(take(Self::hash_size()), |bytes| {
                     Self::try_from_bytes(bytes).unwrap()
@@ -187,7 +188,7 @@ hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
 
 /// Reads a boolean value.
-#[inline]
+#[inline(always)]
 pub fn boolean<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], bool, E>
 where
     E: ParseError<&'a [u8]>,
@@ -199,7 +200,7 @@ where
 }
 
 /// Reads all available bytes into a [Vec]. Used in conjunction with [sized].
-#[inline]
+#[inline(always)]
 pub fn bytes<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], Vec<u8>, E>
 where
     E: ParseError<&'a [u8]>,
@@ -208,7 +209,7 @@ where
 }
 
 /// Reads size encoded as 4-bytes big-endian unsigned.
-#[inline]
+#[inline(always)]
 pub fn size<I, E>(input: I) -> IResult<I, u32, E>
 where
     I: InputLength + InputIter<Item = u8> + Slice<RangeFrom<usize>>,
@@ -218,7 +219,7 @@ where
 }
 
 /// Reads size encoded as 4-bytes big-endian unsigned, checking that it does not exceed the `max` value.
-#[inline]
+#[inline(always)]
 fn bounded_size<'a>(
     kind: BoundedEncodingKind,
     max: usize,
@@ -235,7 +236,7 @@ fn bounded_size<'a>(
 }
 
 /// Reads Tesoz string encoded as a 32-bit length followed by the string bytes.
-#[inline]
+#[inline(always)]
 pub fn string<'a, E>(input: &'a [u8]) -> IResult<&'a [u8], String, E>
 where
     E: ParseError<&'a [u8]> + FromExternalError<&'a [u8], Utf8Error>,
@@ -247,7 +248,7 @@ where
 
 /// Returns parser that reads Tesoz string encoded as a 32-bit length followed by the string bytes,
 /// checking that the lengh of the string does not exceed `max`.
-#[inline]
+#[inline(always)]
 pub fn bounded_string<'a>(max: usize) -> impl FnMut(NomInput<'a>) -> NomResult<'a, String> {
     map_res(
         length_data(bounded_size(BoundedEncodingKind::String, max)),
@@ -256,7 +257,7 @@ pub fn bounded_string<'a>(max: usize) -> impl FnMut(NomInput<'a>) -> NomResult<'
 }
 
 /// Parser that applies specified parser to the fixed length slice of input.
-#[inline]
+#[inline(always)]
 pub fn sized<I, O, E, F>(size: usize, f: F) -> impl FnMut(I) -> IResult<I, O, E>
 where
     F: Parser<I, O, E>,
@@ -268,7 +269,7 @@ where
 
 /// Parses optional field. Byte `0x00` indicates absence of the field,
 /// byte `0xff` preceedes encoding of the existing field.
-#[inline]
+#[inline(always)]
 pub fn optional_field<'a, O, E, F>(
     parser: F,
 ) -> impl FnMut(&'a [u8]) -> IResult<&'a [u8], Option<O>, E>
@@ -284,7 +285,7 @@ where
 }
 
 /// Parses input by applying parser `f` to it.
-#[inline]
+#[inline(always)]
 pub fn list<I, O, E, F>(f: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
 where
     F: Parser<I, O, E>,
@@ -299,7 +300,7 @@ where
 }
 
 /// Parses input by applying parser `f` to it no more than `max` times.
-#[inline]
+#[inline(always)]
 pub fn bounded_list<'a, O, F>(
     max: usize,
     mut f: F,
@@ -332,7 +333,7 @@ where
 }
 
 /// Parses dynamic block by reading 4-bytes size and applying the parser `f` to the following sequence of bytes of that size.
-#[inline]
+#[inline(always)]
 pub fn dynamic<I, O, E, F>(f: F) -> impl FnMut(I) -> IResult<I, O, E>
 where
     F: Parser<I, O, E>,
@@ -346,7 +347,7 @@ where
 /// Parses dynamic block by reading 4-bytes size and applying the parser `f`
 /// to the following sequence of bytes of that size. It also checks that the size
 /// does not exceed the `max` value.
-#[inline]
+#[inline(always)]
 pub fn bounded_dynamic<'a, O, F>(max: usize, f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
     F: NomParser<'a, O>,
@@ -359,7 +360,7 @@ where
 }
 
 /// Applies the parser `f` to the input, limiting it to `max` bytes at most.
-#[inline]
+#[inline(always)]
 pub fn bounded<'a, O, F>(max: usize, mut f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
     F: NomParser<'a, O>,
@@ -389,6 +390,8 @@ where
     }
 }
 
+/// Applies the `parser` to the input, addin field context to the error.
+#[inline(always)]
 pub fn field<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
     move |input| match parser.parse(input) {
         Ok(r) => Ok(r),
@@ -396,6 +399,8 @@ pub fn field<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> im
     }
 }
 
+/// Applies the `parser` to the input, addin enum variant context to the error.
+#[inline(always)]
 pub fn variant<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
     move |input| match parser.parse(input) {
         Ok(r) => Ok(r),
