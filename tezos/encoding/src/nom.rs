@@ -18,7 +18,10 @@ use self::error::{BoundedEncodingKind, DecodeError, DecodeErrorKind};
 pub mod error {
     use std::{fmt::Write, str::Utf8Error};
 
-    use nom::{Offset, error::{ErrorKind, FromExternalError}};
+    use nom::{
+        error::{ErrorKind, FromExternalError},
+        Offset,
+    };
 
     use super::NomInput;
 
@@ -120,7 +123,11 @@ pub mod error {
             DecodeErrorKind::Nom(kind) => write!(res, " by nom parser `{:?}`", kind),
             DecodeErrorKind::Utf8(kind, e) => write!(res, " by nom parser `{:?}`: {}", kind, e),
             DecodeErrorKind::Boundary(kind) => {
-                write!(res, " caused by boundary violation of encoding `{:?}`", kind)
+                write!(
+                    res,
+                    " caused by boundary violation of encoding `{:?}`",
+                    kind
+                )
             }
             DecodeErrorKind::Field(name) => {
                 write!(res, " while decoding field `{}`", name)
@@ -146,10 +153,6 @@ pub type NomError<'a> = error::DecodeError<'a>;
 
 /// Nom result used in Tezedge (`&[u8]` as input, [NomError] as error type).
 pub type NomResult<'a, T> = nom::IResult<NomInput<'a>, T, NomError<'a>>;
-
-pub trait NomParser<'a, O>: Parser<NomInput<'a>, O, NomError<'a>> {}
-
-impl<'a, O, F> NomParser<'a, O> for F where F: FnMut(NomInput<'a>) -> NomResult<'a, O> {}
 
 /// Traits defining message decoding using `nom` primitives.
 pub trait NomReader: Sized {
@@ -306,7 +309,7 @@ pub fn bounded_list<'a, O, F>(
     mut f: F,
 ) -> impl FnMut(NomInput<'a>) -> NomResult<'a, Vec<O>>
 where
-    F: NomParser<'a, O>,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
 {
     move |input| {
@@ -350,7 +353,7 @@ where
 #[inline(always)]
 pub fn bounded_dynamic<'a, O, F>(max: usize, f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
-    F: NomParser<'a, O>,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
 {
     length_value(
@@ -363,7 +366,7 @@ where
 #[inline(always)]
 pub fn bounded<'a, O, F>(max: usize, mut f: F) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
 where
-    F: NomParser<'a, O>,
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
     O: Clone,
 {
     move |input: NomInput| {
@@ -392,20 +395,26 @@ where
 
 /// Applies the `parser` to the input, addin field context to the error.
 #[inline(always)]
-pub fn field<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
-    move |input| match parser.parse(input) {
-        Ok(r) => Ok(r),
-        Err(e) => Err(e.map(|e| e.add_field(name))),
-    }
+pub fn field<'a, O, F>(
+    name: &'static str,
+    mut parser: F,
+) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
+where
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
+{
+    move |input| parser(input).map_err(|e| e.map(|e| e.add_field(name)))
 }
 
 /// Applies the `parser` to the input, addin enum variant context to the error.
 #[inline(always)]
-pub fn variant<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
-    move |input| match parser.parse(input) {
-        Ok(r) => Ok(r),
-        Err(e) => Err(e.map(|e| e.add_variant(name))),
-    }
+pub fn variant<'a, O, F>(
+    name: &'static str,
+    mut parser: F,
+) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O>
+where
+    F: FnMut(NomInput<'a>) -> NomResult<'a, O>,
+{
+    move |input| parser(input).map_err(|e| e.map(|e| e.add_variant(name)))
 }
 
 #[cfg(test)]
