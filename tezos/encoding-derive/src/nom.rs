@@ -121,8 +121,9 @@ fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream 
     let name = encoding.name;
     let field = encoding.fields.first().unwrap();
     let field_name = field.name;
+    let field_name_str = field_name.to_string();
     let field_nom_read = generate_struct_field_nom_read(field);
-    quote_spanned!(encoding.name.span()=> nom::combinator::map(#field_nom_read, |#field_name| #name { #field_name }))
+    quote_spanned!(encoding.name.span()=> nom::combinator::map(tezos_encoding::nom::field(#field_name_str, #field_nom_read), |#field_name| #name { #field_name }))
 }
 
 fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
