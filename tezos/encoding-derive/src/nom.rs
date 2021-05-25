@@ -129,12 +129,16 @@ fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStrea
     let name = encoding.name;
     let field1 = encoding.fields.iter().map(|field| field.name);
     let field2 = field1.clone();
+    let field_name = encoding
+        .fields
+        .iter()
+        .map(|field| format!("{}::{}", name, field.name.to_string()));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
     quote_spanned! {
         encoding.name.span()=>
         nom::combinator::map(
             nom::sequence::tuple((
-                #(#field_nom_read),*
+                #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
             )),
             |(#(#field1),*)| #name { #(#field2),* }
         )
@@ -176,7 +180,8 @@ fn generate_tag_nom_read<'a>(
         }
         encoding => {
             let nom_read = generate_nom_read(&encoding);
-            quote_spanned!(tag_name.span()=> nom::combinator::map(#nom_read, #enum_name::#tag_name))
+            let name = format!("{}::{}", enum_name, tag_name);
+            quote_spanned!(tag_name.span()=> nom::combinator::map(tezos_encoding::nom::variant(#name, #nom_read), #enum_name::#tag_name))
         }
     };
     quote_spanned! {

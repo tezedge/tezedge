@@ -18,10 +18,7 @@ use self::error::{BoundedEncodingKind, DecodeError, DecodeErrorKind};
 pub mod error {
     use std::{fmt::Write, str::Utf8Error};
 
-    use nom::{
-        error::{ErrorKind, FromExternalError},
-        Offset,
-    };
+    use nom::{Offset, error::{ErrorKind, FromExternalError}};
 
     use super::NomInput;
 
@@ -45,6 +42,10 @@ pub mod error {
         Utf8(ErrorKind, Utf8Error),
         /// Boundary violation.
         Boundary(BoundedEncodingKind),
+        /// Field name
+        Field(&'static str),
+        /// Field name
+        Variant(&'static str),
     }
 
     /// Specific bounded encoding kind.
@@ -57,6 +58,22 @@ pub mod error {
     }
 
     impl<'a> DecodeError<'a> {
+        pub fn add_field(self, name: &'static str) -> Self {
+            Self {
+                input: self.input.clone(),
+                kind: DecodeErrorKind::Field(name),
+                other: Some(Box::new(self)),
+            }
+        }
+
+        pub fn add_variant(self, name: &'static str) -> Self {
+            Self {
+                input: self.input.clone(),
+                kind: DecodeErrorKind::Variant(name),
+                other: Some(Box::new(self)),
+            }
+        }
+
         pub fn limit(input: NomInput<'a>, kind: BoundedEncodingKind) -> Self {
             Self {
                 input,
@@ -100,10 +117,16 @@ pub mod error {
         let end = start + error.input.len();
         let _ = write!(res, "Error decoding bytes [{}..{}]", start, end);
         let _ = match error.kind {
-            DecodeErrorKind::Nom(kind) => write!(res, " by nom parser {:?}", kind),
-            DecodeErrorKind::Utf8(kind, e) => write!(res, " by nom parser {:?}: {}", kind, e),
+            DecodeErrorKind::Nom(kind) => write!(res, " by nom parser `{:?}`", kind),
+            DecodeErrorKind::Utf8(kind, e) => write!(res, " by nom parser `{:?}`: {}", kind, e),
             DecodeErrorKind::Boundary(kind) => {
-                write!(res, " caused by boundary violation of encoding {:?}", kind)
+                write!(res, " caused by boundary violation of encoding `{:?}`", kind)
+            }
+            DecodeErrorKind::Field(name) => {
+                write!(res, " while decoding field `{}`", name)
+            }
+            DecodeErrorKind::Variant(name) => {
+                write!(res, " while decoding variant `{}`", name)
             }
         };
 
@@ -363,6 +386,20 @@ where
             })),
             e => e,
         }
+    }
+}
+
+pub fn field<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
+    move |input| match parser.parse(input) {
+        Ok(r) => Ok(r),
+        Err(e) => Err(e.map(|e| e.add_field(name))),
+    }
+}
+
+pub fn variant<'a, O>(name: &'static str, mut parser: impl NomParser<'a, O>) -> impl FnMut(NomInput<'a>) -> NomResult<'a, O> {
+    move |input| match parser.parse(input) {
+        Ok(r) => Ok(r),
+        Err(e) => Err(e.map(|e| e.add_variant(name))),
     }
 }
 
