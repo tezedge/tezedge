@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::de::from_value as deserialize_from_value;
+use tezos_encoding::{de::from_value as deserialize_from_value, nom::{NomError, NomInput, error::convert_error}};
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::json_writer::JsonWriter;
 use tezos_encoding::ser;
@@ -253,13 +253,21 @@ pub trait BinaryMessageNom: Sized {
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError>;
 }
 
+fn map_nom_error(input: NomInput, error: nom::Err<NomError>) -> BinaryReaderError {
+    BinaryReaderErrorKind::NomError { error: match error {
+        nom::Err::Incomplete(_) => "Incomplete input".to_string(),
+        nom::Err::Error(error) |
+        nom::Err::Failure(error) => convert_error(input, error),
+    }}.into()
+}
+
 impl<T> BinaryMessageNom for T
 where
     T: tezos_encoding::nom::NomReader + Sized,
 {
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
-        let (bytes, myself) = tezos_encoding::nom::NomReader::from_bytes(buf.as_ref())?;
+        let (bytes, myself) = tezos_encoding::nom::NomReader::from_bytes(buf.as_ref()).map_err(|error| map_nom_error(buf.as_ref(), error))?;
         if bytes.len() > 0 {
             Err(BinaryReaderErrorKind::Overflow { bytes: bytes.len() }.into())
         } else {
