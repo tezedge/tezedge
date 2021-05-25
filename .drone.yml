@@ -768,7 +768,7 @@ name: tezos-python-tests
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  
+
 steps:
 
 - name: prepare-python-tests
@@ -2762,8 +2762,6 @@ steps:
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
-    # TODO: remove, when florence supported
-    detach: true
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -2811,8 +2809,6 @@ steps:
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
-    # TODO: remove, when florence supported
-    detach: true
     volumes:
       - name: tests
         path: /tests
@@ -2826,8 +2822,6 @@ steps:
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
     image: simplestakingcom/tezos-node-bootstrap:latest
-    # TODO: remove, when florence supported
-    detach: true
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
 
