@@ -119,6 +119,31 @@ pub(crate) fn create_routes(_is_sandbox: bool, one_context: bool) -> PathTree<Me
     );
     routes.handle(
         hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/metadata_hash",
+        shell_handler::get_metadata_hash,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operations_metadata_hash",
+        shell_handler::get_operations_metadata_hash,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes/:validation_pass_index",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes/:validation_pass_index/:operation_index",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass_by_operation_index,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/operation_hashes",
         shell_handler::get_block_operation_hashes,
     );

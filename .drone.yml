@@ -155,6 +155,7 @@ steps:
     # copy sandbox resources
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json /tmp/sandbox/
     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json /tmp/sandbox/
@@ -1300,7 +1301,7 @@ depends_on:
   - build
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration and does transfer with tezos_client
+# This pipeline runs tezedge node with sandbox configuration with 006 Carthage protocol and does transfer with tezos_client
 ##############################################################################################################
 ---
 kind: pipeline
@@ -1513,7 +1514,246 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer with tezos_client
+##############################################################################################################
+---
+kind: pipeline
+name: sandbox-edo2-node-tests
+
+clone:
+  disable: true
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
+  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
+  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
+  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
+  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+
+steps:
+  - name: cleanup-node-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - rm -rf /tmp/sandbox/light-node
+      - rm -rf /tmp/sandbox/tezos-node
+      - rm -rf /tmp/sandbox/tezos-client
+
+  # run empty rust node and wait for it
+  - name: tezedge-node-sandbox-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /tmp/sandbox
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # TODO: remove
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params /artifacts
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params /artifacts
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/tezedge_ip.txt
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file /tmp/sandbox/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file /tmp/sandbox/light-node/identity.json --tezos-data-dir /tmp/sandbox/tezos-node --bootstrap-db-path /tmp/sandbox/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file /tmp/sandbox/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true
+
+  - name: wait-for-tezedge-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # run empty ocaml sandbox and wait for it
+  - name: ocaml-node-sandbox-run
+    user: root
+    image: tezos/tezos:v8.2
+    detach: true
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/sandbox/ocaml_ip.txt
+      - mkdir /home/tezos/data/
+      - mkdir /tmp/sandbox/tezos-client
+      - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+      - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
+      - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox /tmp/sandbox/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --bootstrap-threshold 1 -vv
+
+  - name: wait-for-ocaml-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+  # connect both nodes with tezos-admin-client
+  - name: connect-ocaml-and-rust
+    user: root
+    image: tezos/tezos:v8.2
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+      - sleep 3
+  # TODO: instead of sleep 3, check status established
+  # TODO: write rpc test for check network/peers
+
+  # inject protocol to ocaml node, means it creates the first block with level 1
+  - name: inject-first-block-with-tezos_client
+    user: root
+    image: tezos/tezos:v8.2
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 --block genesis activate protocol PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA with fitness 1 and key activator and parameters /tmp/sandbox/008-edo-protocol-parameters.json --timestamp $(TZ='AAA+1' date +%FT%TZ)
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-1
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: check-mempool-before-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 0
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $applied_count
+
+  # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+  - name: do-transfer-with-tezos_client
+    user: root
+    image: tezos/tezos:v8.2
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+      - sleep 1
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+      - sleep 2
+
+  - name: check-mempool-after-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 1
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_count
+
+  # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+  - name: bake-a-block-with-tezos_client
+    user: root
+    image: tezos/tezos:v8.2
+    volumes:
+      - name: sandbox-data
+        path: /tmp/sandbox
+    commands:
+      - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+      - sleep 1
+      - tezos-client --base-dir /tmp/sandbox/tezos-client -A `cat /tmp/sandbox/tezedge_ip.txt` -P 18732 bake for bootstrap2
+      - tezos-admin-client -A `cat /tmp/sandbox/ocaml_ip.txt` -P 8732 connect address `cat /tmp/sandbox/tezedge_ip.txt`:9732
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-2
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # compare all rpc's from blocks 0 to 2 between defined nodes
+  - name: rpc-test-for-levels-0-2
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+      FROM_BLOCK_HEADER: 0
+      TO_BLOCK_HEADER: 2
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
   - docker_pull_secret
@@ -1905,6 +2145,7 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -2380,6 +2621,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -2599,7 +2841,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time
+      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
       # mainnet rpcs of protocol 001 are too slow
       - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
@@ -2693,6 +2935,7 @@ depends_on:
   - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - sandbox-edo2-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
   - delphinet-big-offline-tests
@@ -2752,6 +2995,7 @@ depends_on:
   - integration-tests
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
+  - sandbox-edo2-node-tests
   - tezos-python-tests
   - connect-from-different-network-test
   - delphinet-big-offline-tests
