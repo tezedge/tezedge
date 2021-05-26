@@ -202,10 +202,10 @@ send_transactions() {
 
 		case $client in
 			0) $tezos_client_wrappers_0 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
-			1) $tezos_client_wrappers_0 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
-			2) $tezos_client_wrappers_0 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
-			3) $tezos_client_wrappers_0 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
-			4) $tezos_client_wrappers_0 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
+			1) $tezos_client_wrappers_1 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
+			2) $tezos_client_wrappers_2 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
+			3) $tezos_client_wrappers_3 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
+			4) $tezos_client_wrappers_4 transfer $transfer from $wallet1 to $wallet2 --burn-cap $burn_cap &;;
 		esac
 	} done
 }

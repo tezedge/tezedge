@@ -344,31 +344,40 @@ fn process_prevalidation(
         if let Ok(event) = validator_event_receiver.recv() {
             match event {
                 Event::NewHead(header) => {
-                    debug!(log, "Mempool - new head received, so begin construction a new context";
-                                "received_block_hash" => header.hash.to_base58_check());
+                    // we dont want to reset mempool if header is not changed
+                    let process_new_head = match current_mempool_state_storage.read()?.head() {
+                        Some(mempool_head) => mempool_head.ne(&header.hash),
+                        None => true,
+                    };
 
-                    // try to begin construction new context
-                    let (prevalidator, head) = begin_construction(
-                        &api,
-                        &chain_id,
-                        header.hash.clone(),
-                        header.header.clone(),
-                        &log,
-                    )?;
+                    if process_new_head {
+                        debug!(log, "Mempool - new head received, so begin construction a new context"; "received_block_hash" => header.hash.to_base58_check());
 
-                    // reinitialize state for new prevalidator and head
-                    let operations_to_delete = current_mempool_state_storage
-                        .write()?
-                        .reinit(prevalidator, head);
+                        // try to begin construction new context
+                        let (prevalidator, head) = begin_construction(
+                            &api,
+                            &chain_id,
+                            header.hash.clone(),
+                            header.header.clone(),
+                            &log,
+                        )?;
 
-                    // clear unneeded operations from mempool storage
-                    operations_to_delete
-                        .iter()
-                        .for_each(|oph| {
-                            if let Err(err) = mempool_storage.delete(&oph) {
-                                warn!(log, "Mempool - delete operation failed"; "hash" => oph.to_base58_check(), "error" => format!("{:?}", err))
-                            }
-                        });
+                        // reinitialize state for new prevalidator and head
+                        let operations_to_delete = current_mempool_state_storage
+                            .write()?
+                            .reinit(prevalidator, head);
+
+                        // clear unneeded operations from mempool storage
+                        operations_to_delete
+                            .iter()
+                            .for_each(|oph| {
+                                if let Err(err) = mempool_storage.delete(&oph) {
+                                    warn!(log, "Mempool - delete operation failed"; "hash" => oph.to_base58_check(), "error" => format!("{:?}", err))
+                                }
+                            });
+                    } else {
+                        debug!(log, "Mempool - new head received, but was ignored"; "received_block_hash" => header.hash.to_base58_check());
+                    }
                 }
                 Event::ValidateOperation(oph, mempool_operation_type, result_callback) => {
                     // TODO: handling when operation not exists - can happen?
