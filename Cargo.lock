@@ -4174,6 +4174,7 @@ dependencies = [
  "tezos_api",
  "tezos_context",
  "tezos_messages",
+ "tezos_new_context",
  "wait-timeout",
 ]
 
