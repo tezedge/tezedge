@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
+use std::collections::HashMap;
 
 use failure::{format_err, Error, Fail};
 use riker::actors::*;
@@ -21,7 +22,7 @@ use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
-    PersistentStorage,
+    PersistentStorage, IteratorMode,
 };
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
@@ -157,6 +158,9 @@ pub struct ChainFeeder {
 
     /// Statistics for applying blocks
     apply_block_stats: ApplyBlockStats,
+
+    persistent_storage: Option<PersistentStorage>,
+    chain_id: Option<Arc<ChainId>>,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -185,8 +189,8 @@ impl ChainFeeder {
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
                 chain_current_head_manager,
-                persistent_storage,
-                Arc::new(init_storage_data),
+                persistent_storage.clone(),
+                Arc::new(init_storage_data.clone()),
                 Arc::new(tezos_env),
                 tezos_writeable_api,
                 log,
@@ -201,6 +205,8 @@ impl ChainFeeder {
                 block_applier_run,
                 Arc::new(Mutex::new(Some(block_applier_thread))),
                 BLOCK_APPLY_BATCH_MAX_TICKETS,
+                Some(persistent_storage),
+                Some(Arc::new(init_storage_data.chain_id)),
             )),
         )
     }
@@ -242,6 +248,62 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
+    fn hydrate_queue(&mut self, persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>, chain_feeder: ChainFeederRef, log: &Logger) {
+        let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+        let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+        let block_storage = BlockStorage::new(&persistent_storage);
+
+        let current_head_level = if let Ok(Some(head)) =
+            ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id)
+        {
+            *head.level()
+        } else {
+            0
+        };
+
+        println!("Hydrating...");
+
+        if let Ok(iter) = block_meta_storage.iter(IteratorMode::Start) {
+            iter.for_each(|(k, v)| {
+                if !self.block_applier_run.load(Ordering::Acquire) {
+                    return;
+                }
+                if let (Ok(k), Ok(v)) = (k, v) {
+                    info!(log, "Cheking: {:?}", v.level());
+                    if let Ok(is_complete) = operations_meta_storage.is_complete(&k) {
+                        if is_complete {
+                            info!(log, "Completed: {:?}", v.level());
+                            let mut predecessor_selector = v.predecessor().as_ref().unwrap().clone();
+                            loop {
+                                match block_meta_storage.get(&predecessor_selector) {
+                                    Ok(Some(block_metadata)) => {
+                                        if block_metadata.is_applied() {
+                                            info!(log, "Predecessor found for: {:?}", v.level());
+                                            let batch = ApplyBlockBatch::one(k);
+                                            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+                                            // self.add_to_batch_queue(schedule_msg);
+                                            // self.process_batch_queue(chain_feeder.clone(), log);
+                                            break;
+                                        }
+                                        if let Some(predecessor) = block_metadata.take_predecessor() {
+                                            if predecessor.eq(&predecessor_selector) {
+                                                break;
+                                            }
+                                            predecessor_selector = predecessor;
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    _ => break
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+        };
+    }
+
     fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
         // try schedule batches as many permits we can get
         while let Ok(permit) = self.apply_block_tickets.clone().try_acquire_owned() {
@@ -276,6 +338,8 @@ impl
         Arc<AtomicBool>,
         SharedJoinHandle,
         usize,
+        Option<PersistentStorage>,
+        Option<Arc<ChainId>>,
     )> for ChainFeeder
 {
     fn create_args(
@@ -285,12 +349,16 @@ impl
             block_applier_run,
             block_applier_thread,
             max_permits,
+            persistent_storage,
+            chain_id,
         ): (
             ShellChannelRef,
             Arc<Mutex<QueueSender<Event>>>,
             Arc<AtomicBool>,
             SharedJoinHandle,
             usize,
+            Option<PersistentStorage>,
+            Option<Arc<ChainId>>,
         ),
     ) -> Self {
         ChainFeeder {
@@ -302,6 +370,8 @@ impl
             apply_block_stats: ApplyBlockStats::default(),
             apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
             apply_block_tickets_maximum: max_permits,
+            persistent_storage,
+            chain_id,
         }
     }
 }
@@ -337,6 +407,16 @@ impl Actor for ChainFeeder {
             .join()
             .expect("Failed to join block applier thread");
     }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        // now we can hydrate state and read current head
+        if let (Some(persistent_storage), Some(chain_id)) = (self.persistent_storage.clone(), self.chain_id.clone()) {
+            self.hydrate_queue(&persistent_storage, chain_id, ctx.myself(), &ctx.system.log());
+        }
+        // let persistent_storage = self.persistent_storage.clone();
+        // let chain_id = self.chain_id.clone();
+        
+     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
         self.receive(ctx, msg, sender);
