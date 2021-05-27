@@ -3,10 +3,14 @@
 
 //! Functions exposed to be called from OCaml
 
-// TODO: extend init function
-
 use core::borrow::Borrow;
-use std::{cell::RefCell, convert::TryFrom, rc::Rc};
+use lazy_static::lazy_static;
+use std::{
+    cell::RefCell,
+    convert::TryFrom,
+    rc::Rc,
+    sync::{Arc, RwLock},
+};
 
 use ocaml_interop::*;
 
@@ -20,8 +24,8 @@ use crate::{
         working_tree::{FoldDepth, TreeWalker, WorkingTree},
         NodeKind,
     },
-    ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi, ShellContextApi,
-    TezedgeContext, TezedgeIndex,
+    ContextKeyValueStore, ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi,
+    ShellContextApi, TezedgeContext, TezedgeIndex,
 };
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
@@ -100,16 +104,44 @@ fn make_key<'a>(rt: &'a OCamlRuntime, key: OCamlRef<OCamlList<String>>) -> Vec<&
     vector
 }
 
+// TODO: move this static and its accessors to a better place
+lazy_static! {
+    pub static ref TEZEDGE_CONTEXT_REPOSITORY: RwLock<Option<Arc<RwLock<ContextKeyValueStore>>>> =
+        RwLock::new(None);
+}
+
+// Set the repository so that it can be accessed by the context IPC
+fn set_context_index(index: &TezedgeIndex) {
+    // TODO: remove this unwrap (will require changes to OCaml-side too)
+    TEZEDGE_CONTEXT_REPOSITORY
+        .write()
+        .unwrap()
+        .replace(Arc::clone(&index.repository));
+}
+
+// Obtain the context index (for context IPC access)
+pub fn get_context_index() -> Option<TezedgeIndex> {
+    // TODO: remove this unwrap
+    TEZEDGE_CONTEXT_REPOSITORY
+        .read()
+        .unwrap()
+        .as_ref()
+        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None))
+}
+
 ocaml_export! {
     // Index API
 
+    // TODO: This needs to support more configuration options
     fn tezedge_index_init(
         rt,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
     ) -> OCaml<DynBox<TezedgeIndexFFI>> {
-        // TODO: make the storage configurable through a parameter
         let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);
         let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMemGC, patch_context);
+
+        set_context_index(&index);
+
         OCaml::box_value(rt, index.into())
     }
 

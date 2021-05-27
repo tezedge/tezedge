@@ -22,3 +22,4 @@ crypto = { path = "../../crypto" }
 tezos_api = { path = "../api" }
 tezos_context = { path = "../context" }
 tezos_messages = { path = "../messages" }
+tezos_new_context = { path = "../new_context" }

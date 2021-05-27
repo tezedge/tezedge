@@ -47,13 +47,7 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::{
-    array::TryFromSliceError,
-    borrow::Cow,
-    cell::{Cell, RefCell},
-    collections::HashSet,
-    rc::Rc,
-};
+use std::{array::TryFromSliceError, borrow::{Borrow, Cow}, cell::{Cell, RefCell}, collections::HashSet, rc::Rc};
 
 use failure::Fail;
 
@@ -622,8 +616,9 @@ impl WorkingTree {
 
                     let entry = self.get_entry(&child_node)?;
                     let rdepth = depth.map(|d| d - 1);
+                    let key_str: &str = key.borrow();
                     new_tree.insert(
-                        key.clone(),
+                        key_str.to_string(),
                         self.get_context_recursive(&fullpath, &entry, rdepth)?,
                     );
                 }
@@ -664,8 +659,9 @@ impl WorkingTree {
             // construct full path as Tree key is only one chunk of it
             let fullpath = self.key_to_string(prefix) + delimiter + key;
             let rdepth = depth.map(|d| d - 1);
+            let key_str: &str = key.borrow();
             out.insert(
-                key.clone(),
+                key_str.to_string(),
                 self.get_context_recursive(&fullpath, &entry, rdepth)?,
             );
         }
@@ -1090,7 +1086,7 @@ impl WorkingTree {
     }
 
     fn get_entry_from_hash(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        match self.index.repository.borrow().get(hash)? {
+        match self.index.repository.read().unwrap().get(hash)? {
             None => Err(MerkleError::EntryNotFound {
                 hash: HashType::ContextHash.hash_to_b58check(hash)?,
             }),
@@ -1180,7 +1176,7 @@ impl WorkingTree {
     pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, MerkleError> {
         Ok(MerkleStoragePerfReport {
             perf_stats: self.stats.perf_stats.clone(),
-            kv_store_stats: self.index.repository.borrow().total_get_mem_usage()?,
+            kv_store_stats: self.index.repository.read().unwrap().total_get_mem_usage()?,
         })
     }
 
