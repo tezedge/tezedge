@@ -879,6 +879,8 @@ mod tests {
                     block_applier_run,
                     Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
                     2,
+                    None,
+                    None,
                 )),
             )
             .map(|feeder| (feeder, block_applier_event_receiver))
