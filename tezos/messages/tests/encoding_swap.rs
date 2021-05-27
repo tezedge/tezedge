@@ -16,7 +16,6 @@ fn can_serialize_swap_max() -> Result<(), Error> {
     let message = SwapMessage::new(point, peer_id);
     let res = message.as_bytes();
     assert!(res.is_ok());
-    println!("{}", hex::encode(res.unwrap()));
     Ok(())
 }
 
@@ -53,7 +52,7 @@ fn can_deserialize_swap_max_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_swap_point_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_POINT_OVER_MAX)?;
-    let _err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
+    let _err = <SwapMessage as BinaryMessage>::from_bytes(&encoded).expect_err("Error is expected");
     Ok(())
 }
 

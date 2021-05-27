@@ -1,3 +1,4 @@
+use bit_vec::BitVec;
 use crypto::hash::HashTrait;
 use nom::{
     branch::*,
@@ -9,7 +10,10 @@ use nom::{
     sequence::*,
     Err, InputLength, Parser, Slice,
 };
+use num_bigint::{BigInt, Sign};
 pub use tezos_encoding_derive::NomReader;
+
+use crate::{bit_utils::{BitReverse, Bits, BitsError}, types::{Zarith, Mutez}};
 
 use self::error::{BoundedEncodingKind, DecodeError, DecodeErrorKind};
 
@@ -21,17 +25,19 @@ pub mod error {
         Offset,
     };
 
+    use crate::bit_utils::BitsError;
+
     use super::NomInput;
 
     /// Decoding error
     #[derive(Debug, PartialEq)]
-    pub struct DecodeError<'a> {
+    pub struct DecodeError<I> {
         /// Input causing the error.
-        pub(crate) input: NomInput<'a>,
+        pub(crate) input: I,
         /// Kind of the error.
         pub(crate) kind: DecodeErrorKind,
         /// Subsequent error, if any.
-        pub(crate) other: Option<Box<DecodeError<'a>>>,
+        pub(crate) other: Option<Box<DecodeError<I>>>,
     }
 
     /// Decoding error kind.
@@ -43,6 +49,8 @@ pub mod error {
         Utf8(ErrorKind, Utf8Error),
         /// Boundary violation.
         Boundary(BoundedEncodingKind),
+        /// Bits error
+        Bits(BitsError),
         /// Field name
         Field(&'static str),
         /// Field name
@@ -58,7 +66,7 @@ pub mod error {
         Bounded,
     }
 
-    impl<'a> DecodeError<'a> {
+    impl<'a> DecodeError<NomInput<'a>> {
         pub fn add_field(self, name: &'static str) -> Self {
             Self {
                 input: self.input.clone(),
@@ -84,8 +92,8 @@ pub mod error {
         }
     }
 
-    impl<'a> nom::error::ParseError<NomInput<'a>> for DecodeError<'a> {
-        fn from_error_kind(input: NomInput<'a>, kind: ErrorKind) -> Self {
+    impl<I> nom::error::ParseError<I> for DecodeError<I> {
+        fn from_error_kind(input: I, kind: ErrorKind) -> Self {
             Self {
                 input,
                 kind: DecodeErrorKind::Nom(kind),
@@ -93,7 +101,7 @@ pub mod error {
             }
         }
 
-        fn append(input: NomInput<'a>, kind: ErrorKind, other: Self) -> Self {
+        fn append(input: I, kind: ErrorKind, other: Self) -> Self {
             Self {
                 input,
                 kind: DecodeErrorKind::Nom(kind),
@@ -102,8 +110,8 @@ pub mod error {
         }
     }
 
-    impl<'a> FromExternalError<NomInput<'a>, Utf8Error> for DecodeError<'a> {
-        fn from_external_error(input: NomInput<'a>, kind: ErrorKind, e: Utf8Error) -> Self {
+    impl<I> FromExternalError<I, Utf8Error> for DecodeError<I> {
+        fn from_external_error(input: I, kind: ErrorKind, e: Utf8Error) -> Self {
             Self {
                 input,
                 kind: DecodeErrorKind::Utf8(kind, e),
@@ -112,7 +120,7 @@ pub mod error {
         }
     }
 
-    pub fn convert_error(input: NomInput, error: DecodeError) -> String {
+    pub fn convert_error(input: NomInput, error: DecodeError<NomInput>) -> String {
         let mut res = String::new();
         let start = input.offset(error.input);
         let end = start + error.input.len();
@@ -133,6 +141,7 @@ pub mod error {
             DecodeErrorKind::Variant(name) => {
                 write!(res, " while decoding variant `{}`", name)
             }
+            DecodeErrorKind::Bits(e) => write!(res, " while performing bits operation: {}", e),
         };
 
         if let Some(other) = error.other {
@@ -147,7 +156,7 @@ pub mod error {
 pub type NomInput<'a> = &'a [u8];
 
 /// Error type used to parameterize `nom`.
-pub type NomError<'a> = error::DecodeError<'a>;
+pub type NomError<'a> = error::DecodeError<NomInput<'a>>;
 
 /// Nom result used in Tezedge (`&[u8]` as input, [NomError] as error type).
 pub type NomResult<'a, T> = nom::IResult<NomInput<'a>, T, NomError<'a>>;
@@ -187,6 +196,18 @@ hash_nom_reader!(CryptoboxPublicKeyHash);
 hash_nom_reader!(PublicKeyEd25519);
 hash_nom_reader!(PublicKeySecp256k1);
 hash_nom_reader!(PublicKeyP256);
+
+impl NomReader for Zarith {
+    fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
+        map(zarith, |big_int| big_int.into())(bytes)
+    }
+}
+
+impl NomReader for Mutez {
+    fn from_bytes(bytes: &[u8]) -> NomResult<Self> {
+        map(mutez, |big_int| big_int.into())(bytes)
+    }
+}
 
 /// Reads a boolean value.
 #[inline(always)]
@@ -229,7 +250,7 @@ fn bounded_size<'a>(
 /// Reads Tesoz string encoded as a 32-bit length followed by the string bytes.
 #[inline(always)]
 pub fn string(input: NomInput) -> NomResult<String> {
-    map_res(length_data(size), |bytes| {
+    map_res(complete(length_data(size)), |bytes| {
         std::str::from_utf8(bytes).map(str::to_string)
     })(input)
 }
@@ -239,7 +260,7 @@ pub fn string(input: NomInput) -> NomResult<String> {
 #[inline(always)]
 pub fn bounded_string<'a>(max: usize) -> impl FnMut(NomInput<'a>) -> NomResult<'a, String> {
     map_res(
-        length_data(bounded_size(BoundedEncodingKind::String, max)),
+        complete(length_data(bounded_size(BoundedEncodingKind::String, max))),
         |bytes| std::str::from_utf8(bytes).map(str::to_string),
     )
 }
@@ -393,8 +414,98 @@ where
     move |input| parser(input).map_err(|e| e.map(|e| e.add_variant(name)))
 }
 
+fn map_bits_err(input: NomInput, error: BitsError) -> NomError {
+    DecodeError {
+        input,
+        kind: DecodeErrorKind::Bits(error),
+        other: None,
+    }
+}
+
+pub fn zarith(input: NomInput) -> NomResult<BigInt> {
+    let map_err = |e| Err::Error(map_bits_err(input.clone(), e));
+
+    let (input, mut first) = u8(input)?;
+    let mut has_next = first.take(7).map_err(map_err)?;
+    let negative = first.take(6).map_err(map_err)?;
+
+    let (input, big_int) = if !has_next {
+        let num = if negative {
+            -(first as i8)
+        } else {
+            first as i8
+        };
+        (input, num_bigint::BigInt::from(num))
+    } else {
+        // In Z encoding bit chunks go from least significant to most significant.
+        // That means that we should collect bits from least to most significant
+        // and then reverse the `BitVec` to get proper BE order.
+
+        let mut bits = BitVec::new();
+        for i in 0..6 {
+            bits.push(first.get(i).map_err(map_err)?);
+        }
+        let mut input = input;
+        while has_next {
+            let i = input.clone();
+            let map_err = |e| Err::Error(map_bits_err(i, e));
+            let (i, byte) = u8(input)?;
+            input = i;
+            for i in 0..7 {
+                bits.push(byte.get(i).map_err(map_err)?);
+            }
+            has_next = byte.get(7).map_err(map_err)?;
+        }
+
+        // `BitVec::to_bytes` considers the rightmost bit as the 7th bit of the
+        // first byte, so it should be padded with zeroes that will become most
+        // significant bits after reverse.
+        let pad = bits.len() % 8;
+        if pad != 0 {
+            bits.append(&mut BitVec::from_elem(8 - pad, false));
+        }
+
+        let sign = if negative { Sign::Minus } else { Sign::Plus };
+        let big_int = num_bigint::BigInt::from_bytes_be(sign, bits.reverse().to_bytes().as_slice());
+        (input, big_int)
+    };
+
+    Ok((input, big_int))
+}
+
+pub fn mutez(mut input: NomInput) -> NomResult<BigInt> {
+    let mut bits = BitVec::new();
+    let mut has_next = true;
+    while has_next {
+        let i = input.clone();
+        let map_err = |e| Err::Error(map_bits_err(i, e));
+        let (i, byte) = u8(input)?;
+        input = i;
+        for i in 0..7 {
+            bits.push(byte.get(i).map_err(map_err)?);
+        }
+        has_next = byte.get(7).map_err(map_err)?;
+    }
+
+    // `BitVec::to_bytes` considers the rightmost bit as the 7th bit of the
+    // first byte, so it should be padded with zeroes that will become most
+    // significant bits after reverse.
+    let pad = bits.len() % 8;
+    if pad != 0 {
+        bits.append(&mut BitVec::from_elem(8 - pad, false));
+    }
+
+    let big_int =
+        num_bigint::BigInt::from_bytes_be(Sign::Plus, bits.reverse().to_bytes().as_slice());
+
+    Ok((input, big_int.into()))
+}
+
 #[cfg(test)]
 mod test {
+    use num_bigint::BigInt;
+    use num_traits::FromPrimitive;
+
     use super::error::*;
     use super::*;
 
@@ -544,6 +655,38 @@ mod test {
         let res: NomResult<u32> = bounded(3, u32(Endianness::Big))(input);
         let err = res.expect_err("Error is expected");
         assert_eq!(err, limit_error(&input[..3], BoundedEncodingKind::Bounded));
+    }
+
+    #[test]
+    fn test_zarith() {
+        let input = hex::decode("9e9ed49d01").unwrap();
+        let res: NomResult<BigInt> = zarith(&input);
+        assert_eq!(res, Ok((&[][..], hex_to_bigint("9da879e"),)));
+
+        let input = hex::decode("41").unwrap();
+        let res: NomResult<BigInt> = zarith(&input);
+        assert_eq!(res, Ok((&[][..], i64_to_bigint(-1),)));
+
+        let input = hex::decode("57").unwrap();
+        let res: NomResult<BigInt> = zarith(&input);
+        assert_eq!(res, Ok((&[][..], i64_to_bigint(-23),)));
+    }
+
+    #[test]
+    fn test_mutez() {
+        let input = hex::decode("9e9ed49d01").unwrap();
+        let res: NomResult<BigInt> = mutez(&input);
+        assert_eq!(res, Ok((&[][..], hex_to_bigint("13b50f1e"),)));
+
+    }
+
+    fn i64_to_bigint(n: i64) -> BigInt {
+        num_bigint::BigInt::from_i64(n).unwrap()
+    }
+
+    fn hex_to_bigint(s: &str) -> BigInt {
+        num_bigint::BigInt::from_i64(i64::from_str_radix(s, 16).unwrap())
+            .unwrap()
     }
 
     fn limit_error<'a>(input: NomInput<'a>, kind: BoundedEncodingKind) -> Err<NomError<'a>> {

@@ -33,6 +33,8 @@ fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
         Encoding::Sized(size, encoding, span) => generate_sized_nom_read(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_nom_read(size, encoding, *span),
         Encoding::Dynamic(size, encoding, span) => generate_dynamic_nom_read(size, encoding, *span),
+        Encoding::Z(span) => quote_spanned!(*span=> tezos_encoding::nom::zarith),
+        Encoding::MuTez(span) => quote_spanned!(*span=> tezos_encoding::nom::mutez),
     }
 }
 
@@ -53,6 +55,7 @@ lazy_static::lazy_static! {
             (Int31, "i32"),
             (Int32, "i32"),
             (Uint32, "u32"),
+            (Int64, "i64"),
             (Float, "f64"),
             (Timestamp, "i64"),
         ]
@@ -81,6 +84,7 @@ fn generage_primitive_nom_read(kind: PrimitiveEncoding, span: Span) -> TokenStre
         | PrimitiveEncoding::Int31
         | PrimitiveEncoding::Int32
         | PrimitiveEncoding::Uint32
+        | PrimitiveEncoding::Int64
         | PrimitiveEncoding::Float
         | PrimitiveEncoding::Timestamp => {
             generate_number_nom_read(get_primitive_number_mapping(kind).unwrap(), span)

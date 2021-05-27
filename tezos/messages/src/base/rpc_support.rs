@@ -40,8 +40,8 @@ impl UniversalValue {
         Self::NumberI64(val)
     }
 
-    pub fn big_num(val: BigInt) -> Self {
-        Self::BigNumber(val)
+    pub fn big_num(val: impl Into<BigInt>) -> Self {
+        Self::BigNumber(val.into())
     }
 
     pub fn i64_list(val: Vec<i64>) -> Self {

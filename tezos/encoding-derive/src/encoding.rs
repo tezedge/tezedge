@@ -39,6 +39,8 @@ pub enum Encoding<'a> {
     Primitive(PrimitiveEncoding, Span),
     Bytes(Span),
     Path(&'a syn::Path),
+    Z(Span),
+    MuTez(Span),
 
     String(Option<syn::Expr>, Span),
 
@@ -62,6 +64,7 @@ pub enum PrimitiveEncoding {
     Int31,
     Int32,
     Uint32,
+    Int64,
     Float,
     Bool,
     Timestamp,

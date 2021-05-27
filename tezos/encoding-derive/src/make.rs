@@ -138,15 +138,21 @@ fn make_basic_encoding_from_type<'a>(
     meta: &mut Vec<syn::Meta>,
 ) -> Result<Encoding<'a>> {
     let ident = &path.segments.last().unwrap().ident;
-    let encoding = if let Some(mapped) = get_rust_to_primitive_mapping(&ident) {
-        // direct mapping from Rust type to encoding
-        assert_builtin_encoding(meta, &mapped)?;
-        Encoding::Primitive(mapped, ident.span())
-    } else if ident == symbol::rust::STRING {
+    let encoding = if ident == symbol::rust::STRING {
         // String type is mapped to String encoding.
         let string_attr =
             get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?;
         Encoding::String(string_attr.map(|param| param.param).flatten(), ident.span())
+    } else if ident == symbol::rust::I64 && has_attribute(meta, &symbol::TIMESTAMP)? {
+        if let Some(timestamp) = get_attribute_no_param(meta, &symbol::TIMESTAMP)? {
+            Encoding::Primitive(PrimitiveEncoding::Timestamp, timestamp.span)
+        } else {
+            unreachable!()
+        }
+    } else if let Some(mapped) = get_rust_to_primitive_mapping(&ident) {
+        // direct mapping from Rust type to encoding
+        assert_builtin_encoding(meta, &mapped)?;
+        Encoding::Primitive(mapped, ident.span())
     } else if let Some(builtin) =
         get_attribute_with_param(meta, &symbol::BUILTIN, Some(&symbol::KIND), true)?
     {
@@ -174,6 +180,10 @@ fn get_basic_encoding_from_meta<'a>(
         get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?
     {
         Encoding::String(string.param, string.span)
+    } else if let Some(zarith) = get_attribute_no_param(meta, &symbol::Z_ARITH)? {
+        Encoding::Z(zarith.span)
+    } else if let Some(mutez) = get_attribute_no_param(meta, &symbol::MU_TEZ)? {
+        Encoding::MuTez(mutez.span)
     } else if let Some(builtin) =
         get_attribute_with_param(meta, &symbol::BUILTIN, Some(&symbol::KIND), true)?
     {
@@ -552,6 +562,15 @@ fn assert_empty_meta(meta: &Vec<syn::Meta>) -> Result<()> {
     }
 }
 
+fn has_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<bool> {
+    match meta.last() {
+        Some(syn::Meta::Path(path)) if path == *name => Ok(true),
+        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => Ok(true),
+        Some(syn::Meta::List(list)) if list.path == *name => Ok(true),
+        _ => Ok(false),
+    }
+}
+
 fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<Option<syn::Meta>> {
     match meta.last() {
         Some(syn::Meta::Path(path)) if path == *name => Ok(meta.pop()),
@@ -653,6 +672,7 @@ lazy_static::lazy_static! {
             (U16, Uint16),
             (I32, Int32),
             (U32, Uint32),
+            (I64, Int64),
             (F64, Float),
             (BOOL, Bool),
         ]

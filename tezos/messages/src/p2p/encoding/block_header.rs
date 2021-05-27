@@ -135,7 +135,7 @@ pub struct BlockHeader {
     #[get = "pub"]
     predecessor: BlockHash,
     #[get_copy = "pub"]
-    #[encoding(builtin = "Timestamp")]
+    #[encoding(timestamp)]
     timestamp: i64,
     #[get_copy = "pub"]
     validation_pass: u8,

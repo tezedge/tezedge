@@ -16,6 +16,7 @@ pub mod rust {
     pub const U16: Symbol = Symbol("u16");
     pub const I32: Symbol = Symbol("i32");
     pub const U32: Symbol = Symbol("u32");
+    pub const I64: Symbol = Symbol("i64");
     pub const F64: Symbol = Symbol("f64");
     pub const BOOL: Symbol = Symbol("bool");
 
@@ -23,6 +24,8 @@ pub mod rust {
 
     pub const VEC: Symbol = Symbol("Vec");
     pub const OPTION: Symbol = Symbol("Option");
+
+    pub const _BIG_INT: Symbol = Symbol("BigInt");
 }
 
 /// Built-in primitive encoding to use.
@@ -45,6 +48,8 @@ pub const BYTES: Symbol = Symbol("bytes");
 pub const STRING: Symbol = Symbol("string");
 pub const OPTION: Symbol = Symbol("option");
 
+pub const TIMESTAMP: Symbol = Symbol("timestamp");
+
 pub const SIZED: Symbol = Symbol("sized");
 pub const SIZE: Symbol = Symbol("size");
 
@@ -54,6 +59,9 @@ pub const DYNAMIC: Symbol = Symbol("dynamic");
 
 pub const TAGS: Symbol = Symbol("tags");
 pub const TAG: Symbol = Symbol("tag");
+
+pub const Z_ARITH: Symbol = Symbol("zarith");
+pub const MU_TEZ: Symbol = Symbol("mutez");
 
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, word: &Symbol) -> bool {

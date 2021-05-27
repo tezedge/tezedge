@@ -5,11 +5,8 @@ use std::collections::HashMap;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
-    has_encoding,
-    types::BigInt,
-};
+use tezos_encoding::{encoding::{Encoding, Field, HasEncoding}, has_encoding_test, types::{Zarith, Mutez}};
+use tezos_encoding::nom::NomReader;
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
 use crate::non_cached_data;
@@ -54,7 +51,7 @@ impl ToRpcJsonMap for FixedConstants {
 
 // ------- Parametric Constants ------- //
 
-#[derive(Serialize, Deserialize, Debug, Clone, Getters, CopyGetters)]
+#[derive(Serialize, Deserialize, Debug, Clone, Getters, CopyGetters, HasEncoding, NomReader)]
 pub struct ParametricConstants {
     #[get_copy = "pub"]
     preserved_cycles: Option<u8>,
@@ -65,26 +62,27 @@ pub struct ParametricConstants {
     blocks_per_roll_snapshot: Option<i32>,
     blocks_per_voting_period: Option<i32>,
     #[get = "pub"]
+    #[encoding(option, dynamic, list)]
     time_between_blocks: Option<Vec<i64>>,
     #[get_copy = "pub"]
     endorsers_per_block: Option<u16>,
-    hard_gas_limit_per_operation: Option<BigInt>,
-    hard_gas_limit_per_block: Option<BigInt>,
+    hard_gas_limit_per_operation: Option<Zarith>,
+    hard_gas_limit_per_block: Option<Zarith>,
     proof_of_work_threshold: Option<i64>,
-    tokens_per_roll: Option<BigInt>,
+    tokens_per_roll: Option<Mutez>,
     michelson_maximum_type_size: Option<u16>,
-    seed_nonce_revelation_tip: Option<BigInt>,
-    origination_burn: Option<BigInt>,
+    seed_nonce_revelation_tip: Option<Mutez>,
+    origination_burn: Option<Mutez>,
     #[get = "pub"]
-    block_security_deposit: Option<BigInt>,
+    block_security_deposit: Option<Mutez>,
     #[get = "pub"]
-    endorsement_security_deposit: Option<BigInt>,
+    endorsement_security_deposit: Option<Mutez>,
     #[get = "pub"]
-    block_reward: Option<BigInt>,
+    block_reward: Option<Mutez>,
     #[get = "pub"]
-    endorsement_reward: Option<BigInt>,
-    cost_per_byte: Option<BigInt>,
-    hard_storage_limit_per_operation: Option<BigInt>,
+    endorsement_reward: Option<Mutez>,
+    cost_per_byte: Option<Mutez>,
+    hard_storage_limit_per_operation: Option<Zarith>,
 }
 
 impl ParametricConstants {
@@ -180,13 +178,13 @@ impl ToRpcJsonMap for ParametricConstants {
         if let Some(hard_gas_limit_per_operation) = &self.hard_gas_limit_per_operation {
             ret.insert(
                 "hard_gas_limit_per_operation",
-                UniversalValue::big_num(hard_gas_limit_per_operation.clone()),
+                UniversalValue::big_num(hard_gas_limit_per_operation),
             );
         }
         if let Some(hard_gas_limit_per_block) = &self.hard_gas_limit_per_block {
             ret.insert(
                 "hard_gas_limit_per_block",
-                UniversalValue::big_num(hard_gas_limit_per_block.clone()),
+                UniversalValue::big_num(hard_gas_limit_per_block),
             );
         }
         if let Some(proof_of_work_threshold) = self.proof_of_work_threshold {
@@ -198,7 +196,7 @@ impl ToRpcJsonMap for ParametricConstants {
         if let Some(tokens_per_roll) = &self.tokens_per_roll {
             ret.insert(
                 "tokens_per_roll",
-                UniversalValue::big_num(tokens_per_roll.clone()),
+                UniversalValue::big_num(tokens_per_roll),
             );
         }
         if let Some(michelson_maximum_type_size) = self.michelson_maximum_type_size {
@@ -210,49 +208,49 @@ impl ToRpcJsonMap for ParametricConstants {
         if let Some(seed_nonce_revelation_tip) = &self.seed_nonce_revelation_tip {
             ret.insert(
                 "seed_nonce_revelation_tip",
-                UniversalValue::big_num(seed_nonce_revelation_tip.clone()),
+                UniversalValue::big_num(seed_nonce_revelation_tip),
             );
         }
         if let Some(origination_burn) = &self.origination_burn {
             ret.insert(
                 "origination_burn",
-                UniversalValue::big_num(origination_burn.clone()),
+                UniversalValue::big_num(origination_burn),
             );
         }
         if let Some(block_security_deposit) = &self.block_security_deposit {
             ret.insert(
                 "block_security_deposit",
-                UniversalValue::big_num(block_security_deposit.clone()),
+                UniversalValue::big_num(block_security_deposit),
             );
         }
         if let Some(endorsement_security_deposit) = &self.endorsement_security_deposit {
             ret.insert(
                 "endorsement_security_deposit",
-                UniversalValue::big_num(endorsement_security_deposit.clone()),
+                UniversalValue::big_num(endorsement_security_deposit),
             );
         }
         if let Some(block_reward) = &self.block_reward {
             ret.insert(
                 "block_reward",
-                UniversalValue::big_num(block_reward.clone()),
+                UniversalValue::big_num(block_reward),
             );
         }
         if let Some(endorsement_reward) = &self.endorsement_reward {
             ret.insert(
                 "endorsement_reward",
-                UniversalValue::big_num(endorsement_reward.clone()),
+                UniversalValue::big_num(endorsement_reward),
             );
         }
         if let Some(cost_per_byte) = &self.cost_per_byte {
             ret.insert(
                 "cost_per_byte",
-                UniversalValue::big_num(cost_per_byte.clone()),
+                UniversalValue::big_num(cost_per_byte),
             );
         }
         if let Some(hard_storage_limit_per_operation) = &self.hard_storage_limit_per_operation {
             ret.insert(
                 "hard_storage_limit_per_operation",
-                UniversalValue::big_num(hard_storage_limit_per_operation.clone()),
+                UniversalValue::big_num(hard_storage_limit_per_operation),
             );
         }
         // if let Some() = self. {
@@ -263,7 +261,7 @@ impl ToRpcJsonMap for ParametricConstants {
 }
 
 non_cached_data!(ParametricConstants);
-has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
+has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     Encoding::Obj(
         "ParametricConstants",
         vec![
@@ -333,15 +331,3 @@ has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     )
 });
 
-impl crate::p2p::binary_message::BinaryMessage for ParametricConstants {
-    fn as_bytes(&self) -> Result<Vec<u8>, tezos_encoding::binary_writer::BinaryWriterError> {
-        // if cache not configured or empty, resolve by encoding
-        tezos_encoding::binary_writer::write(self, &Self::encoding())
-    }
-
-    fn from_bytes<B: AsRef<[u8]>>(
-        buf: B,
-    ) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
-        <Self as crate::p2p::binary_message::BinaryMessageSerde>::from_bytes(buf)
-    }
-}

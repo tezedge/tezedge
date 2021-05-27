@@ -38,6 +38,8 @@ fn generate_encoding<'a>(encoding: &Encoding<'a>) -> TokenStream {
         Encoding::Sized(size, encoding, span) => generate_sized_encoding(size, encoding, *span),
         Encoding::Bounded(size, encoding, span) => generate_bounded_encoding(size, encoding, *span),
         Encoding::Dynamic(size, encoding, span) => generate_dynamic_encoding(size, encoding, *span),
+        Encoding::Z(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Z),
+        Encoding::MuTez(span) => quote_spanned!(*span=> tezos_encoding::encoding::Encoding::Mutez),
     }
 }
 

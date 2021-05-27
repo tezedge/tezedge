@@ -9,7 +9,7 @@ use bit_vec::BitVec;
 use failure::Fail;
 
 /// An error triggered when working with [Bits].
-#[derive(Debug, Fail)]
+#[derive(Debug, Fail, PartialEq)]
 pub enum BitsError {
     /// Index is out of range
     #[fail(display = "index out of range")]
@@ -84,6 +84,18 @@ pub trait Bits:
         }
         //  Shift down so the targeted bit is LSb, then blank all other bits.
         Ok((*self >> place) & Self::from(1) == Self::from(1))
+    }
+
+    /// Get a specific bit in an element and resets it.
+    fn take(&mut self, place: u8) -> Result<bool, BitsError> {
+        if place > Self::MASK {
+            return Err(BitsError::IndexOutOfRange);
+        }
+        let mask: Self = Self::from(1).shl(place);
+        let neg_mask = !mask;
+        let mask = mask & *self;
+        *self = *self & neg_mask;
+        Ok(mask != 0.into())
     }
 
     /// Rust doesn’t (as far as I know) have a way to render a typename at
@@ -238,5 +250,19 @@ mod tests {
         assert!(matches!(b8.get(8), Err(BitsError::IndexOutOfRange)));
         assert!(matches!(b16.get(16), Err(BitsError::IndexOutOfRange)));
         assert!(matches!(b32.get(32), Err(BitsError::IndexOutOfRange)));
+    }
+
+    #[test]
+    fn test_take() {
+        let mut b8 = 0u8;
+        b8.set(4, true).unwrap();
+        assert!(matches!(b8.take(4), Ok(true)));
+        assert!(matches!(b8.get(4), Ok(false)));
+
+        let mut b8 = 0xffu8;
+        b8.set(4, false).unwrap();
+        assert!(matches!(b8.take(4), Ok(false)));
+        assert!(matches!(b8.get(4), Ok(false)));
+        assert_eq!(b8, 0xefu8);
     }
 }

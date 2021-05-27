@@ -607,6 +607,25 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Error in decoding small negative integers"]
+    fn can_deserialize_z_from_binary_negative() {
+        let record_schema = &Encoding::Obj("", vec![Field::new("a", Encoding::Z)]);
+
+        let record_buf = hex::decode("53").unwrap();
+        let reader = BinaryReader::new();
+        let value = reader
+            .read(record_buf, &record_schema)
+            .unwrap();
+        assert_eq!(
+            Value::Record(vec![(
+                "a".to_string(),
+                Value::String("-23".to_string())
+            )]),
+            value
+        )
+    }
+
+    #[test]
     fn can_deserialize_tag_from_binary() {
         #[derive(Deserialize, Debug, PartialEq)]
         struct GetHeadRecord {
