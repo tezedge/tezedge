@@ -23,6 +23,7 @@ pub fn force_libtezos_linking() {
 
 use std::collections::BTreeMap;
 use std::num::TryFromIntError;
+use std::sync::PoisonError;
 use std::{array::TryFromSliceError, collections::HashSet};
 
 use failure::Fail;
@@ -62,7 +63,7 @@ pub type ContextValue = Vec<u8>;
 pub type TreeId = i32;
 
 /// Tree in String form needed for JSON RPCs
-pub type StringTreeMap = BTreeMap<KeyFragment, StringTreeEntry>;
+pub type StringTreeMap = BTreeMap<String, StringTreeEntry>;
 
 /// Tree in String form needed for JSON RPCs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -126,22 +127,6 @@ pub trait IndexApi<T: ShellContextApi + ProtocolContextApi> {
     ) -> Result<(), ContextError>;
     // called when a new cycle starts
     fn cycle_started(&mut self) -> Result<(), ContextError>;
-}
-
-/// Context API used by the Shell
-pub trait ShellContextApi
-where
-    Self: Sized,
-{
-    // commit current context diff to storage
-    fn commit(
-        &self,
-        author: String,
-        message: String,
-        date: i64,
-    ) -> Result<ContextHash, ContextError>;
-    fn hash(&self, author: String, message: String, date: i64)
-        -> Result<ContextHash, ContextError>;
     // get value for key from a point in history indicated by context hash
     fn get_key_from_history(
         &self,
@@ -161,6 +146,22 @@ where
         prefix: &ContextKey,
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, ContextError>;
+}
+
+/// Context API used by the Shell
+pub trait ShellContextApi
+where
+    Self: Sized,
+{
+    // commit current context diff to storage
+    fn commit(
+        &self,
+        author: String,
+        message: String,
+        date: i64,
+    ) -> Result<ContextHash, ContextError>;
+    fn hash(&self, author: String, message: String, date: i64)
+        -> Result<ContextHash, ContextError>;
 
     // get currently checked out hash
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError>;
@@ -193,6 +194,8 @@ pub enum ContextError {
         sought, found
     )]
     FoundUnexpectedStructure { sought: String, found: String },
+    #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
+    LockError { reason: String },
 }
 
 impl From<MerkleError> for ContextError {
@@ -234,6 +237,14 @@ impl From<DBError> for ContextError {
 impl From<bincode::Error> for ContextError {
     fn from(error: bincode::Error) -> Self {
         Self::SerializationError { error }
+    }
+}
+
+impl<T> From<PoisonError<T>> for ContextError {
+    fn from(pe: PoisonError<T>) -> Self {
+        Self::LockError {
+            reason: format!("{}", pe),
+        }
     }
 }
 

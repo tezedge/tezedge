@@ -400,7 +400,7 @@ fn dummy_block(block_hash: &str, level: i32) -> Result<BlockHeaderWithHash, fail
 #[macro_export]
 macro_rules! assert_data_eq {
     ($ctx:expr, $key:expr, $context_hash:expr, $data:expr) => {{
-        let data = $ctx.get_key_from_history(&$context_hash, &$key)?;
+        let data = $ctx.index.get_key_from_history(&$context_hash, &$key)?;
         assert!(data.is_some());
         assert_eq!(data.unwrap(), $data);
     }};
@@ -409,7 +409,7 @@ macro_rules! assert_data_eq {
 #[macro_export]
 macro_rules! assert_data_deleted {
     ($ctx:expr, $key:expr, $context_hash:expr) => {{
-        let data = $ctx.get_key_from_history(&$context_hash, &$key);
+        let data = $ctx.index.get_key_from_history(&$context_hash, &$key);
         assert!(data.is_ok());
         assert!(data.unwrap().is_none());
     }};

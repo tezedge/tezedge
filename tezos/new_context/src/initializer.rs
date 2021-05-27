@@ -1,8 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::cell::RefCell;
-use std::{path::PathBuf, rc::Rc};
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use ocaml_interop::BoxRoot;
 
@@ -35,12 +35,12 @@ pub fn initialize_tezedge_index(
                     .path(path)
                     .open()
                     .expect("Failed to create/initialize Sled database (db_context)");
-                Rc::new(RefCell::new(SledBackend::new(sled)))
+                Arc::new(RwLock::new(SledBackend::new(sled)))
             }
-            ContextKvStoreConfiguration::InMem => Rc::new(RefCell::new(InMemoryBackend::new())),
-            ContextKvStoreConfiguration::BTreeMap => Rc::new(RefCell::new(BTreeMapBackend::new())),
+            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
+            ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
             ContextKvStoreConfiguration::InMemGC => {
-                Rc::new(RefCell::new(MarkMoveGCed::<InMemoryBackend>::new(
+                Arc::new(RwLock::new(MarkMoveGCed::<InMemoryBackend>::new(
                     PRESERVE_CYCLE_COUNT,
                 )))
             }
