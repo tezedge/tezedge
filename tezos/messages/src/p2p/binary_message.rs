@@ -270,9 +270,10 @@ where
 {
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
-        let (bytes, myself) = nom::combinator::complete(tezos_encoding::nom::NomReader::from_bytes)(buf.as_ref())
-            .finish()
-            .map_err(|error| map_nom_error(buf.as_ref(), error))?;
+        let (bytes, myself) =
+            nom::combinator::complete(tezos_encoding::nom::NomReader::from_bytes)(buf.as_ref())
+                .finish()
+                .map_err(|error| map_nom_error(buf.as_ref(), error))?;
         if bytes.len() > 0 {
             Err(BinaryReaderErrorKind::Overflow { bytes: bytes.len() }.into())
         } else {

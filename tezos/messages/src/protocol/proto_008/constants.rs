@@ -6,10 +6,11 @@ use std::collections::HashMap;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
+use tezos_encoding::nom::NomReader;
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
-    has_encoding,
-    types::BigInt,
+    has_encoding_test,
+    types::{Mutez, Zarith},
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
@@ -58,7 +59,7 @@ impl ToRpcJsonMap for FixedConstants {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone, Getters, CopyGetters)]
+#[derive(Serialize, Deserialize, Debug, Clone, Getters, CopyGetters, HasEncoding, NomReader)]
 pub struct ParametricConstants {
     #[get_copy = "pub"]
     preserved_cycles: u8,
@@ -69,22 +70,25 @@ pub struct ParametricConstants {
     blocks_per_roll_snapshot: i32,
     blocks_per_voting_period: i32,
     #[get = "pub"]
+    #[encoding(dynamic, list)]
     time_between_blocks: Vec<i64>,
     #[get_copy = "pub"]
     endorsers_per_block: u16,
-    hard_gas_limit_per_operation: BigInt,
-    hard_gas_limit_per_block: BigInt,
+    hard_gas_limit_per_operation: Zarith,
+    hard_gas_limit_per_block: Zarith,
     proof_of_work_threshold: i64,
-    tokens_per_roll: BigInt,
+    tokens_per_roll: Mutez,
     michelson_maximum_type_size: u16,
-    seed_nonce_revelation_tip: BigInt,
+    seed_nonce_revelation_tip: Mutez,
     origination_size: i32,
-    block_security_deposit: BigInt,
-    endorsement_security_deposit: BigInt,
-    baking_reward_per_endorsement: Vec<BigInt>,
-    endorsement_reward: Vec<BigInt>,
-    cost_per_byte: BigInt,
-    hard_storage_limit_per_operation: BigInt,
+    block_security_deposit: Mutez,
+    endorsement_security_deposit: Mutez,
+    #[encoding(dynamic, list)]
+    baking_reward_per_endorsement: Vec<Mutez>,
+    #[encoding(dynamic, list)]
+    endorsement_reward: Vec<Mutez>,
+    cost_per_byte: Mutez,
+    hard_storage_limit_per_operation: Zarith,
     test_chain_duration: i64,
     quorum_min: i32,
     quorum_max: i32,
@@ -94,7 +98,7 @@ pub struct ParametricConstants {
 }
 
 non_cached_data!(ParametricConstants);
-has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
+has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     Encoding::Obj(
         "ParametricConstants",
         vec![
@@ -242,15 +246,12 @@ impl ToRpcJsonMap for ParametricConstants {
     }
 }
 
-impl crate::p2p::binary_message::BinaryMessage for ParametricConstants {
-    fn as_bytes(&self) -> Result<Vec<u8>, tezos_encoding::binary_writer::BinaryWriterError> {
-        // if cache not configured or empty, resolve by encoding
-        tezos_encoding::binary_writer::write(self, &Self::encoding())
-    }
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
 
-    fn from_bytes<B: AsRef<[u8]>>(
-        buf: B,
-    ) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
-        <Self as crate::p2p::binary_message::BinaryMessageSerde>::from_bytes(buf)
+    #[test]
+    fn test_proto_008_parametric_constants_encoding_schema() {
+        assert_encodings_match!(super::ParametricConstants);
     }
 }

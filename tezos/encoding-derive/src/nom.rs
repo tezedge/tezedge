@@ -3,6 +3,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 
+const NOM_TUPLE_MAX: usize = 26;
+
 pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
     let name = data.name;
     let nom_read = generate_nom_read(&data.encoding);
@@ -111,7 +113,8 @@ fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
     let generate_nom_read = match encoding.fields.len() {
         0 => generate_struct_no_fields_nom_read,
         1 => generate_struct_one_field_nom_read,
-        _ => generate_struct_many_fields_nom_read,
+        n if n < NOM_TUPLE_MAX => generate_struct_many_fields_nom_read,
+        _  => generate_struct_multi_fields_nom_read,
     };
     generate_nom_read(encoding)
 }
@@ -139,14 +142,32 @@ fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStrea
         .iter()
         .map(|field| format!("{}::{}", name, field.name.to_string()));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
+     quote_spanned! {
+         encoding.name.span()=>
+         nom::combinator::map(
+             nom::sequence::tuple((
+                #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
+             )),
+             |(#(#field1),*)| #name { #(#field2),* }
+         )
+     }
+}
+
+fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
+    let name = encoding.name;
+    let field1 = encoding.fields.iter().map(|field| field.name);
+    let field2 = field1.clone();
+    let field_name = encoding
+        .fields
+        .iter()
+        .map(|field| format!("{}::{}", name, field.name.to_string()));
+    let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
     quote_spanned! {
         encoding.name.span()=>
-        nom::combinator::map(
-            nom::sequence::tuple((
-                #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
-            )),
-            |(#(#field1),*)| #name { #(#field2),* }
-        )
+            (|input| {
+                #(let (input, #field1) = tezos_encoding::nom::field(#field_name, #field_nom_read)(input)?;)*
+                Ok((input, #name { #(#field2),* }))
+            })
     }
 }
 

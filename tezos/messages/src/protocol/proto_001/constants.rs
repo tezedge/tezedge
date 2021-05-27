@@ -5,8 +5,12 @@ use std::collections::HashMap;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
-use tezos_encoding::{encoding::{Encoding, Field, HasEncoding}, has_encoding_test, types::{Zarith, Mutez}};
 use tezos_encoding::nom::NomReader;
+use tezos_encoding::{
+    encoding::{Encoding, Field, HasEncoding},
+    has_encoding_test,
+    types::{Mutez, Zarith},
+};
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
 use crate::non_cached_data;
@@ -194,10 +198,7 @@ impl ToRpcJsonMap for ParametricConstants {
             );
         }
         if let Some(tokens_per_roll) = &self.tokens_per_roll {
-            ret.insert(
-                "tokens_per_roll",
-                UniversalValue::big_num(tokens_per_roll),
-            );
+            ret.insert("tokens_per_roll", UniversalValue::big_num(tokens_per_roll));
         }
         if let Some(michelson_maximum_type_size) = self.michelson_maximum_type_size {
             ret.insert(
@@ -230,10 +231,7 @@ impl ToRpcJsonMap for ParametricConstants {
             );
         }
         if let Some(block_reward) = &self.block_reward {
-            ret.insert(
-                "block_reward",
-                UniversalValue::big_num(block_reward),
-            );
+            ret.insert("block_reward", UniversalValue::big_num(block_reward));
         }
         if let Some(endorsement_reward) = &self.endorsement_reward {
             ret.insert(
@@ -242,10 +240,7 @@ impl ToRpcJsonMap for ParametricConstants {
             );
         }
         if let Some(cost_per_byte) = &self.cost_per_byte {
-            ret.insert(
-                "cost_per_byte",
-                UniversalValue::big_num(cost_per_byte),
-            );
+            ret.insert("cost_per_byte", UniversalValue::big_num(cost_per_byte));
         }
         if let Some(hard_storage_limit_per_operation) = &self.hard_storage_limit_per_operation {
             ret.insert(
@@ -331,3 +326,12 @@ has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     )
 });
 
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
+
+    #[test]
+    fn test_proto_001_parametric_constants_encoding_schema() {
+        assert_encodings_match!(super::ParametricConstants);
+    }
+}

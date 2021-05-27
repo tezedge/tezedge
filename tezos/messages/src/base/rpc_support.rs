@@ -60,10 +60,10 @@ impl UniversalValue {
         Self::List(ret)
     }
 
-    pub fn big_num_list<I: IntoIterator<Item = BigInt>>(val: I) -> Self {
+    pub fn big_num_list<I: IntoIterator<Item = T>, T: Into<BigInt>>(val: I) -> Self {
         let mut ret: Vec<UniversalValue> = Default::default();
         for x in val {
-            ret.push(Self::big_num(x.clone()))
+            ret.push(Self::big_num(x.into()))
         }
         Self::List(ret)
     }

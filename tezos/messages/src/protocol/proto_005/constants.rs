@@ -4,10 +4,11 @@ use std::collections::HashMap;
 // SPDX-License-Identifier: MIT
 use serde::{Deserialize, Serialize};
 
+use tezos_encoding::nom::NomReader;
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
-    has_encoding,
-    types::BigInt,
+    has_encoding_test,
+    types::{Mutez, Zarith},
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
@@ -55,28 +56,29 @@ impl ToRpcJsonMap for FixedConstants {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
 pub struct ParametricConstants {
     preserved_cycles: u8,
     blocks_per_cycle: i32,
     blocks_per_commitment: i32,
     blocks_per_roll_snapshot: i32,
     blocks_per_voting_period: i32,
+    #[encoding(dynamic, list)]
     time_between_blocks: Vec<i64>,
     endorsers_per_block: u16,
-    hard_gas_limit_per_operation: BigInt,
-    hard_gas_limit_per_block: BigInt,
+    hard_gas_limit_per_operation: Zarith,
+    hard_gas_limit_per_block: Zarith,
     proof_of_work_threshold: i64,
-    tokens_per_roll: BigInt,
+    tokens_per_roll: Mutez,
     michelson_maximum_type_size: u16,
-    seed_nonce_revelation_tip: BigInt,
+    seed_nonce_revelation_tip: Mutez,
     origination_size: i32,
-    block_security_deposit: BigInt,
-    endorsement_security_deposit: BigInt,
-    block_reward: BigInt,
-    endorsement_reward: BigInt,
-    cost_per_byte: BigInt,
-    hard_storage_limit_per_operation: BigInt,
+    block_security_deposit: Mutez,
+    endorsement_security_deposit: Mutez,
+    block_reward: Mutez,
+    endorsement_reward: Mutez,
+    cost_per_byte: Mutez,
+    hard_storage_limit_per_operation: Zarith,
     test_chain_duration: i64,
     quorum_min: i32,
     quorum_max: i32,
@@ -118,11 +120,11 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "hard_gas_limit_per_operation",
-            UniversalValue::big_num(self.hard_gas_limit_per_operation.clone()),
+            UniversalValue::big_num(&self.hard_gas_limit_per_operation),
         );
         ret.insert(
             "hard_gas_limit_per_block",
-            UniversalValue::big_num(self.hard_gas_limit_per_block.clone()),
+            UniversalValue::big_num(&self.hard_gas_limit_per_block),
         );
         ret.insert(
             "proof_of_work_threshold",
@@ -130,7 +132,7 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "tokens_per_roll",
-            UniversalValue::big_num(self.tokens_per_roll.clone()),
+            UniversalValue::big_num(&self.tokens_per_roll),
         );
         ret.insert(
             "michelson_maximum_type_size",
@@ -138,7 +140,7 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "seed_nonce_revelation_tip",
-            UniversalValue::big_num(self.seed_nonce_revelation_tip.clone()),
+            UniversalValue::big_num(&self.seed_nonce_revelation_tip),
         );
         ret.insert(
             "origination_size",
@@ -146,27 +148,24 @@ impl ToRpcJsonMap for ParametricConstants {
         );
         ret.insert(
             "block_security_deposit",
-            UniversalValue::big_num(self.block_security_deposit.clone()),
+            UniversalValue::big_num(&self.block_security_deposit),
         );
         ret.insert(
             "endorsement_security_deposit",
-            UniversalValue::big_num(self.endorsement_security_deposit.clone()),
+            UniversalValue::big_num(&self.endorsement_security_deposit),
         );
-        ret.insert(
-            "block_reward",
-            UniversalValue::big_num(self.block_reward.clone()),
-        );
+        ret.insert("block_reward", UniversalValue::big_num(&self.block_reward));
         ret.insert(
             "endorsement_reward",
-            UniversalValue::big_num(self.endorsement_reward.clone()),
+            UniversalValue::big_num(&self.endorsement_reward),
         );
         ret.insert(
             "cost_per_byte",
-            UniversalValue::big_num(self.cost_per_byte.clone()),
+            UniversalValue::big_num(&self.cost_per_byte),
         );
         ret.insert(
             "hard_storage_limit_per_operation",
-            UniversalValue::big_num(self.hard_storage_limit_per_operation.clone()),
+            UniversalValue::big_num(&self.hard_storage_limit_per_operation),
         );
         ret.insert(
             "test_chain_duration",
@@ -191,7 +190,7 @@ impl ToRpcJsonMap for ParametricConstants {
 }
 
 non_cached_data!(ParametricConstants);
-has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
+has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     Encoding::Obj(
         "ParametricConstants",
         vec![
@@ -228,15 +227,12 @@ has_encoding!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
     )
 });
 
-impl crate::p2p::binary_message::BinaryMessage for ParametricConstants {
-    fn as_bytes(&self) -> Result<Vec<u8>, tezos_encoding::binary_writer::BinaryWriterError> {
-        // if cache not configured or empty, resolve by encoding
-        tezos_encoding::binary_writer::write(self, &Self::encoding())
-    }
+#[cfg(test)]
+mod test {
+    use tezos_encoding::assert_encodings_match;
 
-    fn from_bytes<B: AsRef<[u8]>>(
-        buf: B,
-    ) -> Result<Self, tezos_encoding::binary_reader::BinaryReaderError> {
-        <Self as crate::p2p::binary_message::BinaryMessageSerde>::from_bytes(buf)
+    #[test]
+    fn test_proto_005_parametric_constants_encoding_schema() {
+        assert_encodings_match!(super::ParametricConstants);
     }
 }
