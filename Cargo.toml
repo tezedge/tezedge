@@ -2,6 +2,8 @@ cargo-features = ["named-profiles"]
 
 [workspace]
 members = [
+    "tla_sm",
+    "tezedge_state",
     "ipc",
     "logging",
     "crypto",
