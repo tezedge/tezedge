@@ -1,14 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
 use derive_builder::Builder;
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash, HashType, OperationListListHash};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest};
 use tezos_encoding::has_encoding_test;
 use tezos_encoding::nom::NomReader;
 
@@ -21,12 +19,9 @@ pub type Fitness = Vec<Vec<u8>>;
 pub type Level = i32;
 
 pub fn fitness_encoding() -> Encoding {
-    Encoding::Split(Arc::new(|schema_type| match schema_type {
-        SchemaType::Json => Encoding::dynamic(Encoding::list(Encoding::Bytes)),
-        SchemaType::Binary => Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(
-            Encoding::Uint8,
-        )))),
-    }))
+    Encoding::dynamic(Encoding::list(Encoding::dynamic(Encoding::list(
+        Encoding::Uint8,
+    ))))
 }
 
 pub fn display_fitness(fitness: &Fitness) -> String {
@@ -175,13 +170,7 @@ has_encoding_test!(BlockHeader, BLOCK_HEADER_ENCODING, {
                 ),
                 Field::new("fitness", fitness_encoding()),
                 Field::new("context", Encoding::Hash(HashType::ContextHash)),
-                Field::new(
-                    "protocol_data",
-                    Encoding::Split(Arc::new(|schema_type| match schema_type {
-                        SchemaType::Json => Encoding::Bytes,
-                        SchemaType::Binary => Encoding::list(Encoding::Uint8),
-                    })),
-                ),
+                Field::new("protocol_data", Encoding::list(Encoding::Uint8)),
             ],
         ),
     )

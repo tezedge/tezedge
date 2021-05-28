@@ -16,7 +16,7 @@ use serde::de::Error as SerdeError;
 
 use crate::bit_utils::{BitReverse, BitTrim, Bits, ToBytes};
 use crate::de;
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field};
 use crate::types::{self, Value};
 
 use super::error_context::EncodingError;
@@ -532,14 +532,6 @@ impl BinaryReader {
                         .map(|&byte| Value::Uint8(byte))
                         .collect(),
                 ))
-            }
-            Encoding::Split(inner_encoding) => {
-                let inner_encoding = inner_encoding(SchemaType::Binary);
-                self.decode_value(buf, &inner_encoding)
-            }
-            Encoding::Lazy(fn_encoding) => {
-                let inner_encoding = fn_encoding();
-                self.decode_value(buf, &inner_encoding)
             }
             Encoding::Custom(codec) => codec.decode(buf, encoding),
             Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => Err(

@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
     rc::Rc,
 };
-use tezos_encoding::encoding::{Encoding, Field, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field};
 use tezos_messages::p2p::encoding::{
     connection::ConnectionMessage, metadata::MetadataMessage, peer::PeerMessageResponse,
 };
@@ -224,7 +224,6 @@ fn get_contents(
             FieldContents::sized(*size, get_contents(context, encoding, infos))
         }
         Encoding::Bounded(_, encoding) => get_contents(context, encoding, infos),
-        Encoding::Split(encoding) => get_contents(context, &encoding(SchemaType::Binary), infos),
         Encoding::Timestamp => "timestamp".into(),
         Encoding::Custom(_) => "Merkle tree path encoding".into(),
         _ => todo!(
@@ -289,8 +288,6 @@ fn get_limit(encoding: &Encoding) -> Limit {
             let _size = get_limit(encoding);
             Limit::UpTo(*bounded_size)
         }
-        Split(func) => get_limit(&func(SchemaType::Binary)),
-        Lazy(func) => get_limit(&func()),
         Custom(_) => Limit::UpTo(100), // 3 hashes, three left/right tags, one op tag, 3 * (32 + 1) + 1
         _ => unimplemented!(),
     }
@@ -442,9 +439,6 @@ fn add_fields(
                 "unsigned 32-bit integer".into(),
             );
             add_fields(info, name, encoding, infos);
-        }
-        Encoding::Split(encoding) => {
-            add_fields(info, name, &encoding(SchemaType::Binary), infos);
         }
         Encoding::OptionalField(encoding) => {
             info.add_field(

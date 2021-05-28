@@ -10,9 +10,6 @@ use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::encoding::HasEncoding;
-use tezos_encoding::json_writer::JsonWriter;
-use tezos_encoding::ser;
 use tezos_encoding::{binary_reader::BinaryReaderErrorKind, binary_writer};
 use tezos_encoding::{
     binary_reader::{BinaryReader, BinaryReaderError},
@@ -377,23 +374,6 @@ impl TryFrom<Vec<u8>> for BinaryChunk {
         } else {
             Err(BinaryChunkError::OverflowError)
         }
-    }
-}
-
-/// Trait for json encoding to implement.
-pub trait JsonMessage {
-    /// Produce JSON from the struct.
-    fn as_json(&self) -> Result<String, ser::Error>;
-}
-
-impl<T> JsonMessage for T
-where
-    T: HasEncoding + Serialize + Sized,
-{
-    #[inline]
-    fn as_json(&self) -> Result<String, ser::Error> {
-        let mut writer = JsonWriter::new();
-        writer.write(self, &Self::encoding())
     }
 }
 

@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
 
 use failure::Fail;
 use getset::Getters;
@@ -12,7 +12,7 @@ use crypto::{
     base58::FromBase58CheckError,
     hash::{BlockHash, HashType, OperationHash},
 };
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding, HasEncodingTest};
 use tezos_encoding::has_encoding_test;
 use tezos_encoding::nom::NomReader;
 
@@ -115,12 +115,7 @@ has_encoding_test!(Operation, OPERATION_ENCODING, {
             Field::new("branch", Encoding::Hash(HashType::BlockHash)),
             Field::new(
                 "data",
-                Encoding::Split(Arc::new(|schema_type| match schema_type {
-                    SchemaType::Json => Encoding::Bytes,
-                    SchemaType::Binary => {
-                        Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8)
-                    }
-                })),
+                Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8),
             ),
         ],
     )

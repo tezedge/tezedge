@@ -114,31 +114,6 @@ impl TagMap {
     }
 }
 
-pub enum SchemaType {
-    Json,
-    Binary,
-}
-
-pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync {}
-
-impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync {}
-
-impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> + Send + Sync {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Fn(SchemaType) -> Encoding")
-    }
-}
-
-pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync {}
-
-impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync {}
-
-impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Fn() -> Encoding")
-    }
-}
-
 /// Custom encoder/decoder that converts between binary data
 /// and [Value]s and produces JSON from a [Value]
 pub trait CustomCodec {
@@ -148,13 +123,6 @@ pub trait CustomCodec {
         value: &Value,
         encoding: &Encoding,
     ) -> Result<usize, Error>;
-
-    fn encode_json(
-        &self,
-        encoder: &mut crate::json_writer::JsonWriter,
-        value: &Value,
-        encoding: &Encoding,
-    ) -> Result<(), Error>;
 
     fn decode(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError>;
 }
@@ -271,15 +239,10 @@ pub enum Encoding {
     /// Decode various types of hashes. Hash has it's own predefined length and prefix.
     /// This is controller by a hash implementation.
     Hash(HashType),
-    /// Provides different encoding based on target data type.
-    Split(Arc<dyn SplitEncodingFn<Output = Encoding> + Send + Sync>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
-    /// This is used to handle recursive encodings needed to encode tree structure.
-    /// Encoding itself produces no output in binary or json.
-    Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>),
     /// This is used to perform encoding using custom function
     /// rather than basing on schema. Used to get rid of recursion
     /// while encoding/decoding recursive types.
@@ -504,7 +467,6 @@ pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
 
         (Encoding::Hash(new), Encoding::Hash(old)) => assert_eq!(*new, *old),
 
-        (new, Encoding::Split(split)) => assert_encodings_match(new, &split(SchemaType::Binary)),
         (Encoding::Custom(_), Encoding::Custom(_)) => (),
         (new, old) => panic!("Unmatched encodings: {:?} and {:?}", new, old),
     }
@@ -535,27 +497,6 @@ mod tests {
     use crate::binary_reader::BinaryReader;
 
     use super::*;
-
-    #[test]
-    fn schema_split() {
-        let split_encoding = Encoding::Split(Arc::new(|schema_type| match schema_type {
-            SchemaType::Json => Encoding::Uint16,
-            SchemaType::Binary => Encoding::Float,
-        }));
-
-        if let Encoding::Split(inner_encoding) = split_encoding {
-            match inner_encoding(SchemaType::Json) {
-                Encoding::Uint16 => {}
-                _ => panic!("Was expecting Encoding::Uint16"),
-            }
-            match inner_encoding(SchemaType::Binary) {
-                Encoding::Float => {}
-                _ => panic!("Was expecting Encoding::Float"),
-            }
-        } else {
-            panic!("Was expecting Encoding::Split");
-        }
-    }
 
     #[test]
     fn bounded_with_bytes() {

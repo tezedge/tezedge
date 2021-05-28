@@ -7,8 +7,7 @@ use crypto::hash::HashType;
 use failure::Error;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::{
-    binary_message::{BinaryMessage, JsonMessage},
-    encoding::operations_for_blocks::PathItem,
+    binary_message::BinaryMessage, encoding::operations_for_blocks::PathItem,
 };
 
 #[test]
@@ -251,16 +250,6 @@ fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
     let encoded = PeerMessageResponse::from(message).as_bytes()?;
     let expected = create_operations_for_blocks_encoded(depth);
     assert_eq!(encoded, expected);
-
-    Ok(())
-}
-
-#[test]
-#[ignore = "JSON serialization is not implemented for operations for blocks"]
-fn can_serialize_to_json_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
-    let message = create_operations_for_blocks(depth);
-    let _encoded = PeerMessageResponse::from(message).as_json()?;
 
     Ok(())
 }

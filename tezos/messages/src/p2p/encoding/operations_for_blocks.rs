@@ -30,7 +30,6 @@ use tezos_encoding::{has_encoding, has_encoding_test, safe};
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::operation::Operation;
-use tezos_encoding::json_writer::JsonWriter;
 
 use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZE};
 
@@ -380,25 +379,6 @@ impl PathCodec {
         Ok(())
     }
 
-    fn json_bytes(
-        json_writer: &mut JsonWriter,
-        value: &Value,
-        encoding: &Encoding,
-    ) -> Result<(), Error> {
-        let bytes = Self::list_to_u8s(value, encoding)?;
-        json_writer.open_array();
-        let mut it = bytes.into_iter();
-        if let Some(b) = it.next() {
-            json_writer.push_num(b);
-            it.for_each(|b| {
-                json_writer.push_delimiter();
-                json_writer.push_num(b);
-            })
-        }
-        json_writer.close_array();
-        Ok(())
-    }
-
     fn encode_left(
         data: &mut Vec<u8>,
         value: &Value,
@@ -410,23 +390,6 @@ impl PathCodec {
                 let mut hash = Vec::new();
                 Self::encode_bytes(&mut hash, &fields[0].1, encoding)?;
                 Ok(Some(hash))
-            }
-            _ => Err(Error::encoding_mismatch(encoding, value)),
-        }
-    }
-
-    fn json_left<'a>(
-        json_writer: &mut JsonWriter,
-        value: &'a Value,
-        encoding: &Encoding,
-    ) -> Result<Option<&'a Value>, Error> {
-        match value {
-            Value::Record(fields) if fields.len() == 2 && fields[0].0 == "right" => {
-                json_writer.open_record();
-                json_writer.push_key("path");
-                json_writer.open_record();
-
-                Ok(Some(&fields[0].1))
             }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         }
@@ -447,25 +410,6 @@ impl PathCodec {
         }
     }
 
-    fn json_right<'a>(
-        json_writer: &mut JsonWriter,
-        value: &'a Value,
-        encoding: &Encoding,
-    ) -> Result<Option<&'a Value>, Error> {
-        match value {
-            Value::Record(fields) if fields.len() == 2 && fields[0].0 == "left" => {
-                json_writer.open_record();
-                json_writer.push_key("left");
-                Self::json_bytes(json_writer, &fields[0].1, encoding)?;
-                json_writer.push_delimiter();
-                json_writer.push_key("path");
-                json_writer.open_record();
-                Ok(None)
-            }
-            _ => Err(Error::encoding_mismatch(encoding, value)),
-        }
-    }
-
     fn encode_path_item(
         data: &mut Vec<u8>,
         value: &Value,
@@ -474,22 +418,6 @@ impl PathCodec {
         match value {
             Value::Tag(name, inner) if name == "Left" => Self::encode_left(data, inner, encoding),
             Value::Tag(name, inner) if name == "Right" => Self::encode_right(data, inner, encoding),
-            _ => Err(Error::encoding_mismatch(encoding, value)),
-        }
-    }
-
-    fn json_path_item<'a>(
-        json_writer: &mut JsonWriter,
-        value: &'a Value,
-        encoding: &Encoding,
-    ) -> Result<Option<&'a Value>, Error> {
-        match value {
-            Value::Tag(name, inner) if name == "Left" => {
-                Self::json_left(json_writer, inner, encoding)
-            }
-            Value::Tag(name, inner) if name == "Right" => {
-                Self::json_right(json_writer, inner, encoding)
-            }
             _ => Err(Error::encoding_mismatch(encoding, value)),
         }
     }
@@ -538,37 +466,6 @@ impl CustomCodec for PathCodec {
             data.len()
                 .checked_sub(prev_size)
                 .ok_or_else(|| Error::encoding_mismatch(encoding, value))
-        } else {
-            Err(Error::encoding_mismatch(encoding, value))
-        }
-    }
-
-    fn encode_json(
-        &self,
-        json_writer: &mut tezos_encoding::json_writer::JsonWriter,
-        value: &Value,
-        encoding: &Encoding,
-    ) -> Result<(), Error> {
-        if let Value::List(values) = value {
-            let mut tails = VecDeque::new();
-            for path_item in values {
-                let tail = Self::json_path_item(json_writer, path_item, encoding)?;
-                tails.push_front(tail);
-            }
-            json_writer.push_str("Op");
-            for tail in tails {
-                match tail {
-                    Some(value) => {
-                        json_writer.push_delimiter();
-                        json_writer.push_key("right");
-                        Self::json_bytes(json_writer, value, encoding)?;
-                    }
-                    _ => {}
-                }
-                json_writer.close_record();
-                json_writer.close_record();
-            }
-            Ok(())
         } else {
             Err(Error::encoding_mismatch(encoding, value))
         }

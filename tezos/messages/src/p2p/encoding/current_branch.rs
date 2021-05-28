@@ -1,13 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::sync::Arc;
-
 use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ChainId, HashType};
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
+use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
 use tezos_encoding::has_encoding_test;
 use tezos_encoding::nom::NomReader;
 
@@ -88,13 +86,10 @@ has_encoding_test!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
             ),
             Field::new(
                 "history",
-                Encoding::Split(Arc::new(|schema_type| match schema_type {
-                    SchemaType::Json => Encoding::Unit, // TODO: decode as list of hashes when history is needed
-                    SchemaType::Binary => Encoding::bounded_list(
-                        CURRENT_BRANCH_HISTORY_MAX_LENGTH,
-                        Encoding::Hash(HashType::BlockHash),
-                    ),
-                })),
+                Encoding::bounded_list(
+                    CURRENT_BRANCH_HISTORY_MAX_LENGTH,
+                    Encoding::Hash(HashType::BlockHash),
+                ),
             ),
         ],
     )

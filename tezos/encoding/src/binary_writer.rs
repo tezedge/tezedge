@@ -13,7 +13,7 @@ use failure::ResultExt;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::{BitTrim, Bits};
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -541,14 +541,6 @@ fn encode_value(
                 }
                 _ => Err(Error::encoding_mismatch(encoding, value))?,
             }
-        }
-        Encoding::Split(fn_encoding) => {
-            let inner_encoding = fn_encoding(SchemaType::Binary);
-            encode_value(data, value, &inner_encoding)
-        }
-        Encoding::Lazy(fn_encoding) => {
-            let inner_encoding = fn_encoding();
-            encode_value(data, value, &inner_encoding)
         }
         Encoding::Custom(codec) => Ok(codec.encode(data, value, encoding)?),
         Encoding::Obj(_, obj_schema) => encode_record(data, value, obj_schema),
