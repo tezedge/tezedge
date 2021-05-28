@@ -249,26 +249,28 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
-    fn apply_successors(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, chain_feeder: ChainFeederRef, log: &Logger, added_block_count: usize) {
+    fn apply_successors(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, chain_feeder: ChainFeederRef, log: &Logger, batch: &mut ApplyBlockBatch) {
+        // continue recursion until we fill up a whole batch
+        if batch.batch_total_size() + successros.len() > MAX_BLOCK_APPLY_BATCH {
+            return;
+        }
         for successor in successros.into_iter() {
-            // TODO: add constant
             if !self.block_applier_run.load(Ordering::Acquire) {
                 return;
             }
-            if added_block_count > 1000 {
-                return;
-            }
-            let batch = ApplyBlockBatch::one(successor.clone());
-            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+            
+            // let batch = ApplyBlockBatch::one(successor.clone());
+            // let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
             // TODO: remove - debug
             // info!(log, "Adding to the queue: {}", successor.to_base58_check());
             // info!(log, "Nested: {}", added_block_count);
-            self.add_to_batch_queue(schedule_msg);
-            self.process_batch_queue(chain_feeder.clone(), log);
-            let count = added_block_count + 1;
+            // self.add_to_batch_queue(schedule_msg);
+            // self.process_batch_queue(chain_feeder.clone(), log);
+            
+            batch.add_successor(Arc::new(successor.clone()));
 
             if let Ok(Some(next)) = block_meta_storage.get(&successor) {
-                self.apply_successors(next.successors(), chain_id.clone(), block_meta_storage, chain_feeder.clone(), log, count);
+                self.apply_successors(next.successors(), chain_id.clone(), block_meta_storage, chain_feeder.clone(), log, batch);
             } else {
                 return;
             }
@@ -279,20 +281,35 @@ impl ChainFeeder {
         let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
 
         while let Ok(Some(current_head)) = ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id) {
-            info!(log, "Hydratation from: {}", current_head.level());
+            // info!(log, "Hydratation from: {}", current_head.level());
             if !self.block_applier_run.load(Ordering::Acquire) {
                 break;
             }
-            let current_hash = current_head.block_hash().clone();
+
+            // TODO: Try not to add blocks, that are already applied
+            // Create a batch and add the currenthead into it (already applied)
+            // let mut batch = ApplyBlockBatch::start_batch(Arc::new(current_head.block_hash().clone()), MAX_BLOCK_APPLY_BATCH);
+
+            // Get the successors of the last block to be aplied from the queue
+            let current_hash = if let Some(Some(last_successor)) = self.queue.back().map(|queue_last_element| queue_last_element.batch.last_successor()) {
+                last_successor.clone()
+            } else {
+                Arc::new(current_head.block_hash().clone())
+            };
+
+            let mut batch = ApplyBlockBatch::start_batch(current_hash.clone(), MAX_BLOCK_APPLY_BATCH);
 
             if let Ok(Some(block_meta_data)) = block_meta_storage.get(&current_hash) {
                 if block_meta_data.successors().is_empty() {
                     break;
                 }
-                self.apply_successors(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, chain_feeder.clone(), log, 0)
+                self.apply_successors(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, chain_feeder.clone(), log, &mut batch)
             } else {
                 break;
             }
+            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+            self.add_to_batch_queue(schedule_msg);
+            self.process_batch_queue(chain_feeder.clone(), log);
         }
     }
 

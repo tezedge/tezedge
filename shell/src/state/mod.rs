@@ -124,6 +124,10 @@ impl ApplyBlockBatch {
             Some(ApplyBlockBatch::batch(head, successors))
         }
     }
+
+    pub fn last_successor(&self) -> Option<Arc<BlockHash>> {
+        self.successors.last().map(|element| element.clone())
+    }
 }
 
 impl From<ApplyBlockBatch> for (Arc<BlockHash>, Vec<Arc<BlockHash>>) {
