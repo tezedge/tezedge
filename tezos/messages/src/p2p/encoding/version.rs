@@ -56,7 +56,7 @@ impl tezos_encoding::raw::RawReader for NetworkVersion {
             }
             .into());
         }
-        let distributed_db_version = (bytes[off] as u16) << 8 + bytes[off + 1] as u16;
+        let distributed_db_version = ((bytes[off] as u16) << 8) + bytes[off + 1] as u16;
         let off = off + 2;
         if bytes.len() - off < 2 {
             return Err(BinaryReaderErrorKind::Underflow {
@@ -64,7 +64,7 @@ impl tezos_encoding::raw::RawReader for NetworkVersion {
             }
             .into());
         }
-        let p2p_version = (bytes[off] as u16) << 8 + bytes[off + 1] as u16;
+        let p2p_version = ((bytes[off] as u16) << 8) + bytes[off + 1] as u16;
         let off = off + 2;
         Ok((
             &bytes[off..],

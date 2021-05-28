@@ -5,7 +5,7 @@ use crate::common::Result;
 use crate::encoding::*;
 use crate::symbol;
 
-pub fn make_encoding<'a>(input: &'a syn::DeriveInput) -> Result<DataWithEncoding<'a>> {
+pub fn make_encoding(input: &syn::DeriveInput) -> Result<DataWithEncoding> {
     let meta = &mut get_encoding_meta(&input.attrs)?;
     let data_with_encoding = make_data_with_encoding(&input.data, &input.ident, meta)?;
     Ok(data_with_encoding)
@@ -56,19 +56,17 @@ fn make_fields<'a>(
     fields.into_iter().map(make_field).collect()
 }
 
-fn skip_field(meta: &Vec<syn::Meta>) -> bool {
-    meta.iter()
-        .find(|meta| {
-            if let syn::Meta::Path(path) = meta {
-                path == symbol::SKIP
-            } else {
-                false
-            }
-        })
-        .is_some()
+fn skip_field(meta: &[syn::Meta]) -> bool {
+    meta.iter().any(|meta| {
+        if let syn::Meta::Path(path) = meta {
+            path == symbol::SKIP
+        } else {
+            false
+        }
+    })
 }
 
-fn make_field<'a>(field: &'a syn::Field) -> Result<FieldEncoding<'a>> {
+fn make_field(field: &syn::Field) -> Result<FieldEncoding> {
     let meta = &mut get_encoding_meta(&field.attrs)?;
     let skip = skip_field(meta);
     let name = field.ident.as_ref().unwrap();
@@ -121,12 +119,10 @@ fn make_type_path_encoding<'a>(
             let encoding = make_bounded_encoding(meta, encoding)?;
             Ok(encoding)
         }
-        _ => {
-            return Err(error_spanned(
-                &segment.arguments,
-                "Only angle-bracketed generic arguments are supported",
-            ))
-        }
+        _ => Err(error_spanned(
+            &segment.arguments,
+            "Only angle-bracketed generic arguments are supported",
+        )),
     }
 }
 
@@ -143,7 +139,7 @@ fn make_basic_encoding_from_type<'a>(
         let string_attr =
             get_attribute_with_option(meta, &symbol::STRING, Some(&symbol::MAX), true)?;
         Encoding::String(string_attr.map(|param| param.param).flatten(), ident.span())
-    } else if ident == symbol::rust::I64 && has_attribute(meta, &symbol::TIMESTAMP)? {
+    } else if ident == symbol::rust::I64 && has_attribute(meta, &symbol::TIMESTAMP) {
         if let Some(timestamp) = get_attribute_no_param(meta, &symbol::TIMESTAMP)? {
             Encoding::Primitive(PrimitiveEncoding::Timestamp, timestamp.span)
         } else {
@@ -199,12 +195,13 @@ fn make_basic_encoding_from_meta<'a>(
     ty: &'a syn::Path,
     meta: &mut Vec<syn::Meta>,
 ) -> Result<Encoding<'a>> {
-    get_basic_encoding_from_meta(ty, meta)?.ok_or(error_spanned(ty, "No basic encoding specified"))
+    get_basic_encoding_from_meta(ty, meta)?
+        .ok_or_else(|| error_spanned(ty, "No basic encoding specified"))
 }
 
 /// Returns content of the `composite` attribute.
 fn get_composite_meta(meta: &mut Vec<syn::Meta>) -> Result<Option<Vec<syn::Meta>>> {
-    if let Some(composite) = get_attribute(meta, &symbol::COMPOSITE)? {
+    if let Some(composite) = get_attribute(meta, &symbol::COMPOSITE) {
         if let syn::Meta::List(list) = composite {
             let list = list
                 .nested
@@ -240,7 +237,7 @@ fn assert_builtin_encoding(meta: &mut Vec<syn::Meta>, kind: &PrimitiveEncoding) 
                 "Built-in encoding does not match the type",
             ));
         }
-    } else if let Some(string) = get_attribute(meta, &symbol::STRING)? {
+    } else if let Some(string) = get_attribute(meta, &symbol::STRING) {
         return Err(error_spanned(
             string,
             "String encoding can be used only with `String` type",
@@ -274,10 +271,7 @@ fn assert_string_encoding(meta: &mut Vec<syn::Meta>, kind: &PrimitiveEncoding) -
 */
 
 /// Constructs encoding from the content of the `composite` meta attribute.
-fn make_composite_encoding<'a>(
-    ty: &'a syn::Path,
-    mut meta: Vec<syn::Meta>,
-) -> Result<Encoding<'a>> {
+fn make_composite_encoding(ty: &syn::Path, mut meta: Vec<syn::Meta>) -> Result<Encoding> {
     let meta = &mut meta;
     let mut encoding = make_basic_encoding_from_meta(ty, meta)?;
     loop {
@@ -398,7 +392,7 @@ fn get_attribute_with_option<'a, T: syn::parse::Parse>(
     attr: Option<&symbol::Symbol>,
     is_default: bool,
 ) -> Result<Option<AttrWithParam<Option<T>>>> {
-    get_attribute(meta, name)?
+    get_attribute(meta, name)
         .map(|meta| {
             let param = get_value_parsed(&meta, attr, is_default)?;
             Ok(AttrWithParam {
@@ -416,7 +410,7 @@ fn get_attribute_with_param<'a, T: syn::parse::Parse>(
     attr: Option<&symbol::Symbol>,
     is_default: bool,
 ) -> Result<Option<AttrWithParam<T>>> {
-    get_attribute(meta, name)?
+    get_attribute(meta, name)
         .map(|meta| {
             if let Some(param) = get_value_parsed(&meta, attr, is_default)? {
                 Ok(AttrWithParam {
@@ -431,11 +425,11 @@ fn get_attribute_with_param<'a, T: syn::parse::Parse>(
 }
 
 /// Gets attribute named `name` checking that it does not have any parameters.
-fn get_attribute_no_param<'a>(
-    meta: &'a mut Vec<syn::Meta>,
+fn get_attribute_no_param(
+    meta: &mut Vec<syn::Meta>,
     name: &symbol::Symbol,
 ) -> Result<Option<AttrWithParam<()>>> {
-    get_attribute(meta, name)?
+    get_attribute(meta, name)
         .map(|meta| {
             if let syn::Meta::Path(_) = meta {
                 Ok(AttrWithParam {
@@ -470,7 +464,7 @@ fn make_tags<'a>(variants: impl IntoIterator<Item = &'a syn::Variant>) -> Result
     for variant in variants {
         let meta = &mut get_encoding_meta(&variant.attrs)?;
         let tag = make_tag(variant, meta, default_id)?;
-        default_id = default_id + 1;
+        default_id += 1;
         tags.push(tag);
     }
     Ok(tags)
@@ -554,7 +548,7 @@ fn add_encoding_bounds<'a>(
 }
  */
 
-fn assert_empty_meta(meta: &Vec<syn::Meta>) -> Result<()> {
+fn assert_empty_meta(meta: &[syn::Meta]) -> Result<()> {
     if let Some(attr) = meta.last() {
         Err(error_spanned(attr, "Unrecognized attribute"))
     } else {
@@ -562,21 +556,21 @@ fn assert_empty_meta(meta: &Vec<syn::Meta>) -> Result<()> {
     }
 }
 
-fn has_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<bool> {
+fn has_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> bool {
     match meta.last() {
-        Some(syn::Meta::Path(path)) if path == *name => Ok(true),
-        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => Ok(true),
-        Some(syn::Meta::List(list)) if list.path == *name => Ok(true),
-        _ => Ok(false),
+        Some(syn::Meta::Path(path)) if path == *name => true,
+        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => true,
+        Some(syn::Meta::List(list)) if list.path == *name => true,
+        _ => false,
     }
 }
 
-fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Result<Option<syn::Meta>> {
+fn get_attribute(meta: &mut Vec<syn::Meta>, name: &symbol::Symbol) -> Option<syn::Meta> {
     match meta.last() {
-        Some(syn::Meta::Path(path)) if path == *name => Ok(meta.pop()),
-        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => Ok(meta.pop()),
-        Some(syn::Meta::List(list)) if list.path == *name => Ok(meta.pop()),
-        _ => Ok(None),
+        Some(syn::Meta::Path(path)) if path == *name => meta.pop(),
+        Some(syn::Meta::NameValue(name_value)) if name_value.path == *name => meta.pop(),
+        Some(syn::Meta::List(list)) if list.path == *name => meta.pop(),
+        _ => None,
     }
 }
 

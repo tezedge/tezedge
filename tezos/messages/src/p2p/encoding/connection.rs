@@ -66,7 +66,7 @@ impl tezos_encoding::raw::RawReader for ConnectionMessage {
             }
             .into());
         }
-        let port: u16 = (bytes[0] as u16) << 8 + bytes[1];
+        let port: u16 = ((bytes[0] as u16) << 8) + bytes[1] as u16;
         if bytes.len() - PUBLIC_KEY_OFF < CRYPTO_KEY_SIZE {
             return Err(BinaryReaderErrorKind::Underflow {
                 bytes: CRYPTO_KEY_SIZE - (bytes.len() - PUBLIC_KEY_OFF),

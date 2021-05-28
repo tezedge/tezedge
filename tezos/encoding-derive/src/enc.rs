@@ -3,7 +3,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 
-pub fn generate_encoding_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
+pub fn generate_encoding_for_data(data: &DataWithEncoding) -> TokenStream {
     let name = data.name;
     let name_str = name.to_string();
     let encoding_static_name = syn::Ident::new(
@@ -24,7 +24,7 @@ pub fn generate_encoding_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStrea
     }
 }
 
-fn generate_encoding<'a>(encoding: &Encoding<'a>) -> TokenStream {
+fn generate_encoding(encoding: &Encoding) -> TokenStream {
     match encoding {
         Encoding::Unit => quote!(tezos_encoding::encoding::Encoding::Unit),
         Encoding::Primitive(primitive, span) => generage_primitive_encoding(*primitive, *span),
@@ -58,7 +58,7 @@ fn generate_struct_encoding(encoding: &StructEncoding) -> TokenStream {
     }
 }
 
-fn generate_field_encoding<'a>(field: &FieldEncoding<'a>) -> Option<TokenStream> {
+fn generate_field_encoding(field: &FieldEncoding) -> Option<TokenStream> {
     field.encoding.as_ref().map(|encoding| {
         let name = field.name.to_string();
         let encoding = generate_encoding(&encoding);
@@ -79,7 +79,7 @@ fn generate_enum_encoding(encoding: &EnumEncoding) -> TokenStream {
     }
 }
 
-fn generate_tag_encoding<'a>(tag: &Tag<'a>) -> TokenStream {
+fn generate_tag_encoding(tag: &Tag) -> TokenStream {
     let id = &tag.id;
     let name = tag.name.to_string();
     let encoding = generate_encoding(&tag.encoding);
@@ -102,7 +102,7 @@ fn generate_list_encoding<'a>(
     size.as_ref().map_or_else(|| quote_spanned!(span=> tezos_encoding::encoding::Encoding::List(Box::new(#encoding))), |size| quote_spanned!(span=> tezos_encoding::encoding::Encoding::BoundedList(#size, Box::new(#encoding))))
 }
 
-fn generate_optional_field_encoding<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_optional_field_encoding(encoding: &Encoding, span: Span) -> TokenStream {
     let encoding = generate_encoding(encoding);
     quote_spanned!(span=> tezos_encoding::encoding::Encoding::OptionalField(Box::new(#encoding)))
 }

@@ -232,10 +232,7 @@ impl Serialize for Path {
         }
         use serde::ser::SerializeSeq;
         let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        self.0
-            .iter()
-            .map(|i| seq.serialize_element(i))
-            .collect::<Result<_, _>>()?;
+        self.0.iter().try_for_each(|i| seq.serialize_element(i))?;
         seq.end()
     }
 }

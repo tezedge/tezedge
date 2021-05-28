@@ -124,18 +124,24 @@ macro_rules! safe {
         if $buf.remaining() >= size_of::<$sz>() {
             $buf.$foo()
         } else {
-            return Result::Err(BinaryReaderErrorKind::Underflow {
-                bytes: (size_of::<$sz>() - $buf.remaining()),
-            })?;
+            return Result::Err(
+                BinaryReaderErrorKind::Underflow {
+                    bytes: (size_of::<$sz>() - $buf.remaining()),
+                }
+                .into(),
+            );
         }
     }};
     ($buf:ident, $sz:expr, $exp:expr) => {{
         if $buf.remaining() >= $sz {
             $exp
         } else {
-            return Result::Err(BinaryReaderErrorKind::Underflow {
-                bytes: ($sz - $buf.remaining()),
-            })?;
+            return Result::Err(
+                BinaryReaderErrorKind::Underflow {
+                    bytes: ($sz - $buf.remaining()),
+                }
+                .into(),
+            );
         }
     }};
 }
@@ -200,7 +206,8 @@ impl BinaryReader {
         } else {
             Err(BinaryReaderErrorKind::Overflow {
                 bytes: buf.remaining(),
-            })?
+            }
+            .into())
         }
     }
 
@@ -257,7 +264,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Vas expecting 0xFF or 0x00 but instead got {:X}",
                         b
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::String => {
@@ -279,7 +287,8 @@ impl BinaryReader {
                         name: "Encoding::BoundedString".to_string(),
                         boundary: *bytes_max,
                         actual: ActualSize::Exact(bytes_sz),
-                    })?
+                    }
+                    .into())
                 } else {
                     let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                     let mut str_buf = Vec::with_capacity(bytes_sz);
@@ -305,7 +314,8 @@ impl BinaryReader {
                         name: "Encoding::BoundedDynamic".to_string(),
                         boundary: *max,
                         actual: ActualSize::Exact(bytes_sz),
-                    })?
+                    }
+                    .into())
                 } else {
                     let mut buf_slice = safe!(buf, bytes_sz, buf.take(bytes_sz));
                     self.decode_value(&mut buf_slice, dynamic_encoding)
@@ -325,7 +335,7 @@ impl BinaryReader {
                     // that this is bounded constraint violation.
                     Err(e) => match e.kind() {
                         BinaryReaderErrorKind::Underflow { bytes } if upper == *max => {
-                            let act_size = bytes.checked_add(*max).ok_or_else(|| {
+                            let act_size = bytes.checked_add(*max).ok_or({
                                 BinaryReaderErrorKind::ArithmeticOverflow {
                                     encoding: "Encoding::Bounded",
                                 }
@@ -334,7 +344,8 @@ impl BinaryReader {
                                 name: "Encoding::Bounded".to_string(),
                                 boundary: *max,
                                 actual: ActualSize::Exact(act_size),
-                            })?
+                            }
+                            .into())
                         }
                         _ => Err(e),
                     },
@@ -364,7 +375,7 @@ impl BinaryReader {
                             Box::new(tag_value),
                         ))
                     }
-                    None => Err(BinaryReaderErrorKind::UnsupportedTag { tag: tag_id })?,
+                    None => Err(BinaryReaderErrorKind::UnsupportedTag { tag: tag_id }.into()),
                 }
             }
             Encoding::List(encoding_inner) => {
@@ -394,7 +405,8 @@ impl BinaryReader {
                             name: "Encoding::List".to_string(),
                             boundary: *max,
                             actual: ActualSize::GreaterThan(values.len()),
-                        })?;
+                        }
+                        .into());
                     }
                     values.push(
                         self.decode_value(&mut buf_slice, encoding_inner)
@@ -415,7 +427,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::OptionalField(inner_encoding) => {
@@ -429,7 +442,8 @@ impl BinaryReader {
                     _ => Err(de::Error::custom(format!(
                         "Unexpected option value {:X}",
                         is_present_byte
-                    )))?,
+                    ))
+                    .into()),
                 }
             }
             Encoding::Obj(_, schema_inner) => Ok(self.decode_record(buf, schema_inner)?),
@@ -534,9 +548,9 @@ impl BinaryReader {
                 ))
             }
             Encoding::Custom(codec) => codec.decode(buf, encoding),
-            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => Err(
-                de::Error::custom(format!("Unsupported encoding {:?}", encoding)),
-            )?,
+            Encoding::Uint32 | Encoding::RangedInt | Encoding::RangedFloat => {
+                Err(de::Error::custom(format!("Unsupported encoding {:?}", encoding)).into())
+            }
         }
     }
 }
@@ -605,14 +619,9 @@ mod tests {
 
         let record_buf = hex::decode("53").unwrap();
         let reader = BinaryReader::new();
-        let value = reader
-            .read(record_buf, &record_schema)
-            .unwrap();
+        let value = reader.read(record_buf, &record_schema).unwrap();
         assert_eq!(
-            Value::Record(vec![(
-                "a".to_string(),
-                Value::String("-23".to_string())
-            )]),
+            Value::Record(vec![("a".to_string(), Value::String("-23".to_string()))]),
             value
         )
     }

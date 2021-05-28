@@ -94,7 +94,7 @@ pub trait Bits:
         let mask: Self = Self::from(1).shl(place);
         let neg_mask = !mask;
         let mask = mask & *self;
-        *self = *self & neg_mask;
+        *self &= neg_mask;
         Ok(mask != 0.into())
     }
 

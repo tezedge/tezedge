@@ -13,7 +13,10 @@ use nom::{
 use num_bigint::{BigInt, Sign};
 pub use tezos_encoding_derive::NomReader;
 
-use crate::{bit_utils::{BitReverse, Bits, BitsError}, types::{Zarith, Mutez}};
+use crate::{
+    bit_utils::{BitReverse, Bits, BitsError},
+    types::{Mutez, Zarith},
+};
 
 use self::error::{BoundedEncodingKind, DecodeError, DecodeErrorKind};
 
@@ -69,7 +72,7 @@ pub mod error {
     impl<'a> DecodeError<NomInput<'a>> {
         pub fn add_field(self, name: &'static str) -> Self {
             Self {
-                input: self.input.clone(),
+                input: <&[u8]>::clone(&self.input),
                 kind: DecodeErrorKind::Field(name),
                 other: Some(Box::new(self)),
             }
@@ -77,7 +80,7 @@ pub mod error {
 
         pub fn add_variant(self, name: &'static str) -> Self {
             Self {
-                input: self.input.clone(),
+                input: <&[u8]>::clone(&self.input),
                 kind: DecodeErrorKind::Variant(name),
                 other: Some(Box::new(self)),
             }
@@ -237,7 +240,7 @@ fn bounded_size<'a>(
     max: usize,
 ) -> impl FnMut(NomInput) -> NomResult<u32> {
     move |input| {
-        let i = input.clone();
+        let i = <&[u8]>::clone(&input);
         let (input, size) = size(input)?;
         if size as usize <= max {
             Ok((input, size))
@@ -423,7 +426,7 @@ fn map_bits_err(input: NomInput, error: BitsError) -> NomError {
 }
 
 pub fn zarith(input: NomInput) -> NomResult<BigInt> {
-    let map_err = |e| Err::Error(map_bits_err(input.clone(), e));
+    let map_err = |e| Err::Error(map_bits_err(<&[u8]>::clone(&input), e));
 
     let (input, mut first) = u8(input)?;
     let mut has_next = first.take(7).map_err(map_err)?;
@@ -447,7 +450,7 @@ pub fn zarith(input: NomInput) -> NomResult<BigInt> {
         }
         let mut input = input;
         while has_next {
-            let i = input.clone();
+            let i = <&[u8]>::clone(&input);
             let map_err = |e| Err::Error(map_bits_err(i, e));
             let (i, byte) = u8(input)?;
             input = i;
@@ -477,7 +480,7 @@ pub fn mutez(mut input: NomInput) -> NomResult<BigInt> {
     let mut bits = BitVec::new();
     let mut has_next = true;
     while has_next {
-        let i = input.clone();
+        let i = <&[u8]>::clone(&input);
         let map_err = |e| Err::Error(map_bits_err(i, e));
         let (i, byte) = u8(input)?;
         input = i;
@@ -677,7 +680,6 @@ mod test {
         let input = hex::decode("9e9ed49d01").unwrap();
         let res: NomResult<BigInt> = mutez(&input);
         assert_eq!(res, Ok((&[][..], hex_to_bigint("13b50f1e"),)));
-
     }
 
     fn i64_to_bigint(n: i64) -> BigInt {
@@ -685,8 +687,7 @@ mod test {
     }
 
     fn hex_to_bigint(s: &str) -> BigInt {
-        num_bigint::BigInt::from_i64(i64::from_str_radix(s, 16).unwrap())
-            .unwrap()
+        num_bigint::BigInt::from_i64(i64::from_str_radix(s, 16).unwrap()).unwrap()
     }
 
     fn limit_error<'a>(input: NomInput<'a>, kind: BoundedEncodingKind) -> Err<NomError<'a>> {

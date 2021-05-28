@@ -5,12 +5,13 @@ use syn::spanned::Spanned;
 
 const NOM_TUPLE_MAX: usize = 26;
 
-pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStream {
+pub fn generate_nom_read_for_data(data: &DataWithEncoding) -> TokenStream {
     let name = data.name;
     let nom_read = generate_nom_read(&data.encoding);
     quote_spanned! {
         data.name.span()=>
         #[allow(unused_parens)]
+        #[allow(clippy::unnecessary_cast)]
         impl tezos_encoding::nom::NomReader for #name {
             fn from_bytes(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
                 #nom_read(bytes)
@@ -19,7 +20,7 @@ pub fn generate_nom_read_for_data<'a>(data: &DataWithEncoding<'a>) -> TokenStrea
     }
 }
 
-fn generate_nom_read<'a>(encoding: &Encoding<'a>) -> TokenStream {
+fn generate_nom_read(encoding: &Encoding) -> TokenStream {
     match encoding {
         Encoding::Unit => unreachable!(),
         Encoding::Primitive(primitive, span) => generage_primitive_nom_read(*primitive, *span),
@@ -114,7 +115,7 @@ fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
         0 => generate_struct_no_fields_nom_read,
         1 => generate_struct_one_field_nom_read,
         n if n < NOM_TUPLE_MAX => generate_struct_many_fields_nom_read,
-        _  => generate_struct_multi_fields_nom_read,
+        _ => generate_struct_multi_fields_nom_read,
     };
     generate_nom_read(encoding)
 }
@@ -142,15 +143,15 @@ fn generate_struct_many_fields_nom_read(encoding: &StructEncoding) -> TokenStrea
         .iter()
         .map(|field| format!("{}::{}", name, field.name.to_string()));
     let field_nom_read = encoding.fields.iter().map(generate_struct_field_nom_read);
-     quote_spanned! {
-         encoding.name.span()=>
-         nom::combinator::map(
-             nom::sequence::tuple((
-                #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
-             )),
-             |(#(#field1),*)| #name { #(#field2),* }
-         )
-     }
+    quote_spanned! {
+        encoding.name.span()=>
+        nom::combinator::map(
+            nom::sequence::tuple((
+               #(tezos_encoding::nom::field(#field_name, #field_nom_read)),*
+            )),
+            |(#(#field1),*)| #name { #(#field2),* }
+        )
+    }
 }
 
 fn generate_struct_multi_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
@@ -226,14 +227,14 @@ fn generate_string_nom_read(size: &Option<syn::Expr>, span: Span) -> TokenStream
     )
 }
 
-fn generate_optional_field_nom_read<'a>(encoding: &Encoding<'a>, span: Span) -> TokenStream {
+fn generate_optional_field_nom_read(encoding: &Encoding, span: Span) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
     quote_spanned!(span=> tezos_encoding::nom::optional_field(#nom_read))
 }
 
-fn generate_list_nom_read<'a>(
+fn generate_list_nom_read(
     size: &Option<syn::Expr>,
-    encoding: &Encoding<'a>,
+    encoding: &Encoding,
     span: Span,
 ) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
@@ -243,27 +244,19 @@ fn generate_list_nom_read<'a>(
     )
 }
 
-fn generate_sized_nom_read<'a>(
-    size: &syn::Expr,
-    encoding: &Encoding<'a>,
-    span: Span,
-) -> TokenStream {
+fn generate_sized_nom_read(size: &syn::Expr, encoding: &Encoding, span: Span) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
     quote_spanned!(span=> tezos_encoding::nom::sized(#size, #nom_read))
 }
 
-fn generate_bounded_nom_read<'a>(
-    size: &syn::Expr,
-    encoding: &Encoding<'a>,
-    span: Span,
-) -> TokenStream {
+fn generate_bounded_nom_read(size: &syn::Expr, encoding: &Encoding, span: Span) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
     quote_spanned!(span=> tezos_encoding::nom::bounded(#size, #nom_read))
 }
 
-fn generate_dynamic_nom_read<'a>(
+fn generate_dynamic_nom_read(
     size: &Option<syn::Expr>,
-    encoding: &Encoding<'a>,
+    encoding: &Encoding,
     span: Span,
 ) -> TokenStream {
     let nom_read = generate_nom_read(encoding);
