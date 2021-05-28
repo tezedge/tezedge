@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 use failure::{bail, format_err};
 use riker::actors::*;
@@ -187,7 +187,14 @@ pub fn inject_operation(
     env: &RpcServiceEnvironment,
     mempool_channel: &MempoolChannelRef,
 ) -> Result<String, failure::Error> {
-    let start_request = SystemTime::now();
+    info!(env.log(),
+          "Operation injection requested";
+          "chain_id" => chain_id.to_base58_check(),
+          "is_async" => is_async,
+          "operation_data" => operation_data,
+    );
+
+    let start_request = Instant::now();
 
     let persistent_storage = env.persistent_storage();
     let block_storage: Box<dyn BlockStorageReader> =
@@ -239,7 +246,7 @@ pub fn inject_operation(
         Some(Arc::new((Mutex::new(None), Condvar::new())))
     };
 
-    let start_async = SystemTime::now();
+    let start_async = Instant::now();
 
     // ping mempool with new operation for mempool validation
     mempool_channel.tell(
@@ -272,8 +279,8 @@ pub fn inject_operation(
                 info!(env.log(),
                       "Operation injected";
                       "operation_hash" => &operation_hash_b58check_string,
-                      "elapsed" => format!("{:?}", start_request.elapsed()?),
-                      "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                      "elapsed" => format!("{:?}", start_request.elapsed()),
+                      "elapsed_async" => format!("{:?}", start_async.elapsed()),
                 );
             }
             Err(e) => {
@@ -299,7 +306,7 @@ pub fn inject_block(
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
     let chain_id = Arc::new(chain_id);
 
-    let start_request = SystemTime::now();
+    let start_request = Instant::now();
 
     let header: BlockHeaderWithHash =
         BlockHeader::from_bytes(hex::decode(block_with_op.data)?)?.try_into()?;
@@ -366,7 +373,7 @@ pub fn inject_block(
         Some(Arc::new((Mutex::new(None), Condvar::new())))
     };
 
-    let start_async = SystemTime::now();
+    let start_async = Instant::now();
 
     // notify other actors, that a block was injected
     shell_channel.tell(
@@ -401,8 +408,8 @@ pub fn inject_block(
                       "Block injected";
                       "block_hash" => block_hash_b58check_string.clone(),
                       "chain_id" => chain_id.to_base58_check(),
-                      "elapsed" => format!("{:?}", start_request.elapsed()?),
-                      "elapsed_async" => format!("{:?}", start_async.elapsed()?),
+                      "elapsed" => format!("{:?}", start_request.elapsed()),
+                      "elapsed_async" => format!("{:?}", start_async.elapsed()),
                 );
             }
             Err(e) => {
