@@ -11,13 +11,13 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use failure::{format_err, Error, Fail};
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::{
@@ -41,6 +41,7 @@ use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
+use crate::state::chain_state::bootstrap_constants::MAX_BLOCK_APPLY_BATCH;
 use crate::state::ApplyBlockBatch;
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
@@ -248,60 +249,51 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
+    fn apply_successors(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, chain_feeder: ChainFeederRef, log: &Logger, added_block_count: usize) {
+        for successor in successros.into_iter() {
+            // TODO: add constant
+            if !self.block_applier_run.load(Ordering::Acquire) {
+                return;
+            }
+            if added_block_count > 1000 {
+                return;
+            }
+            let batch = ApplyBlockBatch::one(successor.clone());
+            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+            // TODO: remove - debug
+            // info!(log, "Adding to the queue: {}", successor.to_base58_check());
+            // info!(log, "Nested: {}", added_block_count);
+            self.add_to_batch_queue(schedule_msg);
+            self.process_batch_queue(chain_feeder.clone(), log);
+            let count = added_block_count + 1;
+
+            if let Ok(Some(next)) = block_meta_storage.get(&successor) {
+                self.apply_successors(next.successors(), chain_id.clone(), block_meta_storage, chain_feeder.clone(), log, count);
+            } else {
+                return;
+            }
+        }
+    }
+
     fn hydrate_queue(&mut self, persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>, chain_feeder: ChainFeederRef, log: &Logger) {
-        let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
         let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
-        let block_storage = BlockStorage::new(&persistent_storage);
 
-        let current_head_level = if let Ok(Some(head)) =
-            ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id)
-        {
-            *head.level()
-        } else {
-            0
-        };
+        while let Ok(Some(current_head)) = ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id) {
+            info!(log, "Hydratation from: {}", current_head.level());
+            if !self.block_applier_run.load(Ordering::Acquire) {
+                break;
+            }
+            let current_hash = current_head.block_hash().clone();
 
-        println!("Hydrating...");
-
-        if let Ok(iter) = block_meta_storage.iter(IteratorMode::Start) {
-            iter.for_each(|(k, v)| {
-                if !self.block_applier_run.load(Ordering::Acquire) {
-                    return;
+            if let Ok(Some(block_meta_data)) = block_meta_storage.get(&current_hash) {
+                if block_meta_data.successors().is_empty() {
+                    break;
                 }
-                if let (Ok(k), Ok(v)) = (k, v) {
-                    info!(log, "Cheking: {:?}", v.level());
-                    if let Ok(is_complete) = operations_meta_storage.is_complete(&k) {
-                        if is_complete {
-                            info!(log, "Completed: {:?}", v.level());
-                            let mut predecessor_selector = v.predecessor().as_ref().unwrap().clone();
-                            loop {
-                                match block_meta_storage.get(&predecessor_selector) {
-                                    Ok(Some(block_metadata)) => {
-                                        if block_metadata.is_applied() {
-                                            info!(log, "Predecessor found for: {:?}", v.level());
-                                            let batch = ApplyBlockBatch::one(k);
-                                            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
-                                            // self.add_to_batch_queue(schedule_msg);
-                                            // self.process_batch_queue(chain_feeder.clone(), log);
-                                            break;
-                                        }
-                                        if let Some(predecessor) = block_metadata.take_predecessor() {
-                                            if predecessor.eq(&predecessor_selector) {
-                                                break;
-                                            }
-                                            predecessor_selector = predecessor;
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    _ => break
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-        };
+                self.apply_successors(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, chain_feeder.clone(), log, 0)
+            } else {
+                break;
+            }
+        }
     }
 
     fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
