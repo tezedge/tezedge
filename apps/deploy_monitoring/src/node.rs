@@ -37,18 +37,18 @@ impl TezedgeNode {
         .unwrap_or(0);
 
         let disk_data = TezedgeDiskData::new(
-            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge"))?,
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge")).unwrap_or(0),
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context")).unwrap_or(0),
             dir::get_size(&format!(
                 "{}/{}",
                 TEZEDGE_VOLUME_PATH, "bootstrap_db/context"
-            ))?,
+            )).unwrap_or(0),
             dir::get_size(&format!(
                 "{}/{}",
                 TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"
-            ))?,
+            )).unwrap_or(0),
             context_actions,
-            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db")).unwrap_or(0),
         );
 
         Ok(disk_data)
@@ -92,9 +92,9 @@ impl DeployMonitoringContainer for OcamlNode {
 impl OcamlNode {
     pub fn collect_disk_data() -> Result<OcamlDiskData, failure::Error> {
         Ok(OcamlDiskData::new(
-            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezos"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store"))?,
-            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context"))?,
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezos")).unwrap_or(0),
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/store")).unwrap_or(0),
+            dir::get_size(&format!("{}/{}", OCAML_VOLUME_PATH, "data/context")).unwrap_or(0),
         ))
     }
 
