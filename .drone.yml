@@ -267,7 +267,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --peer-thresh-low=10 --peer-thresh-high=45 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezedge_developer/data --bootstrap-db-path bootstrap_db --log file terminal --log-file /tmp/tezedge_developer/data/tezedge.log --log-level debug --one-context --actions-store-backend none
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peer-thresh-low=0 --peer-thresh-high=0 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "/tmp/tezedge_developer/protocol-runner" --p2p-port 19732 --tezos-data-dir /tmp/tezedge_developer/data --bootstrap-db-path bootstrap_db --log file terminal --log-file /tmp/tezedge_developer/data/tezedge.log --log-level debug --one-context --actions-store-backend none
 
 - name: test-protocol-switch-1-to-2
   image: simplestakingcom/tezedge-ci-builder:latest
