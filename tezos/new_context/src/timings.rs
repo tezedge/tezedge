@@ -29,6 +29,14 @@ pub fn checkout(
     tezedge_time: f64,
 ) {
     let context_hash: ContextHash = context_hash.to_rust(rt);
+    let irmin_time = match irmin_time {
+        t if t < 0.0 => None,
+        t => Some(t)
+    };
+    let tezedge_time = match tezedge_time {
+        t if t < 0.0 => None,
+        t => Some(t)
+    };
 
     TIMING_CHANNEL
         .send(TimingMessage::Checkout {
@@ -45,6 +53,15 @@ pub fn commit(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
+    let irmin_time = match irmin_time {
+        t if t < 0.0 => None,
+        t => Some(t)
+    };
+    let tezedge_time = match tezedge_time {
+        t if t < 0.0 => None,
+        t => Some(t)
+    };
+
     TIMING_CHANNEL
         .send(TimingMessage::Commit {
             irmin_time,
@@ -68,7 +85,18 @@ pub fn context_action(
         b"add" => ActionKind::Add,
         b"add_tree" => ActionKind::AddTree,
         b"remove" => ActionKind::Remove,
-        _ => return,
+        bytes => {
+            println!("ERROR={:?}", std::str::from_utf8(bytes));
+            return;
+        }
+    };
+    let irmin_time = match irmin_time {
+        t if t < 0.0 => None,
+        t => Some(t)
+    };
+    let tezedge_time = match tezedge_time {
+        t if t < 0.0 => None,
+        t => Some(t)
     };
 
     let key: Vec<String> = key.to_rust(rt);

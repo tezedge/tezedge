@@ -42,12 +42,12 @@ pub enum TimingMessage {
     SetOperation(Option<OperationHash>),
     Checkout {
         context_hash: ContextHash,
-        irmin_time: f64,
-        tezedge_time: f64,
+        irmin_time: Option<f64>,
+        tezedge_time: Option<f64>,
     },
     Commit {
-        irmin_time: f64,
-        tezedge_time: f64,
+        irmin_time: Option<f64>,
+        tezedge_time: Option<f64>,
     },
     Action(Action),
     InitTiming {
@@ -103,11 +103,16 @@ impl RangeStats {
         self.one_hundred_s.compute_mean();
     }
 
-    fn add_time(&mut self, tezedge_time: f64) {
-        self.total_time += tezedge_time;
+    fn add_time(&mut self, time: Option<f64>) {
+        let time = match time {
+            Some(t) => t,
+            None => return
+        };
+
+        self.total_time += time;
         self.actions_count = self.actions_count.saturating_add(1);
 
-        let time = match tezedge_time {
+        let entry = match time {
             t if t < 0.00001 => &mut self.one_to_ten_us,
             t if t < 0.0001 => &mut self.ten_to_one_hundred_us,
             t if t < 0.001 => &mut self.one_hundred_us_to_one_ms,
@@ -118,9 +123,9 @@ impl RangeStats {
             t if t < 100.0 => &mut self.ten_to_one_hundred_s,
             _ => &mut self.one_hundred_s,
         };
-        time.count = time.count.saturating_add(1);
-        time.total_time += tezedge_time;
-        time.max_time = time.max_time.max(tezedge_time);
+        entry.count = entry.count.saturating_add(1);
+        entry.total_time += time;
+        entry.max_time = entry.max_time.max(time);
     }
 }
 
@@ -218,7 +223,7 @@ struct Timing {
     /// Number of actions in current block
     nactions: usize,
     /// Checkout time for the current block
-    checkout_time: Option<(f64, f64)>,
+    checkout_time: Option<(Option<f64>, Option<f64>)>,
     /// Statistics for the current block
     block_stats: HashMap<String, ActionStats>,
     /// Global statistics
@@ -245,8 +250,8 @@ impl std::fmt::Debug for Timing {
 pub struct Action {
     pub action_name: ActionKind,
     pub key: Vec<String>,
-    pub irmin_time: f64,
-    pub tezedge_time: f64,
+    pub irmin_time: Option<f64>,
+    pub tezedge_time: Option<f64>,
 }
 
 pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
@@ -342,6 +347,7 @@ impl Timing {
             self.block_started_at = Some(std::time::Instant::now());
         } else if let Some(started) = self.block_started_at.take() {
             let duration_millis: u64 = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+            let block_id = self.current_block.as_ref().unwrap().0.as_str();
 
             let mut query = self.sql.prepare_cached(
                 "
@@ -353,9 +359,10 @@ impl Timing {
               id = :block_id;
                 ",
             )?;
+
             query.execute(named_params! {
                 ":duration": duration_millis,
-                ":block_id": &self.current_block.as_ref().unwrap().0,
+                ":block_id": block_id,
             })?;
         }
 
@@ -464,8 +471,8 @@ impl Timing {
     fn insert_checkout(
         &mut self,
         context_hash: ContextHash,
-        irmin_time: f64,
-        tezedge_time: f64,
+        irmin_time: Option<f64>,
+        tezedge_time: Option<f64>,
     ) -> Result<(), SQLError> {
         if self.current_block.is_none() {
             return Ok(());
@@ -479,7 +486,7 @@ impl Timing {
         Ok(())
     }
 
-    fn insert_commit(&mut self, irmin_time: f64, tezedge_time: f64) -> Result<(), SQLError> {
+    fn insert_commit(&mut self, irmin_time: Option<f64>, tezedge_time: Option<f64>) -> Result<(), SQLError> {
         if self.current_block.is_none() {
             return Ok(());
         }
@@ -586,7 +593,7 @@ impl Timing {
             };
 
             entry.actions_count = entry.actions_count.saturating_add(1);
-            entry.total_time += time;
+            entry.total_time += time.unwrap_or(0.0);
             action_stats.add_time(time);
         }
     }
@@ -611,8 +618,8 @@ impl Timing {
             ActionKind::Remove => (&mut entry.tezedge_remove, &mut entry.irmin_remove),
         };
 
-        let tezedge_time = action.tezedge_time;
-        let irmin_time = action.irmin_time;
+        let tezedge_time = action.tezedge_time.unwrap_or(0.0);
+        let irmin_time = action.irmin_time.unwrap_or(0.0);
 
         *value_tezedge += tezedge_time;
         *value_irmin += irmin_time;
@@ -685,8 +692,8 @@ impl Timing {
     // Compute stats for the current block and global ones
     fn sync_global_stats(
         &mut self,
-        commit_time_irmin: f64,
-        commit_time_tezedge: f64,
+        commit_time_irmin: Option<f64>,
+        commit_time_tezedge: Option<f64>,
     ) -> Result<(), SQLError> {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
 
@@ -937,13 +944,13 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 1.0,
-                tezedge_time: 2.0,
+                irmin_time: Some(1.0),
+                tezedge_time: Some(2.0),
             })
             .unwrap();
 
         timing.sync_block_stats().unwrap();
-        timing.sync_global_stats(1.0, 1.0).unwrap();
+        timing.sync_global_stats(Some(1.0), Some(1.0)).unwrap();
     }
 
     #[test]
@@ -960,8 +967,8 @@ mod tests {
         TIMING_CHANNEL
             .send(TimingMessage::Checkout {
                 context_hash,
-                irmin_time: 1.0,
-                tezedge_time: 2.0,
+                irmin_time: Some(1.0),
+                tezedge_time: Some(2.0),
             })
             .unwrap();
         TIMING_CHANNEL
@@ -971,8 +978,8 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 1.0,
-                tezedge_time: 2.0,
+                irmin_time: Some(1.0),
+                tezedge_time: Some(2.0),
             }))
             .unwrap();
         TIMING_CHANNEL
@@ -982,8 +989,8 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 5.0,
-                tezedge_time: 6.0,
+                irmin_time: Some(5.0),
+                tezedge_time: Some(6.0),
             }))
             .unwrap();
         TIMING_CHANNEL
@@ -993,8 +1000,8 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 50.0,
-                tezedge_time: 60.0,
+                irmin_time: Some(50.0),
+                tezedge_time: Some(60.0),
             }))
             .unwrap();
         TIMING_CHANNEL
@@ -1004,8 +1011,8 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 10.0,
-                tezedge_time: 20.0,
+                irmin_time: Some(10.0),
+                tezedge_time: Some(20.0),
             }))
             .unwrap();
         TIMING_CHANNEL
@@ -1015,8 +1022,8 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 15.0,
-                tezedge_time: 26.0,
+                irmin_time: Some(15.0),
+                tezedge_time: Some(26.0),
             }))
             .unwrap();
         TIMING_CHANNEL
@@ -1026,14 +1033,14 @@ mod tests {
                     .iter()
                     .map(ToString::to_string)
                     .collect(),
-                irmin_time: 150.0,
-                tezedge_time: 260.0,
+                irmin_time: Some(150.0),
+                tezedge_time: Some(260.0),
             }))
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Commit {
-                irmin_time: 15.0,
-                tezedge_time: 20.0,
+                irmin_time: Some(15.0),
+                tezedge_time: Some(20.0),
             })
             .unwrap();
 
