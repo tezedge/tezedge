@@ -265,7 +265,7 @@ fn make_block_stats_impl(
         "
         SELECT
           root,
-          actions_count,
+          tezedge_count,
           tezedge_mean_time,
           tezedge_max_time,
           tezedge_total_time,
@@ -283,7 +283,8 @@ fn make_block_stats_impl(
           irmin_add_tree_time,
           irmin_find_time,
           irmin_find_tree_time,
-          irmin_remove_time
+          irmin_remove_time,
+          irmin_count
         FROM
           block_action_stats
         WHERE
@@ -307,7 +308,8 @@ fn make_block_stats_impl(
         let action_stats = ActionStats {
             data: ActionData {
                 root: root.clone(),
-                actions_count: row.get(1)?,
+                tezedge_count: row.get(1)?,
+                irmin_count: row.get(20)?,
                 tezedge_mean_time: row.get(2)?,
                 tezedge_max_time: row.get(3)?,
                 tezedge_total_time: row.get(4)?,
