@@ -261,9 +261,8 @@ fn make_block_stats_impl(
         None => return Ok(None),
     };
 
-    let mut stmt = sql
-        .prepare(
-            "
+    let mut stmt = sql.prepare(
+        "
         SELECT
           root,
           actions_count,
@@ -290,8 +289,7 @@ fn make_block_stats_impl(
         WHERE
           block_id = ?;
         ",
-        )
-        .unwrap();
+    )?;
 
     let mut rows = match stmt.query([block_id]).optional()? {
         Some(rows) => rows,
