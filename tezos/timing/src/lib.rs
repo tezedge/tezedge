@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, convert::TryInto, path::PathBuf, time::Instant};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
@@ -214,6 +214,7 @@ struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
+    block_started_at: Option<Instant>,
     /// Number of actions in current block
     nactions: usize,
     /// Checkout time for the current block
@@ -302,6 +303,7 @@ impl Timing {
             current_block: None,
             current_operation: None,
             current_context: None,
+            block_started_at: None,
             nactions: 0,
             checkout_time: None,
             block_stats: HashMap::default(),
@@ -336,6 +338,27 @@ impl Timing {
     }
 
     fn set_current_block(&mut self, block_hash: Option<BlockHash>) -> Result<(), SQLError> {
+        if block_hash.is_some() {
+            self.block_started_at = Some(std::time::Instant::now());
+        } else if let Some(started) = self.block_started_at.take() {
+            let duration_millis: u64 = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+
+            let mut query = self.sql.prepare_cached(
+                "
+            UPDATE
+              blocks
+            SET
+              duration_millis = :duration
+            WHERE
+              id = :block_id;
+                ",
+            )?;
+            query.execute(named_params! {
+                ":duration": duration_millis,
+                ":block_id": &self.current_block.as_ref().unwrap().0,
+            })?;
+        }
+
         Self::set_current(&self.sql, block_hash, &mut self.current_block, "blocks")?;
 
         // Reset context and operation
