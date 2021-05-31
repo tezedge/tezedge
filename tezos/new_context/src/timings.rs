@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
@@ -9,8 +11,21 @@ use tezos_timing::{Action, ActionKind, TimingMessage, TIMING_CHANNEL};
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
+    let start_at = if block_hash.is_some() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::new(0, 0));
+        let instant = Instant::now();
+        Some((timestamp, instant))
+    } else {
+        None
+    };
+
     TIMING_CHANNEL
-        .send(TimingMessage::SetBlock(block_hash))
+        .send(TimingMessage::SetBlock {
+            block_hash,
+            start_at,
+        })
         .unwrap();
 }
 
@@ -29,6 +44,8 @@ pub fn checkout(
     tezedge_time: f64,
 ) {
     let context_hash: ContextHash = context_hash.to_rust(rt);
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
 
     TIMING_CHANNEL
         .send(TimingMessage::Checkout {
@@ -45,6 +62,9 @@ pub fn commit(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
+
     TIMING_CHANNEL
         .send(TimingMessage::Commit {
             irmin_time,
@@ -63,6 +83,7 @@ pub fn context_action(
     let action_name = rt.get(action_name);
     let action_name = match action_name.as_bytes() {
         b"mem" => ActionKind::Mem,
+        b"mem_tree" => ActionKind::MemTree,
         b"find" => ActionKind::Find,
         b"find_tree" => ActionKind::FindTree,
         b"add" => ActionKind::Add,
@@ -70,6 +91,8 @@ pub fn context_action(
         b"remove" => ActionKind::Remove,
         _ => return,
     };
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
 
     let key: Vec<String> = key.to_rust(rt);
 
@@ -89,4 +112,11 @@ pub fn init_timing(db_path: String) {
             db_path: Some(db_path.into()),
         })
         .unwrap();
+}
+
+fn get_time(time: f64) -> Option<f64> {
+    match time {
+        t if t < 0.0 => None,
+        t => Some(t),
+    }
 }
