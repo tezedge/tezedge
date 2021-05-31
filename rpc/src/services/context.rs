@@ -12,8 +12,8 @@ use tezos_timing::{
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockStats {
     actions_count: usize,
-    date: DateTime<Utc>,
-    duration_millis: u64,
+    date: Option<DateTime<Utc>>,
+    duration_millis: Option<u64>,
     tezedge_checkout_context_time: f64,
     tezedge_commit_context_time: f64,
     irmin_checkout_context_time: f64,
@@ -262,9 +262,9 @@ fn make_block_stats_impl(
                     row.get::<_, f64>(3)?,
                     row.get::<_, f64>(4)?,
                     row.get::<_, f64>(5)?,
-                    row.get::<_, u64>(6)?,
-                    row.get::<_, u64>(7)?,
-                    row.get::<_, u32>(8)?,
+                    row.get::<_, Option<u64>>(6)?,
+                    row.get::<_, Option<u64>>(7)?,
+                    row.get::<_, Option<u32>>(8)?,
                 ))
             },
         )
@@ -354,9 +354,12 @@ fn make_block_stats_impl(
     let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
     operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
-    let timestamp_secs = timestamp_secs.try_into().unwrap_or(i64::MAX);
-    let date = NaiveDateTime::from_timestamp(timestamp_secs, timestamp_nanos);
-    let date: DateTime<Utc> = DateTime::from_utc(date, Utc);
+    let mut date: Option<DateTime<Utc>> = None;
+    if let (Some(secs), Some(nanos)) = (timestamp_secs, timestamp_nanos) {
+        let secs = secs.try_into().unwrap_or(i64::MAX);
+        let naive_date = NaiveDateTime::from_timestamp(secs, nanos);
+        date = Some(DateTime::from_utc(naive_date, Utc));
+    };
 
     Ok(Some(BlockStats {
         actions_count,
@@ -393,9 +396,9 @@ mod tests {
         sql.execute(
             "
             INSERT INTO blocks
-               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge, checkout_time_irmin, commit_time_irmin)
+               (id, hash, actions_count, checkout_time_tezedge, commit_time_tezedge, checkout_time_irmin, commit_time_irmin, duration_millis)
             VALUES
-               (1, ?1, 4, 10.0, 11.0, 12.0, 13.0);",
+               (1, ?1, 4, 10.0, 11.0, 12.0, 13.0, 101);",
             [block_hash_str],
         )
         .unwrap();
@@ -403,13 +406,14 @@ mod tests {
         sql.execute(
             "
         INSERT INTO block_action_stats
-          (root, block_id, actions_count, tezedge_mean_time, tezedge_max_time, tezedge_total_time,
+          (root, block_id, tezedge_count, tezedge_mean_time, tezedge_max_time, tezedge_total_time,
            tezedge_mem_time, tezedge_find_time, tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
            irmin_mean_time, irmin_max_time, irmin_total_time,
-           irmin_mem_time, irmin_find_time, irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
+           irmin_mem_time, irmin_find_time, irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time,
+           tezedge_mem_tree_time, irmin_mem_tree_time)
         VALUES
-          ('a', 1, 40, 100.5, 3.0, 4.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-          ('m', 1, 400, 100.6, 30.0, 40.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+          ('a', 1, 40, 100.5, 3.0, 4.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+          ('m', 1, 400, 100.6, 30.0, 40.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
             ",
             [],
         )

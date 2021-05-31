@@ -692,13 +692,13 @@ impl Timing {
               (root, block_id, tezedge_count, irmin_count,
                tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_mem_tree_time, tezedge_find_time,
                tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
-               irmin_mean_time, irmin_max_time, irmin_total_time, irmin_mem_time, irmin_find_time,
+               irmin_mean_time, irmin_max_time, irmin_total_time, irmin_mem_time, irmin_mem_tree_time, irmin_find_time,
                irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
             VALUES
               (:root, :block_id, :tezedge_count, :irmin_count,
                :tezedge_mean_time, :tezedge_max_time, :tezedge_total_time, :tezedge_mem_time, :tezedge_mem_tree_time, :tezedge_find_time,
                :tezedge_find_tree_time, :tezedge_add_time, :tezedge_add_tree_time, :tezedge_remove_time,
-               :irmin_mean_time, :irmin_max_time, :irmin_total_time, :irmin_mem_time, :irmin_find_time,
+               :irmin_mean_time, :irmin_max_time, :irmin_total_time, :irmin_mem_time, :irmin_mem_tree_time, :irmin_find_time,
                :irmin_find_tree_time, :irmin_add_time, :irmin_add_tree_time, :irmin_remove_time)
                 ",
             )?;
