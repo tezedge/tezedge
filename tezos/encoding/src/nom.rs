@@ -58,6 +58,8 @@ pub mod error {
         Field(&'static str),
         /// Field name
         Variant(&'static str),
+        /// Unknown tag
+        UnknownTag(String),
     }
 
     /// Specific bounded encoding kind.
@@ -94,9 +96,17 @@ pub mod error {
             }
         }
 
-        pub fn is_unsupported_tag(&self) -> bool {
+        pub fn unknown_tag(input: NomInput<'a>, tag: String) -> Self {
+            Self {
+                input,
+                kind: DecodeErrorKind::UnknownTag(tag),
+                other: None,
+            }
+        }
+
+        pub fn is_unknown_tag(&self) -> bool {
             match self.kind {
-                DecodeErrorKind::Nom(ErrorKind::Tag) => true,
+                DecodeErrorKind::UnknownTag(_) => true,
                 _ => false,
             }
         }
@@ -152,6 +162,7 @@ pub mod error {
                 write!(res, " while decoding variant `{}`", name)
             }
             DecodeErrorKind::Bits(e) => write!(res, " while performing bits operation: {}", e),
+            DecodeErrorKind::UnknownTag(tag) => write!(res, " caused by unexpected tag `{}`", tag),
         };
 
         if let Some(other) = error.other {

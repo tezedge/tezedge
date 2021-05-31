@@ -105,7 +105,7 @@ pub fn all_consuming_complete_input<T>(
 
 /// Maps input and nom error into printable version.
 pub(crate) fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderError {
-    let unsupported_tag = error.is_unsupported_tag();
+    let unsupported_tag = error.is_unknown_tag();
     (convert_error(input, error), unsupported_tag).into()
 }
 

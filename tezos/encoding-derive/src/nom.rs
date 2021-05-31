@@ -182,26 +182,43 @@ fn generate_struct_field_nom_read(field: &FieldEncoding) -> TokenStream {
 
 fn generate_enum_nom_read(encoding: &EnumEncoding) -> TokenStream {
     let tag_type = &encoding.tag_type;
+    let tag_read = if encoding.tag_type == crate::symbol::rust::U8 {
+        quote_spanned!(encoding.tag_type.span()=> nom::number::complete::u8)
+    } else {
+        quote_spanned!(encoding.tag_type.span()=> nom::number::complete::#tag_type(nom::number::Endianness::Big))
+    };
+    let tag_id = encoding.tags.iter().map(|tag| tag.id.clone());
     let tags_nom_read = encoding
         .tags
         .iter()
-        .map(|tag| generate_tag_nom_read(tag, encoding.name, tag_type));
+        .map(|tag| generate_tag_nom_read(tag, encoding.name));
     quote_spanned! {
         tag_type.span()=>
-        nom::branch::alt((
-            #(#tags_nom_read),*
-        ))
+            (|input| {
+                let (input, tag) = #tag_read(input)?;
+                let (input, variant) = #(
+                    if tag == #tag_id {
+                        (#tags_nom_read)(input)?
+                    } else
+                )*
+                {
+                    return Err(
+                        nom::Err::Failure(
+                            tezos_encoding::nom::error::DecodeError::unknown_tag(
+                                input,
+                                format!("0x{:.2X}", tag)
+                            )
+                        )
+                    );
+                };
+                Ok((input, variant))
+            })
     }
 }
 
-fn generate_tag_nom_read<'a>(
-    tag: &Tag<'a>,
-    enum_name: &syn::Ident,
-    tag_type: &syn::Ident,
-) -> TokenStream {
-    let id = &tag.id;
+fn generate_tag_nom_read<'a>(tag: &Tag<'a>, enum_name: &syn::Ident) -> TokenStream {
     let tag_name = tag.name;
-    let nom_read = match &tag.encoding {
+    match &tag.encoding {
         Encoding::Unit => {
             quote_spanned!(tag_name.span()=> |bytes| Ok((bytes, #enum_name::#tag_name)))
         }
@@ -210,13 +227,6 @@ fn generate_tag_nom_read<'a>(
             let name = format!("{}::{}", enum_name, tag_name);
             quote_spanned!(tag_name.span()=> nom::combinator::map(tezos_encoding::nom::variant(#name, #nom_read), #enum_name::#tag_name))
         }
-    };
-    quote_spanned! {
-        tag.name.span()=>
-        nom::sequence::preceded(
-            nom::bytes::complete::tag((#id as #tag_type).to_be_bytes()),
-            #nom_read
-        )
     }
 }
 
