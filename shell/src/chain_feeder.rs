@@ -252,34 +252,29 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
-    fn mark_sucessors_for_aplication(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, operations_meta_storage: &OperationsMetaStorage, log: &Logger, batch: &mut ApplyBlockBatch, nesting: usize) {
+    fn mark_sucessors_for_aplication(&mut self, successros: &[BlockHash], chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, operations_meta_storage: &OperationsMetaStorage, log: &Logger, batch: &mut ApplyBlockBatch, nesting: usize) {
         // continue recursion until we reach max nesting
         let current_nest = nesting + 1;
         if nesting + successros.len() > MAX_NESTING || batch.batch_total_size() > MAX_HYDRATATING_BATCH_SIZE {
             return
         }
-        for successor in successros.into_iter() {
-            if self.block_applier_run.load(Ordering::Acquire) {
-                if let Ok(is_complete) = operations_meta_storage.is_complete(successor) {
-                    if is_complete {
-                        batch.add_successor(Arc::new(successor.clone()));
+        for successor in successros.iter() {
+            if let Ok(is_complete) = operations_meta_storage.is_complete(successor) {
+                if is_complete {
+                    batch.add_successor(Arc::new(successor.clone()));
 
-                        if let Ok(Some(next)) = block_meta_storage.get(&successor) {
-                            self.mark_sucessors_for_aplication(next.successors(), chain_id.clone(), block_meta_storage, operations_meta_storage, log, batch, current_nest);
-                        } else {
-                            crit!(log, "[mark] No successor!");
-                            return
-                        }
+                    if let Ok(Some(next)) = block_meta_storage.get(&successor) {
+                        self.mark_sucessors_for_aplication(next.successors(), chain_id.clone(), block_meta_storage, operations_meta_storage, log, batch, current_nest);
                     } else {
-                        crit!(log, "[mark] Block not completed!");
+                        crit!(log, "[mark] No successor!");
                         return
                     }
                 } else {
-                    crit!(log, "[mark] No operation meta found!");
+                    crit!(log, "[mark] Block not completed!");
                     return
                 }
             } else {
-                crit!(log, "[mark] Shutting down!");
+                crit!(log, "[mark] No operation meta found!");
                 return
             }
         }
