@@ -15,7 +15,7 @@ use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_encoding::{
     encoding::{Encoding, Field, HasEncoding},
-    nom::NomReader,
+    nom::{field, NomReader},
 };
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
@@ -56,11 +56,14 @@ pub fn from_captured_bytes(request: &str) -> Result<ApplyBlockRequest, failure::
             use tezos_encoding::nom::{dynamic, list};
             map(
                 tuple((
-                    ChainId::nom_read,
-                    BlockHeader::nom_read,
-                    BlockHeader::nom_read,
-                    be_i32,
-                    dynamic(list(dynamic(list(dynamic(Operation::nom_read))))),
+                    field("chain_id", ChainId::nom_read),
+                    field("block_header", dynamic(BlockHeader::nom_read)),
+                    field("pred_header", dynamic(BlockHeader::nom_read)),
+                    field("max_operations_ttl", be_i32),
+                    field(
+                        "operations",
+                        dynamic(list(dynamic(list(dynamic(Operation::nom_read))))),
+                    ),
                 )),
                 |(chain_id, block_header, pred_header, max_operations_ttl, operations)| {
                     Request(ApplyBlockRequest {
