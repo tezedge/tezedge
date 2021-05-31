@@ -9,10 +9,8 @@ use std::sync::Arc;
 
 use crypto::hash::{HashTrait, HashType};
 
-use crate::binary_reader::BinaryReaderError;
 use crate::ser::Error;
 use crate::types::Value;
-use bytes::Buf;
 
 pub use tezos_encoding_derive::HasEncoding;
 
@@ -123,8 +121,6 @@ pub trait CustomCodec {
         value: &Value,
         encoding: &Encoding,
     ) -> Result<usize, Error>;
-
-    fn decode(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError>;
 }
 
 impl fmt::Debug for dyn CustomCodec + Send + Sync {
@@ -377,170 +373,4 @@ macro_rules! has_encoding {
             }
         }
     };
-}
-
-/// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
-#[macro_export]
-macro_rules! has_encoding_test {
-    ($struct_name:ident, $enc_ref_name:ident, $code:block) => {
-        lazy_static::lazy_static! {
-            static ref $enc_ref_name: Encoding = {
-                $code
-            };
-        }
-
-        impl tezos_encoding::encoding::HasEncodingTest for $struct_name {
-            fn encoding_test() -> &'static Encoding {
-                &$enc_ref_name
-            }
-        }
-    };
-}
-
-pub fn assert_encodings_match(new: &Encoding, old: &Encoding) {
-    match (new, old) {
-        (Encoding::Unit, Encoding::Unit) => (),
-        (Encoding::Int8, Encoding::Int8) => (),
-        (Encoding::Uint8, Encoding::Uint8) => (),
-        (Encoding::Int16, Encoding::Int16) => (),
-        (Encoding::Uint16, Encoding::Uint16) => (),
-        (Encoding::Int31, Encoding::Int31) => (),
-        (Encoding::Int32, Encoding::Int32) => (),
-        (Encoding::Uint32, Encoding::Uint32) => (),
-        (Encoding::Int64, Encoding::Int64) => (),
-        (Encoding::RangedInt, Encoding::RangedInt) => (),
-        (Encoding::Z, Encoding::Z) => (),
-        (Encoding::Mutez, Encoding::Mutez) => (),
-        (Encoding::Float, Encoding::Float) => (),
-        (Encoding::RangedFloat, Encoding::RangedFloat) => (),
-        (Encoding::Bool, Encoding::Bool) => (),
-        (Encoding::String, Encoding::String) => (),
-        (Encoding::Timestamp, Encoding::Timestamp) => (),
-        (Encoding::Bytes, Encoding::Bytes) => (),
-        (Encoding::Enum, Encoding::Enum) => (),
-
-        (Encoding::BoundedString(new_size), Encoding::BoundedString(old_size)) => {
-            assert_eq!(new_size, old_size)
-        }
-
-        (Encoding::Tags(new_size, new), Encoding::Tags(old_size, old)) => {
-            assert_eq!(new_size, old_size);
-            let mut new_tags = new.tags().collect::<Vec<_>>();
-            new_tags.sort_by_key(|tag| tag.id);
-            let mut old_tags = old.tags().collect::<Vec<_>>();
-            old_tags.sort_by_key(|tag| tag.id);
-            for (new, old) in new_tags.iter().zip(old_tags.iter()) {
-                assert_eq!(new.get_id(), old.get_id());
-                assert_eq!(new.get_variant(), old.get_variant());
-                assert_encodings_match(new.get_encoding(), &old.get_encoding());
-            }
-        }
-
-        (Encoding::Obj(new_name, new_fields), Encoding::Obj(old_name, old_fields)) => {
-            assert_eq!(new_name, old_name);
-            for (new_field, old_field) in new_fields.iter().zip(old_fields.iter()) {
-                assert_eq!(new_field.name, old_field.name);
-                assert_encodings_match(new_field.get_encoding(), old_field.get_encoding());
-            }
-        }
-
-        (Encoding::Tup(new), Encoding::Tup(old)) => {
-            assert_eq!(new.len(), old.len());
-            for (new, old) in new.iter().zip(old.iter()) {
-                assert_encodings_match(new, old);
-            }
-        }
-
-        (Encoding::List(new), Encoding::List(old))
-        | (Encoding::Dynamic(new), Encoding::Dynamic(old))
-        | (Encoding::Option(new), Encoding::Option(old))
-        | (Encoding::OptionalField(new), Encoding::OptionalField(old))
-        | (Encoding::Greedy(new), Encoding::Greedy(old)) => assert_encodings_match(new, old),
-
-        (Encoding::BoundedList(new_size, new), Encoding::BoundedList(old_size, old))
-        | (Encoding::BoundedDynamic(new_size, new), Encoding::BoundedDynamic(old_size, old))
-        | (Encoding::Sized(new_size, new), Encoding::Sized(old_size, old))
-        | (Encoding::Bounded(new_size, new), Encoding::Bounded(old_size, old)) => {
-            assert_eq!(new_size, old_size);
-            assert_encodings_match(new, old);
-        }
-
-        (Encoding::Hash(new), Encoding::Hash(old)) => assert_eq!(*new, *old),
-
-        (Encoding::Custom(_), Encoding::Custom(_)) => (),
-        (new, old) => panic!("Unmatched encodings: {:?} and {:?}", new, old),
-    }
-}
-
-#[macro_export]
-macro_rules! assert_encodings_match {
-    ($ty:path) => {
-        $crate::encoding::assert_encodings_match(
-            <$ty as tezos_encoding::encoding::HasEncoding>::encoding(),
-            <$ty as tezos_encoding::encoding::HasEncodingTest>::encoding_test(),
-        );
-    };
-}
-
-#[macro_export]
-macro_rules! test_encodings_match {
-    ($fun:ident, $ty:ident) => {
-        #[test]
-        fn $fun() {
-            $crate::assert_encodings_match!(super::$ty)
-        }
-    };
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::binary_reader::BinaryReader;
-
-    use super::*;
-
-    #[test]
-    fn bounded_with_bytes() {
-        let encoding = Encoding::Obj(
-            "Rec",
-            vec![
-                Field::new("f1", Encoding::bounded(10, Encoding::Uint8)),
-                Field::new("f2", Encoding::bounded(10, Encoding::Uint8)),
-            ],
-        );
-
-        let value = Value::Record(vec![
-            ("f1".to_string(), Value::Uint8(1)),
-            ("f2".to_string(), Value::Uint8(2)),
-        ]);
-
-        let data = [1, 2];
-
-        let res = BinaryReader::new().read(data, &encoding);
-        assert_eq!(res.unwrap(), value);
-    }
-
-    #[test]
-    fn bounded_with_strings() {
-        let encoding = Encoding::Obj(
-            "Rec",
-            vec![
-                Field::new("f1", Encoding::bounded(10, Encoding::String)),
-                Field::new("f2", Encoding::bounded(10, Encoding::String)),
-            ],
-        );
-
-        let value = Value::Record(vec![
-            ("f1".to_string(), Value::String("A".to_string())),
-            ("f2".to_string(), Value::String("BB".to_string())),
-        ]);
-
-        let data = [
-            0, 0, 0, 1,    // f1.len
-            0x41, // f1
-            0, 0, 0, 2, 0x42, 0x42,
-        ];
-
-        let res = BinaryReader::new().read(data, &encoding);
-        assert_eq!(res.unwrap(), value);
-    }
 }

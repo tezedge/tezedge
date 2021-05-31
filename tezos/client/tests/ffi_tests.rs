@@ -8,7 +8,7 @@ use tezos_api::environment::{self, TezosEnvironment};
 use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
 use tezos_client::client;
 use tezos_interop::ffi;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 
 mod common;

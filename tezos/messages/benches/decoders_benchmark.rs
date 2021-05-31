@@ -16,52 +16,52 @@ use tezos_messages::p2p::encoding::{
 
 fn connection_benchmark(c: &mut Criterion) {
     let data = hex::decode(CONNECTION_DATA).unwrap();
-    bench_decode_serde_nom_raw::<ConnectionMessage>(c, "connection", data);
+    bench_decode::<ConnectionMessage>(c, "connection", &data);
 }
 
 fn ack_benchmark(c: &mut Criterion) {
     let data = hex::decode(ACK_DATA).unwrap();
-    bench_decode_serde_nom_raw::<AckMessage>(c, "ack", data)
+    bench_decode::<AckMessage>(c, "ack", &data)
 }
 
 fn get_current_branch_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("get-current-branch.msg");
-    bench_decode_serde_nom::<GetCurrentBranchMessage>(c, "get-current-branch", data);
+    bench_decode::<GetCurrentBranchMessage>(c, "get-current-branch", &data);
 }
 
 fn current_branch_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("current-branch.big.msg");
-    bench_decode_serde_nom::<CurrentBranchMessage>(c, "current-branch", data);
+    bench_decode::<CurrentBranchMessage>(c, "current-branch", &data);
 }
 
 fn get_current_head_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("get-current-head.msg");
-    bench_decode_serde_nom::<GetCurrentHeadMessage>(c, "get-current-head", data);
+    bench_decode::<GetCurrentHeadMessage>(c, "get-current-head", &data);
 }
 
 fn current_head_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("current-head.big.msg");
-    bench_decode_serde_nom::<CurrentHeadMessage>(c, "current-head", data);
+    bench_decode::<CurrentHeadMessage>(c, "current-head", &data);
 }
 
 fn get_block_headers_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("get-block-headers.msg");
-    bench_decode_serde_nom::<GetBlockHeadersMessage>(c, "get-block-header", data);
+    bench_decode::<GetBlockHeadersMessage>(c, "get-block-header", &data);
 }
 
 fn block_header_benchmark(c: &mut Criterion) {
     let data = hex::decode(BLOCK_HEADER_DATA).unwrap();
-    bench_decode_serde_nom::<BlockHeaderMessage>(c, "block-header", data);
+    bench_decode::<BlockHeaderMessage>(c, "block-header", &data);
 }
 
 fn get_operations_for_blocks_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("get-operations-for-blocks.msg");
-    bench_decode_serde_nom::<GetOperationsForBlocksMessage>(c, "get-operations-for-blocks", data);
+    bench_decode::<GetOperationsForBlocksMessage>(c, "get-operations-for-blocks", &data);
 }
 
 fn operations_for_blocks_benchmark(c: &mut Criterion) {
     let data = read_data_unwrap("operations-for-blocks.huge.msg");
-    bench_decode_serde_nom::<OperationsForBlocksMessage>(c, "operations-for-blocks", data);
+    bench_decode::<OperationsForBlocksMessage>(c, "operations-for-blocks", &data);
 }
 
 const CONNECTION_DATA: &str = "\

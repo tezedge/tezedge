@@ -941,7 +941,7 @@ mod tests {
         use storage::{
             BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
         };
-        use tezos_messages::p2p::binary_message::BinaryMessage;
+        use tezos_messages::p2p::binary_message::BinaryRead;
         use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
         macro_rules! init_block {

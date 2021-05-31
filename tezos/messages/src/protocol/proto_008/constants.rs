@@ -8,13 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::nom::NomReader;
 use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
-    has_encoding_test,
+    encoding::HasEncoding,
     types::{Mutez, Zarith},
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-use crate::non_cached_data;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -96,50 +94,6 @@ pub struct ParametricConstants {
     initial_endorsers: u16,
     delay_per_missing_endorsement: i64,
 }
-
-non_cached_data!(ParametricConstants);
-has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
-    Encoding::Obj(
-        "ParametricConstants",
-        vec![
-            Field::new("preserved_cycles", Encoding::Uint8),
-            Field::new("blocks_per_cycle", Encoding::Int32),
-            Field::new("blocks_per_commitment", Encoding::Int32),
-            Field::new("blocks_per_roll_snapshot", Encoding::Int32),
-            Field::new("blocks_per_voting_period", Encoding::Int32),
-            Field::new(
-                "time_between_blocks",
-                Encoding::dynamic(Encoding::list(Encoding::Int64)),
-            ),
-            Field::new("endorsers_per_block", Encoding::Uint16),
-            Field::new("hard_gas_limit_per_operation", Encoding::Z),
-            Field::new("hard_gas_limit_per_block", Encoding::Z),
-            Field::new("proof_of_work_threshold", Encoding::Int64),
-            Field::new("tokens_per_roll", Encoding::Mutez),
-            Field::new("michelson_maximum_type_size", Encoding::Uint16),
-            Field::new("seed_nonce_revelation_tip", Encoding::Mutez),
-            Field::new("origination_size", Encoding::Int32),
-            Field::new("block_security_deposit", Encoding::Mutez),
-            Field::new("endorsement_security_deposit", Encoding::Mutez),
-            Field::new(
-                "baking_reward_per_endorsement",
-                Encoding::dynamic(Encoding::list(Encoding::Mutez)),
-            ),
-            Field::new(
-                "endorsement_reward",
-                Encoding::dynamic(Encoding::list(Encoding::Mutez)),
-            ),
-            Field::new("cost_per_byte", Encoding::Mutez),
-            Field::new("hard_storage_limit_per_operation", Encoding::Z),
-            Field::new("test_chain_duration", Encoding::Int64),
-            Field::new("quorum_min", Encoding::Int32),
-            Field::new("quorum_max", Encoding::Int32),
-            Field::new("min_proposal_quorum", Encoding::Int32),
-            Field::new("initial_endorsers", Encoding::Uint16),
-            Field::new("delay_per_missing_endorsement", Encoding::Int64),
-        ],
-    )
-});
 
 impl ToRpcJsonMap for ParametricConstants {
     fn as_map(&self) -> HashMap<&'static str, UniversalValue> {
@@ -243,15 +197,5 @@ impl ToRpcJsonMap for ParametricConstants {
             UniversalValue::i64(self.delay_per_missing_endorsement),
         );
         ret
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use tezos_encoding::assert_encodings_match;
-
-    #[test]
-    fn test_proto_008_parametric_constants_encoding_schema() {
-        assert_encodings_match!(super::ParametricConstants);
     }
 }

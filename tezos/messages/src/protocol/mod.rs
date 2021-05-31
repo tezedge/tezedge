@@ -12,8 +12,10 @@ use strum_macros::EnumIter;
 use crypto::hash::ProtocolHash;
 use tezos_encoding::binary_reader::BinaryReaderError;
 
-use crate::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
-use crate::p2p::binary_message::BinaryMessage;
+use crate::{
+    base::rpc_support::{RpcJsonMap, ToRpcJsonMap},
+    p2p::binary_message::BinaryRead,
+};
 
 pub mod proto_001;
 pub mod proto_002;

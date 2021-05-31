@@ -3,7 +3,7 @@
 
 use crypto::hash::HashType;
 use failure::Error;
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::prelude::*;
 
 #[test]

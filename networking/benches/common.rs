@@ -26,7 +26,7 @@ use tezos_messages::p2p::{
     encoding::peer::{PeerMessage, PeerMessageResponse},
 };
 
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::limits::BLOCK_HEADER_MAX_SIZE;
 use tokio::{runtime::Builder, time::Instant};
 

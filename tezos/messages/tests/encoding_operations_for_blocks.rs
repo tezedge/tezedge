@@ -5,9 +5,10 @@ use std::convert::TryInto;
 
 use crypto::hash::HashType;
 use failure::Error;
-use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::encoding::operations_for_blocks::PathItem;
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage, encoding::operations_for_blocks::PathItem,
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::prelude::*,
 };
 
 #[test]

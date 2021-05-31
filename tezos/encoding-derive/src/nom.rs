@@ -13,7 +13,7 @@ pub fn generate_nom_read_for_data(data: &DataWithEncoding) -> TokenStream {
         #[allow(unused_parens)]
         #[allow(clippy::unnecessary_cast)]
         impl tezos_encoding::nom::NomReader for #name {
-            fn from_bytes(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+            fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
                 #nom_read(bytes)
             }
         }
@@ -26,7 +26,7 @@ fn generate_nom_read(encoding: &Encoding) -> TokenStream {
         Encoding::Primitive(primitive, span) => generage_primitive_nom_read(*primitive, *span),
         Encoding::Bytes(span) => generate_bytes_nom_read(*span),
         Encoding::Path(path) => {
-            quote_spanned!(path.span()=> <#path as tezos_encoding::nom::NomReader>::from_bytes)
+            quote_spanned!(path.span()=> <#path as tezos_encoding::nom::NomReader>::nom_read)
         }
         Encoding::Struct(encoding) => generate_struct_nom_read(encoding),
         Encoding::Enum(encoding) => generate_enum_nom_read(encoding),

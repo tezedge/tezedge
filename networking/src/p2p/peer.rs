@@ -33,7 +33,7 @@ use tezos_encoding::{
     binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
     binary_writer::BinaryWriterError,
 };
-use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage};
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 

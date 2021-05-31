@@ -7,13 +7,11 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::nom::NomReader;
 use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
-    has_encoding_test,
+    encoding::HasEncoding,
     types::{Mutez, Zarith},
 };
 
 use crate::base::rpc_support::{ToRpcJsonMap, UniversalValue};
-use crate::non_cached_data;
 
 pub const FIXED: FixedConstants = FixedConstants {
     proof_of_work_nonce_size: 8,
@@ -55,9 +53,7 @@ impl ToRpcJsonMap for FixedConstants {
 
 // ------- Parametric Constants ------- //
 
-#[derive(
-    Serialize, Deserialize, Debug, Clone, Getters, CopyGetters, Setters, HasEncoding, NomReader,
-)]
+#[derive(Serialize, Debug, Clone, Getters, CopyGetters, Setters, HasEncoding, NomReader)]
 pub struct ParametricConstants {
     #[get_copy = "pub"]
     preserved_cycles: Option<u8>,
@@ -270,86 +266,5 @@ impl ToRpcJsonMap for ParametricConstants {
 
         // }
         ret
-    }
-}
-
-non_cached_data!(ParametricConstants);
-has_encoding_test!(ParametricConstants, PARAMETRIC_CONSTANTS_ENCODING, {
-    Encoding::Obj(
-        "ParametricConstants",
-        vec![
-            Field::new("preserved_cycles", Encoding::option_field(Encoding::Uint8)),
-            Field::new("blocks_per_cycle", Encoding::option_field(Encoding::Int32)),
-            Field::new(
-                "blocks_per_commitment",
-                Encoding::option_field(Encoding::Int32),
-            ),
-            Field::new(
-                "blocks_per_roll_snapshot",
-                Encoding::option_field(Encoding::Int32),
-            ),
-            Field::new(
-                "blocks_per_voting_period",
-                Encoding::option_field(Encoding::Int32),
-            ),
-            Field::new(
-                "time_between_blocks",
-                Encoding::option_field(Encoding::dynamic(Encoding::list(Encoding::Int64))),
-            ),
-            Field::new(
-                "endorsers_per_block",
-                Encoding::option_field(Encoding::Uint16),
-            ),
-            Field::new(
-                "hard_gas_limit_per_operation",
-                Encoding::option_field(Encoding::Z),
-            ),
-            Field::new(
-                "hard_gas_limit_per_block",
-                Encoding::option_field(Encoding::Z),
-            ),
-            Field::new(
-                "proof_of_work_threshold",
-                Encoding::option_field(Encoding::Int64),
-            ),
-            Field::new("tokens_per_roll", Encoding::option_field(Encoding::Mutez)),
-            Field::new(
-                "michelson_maximum_type_size",
-                Encoding::option_field(Encoding::Uint16),
-            ),
-            Field::new(
-                "seed_nonce_revelation_tip",
-                Encoding::option_field(Encoding::Mutez),
-            ),
-            Field::new("origination_burn", Encoding::option_field(Encoding::Mutez)),
-            Field::new(
-                "block_security_deposit",
-                Encoding::option_field(Encoding::Mutez),
-            ),
-            Field::new(
-                "endorsement_security_deposit",
-                Encoding::option_field(Encoding::Mutez),
-            ),
-            Field::new("block_reward", Encoding::option_field(Encoding::Mutez)),
-            Field::new(
-                "endorsement_reward",
-                Encoding::option_field(Encoding::Mutez),
-            ),
-            Field::new("cost_per_byte", Encoding::option_field(Encoding::Mutez)),
-            Field::new(
-                "hard_storage_limit_per_operation",
-                Encoding::option_field(Encoding::Z),
-            ),
-        ],
-    )
-});
-
-#[cfg(test)]
-mod test {
-    use tezos_encoding::assert_encodings_match;
-
-    #[test]
-    fn test_proto_002_parametric_constants_encoding_schema() {
-        assert_encodings_match!(super::ParametricConstants);
     }
 }

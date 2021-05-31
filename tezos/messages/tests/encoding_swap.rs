@@ -1,9 +1,11 @@
 use crypto::hash::HashType;
 use failure::Error;
 use std::{convert::TryInto, iter};
-use tezos_messages::p2p::binary_message::{BinaryMessage, BinaryMessageNom};
-use tezos_messages::p2p::encoding::limits::*;
 use tezos_messages::p2p::encoding::swap::*;
+use tezos_messages::p2p::{
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::limits::*,
+};
 
 #[test]
 fn can_serialize_swap_max() -> Result<(), Error> {
@@ -36,7 +38,7 @@ fn can_t_serialize_swap_point_max_plus() -> Result<(), Error> {
 #[test]
 fn can_deserialize_swap_max() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_MAX)?;
-    let message = <SwapMessage as BinaryMessage>::from_bytes(encoded)?;
+    let message = SwapMessage::from_bytes(encoded)?;
     assert_eq!(message.point().len(), P2P_POINT_MAX_LENGTH);
     Ok(())
 }
@@ -44,7 +46,7 @@ fn can_deserialize_swap_max() -> Result<(), Error> {
 #[test]
 fn can_deserialize_swap_max_nom() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_MAX)?;
-    let message = <SwapMessage as BinaryMessageNom>::from_bytes(encoded)?;
+    let message = SwapMessage::from_bytes(encoded)?;
     assert_eq!(message.point().len(), P2P_POINT_MAX_LENGTH);
     Ok(())
 }
@@ -52,30 +54,28 @@ fn can_deserialize_swap_max_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_swap_point_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_POINT_OVER_MAX)?;
-    let _err = <SwapMessage as BinaryMessage>::from_bytes(&encoded).expect_err("Error is expected");
+    let _err = SwapMessage::from_bytes(&encoded).expect_err("Error is expected");
     Ok(())
 }
 
 #[test]
 fn can_t_deserialize_swap_point_max_plus_nom() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_POINT_OVER_MAX)?;
-    let _err =
-        <SwapMessage as BinaryMessageNom>::from_bytes(encoded).expect_err("Error is expected");
+    let _err = SwapMessage::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
 #[test]
 fn can_t_deserialize_swap_peer_id_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_PEER_ID_OVER_MAX)?;
-    let _err = <SwapMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
+    let _err = SwapMessage::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
 #[test]
 fn can_t_deserialize_swap_peer_id_max_plus_nom() -> Result<(), Error> {
     let encoded = hex::decode(data::SWAP_MESSAGE_PEER_ID_OVER_MAX)?;
-    let _err =
-        <SwapMessage as BinaryMessageNom>::from_bytes(encoded).expect_err("Error is expected");
+    let _err = SwapMessage::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 

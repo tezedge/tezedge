@@ -1357,16 +1357,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fuzz_encoding"
-version = "1.5.0"
-dependencies = [
- "honggfuzz",
- "log",
- "rand 0.7.3",
- "tezos_encoding",
-]
-
-[[package]]
 name = "fuzz_metadata_message"
 version = "1.5.0"
 dependencies = [
@@ -3463,6 +3453,7 @@ dependencies = [
  "merge",
  "networking",
  "nix 0.19.1",
+ "nom 6.1.2",
  "page_size",
  "r2d2",
  "rand 0.7.3",
@@ -3907,6 +3898,7 @@ dependencies = [
  "failure",
  "hex",
  "lazy_static",
+ "nom 6.1.2",
  "ocaml-interop",
  "serde 1.0.123",
  "serde_json",
@@ -3914,6 +3906,7 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos-sys",
+ "tezos_encoding",
  "tezos_messages",
 ]
 

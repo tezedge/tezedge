@@ -15,7 +15,7 @@ use crypto::{
 use storage::context::{ContextApi, TezedgeContext};
 use storage::{context_key, num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 
 use crate::merge_slices;
 use crate::services::protocol::ContextProtocolParam;

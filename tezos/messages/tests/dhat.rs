@@ -3,7 +3,7 @@ use std::{fs::File, io::Read, path::PathBuf};
 use failure::{Error, ResultExt};
 use tezos_encoding::binary_reader::BinaryReaderError;
 use tezos_messages::p2p::{
-    binary_message::{BinaryMessageNom, BinaryMessageSerde},
+    binary_message::BinaryRead,
     encoding::{
         ack::AckMessage,
         block_header::{BlockHeaderMessage, GetBlockHeadersMessage},
@@ -94,35 +94,17 @@ fn decode_operations_for_blocks<F: Decoder<OperationsForBlocksMessage>>(decoder:
 }
 
 #[test]
-fn all_decode_serde() {
-    decode_connection(<ConnectionMessage as BinaryMessageSerde>::from_bytes);
-    decode_ack(<AckMessage as BinaryMessageSerde>::from_bytes);
-    decode_get_current_branch(<GetCurrentBranchMessage as BinaryMessageSerde>::from_bytes);
-    decode_current_branch(<CurrentBranchMessage as BinaryMessageSerde>::from_bytes);
-    decode_get_current_head(<GetCurrentHeadMessage as BinaryMessageSerde>::from_bytes);
-    decode_current_head(<CurrentHeadMessage as BinaryMessageSerde>::from_bytes);
-    decode_get_block_headers(<GetBlockHeadersMessage as BinaryMessageSerde>::from_bytes);
-    decode_block_header(<BlockHeaderMessage as BinaryMessageSerde>::from_bytes);
-    decode_get_operations_for_blocks(
-        <GetOperationsForBlocksMessage as BinaryMessageSerde>::from_bytes,
-    );
-    decode_operations_for_blocks(<OperationsForBlocksMessage as BinaryMessageSerde>::from_bytes);
-}
-
-#[test]
-fn all_decode_nom() {
-    decode_connection(<ConnectionMessage as BinaryMessageNom>::from_bytes);
-    decode_ack(<AckMessage as BinaryMessageNom>::from_bytes);
-    decode_get_current_branch(<GetCurrentBranchMessage as BinaryMessageNom>::from_bytes);
-    decode_current_branch(<CurrentBranchMessage as BinaryMessageNom>::from_bytes);
-    decode_get_current_head(<GetCurrentHeadMessage as BinaryMessageNom>::from_bytes);
-    decode_current_head(<CurrentHeadMessage as BinaryMessageNom>::from_bytes);
-    decode_get_block_headers(<GetBlockHeadersMessage as BinaryMessageNom>::from_bytes);
-    decode_block_header(<BlockHeaderMessage as BinaryMessageNom>::from_bytes);
-    decode_get_operations_for_blocks(
-        <GetOperationsForBlocksMessage as BinaryMessageNom>::from_bytes,
-    );
-    decode_operations_for_blocks(<OperationsForBlocksMessage as BinaryMessageNom>::from_bytes);
+fn all_decode() {
+    decode_connection(ConnectionMessage::from_bytes);
+    decode_ack(AckMessage::from_bytes);
+    decode_get_current_branch(GetCurrentBranchMessage::from_bytes);
+    decode_current_branch(CurrentBranchMessage::from_bytes);
+    decode_get_current_head(GetCurrentHeadMessage::from_bytes);
+    decode_current_head(CurrentHeadMessage::from_bytes);
+    decode_get_block_headers(GetBlockHeadersMessage::from_bytes);
+    decode_block_header(BlockHeaderMessage::from_bytes);
+    decode_get_operations_for_blocks(GetOperationsForBlocksMessage::from_bytes);
+    decode_operations_for_blocks(OperationsForBlocksMessage::from_bytes);
 }
 
 const CONNECTION_DATA: &str = "\

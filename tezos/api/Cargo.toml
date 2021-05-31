@@ -15,9 +15,11 @@ serde_json = "1.0"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 strum = "0.20"
 strum_macros = "0.20"
+nom = "6.1.2"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos-sys = { path = "../sys" }
+tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]

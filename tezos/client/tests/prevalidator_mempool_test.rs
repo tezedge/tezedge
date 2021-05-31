@@ -12,7 +12,7 @@ use tezos_api::ffi::{
     TezosRuntimeConfiguration, ValidateOperationRequest,
 };
 use tezos_client::client;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 
 mod common;
@@ -165,7 +165,7 @@ mod test_data {
 
     use crypto::hash::ContextHash;
     use tezos_api::environment::TezosEnvironment;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Alphanet;

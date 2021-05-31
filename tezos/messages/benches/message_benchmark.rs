@@ -5,7 +5,7 @@ use std::env;
 use std::path::Path;
 
 use bytes::Buf;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use csv;
 use hex::FromHex;
 use serde::{Deserialize, Deserializer};
@@ -13,20 +13,12 @@ use serde::{Deserialize, Deserializer};
 use crypto::crypto_box::PrecomputedKey;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey},
-    hash::HashType,
     nonce::{generate_nonces, NoncePair},
     CryptoError,
 };
-use tezos_encoding::{
-    binary_reader::BinaryReader,
-    de::from_value as deserialize_from_value,
-    encoding::{Encoding, HasEncoding},
-};
 use tezos_messages::p2p::{
-    binary_message::cache::CachedData,
-    binary_message::{BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES},
+    binary_message::{BinaryChunk, BinaryChunkError, BinaryRead, CONTENT_LENGTH_FIELD_BYTES},
     encoding::metadata::MetadataMessage,
-    encoding::operation::Operation,
     encoding::peer::PeerMessageResponse,
     encoding::prelude::ConnectionMessage,
 };
@@ -72,33 +64,6 @@ struct Message {
     direction: TxRx,
     #[serde(deserialize_with = "hex_to_buffer")]
     message: Vec<u8>,
-}
-
-/// deserialize_benchmark mimics execution of main operations in BinaryMessage::from_bytes
-pub fn deserialize_benchmark(c: &mut Criterion) {
-    let message_bytes = hex::decode("0090304939374e4f0f260928d4879fd5f359b4ff146f3fd37142436fb8ce1ab57af68648964efff6ca56a82b61185aec6538fa000125a2a1468416d65247660efcba15111467b9feab07dfc3dafac2d2a8c4c6dbca0b97b7239bcc4bd7ab2229b9c506022870539f6505ff56af81e5d344baa82465bae2a023afa5de27a6600e4dc85b050471ef8c3d887bb7a65700caaa98").unwrap();
-    c.bench_function("operation_from_bytes", |b| {
-        b.iter(|| Operation::from_bytes(black_box(message_bytes.clone())))
-    });
-    c.bench_function("from_bytes_reader", |b| {
-        b.iter(|| {
-            BinaryReader::new()
-                .read(black_box(message_bytes.clone()), &Operation::encoding())
-                .unwrap()
-        })
-    });
-    let value = BinaryReader::new()
-        .read(black_box(message_bytes.clone()), &Operation::encoding())
-        .unwrap();
-    c.bench_function("from_bytes_deserialize", |b| {
-        b.iter(|| deserialize_from_value::<Operation>(black_box(&value)).unwrap())
-    });
-    let mut msg: Operation = deserialize_from_value(&value).unwrap();
-    if let Some(cache_writer) = msg.cache_writer() {
-        c.bench_function("from_bytes_write_cache", |b| {
-            b.iter(|| cache_writer.put(black_box(&message_bytes)))
-        });
-    }
 }
 
 /// decode_stream benchmark reads a sample communication between two nodes and performs
@@ -288,36 +253,10 @@ where
         .and_then(|string| Vec::from_hex(&string).map_err(|err| Error::custom(err.to_string())))
 }
 
-/// decode_value benchmarks measure raw performance of BinaryReader's decode_value function.
-pub fn decode_value_hash_benchmark(c: &mut Criterion) {
-    let mut buf = [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31,
-    ]
-    .as_ref();
-    let br = BinaryReader::new();
-    c.bench_function("decode_value_hash", |b| {
-        b.iter(|| br.read(&mut buf, &Encoding::Hash(HashType::PublicKeyEd25519)))
-    });
-}
-
-/// decode_value benchmarks measure raw performance of BinaryReader's decode_value function.
-pub fn decode_value_bytes_benchmark(c: &mut Criterion) {
-    let mut buf = [
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31,
-    ]
-    .as_ref();
-    let br = BinaryReader::new();
-    c.bench_function("decode_value_bytes", |b| {
-        b.iter(|| br.read(&mut buf, &Encoding::Bytes))
-    });
-}
-
 criterion_group! {
     name = benches;
     config = Criterion::default();
-    targets = deserialize_benchmark, decode_value_hash_benchmark, decode_value_bytes_benchmark, decode_stream, simulate_bootstrap_crypto
+    targets = decode_stream, simulate_bootstrap_crypto
 }
 
 criterion_main!(benches);

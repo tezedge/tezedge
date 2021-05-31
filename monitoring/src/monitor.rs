@@ -17,7 +17,7 @@ use shell::subscription::{
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryWrite;
 
 use crate::websocket::handler_messages::HandlerMessage;
 use crate::{

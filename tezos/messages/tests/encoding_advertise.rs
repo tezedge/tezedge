@@ -5,25 +5,16 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use failure::Error;
 
+use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage, encoding::limits::ADVERTISE_ID_LIST_MAX_LENGTH,
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::limits::ADVERTISE_ID_LIST_MAX_LENGTH,
 };
-use tezos_messages::p2p::{binary_message::BinaryMessageNom, encoding::prelude::*};
 
 #[test]
 fn can_deserialize_advertise() -> Result<(), Error> {
     let message_bytes = hex::decode("0000001e5b666538303a3a653832383a323039643a3230653a633061655d3a333735000000133233342e3132332e3132342e39313a39383736000000133132332e3132332e3132342e32313a39383736")?;
-    let message = <AdvertiseMessage as BinaryMessage>::from_bytes(message_bytes)?;
-    assert_eq!(3, message.id().len());
-    assert_eq!("[fe80::e828:209d:20e:c0ae]:375", &message.id()[0]);
-    assert_eq!("234.123.124.91:9876", &message.id()[1]);
-    Ok(assert_eq!("123.123.124.21:9876", &message.id()[2]))
-}
-
-#[test]
-fn can_deserialize_advertise_nom() -> Result<(), Error> {
-    let message_bytes = hex::decode("0000001e5b666538303a3a653832383a323039643a3230653a633061655d3a333735000000133233342e3132332e3132342e39313a39383736000000133132332e3132332e3132342e32313a39383736")?;
-    let message = <AdvertiseMessage as BinaryMessageNom>::from_bytes(message_bytes)?;
+    let message = AdvertiseMessage::from_bytes(message_bytes)?;
     assert_eq!(3, message.id().len());
     assert_eq!("[fe80::e828:209d:20e:c0ae]:375", &message.id()[0]);
     assert_eq!("234.123.124.91:9876", &message.id()[1]);
@@ -78,19 +69,7 @@ fn can_t_serialize_max_plus_advertise() {
 #[test]
 fn can_deserialize_advertize_max() -> Result<(), Error> {
     let encoded = hex::decode(test_data::ADVERTISE_ENCODED_MAX)?;
-    let message = <AdvertiseMessage as BinaryMessage>::from_bytes(encoded)?;
-    assert_eq!(ADVERTISE_ID_LIST_MAX_LENGTH, message.id().len());
-    assert_eq!(
-        "[fe80:e828:209d:20ed:c0ae:fe80:e828:209d]:12345",
-        &message.id()[0]
-    );
-    Ok(())
-}
-
-#[test]
-fn can_deserialize_advertize_max_nom() -> Result<(), Error> {
-    let encoded = hex::decode(test_data::ADVERTISE_ENCODED_MAX)?;
-    let message = <AdvertiseMessage as BinaryMessageNom>::from_bytes(encoded)?;
+    let message = AdvertiseMessage::from_bytes(encoded)?;
     assert_eq!(ADVERTISE_ID_LIST_MAX_LENGTH, message.id().len());
     assert_eq!(
         "[fe80:e828:209d:20ed:c0ae:fe80:e828:209d]:12345",
@@ -102,16 +81,7 @@ fn can_deserialize_advertize_max_nom() -> Result<(), Error> {
 #[test]
 fn can_t_deserialize_advertize_max_plus() -> Result<(), Error> {
     let encoded = hex::decode(test_data::ADVERTISE_ENCODED_OVER_MAX)?;
-    let _err =
-        <AdvertiseMessage as BinaryMessage>::from_bytes(encoded).expect_err("Error is expected");
-    Ok(())
-}
-
-#[test]
-fn can_t_deserialize_advertize_max_plus_nom() -> Result<(), Error> {
-    let encoded = hex::decode(test_data::ADVERTISE_ENCODED_OVER_MAX)?;
-    let _err =
-        <AdvertiseMessage as BinaryMessageNom>::from_bytes(encoded).expect_err("Error is expected");
+    let _err = AdvertiseMessage::from_bytes(encoded).expect_err("Error is expected");
     Ok(())
 }
 
