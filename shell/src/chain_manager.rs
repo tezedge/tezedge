@@ -40,7 +40,7 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::mempool::mempool_channel::{
-    MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
+    MempoolChannelMsg, MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
 };
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::CurrentMempoolStateStorageRef;
@@ -677,20 +677,32 @@ impl ChainManager {
 
                                     // if increasing, propage to peer_branch_bootstrapper to add to the branch for increase and download latest data
                                     if was_updated {
-                                        if let Some(peer_branch_bootstrapper) =
-                                            chain_state.peer_branch_bootstrapper()
-                                        {
-                                            let message_current_head = BlockHeaderWithHash::new(
-                                                message.current_block_header().clone(),
-                                            )?;
+                                        match chain_state.peer_branch_bootstrapper() {
+                                            Some(peer_branch_bootstrapper) => {
+                                                // check if we started branch bootstrapper, try to update current_head to peer's pipelines
+                                                let message_current_head =
+                                                    BlockHeaderWithHash::new(
+                                                        message.current_block_header().clone(),
+                                                    )?;
 
-                                            peer_branch_bootstrapper.tell(
-                                                UpdateBranchBootstraping::new(
-                                                    peer.peer_id.clone(),
-                                                    message_current_head,
-                                                ),
-                                                None,
-                                            );
+                                                peer_branch_bootstrapper.tell(
+                                                    UpdateBranchBootstraping::new(
+                                                        peer.peer_id.clone(),
+                                                        message_current_head,
+                                                    ),
+                                                    None,
+                                                );
+                                            }
+                                            None => {
+                                                // if not started, we need to ask for CurrentBranch of peer
+                                                tell_peer(
+                                                    GetCurrentBranchMessage::new(
+                                                        message.chain_id().clone(),
+                                                    )
+                                                    .into(),
+                                                    peer,
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -1194,6 +1206,43 @@ impl ChainManager {
                        "num_of_peers_for_bootstrap_threshold" => current_bootstrap_state.num_of_peers_for_bootstrap_threshold(),
                        "remote_best_known_level" => remote_best_known_level,
                        "reached_on_level" => chain_manager_current_level);
+                drop(current_bootstrap_state);
+
+                // here we reached bootstrapped state, so we need to do more things
+                // 1. reset mempool with current_head
+                // 2. advertise current_head to network
+                if let Some(current_head) = self.current_head.local.read()?.as_ref() {
+                    // get current header
+                    if let Some(header) = self.block_storage.get(current_head.block_hash())? {
+                        let block = Arc::new(header);
+
+                        // notify mempool if enabled
+                        if !self.p2p_disable_mempool {
+                            self.mempool_channel.tell(
+                                Publish {
+                                    msg: MempoolChannelMsg::ResetMempool(block.clone()),
+                                    topic: MempoolChannelTopic.into(),
+                                },
+                                None,
+                            );
+                        }
+
+                        // advertise our current_head
+                        self.advertise_current_head_to_p2p(
+                            self.chain_state.get_chain_id(),
+                            block.header.clone(),
+                            Mempool::default(),
+                            false,
+                        );
+                    } else {
+                        return Err(StateError::ProcessingError {
+                            reason: format!(
+                                "BlockHeader ({}) was not found!",
+                                current_head.block_hash().to_base58_check()
+                            ),
+                        });
+                    }
+                }
             }
         }
 
