@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS blocks (
   checkout_time_irmin REAL,
   checkout_time_tezedge REAL,
   commit_time_irmin REAL,
-  commit_time_tezedge REAL
+  commit_time_tezedge REAL,
+  timestamp_secs INTEGER,
+  timestamp_nanos INTEGER,
+  duration_millis INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS operations (
@@ -48,29 +51,32 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
 
   root TEXT NOT NULL,
 
-  actions_count INTEGER DEFAULT 0,
+  tezedge_count INTEGER DEFAULT 0,
+  irmin_count INTEGER DEFAULT 0,
 
-  tezedge_mean_time REAL DEFAULT 0.0,
-  tezedge_max_time REAL DEFAULT 0.0,
-  tezedge_total_time REAL DEFAULT 0.0,
+  tezedge_mean_time REAL DEFAULT NULL,
+  tezedge_max_time REAL DEFAULT NULL,
+  tezedge_total_time REAL DEFAULT NULL,
 
-  tezedge_mem_time REAL DEFAULT 0.0,
-  tezedge_find_time REAL DEFAULT 0.0,
-  tezedge_find_tree_time REAL DEFAULT 0.0,
-  tezedge_add_time REAL DEFAULT 0.0,
-  tezedge_add_tree_time REAL DEFAULT 0.0,
-  tezedge_remove_time REAL DEFAULT 0.0,
+  tezedge_mem_time REAL DEFAULT NULL,
+  tezedge_mem_tree_time REAL DEFAULT NULL,
+  tezedge_find_time REAL DEFAULT NULL,
+  tezedge_find_tree_time REAL DEFAULT NULL,
+  tezedge_add_time REAL DEFAULT NULL,
+  tezedge_add_tree_time REAL DEFAULT NULL,
+  tezedge_remove_time REAL DEFAULT NULL,
 
-  irmin_mean_time REAL DEFAULT 0.0,
-  irmin_max_time REAL DEFAULT 0.0,
-  irmin_total_time REAL DEFAULT 0.0,
+  irmin_mean_time REAL DEFAULT NULL,
+  irmin_max_time REAL DEFAULT NULL,
+  irmin_total_time REAL DEFAULT NULL,
 
-  irmin_mem_time REAL DEFAULT 0.0,
-  irmin_find_time REAL DEFAULT 0.0,
-  irmin_find_tree_time REAL DEFAULT 0.0,
-  irmin_add_time REAL DEFAULT 0.0,
-  irmin_add_tree_time REAL DEFAULT 0.0,
-  irmin_remove_time REAL DEFAULT 0.0,
+  irmin_mem_time REAL DEFAULT NULL,
+  irmin_mem_tree_time REAL DEFAULT NULL,
+  irmin_find_time REAL DEFAULT NULL,
+  irmin_find_tree_time REAL DEFAULT NULL,
+  irmin_add_time REAL DEFAULT NULL,
+  irmin_add_tree_time REAL DEFAULT NULL,
+  irmin_remove_time REAL DEFAULT NULL,
 
   block_id INTEGER DEFAULT NULL,
   FOREIGN KEY(block_id) REFERENCES blocks(id)
