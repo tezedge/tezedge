@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
   tezedge_total_time REAL DEFAULT NULL,
 
   tezedge_mem_time REAL DEFAULT NULL,
+  tezedge_mem_tree_time REAL DEFAULT NULL,
   tezedge_find_time REAL DEFAULT NULL,
   tezedge_find_tree_time REAL DEFAULT NULL,
   tezedge_add_time REAL DEFAULT NULL,
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
   irmin_total_time REAL DEFAULT NULL,
 
   irmin_mem_time REAL DEFAULT NULL,
+  irmin_mem_tree_time REAL DEFAULT NULL,
   irmin_find_time REAL DEFAULT NULL,
   irmin_find_tree_time REAL DEFAULT NULL,
   irmin_add_time REAL DEFAULT NULL,

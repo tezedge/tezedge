@@ -148,6 +148,7 @@ fn make_context_stats_impl(
                 };
                 match action_name {
                     "mem" => &mut entry.mem,
+                    "mem_tree" => &mut entry.mem_tree,
                     "find" => &mut entry.find,
                     "find_tree" => &mut entry.find_tree,
                     "add" => &mut entry.add,
@@ -284,7 +285,9 @@ fn make_block_stats_impl(
           irmin_find_time,
           irmin_find_tree_time,
           irmin_remove_time,
-          irmin_count
+          irmin_count,
+          tezedge_mem_tree_time,
+          irmin_mem_tree_time
         FROM
           block_action_stats
         WHERE
@@ -329,6 +332,8 @@ fn make_block_stats_impl(
             irmin_find: row.get(17)?,
             irmin_find_tree: row.get(18)?,
             irmin_remove: row.get(19)?,
+            tezedge_mem_tree: row.get(21)?,
+            irmin_mem_tree: row.get(22)?,
         };
 
         map.insert(root, action_stats);

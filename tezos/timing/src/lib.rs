@@ -19,6 +19,7 @@ pub const FILENAME_DB: &str = "context_stats.db";
 #[derive(Debug)]
 pub enum ActionKind {
     Mem,
+    MemTree,
     Find,
     FindTree,
     Add,
@@ -30,6 +31,7 @@ impl ActionKind {
     fn to_str(&self) -> &'static str {
         match self {
             ActionKind::Mem => "mem",
+            ActionKind::MemTree => "mem_tree",
             ActionKind::Find => "find",
             ActionKind::FindTree => "find_tree",
             ActionKind::Add => "add",
@@ -146,6 +148,7 @@ pub struct ActionStatsWithRange {
     pub total_time: f64,
     pub actions_count: usize,
     pub mem: RangeStats,
+    pub mem_tree: RangeStats,
     pub find: RangeStats,
     pub find_tree: RangeStats,
     pub add: RangeStats,
@@ -202,12 +205,14 @@ pub struct ActionData {
 pub struct ActionStats {
     pub data: ActionData,
     pub tezedge_mem: f64,
+    pub tezedge_mem_tree: f64,
     pub tezedge_find: f64,
     pub tezedge_find_tree: f64,
     pub tezedge_add: f64,
     pub tezedge_add_tree: f64,
     pub tezedge_remove: f64,
     pub irmin_mem: f64,
+    pub irmin_mem_tree: f64,
     pub irmin_find: f64,
     pub irmin_find_tree: f64,
     pub irmin_add: f64,
@@ -617,6 +622,7 @@ impl Timing {
             let time = *time;
             let action_stats = match action.action_name {
                 ActionKind::Mem => &mut entry.mem,
+                ActionKind::MemTree => &mut entry.mem_tree,
                 ActionKind::Find => &mut entry.find,
                 ActionKind::FindTree => &mut entry.find_tree,
                 ActionKind::Add => &mut entry.add,
@@ -643,6 +649,7 @@ impl Timing {
 
         let (value_tezedge, value_irmin) = match action.action_name {
             ActionKind::Mem => (&mut entry.tezedge_mem, &mut entry.irmin_mem),
+            ActionKind::MemTree => (&mut entry.tezedge_mem_tree, &mut entry.irmin_mem_tree),
             ActionKind::Find => (&mut entry.tezedge_find, &mut entry.irmin_find),
             ActionKind::FindTree => (&mut entry.tezedge_find_tree, &mut entry.irmin_find_tree),
             ActionKind::Add => (&mut entry.tezedge_add, &mut entry.irmin_add),
@@ -683,13 +690,13 @@ impl Timing {
                 "
             INSERT INTO block_action_stats
               (root, block_id, tezedge_count, irmin_count,
-               tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_find_time,
+               tezedge_mean_time, tezedge_max_time, tezedge_total_time, tezedge_mem_time, tezedge_mem_tree_time, tezedge_find_time,
                tezedge_find_tree_time, tezedge_add_time, tezedge_add_tree_time, tezedge_remove_time,
                irmin_mean_time, irmin_max_time, irmin_total_time, irmin_mem_time, irmin_find_time,
                irmin_find_tree_time, irmin_add_time, irmin_add_tree_time, irmin_remove_time)
             VALUES
               (:root, :block_id, :tezedge_count, :irmin_count,
-               :tezedge_mean_time, :tezedge_max_time, :tezedge_total_time, :tezedge_mem_time, :tezedge_find_time,
+               :tezedge_mean_time, :tezedge_max_time, :tezedge_total_time, :tezedge_mem_time, :tezedge_mem_tree_time, :tezedge_find_time,
                :tezedge_find_tree_time, :tezedge_add_time, :tezedge_add_tree_time, :tezedge_remove_time,
                :irmin_mean_time, :irmin_max_time, :irmin_total_time, :irmin_mem_time, :irmin_find_time,
                :irmin_find_tree_time, :irmin_add_time, :irmin_add_tree_time, :irmin_remove_time)
@@ -708,12 +715,14 @@ impl Timing {
                 ":irmin_max_time": action_stats.data.irmin_max_time,
                 ":irmin_total_time": action_stats.data.irmin_total_time,
                 ":tezedge_mem_time": action_stats.tezedge_mem,
+                ":tezedge_mem_tree_time": action_stats.tezedge_mem_tree,
                 ":tezedge_add_time": action_stats.tezedge_add,
                 ":tezedge_add_tree_time": action_stats.tezedge_add_tree,
                 ":tezedge_find_time": action_stats.tezedge_find,
                 ":tezedge_find_tree_time": action_stats.tezedge_find_tree,
                 ":tezedge_remove_time": action_stats.tezedge_remove,
                 ":irmin_mem_time": action_stats.irmin_mem,
+                ":irmin_mem_tree_time": action_stats.irmin_mem_tree,
                 ":irmin_add_time": action_stats.irmin_add,
                 ":irmin_add_tree_time": action_stats.irmin_add_tree,
                 ":irmin_find_time": action_stats.irmin_find,
@@ -786,6 +795,7 @@ impl Timing {
                 let root = root.as_str();
 
                 self.insert_action_stats(name, root, "mem", &action_stats.mem)?;
+                self.insert_action_stats(name, root, "mem_tree", &action_stats.mem_tree)?;
                 self.insert_action_stats(name, root, "find", &action_stats.find)?;
                 self.insert_action_stats(name, root, "find_tree", &action_stats.find_tree)?;
                 self.insert_action_stats(name, root, "add", &action_stats.add)?;
