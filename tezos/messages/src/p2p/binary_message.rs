@@ -4,14 +4,19 @@
 use bytes::{Buf, BufMut};
 use failure::Fail;
 use failure::_core::convert::TryFrom;
-use nom::Finish;
+use nom::{
+    combinator::{all_consuming, complete},
+    Finish,
+};
 use serde::Serialize;
 
 use crypto::blake2b::{self, Blake2bError};
 use crypto::hash::Hash;
-use tezos_encoding::nom::{error::convert_error, NomError, NomInput};
-use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
-use tezos_encoding::{binary_reader::BinaryReaderErrorKind, binary_writer};
+use tezos_encoding::nom::{error::convert_error, NomError, NomInput, NomResult};
+use tezos_encoding::{
+    binary_reader::BinaryReaderError,
+    binary_writer::{self, BinaryWriterError},
+};
 
 use crate::p2p::binary_message::MessageHashError::SerializationError;
 
@@ -53,17 +58,7 @@ where
 {
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
-        let (bytes, myself) =
-            // `complete` combinator converts `Incomplete` into `Error`.
-            nom::combinator::complete(T::nom_read)(buf.as_ref())
-            // `finish` flattens the nom::Err for easier processing.
-                .finish()
-                .map_err(|error| map_nom_error(buf.as_ref(), error))?;
-        if bytes.len() > 0 {
-            Err(BinaryReaderErrorKind::Overflow { bytes: bytes.len() }.into())
-        } else {
-            Ok(myself)
-        }
+        all_consuming_complete_input(T::nom_read, buf.as_ref())
     }
 }
 
@@ -73,12 +68,45 @@ pub trait SizeFromChunk {
     fn size_from_chunk(bytes: impl AsRef<[u8]>) -> Result<usize, BinaryReaderError>;
 }
 
+/// Applies nom parser `parser` to the input, assuming that input is complete.
+pub fn complete_input<'a, T>(
+    parser: impl FnMut(NomInput<'a>) -> NomResult<'a, T>,
+    input: NomInput<'a>,
+) -> Result<T, BinaryReaderError> {
+    // - `complete` combinator assumes that underlying parsing has complete input,
+    //   converting ``Incomplete` into `Error`.
+    // - `finish` flattens `nom::Err` into underlying error for easier processing.
+    let (_, output) = complete(parser)(input)
+        .finish()
+        .map_err(|error| map_nom_error(input, error))?;
+    Ok(output)
+}
+
+/// Applies nom parser `parser` to the input, assuming that input is complete and
+/// ensuring that it is fully consumed.
+pub fn all_consuming_complete_input<T>(
+    parser: impl FnMut(NomInput) -> NomResult<T>,
+    input: NomInput,
+) -> Result<T, BinaryReaderError> {
+    // - `all_consuming` combinator ensures that all input is consumed,
+    //   reporting error otherwise.
+    // - `complete` combinator assumes that underlying parsing has complete input,
+    //   converting ``Incomplete` into `Error`.
+    // - `finish` flattens `nom::Err` into underlying error for easier processing.
+    let (bytes, output) = all_consuming(complete(parser))(input)
+        .finish()
+        .map_err(|error| map_nom_error(input, error))?;
+    debug_assert!(
+        bytes.is_empty(),
+        "Successful parsing should consume all bytes"
+    );
+    Ok(output)
+}
+
 /// Maps input and nom error into printable version.
-fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderError {
-    BinaryReaderErrorKind::NomError {
-        error: convert_error(input, error),
-    }
-    .into()
+pub(crate) fn map_nom_error(input: NomInput, error: NomError) -> BinaryReaderError {
+    let unsupported_tag = error.is_unsupported_tag();
+    (convert_error(input, error), unsupported_tag).into()
 }
 
 /// Represents binary raw encoding received from peer node.

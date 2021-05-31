@@ -29,10 +29,7 @@ use crypto::{
     nonce::{self, Nonce, NoncePair},
     proof_of_work::check_proof_of_work,
 };
-use tezos_encoding::{
-    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
-    binary_writer::BinaryWriterError,
-};
+use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryChunkError, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
@@ -598,15 +595,14 @@ async fn begin_process_incoming(
                         );
                     }
                 }
-                Err(StreamError::DeserializationError { error }) => match error.kind() {
-                    BinaryReaderErrorKind::UnsupportedTag { tag } => {
-                        warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
-                    }
-                    _ => {
+                Err(StreamError::DeserializationError { error }) => {
+                    if error.is_unsupported_tag() {
+                        warn!(log, "Messages with unsupported tags are ignored");
+                    } else {
                         warn!(log, "Failed to read peer message"; "reason" => StreamError::DeserializationError{ error });
                         break;
                     }
-                },
+                }
                 Err(e) => {
                     warn!(log, "Failed to read peer message"; "reason" => e);
                     break;

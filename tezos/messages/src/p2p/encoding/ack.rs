@@ -14,10 +14,10 @@ use serde::{Deserialize, Serialize};
 
 use tezos_encoding::{
     encoding::HasEncoding,
-    nom::{size, NomReader, NomResult},
+    nom::{size, NomReader},
 };
 
-use crate::p2p::binary_message::SizeFromChunk;
+use crate::p2p::binary_message::{complete_input, SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
@@ -36,16 +36,18 @@ impl SizeFromChunk for AckMessage {
         bytes: impl AsRef<[u8]>,
     ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
         let bytes = bytes.as_ref();
-        let res: NomResult<usize> = alt((
-            preceded(tag(0x00u8.to_be_bytes()), success(1)),
-            preceded(tag(0xffu8.to_be_bytes()), success(1)),
-            preceded(
-                tag(0x01u8.to_be_bytes()),
-                map(preceded(take(2usize), size), |s| (s as usize) + 3),
-            ),
-        ))(bytes);
-        let res = res.map(|(_, size)| size)?;
-        Ok(res)
+        let size = complete_input(
+            alt((
+                preceded(tag(0x00u8.to_be_bytes()), success(1)),
+                preceded(tag(0xffu8.to_be_bytes()), success(1)),
+                preceded(
+                    tag(0x01u8.to_be_bytes()),
+                    map(preceded(take(2usize), size), |s| (s as usize) + 3),
+                ),
+            )),
+            bytes,
+        )?;
+        Ok(size as usize)
     }
 }
 

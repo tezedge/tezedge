@@ -20,10 +20,7 @@ use tokio::net::TcpStream;
 use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
 use crypto::CryptoError;
-use tezos_encoding::{
-    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
-    binary_writer::BinaryWriterError,
-};
+use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::p2p::binary_message::{
     BinaryChunk, BinaryChunkError, BinaryMessage, SizeFromChunk, CONTENT_LENGTH_FIELD_BYTES,
 };
@@ -321,16 +318,7 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
                     if input_size <= input_data.len() {
                         match M::from_bytes(&input_data) {
                             Ok(message) => break Ok(message),
-                            Err(e) => match e.kind() {
-                                BinaryReaderErrorKind::Underflow { bytes } => {
-                                    println!("underflow {} bytes", bytes);
-                                    break Err(e.into());
-                                }
-                                _ => {
-                                    println!("error {}", e);
-                                    break Err(e.into());
-                                }
-                            },
+                            Err(e) => break Err(e.into()),
                         }
                     }
                 }

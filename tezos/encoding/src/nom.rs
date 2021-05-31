@@ -70,7 +70,7 @@ pub mod error {
     }
 
     impl<'a> DecodeError<NomInput<'a>> {
-        pub fn add_field(self, name: &'static str) -> Self {
+        pub(crate) fn add_field(self, name: &'static str) -> Self {
             Self {
                 input: <&[u8]>::clone(&self.input),
                 kind: DecodeErrorKind::Field(name),
@@ -78,7 +78,7 @@ pub mod error {
             }
         }
 
-        pub fn add_variant(self, name: &'static str) -> Self {
+        pub(crate) fn add_variant(self, name: &'static str) -> Self {
             Self {
                 input: <&[u8]>::clone(&self.input),
                 kind: DecodeErrorKind::Variant(name),
@@ -86,11 +86,18 @@ pub mod error {
             }
         }
 
-        pub fn limit(input: NomInput<'a>, kind: BoundedEncodingKind) -> Self {
+        pub(crate) fn limit(input: NomInput<'a>, kind: BoundedEncodingKind) -> Self {
             Self {
                 input,
                 kind: DecodeErrorKind::Boundary(kind),
                 other: None,
+            }
+        }
+
+        pub fn is_unsupported_tag(&self) -> bool {
+            match self.kind {
+                DecodeErrorKind::Nom(ErrorKind::Tag) => true,
+                _ => false,
             }
         }
     }
