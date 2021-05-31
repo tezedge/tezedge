@@ -1,16 +1,19 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
 use crypto::hash::BlockHash;
 use rusqlite::{named_params, Connection, OptionalExtension};
 use serde::Serialize;
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, convert::TryInto, path::PathBuf};
 
 use tezos_timing::{
     hash_to_string, ActionData, ActionStats, ActionStatsWithRange, RangeStats, FILENAME_DB,
 };
 
-#[derive(Debug, Serialize, Default)]
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct BlockStats {
     actions_count: usize,
+    date: DateTime<Utc>,
+    duration_millis: u64,
     tezedge_checkout_context_time: f64,
     tezedge_commit_context_time: f64,
     irmin_checkout_context_time: f64,
@@ -229,6 +232,9 @@ fn make_block_stats_impl(
         tezedge_commit_time,
         irmin_checkout_time,
         irmin_commit_time,
+        duration_millis,
+        timestamp_secs,
+        timestamp_nanos,
     ) = match sql
         .query_row(
             "
@@ -238,7 +244,10 @@ fn make_block_stats_impl(
       checkout_time_tezedge,
       commit_time_tezedge,
       checkout_time_irmin,
-      commit_time_irmin
+      commit_time_irmin,
+      duration_millis,
+      timestamp_secs,
+      timestamp_nanos
     FROM
       blocks
     WHERE
@@ -253,6 +262,9 @@ fn make_block_stats_impl(
                     row.get::<_, f64>(3)?,
                     row.get::<_, f64>(4)?,
                     row.get::<_, f64>(5)?,
+                    row.get::<_, u64>(6)?,
+                    row.get::<_, u64>(7)?,
+                    row.get::<_, u32>(8)?,
                 ))
             },
         )
@@ -342,6 +354,10 @@ fn make_block_stats_impl(
     let mut operations_context: Vec<_> = map.into_iter().map(|(_, v)| v).collect();
     operations_context.sort_by(|a, b| a.data.root.cmp(&b.data.root));
 
+    let timestamp_secs = timestamp_secs.try_into().unwrap_or(i64::MAX);
+    let date = NaiveDateTime::from_timestamp(timestamp_secs, timestamp_nanos);
+    let date: DateTime<Utc> = DateTime::from_utc(date, Utc);
+
     Ok(Some(BlockStats {
         actions_count,
         tezedge_checkout_context_time: tezedge_checkout_time,
@@ -349,6 +365,8 @@ fn make_block_stats_impl(
         irmin_checkout_context_time: irmin_checkout_time,
         irmin_commit_context_time: irmin_commit_time,
         operations_context,
+        date,
+        duration_millis,
     }))
 }
 
