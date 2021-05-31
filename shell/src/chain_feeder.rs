@@ -307,16 +307,22 @@ impl ChainFeeder {
                 self.mark_sucessors_for_aplication(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, &operations_meta_storage, log, &mut batch, 0);
 
                 if batch.batch_total_size() >= MAX_HYDRATATING_BATCH_SIZE {
+                    total_count += batch.batch_total_size();
                     let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
                     self.add_to_batch_queue(schedule_msg);
                     self.process_batch_queue(chain_feeder.clone(), log);
 
-                    batch = ApplyBlockBatch::start_batch(last_successor.clone(), MAX_HYDRATATING_BATCH_SIZE);
+                    let successor = if let Some(next_successor) = block_meta_data.successors().get(0) {
+                        Arc::new(next_successor.clone())
+                    } else {
+                        last_successor.clone()
+                    };
+                    batch = ApplyBlockBatch::start_batch(successor, MAX_HYDRATATING_BATCH_SIZE);
                 }
-                total_count += batch.batch_total_size();
 
                 if last_successor == batch.last_successor() {
                     crit!(log, "Reached end");
+                    total_count += batch.batch_total_size();
                     break;
                 }
 
