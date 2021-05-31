@@ -89,10 +89,7 @@ pub fn context_action(
         b"add" => ActionKind::Add,
         b"add_tree" => ActionKind::AddTree,
         b"remove" => ActionKind::Remove,
-        bytes => {
-            println!("ERROR={:?}", std::str::from_utf8(bytes));
-            return;
-        }
+        _ => return,
     };
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);

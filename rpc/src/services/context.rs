@@ -14,10 +14,10 @@ pub(crate) struct BlockStats {
     actions_count: usize,
     date: Option<DateTime<Utc>>,
     duration_millis: Option<u64>,
-    tezedge_checkout_context_time: f64,
-    tezedge_commit_context_time: f64,
-    irmin_checkout_context_time: f64,
-    irmin_commit_context_time: f64,
+    tezedge_checkout_context_time: Option<f64>,
+    tezedge_commit_context_time: Option<f64>,
+    irmin_checkout_context_time: Option<f64>,
+    irmin_commit_context_time: Option<f64>,
     operations_context: Vec<ActionStats>,
 }
 
@@ -258,10 +258,10 @@ fn make_block_stats_impl(
                 Ok((
                     row.get::<_, usize>(0)?,
                     row.get::<_, usize>(1)?,
-                    row.get::<_, f64>(2)?,
-                    row.get::<_, f64>(3)?,
-                    row.get::<_, f64>(4)?,
-                    row.get::<_, f64>(5)?,
+                    row.get::<_, Option<f64>>(2)?,
+                    row.get::<_, Option<f64>>(3)?,
+                    row.get::<_, Option<f64>>(4)?,
+                    row.get::<_, Option<f64>>(5)?,
                     row.get::<_, Option<u64>>(6)?,
                     row.get::<_, Option<u64>>(7)?,
                     row.get::<_, Option<u32>>(8)?,
@@ -422,8 +422,8 @@ mod tests {
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap().unwrap();
 
         assert_eq!(block_stats.actions_count, 4);
-        assert_eq!(block_stats.tezedge_checkout_context_time, 10.0);
-        assert_eq!(block_stats.tezedge_commit_context_time, 11.0);
+        assert_eq!(block_stats.tezedge_checkout_context_time.unwrap(), 10.0);
+        assert_eq!(block_stats.tezedge_commit_context_time.unwrap(), 11.0);
         assert_eq!(block_stats.operations_context.len(), 2);
 
         let action = block_stats
