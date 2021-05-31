@@ -44,14 +44,8 @@ pub fn checkout(
     tezedge_time: f64,
 ) {
     let context_hash: ContextHash = context_hash.to_rust(rt);
-    let irmin_time = match irmin_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
-    let tezedge_time = match tezedge_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
 
     TIMING_CHANNEL
         .send(TimingMessage::Checkout {
@@ -68,14 +62,8 @@ pub fn commit(
     irmin_time: f64,
     tezedge_time: f64,
 ) {
-    let irmin_time = match irmin_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
-    let tezedge_time = match tezedge_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
 
     TIMING_CHANNEL
         .send(TimingMessage::Commit {
@@ -95,6 +83,7 @@ pub fn context_action(
     let action_name = rt.get(action_name);
     let action_name = match action_name.as_bytes() {
         b"mem" => ActionKind::Mem,
+        b"mem_tree" => ActionKind::MemTree,
         b"find" => ActionKind::Find,
         b"find_tree" => ActionKind::FindTree,
         b"add" => ActionKind::Add,
@@ -105,14 +94,8 @@ pub fn context_action(
             return;
         }
     };
-    let irmin_time = match irmin_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
-    let tezedge_time = match tezedge_time {
-        t if t < 0.0 => None,
-        t => Some(t),
-    };
+    let irmin_time = get_time(irmin_time);
+    let tezedge_time = get_time(tezedge_time);
 
     let key: Vec<String> = key.to_rust(rt);
 
@@ -132,4 +115,11 @@ pub fn init_timing(db_path: String) {
             db_path: Some(db_path.into()),
         })
         .unwrap();
+}
+
+fn get_time(time: f64) -> Option<f64> {
+    match time {
+        t if t < 0.0 => None,
+        t => Some(t),
+    }
 }
