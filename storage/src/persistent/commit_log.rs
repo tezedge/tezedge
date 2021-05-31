@@ -221,7 +221,7 @@ impl CommitLogs {
 
         let mut opts = LogOptions::new(&path);
         // TODO: TE-396 - rework
-        opts.message_max_bytes(15_000_000);
+        opts.message_max_bytes(30_000_000);
         let log = CommitLog::new(opts)?;
 
         let mut commit_log_map = self.commit_log_map.write().unwrap();

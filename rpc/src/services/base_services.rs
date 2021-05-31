@@ -7,11 +7,11 @@ use crypto::hash::{BlockHash, ChainId};
 use storage::block_storage::BlockJsonData;
 use storage::context::ContextApi;
 use storage::context::StringTreeEntry;
-use storage::PersistentStorage;
 use storage::{
     context_key, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader,
 };
+use storage::{BlockAdditionalData, PersistentStorage};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
 use crate::helpers::{
@@ -157,6 +157,17 @@ pub(crate) fn get_block_protocols(
             block_hash.to_base58_check()
         )
     }
+}
+
+/// Extract the current_protocol and the next_protocol from the block metadata
+pub(crate) fn get_additional_data(
+    _: &ChainId,
+    block_hash: &BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<Option<BlockAdditionalData>, failure::Error> {
+    BlockMetaStorage::new(persistent_storage)
+        .get_additional_data(&block_hash)
+        .map_err(|e| e.into())
 }
 
 /// Returns the hashes of all the operations included in the block.

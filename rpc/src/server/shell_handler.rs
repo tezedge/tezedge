@@ -22,7 +22,7 @@ use crate::services::{base_services, stream_services};
 use crate::{
     empty,
     encoding::{base_types::*, monitor::BootstrapInfo},
-    helpers, make_json_response, make_json_stream_response, required_param,
+    helpers, make_json_response, make_json_stream_response, not_found, required_param,
     result_option_to_json_response, result_to_empty_json_response, result_to_json_response,
     services, ServiceResult,
 };
@@ -379,6 +379,129 @@ pub async fn get_chain_id(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
     result_to_json_response(Ok(chain_id_to_b58_string(&chain_id)), env.log())
+}
+
+pub async fn get_metadata_hash(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
+        Some(data) => match data.block_metadata_hash() {
+            Some(hash) => result_to_json_response(Ok(hash.to_base58_check()), env.log()),
+            None => not_found(),
+        },
+        None => not_found(),
+    }
+}
+
+pub async fn get_operations_metadata_hash(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
+        Some(data) => match data.ops_metadata_hash() {
+            Some(hash) => result_to_json_response(Ok(hash.to_base58_check()), env.log()),
+            None => not_found(),
+        },
+        None => not_found(),
+    }
+}
+
+pub async fn get_operations_metadata_hash_operation_metadata_hashes(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
+        Some(data) => match data.ops_metadata_hashes() {
+            Some(hashes) => {
+                let hashes = hashes
+                    .iter()
+                    .map(|ops| {
+                        ops.iter()
+                            .map(|hash| hash.to_base58_check())
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>();
+                result_to_json_response(Ok(hashes), env.log())
+            }
+            None => not_found(),
+        },
+        None => not_found(),
+    }
+}
+
+pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
+
+    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
+        Some(data) => match data.ops_metadata_hashes() {
+            Some(hashes) => {
+                if let Some(validation_passes) = hashes.get(validation_pass) {
+                    let validation_passes = validation_passes
+                        .iter()
+                        .map(|hash| hash.to_base58_check())
+                        .collect::<Vec<_>>();
+                    result_to_json_response(Ok(validation_passes), env.log())
+                } else {
+                    not_found()
+                }
+            }
+            None => not_found(),
+        },
+        None => not_found(),
+    }
+}
+
+pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass_by_operation_index(
+    _: Request<Body>,
+    params: Params,
+    _: Query,
+    env: RpcServiceEnvironment,
+) -> ServiceResult {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
+    let operation_index: usize = required_param!(params, "operation_index")?.parse()?;
+
+    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
+        Some(data) => match data.ops_metadata_hashes() {
+            Some(hashes) => {
+                if let Some(validation_passes) = hashes.get(validation_pass) {
+                    if let Some(validation_pass) = validation_passes.get(operation_index) {
+                        result_to_json_response(Ok(validation_pass.to_base58_check()), env.log())
+                    } else {
+                        not_found()
+                    }
+                } else {
+                    not_found()
+                }
+            }
+            None => not_found(),
+        },
+        None => not_found(),
+    }
 }
 
 pub async fn get_block_operation_hashes(

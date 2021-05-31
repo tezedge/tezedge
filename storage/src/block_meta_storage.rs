@@ -637,6 +637,7 @@ pub struct BlockAdditionalData {
     ops_metadata_hash: Option<OperationMetadataListListHash>,
     /// Note: This is calculated from ops_metadata_hashes - we need this in request
     ///       This is calculated as merkle tree hash, like operation paths
+    #[get = "pub"]
     ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
 }
 

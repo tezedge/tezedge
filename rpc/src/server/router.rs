@@ -23,7 +23,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<MethodHandler> {
+pub(crate) fn create_routes(_is_sandbox: bool, one_context: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -119,6 +119,31 @@ pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<Met
     );
     routes.handle(
         hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/metadata_hash",
+        shell_handler::get_metadata_hash,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operations_metadata_hash",
+        shell_handler::get_operations_metadata_hash,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes/:validation_pass_index",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/operation_metadata_hashes/:validation_pass_index/:operation_index",
+        shell_handler::get_operations_metadata_hash_operation_metadata_hashes_by_validation_pass_by_operation_index,
+    );
+    routes.handle(
+        hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/operation_hashes",
         shell_handler::get_block_operation_hashes,
     );
@@ -174,14 +199,11 @@ pub(crate) fn create_routes(is_sandbox: bool, one_context: bool) -> PathTree<Met
         "/injection/operation",
         shell_handler::inject_operation,
     );
-    // TODO: TE-174: just for sandbox
-    if is_sandbox {
-        routes.handle(
-            hash_set![Method::POST],
-            "/injection/block",
-            shell_handler::inject_block,
-        );
-    }
+    routes.handle(
+        hash_set![Method::POST],
+        "/injection/block",
+        shell_handler::inject_block,
+    );
 
     // Shell rpcs - routed through ffi calls
     routes.handle(

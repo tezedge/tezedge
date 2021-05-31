@@ -198,6 +198,14 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         ))
         .await
         .expect("test failed");
+
+        // V1 - compatible rpc
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "metadata_hash"
+        ))
+        .await
+        .expect("test failed");
         // --------------------------------- End of tests --------------------------------
 
         // we need some constants
@@ -705,14 +713,40 @@ async fn test_all_operations_for_block(level: i64) {
         .await
         .expect("Failed to get block");
 
-    let vlaidation_passes = block["operations"]
+    let validation_passes = block["operations"]
         .as_array()
         .expect("Failed to parse block operations (validation passes)");
 
-    for (vlaidation_pass_index, validation_pass) in vlaidation_passes.iter().enumerate() {
+    if !validation_passes.is_empty() {
+        // V1 - compatible rpc
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "operations_metadata_hash"
+        ))
+        .await
+        .expect("test failed");
+
+        // V1 - compatible rpc
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}",
+            "chains/main/blocks", level, "operation_metadata_hashes"
+        ))
+        .await
+        .expect("test failed");
+    }
+
+    for (validation_pass_index, validation_pass) in validation_passes.iter().enumerate() {
         test_rpc_compare_json(&format!(
             "{}/{}/{}/{}",
-            "chains/main/blocks", level, "operations", vlaidation_pass_index,
+            "chains/main/blocks", level, "operations", validation_pass_index,
+        ))
+        .await
+        .expect("test failed");
+
+        // V1 - compatible rpc
+        test_rpc_compare_json(&format!(
+            "{}/{}/{}/{}",
+            "chains/main/blocks", level, "operation_metadata_hashes", validation_pass_index
         ))
         .await
         .expect("test failed");
@@ -723,7 +757,19 @@ async fn test_all_operations_for_block(level: i64) {
         for (operation_index, _) in operations.iter().enumerate() {
             test_rpc_compare_json(&format!(
                 "{}/{}/{}/{}/{}",
-                "chains/main/blocks", level, "operations", vlaidation_pass_index, operation_index,
+                "chains/main/blocks", level, "operations", validation_pass_index, operation_index,
+            ))
+            .await
+            .expect("test failed");
+
+            // V1 - compatible rpc
+            test_rpc_compare_json(&format!(
+                "{}/{}/{}/{}/{}",
+                "chains/main/blocks",
+                level,
+                "operation_metadata_hashes",
+                validation_pass_index,
+                operation_index
             ))
             .await
             .expect("test failed");
