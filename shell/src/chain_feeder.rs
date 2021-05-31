@@ -11,18 +11,17 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
-use std::collections::{HashMap, HashSet};
 
 use failure::{format_err, Error, Fail};
 use riker::actors::*;
-use slog::{debug, info, trace, warn, Logger};
+use slog::{debug, info, trace, warn, crit, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, HashType};
+use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::context::{ContextApi, TezedgeContext};
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
-    PersistentStorage, IteratorMode,
+    PersistentStorage,
 };
 use storage::{
     initialize_storage_with_genesis_block, store_applied_block_result, store_commit_genesis_result,
@@ -41,7 +40,6 @@ use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use crate::state::chain_state::bootstrap_constants::MAX_BLOCK_APPLY_BATCH;
 use crate::state::ApplyBlockBatch;
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
@@ -53,6 +51,11 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Max amount of recursive nesting
+const MAX_NESTING: usize = 1000;
+
+const MAX_HYDRATATING_BATCH_SIZE: usize = 10000;
 
 /// BLocks are applied in batches, to optimize database unnecessery access between two blocks (predecessor data)
 /// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
@@ -249,68 +252,80 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
-    fn apply_successors(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, chain_feeder: ChainFeederRef, log: &Logger, batch: &mut ApplyBlockBatch) {
-        // continue recursion until we fill up a whole batch
-        if batch.batch_total_size() + successros.len() > MAX_BLOCK_APPLY_BATCH {
-            return;
+    fn mark_sucessors_for_aplication(&mut self, successros: &Vec<BlockHash>, chain_id: Arc<ChainId>, block_meta_storage: &BlockMetaStorage, operations_meta_storage: &OperationsMetaStorage, log: &Logger, batch: &mut ApplyBlockBatch, nesting: usize) {
+        // continue recursion until we reach max nesting
+        let current_nest = nesting + 1;
+        if nesting + successros.len() > MAX_NESTING || batch.batch_total_size() > MAX_HYDRATATING_BATCH_SIZE {
+            return
         }
         for successor in successros.into_iter() {
-            if !self.block_applier_run.load(Ordering::Acquire) {
-                return;
-            }
-            
-            // let batch = ApplyBlockBatch::one(successor.clone());
-            // let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
-            // TODO: remove - debug
-            // info!(log, "Adding to the queue: {}", successor.to_base58_check());
-            // info!(log, "Nested: {}", added_block_count);
-            // self.add_to_batch_queue(schedule_msg);
-            // self.process_batch_queue(chain_feeder.clone(), log);
-            
-            batch.add_successor(Arc::new(successor.clone()));
+            if self.block_applier_run.load(Ordering::Acquire) {
+                if let Ok(is_complete) = operations_meta_storage.is_complete(successor) {
+                    if is_complete {
+                        batch.add_successor(Arc::new(successor.clone()));
 
-            if let Ok(Some(next)) = block_meta_storage.get(&successor) {
-                self.apply_successors(next.successors(), chain_id.clone(), block_meta_storage, chain_feeder.clone(), log, batch);
+                        if let Ok(Some(next)) = block_meta_storage.get(&successor) {
+                            self.mark_sucessors_for_aplication(next.successors(), chain_id.clone(), block_meta_storage, operations_meta_storage, log, batch, current_nest);
+                        } else {
+                            crit!(log, "[mark] No successor!");
+                            return
+                        }
+                    } else {
+                        crit!(log, "[mark] Block not completed!");
+                        return
+                    }
+                } else {
+                    crit!(log, "[mark] No operation meta found!");
+                    return
+                }
             } else {
-                return;
+                crit!(log, "[mark] Shutting down!");
+                return
             }
         }
     }
 
     fn hydrate_queue(&mut self, persistent_storage: &PersistentStorage, chain_id: Arc<ChainId>, chain_feeder: ChainFeederRef, log: &Logger) {
         let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+        let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+        let mut total_count = 0;
 
-        while let Ok(Some(current_head)) = ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id) {
-            // info!(log, "Hydratation from: {}", current_head.level());
-            if !self.block_applier_run.load(Ordering::Acquire) {
-                break;
-            }
+        if let Ok(Some(current_head)) = ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id) {
+            let current_hash = Arc::new(current_head.block_hash().clone());
 
-            // TODO: Try not to add blocks, that are already applied
-            // Create a batch and add the currenthead into it (already applied)
-            // let mut batch = ApplyBlockBatch::start_batch(Arc::new(current_head.block_hash().clone()), MAX_BLOCK_APPLY_BATCH);
+            let mut batch = ApplyBlockBatch::start_batch(current_hash.clone(), MAX_HYDRATATING_BATCH_SIZE);
 
-            // Get the successors of the last block to be aplied from the queue
-            let current_hash = if let Some(Some(last_successor)) = self.queue.back().map(|queue_last_element| queue_last_element.batch.last_successor()) {
-                last_successor.clone()
-            } else {
-                Arc::new(current_head.block_hash().clone())
-            };
+            let mut last_successor = current_hash;
+            while let Ok(Some(block_meta_data)) = block_meta_storage.get(&last_successor) {
+                if let Ok(is_complete) = operations_meta_storage.is_complete(&last_successor) {
+                    if !is_complete {
+                        crit!(log, "Breaking, block is not complete");
+                        break
+                    }
+                }
 
-            let mut batch = ApplyBlockBatch::start_batch(current_hash.clone(), MAX_BLOCK_APPLY_BATCH);
+                self.mark_sucessors_for_aplication(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, &operations_meta_storage, log, &mut batch, 0);
 
-            if let Ok(Some(block_meta_data)) = block_meta_storage.get(&current_hash) {
-                if block_meta_data.successors().is_empty() {
+                if batch.batch_total_size() >= MAX_HYDRATATING_BATCH_SIZE {
+                    let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+                    self.add_to_batch_queue(schedule_msg);
+                    self.process_batch_queue(chain_feeder.clone(), log);
+
+                    batch = ApplyBlockBatch::start_batch(last_successor.clone(), MAX_HYDRATATING_BATCH_SIZE);
+                }
+                total_count += batch.batch_total_size();
+
+                if last_successor == batch.last_successor() {
+                    crit!(log, "Reached end");
                     break;
                 }
-                self.apply_successors(block_meta_data.successors(), chain_id.clone(), &block_meta_storage, chain_feeder.clone(), log, &mut batch)
-            } else {
-                break;
+
+                last_successor = batch.last_successor();
+
+                info!(log, "Total blocks checked for hydratation: {}", total_count);
             }
-            let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
-            self.add_to_batch_queue(schedule_msg);
-            self.process_batch_queue(chain_feeder.clone(), log);
         }
+        info!(log, "Hydratation completed, total blocks sent for application {}", total_count);
     }
 
     fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
