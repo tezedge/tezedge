@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
@@ -9,8 +11,21 @@ use tezos_timing::{Action, ActionKind, TimingMessage, TIMING_CHANNEL};
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
+    let start_at = if block_hash.is_some() {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::new(0, 0));
+        let instant = Instant::now();
+        Some((timestamp, instant))
+    } else {
+        None
+    };
+
     TIMING_CHANNEL
-        .send(TimingMessage::SetBlock(block_hash))
+        .send(TimingMessage::SetBlock {
+            block_hash,
+            start_at,
+        })
         .unwrap();
 }
 
@@ -31,11 +46,11 @@ pub fn checkout(
     let context_hash: ContextHash = context_hash.to_rust(rt);
     let irmin_time = match irmin_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
     let tezedge_time = match tezedge_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
 
     TIMING_CHANNEL
@@ -55,11 +70,11 @@ pub fn commit(
 ) {
     let irmin_time = match irmin_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
     let tezedge_time = match tezedge_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
 
     TIMING_CHANNEL
@@ -92,11 +107,11 @@ pub fn context_action(
     };
     let irmin_time = match irmin_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
     let tezedge_time = match tezedge_time {
         t if t < 0.0 => None,
-        t => Some(t)
+        t => Some(t),
     };
 
     let key: Vec<String> = key.to_rust(rt);

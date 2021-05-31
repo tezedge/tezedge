@@ -1,7 +1,12 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{collections::HashMap, convert::TryInto, path::PathBuf, time::Instant};
+use std::{
+    collections::HashMap,
+    convert::TryInto,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
@@ -38,7 +43,10 @@ impl ActionKind {
 
 #[derive(Debug)]
 pub enum TimingMessage {
-    SetBlock(Option<BlockHash>),
+    SetBlock {
+        block_hash: Option<BlockHash>,
+        start_at: Option<(Duration, Instant)>,
+    },
     SetOperation(Option<OperationHash>),
     Checkout {
         context_hash: ContextHash,
@@ -106,7 +114,7 @@ impl RangeStats {
     fn add_time<T: Into<Option<f64>>>(&mut self, time: T) {
         let time = match time.into() {
             Some(t) => t,
-            None => return
+            None => return,
         };
 
         self.total_time += time;
@@ -224,7 +232,7 @@ struct Timing {
     current_block: Option<(HashId, BlockHash)>,
     current_operation: Option<(HashId, OperationHash)>,
     current_context: Option<(HashId, ContextHash)>,
-    block_started_at: Option<Instant>,
+    block_started_at: Option<(Duration, Instant)>,
     /// Number of actions in current block
     nactions: usize,
     /// Checkout time for the current block
@@ -329,7 +337,10 @@ impl Timing {
 
     fn process_msg(&mut self, msg: TimingMessage) -> Result<(), SQLError> {
         match msg {
-            TimingMessage::SetBlock(block_hash) => self.set_current_block(block_hash),
+            TimingMessage::SetBlock {
+                block_hash,
+                start_at,
+            } => self.set_current_block(block_hash, start_at),
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(operation_hash)
             }
@@ -347,11 +358,17 @@ impl Timing {
         }
     }
 
-    fn set_current_block(&mut self, block_hash: Option<BlockHash>) -> Result<(), SQLError> {
-        if block_hash.is_some() {
-            self.block_started_at = Some(std::time::Instant::now());
-        } else if let Some(started) = self.block_started_at.take() {
-            let duration_millis: u64 = started.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+    fn set_current_block(
+        &mut self,
+        block_hash: Option<BlockHash>,
+        mut start_at: Option<(Duration, Instant)>,
+    ) -> Result<(), SQLError> {
+        if let Some(start_at) = start_at.take() {
+            self.block_started_at = Some(start_at);
+        } else if let Some((timestamp, instant)) = self.block_started_at.take() {
+            let duration_millis: u64 = instant.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
+            let timestamp_secs = timestamp.as_secs();
+            let timestamp_nanos = timestamp.subsec_nanos();
             let block_id = self.current_block.as_ref().unwrap().0.as_str();
 
             let mut query = self.sql.prepare_cached(
@@ -359,6 +376,8 @@ impl Timing {
             UPDATE
               blocks
             SET
+              timestamp_secs = :timestamp_secs,
+              timestamp_nanos = :timestamp_nanos,
               duration_millis = :duration
             WHERE
               id = :block_id;
@@ -366,6 +385,8 @@ impl Timing {
             )?;
 
             query.execute(named_params! {
+                ":timestamp_secs": timestamp_secs,
+                ":timestamp_nanos": timestamp_nanos,
                 ":duration": duration_millis,
                 ":block_id": block_id,
             })?;
@@ -491,7 +512,11 @@ impl Timing {
         Ok(())
     }
 
-    fn insert_commit(&mut self, irmin_time: Option<f64>, tezedge_time: Option<f64>) -> Result<(), SQLError> {
+    fn insert_commit(
+        &mut self,
+        irmin_time: Option<f64>,
+        tezedge_time: Option<f64>,
+    ) -> Result<(), SQLError> {
         if self.current_block.is_none() {
             return Ok(());
         }
@@ -577,7 +602,7 @@ impl Timing {
         ] {
             let time = match time {
                 Some(time) => time,
-                None => continue
+                None => continue,
             };
 
             let entry = match global_stats.get_mut(root) {
@@ -631,8 +656,10 @@ impl Timing {
         if let Some(time) = action.tezedge_time {
             *value_tezedge = Some(value_tezedge.unwrap_or(0.0) + time);
             entry.data.tezedge_count = entry.data.tezedge_count.saturating_add(1);
-            entry.data.tezedge_total_time = Some(entry.data.tezedge_total_time.unwrap_or(0.0) + time);
-            entry.data.tezedge_max_time = Some(entry.data.tezedge_max_time.unwrap_or(0.0).max(time));
+            entry.data.tezedge_total_time =
+                Some(entry.data.tezedge_total_time.unwrap_or(0.0) + time);
+            entry.data.tezedge_max_time =
+                Some(entry.data.tezedge_max_time.unwrap_or(0.0).max(time));
         };
 
         if let Some(time) = action.irmin_time {
@@ -936,16 +963,18 @@ mod tests {
         assert!(timing.current_block.is_none());
 
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
-        timing.set_current_block(Some(block_hash.clone())).unwrap();
+        timing
+            .set_current_block(Some(block_hash.clone()), None)
+            .unwrap();
         let block_id = timing.current_block.clone().unwrap().0;
 
-        timing.set_current_block(Some(block_hash)).unwrap();
+        timing.set_current_block(Some(block_hash), None).unwrap();
         let same_block_id = timing.current_block.clone().unwrap().0;
 
         assert_eq!(block_id, same_block_id);
 
         timing
-            .set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()))
+            .set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()), None)
             .unwrap();
         let other_block_id = timing.current_block.clone().unwrap().0;
 
@@ -976,7 +1005,10 @@ mod tests {
             .send(TimingMessage::InitTiming { db_path: None })
             .unwrap();
         TIMING_CHANNEL
-            .send(TimingMessage::SetBlock(Some(block_hash)))
+            .send(TimingMessage::SetBlock {
+                block_hash: Some(block_hash),
+                start_at: None,
+            })
             .unwrap();
         TIMING_CHANNEL
             .send(TimingMessage::Checkout {

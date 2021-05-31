@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS blocks (
   checkout_time_tezedge REAL,
   commit_time_irmin REAL,
   commit_time_tezedge REAL,
-  start_time INTEGER DEFAULT CURRENT_TIMESTAMP NOT NULL,
-  duration_millis INTEGER DEFAULT NULL
+  timestamp_secs INTEGER,
+  timestamp_nanos INTEGER,
+  duration_millis INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS operations (
