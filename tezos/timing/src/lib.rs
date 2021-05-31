@@ -189,42 +189,39 @@ pub struct ActionData {
     pub root: String,
     pub tezedge_count: usize,
     pub irmin_count: usize,
-    pub tezedge_mean_time: Option<f64>,
-    pub tezedge_max_time: Option<f64>,
-    pub tezedge_total_time: Option<f64>,
-    pub irmin_mean_time: Option<f64>,
-    pub irmin_max_time: Option<f64>,
-    pub irmin_total_time: Option<f64>,
+    pub tezedge_mean_time: f64,
+    pub tezedge_max_time: f64,
+    pub tezedge_total_time: f64,
+    pub irmin_mean_time: f64,
+    pub irmin_max_time: f64,
+    pub irmin_total_time: f64,
 }
 
 #[derive(Debug, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct ActionStats {
     pub data: ActionData,
-    pub tezedge_mem: Option<f64>,
-    pub tezedge_find: Option<f64>,
-    pub tezedge_find_tree: Option<f64>,
-    pub tezedge_add: Option<f64>,
-    pub tezedge_add_tree: Option<f64>,
-    pub tezedge_remove: Option<f64>,
-    pub irmin_mem: Option<f64>,
-    pub irmin_find: Option<f64>,
-    pub irmin_find_tree: Option<f64>,
-    pub irmin_add: Option<f64>,
-    pub irmin_add_tree: Option<f64>,
-    pub irmin_remove: Option<f64>,
+    pub tezedge_mem: f64,
+    pub tezedge_find: f64,
+    pub tezedge_find_tree: f64,
+    pub tezedge_add: f64,
+    pub tezedge_add_tree: f64,
+    pub tezedge_remove: f64,
+    pub irmin_mem: f64,
+    pub irmin_find: f64,
+    pub irmin_find_tree: f64,
+    pub irmin_add: f64,
+    pub irmin_add_tree: f64,
+    pub irmin_remove: f64,
 }
 
 impl ActionStats {
     fn compute_mean(&mut self) {
-        if let Some(total_time) = self.data.tezedge_total_time {
-            let mean = total_time / self.data.tezedge_count as f64;
-            self.data.tezedge_mean_time = Some(mean.max(0.0));
-        };
-        if let Some(total_time) = self.data.irmin_total_time {
-            let mean = total_time / self.data.irmin_count as f64;
-            self.data.irmin_mean_time = Some(mean.max(0.0));
-        }
+        let mean = self.data.tezedge_total_time / self.data.tezedge_count as f64;
+        self.data.tezedge_mean_time = mean.max(0.0);
+
+        let mean = self.data.irmin_total_time / self.data.irmin_count as f64;
+        self.data.irmin_mean_time = mean.max(0.0);
     }
 }
 
@@ -654,19 +651,17 @@ impl Timing {
         };
 
         if let Some(time) = action.tezedge_time {
-            *value_tezedge = Some(value_tezedge.unwrap_or(0.0) + time);
+            *value_tezedge += time;
             entry.data.tezedge_count = entry.data.tezedge_count.saturating_add(1);
-            entry.data.tezedge_total_time =
-                Some(entry.data.tezedge_total_time.unwrap_or(0.0) + time);
-            entry.data.tezedge_max_time =
-                Some(entry.data.tezedge_max_time.unwrap_or(0.0).max(time));
+            entry.data.tezedge_total_time += time;
+            entry.data.tezedge_max_time = entry.data.tezedge_max_time.max(time);
         };
 
         if let Some(time) = action.irmin_time {
-            *value_irmin = Some(value_irmin.unwrap_or(0.0) + time);
+            *value_irmin += time;
             entry.data.irmin_count = entry.data.irmin_count.saturating_add(1);
-            entry.data.irmin_total_time = Some(entry.data.irmin_total_time.unwrap_or(0.0) + time);
-            entry.data.irmin_max_time = Some(entry.data.irmin_max_time.unwrap_or(0.0).max(time));
+            entry.data.irmin_total_time += time;
+            entry.data.irmin_max_time = entry.data.irmin_max_time.max(time);
         };
     }
 
