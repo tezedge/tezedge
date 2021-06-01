@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 
 use chrono::Utc;
+use fs_extra::dir::{copy, create_all, CopyOptions};
 use slog::{error, info, Logger};
-use fs_extra::dir::{CopyOptions, copy, create_all};
 
 use crate::constants::{TEZEDGE_PORT, TEZEDGE_VOLUME_PATH};
 use crate::node::{Node, TezedgeNode};
@@ -19,7 +19,12 @@ pub struct SnapshotMonitor {
 }
 
 impl SnapshotMonitor {
-    pub fn new(log: Logger, compose_file_path: PathBuf, snapshot_levels: Vec<u64>, slack_server: Option<SlackServer>) -> Self {
+    pub fn new(
+        log: Logger,
+        compose_file_path: PathBuf,
+        snapshot_levels: Vec<u64>,
+        slack_server: Option<SlackServer>,
+    ) -> Self {
         Self {
             log,
             compose_file_path,
@@ -34,15 +39,25 @@ impl SnapshotMonitor {
             slack.send_message(&format!("Taking snapshot, level: {}", current_level));
         }
         let options = CopyOptions::new();
-        let destination = format!("/usr/local/etc/tezedge-data/tezedge_{}_{}", current_level, Utc::now().to_rfc3339());
+        let destination = format!(
+            "/usr/local/etc/tezedge-data/tezedge_{}_{}",
+            current_level,
+            Utc::now().to_rfc3339()
+        );
         info!(self.log, "Creating snapshot direcotry");
         if let Err(e) = create_all(&destination, false) {
-            error!(self.log, "Cannot create directory path {}, error: {}", destination, e);
+            error!(
+                self.log,
+                "Cannot create directory path {}, error: {}", destination, e
+            );
         }
 
         info!(self.log, "Copying data...");
-        if let Err(e) =  copy(TEZEDGE_VOLUME_PATH, &destination, &options) {
-            error!(self.log, "Failed to copy the tezedge data to path {}, error: {}", destination, e);
+        if let Err(e) = copy(TEZEDGE_VOLUME_PATH, &destination, &options) {
+            error!(
+                self.log,
+                "Failed to copy the tezedge data to path {}, error: {}", destination, e
+            );
         }
         Ok(())
     }
