@@ -323,7 +323,7 @@ impl ChainFeeder {
 
                 last_successor = batch.last_successor();
 
-                info!(log, "Total blocks checked for hydratation: {}", total_count);
+                // info!(log, "Total blocks checked for hydratation: {}", total_count);
             }
         }
         info!(log, "Hydratation completed, total blocks sent for application {}", total_count);
