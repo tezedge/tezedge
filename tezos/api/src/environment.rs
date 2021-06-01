@@ -467,7 +467,7 @@ fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
             user_activated_upgrades: vec![
                 (
                     4095_i32,
-                    "PsGraNadatF72MEA6sTufJB2uVKtRXbDMbJo7SNzKjAfdx9bP5q".to_string(),
+                    "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV".to_string(),
                 ),
             ],
             user_activated_protocol_overrides: vec![],
