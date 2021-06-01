@@ -207,7 +207,7 @@ environment:
   NETWORK: delphinet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 120
+  WRK_TEST_BLOCK_HEADER: 520
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
@@ -438,12 +438,12 @@ steps:
 #       - refs/pull/*/head
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
-- name: wrk-performance-test-tezedge-old-vs-new
+- name: wrk-performance-test-tezedge-old-vs-ocaml
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER}  --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER}  --tezedge-new-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
   when:
     ref:
     - refs/pull/*/head
