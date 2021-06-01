@@ -1125,7 +1125,7 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_187/sandbox_files
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
   SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/sandbox-carthage-node-tests
 
 steps:
@@ -1341,7 +1341,7 @@ depends_on:
   - build
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer with tezos_client
+# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer and integrates with baker/endorser
 ##############################################################################################################
 ---
 kind: pipeline
@@ -1364,7 +1364,7 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_187/sandbox_files
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
   SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-edo2-tests
   TEZOS_LOG: debug
   LWT_LOG: debug
