@@ -16,10 +16,10 @@ use sysinfo::{ProcessExt, System, SystemExt};
 use shell::stats::memory::{MemoryData, ProcessMemoryStats};
 
 use crate::constants::{DEBUGGER_VOLUME_PATH, OCAML_VOLUME_PATH, TEZEDGE_VOLUME_PATH};
+use crate::deploy_with_compose::{launch_stack, stop_with_compose};
 use crate::display_info::NodeInfo;
 use crate::display_info::{OcamlDiskData, TezedgeDiskData};
 use crate::image::DeployMonitoringContainer;
-use crate::deploy_with_compose::{stop_with_compose, launch_stack};
 
 pub struct TezedgeNode {}
 
@@ -89,7 +89,10 @@ impl TezedgeNode {
         Ok(())
     }
 
-    pub async fn start_node(compose_file_path: &PathBuf, log: &Logger) -> Result<(), failure::Error> {
+    pub async fn start_node(
+        compose_file_path: &PathBuf,
+        log: &Logger,
+    ) -> Result<(), failure::Error> {
         // start_service_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
         // TODO
         launch_stack(compose_file_path, log, true).await;

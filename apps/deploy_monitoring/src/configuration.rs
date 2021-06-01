@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
-use std::collections::HashSet;
 
 use clap::{App, Arg};
 
@@ -361,7 +361,7 @@ impl DeployMonitoringEnvironment {
         // TODO - snapshotting
         let mut snapshot_levels: Vec<u64> = match args.values_of("snapshot-levels") {
             Some(v) => v.map(|val| val.parse::<u64>().unwrap()).collect(),
-            None => panic!("No values for snapshotting entered")
+            None => panic!("No values for snapshotting entered"),
         };
 
         snapshot_levels.sort();
@@ -411,7 +411,6 @@ impl DeployMonitoringEnvironment {
         }
     }
 }
-
 
 // let log_targets: HashSet<String> = match args.values_of("log") {
 //     Some(v) => v.map(String::from).collect(),

@@ -881,6 +881,7 @@ mod tests {
                     2,
                     None,
                     None,
+                    false,
                 )),
             )
             .map(|feeder| (feeder, block_applier_event_receiver))

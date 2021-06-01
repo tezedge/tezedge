@@ -126,7 +126,7 @@ impl ApplyBlockBatch {
     }
 
     pub fn last_successor(&self) -> Arc<BlockHash> {
-        if let Some (successor) = self.successors.last().map(|element| element.clone()) {
+        if let Some(successor) = self.successors.last().map(|element| element.clone()) {
             successor
         } else {
             self.block_to_apply.clone()
