@@ -1321,7 +1321,7 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -1557,7 +1557,7 @@ steps:
       # check if applied is 2 (transfer + endorsement)
       - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
-      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind == "endorsement")] | length')
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
 
   - name: run-tezos-baker-008-PtEdo2Zk
@@ -1596,6 +1596,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -1831,7 +1832,7 @@ steps:
       # check if applied is 2 (transfer + endorsement)
       - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
-      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind == "endorsement")] | length')
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
 
   - name: run-tezos-baker-009-PsFLoren
@@ -1870,6 +1871,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -2105,7 +2107,7 @@ steps:
       # check if applied is 2 (transfer + endorsement)
       - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
-      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind == "endorsement")] | length')
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
 
   - name: run-tezos-baker-010-PtGRANAD
@@ -2144,6 +2146,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -2528,7 +2531,7 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -2781,6 +2784,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -3000,7 +3004,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
       # mainnet rpcs of protocol 001 are too slow
       - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
@@ -3221,6 +3225,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -3439,6 +3444,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
