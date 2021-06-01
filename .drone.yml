@@ -254,6 +254,42 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
+- name: ocaml-node-run-2
+  user: root
+  image: tezos/tezos:v8.2
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: ocaml-node-delphinet-snapshot-data-2
+      path: /home/tezos/data
+    - name: cache
+      path: /data/cache
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip2.txt
+    - rm -f /home/tezos/data/lock
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
+    - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+- name: ocaml-node-run-3
+  user: root
+  image: tezos/tezos:v8.2
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: ocaml-node-delphinet-snapshot-data-3
+      path: /home/tezos/data
+    - name: cache
+      path: /data/cache
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip3.txt
+    - rm -f /home/tezos/data/lock
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
+    - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
 - name: wait-for-ocaml-snapshoted-nodes
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
