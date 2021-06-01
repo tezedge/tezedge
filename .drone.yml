@@ -914,8 +914,8 @@ volumes:
 
 trigger:
   branch:
-    - masterX
-    - developX
+    - master
+    - develop
 
 depends_on:
   - build
