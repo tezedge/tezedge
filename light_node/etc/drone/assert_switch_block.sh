@@ -29,7 +29,7 @@ done
 echo "Switch block was applied"
 
 # Check if the file exists, the timeout it low, because once the node starts responding to the RPC above, the log file should be already create
-$SCRIPTPATH/wait_file $LOG_FILE 1
+$SCRIPTPATH/wait_file.sh $LOG_FILE 1
 
 # We get the application time by parsing the log file produced by the node
 APPLY_TIME=$(grep "validation_result_message: lvl $SWITCH_BLOCK," $LOG_FILE | tr ',' '\n' | grep "protocol_call_elapsed" | awk '{print $2}')
