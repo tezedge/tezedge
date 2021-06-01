@@ -6,31 +6,35 @@
 # Snapshoted data are prepared (on other server than drone, you need to have there actual tezos-node binary):
 #
 # - create/get snapshot:
-#   1. download it from xtz-shots.io, e.g.: `wget https://delphinet.xtz-shots.io/tezos-delphinet-173873.full`
+#   1. download it from xtz-shots.io, e.g.: `wget https://<testnet>.xtz-shots.io/tezos-<testnet>-<some-level>.full`
 #   2. or run node and create snapshot manually to desired level (recomended, you can set set level high):
-#     ./tezos-node config init --network edonet --data-dir /tmp/chain-data
-#     ./tezos-node run --network edonet --data-dir /tmp/chain-data --net-addr 0.0.0.0:9734 --rpc-addr 0.0.0.0:18888 --history-mode archive
-#     ./tezos-node snapshot export --block BM3qBTWs515g6Vforkns8o3AC4H57f3WdrKQSARwe4jbJoe2kEn edo.20000.full --data-dir /tmp/chain-data/
+#     ./tezos-node config init --network granadanet --data-dir /tmp/chain-data
+#     ./tezos-node run --network granadanet --data-dir /tmp/chain-data --net-addr 0.0.0.0:9734 --rpc-addr 0.0.0.0:18888 --history-mode archive
+#     ./tezos-node snapshot export --block BKyjtcb7VhJfTcqXWjf3p1beRmLVvMQsy5NvRJkPaVUkc6kx4e1 granadanet.20000.full --data-dir /tmp/chain-data/
 #
 # - import snapshot:
-#   ./tezos-node config init --network edonet --data-dir /tmp/edonet
-#   ./tezos-node snapshot import edo.20000.full --data-dir /tmp/edonet  --reconstruct --network edonet --history-mode full
-#   cd /tmp/edonet
-#   tar -czvf edonet.20000.snapshoted.tar.gz context store config.json version.json
-#   # copy to drone server
-#   scp edonet.20000.snapshoted.tar.gz root@95.217.110.217:/usr/local/etc/tezedge-ci/snapshots
+#   ./tezos-node config init --network granadanet --data-dir /tmp/granadanet
+#   ./tezos-node snapshot import granadanet.20000.full --data-dir /tmp/granadanet  --reconstruct --network granadanet --history-mode full
+#   cd /tmp/granadanet
+#   tar -czvf granadanet.20000.snapshoted.tar.gz context store config.json version.json
+#   # copy to drone server (see synchronize_ci.sh -> CI_HOSTS)
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.66:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.67:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.68:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.69:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.70:/usr/local/etc/tezedge-ci/snapshots
 #
 # - Drone server - extract and prepare dirs:
 #   cd /usr/local/etc/tezedge-ci/snapshots
-#   mkdir /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1 /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2 /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
-#   tar -xzvf edonet.20000.snapshoted.tar.gz -C /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/
-#   # check directory `/usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/`, should looks like this:
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/config.json
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/version.json
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/context
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/store
-#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
-#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
+#   mkdir /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
+#   tar -xzvf granadanet.20000.snapshoted.tar.gz -C /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/
+#   # check directory `/usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/`, should looks like this:
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/config.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/version.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/context
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/store
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
 ##############################################################################################################
 
 kind: pipeline
@@ -3261,6 +3265,224 @@ depends_on:
   - build
 
 ##############################################################################################################
+# This pipeline runs tezedge node with florencenet configuration againts ocaml node with florencenet snapshot
+##############################################################################################################
+---
+kind: pipeline
+name: granadanet-offline-tests
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: granadanet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  SODIUM_USE_PKG_CONFIG: 1
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/granadanet-offline-tests
+
+steps:
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: cache
+        path: /data/cache
+    commands:
+      - rm -rf $${CACHE_DATA_PATH}
+      - mkdir -p $${CACHE_DATA_PATH}
+
+  # just run ocaml 3 granadanet snapshoted nodes
+  - name: ocaml-node-run-1
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-1
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip1.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_1.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-run-2
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-2
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip2.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-run-3
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-3
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip3.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: wait-for-ocaml-snapshoted-nodes
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+
+  - name: tezedge-updated-node-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /data/cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
+      - echo "peers - $PEERS"
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
+
+  # run both indexers on background to fill data
+  - name: tz-indexer-tezedge
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-tezedge-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_PORT: 18732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=131"]
+
+  - name: tz-indexer-ocaml
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-ocaml-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_PORT: 8732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=131"]
+
+  # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: rpc-test
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+  # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: indexer-test
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: ocaml-node-granadanet-snapshot-data-1
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1
+  - name: ocaml-node-granadanet-snapshot-data-2
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2
+  - name: ocaml-node-granadanet-snapshot-data-3
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache
+  - name: indexer-tezedge-data
+    temp: {}
+  - name: indexer-ocaml-data
+    temp: {}
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
 ##############################################################################################################
 ---
@@ -3318,6 +3540,7 @@ depends_on:
   - edo2net-offline-tests
   - mainnet-offline-tests
   - florencenet-offline-tests
+  - granadanet-offline-tests
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
@@ -3381,3 +3604,4 @@ depends_on:
   - edo2net-offline-tests
   - mainnet-offline-tests
   - florencenet-offline-tests
+  - granadanet-offline-tests
