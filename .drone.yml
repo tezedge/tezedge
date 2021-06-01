@@ -207,7 +207,7 @@ environment:
   NETWORK: delphinet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 100
+  WRK_TEST_BLOCK_HEADER: 520
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
@@ -254,68 +254,11 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-- name: ocaml-node-run-2
-  user: root
-  image: tezos/tezos:v8.2
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: ocaml-node-delphinet-snapshot-data-2
-      path: /home/tezos/data
-    - name: cache
-      path: /data/cache
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip2.txt
-    - rm -f /home/tezos/data/lock
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
-    - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
-    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
-
-- name: ocaml-node-run-3
-  user: root
-  image: tezos/tezos:v8.2
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: ocaml-node-delphinet-snapshot-data-3
-      path: /home/tezos/data
-    - name: cache
-      path: /data/cache
-  commands:
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip3.txt
-    - rm -f /home/tezos/data/lock
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
-    - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
-    - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
-
 - name: wait-for-ocaml-snapshoted-nodes
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
-
-- name: tezedge-updated-node-run
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  detach: true
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: cache
-      path: /data/cache
-  environment:
-    SODIUM_USE_PKG_CONFIG: 1
-  commands:
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
-    - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
-    - echo "peers - $PEERS"
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1}
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-run
@@ -346,6 +289,36 @@ steps:
   when:
     ref:
       - refs/pull/*/head
+
+# this is triggerd just on pull request to target branch
+- name: bootstrapping-tezedge-target-branch
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
+  when:
+    ref:
+    - refs/pull/*/head
+
+- name: tezedge-updated-node-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /data/cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
+    - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
+    - echo "peers - $PEERS"
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -427,15 +400,6 @@ steps:
     ref:
       exclude:
       - refs/pull/*/head
-
-# this is triggerd just on pull request to target branch
-- name: bootstrapping-tezedge-target-branch
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  commands:
-    - tezos-node-bootstrap bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
-  when:
-    ref:
-    - refs/pull/*/head
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
 - name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
