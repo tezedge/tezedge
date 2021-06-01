@@ -357,6 +357,12 @@ impl ChainFeeder {
                 if last_successor == batch.last_successor() {
                     debug!(log, "Reached end of hydratation");
                     total_count += batch.batch_total_size();
+                    
+                    // send last started batch to block aplication
+                    let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+                    self.add_to_batch_queue(schedule_msg);
+                    self.process_batch_queue(chain_feeder.clone(), log);
+
                     break;
                 }
 
