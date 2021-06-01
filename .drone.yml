@@ -103,6 +103,7 @@ workspace:
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
 
 steps:
 
@@ -115,10 +116,6 @@ steps:
       path: /artifacts
     - name: tests
       path: /tests
-    - name: sandbox-data
-      path: /tmp/sandbox
-    - name: tezos-src
-      path: /tmp/tezos-src
     - name: ids
       path: /home/appuser/.ssh
   environment:
@@ -142,6 +139,7 @@ steps:
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
     - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
     - mkdir $${TEST_ARTIFACTS_PATH}/tests
+    - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
     # copy binaries
     - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
@@ -153,13 +151,14 @@ steps:
     - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
     - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
     # copy sandbox resources
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json /tmp/sandbox/
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json /tmp/sandbox/
+    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json $${SANDBOX_ARTIFACTS_PATH}
     # copy other resources
     - cp ./light_node/etc/drone/assert_equals.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh
     - cp ./light_node/etc/drone/assert_contains.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh
@@ -177,6 +176,13 @@ steps:
     - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
     - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    # collect modified python tests stuff
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/daemons
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/launchers
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/tools
+    - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
+    - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
+    - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
     # Modify permissions for ssh key
     - chown appuser /home/appuser/.ssh/id_rsa
     - chown appuser /home/appuser/.ssh
@@ -184,9 +190,9 @@ steps:
     - ls -la /home/appuser/.ssh
     # copy build files to all other runner machines
     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER}
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
