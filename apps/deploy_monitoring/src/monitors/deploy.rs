@@ -17,7 +17,8 @@ use crate::deploy_with_compose::{
     restart_sandbox, restart_stack, shutdown_and_update, shutdown_and_update_sandbox,
 };
 use crate::image::{
-    local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger, TezedgeMemprof,
+    local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger,
+    TezedgeMemprof,
 };
 
 use crate::constants::{DEBUGGER_PORT, TEZEDGE_NODE_P2P_PORT, TEZEDGE_VOLUME_PATH};
