@@ -158,14 +158,15 @@ mod tezos {
         ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
         BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-        ComputePathResponse, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
-        HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
-        PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
-        ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
-        TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-        ValidateOperationRequest, ValidateOperationResponse,
+        ComputePathResponse, FfiJsonEncoderError, GenesisChain, GetDataError,
+        HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
+        InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolDataError,
+        ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+        TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
+        ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
     };
     use tezos_client::client::*;
+    use tezos_messages::p2p::encoding::operation::Operation;
     use tezos_wrapper::protocol::ProtocolApi;
 
     pub struct NativeTezosLib;
@@ -264,6 +265,38 @@ mod tezos {
             protocol_data: Vec<u8>,
         ) -> Result<(), ProtocolDataError> {
             assert_encoding_for_protocol_data(protocol_hash, protocol_data)
+        }
+
+        fn apply_block_result_metadata(
+            context_hash: ContextHash,
+            metadata_bytes: RustBytes,
+            max_operations_ttl: i32,
+            protocol_hash: ProtocolHash,
+            next_protocol_hash: ProtocolHash,
+        ) -> Result<String, FfiJsonEncoderError> {
+            apply_block_result_metadata(
+                context_hash,
+                metadata_bytes,
+                max_operations_ttl,
+                protocol_hash,
+                next_protocol_hash,
+            )
+        }
+
+        fn apply_block_operations_metadata(
+            chain_id: ChainId,
+            operations: Vec<Vec<Operation>>,
+            operations_metadata_bytes: Vec<Vec<RustBytes>>,
+            protocol_hash: ProtocolHash,
+            next_protocol_hash: ProtocolHash,
+        ) -> Result<String, FfiJsonEncoderError> {
+            apply_block_operations_metadata(
+                chain_id,
+                operations,
+                operations_metadata_bytes,
+                protocol_hash,
+                next_protocol_hash,
+            )
         }
     }
 }

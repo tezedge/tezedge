@@ -10,7 +10,7 @@ use std::{
 use failure::Error;
 use slog::{Drain, Level, Logger};
 
-use crypto::hash::{chain_id_from_block_hash, BlockHash, ContextHash};
+use crypto::hash::{BlockHash, ContextHash, ProtocolHash, chain_id_from_block_hash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
@@ -157,10 +157,12 @@ fn test_storage() -> Result<(), Error> {
         &commit_genesis_result.block_header_proto_json
     );
     assert_eq!(
+        // FIXME: one is bytes, the other json
         data.block_header_proto_metadata_json(),
         &commit_genesis_result.block_header_proto_metadata_json
     );
     assert_eq!(
+        // FIXME: one is bytes, the other json
         data.operations_proto_metadata_json(),
         &commit_genesis_result.operations_proto_metadata_json
     );
@@ -181,9 +183,19 @@ fn test_storage() -> Result<(), Error> {
         context_hash: ContextHash::from_base58_check(
             "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd",
         )?,
+        protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
+        next_protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
         block_header_proto_json: "{block_header_proto_json}".to_string(),
-        block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
-        operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),
+        block_header_proto_metadata_bytes: "{block_header_proto_metadata_json}".to_string().into(),
+        operations_proto_metadata_bytes: vec![vec!["{operations_proto_metadata_json}"
+            .to_string()
+            .into()]],
         validation_result_message: "applied".to_string(),
         forking_testchain: false,
         forking_testchain_data: None,
@@ -246,12 +258,12 @@ fn test_storage() -> Result<(), Error> {
         &apply_result.block_header_proto_json
     );
     assert_eq!(
-        data.block_header_proto_metadata_json(),
-        &apply_result.block_header_proto_metadata_json
+        data.block_header_proto_metadata_bytes(),
+        &apply_result.block_header_proto_metadata_bytes
     );
     assert_eq!(
-        data.operations_proto_metadata_json(),
-        &apply_result.operations_proto_metadata_json
+        data.operations_proto_metadata_bytes(),
+        &apply_result.operations_proto_metadata_bytes
     );
 
     // load current head - should be changed

@@ -81,9 +81,11 @@ impl_from_ocaml_record! {
     ApplyBlockResponse {
         validation_result_message: OCamlBytes,
         context_hash: OCamlContextHash,
+        protocol_hash: OCamlProtocolHash,
+        next_protocol_hash: OCamlProtocolHash,
         block_header_proto_json: OCamlBytes,
-        block_header_proto_metadata_json: OCamlBytes,
-        operations_proto_metadata_json: OCamlBytes,
+        block_header_proto_metadata_bytes: OCamlBytes,
+        operations_proto_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
         max_operations_ttl: OCamlInt,
         last_allowed_fork_level: OCamlInt32,
         forking_testchain: bool,

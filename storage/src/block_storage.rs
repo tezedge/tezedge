@@ -36,21 +36,21 @@ pub struct BlockJsonData {
     #[get = "pub"]
     block_header_proto_json: String,
     #[get = "pub"]
-    block_header_proto_metadata_json: String,
+    block_header_proto_metadata_bytes: Vec<u8>,
     #[get = "pub"]
-    operations_proto_metadata_json: String,
+    operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
 }
 
 impl BlockJsonData {
     pub fn new(
         block_header_proto_json: String,
-        block_header_proto_metadata_json: String,
-        operations_proto_metadata_json: String,
+        block_header_proto_metadata_bytes: Vec<u8>,
+        operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
     ) -> Self {
         Self {
             block_header_proto_json,
-            block_header_proto_metadata_json,
-            operations_proto_metadata_json,
+            block_header_proto_metadata_bytes,
+            operations_proto_metadata_bytes,
         }
     }
 }

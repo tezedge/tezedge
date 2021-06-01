@@ -129,9 +129,11 @@ impl ApplyBlockRequest {
 pub struct ApplyBlockResponse {
     pub validation_result_message: String,
     pub context_hash: ContextHash,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
     pub block_header_proto_json: String,
-    pub block_header_proto_metadata_json: String,
-    pub operations_proto_metadata_json: String,
+    pub block_header_proto_metadata_bytes: Vec<u8>,
+    pub operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
     pub max_operations_ttl: i32,
     pub last_allowed_fork_level: i32,
     pub forking_testchain: bool,
@@ -627,6 +629,20 @@ impl From<FromBytesError> for ProtocolDataError {
     fn from(error: FromBytesError) -> Self {
         ProtocolDataError::DecodeError {
             message: format!("Error constructing hash from bytes: {:?}", error),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum FfiJsonEncoderError {
+    #[fail(display = "FFI JSON encoding error: {}!", message)]
+    EncodeError { message: String },
+}
+
+impl From<TezosErrorTrace> for FfiJsonEncoderError {
+    fn from(error: TezosErrorTrace) -> Self {
+        FfiJsonEncoderError::EncodeError {
+            message: error.trace_json,
         }
     }
 }

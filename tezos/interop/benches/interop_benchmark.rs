@@ -1,10 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
+use crypto::hash::ProtocolHash;
 use tezos_api::ffi::{
     ApplyBlockRequest, ApplyBlockRequestBuilder, ApplyBlockResponse, ForkingTestchainData,
     RustBytes, TezosRuntimeConfiguration,
@@ -93,8 +94,18 @@ fn criterion_benchmark(c: &mut Criterion) {
             .try_into()
             .expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
-        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
-        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
+        next_protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
+        block_header_proto_metadata_bytes: "block_header_proto_metadata_json".to_string().into(),
+        operations_proto_metadata_bytes: vec![vec!["operations_proto_metadata_json"
+            .to_string()
+            .into()]],
         max_operations_ttl: 6,
         last_allowed_fork_level: 8,
         forking_testchain: true,
