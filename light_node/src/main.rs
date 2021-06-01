@@ -297,6 +297,7 @@ fn block_on_actors(
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
         tezos_env.clone(),
+        env.p2p.hydrate_without_peers,
         log.clone(),
     )
     .expect("Failed to create chain feeder");

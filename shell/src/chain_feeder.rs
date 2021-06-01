@@ -165,6 +165,7 @@ pub struct ChainFeeder {
 
     persistent_storage: Option<PersistentStorage>,
     chain_id: Option<Arc<ChainId>>,
+    hydrate_without_peers: bool,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -187,6 +188,7 @@ impl ChainFeeder {
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
+        hydrate_without_peers: bool,
         log: Logger,
     ) -> Result<ChainFeederRef, CreateError> {
         // spawn inner thread
@@ -211,6 +213,7 @@ impl ChainFeeder {
                 BLOCK_APPLY_BATCH_MAX_TICKETS,
                 Some(persistent_storage),
                 Some(Arc::new(init_storage_data.chain_id)),
+                hydrate_without_peers,
             )),
         )
     }
@@ -365,6 +368,7 @@ impl
         usize,
         Option<PersistentStorage>,
         Option<Arc<ChainId>>,
+        bool,
     )> for ChainFeeder
 {
     fn create_args(
@@ -376,6 +380,7 @@ impl
             max_permits,
             persistent_storage,
             chain_id,
+            hydrate_without_peers,
         ): (
             ShellChannelRef,
             Arc<Mutex<QueueSender<Event>>>,
@@ -384,6 +389,7 @@ impl
             usize,
             Option<PersistentStorage>,
             Option<Arc<ChainId>>,
+            bool,
         ),
     ) -> Self {
         ChainFeeder {
@@ -397,6 +403,7 @@ impl
             apply_block_tickets_maximum: max_permits,
             persistent_storage,
             chain_id,
+            hydrate_without_peers,
         }
     }
 }
@@ -435,12 +442,11 @@ impl Actor for ChainFeeder {
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // now we can hydrate state and read current head
-        if let (Some(persistent_storage), Some(chain_id)) = (self.persistent_storage.clone(), self.chain_id.clone()) {
-            self.hydrate_queue(&persistent_storage, chain_id, ctx.myself(), &ctx.system.log());
+        if self.hydrate_without_peers {
+            if let (Some(persistent_storage), Some(chain_id)) = (self.persistent_storage.clone(), self.chain_id.clone()) {
+                self.hydrate_queue(&persistent_storage, chain_id, ctx.myself(), &ctx.system.log());
+            }
         }
-        // let persistent_storage = self.persistent_storage.clone();
-        // let chain_id = self.chain_id.clone();
-        
      }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
