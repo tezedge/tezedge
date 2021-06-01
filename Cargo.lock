@@ -2411,17 +2411,16 @@ checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 [[package]]
 name = "ocaml-boxroot-sys"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5186393bfbee4ce2bc5bbb82beafb77e85c1d0a557e3cfc8c8a0d63d7845fed5"
+source = "git+https://gitlab.com/bruno.deferrari/ocaml-boxroot.git?branch=ocaml-410-headers#8dbeb8259fe55e0de12473353237b7bc2877acf2"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "ocaml-interop"
-version = "0.7.2"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a0e44117d2dca8eda1e04735260a0f017eba98abf898d14f3de2fe5d2804ef4"
+checksum = "feed1425b18c848323dceeed5fc35a085b07b58783b040560e3a05dfe2427753"
 dependencies = [
  "ocaml-boxroot-sys",
  "ocaml-sys",
