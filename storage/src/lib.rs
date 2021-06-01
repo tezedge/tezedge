@@ -253,8 +253,8 @@ pub fn store_applied_block_result(
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
         block_result.block_header_proto_json,
-        block_result.block_header_proto_metadata_json,
-        block_result.operations_proto_metadata_json,
+        block_result.block_header_proto_metadata_bytes,
+        block_result.operations_proto_metadata_bytes,
     );
     block_storage.put_block_json_data(&block_hash, block_json_data)?;
 
@@ -262,6 +262,8 @@ pub fn store_applied_block_result(
     let block_additional_data = BlockAdditionalData::new(
         block_result.max_operations_ttl.try_into().unwrap(),
         block_result.last_allowed_fork_level,
+        Some(block_result.protocol_hash),
+        Some(block_result.next_protocol_hash),
         block_result.block_metadata_hash,
         {
             // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
@@ -325,8 +327,9 @@ pub fn store_commit_genesis_result(
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
         bock_result.block_header_proto_json,
-        bock_result.block_header_proto_metadata_json,
-        bock_result.operations_proto_metadata_json,
+        // FIXME: needs to be bytes
+        bock_result.block_header_proto_metadata_json.into(),
+        vec![vec![bock_result.operations_proto_metadata_json.into()]],
     );
     block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
 
@@ -384,6 +387,8 @@ pub fn initialize_storage_with_genesis_block(
     let block_additional_data = BlockAdditionalData::new(
         genesis_additional_data.max_operations_ttl,
         genesis_additional_data.last_allowed_fork_level,
+        None,
+        None,
         None,
         None,
         None,

@@ -6,14 +6,15 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, GenesisChain, GetDataError, HelpersPreapplyBlockRequest,
-    HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult, PatchContext,
-    PrevalidatorWrapper, ProtocolDataError, ProtocolOverrides, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, TezosRuntimeConfiguration,
-    TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-    ValidateOperationRequest, ValidateOperationResponse,
+    ComputePathResponse, ContextDataError, FFIJsonEncoderError, GenesisChain, GetDataError,
+    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
+    InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
+    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
 };
 use tezos_interop::ffi;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 /// Override runtime configuration for OCaml runtime
 pub fn change_runtime_configuration(
@@ -164,6 +165,40 @@ pub fn assert_encoding_for_protocol_data(
             ),
         }
     })
+}
+
+/// Encode apply_block result metadata as JSON
+pub fn apply_block_result_metadata(
+    context_hash: ContextHash,
+    metadata_bytes: RustBytes,
+    max_operations_ttl: i32,
+    protocol_hash: ProtocolHash,
+    next_protocol_hash: ProtocolHash,
+) -> Result<String, FFIJsonEncoderError> {
+    ffi::apply_block_result_metadata(
+        context_hash,
+        metadata_bytes,
+        max_operations_ttl,
+        protocol_hash,
+        next_protocol_hash,
+    )
+}
+
+/// Encode apply_block result operations metadata as JSON
+pub fn apply_block_operations_metadata(
+    chain_id: ChainId,
+    operations: Vec<Vec<Operation>>,
+    operations_metadata_bytes: Vec<Vec<RustBytes>>,
+    protocol_hash: ProtocolHash,
+    next_protocol_hash: ProtocolHash,
+) -> Result<String, FFIJsonEncoderError> {
+    ffi::apply_block_operations_metadata(
+        chain_id,
+        operations,
+        operations_metadata_bytes,
+        protocol_hash,
+        next_protocol_hash,
+    )
 }
 
 /// Shutdown the OCaml runtime

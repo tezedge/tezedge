@@ -20,3 +20,4 @@ tezos_context = { path = "../tezos/context" }
 tezos_interop = { path = "../tezos/interop" }
 tezos_interop_callback = { path = "../tezos/interop_callback" }
 tezos_wrapper = { path = "../tezos/wrapper" }
+tezos_messages = { path = "../tezos/messages" }

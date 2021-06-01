@@ -260,6 +260,7 @@ impl BlockchainState {
                                 // get next_protocol from predecessor
                                 let metadata: HashMap<String, serde_json::Value> =
                                     serde_json::from_str(
+                                        // FIXME: should encode as json here? we have bytes
                                         &predecessor_data.block_header_proto_metadata_json(),
                                     )
                                     .map_err(|e| {
@@ -328,6 +329,7 @@ impl BlockchainState {
                     if current_head_header.header.proto() == validated_header.proto() {
                         // get protocol from predecessor
                         let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(
+                            // FIXME: should encode as json here? we have bytes
                             &current_head_header_data.block_header_proto_metadata_json(),
                         )
                         .map_err(|e| StateError::ProcessingError {

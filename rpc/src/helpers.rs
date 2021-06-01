@@ -156,8 +156,10 @@ impl FullBlockInfo {
                 protocol_data: serde_json::from_str(block_json_data.block_header_proto_json())
                     .unwrap_or_default(),
             },
+            // FIXME: now we have bytes, not json
             metadata: serde_json::from_str(block_json_data.block_header_proto_metadata_json())
                 .unwrap_or_default(),
+            // FIXME: now we have bytes, not json
             operations: serde_json::from_str(block_json_data.operations_proto_metadata_json())
                 .unwrap_or_default(),
         }
@@ -194,6 +196,7 @@ impl BlockHeaderInfo {
             .get("liquidity_baking_escape_vote")
             .map(|val| val.as_bool().unwrap());
 
+        // FIXME: now we have bytes, not json
         let proto_data: HashMap<String, Value> =
             serde_json::from_str(block_json_data.block_header_proto_metadata_json())
                 .unwrap_or_default();
@@ -656,6 +659,7 @@ impl From<(BlockHeaderWithHash, BlockJsonData)> for SlimBlockData {
         // TODO: TE-199 Refactor FullBlockInfo
         // deserialize the metadata
         let metadata: BlockMetadata =
+            // FIXME: now we have bytes, not json
             serde_json::from_str(block_json_data.block_header_proto_metadata_json())
                 .unwrap_or_default();
 

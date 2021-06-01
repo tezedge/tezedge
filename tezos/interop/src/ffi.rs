@@ -4,11 +4,14 @@
 use std::convert::TryFrom;
 use std::sync::Once;
 
+use crypto::hash::ChainId;
 use crypto::hash::{ContextHash, ProtocolHash};
 use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
 
 use tezos_api::ffi::*;
+use tezos_api::ocaml_conv::FfiOperation;
 use tezos_api::ocaml_conv::FfiPath;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::runtime;
 
@@ -27,6 +30,7 @@ mod tezos_ffi {
         },
         ocaml_conv::{OCamlOperationHash, OCamlProtocolHash},
     };
+    use tezos_messages::p2p::encoding::operation::Operation;
 
     use super::TzResult;
 
@@ -81,6 +85,20 @@ mod tezos_ffi {
             protocol_hash: OCamlProtocolHash,
             protocol_data: OCamlBytes
         ) -> TzResult<()>;
+        pub fn apply_block_result_metadata(
+            context_hash: OCamlBytes,
+            metadata_bytes: OCamlBytes,
+            max_operations_ttl: OCamlInt,
+            protocol_hash: OCamlBytes,
+            next_protocol_hash: OCamlBytes,
+        ) -> TzResult<OCamlBytes>;
+        pub fn apply_block_operations_metadata(
+            chain_id: OCamlBytes,
+            operations: OCamlList<OCamlList<Operation>>,
+            operations_metadata_bytes: OCamlList<OCamlList<OCamlBytes>>,
+            protocol_hash: OCamlBytes,
+            next_protocol_hash: OCamlBytes,
+        ) -> TzResult<OCamlBytes>;
     }
 }
 
@@ -399,6 +417,82 @@ pub fn assert_encoding_for_protocol_data(
     })
     .unwrap_or_else(|p| {
         Err(ProtocolDataError::DecodeError {
+            message: p.to_string(),
+        })
+    })
+}
+
+pub fn apply_block_result_metadata(
+    context_hash: ContextHash,
+    metadata_bytes: RustBytes,
+    max_operations_ttl: i32,
+    protocol_hash: ProtocolHash,
+    next_protocol_hash: ProtocolHash,
+) -> Result<String, FFIJsonEncoderError> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let context_hash = context_hash.as_ref().to_boxroot(rt);
+        let metadata_bytes = metadata_bytes.to_boxroot(rt);
+        let max_operations_ttl = OCaml::of_i32(max_operations_ttl as i32);
+        let protocol_hash = protocol_hash.as_ref().to_boxroot(rt);
+        let next_protocol_hash = next_protocol_hash.as_ref().to_boxroot(rt);
+
+        let result = tezos_ffi::apply_block_result_metadata(
+            rt,
+            &context_hash,
+            &metadata_bytes,
+            &max_operations_ttl,
+            &protocol_hash,
+            &next_protocol_hash,
+        );
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(s) => Ok(s.to_rust()),
+            Err(e) => Err(FFIJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
+        }
+    })
+    .unwrap_or_else(|p| {
+        Err(FFIJsonEncoderError::EncodeError {
+            message: p.to_string(),
+        })
+    })
+}
+
+pub fn apply_block_operations_metadata(
+    chain_id: ChainId,
+    operations: Vec<Vec<Operation>>,
+    operations_metadata_bytes: Vec<Vec<RustBytes>>,
+    protocol_hash: ProtocolHash,
+    next_protocol_hash: ProtocolHash,
+) -> Result<String, FFIJsonEncoderError> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let chain_id = chain_id.as_ref().to_boxroot(rt);
+        let ffi_operations: Vec<Vec<FfiOperation>> = operations
+            .iter()
+            .map(|v| v.iter().map(|op| FfiOperation::from(op)).collect())
+            .collect();
+        let ffi_operations = ffi_operations.to_boxroot(rt);
+        let operations_metadata_bytes = operations_metadata_bytes.to_boxroot(rt);
+        let protocol_hash = protocol_hash.as_ref().to_boxroot(rt);
+        let next_protocol_hash = next_protocol_hash.as_ref().to_boxroot(rt);
+
+        let result = tezos_ffi::apply_block_operations_metadata(
+            rt,
+            &chain_id,
+            &ffi_operations,
+            &operations_metadata_bytes,
+            &protocol_hash,
+            &next_protocol_hash,
+        );
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(s) => Ok(s.to_rust()),
+            Err(e) => Err(FFIJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
+        }
+    })
+    .unwrap_or_else(|p| {
+        Err(FFIJsonEncoderError::EncodeError {
             message: p.to_string(),
         })
     })

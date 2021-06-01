@@ -18,6 +18,7 @@ use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
 use tezos_context::channel::{context_receive, context_send, ContextAction};
+use tezos_messages::p2p::encoding::operation::Operation;
 
 use crate::protocol::*;
 use crate::runner::{ProtocolRunner, ProtocolRunnerError};
@@ -52,6 +53,20 @@ enum ProtocolMessage {
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
+    JSONEncodeApplyBlockResultMetadata {
+        context_hash: ContextHash,
+        metadata_bytes: RustBytes,
+        max_operations_ttl: i32,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
+    },
+    JSONEncodeApplyBlockOperationsMetadata {
+        chain_id: ChainId,
+        operations: Vec<Vec<Operation>>,
+        operations_metadata_bytes: Vec<Vec<RustBytes>>,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
+    },
     ShutdownCall,
 }
 
@@ -90,6 +105,8 @@ enum NodeMessage {
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
+    JSONEncodeApplyBlockResultMetadataResponse(Result<String, FFIJsonEncoderError>),
+    JSONEncodeApplyBlockOperationsMetadata(Result<String, FFIJsonEncoderError>),
     ShutdownResult,
 }
 
@@ -182,6 +199,40 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     params.genesis_max_operations_ttl,
                 );
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
+            }
+            ProtocolMessage::JSONEncodeApplyBlockResultMetadata {
+                context_hash,
+                metadata_bytes,
+                max_operations_ttl,
+                protocol_hash,
+                next_protocol_hash,
+            } => {
+                let res = Proto::apply_block_result_metadata(
+                    context_hash,
+                    metadata_bytes,
+                    max_operations_ttl,
+                    protocol_hash,
+                    next_protocol_hash,
+                );
+                tx.send(&NodeMessage::JSONEncodeApplyBlockResultMetadataResponse(
+                    res,
+                ))?;
+            }
+            ProtocolMessage::JSONEncodeApplyBlockOperationsMetadata {
+                chain_id,
+                operations,
+                operations_metadata_bytes,
+                protocol_hash,
+                next_protocol_hash,
+            } => {
+                let res = Proto::apply_block_operations_metadata(
+                    chain_id,
+                    operations,
+                    operations_metadata_bytes,
+                    protocol_hash,
+                    next_protocol_hash,
+                );
+                tx.send(&NodeMessage::JSONEncodeApplyBlockOperationsMetadata(res))?;
             }
             ProtocolMessage::ShutdownCall => {
                 // send shutdown event to context listener, that we dont need it anymore
