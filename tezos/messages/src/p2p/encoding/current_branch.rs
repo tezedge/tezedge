@@ -16,6 +16,10 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
@@ -48,6 +52,7 @@ has_encoding!(CurrentBranchMessage, CURRENT_BRANCH_MESSAGE_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, Getters)]
 pub struct CurrentBranch {
     #[get = "pub"]
@@ -96,6 +101,7 @@ has_encoding!(CurrentBranch, CURRENT_BRANCH_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,

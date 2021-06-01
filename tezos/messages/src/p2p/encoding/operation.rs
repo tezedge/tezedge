@@ -15,11 +15,15 @@ use crypto::{
 use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
 use tezos_encoding::has_encoding;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
 pub struct OperationMessage {
     #[get = "pub"]
@@ -53,6 +57,7 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub struct Operation {
     branch: BlockHash,
@@ -123,6 +128,7 @@ has_encoding!(Operation, OPERATION_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct DecodedOperation {
     branch: String,
@@ -139,6 +145,7 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationsMessage {
     #[get = "pub"]

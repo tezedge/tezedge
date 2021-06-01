@@ -13,6 +13,10 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::P2P_POINT_MAX_SIZE;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct SwapMessage {
     #[get = "pub"]

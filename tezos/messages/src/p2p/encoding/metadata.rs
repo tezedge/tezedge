@@ -11,6 +11,10 @@ use tezos_encoding::has_encoding;
 
 use crate::non_cached_data;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, CopyGetters, Clone)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]

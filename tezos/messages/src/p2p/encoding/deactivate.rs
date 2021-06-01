@@ -11,6 +11,10 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct DeactivateMessage {
     #[get = "pub"]

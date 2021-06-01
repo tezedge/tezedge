@@ -57,6 +57,7 @@ pub mod cache {
         fn cache_writer(&mut self) -> Option<&mut dyn CacheWriter>;
     }
 
+    #[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
     #[derive(Clone, Default)]
     pub struct BinaryDataCache {
         data: Option<Vec<u8>>,
@@ -107,6 +108,7 @@ pub mod cache {
         }
     }
 
+    #[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
     #[derive(Clone, PartialEq, Default)]
     pub struct NeverCache;
 
@@ -232,6 +234,7 @@ where
 ///
 /// Difference from [`BinaryMessage`] is that it also contains [`CONTENT_LENGTH_FIELD_BYTES`] bytes
 /// of information about how many bytes is the actual encoding.
+#[cfg_attr(feature = "arbitrary-fuzz", derive(arbitrary::Arbitrary))]
 #[derive(Debug)]
 pub struct BinaryChunk(Vec<u8>);
 

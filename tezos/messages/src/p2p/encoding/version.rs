@@ -12,9 +12,14 @@ use tezos_encoding::has_encoding;
 use crate::cached_data;
 use crate::p2p::binary_message::cache::BinaryDataCache;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 use super::limits::CHAIN_NAME_MAX_LENGTH;
 
 /// Holds informations about chain compatibility, features compatibility...
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Getters, Clone)]
 pub struct NetworkVersion {
     #[get = "pub"]

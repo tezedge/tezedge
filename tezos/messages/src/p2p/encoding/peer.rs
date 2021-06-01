@@ -15,6 +15,10 @@ use crate::p2p::encoding::prelude::*;
 
 use super::limits::MESSAGE_MAX_SIZE;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum PeerMessage {
     Disconnect,
@@ -37,6 +41,7 @@ pub enum PeerMessage {
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters)]
 pub struct PeerMessageResponse {
     #[get = "pub"]

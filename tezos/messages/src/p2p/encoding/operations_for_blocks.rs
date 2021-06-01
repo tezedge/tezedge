@@ -21,6 +21,9 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 use crate::p2p::encoding::operation::Operation;
 use tezos_encoding::json_writer::JsonWriter;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZE};
 
 /// Maximal length for path in a Merkle tree for list of lists of operations.
@@ -36,6 +39,7 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 /// TODO: Implement mechanism for updating this, when Tezos implements this.
 pub const MAX_PASS_MERKLE_DEPTH: Option<usize> = Some(3);
 
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, CopyGetters, Getters)]
 pub struct OperationsForBlock {
     #[get = "pub"]
@@ -73,6 +77,7 @@ has_encoding!(OperationsForBlock, OPERATIONS_FOR_BLOCK_ENCODING, {
     )
 });
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct OperationsForBlocksMessage {
     #[get = "pub"]
@@ -132,6 +137,7 @@ impl From<OperationsForBlocksMessage> for Vec<Operation> {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathRight {
     #[get = "pub"]
@@ -149,6 +155,7 @@ impl PathRight {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug, Getters)]
 pub struct PathLeft {
     #[get = "pub"]
@@ -166,6 +173,7 @@ impl PathLeft {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
 pub enum PathItem {
     Right(PathRight),
@@ -182,6 +190,7 @@ impl PathItem {
 }
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Deserialize, PartialEq, Debug)]
 pub struct Path(pub Vec<PathItem>);
 
@@ -219,6 +228,7 @@ impl Serialize for Path {
     }
 }
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetOperationsForBlocksMessage {
     #[get = "pub"]

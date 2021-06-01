@@ -13,6 +13,10 @@ use crate::p2p::binary_message::cache::BinaryDataCache;
 
 use super::limits::MEMPOOL_MAX_SIZE;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Clone, Serialize, Deserialize, Debug, Default, Getters)]
 pub struct Mempool {
     #[get = "pub"]

@@ -9,6 +9,9 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
 mod prefix_bytes {
     pub const CHAIN_ID: [u8; 3] = [87, 82, 0];
     pub const BLOCK_HASH: [u8; 2] = [1, 52];
@@ -45,6 +48,7 @@ pub enum FromBytesError {
 
 macro_rules! define_hash {
     ($name:ident) => {
+        #[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
         #[derive(
             Debug,
             Clone,
@@ -149,6 +153,7 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Debug, Copy, Clone)]
 pub enum HashType {
     // "\087\082\000" (* Net(15) *)

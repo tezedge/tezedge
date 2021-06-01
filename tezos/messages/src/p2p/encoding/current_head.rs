@@ -15,6 +15,10 @@ use super::block_header::BlockHeader;
 use super::limits::BLOCK_HEADER_MAX_SIZE;
 use super::mempool::Mempool;
 
+#[cfg(feature = "arbitrary-fuzz")]
+use arbitrary::Arbitrary;
+
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
@@ -58,6 +62,7 @@ has_encoding!(CurrentHeadMessage, CURRENT_HEAD_MESSAGE_ENCODING, {
 });
 
 // -----------------------------------------------------------------------------------------------
+#[cfg_attr(feature = "arbitrary-fuzz", derive(Arbitrary))]
 #[derive(Serialize, Deserialize, Debug, Getters, Clone)]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
