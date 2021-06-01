@@ -159,6 +159,7 @@ pub struct ActionStatsWithRange {
 impl ActionStatsWithRange {
     fn compute_mean(&mut self) {
         self.mem.compute_mean();
+        self.mem_tree.compute_mean();
         self.find.compute_mean();
         self.find_tree.compute_mean();
         self.add.compute_mean();
@@ -167,8 +168,10 @@ impl ActionStatsWithRange {
     }
 
     pub fn compute_total(&mut self) {
-        self.total_time_read =
-            self.mem.total_time + self.find.total_time + self.find_tree.total_time;
+        self.total_time_read = self.mem.total_time
+            + self.mem_tree.total_time
+            + self.find.total_time
+            + self.find_tree.total_time;
 
         self.total_time_write =
             self.add.total_time + self.add_tree.total_time + self.remove.total_time;
@@ -178,6 +181,7 @@ impl ActionStatsWithRange {
         self.actions_count = self
             .mem
             .actions_count
+            .saturating_add(self.mem_tree.actions_count)
             .saturating_add(self.find.actions_count)
             .saturating_add(self.find_tree.actions_count)
             .saturating_add(self.add.actions_count)
