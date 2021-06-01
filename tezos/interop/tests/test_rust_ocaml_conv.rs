@@ -23,7 +23,7 @@ use tezos_api::{
 };
 use tezos_interop::runtime;
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage, encoding::block_header::BlockHeader,
+    binary_message::BinaryRead, encoding::block_header::BlockHeader,
     encoding::operation::Operation, encoding::operations_for_blocks::OperationsForBlock,
     encoding::operations_for_blocks::OperationsForBlocksMessage,
     encoding::operations_for_blocks::Path,

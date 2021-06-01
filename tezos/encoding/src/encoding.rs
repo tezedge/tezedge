@@ -7,12 +7,12 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use crypto::hash::HashType;
+use crypto::hash::{HashTrait, HashType};
 
-use crate::binary_reader::BinaryReaderError;
 use crate::ser::Error;
 use crate::types::Value;
-use bytes::Buf;
+
+pub use tezos_encoding_derive::HasEncoding;
 
 #[derive(Debug, Clone)]
 pub struct Field {
@@ -112,31 +112,6 @@ impl TagMap {
     }
 }
 
-pub enum SchemaType {
-    Json,
-    Binary,
-}
-
-pub trait SplitEncodingFn: Fn(SchemaType) -> Encoding + Send + Sync {}
-
-impl<F> SplitEncodingFn for F where F: Fn(SchemaType) -> Encoding + Send + Sync {}
-
-impl fmt::Debug for dyn SplitEncodingFn<Output = Encoding> + Send + Sync {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Fn(SchemaType) -> Encoding")
-    }
-}
-
-pub trait RecursiveEncodingFn: Fn() -> Encoding + Send + Sync {}
-
-impl<F> RecursiveEncodingFn for F where F: Fn() -> Encoding + Send + Sync {}
-
-impl fmt::Debug for dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Fn() -> Encoding")
-    }
-}
-
 /// Custom encoder/decoder that converts between binary data
 /// and [Value]s and produces JSON from a [Value]
 pub trait CustomCodec {
@@ -146,15 +121,6 @@ pub trait CustomCodec {
         value: &Value,
         encoding: &Encoding,
     ) -> Result<usize, Error>;
-
-    fn encode_json(
-        &self,
-        encoder: &mut crate::json_writer::JsonWriter,
-        value: &Value,
-        encoding: &Encoding,
-    ) -> Result<(), Error>;
-
-    fn decode(&self, buf: &mut dyn Buf, encoding: &Encoding) -> Result<Value, BinaryReaderError>;
 }
 
 impl fmt::Debug for dyn CustomCodec + Send + Sync {
@@ -269,15 +235,10 @@ pub enum Encoding {
     /// Decode various types of hashes. Hash has it's own predefined length and prefix.
     /// This is controller by a hash implementation.
     Hash(HashType),
-    /// Provides different encoding based on target data type.
-    Split(Arc<dyn SplitEncodingFn<Output = Encoding> + Send + Sync>),
     /// Timestamp encoding.
     /// - encoded as RFC 3339 in json
     /// - encoded as [Encoding::Int64] in binary
     Timestamp,
-    /// This is used to handle recursive encodings needed to encode tree structure.
-    /// Encoding itself produces no output in binary or json.
-    Lazy(Arc<dyn RecursiveEncodingFn<Output = Encoding> + Send + Sync>),
     /// This is used to perform encoding using custom function
     /// rather than basing on schema. Used to get rid of recursion
     /// while encoding/decoding recursive types.
@@ -354,6 +315,48 @@ pub trait HasEncoding {
     fn encoding() -> &'static Encoding;
 }
 
+macro_rules! hash_has_encoding {
+    ($hash_name:ident, $enc_ref_name:ident) => {
+        lazy_static::lazy_static! {
+            static ref $enc_ref_name: Encoding = {
+                Encoding::Hash(crypto::hash::$hash_name::hash_type())
+            };
+        }
+
+        impl HasEncoding for crypto::hash::$hash_name {
+            fn encoding() -> &'static Encoding {
+                &$enc_ref_name
+            }
+        }
+    };
+}
+
+hash_has_encoding!(ChainId, CHAIN_ID);
+hash_has_encoding!(BlockHash, BLOCK_HASH);
+hash_has_encoding!(BlockMetadataHash, BLOCK_METADATA_HASH);
+hash_has_encoding!(OperationHash, OPERATION_HASH);
+hash_has_encoding!(OperationListListHash, OPERATION_LIST_LIST_HASH);
+hash_has_encoding!(OperationMetadataHash, OPERATION_METADATA_HASH);
+hash_has_encoding!(
+    OperationMetadataListListHash,
+    OPERATION_METADATA_LIST_LIST_HASH
+);
+hash_has_encoding!(ContextHash, CONTEXT_HASH);
+hash_has_encoding!(ProtocolHash, PROTOCOL_HASH);
+hash_has_encoding!(ContractKt1Hash, CONTRACT_KT1HASH);
+hash_has_encoding!(ContractTz1Hash, CONTRACT_TZ1HASH);
+hash_has_encoding!(ContractTz2Hash, CONTRACT_TZ2HASH);
+hash_has_encoding!(ContractTz3Hash, CONTRACT_TZ3HASH);
+hash_has_encoding!(CryptoboxPublicKeyHash, CRYPTOBOX_PUBLIC_KEY_HASH);
+hash_has_encoding!(PublicKeyEd25519, PUBLIC_KEY_ED25519);
+hash_has_encoding!(PublicKeySecp256k1, PUBLIC_KEY_SECP256K1);
+hash_has_encoding!(PublicKeyP256, PUBLIC_KEY_P256);
+
+/// Indicates that type has it's own ser/de schema, to be used with new derived schema.
+pub trait HasEncodingTest {
+    fn encoding_test() -> &'static Encoding;
+}
+
 /// Creates impl HasEncoding for given struct backed by lazy_static ref instance with encoding.
 #[macro_export]
 macro_rules! has_encoding {
@@ -370,78 +373,4 @@ macro_rules! has_encoding {
             }
         }
     };
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::binary_reader::BinaryReader;
-
-    use super::*;
-
-    #[test]
-    fn schema_split() {
-        let split_encoding = Encoding::Split(Arc::new(|schema_type| match schema_type {
-            SchemaType::Json => Encoding::Uint16,
-            SchemaType::Binary => Encoding::Float,
-        }));
-
-        if let Encoding::Split(inner_encoding) = split_encoding {
-            match inner_encoding(SchemaType::Json) {
-                Encoding::Uint16 => {}
-                _ => panic!("Was expecting Encoding::Uint16"),
-            }
-            match inner_encoding(SchemaType::Binary) {
-                Encoding::Float => {}
-                _ => panic!("Was expecting Encoding::Float"),
-            }
-        } else {
-            panic!("Was expecting Encoding::Split");
-        }
-    }
-
-    #[test]
-    fn bounded_with_bytes() {
-        let encoding = Encoding::Obj(
-            "Rec",
-            vec![
-                Field::new("f1", Encoding::bounded(10, Encoding::Uint8)),
-                Field::new("f2", Encoding::bounded(10, Encoding::Uint8)),
-            ],
-        );
-
-        let value = Value::Record(vec![
-            ("f1".to_string(), Value::Uint8(1)),
-            ("f2".to_string(), Value::Uint8(2)),
-        ]);
-
-        let data = [1, 2];
-
-        let res = BinaryReader::new().read(data, &encoding);
-        assert_eq!(res.unwrap(), value);
-    }
-
-    #[test]
-    fn bounded_with_strings() {
-        let encoding = Encoding::Obj(
-            "Rec",
-            vec![
-                Field::new("f1", Encoding::bounded(10, Encoding::String)),
-                Field::new("f2", Encoding::bounded(10, Encoding::String)),
-            ],
-        );
-
-        let value = Value::Record(vec![
-            ("f1".to_string(), Value::String("A".to_string())),
-            ("f2".to_string(), Value::String("BB".to_string())),
-        ]);
-
-        let data = [
-            0, 0, 0, 1,    // f1.len
-            0x41, // f1
-            0, 0, 0, 2, 0x42, 0x42,
-        ];
-
-        let res = BinaryReader::new().read(data, &encoding);
-        assert_eq!(res.unwrap(), value);
-    }
 }

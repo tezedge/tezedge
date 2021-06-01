@@ -10,13 +10,14 @@ use std::{env, io};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 
-use crypto::hash::{BlockHash, HashType};
+use crypto::hash::{BlockHash, ChainId, HashType};
 use tezos_api::environment::TezosEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
-use tezos_encoding::binary_reader::BinaryReader;
-use tezos_encoding::de::from_value as deserialize_from_value;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_encoding::{
+    encoding::{Encoding, Field, HasEncoding},
+    nom::{field, NomReader},
+};
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation, OperationsForBlocksMessage};
 
 lazy_static! {
@@ -46,10 +47,41 @@ lazy_static! {
 /// Create new struct from bytes.
 #[inline]
 pub fn from_captured_bytes(request: &str) -> Result<ApplyBlockRequest, failure::Error> {
+    struct Request(ApplyBlockRequest);
+    impl NomReader for Request {
+        fn nom_read(bytes: &[u8]) -> tezos_encoding::nom::NomResult<Self> {
+            use nom::combinator::map;
+            use nom::number::complete::be_i32;
+            use nom::sequence::tuple;
+            use tezos_encoding::nom::{dynamic, list};
+            map(
+                tuple((
+                    field("chain_id", ChainId::nom_read),
+                    field("block_header", dynamic(BlockHeader::nom_read)),
+                    field("pred_header", dynamic(BlockHeader::nom_read)),
+                    field("max_operations_ttl", be_i32),
+                    field(
+                        "operations",
+                        dynamic(list(dynamic(list(dynamic(Operation::nom_read))))),
+                    ),
+                )),
+                |(chain_id, block_header, pred_header, max_operations_ttl, operations)| {
+                    Request(ApplyBlockRequest {
+                        chain_id,
+                        block_header,
+                        pred_header,
+                        max_operations_ttl,
+                        operations,
+                        predecessor_block_metadata_hash: None,
+                        predecessor_ops_metadata_hash: None,
+                    })
+                },
+            )(bytes)
+        }
+    }
     let bytes = hex::decode(request)?;
-    let value = BinaryReader::new().read(bytes, &APPLY_BLOCK_REQUEST_ENCODING)?;
-    let value: ApplyBlockRequest = deserialize_from_value(&value)?;
-    Ok(value)
+    let value = <Request as BinaryRead>::from_bytes(bytes)?;
+    Ok(value.0)
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

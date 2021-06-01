@@ -4,14 +4,14 @@
 use std::fmt;
 
 use getset::CopyGetters;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+use tezos_encoding::encoding::HasEncoding;
+use tezos_encoding::nom::NomReader;
 
-use crate::non_cached_data;
+use crate::p2p::binary_message::SizeFromChunk;
 
-#[derive(Serialize, Deserialize, CopyGetters, Clone)]
+#[derive(Serialize, CopyGetters, Clone, HasEncoding, NomReader)]
 pub struct MetadataMessage {
     #[get_copy = "pub"]
     disable_mempool: bool,
@@ -38,13 +38,10 @@ impl fmt::Debug for MetadataMessage {
     }
 }
 
-non_cached_data!(MetadataMessage);
-has_encoding!(MetadataMessage, METADATA_MESSAGE_ENCODING, {
-    Encoding::Obj(
-        "MetadataMessage",
-        vec![
-            Field::new("disable_mempool", Encoding::Bool),
-            Field::new("private_node", Encoding::Bool),
-        ],
-    )
-});
+impl SizeFromChunk for MetadataMessage {
+    fn size_from_chunk(
+        _bytes: impl AsRef<[u8]>,
+    ) -> Result<usize, tezos_encoding::binary_reader::BinaryReaderError> {
+        Ok(2)
+    }
+}

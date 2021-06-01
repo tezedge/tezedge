@@ -28,7 +28,7 @@ use storage::{
     BlockStorageReader, MempoolStorage,
 };
 use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
@@ -446,7 +446,7 @@ mod tests {
     use serde_json::json;
 
     use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::Operation;
 
     use crate::services::mempool_services::{convert_applied, convert_errored};

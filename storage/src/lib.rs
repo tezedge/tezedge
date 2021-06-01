@@ -23,7 +23,7 @@ use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
+use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 

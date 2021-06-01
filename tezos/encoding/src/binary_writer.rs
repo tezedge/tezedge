@@ -13,7 +13,7 @@ use failure::ResultExt;
 use serde::ser::{Error as SerdeError, Serialize};
 
 use crate::bit_utils::{BitTrim, Bits};
-use crate::encoding::{Encoding, Field, SchemaType};
+use crate::encoding::{Encoding, Field};
 use crate::ser::{Error, Serializer};
 use crate::types::{self, Value};
 
@@ -105,7 +105,8 @@ fn encode_record(
         _ => Err(Error::encoding_mismatch(
             &Encoding::Obj("", schema.to_vec()), // TODO have whole Obj encoding
             value,
-        ))?,
+        )
+        .into()),
     }
 }
 
@@ -124,18 +125,14 @@ fn encode_tuple(
                         Error::custom("Encoded message size overflow while encoding a tuple item")
                     })?;
             } else {
-                return Err(Error::encoding_mismatch(
-                    &Encoding::Tup(encodings.to_vec()),
-                    value,
-                ))?;
+                return Err(
+                    Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value).into(),
+                );
             }
         }
         Ok(bytes_sz)
     } else {
-        Err(Error::encoding_mismatch(
-            &Encoding::Tup(encodings.to_vec()),
-            value,
-        ))?
+        Err(Error::encoding_mismatch(&Encoding::Tup(encodings.to_vec()), value).into())
     }
 }
 
@@ -158,35 +155,35 @@ fn encode_value(
                 data.put_i8(*v);
                 Ok(size_of::<i8>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Uint8 => match value {
             Value::Uint8(v) => {
                 data.put_u8(*v);
                 Ok(size_of::<u8>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Int16 => match value {
             Value::Int16(v) => {
                 data.put_i16(*v);
                 Ok(size_of::<i16>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Uint16 => match value {
             Value::Uint16(v) => {
                 data.put_u16(*v);
                 Ok(size_of::<u16>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Int32 => match value {
             Value::Int32(v) => {
                 data.put_i32(*v);
                 Ok(size_of::<i32>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Int31 => match value {
             Value::Int32(v) => {
@@ -194,10 +191,10 @@ fn encode_value(
                     data.put_i32(*v);
                     Ok(size_of::<i32>())
                 } else {
-                    Err(Error::custom("Value is outside of Int31 range"))?
+                    Err(Error::custom("Value is outside of Int31 range").into())
                 }
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Uint32 => match value {
             Value::Int32(v) => {
@@ -205,26 +202,28 @@ fn encode_value(
                     data.put_i32(*v);
                     Ok(size_of::<i32>())
                 } else {
-                    Err(Error::custom("Value is outside of Uint32 range"))?
+                    Err(Error::custom("Value is outside of Uint32 range").into())
                 }
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
-        Encoding::RangedInt => Err(Error::custom("Encoding::RangedInt is not implemented"))?,
-        Encoding::RangedFloat => Err(Error::custom("Encoding::RangedFloat is not implemented"))?,
+        Encoding::RangedInt => Err(Error::custom("Encoding::RangedInt is not implemented").into()),
+        Encoding::RangedFloat => {
+            Err(Error::custom("Encoding::RangedFloat is not implemented").into())
+        }
         Encoding::Int64 | Encoding::Timestamp => match value {
             Value::Int64(v) => {
                 data.put_i64(*v);
                 Ok(size_of::<i64>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Float => match value {
             Value::Float(v) => {
                 data.put_f64(*v);
                 Ok(size_of::<f64>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Bool => match value {
             Value::Bool(v) => {
@@ -235,11 +234,11 @@ fn encode_value(
                 };
                 Ok(size_of::<u8>())
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Z | Encoding::Mutez => match value {
             Value::String(v) => Ok(encode_z(data, v)?),
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::String => match value {
             Value::String(v) => {
@@ -249,12 +248,12 @@ fn encode_value(
                     Error::custom("Encoded message size overflow while encoding a string")
                 })?)
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::BoundedString(max) => match value {
             Value::String(v) => {
                 if v.len() > *max {
-                    return Err(bound_error(encoding, *max, v.len()))?;
+                    return Err(bound_error(encoding, *max, v.len()).into());
                 }
                 data.put_u32(v.len() as u32);
                 data.put_slice(v.as_bytes());
@@ -262,7 +261,7 @@ fn encode_value(
                     Error::custom("Encoded message size overflow while encoding a string")
                 })?)
             }
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Enum => match value {
             Value::Enum(_, ordinal) => match ordinal {
@@ -276,9 +275,9 @@ fn encode_value(
                     })?);
                     Ok(size_of::<u8>())
                 }
-                None => Err(Error::custom("Was expecting enum ordinal value"))?,
+                None => Err(Error::custom("Was expecting enum ordinal value").into()),
             },
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::List(list_inner_encoding) => {
             match value {
@@ -296,14 +295,14 @@ fn encode_value(
                             Error::custom("Encoded message size overflow while encoding a list")
                         })?)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))?,
+                _ => Err(Error::encoding_mismatch(encoding, value).into()),
             }
         }
         Encoding::BoundedList(max, list_inner_encoding) => {
             match value {
                 Value::List(values) => {
                     if values.len() > *max {
-                        return Err(bound_error(encoding, *max, values.len()))?;
+                        return Err(bound_error(encoding, *max, values.len()).into());
                     }
                     let data_len_before_write = data.len();
                     // write data
@@ -318,7 +317,7 @@ fn encode_value(
                             Error::custom("Encoded message size overflow while encoding a list")
                         })?)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))?,
+                _ => Err(Error::encoding_mismatch(encoding, value).into()),
             }
         }
         Encoding::Bytes => {
@@ -328,7 +327,7 @@ fn encode_value(
                     for value in values {
                         match value {
                             Value::Uint8(u8_val) => data.put_u8(*u8_val),
-                            _ => return Err(Error::custom(format!("Encoding::Bytes could be applied only to &[u8] value but found: {:?}", value)))?
+                            _ => return Err(Error::custom(format!("Encoding::Bytes could be applied only to &[u8] value but found: {:?}", value)).into())
                         }
                     }
                     Ok(data
@@ -338,7 +337,7 @@ fn encode_value(
                             Error::custom("Encoded message size overflow while encoding bytes")
                         })?)
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))?,
+                _ => Err(Error::encoding_mismatch(encoding, value).into()),
             }
         }
         Encoding::Hash(hash_type) => {
@@ -348,7 +347,7 @@ fn encode_value(
                     for value in values {
                         match value {
                             Value::Uint8(u8_val) => data.put_u8(*u8_val),
-                            _ => return Err(Error::custom(format!("Encoding::Hash could be applied only to &[u8] value but found: {:?}", value)))?
+                            _ => return Err(Error::custom(format!("Encoding::Hash could be applied only to &[u8] value but found: {:?}", value)).into())
                         }
                     }
 
@@ -370,10 +369,11 @@ fn encode_value(
                             "Was expecting {} bytes but got {}",
                             hash_type.size(),
                             bytes_sz
-                        )))?
+                        ))
+                        .into())
                     }
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))?,
+                _ => Err(Error::encoding_mismatch(encoding, value).into()),
             }
         }
         Encoding::Option(option_encoding) => match value {
@@ -392,7 +392,7 @@ fn encode_value(
                     Ok(size_of::<u8>())
                 }
             },
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::OptionalField(option_encoding) => match value {
             Value::Option(ref wrapped_value) => match wrapped_value {
@@ -410,7 +410,7 @@ fn encode_value(
                     Ok(size_of::<u8>())
                 }
             },
-            _ => Err(Error::encoding_mismatch(encoding, value))?,
+            _ => Err(Error::encoding_mismatch(encoding, value).into()),
         },
         Encoding::Dynamic(dynamic_encoding) => {
             let data_len_before_write = data.len();
@@ -449,7 +449,7 @@ fn encode_value(
             // write data
             let bytes_sz = encode_value(data, value, dynamic_encoding)?;
             if bytes_sz > *max {
-                return Err(bound_error(encoding, *max, bytes_sz))?;
+                return Err(bound_error(encoding, *max, bytes_sz).into());
             }
 
             // capture slice of buffer where List length was stored
@@ -479,7 +479,8 @@ fn encode_value(
                 Err(Error::custom(format!(
                     "Was expecting {} bytes but got {}",
                     bytes_sz, sized_size
-                )))?
+                ))
+                .into())
             }
         }
         Encoding::Bounded(max, sized_encoding) => {
@@ -489,7 +490,7 @@ fn encode_value(
             if bytes_sz <= *max {
                 Ok(bytes_sz)
             } else {
-                Err(bound_error(encoding, *max, bytes_sz))?
+                Err(bound_error(encoding, *max, bytes_sz).into())
             }
         }
         Encoding::Greedy(un_sized_encoding) => encode_value(data, value, un_sized_encoding),
@@ -516,7 +517,8 @@ fn encode_value(
                         None => Err(Error::custom(format!(
                             "No tag found for variant: {}",
                             tag_variant
-                        )))?,
+                        ))
+                        .into()),
                     }
                 }
                 Value::Enum(ref tag_variant, _) => {
@@ -536,19 +538,12 @@ fn encode_value(
                         None => Err(Error::custom(format!(
                             "No tag found for variant: {}",
                             tag_variant
-                        )))?,
+                        ))
+                        .into()),
                     }
                 }
-                _ => Err(Error::encoding_mismatch(encoding, value))?,
+                _ => Err(Error::encoding_mismatch(encoding, value).into()),
             }
-        }
-        Encoding::Split(fn_encoding) => {
-            let inner_encoding = fn_encoding(SchemaType::Binary);
-            encode_value(data, value, &inner_encoding)
-        }
-        Encoding::Lazy(fn_encoding) => {
-            let inner_encoding = fn_encoding();
-            encode_value(data, value, &inner_encoding)
         }
         Encoding::Custom(codec) => Ok(codec.encode(data, value, encoding)?),
         Encoding::Obj(_, obj_schema) => encode_record(data, value, obj_schema),
@@ -558,8 +553,14 @@ fn encode_value(
 
 fn write_tag_id(data: &mut Vec<u8>, tag_sz: usize, tag_id: u16) -> Result<(), Error> {
     match tag_sz {
-        1 => Ok(data.put_u8(tag_id as u8)),
-        2 => Ok(data.put_u16(tag_id)),
+        1 => {
+            data.put_u8(tag_id as u8);
+            Ok(())
+        }
+        2 => {
+            data.put_u16(tag_id);
+            Ok(())
+        }
         _ => Err(Error::custom(format!("Unsupported tag size {}", tag_sz))),
     }
 }

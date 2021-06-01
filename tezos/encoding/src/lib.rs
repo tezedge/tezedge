@@ -9,8 +9,8 @@ pub mod types;
 
 pub mod binary_reader;
 pub mod binary_writer;
-pub mod de;
+
 pub mod encoding;
 pub mod error_context;
-pub mod json_writer;
+pub mod nom;
 pub mod ser;

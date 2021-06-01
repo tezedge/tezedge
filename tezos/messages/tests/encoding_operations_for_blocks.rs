@@ -5,10 +5,10 @@ use std::convert::TryInto;
 
 use crypto::hash::HashType;
 use failure::Error;
-use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::encoding::operations_for_blocks::PathItem;
 use tezos_messages::p2p::{
-    binary_message::{BinaryMessage, JsonMessage},
-    encoding::operations_for_blocks::PathItem,
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::prelude::*,
 };
 
 #[test]
@@ -191,7 +191,7 @@ fn create_operations_for_blocks_encoded(depth: usize) -> Vec<u8> {
 fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
     let path = (0..depth)
         .map(|i| get_hash(i as u64, 32))
-        .map(|h| PathItem::Left(PathLeft::new(h, Default::default())))
+        .map(|h| PathItem::left(h))
         .collect();
     let message = PeerMessage::OperationsForBlocks(OperationsForBlocksMessage::new(
         OperationsForBlock::new(get_hash(0xffffffff_u64, 32).try_into().unwrap(), 0x01),
@@ -251,16 +251,6 @@ fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
     let encoded = PeerMessageResponse::from(message).as_bytes()?;
     let expected = create_operations_for_blocks_encoded(depth);
     assert_eq!(encoded, expected);
-
-    Ok(())
-}
-
-#[test]
-#[ignore = "JSON serialization is not implemented for operations for blocks"]
-fn can_serialize_to_json_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
-    let message = create_operations_for_blocks(depth);
-    let _encoded = PeerMessageResponse::from(message).as_json()?;
 
     Ok(())
 }

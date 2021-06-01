@@ -20,12 +20,9 @@ use tokio::net::TcpStream;
 use crypto::crypto_box::PrecomputedKey;
 use crypto::nonce::Nonce;
 use crypto::CryptoError;
-use tezos_encoding::{
-    binary_reader::{BinaryReaderError, BinaryReaderErrorKind},
-    binary_writer::BinaryWriterError,
-};
+use tezos_encoding::{binary_reader::BinaryReaderError, binary_writer::BinaryWriterError};
 use tezos_messages::p2p::binary_message::{
-    BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES,
+    BinaryChunk, BinaryChunkError, BinaryMessage, SizeFromChunk, CONTENT_LENGTH_FIELD_BYTES,
 };
 
 /// Max allowed content length in bytes when taking into account extra data added by encryption
@@ -299,9 +296,9 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
     /// Consume content of inner message reader into specific message
     pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
     where
-        M: BinaryMessage,
+        M: BinaryMessage + SizeFromChunk,
     {
-        let mut input_remaining = 0;
+        let mut input_size = 0;
         let mut input_data = vec![];
 
         loop {
@@ -312,23 +309,16 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
             match self.crypto.decrypt(&message_encrypted.content()) {
                 Ok(mut message_decrypted) => {
                     trace!(self.log, "Message received"; "message" => FnValue(|_| hex::encode(&message_decrypted)));
-                    if input_remaining >= message_decrypted.len() {
-                        input_remaining -= message_decrypted.len();
-                    } else {
-                        input_remaining = 0;
-                    }
 
+                    if input_size == 0 {
+                        input_size = M::size_from_chunk(&message_decrypted)?;
+                    }
                     input_data.append(&mut message_decrypted);
 
-                    if input_remaining == 0 {
+                    if input_size <= input_data.len() {
                         match M::from_bytes(&input_data) {
                             Ok(message) => break Ok(message),
-                            Err(e) => match e.kind() {
-                                BinaryReaderErrorKind::Underflow { bytes } => {
-                                    input_remaining += bytes
-                                }
-                                _ => break Err(e.into()),
-                            },
+                            Err(e) => break Err(e.into()),
                         }
                     }
                 }

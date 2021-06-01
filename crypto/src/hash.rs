@@ -32,6 +32,15 @@ mod prefix_bytes {
 pub type Hash = Vec<u8>;
 
 pub trait HashTrait: Into<Hash> + AsRef<Hash> {
+    /// Returns this hash type.
+    fn hash_type() -> HashType;
+
+    /// Returns the size of this hash.
+    fn hash_size() -> usize {
+        Self::hash_type().size()
+    }
+
+    /// Tries to create this hash from the `bytes`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError>;
 }
 
@@ -90,6 +99,10 @@ macro_rules! define_hash {
         }
 
         impl HashTrait for $name {
+            fn hash_type() -> HashType {
+                HashType::$name
+            }
+
             fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
                 $name::try_from(bytes)
             }
@@ -149,7 +162,7 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum HashType {
     // "\087\082\000" (* Net(15) *)
     ChainId,

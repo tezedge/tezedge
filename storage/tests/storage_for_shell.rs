@@ -16,7 +16,7 @@ use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides};
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::Head;
 

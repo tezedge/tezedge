@@ -237,7 +237,7 @@ mod tests {
     use std::convert::TryInto;
 
     use tezos_api::ffi::PrevalidatorWrapper;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::Operation;
 
     use crate::mempool::MempoolState;

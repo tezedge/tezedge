@@ -3,6 +3,12 @@
 
 //! Defines types of the intermediate data format.
 
+use crate::encoding::Encoding;
+use crate::encoding::HasEncoding;
+use crate::has_encoding;
+
+use serde::{Deserialize, Serialize};
+
 /// This is a wrapper for [num_bigint::BigInt] type.
 #[derive(PartialEq, Debug, Clone)]
 pub struct BigInt(pub num_bigint::BigInt);
@@ -30,6 +36,90 @@ impl From<&BigInt> for num_bigint::BigInt {
         from.0.clone()
     }
 }
+
+/// Zarith number
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Zarith(pub num_bigint::BigInt);
+
+impl From<num_bigint::BigInt> for Zarith {
+    fn from(from: num_bigint::BigInt) -> Self {
+        Zarith(from)
+    }
+}
+
+impl From<Zarith> for num_bigint::BigInt {
+    fn from(from: Zarith) -> Self {
+        from.0
+    }
+}
+
+impl From<&num_bigint::BigInt> for Zarith {
+    fn from(from: &num_bigint::BigInt) -> Self {
+        Zarith(from.clone())
+    }
+}
+
+impl From<&Zarith> for num_bigint::BigInt {
+    fn from(from: &Zarith) -> Self {
+        from.0.clone()
+    }
+}
+
+impl From<Zarith> for BigInt {
+    fn from(source: Zarith) -> Self {
+        Self(source.0)
+    }
+}
+
+impl From<&Zarith> for BigInt {
+    fn from(source: &Zarith) -> Self {
+        Self(source.0.clone())
+    }
+}
+
+has_encoding!(Zarith, ZARITH_ENCODING, { Encoding::Z });
+
+/// Mutez number
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Mutez(pub num_bigint::BigInt);
+
+impl From<num_bigint::BigInt> for Mutez {
+    fn from(from: num_bigint::BigInt) -> Self {
+        Mutez(from)
+    }
+}
+
+impl From<Mutez> for num_bigint::BigInt {
+    fn from(from: Mutez) -> Self {
+        from.0
+    }
+}
+
+impl From<&num_bigint::BigInt> for Mutez {
+    fn from(from: &num_bigint::BigInt) -> Self {
+        Mutez(from.clone())
+    }
+}
+
+impl From<&Mutez> for num_bigint::BigInt {
+    fn from(from: &Mutez) -> Self {
+        from.0.clone()
+    }
+}
+
+impl From<Mutez> for BigInt {
+    fn from(source: Mutez) -> Self {
+        Self(source.0)
+    }
+}
+
+impl From<&Mutez> for BigInt {
+    fn from(source: &Mutez) -> Self {
+        Self(source.0.clone())
+    }
+}
+
+has_encoding!(Mutez, MUTEZ_ENCODING, { Encoding::Mutez });
 
 /// Represents `true` value in binary format.
 pub const BYTE_VAL_TRUE: u8 = 0xFF;
