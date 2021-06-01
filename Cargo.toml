@@ -34,3 +34,6 @@ members = [
     "fuzz/peer_response_message",
     "fuzz/protocol_message",
 ]
+
+[patch.crates-io]
+ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }

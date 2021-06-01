@@ -44,7 +44,7 @@ name = "predecessor_benchmarks"
 harness = false
 
 [dev-dependencies]
-assert-json-diff = "1.1"
+assert-json-diff = "2"
 hex = "0.4"
 lazy_static = "1.4"
 rand = "0.7.3"

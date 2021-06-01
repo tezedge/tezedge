@@ -32,7 +32,7 @@ services:
 
   tezedge-node:
     image: simplestakingcom/tezedge:latest
-    command: ["--network", "${TEZOS_NETWORK}", "--actions-store-backend", "file", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
+    command: ["--network", "${TEZOS_NETWORK}", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--one-context", "--actions-store-backend", "none", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
     depends_on:
       - "tezedge-memprof"
     logging:

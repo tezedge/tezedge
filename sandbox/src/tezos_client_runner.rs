@@ -368,17 +368,15 @@ impl TezosClientRunner {
                 })
             }
         };
-        let port = node_ref.port.to_string();
+        let endpoint = format!("http://{}:{}", &node_ref.ip, &node_ref.port);
 
         let mut args = [
             // add base-dir
             "--base-dir",
             &data_dir,
             // add client ip/port
-            "-A",
-            &node_ref.ip,
-            "-P",
-            &port,
+            "--endpoint",
+            &endpoint,
         ]
         .to_vec();
         args.extend(command_args);

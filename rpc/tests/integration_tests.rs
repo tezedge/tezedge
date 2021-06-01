@@ -1,28 +1,61 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Big integration which compares two nodes for the same rpc result
+//!
+//! usage:
+//!
+//! ```
+//!     IGNORE_PATH_PATTERNS=/context/raw/bytes FROM_BLOCK_HEADER=0 TO_BLOCK_HEADER=8100 NODE_RPC_CONTEXT_ROOT_1=http://127.0.0.1:16732 NODE_RPC_CONTEXT_ROOT_2=http://127.0.0.1:18888 target/release/deps/integration_tests-4a5eeedb180cbb20 --ignored test_rpc_compare -- --nocapture
+//! ```
+
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
-use assert_json_diff::assert_json_eq_no_panic;
 use failure::format_err;
 use hyper::body::Buf;
 use hyper::Client;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
+use serde_json::Value;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use url::Url;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
+    static ref IGNORE_JSON_PROPERTIES: Vec<String> = ignore_json_properties();
     static ref NODE_RPC_CONTEXT_ROOT_1: (String, String) = node_rpc_context_root_1();
     static ref NODE_RPC_CONTEXT_ROOT_2: (String, String) = node_rpc_context_root_2();
-    // one hyper client instance
-    static ref HTTP_CLIENT: Client<hyper::client::HttpConnector, hyper::Body> = Client::new();
+}
+
+fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
+    Client::new()
+}
+
+fn log_settings() {
+    println!("========================================");
+    println!("Running rpc compare tests with settings:");
+    println!("========================================");
+    println!(
+        "Node1 url: {} - {}",
+        &NODE_RPC_CONTEXT_ROOT_1.0, NODE_RPC_CONTEXT_ROOT_1.1
+    );
+    println!(
+        "Node2 url: {} - {}",
+        &NODE_RPC_CONTEXT_ROOT_2.0, NODE_RPC_CONTEXT_ROOT_2.1
+    );
+    println!(
+        "IGNORE_PATH_PATTERNS: {:?}",
+        IGNORE_PATH_PATTERNS.join(", ")
+    );
+    println!(
+        "IGNORE_JSON_PROPERTIES: {:?}",
+        IGNORE_JSON_PROPERTIES.join(", ")
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
@@ -34,6 +67,7 @@ pub enum NodeType {
 #[ignore]
 #[tokio::test]
 async fn test_rpc_compare() {
+    log_settings();
     integration_tests_rpc(from_block_header(), to_block_header()).await
 }
 
@@ -397,11 +431,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 // block level 1 does not have metadata/level/cycle, so we use 0 instead
                 0
             } else {
-                let block_json =
-                    try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level))
-                        .await
-                        .expect("Failed to get block metadata");
-                block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
+                let block_json = try_get_data_as_json(&format!(
+                    "{}/{}/{}",
+                    "chains/main/blocks", level, "metadata"
+                ))
+                .await
+                .expect("Failed to get block metadata");
+                cycle_from_metadata(&block_json).expect("failed to get cycle from metadata")
             };
 
             // ----------------------- Tests for each cycle of the cycle -----------------------
@@ -480,10 +516,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 
     // get to_block data
-    let block_json = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", to_block))
+    let block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block))
         .await
         .expect("Failed to get block metadata");
-    let to_block_hash = block_json["hash"].as_str().unwrap();
+    let to_block_hash = block_json.as_str().unwrap();
 
     // test get header by block_hash string
     test_rpc_compare_json(&format!(
@@ -557,7 +593,9 @@ async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     let ((node1_json, node1_response_time), (node2_json, node2_response_time)) =
         futures::try_join!(node1_response, node2_response)?;
 
-    if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
+    if let Err(error) =
+        json_compare::assert_json_eq_no_panic(&node2_json, &node1_json, &IGNORE_JSON_PROPERTIES)
+    {
         panic!(
             "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
             error,
@@ -614,8 +652,13 @@ async fn get_rpc_as_json(
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
+    // we create client for every call, because with new Tezos rpcs with "transfer-encoding: chunked"
+    // with one singleton Client, calls randomly failed: "connection closed before message completed"
+    // maybe it has something to do with keep-alive or something
+    // see below [test_chunked_call]
+    let client = client();
     let start = Instant::now();
-    let (body, response_time) = match HTTP_CLIENT.get(url).await {
+    let (body, response_time) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
@@ -623,10 +666,25 @@ async fn get_rpc_as_json(
                 finished,
             )
         },
-        Err(e) => return Err(format_err!("Request url: {:?} for getting block failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
+        Err(e) => return Err(format_err!("Request url: {:?} for getting data failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
     Ok((serde_json::from_reader(&mut body.reader())?, response_time))
+}
+
+fn cycle_from_metadata(block_metadata_json: &Value) -> Result<i64, failure::Error> {
+    // before 008 edo
+    if let Some(cycle) = block_metadata_json["level"]["cycle"].as_i64() {
+        return Ok(cycle);
+    }
+    // from 008 edo protocol
+    if let Some(cycle) = block_metadata_json["level_info"]["cycle"].as_i64() {
+        return Ok(cycle);
+    }
+    Err(format_err!(
+        "No 'cycle' attribute found in block metadata: {:?}",
+        block_metadata_json
+    ))
 }
 
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
@@ -680,6 +738,19 @@ fn ignore_path_patterns() -> Vec<String> {
     )
 }
 
+fn ignore_json_properties() -> Vec<String> {
+    env::var("IGNORE_JSON_PROPERTIES").map_or_else(
+        |_| vec![],
+        |paths| {
+            paths
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect()
+        },
+    )
+}
+
 fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
     if ignore_patters.is_empty() {
         return false;
@@ -693,8 +764,6 @@ fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
 fn node_rpc_context_root_1() -> (String, String) {
     let node_url = env::var("NODE_RPC_CONTEXT_ROOT_1")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set");
-    println!("Node1 url: {}", &node_url);
-
     let url = Url::parse(&node_url).expect("invalid url");
     (node_url, url.host_str().unwrap_or("node2").to_string())
 }
@@ -702,34 +771,32 @@ fn node_rpc_context_root_1() -> (String, String) {
 fn node_rpc_context_root_2() -> (String, String) {
     let node_url = env::var("NODE_RPC_CONTEXT_ROOT_2")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set");
-    println!("Node2 url: {}", &node_url);
-
     let url = Url::parse(&node_url).expect("invalid url");
     (node_url, url.host_str().unwrap_or("node2").to_string())
 }
 
 async fn test_all_operations_for_block(level: i64) {
-    let block = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level))
-        .await
-        .expect("Failed to get block");
-
-    let validation_passes = block["operations"]
+    let validation_passes =
+        try_get_data_as_json(&format!("chains/main/blocks/{}/operations", level))
+            .await
+            .expect("Failed to get operations (validation passes)");
+    let validation_passes = validation_passes
         .as_array()
         .expect("Failed to parse block operations (validation passes)");
 
     if !validation_passes.is_empty() {
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "operations_metadata_hash"
+            "chains/main/blocks/{}/operations_metadata_hash",
+            level,
         ))
         .await
         .expect("test failed");
 
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "operation_metadata_hashes"
+            "chains/main/blocks/{}/operation_metadata_hashes",
+            level,
         ))
         .await
         .expect("test failed");
@@ -737,16 +804,16 @@ async fn test_all_operations_for_block(level: i64) {
 
     for (validation_pass_index, validation_pass) in validation_passes.iter().enumerate() {
         test_rpc_compare_json(&format!(
-            "{}/{}/{}/{}",
-            "chains/main/blocks", level, "operations", validation_pass_index,
+            "chains/main/blocks/{}/operations/{}",
+            level, validation_pass_index,
         ))
         .await
         .expect("test failed");
 
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}/{}",
-            "chains/main/blocks", level, "operation_metadata_hashes", validation_pass_index
+            "chains/main/blocks/{}/operation_metadata_hashes/{}",
+            level, validation_pass_index
         ))
         .await
         .expect("test failed");
@@ -756,20 +823,16 @@ async fn test_all_operations_for_block(level: i64) {
             .expect("Failed to parse validation pass operations");
         for (operation_index, _) in operations.iter().enumerate() {
             test_rpc_compare_json(&format!(
-                "{}/{}/{}/{}/{}",
-                "chains/main/blocks", level, "operations", validation_pass_index, operation_index,
+                "chains/main/blocks/{}/operations/{}/{}",
+                level, validation_pass_index, operation_index,
             ))
             .await
             .expect("test failed");
 
             // V1 - compatible rpc
             test_rpc_compare_json(&format!(
-                "{}/{}/{}/{}/{}",
-                "chains/main/blocks",
-                level,
-                "operation_metadata_hashes",
-                validation_pass_index,
-                operation_index
+                "chains/main/blocks/{}/operation_metadata_hashes/{}/{}",
+                level, validation_pass_index, operation_index
             ))
             .await
             .expect("test failed");
@@ -799,4 +862,134 @@ fn test_ignored_matching() {
         &["vote/listing".to_string()],
         "/chains/main/blocks/1/votesasa/listing",
     ));
+}
+
+// clear && NODE_RPC_CONTEXT_ROOT_1=http://master.dev.tezedge.com:18733 cargo test --release test_chunked_call -- --nocapture
+// #[tokio::test]
+// async fn test_chunked_call() {
+//     for i in 0..50 {
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/helpers/endorsing_rights",
+//         )
+//         .await
+//         .expect("endorsing_rights failed");
+//         println!("\n\n{:?}", response);
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/helpers/baking_rights",
+//         )
+//         .await
+//         .expect("baking_rights failed");
+//         println!("\n\n{:?}", response);
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/minimal_valid_time",
+//         )
+//         .await
+//         .expect("minimal_valid_time failed");
+//         println!("\n\n{:?}", response);
+//     }
+// }
+
+mod json_compare {
+    use serde::Serialize;
+
+    pub(crate) fn assert_json_eq_no_panic<Lhs, Rhs>(
+        lhs: &Lhs,
+        rhs: &Rhs,
+        ignore_json_properties: &[String],
+    ) -> Result<(), String>
+    where
+        Lhs: Serialize,
+        Rhs: Serialize,
+    {
+        // TODO: hack comparision, because of Tezos bug: https://gitlab.com/tezos/tezos/-/issues/1430
+        if !ignore_json_properties.is_empty() {
+            assert_json_eq_no_panic_with_ignore_json_properties(
+                lhs,
+                rhs,
+                assert_json_diff::Config::new(assert_json_diff::CompareMode::Strict),
+                ignore_json_properties,
+            )
+        } else {
+            assert_json_diff::assert_json_matches_no_panic(
+                lhs,
+                rhs,
+                assert_json_diff::Config::new(assert_json_diff::CompareMode::Strict),
+            )
+        }
+    }
+
+    fn assert_json_eq_no_panic_with_ignore_json_properties<Lhs, Rhs>(
+        lhs: &Lhs,
+        rhs: &Rhs,
+        config: assert_json_diff::Config,
+        ignore_json_properties: &[String],
+    ) -> Result<(), String>
+    where
+        Lhs: Serialize,
+        Rhs: Serialize,
+    {
+        let lhs = serde_json::to_value(lhs).unwrap_or_else(|err| {
+            panic!(
+                "Couldn't convert left hand side value to JSON. Serde error: {}",
+                err
+            )
+        });
+        let rhs = serde_json::to_value(rhs).unwrap_or_else(|err| {
+            panic!(
+                "Couldn't convert right hand side value to JSON. Serde error: {}",
+                err
+            )
+        });
+
+        let diffs = assert_json_diff::diff::diff(&lhs, &rhs, config);
+
+        if diffs.is_empty() {
+            Ok(())
+        } else {
+            let diffs = diffs
+                .into_iter()
+                .filter(|diff| {
+                    if let assert_json_diff::diff::Path::Keys(keys) = &diff.path {
+                        if let Some(last_key) = keys.last() {
+                            let ignore = ignore_json_properties.iter().any(|ijp| {
+                                if let assert_json_diff::diff::Key::Field(field_name) = last_key {
+                                    field_name.eq(ijp)
+                                } else {
+                                    false
+                                }
+                            });
+                            if ignore {
+                                println!();
+                                println!(
+                                    "Found IGNORED property, which does not matches, diff: {:?}",
+                                    diff
+                                );
+                                false
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            if diffs.is_empty() {
+                Ok(())
+            } else {
+                let msg = diffs
+                    .into_iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                Err(msg)
+            }
+        }
+    }
 }

@@ -1089,7 +1089,10 @@ impl Environment {
                             }
                         }
                     },
-                    one_context: args.is_present("one-context"),
+                    // TODO: TE-447 - remove one_context when integration done
+                    // TODO: TE-447 - we will support just one context
+                    // one_context: args.is_present("one-context"),
+                    one_context: true,
                 }
             },
             identity: crate::configuration::Identity {
