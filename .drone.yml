@@ -216,8 +216,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - masterX
+    - developX
 
 ---
 ##############################################################################################################
@@ -662,8 +662,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - masterX
+    - developX
 
 ##############################################################################################################
 # This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
@@ -910,8 +910,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - masterX
+    - developX
 
 depends_on:
   - build
@@ -2596,8 +2596,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - masterX
+    - developX
 
 depends_on:
   - build
@@ -2642,7 +2642,7 @@ steps:
   # just run ocaml 3 edo2net snapshoted nodes
   - name: ocaml-node-run-1
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2660,7 +2660,7 @@ steps:
 
   - name: ocaml-node-run-2
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2678,7 +2678,7 @@ steps:
 
   - name: ocaml-node-run-3
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2861,7 +2861,7 @@ steps:
   # just run ocaml 3 mainnet snapshoted nodes
   - name: ocaml-node-run-1
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2879,7 +2879,7 @@ steps:
 
   - name: ocaml-node-run-2
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2897,7 +2897,7 @@ steps:
 
   - name: ocaml-node-run-3
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
