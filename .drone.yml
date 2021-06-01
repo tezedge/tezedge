@@ -438,7 +438,17 @@ steps:
 #       - refs/pull/*/head
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
-- name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
+- name: wrk-performance-test-tezedge-old-vs-ocaml
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  user: root
+  commands:
+    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER}  --tezedge-new-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+  when:
+    ref:
+    - refs/pull/*/head
+
+- name: wrk-performance-test-tezedge-new-vs-ocaml
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
