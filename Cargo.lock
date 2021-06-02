@@ -913,7 +913,6 @@ dependencies = [
  "getset",
  "http",
  "itertools 0.10.0",
- "libflate",
  "merge",
  "percentage",
  "reqwest",

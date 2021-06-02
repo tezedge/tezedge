@@ -1,6 +1,18 @@
 version: "3"
 
 services:
+  tezedge-memprof:
+    image: simplestakingcom/tezedge-memprof:latest-release
+    privileged: true
+    environment:
+      - TEZEDGE_NODE_NAME=deploy-monitoring-tezedge-node
+    volumes:
+      - "/sys/kernel/debug:/sys/kernel/debug:rw"
+      - "/proc:/proc:rw"
+      - "/var/run/docker.sock:/var/run/docker.sock:rw"
+    ports:
+      - "17832:17832"
+
   tezedge-debugger:
     image: simplestakingcom/tezedge-debugger:latest-release
     privileged: true
@@ -21,6 +33,8 @@ services:
   tezedge-node:
     image: simplestakingcom/tezedge:latest-release
     command: ["--network", "${TEZOS_NETWORK}", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--one-context", "--actions-store-backend", "none", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
+    depends_on:
+      - "tezedge-memprof"
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
