@@ -2832,8 +2832,6 @@
 #   - mainnet-offline-tests
 #   - florencenet-offline-tests
 
----
-
 kind: pipeline
 name: dhat-decoding
 
