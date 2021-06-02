@@ -2855,11 +2855,12 @@ steps:
   commands:
     - apt update && apt install -y valgrind
     - cd /tmp/ && git clone https://github.com/tezedge/tezedge.git -b $TARGET_BRANCH && cd tezedge/tezos/messages
-    - cargo test --no-run --test decode_stream --message-format json | grep 'name":"decode_stream"' | sed -E -e 's/.*"executable":"([^"]*)".*/\1/' > target.cmd
+    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > target.cmd
     - cat target.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(cat target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
     - git checkout $SOURCE_BRANCH
-    - cargo test --no-run --test decode_stream --message-format json | grep 'name":"decode_stream"' | sed -E -e 's/.*"executable":"([^"]*)".*/\1/' > source.cmd
+    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > source.cmd
+    - cat source.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(cat source.cmd) 2>&1 | tee  dhat-source.out | sed '/======== ORDERED BY/Q'
 
 image_pull_secrets:
