@@ -2853,15 +2853,15 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   user: root
   commands:
+    - pwd && ls -al .
     - apt update && apt install -y valgrind
+    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > /tmp/source.cmd
+    - cat /tmp/source.cmd
+    - valgrind --tool=exp-dhat --show-top-n=1 $(cat /tmp/source.cmd) 2>&1 | tee  /tmp/dhat-source.out | sed '/======== ORDERED BY/Q'
     - cd /tmp/ && git clone https://github.com/tezedge/tezedge.git -b $TARGET_BRANCH && cd tezedge/tezos/messages
-    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > target.cmd
-    - cat target.cmd
-    - valgrind --tool=exp-dhat --show-top-n=1 $(cat target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
-    - git checkout $SOURCE_BRANCH
-    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > source.cmd
-    - cat source.cmd
-    - valgrind --tool=exp-dhat --show-top-n=1 $(cat source.cmd) 2>&1 | tee  dhat-source.out | sed '/======== ORDERED BY/Q'
+    - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > /tmp/target.cmd
+    - cat /tmp/target.cmd
+    - valgrind --tool=exp-dhat --show-top-n=1 $(cat /tmp/target.cmd) 2>&1 | tee  /tmp/dhat-target.out | sed '/======== ORDERED BY/Q'
 
 image_pull_secrets:
   - docker_pull_secret
