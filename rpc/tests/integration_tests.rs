@@ -21,8 +21,10 @@ lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
     static ref NODE_RPC_CONTEXT_ROOT_1: (String, String) = node_rpc_context_root_1();
     static ref NODE_RPC_CONTEXT_ROOT_2: (String, String) = node_rpc_context_root_2();
-    // one hyper client instance
-    static ref HTTP_CLIENT: Client<hyper::client::HttpConnector, hyper::Body> = Client::new();
+}
+
+fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
+    Client::new()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
@@ -614,8 +616,13 @@ async fn get_rpc_as_json(
         .parse()
         .unwrap_or_else(|_| panic!("Invalid URL: {}", &url_as_string));
 
+    // we create client for every call, because with new Tezos rpcs with "transfer-encoding: chunked"
+    // with one singleton Client, calls randomly failed: "connection closed before message completed"
+    // maybe it has something to do with keep-alive or something
+    // see below [test_chunked_call]
+    let client = client();
     let start = Instant::now();
-    let (body, response_time) = match HTTP_CLIENT.get(url).await {
+    let (body, response_time) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
@@ -623,7 +630,7 @@ async fn get_rpc_as_json(
                 finished,
             )
         },
-        Err(e) => return Err(format_err!("Request url: {:?} for getting block failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
+        Err(e) => return Err(format_err!("Request url: {:?} for getting data failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
     Ok((serde_json::from_reader(&mut body.reader())?, response_time))
@@ -800,3 +807,31 @@ fn test_ignored_matching() {
         "/chains/main/blocks/1/votesasa/listing",
     ));
 }
+
+// clear && NODE_RPC_CONTEXT_ROOT_1=http://master.dev.tezedge.com:18733 cargo test --release test_chunked_call -- --nocapture
+// #[tokio::test]
+// async fn test_chunked_call() {
+//     for i in 0..50 {
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/helpers/endorsing_rights",
+//         )
+//         .await
+//         .expect("endorsing_rights failed");
+//         println!("\n\n{:?}", response);
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/helpers/baking_rights",
+//         )
+//         .await
+//         .expect("baking_rights failed");
+//         println!("\n\n{:?}", response);
+//         let response = get_rpc_as_json(
+//             NodeType::Node1,
+//             "/chains/main/blocks/head/minimal_valid_time",
+//         )
+//         .await
+//         .expect("minimal_valid_time failed");
+//         println!("\n\n{:?}", response);
+//     }
+// }
