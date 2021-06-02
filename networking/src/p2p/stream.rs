@@ -30,7 +30,7 @@ pub const CONTENT_LENGTH_MAX: usize =
     tezos_messages::p2p::binary_message::CONTENT_LENGTH_MAX - BOX_ZERO_BYTES;
 
 /// Min allowed chunk size (except for the last chunk of a message)
-pub const CONTENT_LENGTH_MIN: usize = 1024 + BOX_ZERO_BYTES;
+pub const CONTENT_LENGTH_MIN: usize = 1024;
 
 /// This is common error that might happen when communicating with peer over the network.
 #[derive(Debug, Fail)]
@@ -199,6 +199,10 @@ impl<R: AsyncRead + Unpin + Send> MessageReaderBase<R> {
         self.stream.read_exact(&mut msg_len_bytes).await?;
         Ok(msg_len_bytes)
     }
+
+    pub fn into_inner(self) -> R {
+        self.stream
+    }
 }
 
 pub type MessageWriter = MessageWriterBase<WriteHalf<TcpStream>>;
@@ -304,6 +308,10 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
         }
     }
 
+    pub fn into_inner(self) -> MessageReaderBase<A> {
+        self.rx
+    }
+
     /// Consume content of inner message reader into specific message
     pub async fn read_message<M>(&mut self) -> Result<M, StreamError>
     where
@@ -317,11 +325,11 @@ impl<A: AsyncRead + Unpin + Send> EncryptedMessageReaderBase<A> {
             let message_encrypted = self.rx.read_message().await?;
             let message_len = message_encrypted.len();
 
-            // check that if the chunk is not a first chunk of the message (input_len > 0)
-            // and not a last chunk of the message (message_len > input_size + BOX_ZERO_BYTES),
+            // check that if the chunk is not a first chunk of the message (input_data.len > 0)
+            // and not a last chunk of the message (input_data.len + message_len < input_size),
             // then it should not be shorter than `CONTENT_LENGTH_MIN`
-            if input_size > 0
-                && message_len > input_size + BOX_ZERO_BYTES
+            if input_data.len() > 0
+                && input_data.len() + message_len < input_size
                 && message_len < CONTENT_LENGTH_MIN
             {
                 return Err(StreamError::ChunkSizeError {
