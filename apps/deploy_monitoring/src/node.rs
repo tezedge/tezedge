@@ -42,11 +42,13 @@ impl TezedgeNode {
             dir::get_size(&format!(
                 "{}/{}",
                 TEZEDGE_VOLUME_PATH, "bootstrap_db/context"
-            )).unwrap_or(0),
+            ))
+            .unwrap_or(0),
             dir::get_size(&format!(
                 "{}/{}",
                 TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"
-            )).unwrap_or(0),
+            ))
+            .unwrap_or(0),
             context_actions,
             dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db")).unwrap_or(0),
         );
