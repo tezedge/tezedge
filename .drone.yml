@@ -2854,7 +2854,7 @@ steps:
   user: root
   commands:
     - apt update && apt install -y valgrind
-    - cd /tmp/ && git clone https://github.com/tezedge/tezedge.git -b $TARGET_BRANCH && cd tezedge
+    - cd /tmp/ && git clone https://github.com/tezedge/tezedge.git -b $TARGET_BRANCH && cd tezedge/tezos/messages
     - cargo test --no-run --test decode_stream --message-format json | grep 'name":"decode_stream"' | sed -E -e 's/.*"executable":"([^"]*)".*/\1/' > target.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(< target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
     - git checkout $SOURCE_BRANCH
