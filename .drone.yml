@@ -2851,13 +2851,13 @@ steps:
   user: root
   commands:
     - pwd && ls -al .
-    - git remote add -f target https://github.com/tezedge/tezedge.git
+    - git remote add -f upstream https://github.com/tezedge/tezedge.git
     - apt update && apt install -y valgrind
     - cd tezos/messages
     - cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > source.cmd
     - cat source.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(cat source.cmd) 2>&1 | tee  dhat-source.out | sed '/======== ORDERED BY/Q'
-    - git checkout -b $TARGET_BRANCH origin/$TARGET_BRANCH
+    - git checkout -b $TARGET_BRANCH upstream/$TARGET_BRANCH
     - cargo clean && cargo build --message-format json --test decode_stream |  jq --raw-output 'if .executable then .executable else empty end' > target.cmd
     - cat target.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(cat target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
