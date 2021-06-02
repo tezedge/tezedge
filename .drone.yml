@@ -3233,6 +3233,8 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+    # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
+    detach: true
 
 image_pull_secrets:
   - docker_pull_secret
@@ -3452,6 +3454,8 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+    # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
+    detach: true
 
 image_pull_secrets:
   - docker_pull_secret
