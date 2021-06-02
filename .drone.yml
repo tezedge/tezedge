@@ -2837,9 +2837,6 @@
 kind: pipeline
 name: dhat-decoding
 
-clone:
-  disable: true
-
 workspace:
   path: /drone/src
 
