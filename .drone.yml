@@ -2852,10 +2852,10 @@ steps:
     - apt update && apt install -y valgrind
     - cd /tmp/ && git clone https://github.com/tezedge/tezedge.git -b $target_branch && cd tezedge
     - cargo test --no-run --test decode_stream --message-format json | grep 'name":"decode_stream"' | sed -E -e 's/.*"executable":"([^"]*)".*/\1/' > target.cmd
-    - valgrind --tool=exp-dhat --show-top-n=1 $(< target.cmd) |& tee  dhat-target.out | sed '/======== ORDERED BY/Q'
+    - valgrind --tool=exp-dhat --show-top-n=1 $(< target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
     - git checkout $current_branch
     - cargo test --no-run --test decode_stream --message-format json | grep 'name":"decode_stream"' | sed -E -e 's/.*"executable":"([^"]*)".*/\1/' > current.cmd
-    - valgrind --tool=exp-dhat --show-top-n=1 $(< current.cmd) |& tee  dhat-current.out | sed '/======== ORDERED BY/Q'
+    - valgrind --tool=exp-dhat --show-top-n=1 $(< current.cmd) 2>&1 | tee  dhat-current.out | sed '/======== ORDERED BY/Q'
 
 image_pull_secrets:
   - docker_pull_secret
