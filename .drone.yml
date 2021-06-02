@@ -245,6 +245,8 @@ steps:
       path: /tmp/tezedge-cache
     - name: tezedge-snapshots
       path: /tmp/tezedge-snapshots
+    - name: tezedge-node-snapshotted-data
+      path: /tmp/tezedge_developer
   commands:
     - rm -rf /tmp/tezedge_developer/data
     - unzip /tmp/tezedge-snapshots/tezedge_data_from_block_0_to_26907.zip # TODO: change this name (typo 26907 -> 27907)
@@ -495,6 +497,9 @@ volumes:
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
+  - name: tezedge-node-snapshotted-data
+    host:
+      path: /tezedge-data
 
 trigger:
   branch:
