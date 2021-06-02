@@ -254,6 +254,28 @@ steps:
     - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
     - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
 
+- name: replay-test
+  image: simplestakingcom/tezedge-ci-builder:latest
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /tmp/tezedge-cache
+  commands:
+    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_204762/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762
+    - rm -rf /tmp/tezedge_developer/data
+    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762/_data /tmp/tezedge_developer/data
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params /artifacts
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params /artifacts
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /tmp/tezedge-cache/
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node replay --target-path=/tmp/replay --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --network=mainnet --to-block BLiunc6vajjnatP89AeJawjrScDpfes63FjfjBVemH3q3X2p85q --fail-above 1000 --one-context --tezos-data-dir=/tmp/tezedge_developer/data --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
+
 - name: current-branch/head-shell-test
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -453,32 +475,6 @@ steps:
     # replay action file with sled
     - echo "... replay context action file with sled..."
     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
-
-- name: replay-test
-  image: simplestakingcom/tezedge-ci-builder:latest
-  user: root
-  pull: if-not-exists
-  volumes:
-    - name: tezedge-snapshots
-      path: /tmp/tezedge-snapshots
-    - name: tezedge-node-snapshotted-data
-      path: /tmp/tezedge_developer
-    - name: build
-      path: /artifacts
-    - name: cache
-      path: /tmp/tezedge-cache
-  commands:
-    - rm -rf /tmp/tezedge_developer/data
-    - unzip /tmp/tezedge-snapshots/tezedge_data_from_block_0_to_26907.zip # TODO: change this name (typo 26907 -> 27907)
-    - mv usr/local/etc/tezedge-data/tezedge_27708_2021-05-26T12:45:48.076277293+00:00/_data /tmp/tezedge_developer/data
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params /artifacts
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params /artifacts
-    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /tmp/tezedge-cache/tezedge_ip.txt
-    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /tmp/tezedge-cache/
-    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
-    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node replay --target-path=/tmp/replay --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --network=mainnet --to-block BLiunc6vajjnatP89AeJawjrScDpfes63FjfjBVemH3q3X2p85q --fail-above 1000 --one-context --tezos-data-dir=/tmp/tezedge_developer/data --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_6.json" --protocol-runner /tmp/tezedge-cache/protocol-runner
 
 
 depends_on:
