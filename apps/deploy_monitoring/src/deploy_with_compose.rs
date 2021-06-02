@@ -23,7 +23,7 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_onl
     info!(log, "Debugger is running");
 
     info!(log, "Memprof is starting");
-    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    start_service_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
     info!(log, "Memprof is running");
 
     info!(log, "Tezedge node is starting");
@@ -54,7 +54,7 @@ pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     info!(log, "Debugger is running");
 
     info!(log, "Memprof is starting");
-    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    start_service_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
     info!(log, "Memprof is running");
 
     info!(log, "Sandbox launcher starting");
