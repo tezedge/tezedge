@@ -105,35 +105,30 @@ impl TezosEnvironment {
                 TezosEnvironment::Edo2net,
             )),
             TezosEnvironment::Edo2net => None,
-            // TODO: remove, when florence supported
-            TezosEnvironment::Florencenet => Some(Self::not_yet_fully_supported_testnet_notice(
-                TezosEnvironment::Florencenet,
-            )),
-            TezosEnvironment::Granadanet => Some(Self::not_yet_fully_supported_testnet_notice(
-                TezosEnvironment::Granadanet,
-            )),
+            TezosEnvironment::Florencenet => None,
+            TezosEnvironment::Granadanet => None,
         }
     }
 
-    fn not_yet_fully_supported_testnet_notice(selected_network: TezosEnvironment) -> String {
-        let mut selected = selected_network.supported_values();
-        selected.sort();
-        format!(
-            "\n\n\n\n////////////////////////////////////////// \
-            \n//      !!! COOMING SOON TESTNET !!!      //\
-            \n////////////////////////////////////////// \
-            \n// Selected network: {:?} \
-            \n// Is not fully supported yet, \
-            \n// but will be soon. \
-            \n// Possible problems: \
-            \n// - no peers to connect \
-            \n// - no data to download \
-            \n// - no block application \
-            \n// - RPCs missing \
-            \n//////////////////////////////////////////\n\n\n\n",
-            selected
-        )
-    }
+    // fn not_yet_fully_supported_testnet_notice(selected_network: TezosEnvironment) -> String {
+    //     let mut selected = selected_network.supported_values();
+    //     selected.sort();
+    //     format!(
+    //         "\n\n\n\n////////////////////////////////////////// \
+    //         \n//      !!! COOMING SOON TESTNET !!!      //\
+    //         \n////////////////////////////////////////// \
+    //         \n// Selected network: {:?} \
+    //         \n// Is not fully supported yet, \
+    //         \n// but will be soon. \
+    //         \n// Possible problems: \
+    //         \n// - no peers to connect \
+    //         \n// - no data to download \
+    //         \n// - no block application \
+    //         \n// - RPCs missing \
+    //         \n//////////////////////////////////////////\n\n\n\n",
+    //         selected
+    //     )
+    // }
 
     fn deprecated_testnet_notice(
         selected_network: TezosEnvironment,

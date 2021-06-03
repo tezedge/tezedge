@@ -1931,7 +1931,7 @@ steps:
   # run empty ocaml sandbox and wait for it
   - name: ocaml-node-sandbox-run
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: sandbox-data
@@ -1952,7 +1952,7 @@ steps:
   # connect both nodes with tezos-admin-client
   - name: connect-ocaml-and-rust
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1965,7 +1965,7 @@ steps:
   # inject protocol to ocaml node, means it creates the first block with level 1
   - name: inject-first-block-with-tezos_client
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -2005,7 +2005,7 @@ steps:
   # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
   - name: do-transfer-with-tezos_client
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -2037,7 +2037,7 @@ steps:
 
   - name: run-tezos-endorser-008-PtEdo2Zk
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -2070,7 +2070,7 @@ steps:
 
   - name: run-tezos-baker-008-PtEdo2Zk
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
