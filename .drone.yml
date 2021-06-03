@@ -2848,6 +2848,8 @@ steps:
   image: simplestakingcom/tezedge-ci-builder:latest
   user: root
   commands:
+    - 'test_var=$(echo "==106381== tot_alloc:    38,886,602 in 220,636 blocks" | grep "tot_alloc" | sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\\\\1/" -e "s/,//g")'
+    - echo $test_var
     - pwd && ls -al .
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
     - apt update && apt install -y valgrind
