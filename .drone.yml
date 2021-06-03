@@ -1554,6 +1554,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "time_between_blocks"
 
+# TODO: not working with v9-release because of missing "bake for" command in tezos-client
 #- name: bake-empty-block
 #  user: root
 #  image: cfmanteiga/alpine-bash-curl-jq
