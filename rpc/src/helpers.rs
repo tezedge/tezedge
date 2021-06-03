@@ -98,6 +98,8 @@ pub struct BlockHeaderInfo {
     pub context: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol: Option<String>,
+
+    // TODO: refactor this to support multiple protocol version encoding
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -106,6 +108,8 @@ pub struct BlockHeaderInfo {
     pub seed_nonce_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proof_of_work_nonce: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_baking_escape_vote: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<HeaderContent>,
 }
@@ -186,6 +190,9 @@ impl BlockHeaderInfo {
         let seed_nonce_hash = header_data
             .get("seed_nonce_hash")
             .map(|val| val.as_str().unwrap().to_string());
+        let liquidity_baking_escape_vote = header_data
+            .get("liquidity_baking_escape_vote")
+            .map(|val| val.as_bool().unwrap());
 
         let proto_data: HashMap<String, Value> =
             serde_json::from_str(block_json_data.block_header_proto_metadata_json())
@@ -215,6 +222,7 @@ impl BlockHeaderInfo {
             priority,
             seed_nonce_hash,
             proof_of_work_nonce,
+            liquidity_baking_escape_vote,
             content,
         }
     }

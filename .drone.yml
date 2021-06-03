@@ -668,8 +668,8 @@ volumes:
 
 trigger:
   branch:
-    - masterX
-    - developX
+    - master
+    - develop
 
 ##############################################################################################################
 # This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_008
