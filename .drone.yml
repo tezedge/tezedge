@@ -2859,12 +2859,7 @@ steps:
     - cargo clean && cargo build --message-format json --test decode_stream |  jq --raw-output '.executable // empty' > target.cmd
     - cat target.cmd
     - valgrind --tool=exp-dhat --show-top-n=1 $(cat target.cmd) 2>&1 | tee  dhat-target.out | sed '/======== ORDERED BY/Q'
-    - >-
-      source_total=$(
-        cat dhat-source.out |
-        grep "tot_alloc" |
-        sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\1/" -e "s/,//g"
-      )
+    - 'source_total=$(cat dhat-source.out | grep "tot_alloc" | sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\\1/" -e "s/,//g")'
     - 'target_total=$(cat dhat-target.out | grep "tot_alloc" | sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\\1/" -e "s/,//g")'
     - delta=$(expr $source_total - $target_total)
     - 'echo "Memory allocation delta: $delta"'
