@@ -670,11 +670,11 @@ trigger:
     - developX
 
 ##############################################################################################################
-# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_008
 ##############################################################################################################
 ---
 kind: pipeline
-name: tezos-python-tests
+name: tezos-python-tests-008
 
 clone:
   disable: true
@@ -683,12 +683,13 @@ environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
-  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_008
+  TEST_PROTO_DIR_SUFFIX: _008
 
 steps:
 
 - name: prepare-python-tests
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -718,7 +719,7 @@ steps:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
 - name: baker-endorser-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -736,7 +737,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -749,10 +750,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_many_nodes.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -765,10 +766,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_multinode.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -781,10 +782,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_mempool.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -797,10 +798,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_fork.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -813,10 +814,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_double_endorsement.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -829,10 +830,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_programs.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -845,10 +846,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_many_bakers.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -861,10 +862,10 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_contract_baker.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -877,13 +878,13 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_contract_annotations.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
   failure: ignore
 
 - name: basic-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -899,7 +900,511 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_basic.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_009
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-009
+
+clone:
+  disable: true
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_009
+  TEST_PROTO_DIR_SUFFIX: _009
+
+steps:
+
+  - name: prepare-python-tests
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      RUST_BACKTRACE: 1
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - rm -rf $${TEZOS_SRC_PATH}/*
+      # copy the tezos src file from the image to a shared volume
+      - mkdir -p $${TEZOS_SRC_PATH}
+      - cp -R /home/appuser/tezos-src/tezos $${TEZOS_SRC_PATH}/tezos
+      # prepare modified python files for tests (compatibility with tezedge node)
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py $${TEZOS_SRC_PATH}/tezos/tests_python/daemons/node.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py $${TEZOS_SRC_PATH}/tezos/tests_python/launchers/sandbox.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py $${TEZOS_SRC_PATH}/tezos/tests_python/tools/constants.py
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${TEZOS_SRC_PATH}/tezos/sandbox-patch-context.json
+      # copy binaries to the test
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/light-node $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/libtezos.so $${TEZOS_SRC_PATH}/tezos/
+      # copy zcash-params init files - see constants.py light-node params
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
+
+  - name: baker-endorser-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+
+  - name: test-many-nodes
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
+
+  - name: test-multinode
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
+
+  - name: mempool-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
+
+  - name: fork-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
+
+  - name: double-endorsement-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
+
+  - name: test-programs
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
+
+  - name: test-many-bakers
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
+
+  - name: test-contract-baker-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
+
+  - name: test-contract-annotations-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+
+  - name: basic-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_alpha
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-alpha
+
+clone:
+  disable: true
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_alpha
+  TEST_PROTO_DIR_SUFFIX: _alpha
+
+steps:
+
+  - name: prepare-python-tests
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      RUST_BACKTRACE: 1
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - rm -rf $${TEZOS_SRC_PATH}/*
+      # copy the tezos src file from the image to a shared volume
+      - mkdir -p $${TEZOS_SRC_PATH}
+      - cp -R /home/appuser/tezos-src/tezos $${TEZOS_SRC_PATH}/tezos
+      # prepare modified python files for tests (compatibility with tezedge node)
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py $${TEZOS_SRC_PATH}/tezos/tests_python/daemons/node.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py $${TEZOS_SRC_PATH}/tezos/tests_python/launchers/sandbox.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py $${TEZOS_SRC_PATH}/tezos/tests_python/tools/constants.py
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${TEZOS_SRC_PATH}/tezos/sandbox-patch-context.json
+      # copy binaries to the test
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/light-node $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/libtezos.so $${TEZOS_SRC_PATH}/tezos/
+      # copy zcash-params init files - see constants.py light-node params
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
+
+  - name: baker-endorser-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+
+  - name: test-many-nodes
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
+
+  - name: test-multinode
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
+
+  - name: mempool-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
+
+  - name: fork-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
+
+  - name: double-endorsement-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
+
+  - name: test-programs
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
+
+  - name: test-many-bakers
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
+
+  - name: test-contract-baker-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
+
+  - name: test-contract-annotations-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+
+  - name: basic-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
   - docker_pull_secret
@@ -3544,7 +4049,9 @@ depends_on:
   - baker/endorser-edo2-tests
   - baker/endorser-florence-tests
   - baker/endorser-granada-tests
-  - tezos-python-tests
+  - tezos-python-tests-008
+  - tezos-python-tests-009
+  - tezos-python-tests-alpha
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
@@ -3608,7 +4115,9 @@ depends_on:
   - baker/endorser-edo2-tests
   - baker/endorser-florence-tests
   - baker/endorser-granada-tests
-  - tezos-python-tests
+  - tezos-python-tests-008
+  - tezos-python-tests-009
+  - tezos-python-tests-alpha
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
