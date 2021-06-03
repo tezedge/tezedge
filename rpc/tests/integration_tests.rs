@@ -1,6 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Big integration which compares two nodes for the same rpc result
+//!
+//! usage:
+//!
+//! ```
+//!     IGNORE_PATH_PATTERNS=/context/raw/bytes FROM_BLOCK_HEADER=0 TO_BLOCK_HEADER=8100 NODE_RPC_CONTEXT_ROOT_1=http://127.0.0.1:16732 NODE_RPC_CONTEXT_ROOT_2=http://127.0.0.1:18888 target/release/deps/integration_tests-4a5eeedb180cbb20 --ignored test_rpc_compare -- --nocapture
+//! ```
+
 use std::collections::HashSet;
 use std::env;
 use std::iter::FromIterator;
@@ -13,6 +21,7 @@ use hyper::Client;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
+use serde_json::Value;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 use url::Url;
@@ -399,11 +408,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
                 // block level 1 does not have metadata/level/cycle, so we use 0 instead
                 0
             } else {
-                let block_json =
-                    try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level))
-                        .await
-                        .expect("Failed to get block metadata");
-                block_json["metadata"]["level"]["cycle"].as_i64().unwrap()
+                let block_json = try_get_data_as_json(&format!(
+                    "{}/{}/{}",
+                    "chains/main/blocks", level, "metadata"
+                ))
+                .await
+                .expect("Failed to get block metadata");
+                cycle_from_metadata(&block_json).expect("failed to get cycle from metadata")
             };
 
             // ----------------------- Tests for each cycle of the cycle -----------------------
@@ -482,10 +493,10 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 
     // get to_block data
-    let block_json = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", to_block))
+    let block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block))
         .await
         .expect("Failed to get block metadata");
-    let to_block_hash = block_json["hash"].as_str().unwrap();
+    let to_block_hash = block_json.as_str().unwrap();
 
     // test get header by block_hash string
     test_rpc_compare_json(&format!(
@@ -636,6 +647,21 @@ async fn get_rpc_as_json(
     Ok((serde_json::from_reader(&mut body.reader())?, response_time))
 }
 
+fn cycle_from_metadata(block_metadata_json: &Value) -> Result<i64, failure::Error> {
+    // before 008 edo
+    if let Some(cycle) = block_metadata_json["level"]["cycle"].as_i64() {
+        return Ok(cycle);
+    }
+    // from 008 edo protocol
+    if let Some(cycle) = block_metadata_json["level_info"]["cycle"].as_i64() {
+        return Ok(cycle);
+    }
+    Err(format_err!(
+        "No 'cycle' attribute found in block metadata: {:?}",
+        block_metadata_json
+    ))
+}
+
 fn node_rpc_url(node: NodeType, rpc_path: &str) -> String {
     match node {
         NodeType::Node1 => format!("{}/{}", &NODE_RPC_CONTEXT_ROOT_1.0.as_str(), rpc_path),
@@ -716,27 +742,27 @@ fn node_rpc_context_root_2() -> (String, String) {
 }
 
 async fn test_all_operations_for_block(level: i64) {
-    let block = try_get_data_as_json(&format!("{}/{}", "chains/main/blocks", level))
-        .await
-        .expect("Failed to get block");
-
-    let validation_passes = block["operations"]
+    let validation_passes =
+        try_get_data_as_json(&format!("chains/main/blocks/{}/operations", level))
+            .await
+            .expect("Failed to get operations (validation passes)");
+    let validation_passes = validation_passes
         .as_array()
         .expect("Failed to parse block operations (validation passes)");
 
     if !validation_passes.is_empty() {
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "operations_metadata_hash"
+            "chains/main/blocks/{}/operations_metadata_hash",
+            level,
         ))
         .await
         .expect("test failed");
 
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "operation_metadata_hashes"
+            "chains/main/blocks/{}/operation_metadata_hashes",
+            level,
         ))
         .await
         .expect("test failed");
@@ -744,16 +770,16 @@ async fn test_all_operations_for_block(level: i64) {
 
     for (validation_pass_index, validation_pass) in validation_passes.iter().enumerate() {
         test_rpc_compare_json(&format!(
-            "{}/{}/{}/{}",
-            "chains/main/blocks", level, "operations", validation_pass_index,
+            "chains/main/blocks/{}/operations/{}",
+            level, validation_pass_index,
         ))
         .await
         .expect("test failed");
 
         // V1 - compatible rpc
         test_rpc_compare_json(&format!(
-            "{}/{}/{}/{}",
-            "chains/main/blocks", level, "operation_metadata_hashes", validation_pass_index
+            "chains/main/blocks/{}/operation_metadata_hashes/{}",
+            level, validation_pass_index
         ))
         .await
         .expect("test failed");
@@ -763,20 +789,16 @@ async fn test_all_operations_for_block(level: i64) {
             .expect("Failed to parse validation pass operations");
         for (operation_index, _) in operations.iter().enumerate() {
             test_rpc_compare_json(&format!(
-                "{}/{}/{}/{}/{}",
-                "chains/main/blocks", level, "operations", validation_pass_index, operation_index,
+                "chains/main/blocks/{}/operations/{}/{}",
+                level, validation_pass_index, operation_index,
             ))
             .await
             .expect("test failed");
 
             // V1 - compatible rpc
             test_rpc_compare_json(&format!(
-                "{}/{}/{}/{}/{}",
-                "chains/main/blocks",
-                level,
-                "operation_metadata_hashes",
-                validation_pass_index,
-                operation_index
+                "chains/main/blocks/{}/operation_metadata_hashes/{}/{}",
+                level, validation_pass_index, operation_index
             ))
             .await
             .expect("test failed");
