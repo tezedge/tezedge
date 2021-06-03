@@ -304,6 +304,9 @@ volumes:
 depends_on:
   - build
 
+node:
+  tag: with-proto-data-28082-1466267
+
 trigger:
   branch:
     - master
@@ -332,8 +335,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_204762/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_204762/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -376,7 +379,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -389,6 +392,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-204762-1343489
 
 trigger:
   branch:
@@ -418,8 +424,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_458753/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_458753/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -462,7 +468,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -475,6 +481,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-458753-1212417
 
 trigger:
   branch:
@@ -504,8 +513,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_655361/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_655361/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -548,7 +557,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -561,6 +570,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-655361-851969
 
 trigger:
   branch:
@@ -590,8 +602,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_851969/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_851969/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -634,7 +646,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -647,6 +659,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-655361-851969
 
 trigger:
   branch:
@@ -676,8 +691,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1212417/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1212417/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -714,13 +729,13 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 851969
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 1212417
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -733,6 +748,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-458753-1212417
 
 trigger:
   branch:
@@ -762,8 +780,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1343489/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1343489/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -806,7 +824,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -819,6 +837,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-204762-1343489
 
 trigger:
   branch:
@@ -848,8 +869,8 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1466267/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267
-    - mv /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267/_data /tmp/tezedge_developer/data
+    # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1466267/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267
+    - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -892,7 +913,7 @@ steps:
 volumes:
   - name: tezedge-node-snapshotted-data
     host:
-      path: /tezedge-data
+      path: /home/dev/tezedge-data
   - name: tezedge-snapshots
     host:
       path: /usr/local/etc/tezedge-ci/data/tezedge-snapshots
@@ -905,6 +926,9 @@ volumes:
 
 depends_on:
   - build
+
+node:
+  tag: with-proto-data-28082-1466267
 
 trigger:
   branch:
