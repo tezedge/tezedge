@@ -335,6 +335,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
+    - rm -rf /tmp/tezedge_developer/data
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_204762/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_204762/_data/ /tmp/tezedge_developer/data
 
@@ -425,6 +426,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_458753/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_458753/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
@@ -514,6 +516,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_655361/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_655361/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
@@ -603,6 +606,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_851969/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_851969/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
@@ -692,6 +696,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1212417/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1212417/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
@@ -781,6 +786,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1343489/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1343489/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
@@ -870,6 +876,7 @@ steps:
       path: /tmp/tezedge_developer
   commands:
     # - rsync -e "ssh -o StrictHostKeyChecking=no -i /home/appuser/.ssh/id_rsa" -a --progress dev@135.181.217.23:/home/dev/tezedge_data_from_block_0_to_1466267/ /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267
+    - rm -rf /tmp/tezedge_developer/data
     - cp -r /tmp/tezedge_developer/tezedge_data_from_block_0_to_1466267/_data/ /tmp/tezedge_developer/data
 
 - name: tezedge-snapshotted-node-run
