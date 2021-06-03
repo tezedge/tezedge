@@ -58,7 +58,8 @@ where
 {
     #[inline]
     fn from_bytes<B: AsRef<[u8]>>(buf: B) -> Result<Self, BinaryReaderError> {
-        all_consuming_complete_input(T::nom_read, buf.as_ref())
+        let copy = buf.as_ref().to_vec();
+        all_consuming_complete_input(T::nom_read, &copy)
     }
 }
 
