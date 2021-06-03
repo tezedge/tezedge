@@ -220,8 +220,8 @@ depends_on:
 
 trigger:
   branch:
-    - masterX
-    - developX
+    - master
+    - develop
 
 ---
 ##############################################################################################################
@@ -459,6 +459,8 @@ steps:
     # replay action file with sled
     - echo "... replay context action file with sled..."
     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
+  # TODO: enable with new context
+  detach: true
 
 depends_on:
   - build
@@ -734,7 +736,7 @@ steps:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
   image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
@@ -986,7 +988,7 @@ steps:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir
-      - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
     image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
@@ -1238,7 +1240,7 @@ steps:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir
-      - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
     image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible

@@ -60,6 +60,7 @@ pub struct NodeInfrastructure {
     pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
+    pub one_context: bool,
 }
 
 impl NodeInfrastructure {
@@ -75,6 +76,7 @@ impl NodeInfrastructure {
         (log, log_level): (Logger, Level),
         context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
         (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
+        one_context: bool,
     ) -> Result<Self, failure::Error> {
         warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -100,7 +102,7 @@ impl NodeInfrastructure {
             &tmp_storage.path(),
             &context_db_path,
             &patch_context,
-            false,
+            one_context,
             &log,
         )
         .expect("Failed to resolve init storage chain data");
@@ -153,7 +155,11 @@ impl NodeInfrastructure {
                 &context_db_path,
                 &common::protocol_runner_executable_path(),
                 log_level,
-                Some(apply_protocol_events.server_path()),
+                if init_storage_data.one_context {
+                    None
+                } else {
+                    Some(apply_protocol_events.server_path())
+                },
             ),
             log.clone(),
         )?);
@@ -179,15 +185,17 @@ impl NodeInfrastructure {
         let mempool_channel =
             MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
-        let _ = ContextListener::actor(
-            &actor_system,
-            shell_channel.clone(),
-            &persistent_storage,
-            context_action_recorders,
-            apply_protocol_events,
-            log.clone(),
-        )
-        .expect("Failed to create context event listener");
+        if !one_context {
+            let _ = ContextListener::actor(
+                &actor_system,
+                shell_channel.clone(),
+                &persistent_storage,
+                context_action_recorders,
+                apply_protocol_events,
+                log.clone(),
+            )
+            .expect("Failed to create context event listener");
+        }
         let chain_current_head_manager = ChainCurrentHeadManager::actor(
             &actor_system,
             shell_channel.clone(),
@@ -274,6 +282,7 @@ impl NodeInfrastructure {
             current_mempool_state_storage,
             bootstrap_state,
             tezos_env: tezos_env.clone(),
+            one_context: init_storage_data.one_context,
         })
     }
 
@@ -342,6 +351,10 @@ impl NodeInfrastructure {
         context_hash: ContextHash,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
+        if self.one_context {
+            return Ok(());
+        }
+
         let start = SystemTime::now();
 
         let context = TezedgeContext::new(

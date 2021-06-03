@@ -97,6 +97,7 @@ fn test_proof_of_work(
         (node_log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -167,6 +168,7 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // register network channel listener
