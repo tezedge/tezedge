@@ -3434,7 +3434,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-mainnet-node-run
+  - name: tezedge-updated-node-mainnet-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
