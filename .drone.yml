@@ -2840,7 +2840,7 @@ clone:
 environment:
   NETWORK: delphinet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 520 # also check parameter --stop=
+  TO_BLOCK_HEADER: 4100 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
@@ -3130,7 +3130,7 @@ clone:
 environment:
   NETWORK: edo2net
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 256 # also check parameter --stop=
+  TO_BLOCK_HEADER: 4100 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-edo2net-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-edo2net-run-2:8732
@@ -3349,7 +3349,7 @@ clone:
 environment:
   NETWORK: mainnet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  TO_BLOCK_HEADER: 4100 # also check parameter --stop=
   TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-mainnet-run-1:8732
@@ -3571,7 +3571,7 @@ clone:
 environment:
   NETWORK: florencenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 130 # also check parameter --stop=
+  TO_BLOCK_HEADER: 4100 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-florencenet-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-florencenet-run-2:8732
