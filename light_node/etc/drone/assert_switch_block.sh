@@ -11,7 +11,7 @@ COUNT=0
 while true
 do  
     # timeout for node to reach the desired block
-    if [[ $COUNT == 600 ]]; then
+    if [[ $COUNT == 900 ]]; then
         echo "Block with protocol switch was not applied in the defined timeout "
         exit 1
     fi

@@ -287,7 +287,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 28083
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 28083
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -374,7 +374,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 204762
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 204762
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -464,7 +464,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 458753
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 458753
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -554,7 +554,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 655361
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 655361
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -644,7 +644,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 851969
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 851969
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -734,7 +734,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 1212417
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 1212417
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -824,7 +824,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 1343489
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 1343489
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
@@ -914,7 +914,7 @@ steps:
     - name: tezedge-node-snapshotted-data
       path: /tmp/tezedge_developer
   commands:
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 1000 /tmp/tezedge_developer/data/tezedge.log 1466368
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_switch_block.sh http://tezedge-snapshotted-node-run:18732/chains/main/blocks/head/header 5000 /tmp/tezedge_developer/data/tezedge.log 1466368
     - rm -rf /tmp/tezedge_developer/data
 
 volumes:
