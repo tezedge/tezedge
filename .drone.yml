@@ -1628,8 +1628,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-carthage-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-carthage-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -1661,7 +1661,7 @@ steps:
     - cp $${SANDBOX_ARTIFACTS_PATH}/006-carthage-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
 # run empty rust node and wait for it
-- name: tezedge-node-sandbox-run
+- name: tezedge-node-sandbox-carthage-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -1688,7 +1688,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # run empty ocaml sandbox and wait for it
-- name: ocaml-node-sandbox-run
+- name: ocaml-node-sandbox-carthage-run
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -1867,8 +1867,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-edo2-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-edo2-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -1902,7 +1902,7 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/008-edo-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
   # run empty rust node and wait for it
-  - name: tezedge-node-sandbox-run
+  - name: tezedge-node-sandbox-edo2-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -1929,7 +1929,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # run empty ocaml sandbox and wait for it
-  - name: ocaml-node-sandbox-run
+  - name: ocaml-node-sandbox-edo2-run
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -2142,8 +2142,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-florence-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-florence-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -2177,7 +2177,7 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
   # run empty rust node and wait for it
-  - name: tezedge-node-sandbox-run
+  - name: tezedge-node-sandbox-florence-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -2204,7 +2204,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # run empty ocaml sandbox and wait for it
-  - name: ocaml-node-sandbox-run
+  - name: ocaml-node-sandbox-florence-run
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -2417,8 +2417,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-granada-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-granada-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -2452,7 +2452,7 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/010-granada-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
   # run empty rust node and wait for it
-  - name: tezedge-node-sandbox-run
+  - name: tezedge-node-sandbox-granada-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -2479,7 +2479,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # run empty ocaml sandbox and wait for it
-  - name: ocaml-node-sandbox-run
+  - name: ocaml-node-sandbox-granada-run
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -2846,14 +2846,14 @@ environment:
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
   THROUGHPUTL_THRESHOLD: 10 # in %
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-delphinet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-delphinet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-delphinet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-delphinet-run-1:9734,ocaml-node-delphinet-run-2:9734,ocaml-node-delphinet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-delphinet-run:18732
+  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-node-delphinet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-delphinet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-delphinet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/delphinet-big-offline-tests
@@ -2870,7 +2870,7 @@ steps:
     - mkdir -p $${CACHE_DATA_PATH}
 
 # just run ocaml 3 delphinet snapshoted nodes
-- name: ocaml-node-run-1
+- name: ocaml-node-delphinet-run-1
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -2888,7 +2888,7 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-- name: ocaml-node-run-2
+- name: ocaml-node-delphinet-run-2
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -2906,7 +2906,7 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-- name: ocaml-node-run-3
+- name: ocaml-node-delphinet-run-3
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -2930,7 +2930,7 @@ steps:
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-- name: tezedge-updated-node-run
+- name: tezedge-updated-node-delphinet-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -2952,7 +2952,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
-- name: tezedge-old-node-run
+- name: tezedge-old-node-delphinet-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -2990,7 +2990,7 @@ steps:
 # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
 # run both indexers on background to fill data
-- name: tz-indexer-tezedge
+- name: tz-indexer-delphinet-tezedge
   image: blockwatch/tzindex:latest
   pull: always
   user: root
@@ -2999,7 +2999,7 @@ steps:
     - name: indexer-tezedge-data
       path: /data
   environment:
-    TZ_RPC_HOST: tezedge-updated-node-run
+    TZ_RPC_HOST: tezedge-updated-node-delphinet-run
     TZ_RPC_PORT: 18732
     TZ_SERVER_ADDR: 0.0.0.0
     TZ_SERVER_PORT: 8002
@@ -3008,7 +3008,7 @@ steps:
     TZ_SNAPSHOT_PATH: /data/snapshots
   command: ["tzindex", "run", "--stop=521"]
 
-- name: tz-indexer-ocaml
+- name: tz-indexer-delphinet-ocaml
   image: blockwatch/tzindex:latest
   pull: if-not-exists
   user: root
@@ -3017,7 +3017,7 @@ steps:
     - name: indexer-ocaml-data
       path: /data
   environment:
-    TZ_RPC_HOST: ocaml-node-run-1
+    TZ_RPC_HOST: ocaml-node-delphinet-run-1
     TZ_RPC_PORT: 8732
     TZ_SERVER_ADDR: 0.0.0.0
     TZ_SERVER_PORT: 8002
@@ -3132,13 +3132,13 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-edo2net-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-edo2net-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-edo2net-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-edo2net-run-1:9734,ocaml-node-edo2net-run-2:9734,ocaml-node-edo2net-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-edo2net-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-edo2net-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-edo2net-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/edo2net-offline-tests
@@ -3155,7 +3155,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 edo2net snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-edo2net-run-1
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3173,7 +3173,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-edo2net-run-2
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3191,7 +3191,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-edo2net-run-3
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3214,7 +3214,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-node-edo2net-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -3243,7 +3243,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-edo2net-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3252,7 +3252,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-edo2net-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3261,7 +3261,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=257"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-edo2net-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3270,7 +3270,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-edo2net-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3352,13 +3352,13 @@ environment:
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-mainnet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-mainnet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-mainnet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-mainnet-run-1:9734,ocaml-node-mainnet-run-2:9734,ocaml-node-mainnet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-mainnet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-mainnet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-mainnet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/mainnet-offline-tests
@@ -3375,7 +3375,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 mainnet snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-mainnet-run-1
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3393,7 +3393,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-mainnet-run-2
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3411,7 +3411,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-mainnet-run-3
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3434,7 +3434,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-mainnet-node-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -3463,7 +3463,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-mainnet-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3472,7 +3472,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-mainnet-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3481,7 +3481,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=131"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-mainnet-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3490,7 +3490,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-mainnet-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3573,13 +3573,13 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-florencenet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-florencenet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-florencenet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-florencenet-run-1:9734,ocaml-node-florencenet-run-2:9734,ocaml-node-florencenet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-florencenet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-florencenet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-florencenet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/florencenet-offline-tests
@@ -3596,7 +3596,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 florencenet snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-florencenet-run-1
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3614,7 +3614,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-florencenet-run-2
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3632,7 +3632,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-florencenet-run-3
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3655,7 +3655,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-node-florencenet-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -3684,7 +3684,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-florencenet-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3693,7 +3693,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-florencenet-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3702,7 +3702,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=131"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-florencenet-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3711,7 +3711,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-florencenet-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3794,13 +3794,13 @@ environment:
   FROM_BLOCK_HEADER: 4094 # 4096-4097 is florence-granada proto switch
   TO_BLOCK_HEADER: 6250 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-granadanet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-granadanet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-granadanet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-granadanet-run-1:9734,ocaml-node-granadanet-run-2:9734,ocaml-node-granadanet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-granadanet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-granadanet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-granadanet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/granadanet-offline-tests
@@ -3817,7 +3817,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 granadanet snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-granadanet-run-1
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3835,7 +3835,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-granadanet-run-2
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3853,7 +3853,7 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-granadanet-run-3
     user: root
     image: tezos/tezos:v9-release
     detach: true
@@ -3876,7 +3876,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-node-granadanet-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -3905,7 +3905,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-granadanet-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3914,7 +3914,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-granadanet-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -3923,7 +3923,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=6248"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-granadanet-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -3932,7 +3932,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-granadanet-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
