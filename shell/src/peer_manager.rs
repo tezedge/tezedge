@@ -100,6 +100,9 @@ pub struct P2p {
 
     /// Peers (IP:port) which we try to connect all the time
     pub bootstrap_peers: Vec<SocketAddr>,
+
+    /// Enables the application of already downloaded and stored block without the need to connect to a peer
+    pub apply_downloaded_blocks_without_peers: bool,
 }
 
 impl P2p {

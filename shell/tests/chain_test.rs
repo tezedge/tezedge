@@ -48,6 +48,7 @@ lazy_static! {
             disable_bootstrap_lookup: true,
             disable_mempool: false,
             private_node: false,
+            apply_downloaded_blocks_without_peers: false,
             bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
         },

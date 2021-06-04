@@ -1,6 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
@@ -38,6 +39,10 @@ pub struct DeployMonitoringEnvironment {
     pub slack_configuration: Option<SlackConfiguration>,
 
     pub tezedge_only: bool,
+
+    pub snapshot_levels: Vec<u64>,
+
+    pub snapshot_monitor_interval: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -235,6 +240,21 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Enable and dissable volume cleanup"),
         )
         .arg(
+            Arg::with_name("snapshot-monitor-interval")
+                .long("snapshot-monitor-interval")
+                .takes_value(true)
+                .value_name("SNAPSHOT-MONITOR-INTERVAL")
+                .help("Interval in seconds to check whether we want to snapshot the tezedge node"),
+        )
+        .arg(
+            Arg::with_name("snapshot-levels")
+                .long("snapshot-levels")
+                .takes_value(true)
+                .multiple(true)
+                .value_name("SNAPSHOT-LEVES")
+                .help("Snapshot levels"),
+        )
+        .arg(
             Arg::with_name("tezedge-only")
                 .long("tezedge-only")
                 .help("Only launches the tezedge node with debugger and explorer"),
@@ -338,6 +358,16 @@ impl DeployMonitoringEnvironment {
                 }),
         };
 
+        // TODO - snapshotting
+        let mut snapshot_levels: Vec<u64> = match args.values_of("snapshot-levels") {
+            Some(v) => v.map(|val| val.parse::<u64>().unwrap()).collect(),
+            None => panic!("No values for snapshotting entered"),
+        };
+
+        snapshot_levels.sort();
+
+        println!("SNAPSHOT ON LEVELS: {:?}", snapshot_levels);
+
         DeployMonitoringEnvironment {
             log_level: args
                 .value_of("log-level")
@@ -366,6 +396,12 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("38732")
                 .parse::<u16>()
                 .expect("Expected u16 value of valid port number"),
+            snapshot_monitor_interval: args
+                .value_of("snapshot-monitor-interval")
+                .unwrap_or("0")
+                .parse::<u64>()
+                .expect("Expected u64 value of seconds"),
+            snapshot_levels,
             is_sandbox: args.is_present("sandbox"),
             cleanup_volumes: args.is_present("cleanup-volumes"),
             tezedge_only: args.is_present("tezedge-only"),
@@ -375,3 +411,21 @@ impl DeployMonitoringEnvironment {
         }
     }
 }
+
+// let log_targets: HashSet<String> = match args.values_of("log") {
+//     Some(v) => v.map(String::from).collect(),
+//     None => std::iter::once("terminal".to_string()).collect(),
+// };
+
+// let log = log_targets
+//     .iter()
+//     .map(|name| {
+//         LoggerType::from_str(name).unwrap_or_else(|_| {
+//             panic!(
+//                 "Unknown log target {} - supported are: {:?}",
+//                 &name,
+//                 LoggerType::possible_values()
+//             )
+//         })
+//     })
+//     .collect();

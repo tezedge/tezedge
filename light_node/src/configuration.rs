@@ -348,6 +348,10 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(false)
             .conflicts_with("bootstrap-lookup-address")
             .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
+        .arg(Arg::with_name("apply-downloaded-blocks-without-peers")
+            .long("apply-downloaded-blocks-without-peers")
+            .takes_value(false)
+            .help("Enables the application of already downloaded and stored block without the need to connect to a peer"))
         .arg(Arg::with_name("log")
             .long("log")
             .takes_value(true)
@@ -804,6 +808,7 @@ impl Environment {
                     .parse::<SocketAddr>()
                     .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
+                apply_downloaded_blocks_without_peers: args.is_present("apply-downloaded-blocks-without-peers"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")
                     .map(|addresses_str| {

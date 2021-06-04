@@ -52,6 +52,11 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Max amount of recursive nesting
+const MAX_NESTING: usize = 1000;
+
+const MAX_HYDRATATING_BATCH_SIZE: usize = 10000;
+
 /// BLocks are applied in batches, to optimize database unnecessery access between two blocks (predecessor data)
 /// We also dont want to fullfill queue, to have possibility inject blocks from RPC by direct call ApplyBlock message
 const BLOCK_APPLY_BATCH_MAX_TICKETS: usize = 2;
@@ -157,6 +162,10 @@ pub struct ChainFeeder {
 
     /// Statistics for applying blocks
     apply_block_stats: ApplyBlockStats,
+
+    persistent_storage: Option<PersistentStorage>,
+    chain_id: Option<Arc<ChainId>>,
+    apply_downloaded_blocks_without_peers: bool,
 }
 
 /// Reference to [chain feeder](ChainFeeder) actor
@@ -179,14 +188,15 @@ impl ChainFeeder {
         tezos_writeable_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
         tezos_env: TezosEnvironmentConfiguration,
+        apply_downloaded_blocks_without_peers: bool,
         log: Logger,
     ) -> Result<ChainFeederRef, CreateError> {
         // spawn inner thread
         let (block_applier_event_sender, block_applier_run, block_applier_thread) =
             BlockApplierThreadSpawner::new(
                 chain_current_head_manager,
-                persistent_storage,
-                Arc::new(init_storage_data),
+                persistent_storage.clone(),
+                Arc::new(init_storage_data.clone()),
                 Arc::new(tezos_env),
                 tezos_writeable_api,
                 log,
@@ -201,6 +211,9 @@ impl ChainFeeder {
                 block_applier_run,
                 Arc::new(Mutex::new(Some(block_applier_thread))),
                 BLOCK_APPLY_BATCH_MAX_TICKETS,
+                Some(persistent_storage),
+                Some(Arc::new(init_storage_data.chain_id)),
+                apply_downloaded_blocks_without_peers,
             )),
         )
     }
@@ -242,6 +255,126 @@ impl ChainFeeder {
         self.queue.push_back(msg);
     }
 
+    fn mark_sucessors_for_aplication(
+        &mut self,
+        successros: &[BlockHash],
+        chain_id: Arc<ChainId>,
+        block_meta_storage: &BlockMetaStorage,
+        operations_meta_storage: &OperationsMetaStorage,
+        log: &Logger,
+        batch: &mut ApplyBlockBatch,
+        nesting: usize,
+    ) {
+        // continue recursion until we reach max nesting
+        let current_nest = nesting + 1;
+        if nesting + successros.len() > MAX_NESTING
+            || batch.batch_total_size() > MAX_HYDRATATING_BATCH_SIZE
+        {
+            return;
+        }
+        for successor in successros.iter() {
+            if let Ok(is_complete) = operations_meta_storage.is_complete(successor) {
+                if is_complete {
+                    batch.add_successor(Arc::new(successor.clone()));
+
+                    if let Ok(Some(next)) = block_meta_storage.get(&successor) {
+                        self.mark_sucessors_for_aplication(
+                            next.successors(),
+                            chain_id.clone(),
+                            block_meta_storage,
+                            operations_meta_storage,
+                            log,
+                            batch,
+                            current_nest,
+                        );
+                    } else {
+                        debug!(log, "[Hydratation] No successor!");
+                        return;
+                    }
+                } else {
+                    debug!(log, "[Hydratation] Block not completed!");
+                    return;
+                }
+            } else {
+                debug!(log, "[Hydratation] No operation meta found!");
+                return;
+            }
+        }
+    }
+
+    fn hydrate_queue(
+        &mut self,
+        persistent_storage: &PersistentStorage,
+        chain_id: Arc<ChainId>,
+        chain_feeder: ChainFeederRef,
+        log: &Logger,
+    ) {
+        let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+        let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+        let mut total_count = 0;
+
+        if let Ok(Some(current_head)) =
+            ChainMetaStorage::new(&persistent_storage).get_current_head(&chain_id)
+        {
+            info!(log, "Hydratation from database started!");
+            let mut last_successor = Arc::new(current_head.block_hash().clone());
+
+            let mut batch =
+                ApplyBlockBatch::start_batch(last_successor.clone(), MAX_HYDRATATING_BATCH_SIZE);
+
+            while let Ok(Some(block_meta_data)) = block_meta_storage.get(&last_successor) {
+                if let Ok(is_complete) = operations_meta_storage.is_complete(&last_successor) {
+                    if !is_complete {
+                        break;
+                    }
+                }
+
+                self.mark_sucessors_for_aplication(
+                    block_meta_data.successors(),
+                    chain_id.clone(),
+                    &block_meta_storage,
+                    &operations_meta_storage,
+                    log,
+                    &mut batch,
+                    0,
+                );
+
+                if batch.batch_total_size() >= MAX_HYDRATATING_BATCH_SIZE {
+                    total_count += batch.batch_total_size();
+                    let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+                    self.add_to_batch_queue(schedule_msg);
+                    self.process_batch_queue(chain_feeder.clone(), log);
+
+                    let successor =
+                        if let Some(next_successor) = block_meta_data.successors().get(0) {
+                            Arc::new(next_successor.clone())
+                        } else {
+                            last_successor.clone()
+                        };
+                    batch = ApplyBlockBatch::start_batch(successor, MAX_HYDRATATING_BATCH_SIZE);
+                }
+
+                if last_successor == batch.last_successor() {
+                    debug!(log, "Reached end of hydratation");
+                    total_count += batch.batch_total_size();
+
+                    // send last started batch to block aplication
+                    let schedule_msg = ScheduleApplyBlock::new(chain_id.clone(), batch, None);
+                    self.add_to_batch_queue(schedule_msg);
+                    self.process_batch_queue(chain_feeder.clone(), log);
+
+                    break;
+                }
+
+                last_successor = batch.last_successor();
+            }
+        }
+        info!(
+            log,
+            "Hydratation completed, total blocks sent for application {}", total_count
+        );
+    }
+
     fn process_batch_queue(&mut self, chain_feeder: ChainFeederRef, log: &Logger) {
         // try schedule batches as many permits we can get
         while let Ok(permit) = self.apply_block_tickets.clone().try_acquire_owned() {
@@ -276,6 +409,9 @@ impl
         Arc<AtomicBool>,
         SharedJoinHandle,
         usize,
+        Option<PersistentStorage>,
+        Option<Arc<ChainId>>,
+        bool,
     )> for ChainFeeder
 {
     fn create_args(
@@ -285,12 +421,18 @@ impl
             block_applier_run,
             block_applier_thread,
             max_permits,
+            persistent_storage,
+            chain_id,
+            apply_downloaded_blocks_without_peers,
         ): (
             ShellChannelRef,
             Arc<Mutex<QueueSender<Event>>>,
             Arc<AtomicBool>,
             SharedJoinHandle,
             usize,
+            Option<PersistentStorage>,
+            Option<Arc<ChainId>>,
+            bool,
         ),
     ) -> Self {
         ChainFeeder {
@@ -302,6 +444,9 @@ impl
             apply_block_stats: ApplyBlockStats::default(),
             apply_block_tickets: Arc::new(Semaphore::new(max_permits)),
             apply_block_tickets_maximum: max_permits,
+            persistent_storage,
+            chain_id,
+            apply_downloaded_blocks_without_peers,
         }
     }
 }
@@ -336,6 +481,22 @@ impl Actor for ChainFeeder {
         let _ = join_handle
             .join()
             .expect("Failed to join block applier thread");
+    }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        // now we can hydrate state and read current head
+        if self.apply_downloaded_blocks_without_peers {
+            if let (Some(persistent_storage), Some(chain_id)) =
+                (self.persistent_storage.clone(), self.chain_id.clone())
+            {
+                self.hydrate_queue(
+                    &persistent_storage,
+                    chain_id,
+                    ctx.myself(),
+                    &ctx.system.log(),
+                );
+            }
+        }
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
@@ -876,13 +1037,15 @@ fn _apply_block(
     debug!(log, "Block was applied";
                         "block_header_hash" => block_hash.to_base58_check(),
                         "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                        "validation_result_message" => &apply_block_result.validation_result_message);
+                        "validation_result_message" => &apply_block_result.validation_result_message,
+                        "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()));
 
     if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
         info!(log, "Block was validated with protocol with long processing";
                            "block_header_hash" => block_hash.to_base58_check(),
                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
+                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()),
+                           "validation_result_message" => &apply_block_result.validation_result_message);
     }
 
     // we need to check and wait for context_hash to be 100% sure, that everything is ok

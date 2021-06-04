@@ -209,6 +209,7 @@ impl NodeInfrastructure {
             tezos_writeable_api,
             init_storage_data.clone(),
             tezos_env.clone(),
+            false,
             log.clone(),
         )
         .expect("Failed to create chain feeder");

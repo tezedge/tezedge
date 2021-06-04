@@ -13,21 +13,21 @@ use crate::node::{OcamlNode, TezedgeNode};
 
 pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_only: bool) {
     info!(log, "Tezedge explorer is starting");
-    start_with_compose(compose_file_path, Explorer::NAME, "explorer");
+    start_service_with_compose(compose_file_path, Explorer::NAME, "explorer");
     wait_for_start(&format!("http://localhost:{}", EXPLORER_PORT)).await;
     info!(log, "Tezedge explorer is running");
 
     info!(log, "Debugger is starting");
-    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    start_service_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
     info!(log, "Debugger is running");
 
     info!(log, "Memprof is starting");
-    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    start_service_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
     info!(log, "Memprof is running");
 
     info!(log, "Tezedge node is starting");
-    start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
+    start_service_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
     wait_for_start(&format!(
         "http://localhost:{}/chains/main/blocks/head/header",
         TEZEDGE_PORT
@@ -37,7 +37,7 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_onl
 
     if !tezedge_only {
         info!(log, "Ocaml node is starting");
-        start_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
+        start_service_with_compose(compose_file_path, OcamlNode::NAME, "ocaml-node");
         wait_for_start(&format!(
             "http://localhost:{}/chains/main/blocks/head/header",
             OCAML_PORT
@@ -49,16 +49,16 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_onl
 
 pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     info!(log, "Debugger is running");
-    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    start_service_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
     info!(log, "Debugger is running");
 
     info!(log, "Memprof is starting");
-    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    start_service_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
     info!(log, "Memprof is running");
 
     info!(log, "Sandbox launcher starting");
-    start_with_compose(compose_file_path, Sandbox::NAME, "tezedge-sandbox");
+    start_service_with_compose(compose_file_path, Sandbox::NAME, "tezedge-sandbox");
     wait_for_start("http://localhost:3030/list_nodes").await;
     info!(log, "Sandbox launcher running");
 }
@@ -106,7 +106,7 @@ pub fn cleanup_docker(cleanup_data: bool) {
     }
 }
 
-pub fn start_with_compose(
+pub fn start_service_with_compose(
     compose_file_path: &PathBuf,
     container_name: &str,
     service_ports_name: &str,
@@ -149,6 +149,20 @@ pub fn update_with_compose(compose_file_path: &PathBuf) -> Output {
                 .to_str()
                 .unwrap_or("apps/deploy_monitoring/docker-compose.deploy.latest.yml"),
             "pull",
+        ])
+        .output()
+        .expect("failed to execute docker-compose command")
+}
+
+pub fn stop_service_with_compose(compose_file_path: &PathBuf, service_name: &str) -> Output {
+    Command::new("docker-compose")
+        .args(&[
+            "-f",
+            compose_file_path
+                .to_str()
+                .unwrap_or("apps/deploy_monitoring/docker-compose.deploy.latest.yml"),
+            "stop",
+            service_name,
         ])
         .output()
         .expect("failed to execute docker-compose command")
