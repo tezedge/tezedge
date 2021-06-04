@@ -46,6 +46,17 @@ if [[ $APPLY_TIME -gt $THRESHOLD ]]; then
     exit 1
 else
     echo "Protocol switch block application within threshold: $APPLY_TIME ms"
+fi
+
+# Block before protocol switch
+((--SWITCH_BLOCK))
+APPLY_TIME=$(grep "validation_result_message: lvl $SWITCH_BLOCK," $LOG_FILE | tr ',' '\n' | grep "protocol_call_elapsed" | awk '{print $2}')
+
+if [[ $APPLY_TIME -gt $THRESHOLD ]]; then
+    echo "Last block application in cycle (before protocol switch) took too long: $APPLY_TIME ms"
+    exit 1
+else
+    echo "Last block application in cycle (before protocol switch) within threshold: $APPLY_TIME ms"
     exit 0
 fi
 
