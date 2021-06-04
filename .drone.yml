@@ -330,7 +330,7 @@ steps:
 - name: bootstrapping-tezedge-target-branch
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap bootstrap --level=2000 --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap bootstrap --level=20000 --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
     ref:
     - refs/pull/*/head
@@ -360,7 +360,7 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=2000 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap bootstrap --level=20000 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
