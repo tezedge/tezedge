@@ -895,8 +895,6 @@ fn test_ignored_matching() {
 mod json_compare {
     use serde::Serialize;
 
-    // use assert_json_diff::assert_json_eq_no_panic;
-
     pub(crate) fn assert_json_eq_no_panic<Lhs, Rhs>(
         lhs: &Lhs,
         rhs: &Rhs,

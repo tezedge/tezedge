@@ -23,5 +23,5 @@ tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
-assert-json-diff = "1.1"
+assert-json-diff = "2"
 hex = "0.4"
