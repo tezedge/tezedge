@@ -3573,7 +3573,7 @@ clone:
 environment:
   NETWORK: florencenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 4100 # also check parameter --stop=
+  TO_BLOCK_HEADER: 2060 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-florencenet-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-florencenet-run-2:8732
