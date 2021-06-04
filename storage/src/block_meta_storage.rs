@@ -630,9 +630,9 @@ pub struct BlockAdditionalData {
     #[get_copy = "pub"]
     last_allowed_fork_level: i32,
     #[get = "pub"]
-    protocol_hash: Option<ProtocolHash>,
+    protocol_hash: ProtocolHash,
     #[get = "pub"]
-    next_protocol_hash: Option<ProtocolHash>,
+    next_protocol_hash: ProtocolHash,
     #[get = "pub"]
     block_metadata_hash: Option<BlockMetadataHash>,
     // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
@@ -649,8 +649,8 @@ impl BlockAdditionalData {
     pub fn new(
         max_operations_ttl: u16,
         last_allowed_fork_level: i32,
-        protocol_hash: Option<ProtocolHash>,
-        next_protocol_hash: Option<ProtocolHash>,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,

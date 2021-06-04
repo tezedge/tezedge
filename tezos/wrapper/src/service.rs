@@ -105,8 +105,8 @@ enum NodeMessage {
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
-    JSONEncodeApplyBlockResultMetadataResponse(Result<String, FFIJsonEncoderError>),
-    JSONEncodeApplyBlockOperationsMetadata(Result<String, FFIJsonEncoderError>),
+    JsonEncodeApplyBlockResultMetadataResponse(Result<String, FfiJsonEncoderError>),
+    JsonEncodeApplyBlockOperationsMetadata(Result<String, FfiJsonEncoderError>),
     ShutdownResult,
 }
 
@@ -214,7 +214,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     protocol_hash,
                     next_protocol_hash,
                 );
-                tx.send(&NodeMessage::JSONEncodeApplyBlockResultMetadataResponse(
+                tx.send(&NodeMessage::JsonEncodeApplyBlockResultMetadataResponse(
                     res,
                 ))?;
             }
@@ -232,7 +232,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     protocol_hash,
                     next_protocol_hash,
                 );
-                tx.send(&NodeMessage::JSONEncodeApplyBlockOperationsMetadata(res))?;
+                tx.send(&NodeMessage::JsonEncodeApplyBlockOperationsMetadata(res))?;
             }
             ProtocolMessage::ShutdownCall => {
                 // send shutdown event to context listener, that we dont need it anymore

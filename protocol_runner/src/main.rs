@@ -158,7 +158,7 @@ mod tezos {
         ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
         BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-        ComputePathResponse, FFIJsonEncoderError, GenesisChain, GetDataError,
+        ComputePathResponse, FfiJsonEncoderError, GenesisChain, GetDataError,
         HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
         InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolDataError,
         ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
@@ -273,7 +273,7 @@ mod tezos {
             max_operations_ttl: i32,
             protocol_hash: ProtocolHash,
             next_protocol_hash: ProtocolHash,
-        ) -> Result<String, FFIJsonEncoderError> {
+        ) -> Result<String, FfiJsonEncoderError> {
             apply_block_result_metadata(
                 context_hash,
                 metadata_bytes,
@@ -289,7 +289,7 @@ mod tezos {
             operations_metadata_bytes: Vec<Vec<RustBytes>>,
             protocol_hash: ProtocolHash,
             next_protocol_hash: ProtocolHash,
-        ) -> Result<String, FFIJsonEncoderError> {
+        ) -> Result<String, FfiJsonEncoderError> {
             apply_block_operations_metadata(
                 chain_id,
                 operations,

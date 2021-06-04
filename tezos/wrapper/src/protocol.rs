@@ -81,7 +81,7 @@ pub trait ProtocolApi {
         max_operations_ttl: i32,
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
-    ) -> Result<String, FFIJsonEncoderError>;
+    ) -> Result<String, FfiJsonEncoderError>;
 
     /// Encode apply_block result operations metadata as JSON
     fn apply_block_operations_metadata(
@@ -90,5 +90,5 @@ pub trait ProtocolApi {
         operations_metadata_bytes: Vec<Vec<RustBytes>>,
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
-    ) -> Result<String, FFIJsonEncoderError>;
+    ) -> Result<String, FfiJsonEncoderError>;
 }

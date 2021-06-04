@@ -634,14 +634,14 @@ impl From<FromBytesError> for ProtocolDataError {
 }
 
 #[derive(Serialize, Deserialize, Debug, Fail)]
-pub enum FFIJsonEncoderError {
+pub enum FfiJsonEncoderError {
     #[fail(display = "FFI JSON encoding error: {}!", message)]
     EncodeError { message: String },
 }
 
-impl From<TezosErrorTrace> for FFIJsonEncoderError {
+impl From<TezosErrorTrace> for FfiJsonEncoderError {
     fn from(error: TezosErrorTrace) -> Self {
-        FFIJsonEncoderError::EncodeError {
+        FfiJsonEncoderError::EncodeError {
             message: error.trace_json,
         }
     }

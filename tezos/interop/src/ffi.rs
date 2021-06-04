@@ -428,7 +428,7 @@ pub fn apply_block_result_metadata(
     max_operations_ttl: i32,
     protocol_hash: ProtocolHash,
     next_protocol_hash: ProtocolHash,
-) -> Result<String, FFIJsonEncoderError> {
+) -> Result<String, FfiJsonEncoderError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
         let context_hash = context_hash.as_ref().to_boxroot(rt);
         let metadata_bytes = metadata_bytes.to_boxroot(rt);
@@ -448,11 +448,11 @@ pub fn apply_block_result_metadata(
 
         match result {
             Ok(s) => Ok(s.to_rust()),
-            Err(e) => Err(FFIJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
+            Err(e) => Err(FfiJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
         }
     })
     .unwrap_or_else(|p| {
-        Err(FFIJsonEncoderError::EncodeError {
+        Err(FfiJsonEncoderError::EncodeError {
             message: p.to_string(),
         })
     })
@@ -464,7 +464,7 @@ pub fn apply_block_operations_metadata(
     operations_metadata_bytes: Vec<Vec<RustBytes>>,
     protocol_hash: ProtocolHash,
     next_protocol_hash: ProtocolHash,
-) -> Result<String, FFIJsonEncoderError> {
+) -> Result<String, FfiJsonEncoderError> {
     runtime::execute(move |rt: &mut OCamlRuntime| {
         let chain_id = chain_id.as_ref().to_boxroot(rt);
         let ffi_operations: Vec<Vec<FfiOperation>> = operations
@@ -488,11 +488,11 @@ pub fn apply_block_operations_metadata(
 
         match result {
             Ok(s) => Ok(s.to_rust()),
-            Err(e) => Err(FFIJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
+            Err(e) => Err(FfiJsonEncoderError::from(e.to_rust::<TezosErrorTrace>())),
         }
     })
     .unwrap_or_else(|p| {
-        Err(FFIJsonEncoderError::EncodeError {
+        Err(FfiJsonEncoderError::EncodeError {
             message: p.to_string(),
         })
     })

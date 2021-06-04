@@ -262,8 +262,8 @@ pub fn store_applied_block_result(
     let block_additional_data = BlockAdditionalData::new(
         block_result.max_operations_ttl.try_into().unwrap(),
         block_result.last_allowed_fork_level,
-        Some(block_result.protocol_hash),
-        Some(block_result.next_protocol_hash),
+        block_result.protocol_hash,
+        block_result.next_protocol_hash,
         block_result.block_metadata_hash,
         {
             // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
@@ -383,12 +383,12 @@ pub fn initialize_storage_with_genesis_block(
     let _ = block_storage.put_block_header(&genesis_with_hash)?;
 
     // store additional data
-    let genesis_additional_data = tezos_env.genesis_additional_data();
+    let genesis_additional_data = tezos_env.genesis_additional_data()?;
     let block_additional_data = BlockAdditionalData::new(
         genesis_additional_data.max_operations_ttl,
         genesis_additional_data.last_allowed_fork_level,
-        None,
-        None,
+        genesis_additional_data.protocol_hash,
+        genesis_additional_data.next_protocol_hash,
         None,
         None,
         None,

@@ -6,7 +6,7 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, FFIJsonEncoderError, GenesisChain, GetDataError,
+    ComputePathResponse, ContextDataError, FfiJsonEncoderError, GenesisChain, GetDataError,
     HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
     InitProtocolContextResult, PatchContext, PrevalidatorWrapper, ProtocolDataError,
     ProtocolOverrides, ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
@@ -174,7 +174,7 @@ pub fn apply_block_result_metadata(
     max_operations_ttl: i32,
     protocol_hash: ProtocolHash,
     next_protocol_hash: ProtocolHash,
-) -> Result<String, FFIJsonEncoderError> {
+) -> Result<String, FfiJsonEncoderError> {
     ffi::apply_block_result_metadata(
         context_hash,
         metadata_bytes,
@@ -191,7 +191,7 @@ pub fn apply_block_operations_metadata(
     operations_metadata_bytes: Vec<Vec<RustBytes>>,
     protocol_hash: ProtocolHash,
     next_protocol_hash: ProtocolHash,
-) -> Result<String, FFIJsonEncoderError> {
+) -> Result<String, FfiJsonEncoderError> {
     ffi::apply_block_operations_metadata(
         chain_id,
         operations,

@@ -32,6 +32,9 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
+pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &'static str =
+    "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";
+
 /// alternative to ocaml Operation_list_list_hash.empty
 pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, FromBase58CheckError> {
     OperationListListHash::try_from("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp")
@@ -525,6 +528,8 @@ impl From<Blake2bError> for TezosEnvironmentError {
 pub struct GenesisAdditionalData {
     pub max_operations_ttl: u16,
     pub last_allowed_fork_level: i32,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
 }
 
 /// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
@@ -599,11 +604,17 @@ impl TezosEnvironmentConfiguration {
             .unwrap())
     }
 
-    pub fn genesis_additional_data(&self) -> GenesisAdditionalData {
-        GenesisAdditionalData {
+    pub fn genesis_additional_data(&self) -> Result<GenesisAdditionalData, TezosEnvironmentError> {
+        Ok(GenesisAdditionalData {
             max_operations_ttl: 0,
             last_allowed_fork_level: 0,
-        }
+            protocol_hash: ProtocolHash::from_base58_check(PROTOCOL_HASH_ZERO_BASE58_CHECK)
+                .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
+                    hash: self.genesis.protocol.clone(),
+                    error: e,
+                })?,
+            next_protocol_hash: self.genesis_protocol()?,
+        })
     }
 }
 
