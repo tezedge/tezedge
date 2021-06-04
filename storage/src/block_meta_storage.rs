@@ -632,7 +632,7 @@ pub struct BlockAdditionalData {
     #[get = "pub"]
     protocol_hash: ProtocolHash,
     #[get = "pub"]
-    next_protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
     #[get = "pub"]
     block_metadata_hash: Option<BlockMetadataHash>,
     // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes

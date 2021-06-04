@@ -53,14 +53,14 @@ enum ProtocolMessage {
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
     GenesisResultDataCall(GenesisResultDataParams),
-    JSONEncodeApplyBlockResultMetadata {
+    JsonEncodeApplyBlockResultMetadata {
         context_hash: ContextHash,
         metadata_bytes: RustBytes,
         max_operations_ttl: i32,
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
     },
-    JSONEncodeApplyBlockOperationsMetadata {
+    JsonEncodeApplyBlockOperationsMetadata {
         chain_id: ChainId,
         operations: Vec<Vec<Operation>>,
         operations_metadata_bytes: Vec<Vec<RustBytes>>,
@@ -200,7 +200,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 );
                 tx.send(&NodeMessage::CommitGenesisResultData(res))?;
             }
-            ProtocolMessage::JSONEncodeApplyBlockResultMetadata {
+            ProtocolMessage::JsonEncodeApplyBlockResultMetadata {
                 context_hash,
                 metadata_bytes,
                 max_operations_ttl,
@@ -218,7 +218,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     res,
                 ))?;
             }
-            ProtocolMessage::JSONEncodeApplyBlockOperationsMetadata {
+            ProtocolMessage::JsonEncodeApplyBlockOperationsMetadata {
                 chain_id,
                 operations,
                 operations_metadata_bytes,
@@ -719,6 +719,9 @@ impl ProtocolController {
                 genesis: tezos_environment.genesis.clone(),
                 genesis_max_operations_ttl: tezos_environment
                     .genesis_additional_data()
+                    .map_err(|error| ProtocolServiceError::InvalidDataError {
+                        message: format!("{:?}", error),
+                    })?
                     .max_operations_ttl,
                 protocol_overrides: tezos_environment.protocol_overrides.clone(),
                 commit_genesis,
@@ -854,6 +857,9 @@ impl ProtocolController {
                 genesis_protocol_hash: protocol_hash,
                 genesis_max_operations_ttl: tezos_environment
                     .genesis_additional_data()
+                    .map_err(|error| ProtocolServiceError::InvalidDataError {
+                        message: format!("{:?}", error),
+                    })?
                     .max_operations_ttl,
             },
         ))?;
