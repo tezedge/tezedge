@@ -735,7 +735,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
@@ -751,7 +751,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
@@ -767,7 +767,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
@@ -783,7 +783,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
@@ -799,7 +799,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
@@ -815,7 +815,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
@@ -831,7 +831,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
@@ -847,7 +847,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
@@ -863,7 +863,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
@@ -879,7 +879,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -901,7 +901,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -987,7 +987,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
@@ -1003,7 +1003,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
@@ -1019,7 +1019,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
@@ -1035,7 +1035,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
@@ -1051,7 +1051,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
@@ -1067,7 +1067,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
@@ -1083,7 +1083,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
@@ -1099,7 +1099,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
@@ -1115,7 +1115,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
@@ -1131,7 +1131,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1153,7 +1153,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -1239,7 +1239,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
@@ -1255,7 +1255,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
@@ -1271,7 +1271,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
@@ -1287,7 +1287,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
@@ -1303,7 +1303,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
@@ -1319,7 +1319,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
@@ -1335,7 +1335,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
@@ -1351,7 +1351,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
@@ -1367,7 +1367,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
@@ -1383,7 +1383,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1405,7 +1405,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -4057,7 +4057,6 @@ depends_on:
   - baker/endorser-granada-tests
   - tezos-python-tests-008
   - tezos-python-tests-009
-  - tezos-python-tests-alpha
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
@@ -4123,7 +4122,6 @@ depends_on:
   - baker/endorser-granada-tests
   - tezos-python-tests-008
   - tezos-python-tests-009
-  - tezos-python-tests-alpha
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
