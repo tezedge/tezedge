@@ -208,7 +208,7 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 120
-  WRK_TEST_DURATION: 10  # in seconds
+  WRK_TEST_DURATION: 30  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
   THROUGHPUTL_THRESHOLD: 10 # in %
