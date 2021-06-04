@@ -38,26 +38,18 @@ echo "Protocol switch block was applied"
 # Check if the file exists, the timeout it low, because once the node starts responding to the RPC above, the log file should be already create
 $SCRIPTPATH/wait_file.sh $LOG_FILE 1
 
-# We get the application time by parsing the log file produced by the node
-APPLY_TIME=$(grep "validation_result_message: lvl $SWITCH_BLOCK," $LOG_FILE | tr ',' '\n' | grep "protocol_call_elapsed" | awk '{print $2}')
+EXCEEDED=$(grep "Block was applied" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$9 > t {printf "Application time over threshold: level: %s - %s ms\n", $12, $9}')
 
-if [[ $APPLY_TIME -gt $THRESHOLD ]]; then
-    echo "Protocol switch block application too long: $APPLY_TIME ms"
-    exit 1
-else
-    echo "Protocol switch block application within threshold: $APPLY_TIME ms"
-fi
+EXCEEDED_GREATLY=$(grep "Block was validated with protocol with long processing" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$23 > t {printf "Extra long application on level %s - %s ms", $15, $23}')
 
-# Block before protocol switch
-((--SWITCH_BLOCK))
-APPLY_TIME=$(grep "validation_result_message: lvl $SWITCH_BLOCK," $LOG_FILE | tr ',' '\n' | grep "protocol_call_elapsed" | awk '{print $2}')
-
-if [[ $APPLY_TIME -gt $THRESHOLD ]]; then
-    echo "Last block application in cycle (before protocol switch) took too long: $APPLY_TIME ms"
-    exit 1
-else
-    echo "Last block application in cycle (before protocol switch) within threshold: $APPLY_TIME ms"
+if [[ -z $EXCEEDED && -z $EXCEEDED_GREATLY ]]; then
+    echo "All applied blocks within threshold"
     exit 0
-fi
+else
+    echo "FAIL"
 
-exit 1
+    echo "$EXCEEDED"
+    echo "$EXCEEDED_GREATLY"
+
+    exit 1
+fi
