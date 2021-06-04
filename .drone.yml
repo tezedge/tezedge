@@ -1426,6 +1426,8 @@ trigger:
 
 depends_on:
   - build
+  - tezos-python-tests-008
+  - tezos-python-tests-009
 
 #############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
@@ -3954,7 +3956,8 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes,/live_blocks
+      - export IGNORE_JSON_PROPERTIES=max_operations_ttl
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes

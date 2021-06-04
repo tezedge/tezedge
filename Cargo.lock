@@ -78,6 +78,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert-json-diff"
+version = "2.0.1"
+source = "git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module#849165fc3197c90c36b638c2ad3d97d8af9b9e67"
+dependencies = [
+ "serde 1.0.123",
+ "serde_json",
+]
+
+[[package]]
 name = "async-attributes"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3090,7 +3099,7 @@ dependencies = [
 name = "rpc"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 2.0.1",
  "chrono",
  "crypto",
  "failure",
@@ -3686,7 +3695,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "storage"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 1.1.0",
  "bincode",
  "blake2",
  "bytes 1.0.1",
@@ -3889,7 +3898,7 @@ dependencies = [
 name = "tezos_api"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 1.1.0",
  "chrono",
  "crypto",
  "derive_builder",
@@ -3912,7 +3921,7 @@ dependencies = [
 name = "tezos_client"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 1.1.0",
  "crypto",
  "failure",
  "hex",
@@ -3969,7 +3978,7 @@ dependencies = [
 name = "tezos_identity"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 1.1.0",
  "crypto",
  "failure",
  "failure_derive",
@@ -4011,7 +4020,7 @@ dependencies = [
 name = "tezos_messages"
 version = "1.5.0"
 dependencies = [
- "assert-json-diff",
+ "assert-json-diff 1.1.0",
  "bytes 1.0.1",
  "chrono",
  "criterion",

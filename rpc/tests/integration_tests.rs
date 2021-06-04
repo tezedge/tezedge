@@ -14,7 +14,6 @@ use std::env;
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
 
-use assert_json_diff::assert_json_eq_no_panic;
 use failure::format_err;
 use hyper::body::Buf;
 use hyper::Client;
@@ -28,12 +27,35 @@ use url::Url;
 
 lazy_static! {
     static ref IGNORE_PATH_PATTERNS: Vec<String> = ignore_path_patterns();
+    static ref IGNORE_JSON_PROPERTIES: Vec<String> = ignore_json_properties();
     static ref NODE_RPC_CONTEXT_ROOT_1: (String, String) = node_rpc_context_root_1();
     static ref NODE_RPC_CONTEXT_ROOT_2: (String, String) = node_rpc_context_root_2();
 }
 
 fn client() -> Client<hyper::client::HttpConnector, hyper::Body> {
     Client::new()
+}
+
+fn log_settings() {
+    println!("========================================");
+    println!("Running rpc compare tests with settings:");
+    println!("========================================");
+    println!(
+        "Node1 url: {} - {}",
+        &NODE_RPC_CONTEXT_ROOT_1.0, NODE_RPC_CONTEXT_ROOT_1.1
+    );
+    println!(
+        "Node2 url: {} - {}",
+        &NODE_RPC_CONTEXT_ROOT_2.0, NODE_RPC_CONTEXT_ROOT_2.1
+    );
+    println!(
+        "IGNORE_PATH_PATTERNS: {:?}",
+        IGNORE_PATH_PATTERNS.join(", ")
+    );
+    println!(
+        "IGNORE_JSON_PROPERTIES: {:?}",
+        IGNORE_JSON_PROPERTIES.join(", ")
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, EnumIter)]
@@ -45,6 +67,7 @@ pub enum NodeType {
 #[ignore]
 #[tokio::test]
 async fn test_rpc_compare() {
+    log_settings();
     integration_tests_rpc(from_block_header(), to_block_header()).await
 }
 
@@ -570,7 +593,9 @@ async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     let ((node1_json, node1_response_time), (node2_json, node2_response_time)) =
         futures::try_join!(node1_response, node2_response)?;
 
-    if let Err(error) = assert_json_eq_no_panic(&node2_json, &node1_json) {
+    if let Err(error) =
+        json_compare::assert_json_eq_no_panic(&node2_json, &node1_json, &IGNORE_JSON_PROPERTIES)
+    {
         panic!(
             "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
             error,
@@ -713,6 +738,19 @@ fn ignore_path_patterns() -> Vec<String> {
     )
 }
 
+fn ignore_json_properties() -> Vec<String> {
+    env::var("IGNORE_JSON_PROPERTIES").map_or_else(
+        |_| vec![],
+        |paths| {
+            paths
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect()
+        },
+    )
+}
+
 fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
     if ignore_patters.is_empty() {
         return false;
@@ -726,8 +764,6 @@ fn is_ignored(ignore_patters: &[String], rpc_path: &str) -> bool {
 fn node_rpc_context_root_1() -> (String, String) {
     let node_url = env::var("NODE_RPC_CONTEXT_ROOT_1")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_1' should be set");
-    println!("Node1 url: {}", &node_url);
-
     let url = Url::parse(&node_url).expect("invalid url");
     (node_url, url.host_str().unwrap_or("node2").to_string())
 }
@@ -735,8 +771,6 @@ fn node_rpc_context_root_1() -> (String, String) {
 fn node_rpc_context_root_2() -> (String, String) {
     let node_url = env::var("NODE_RPC_CONTEXT_ROOT_2")
         .expect("env variable 'NODE_RPC_CONTEXT_ROOT_2' should be set");
-    println!("Node2 url: {}", &node_url);
-
     let url = Url::parse(&node_url).expect("invalid url");
     (node_url, url.host_str().unwrap_or("node2").to_string())
 }
@@ -857,3 +891,107 @@ fn test_ignored_matching() {
 //         println!("\n\n{:?}", response);
 //     }
 // }
+
+mod json_compare {
+    use serde::Serialize;
+
+    // use assert_json_diff::assert_json_eq_no_panic;
+
+    pub(crate) fn assert_json_eq_no_panic<Lhs, Rhs>(
+        lhs: &Lhs,
+        rhs: &Rhs,
+        ignore_json_properties: &[String],
+    ) -> Result<(), String>
+    where
+        Lhs: Serialize,
+        Rhs: Serialize,
+    {
+        // TODO: hack comparision, because of Tezos bug: https://gitlab.com/tezos/tezos/-/issues/1430
+        if !ignore_json_properties.is_empty() {
+            assert_json_eq_no_panic_with_ignore_json_properties(
+                lhs,
+                rhs,
+                assert_json_diff::Config::new(assert_json_diff::CompareMode::Strict),
+                ignore_json_properties,
+            )
+        } else {
+            assert_json_diff::assert_json_matches_no_panic(
+                lhs,
+                rhs,
+                assert_json_diff::Config::new(assert_json_diff::CompareMode::Strict),
+            )
+        }
+    }
+
+    fn assert_json_eq_no_panic_with_ignore_json_properties<Lhs, Rhs>(
+        lhs: &Lhs,
+        rhs: &Rhs,
+        config: assert_json_diff::Config,
+        ignore_json_properties: &[String],
+    ) -> Result<(), String>
+    where
+        Lhs: Serialize,
+        Rhs: Serialize,
+    {
+        let lhs = serde_json::to_value(lhs).unwrap_or_else(|err| {
+            panic!(
+                "Couldn't convert left hand side value to JSON. Serde error: {}",
+                err
+            )
+        });
+        let rhs = serde_json::to_value(rhs).unwrap_or_else(|err| {
+            panic!(
+                "Couldn't convert right hand side value to JSON. Serde error: {}",
+                err
+            )
+        });
+
+        let diffs = assert_json_diff::diff::diff(&lhs, &rhs, config);
+
+        if diffs.is_empty() {
+            Ok(())
+        } else {
+            let diffs = diffs
+                .into_iter()
+                .filter(|diff| {
+                    if let assert_json_diff::diff::Path::Keys(keys) = &diff.path {
+                        if let Some(last_key) = keys.last() {
+                            let ignore = ignore_json_properties.iter().any(|ijp| {
+                                if let assert_json_diff::diff::Key::Field(field_name) = last_key {
+                                    field_name.eq(ijp)
+                                } else {
+                                    false
+                                }
+                            });
+                            if ignore {
+                                println!();
+                                println!(
+                                    "Found IGNORED property, which does not matches, diff: {:?}",
+                                    diff
+                                );
+                                false
+                            } else {
+                                true
+                            }
+                        } else {
+                            true
+                        }
+                    } else {
+                        true
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            if diffs.is_empty() {
+                Ok(())
+            } else {
+                let msg = diffs
+                    .into_iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                Err(msg)
+            }
+        }
+    }
+}
