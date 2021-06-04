@@ -3791,7 +3791,7 @@ clone:
 
 environment:
   NETWORK: granadanet
-  FROM_BLOCK_HEADER: 4096 # 4096-4097 is florence-granada proto switch
+  FROM_BLOCK_HEADER: 4000 # 4096-4097 is florence-granada proto switch
   TO_BLOCK_HEADER: 6250 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-granadanet-run-1:8732
