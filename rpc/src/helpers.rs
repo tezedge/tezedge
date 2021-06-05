@@ -10,12 +10,12 @@ use riker::actor::ActorReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
-    BlockHeaderWithHash, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ChainMetaStorage,
+    BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
+    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
 };
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -46,19 +46,40 @@ macro_rules! required_param {
     }};
 }
 
+pub type BlockHeaderJson = HashMap<String, Value>;
 pub type BlockMetadata = HashMap<String, Value>;
 pub type BlockOperations = Vec<BlockValidationPass>;
 pub type BlockValidationPass = Vec<BlockOperation>;
 pub type BlockOperation = HashMap<String, Value>;
 
-/// Object containing information to recreate the full block information
-#[derive(Serialize, Debug, Clone)]
-pub struct FullBlockInfo {
-    pub hash: String,
-    pub chain_id: String,
-    pub header: InnerBlockHeader,
-    pub metadata: BlockMetadata,
-    pub operations: BlockOperations,
+#[derive(Serialize, Debug)]
+pub struct BlockInfo {
+    protocol: String,
+    chain_id: String,
+    hash: String,
+    header: BlockHeaderJson,
+    metadata: BlockMetadata,
+    operations: BlockOperations,
+}
+
+impl BlockInfo {
+    pub fn new(
+        chain_id: &ChainId,
+        block_hash: &BlockHash,
+        protocol: ProtocolHash,
+        header: InnerBlockHeader,
+        metadata: BlockMetadata,
+        operations: BlockOperations,
+    ) -> Self {
+        Self {
+            protocol: protocol.to_base58_check(),
+            chain_id: chain_id.to_base58_check(),
+            hash: block_hash.to_base58_check(),
+            header: header.into(),
+            metadata,
+            operations,
+        }
+    }
 }
 
 /// Object containing all block header information
@@ -96,8 +117,7 @@ pub struct BlockHeaderInfo {
     pub operations_hash: String,
     pub fitness: Vec<String>,
     pub context: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol: Option<String>,
+    pub protocol: String,
 
     // TODO: refactor this to support multiple protocol version encoding
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,41 +147,22 @@ pub struct BlockHeaderShellInfo {
     pub context: String,
 }
 
-impl FullBlockInfo {
-    pub fn new(
-        block: &BlockHeaderWithHash,
-        block_json_data: &BlockJsonData,
-        chain_id: &ChainId,
-    ) -> Self {
-        let header: &BlockHeader = &block.header;
-        let predecessor = header.predecessor().to_base58_check();
-        let timestamp = ts_to_rfc3339(header.timestamp());
-        let operations_hash = header.operations_hash().to_base58_check();
-        let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
-        let context = header.context().to_base58_check();
-        let hash = block.hash.to_base58_check();
-
-        Self {
-            hash,
-            chain_id: chain_id_to_b58_string(chain_id),
-            header: InnerBlockHeader {
-                level: header.level(),
-                proto: header.proto(),
-                predecessor,
-                timestamp,
-                validation_pass: header.validation_pass(),
-                operations_hash,
-                fitness,
-                context,
-                protocol_data: serde_json::from_str(block_json_data.block_header_proto_json())
-                    .unwrap_or_default(),
-            },
-            // FIXME: now we have bytes, not json
-            metadata: serde_json::from_str(block_json_data.block_header_proto_metadata_json())
-                .unwrap_or_default(),
-            // FIXME: now we have bytes, not json
-            operations: serde_json::from_str(block_json_data.operations_proto_metadata_json())
-                .unwrap_or_default(),
+impl BlockHeaderShellInfo {
+    pub fn new(block: &BlockHeaderWithHash) -> Self {
+        BlockHeaderShellInfo {
+            level: block.header.level(),
+            proto: block.header.proto(),
+            predecessor: block.header.predecessor().to_base58_check(),
+            timestamp: ts_to_rfc3339(block.header.timestamp()),
+            validation_pass: block.header.validation_pass(),
+            operations_hash: block.header.operations_hash().to_base58_check(),
+            fitness: block
+                .header
+                .fitness()
+                .iter()
+                .map(|x| hex::encode(&x))
+                .collect(),
+            context: block.header.context().to_base58_check(),
         }
     }
 }
@@ -170,6 +171,7 @@ impl BlockHeaderInfo {
     pub fn new(
         block: &BlockHeaderWithHash,
         block_json_data: &BlockJsonData,
+        block_additional_data: &BlockAdditionalData,
         chain_id: &ChainId,
     ) -> Self {
         let header: &BlockHeader = &block.header;
@@ -196,14 +198,6 @@ impl BlockHeaderInfo {
             .get("liquidity_baking_escape_vote")
             .map(|val| val.as_bool().unwrap());
 
-        // FIXME: now we have bytes, not json
-        let proto_data: HashMap<String, Value> =
-            serde_json::from_str(block_json_data.block_header_proto_metadata_json())
-                .unwrap_or_default();
-        let protocol = proto_data
-            .get("protocol")
-            .map(|val| val.as_str().unwrap().to_string());
-
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
             content = serde_json::from_value(header_content.clone()).unwrap();
@@ -211,7 +205,7 @@ impl BlockHeaderInfo {
 
         Self {
             hash,
-            chain_id: chain_id_to_b58_string(chain_id),
+            chain_id: chain_id.to_base58_check(),
             level: header.level(),
             proto: header.proto(),
             predecessor,
@@ -220,26 +214,13 @@ impl BlockHeaderInfo {
             operations_hash,
             fitness,
             context,
-            protocol,
+            protocol: block_additional_data.protocol_hash().to_base58_check(),
             signature,
             priority,
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
             content,
-        }
-    }
-
-    pub fn to_shell_header(&self) -> BlockHeaderShellInfo {
-        BlockHeaderShellInfo {
-            level: self.level,
-            proto: self.proto,
-            predecessor: self.predecessor.clone(),
-            timestamp: self.timestamp.clone(),
-            validation_pass: self.validation_pass,
-            operations_hash: self.operations_hash.clone(),
-            fitness: self.fitness.clone(),
-            context: self.context.clone(),
         }
     }
 }
@@ -623,7 +604,7 @@ pub(crate) fn get_prevalidators(
 
                     if accept_prevalidator {
                         vec![Prevalidator {
-                            chain_id: chain_id_to_b58_string(&prevalidator.chain_id),
+                            chain_id: prevalidator.chain_id.to_base58_check(),
                             // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
                             since: env.sys().start_date().to_rfc3339(),
                         }]
@@ -638,44 +619,6 @@ pub(crate) fn get_prevalidators(
     };
 
     Ok(prevalidators)
-}
-
-/// Struct to show in tezedge explorer to lower data flow
-#[derive(Serialize, Debug, Clone)]
-pub struct SlimBlockData {
-    pub level: i32,
-    pub block_hash: String,
-    pub timestamp: String,
-    // TODO: TE-199 Refactor FullBlockInfo (should be i32)
-    // Note: serde's Value can be converted into Option<i64> without panicing, the original tezos value is an i32
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cycle_position: Option<i64>,
-}
-
-impl From<(BlockHeaderWithHash, BlockJsonData)> for SlimBlockData {
-    fn from(
-        (block_header_with_hash, block_json_data): (BlockHeaderWithHash, BlockJsonData),
-    ) -> Self {
-        // TODO: TE-199 Refactor FullBlockInfo
-        // deserialize the metadata
-        let metadata: BlockMetadata =
-            // FIXME: now we have bytes, not json
-            serde_json::from_str(block_json_data.block_header_proto_metadata_json())
-                .unwrap_or_default();
-
-        let cycle_position = if let Some(level) = metadata.get("level") {
-            level["cycle_position"].as_i64()
-        } else {
-            None
-        };
-
-        Self {
-            level: block_header_with_hash.header.level(),
-            block_hash: block_header_with_hash.hash.to_base58_check(),
-            timestamp: block_header_with_hash.header.timestamp().to_string(),
-            cycle_position,
-        }
-    }
 }
 
 #[cfg(test)]

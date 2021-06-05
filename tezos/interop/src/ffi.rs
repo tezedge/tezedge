@@ -72,7 +72,7 @@ mod tezos_ffi {
             chain_id: OCamlBytes,
             protocol_hash: OCamlBytes,
             genesis_max_operations_ttl: OCamlInt
-        ) -> TzResult<(OCamlBytes, OCamlBytes, OCamlBytes)>;
+        ) -> TzResult<(OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>)>;
         pub fn decode_context_data(
             protocol_hash: OCamlBytes,
             key: OCamlList<OCamlBytes>,
@@ -188,7 +188,7 @@ pub fn init_protocol_context(
                 ) = result.to_rust();
                 let supported_protocol_hashes = supported_protocol_hashes
                     .into_iter()
-                    .map(|h| ProtocolHash::try_from(h))
+                    .map(ProtocolHash::try_from)
                     .collect::<Result<_, _>>()?;
                 let genesis_commit_hash = genesis_commit_hash
                     .map(|bytes| ContextHash::try_from(bytes.to_vec()))
@@ -232,13 +232,13 @@ pub fn genesis_result_data(
             Ok(result) => {
                 let (
                     block_header_proto_json,
-                    block_header_proto_metadata_json,
-                    operations_proto_metadata_json,
+                    block_header_proto_metadata_bytes,
+                    operations_proto_metadata_bytes,
                 ) = result.to_rust();
                 Ok(CommitGenesisResult {
                     block_header_proto_json,
-                    block_header_proto_metadata_json,
-                    operations_proto_metadata_json,
+                    block_header_proto_metadata_bytes,
+                    operations_proto_metadata_bytes,
                 })
             }
             Err(e) => Err(GetDataError::from(e.to_rust::<TezosErrorTrace>())),

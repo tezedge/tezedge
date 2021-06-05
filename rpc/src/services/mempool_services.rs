@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
 use riker::actors::*;
@@ -234,8 +234,7 @@ pub fn inject_operation(
     // store operation in mempool storage
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
     let operation_hash_b58check_string = operation_hash.to_base58_check();
-    let ttl = SystemTime::now() + Duration::from_secs(60);
-    mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
+    mempool_storage.put(MempoolOperationType::Pending, operation.into())?;
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
     let result_callback = if is_async {

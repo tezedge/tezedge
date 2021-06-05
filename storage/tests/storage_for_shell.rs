@@ -10,7 +10,7 @@ use std::{
 use failure::Error;
 use slog::{Drain, Level, Logger};
 
-use crypto::hash::{BlockHash, ContextHash, ProtocolHash, chain_id_from_block_hash};
+use crypto::hash::{chain_id_from_block_hash, BlockHash, ContextHash, ProtocolHash};
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::tests_common::TmpStorage;
 use storage::*;
@@ -97,8 +97,8 @@ fn test_storage() -> Result<(), Error> {
 
     let commit_genesis_result = CommitGenesisResult {
         block_header_proto_json: "{block_header_proto_json}".to_string(),
-        block_header_proto_metadata_json: "{block_header_proto_metadata_json}".to_string(),
-        operations_proto_metadata_json: "{operations_proto_metadata_json}".to_string(),
+        block_header_proto_metadata_bytes: Vec::new(),
+        operations_proto_metadata_bytes: Vec::new(),
     };
     let _ = store_commit_genesis_result(
         &block_storage,
@@ -157,14 +157,12 @@ fn test_storage() -> Result<(), Error> {
         &commit_genesis_result.block_header_proto_json
     );
     assert_eq!(
-        // FIXME: one is bytes, the other json
-        data.block_header_proto_metadata_json(),
-        &commit_genesis_result.block_header_proto_metadata_json
+        data.block_header_proto_metadata_bytes(),
+        &commit_genesis_result.block_header_proto_metadata_bytes
     );
     assert_eq!(
-        // FIXME: one is bytes, the other json
-        data.operations_proto_metadata_json(),
-        &commit_genesis_result.operations_proto_metadata_json
+        data.operations_proto_metadata_bytes(),
+        &commit_genesis_result.operations_proto_metadata_bytes
     );
 
     // simulate apply block

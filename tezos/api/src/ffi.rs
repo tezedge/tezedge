@@ -348,8 +348,8 @@ impl fmt::Debug for InitProtocolContextResult {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct CommitGenesisResult {
     pub block_header_proto_json: String,
-    pub block_header_proto_metadata_json: String,
-    pub operations_proto_metadata_json: String,
+    pub block_header_proto_metadata_bytes: Vec<u8>,
+    pub operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
 }
 
 /// Forking test chain data

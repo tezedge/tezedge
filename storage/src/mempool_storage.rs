@@ -5,7 +5,6 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Formatter;
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 
@@ -70,21 +69,13 @@ impl MempoolStorage {
     }
 
     #[inline]
-    pub fn put_pending(
-        &mut self,
-        message: OperationMessage,
-        time_to_live: SystemTime,
-    ) -> Result<(), StorageError> {
-        self.put(MempoolOperationType::Pending, message, time_to_live)
+    pub fn put_pending(&mut self, message: OperationMessage) -> Result<(), StorageError> {
+        self.put(MempoolOperationType::Pending, message)
     }
 
     #[inline]
-    pub fn put_known_valid(
-        &mut self,
-        message: OperationMessage,
-        time_to_live: SystemTime,
-    ) -> Result<(), StorageError> {
-        self.put(MempoolOperationType::KnownValid, message, time_to_live)
+    pub fn put_known_valid(&mut self, message: OperationMessage) -> Result<(), StorageError> {
+        self.put(MempoolOperationType::KnownValid, message)
     }
 
     #[inline]
@@ -92,16 +83,12 @@ impl MempoolStorage {
         &mut self,
         operation_type: MempoolOperationType,
         operation: OperationMessage,
-        time_to_live: SystemTime,
     ) -> Result<(), StorageError> {
         let key = MempoolKey {
             operation_type,
             operation_hash: OperationHash::try_from(operation.message_hash()?)?,
         };
-        let value = MempoolValue {
-            operation,
-            time_to_live,
-        };
+        let value = MempoolValue { operation };
 
         self.kv.put(&key, &value).map_err(StorageError::from)
     }
@@ -233,7 +220,6 @@ impl Decoder for MempoolKey {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct MempoolValue {
     operation: OperationMessage,
-    time_to_live: SystemTime,
 }
 
 impl BincodeEncoded for MempoolValue {}

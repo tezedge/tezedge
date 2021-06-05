@@ -1,5 +1,4 @@
 pub mod base_types;
-pub mod chain;
 pub mod monitor;
 
 #[cfg(test)]

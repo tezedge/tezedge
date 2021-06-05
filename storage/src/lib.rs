@@ -327,9 +327,8 @@ pub fn store_commit_genesis_result(
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
         bock_result.block_header_proto_json,
-        // FIXME: needs to be bytes
-        bock_result.block_header_proto_metadata_json.into(),
-        vec![vec![bock_result.operations_proto_metadata_json.into()]],
+        bock_result.block_header_proto_metadata_bytes,
+        bock_result.operations_proto_metadata_bytes,
     );
     block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
 
