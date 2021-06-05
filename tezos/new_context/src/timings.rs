@@ -9,14 +9,14 @@ use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash
 use tezos_timing::{Action, ActionKind, TimingMessage, TIMING_CHANNEL};
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
+    let instant = Instant::now();
     let block_hash: Option<BlockHash> = block_hash.to_rust(rt);
 
-    let start_at = if block_hash.is_some() {
+    let timestamp = if block_hash.is_some() {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or(Duration::new(0, 0));
-        let instant = Instant::now();
-        Some((timestamp, instant))
+        Some(timestamp)
     } else {
         None
     };
@@ -24,7 +24,8 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
     TIMING_CHANNEL
         .send(TimingMessage::SetBlock {
             block_hash,
-            start_at,
+            timestamp,
+            instant,
         })
         .unwrap();
 }
