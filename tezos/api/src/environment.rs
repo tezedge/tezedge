@@ -32,7 +32,7 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
-pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &'static str =
+pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &str =
     "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";
 
 /// alternative to ocaml Operation_list_list_hash.empty

@@ -1,9 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use failure::bail;
+use serde::Serialize;
 use slog::Logger;
 
-use crypto::hash::BlockHash;
+use crypto::hash::{BlockHash, ChainId};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::context::actions::context_action_storage::{
     contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
@@ -11,11 +13,13 @@ use storage::context::actions::context_action_storage::{
 };
 use storage::context::merkle::merkle_storage_stats::MerkleStoragePerfReport;
 use storage::context::{ContextApi, TezedgeContext};
-use storage::PersistentStorage;
+use storage::{
+    BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
+};
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
 
-use crate::helpers::PagedResult;
+use crate::helpers::{BlockMetadata, PagedResult};
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
 
@@ -186,4 +190,75 @@ pub(crate) fn ensure_context_action_storage(
         )),
         Some(context_action_storage) => Ok(ContextActionStorageReader::new(context_action_storage)),
     }
+}
+
+/// Retrieve blocks from database.
+pub(crate) fn get_blocks(
+    _chain_id: ChainId,
+    block_hash: BlockHash,
+    every_nth_level: Option<i32>,
+    limit: usize,
+    env: &RpcServiceEnvironment,
+) -> Result<Vec<SlimBlockData>, failure::Error> {
+    let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
+
+    let blocks = match every_nth_level {
+        Some(every_nth_level) => BlockStorage::new(env.persistent_storage())
+            .get_every_nth_with_json_data(every_nth_level, &block_hash, limit),
+        None => BlockStorage::new(env.persistent_storage())
+            .get_multiple_with_json_data(&block_hash, limit),
+    }?
+    .into_iter()
+    .map(|(block_header, block_json_data)| {
+        if let Some(block_additional_data) = block_meta_storage.get_additional_data(&block_hash)? {
+            let response = env
+                .tezos_readonly_api()
+                .pool
+                .get()?
+                .api
+                .apply_block_result_metadata(
+                    block_header.header.context().clone(),
+                    block_json_data.block_header_proto_metadata_bytes,
+                    block_additional_data.max_operations_ttl().into(),
+                    block_additional_data.protocol_hash,
+                    block_additional_data.next_protocol_hash,
+                )?;
+
+            let metadata: BlockMetadata = serde_json::from_str(&response).unwrap_or_default();
+            let cycle_position = if let Some(level) = metadata.get("level") {
+                level["cycle_position"].as_i64()
+            } else if let Some(level) = metadata.get("level_info") {
+                level["cycle_position"].as_i64()
+            } else {
+                None
+            };
+
+            Ok(SlimBlockData {
+                level: block_header.header.level(),
+                block_hash: block_header.hash.to_base58_check(),
+                timestamp: block_header.header.timestamp().to_string(),
+                cycle_position,
+            })
+        } else {
+            bail!(
+                "No additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            )
+        }
+    })
+    .filter_map(Result::ok)
+    .collect::<Vec<SlimBlockData>>();
+    Ok(blocks)
+}
+
+/// Struct to show in tezedge explorer to lower data flow
+#[derive(Serialize, Debug, Clone)]
+pub struct SlimBlockData {
+    pub level: i32,
+    pub block_hash: String,
+    pub timestamp: String,
+    // TODO: TE-199 Refactor FullBlockInfo (should be i32)
+    // Note: serde's Value can be converted into Option<i64> without panicing, the original tezos value is an i32
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle_position: Option<i64>,
 }

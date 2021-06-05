@@ -188,7 +188,7 @@ pub fn init_protocol_context(
                 ) = result.to_rust();
                 let supported_protocol_hashes = supported_protocol_hashes
                     .into_iter()
-                    .map(|h| ProtocolHash::try_from(h))
+                    .map(ProtocolHash::try_from)
                     .collect::<Result<_, _>>()?;
                 let genesis_commit_hash = genesis_commit_hash
                     .map(|bytes| ContextHash::try_from(bytes.to_vec()))

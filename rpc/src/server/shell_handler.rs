@@ -15,7 +15,7 @@ use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 
 use crate::helpers::{
-    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID,
+    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, MAIN_CHAIN_ID,
 };
 use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
@@ -175,7 +175,8 @@ pub async fn blocks(
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
-    make_json_response(&vec![base_services::get_blocks::<SlimBlockData>(
+
+    make_json_response(&vec![base_services::get_block_hashes(
         chain_id,
         head,
         None,
@@ -183,7 +184,7 @@ pub async fn blocks(
         env.persistent_storage(),
     )?
     .iter()
-    .map(|block| block.block_hash.clone())
+    .map(|block| block.to_base58_check())
     .collect::<Vec<String>>()])
 }
 
@@ -196,10 +197,8 @@ pub async fn chains_block_id(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    use crate::encoding::chain::BlockInfo;
     result_option_to_json_response(
-        base_services::get_block(&chain_id, &block_hash, env.persistent_storage())
-            .map(|res| res.map(BlockInfo::from)),
+        base_services::get_block(&chain_id, &block_hash, env.persistent_storage()),
         env.log(),
     )
 }
@@ -514,7 +513,7 @@ pub async fn get_block_operation_hashes(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        base_services::get_block_operation_hashes(&chain_id, &block_hash, env.persistent_storage()),
+        base_services::get_block_operation_hashes(chain_id, &block_hash, &env),
         env.log(),
     )
 }
@@ -529,7 +528,7 @@ pub async fn get_block_operations(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        base_services::get_block_operations(&chain_id, &block_hash, env.persistent_storage()),
+        base_services::get_block_operations_metadata(chain_id, &block_hash, &env),
         env.log(),
     )
 }
@@ -547,9 +546,9 @@ pub async fn get_block_operations_validation_pass(
 
     result_to_json_response(
         base_services::get_block_operations_validation_pass(
-            &chain_id,
+            chain_id,
             &block_hash,
-            env.persistent_storage(),
+            &env,
             validation_pass,
         ),
         env.log(),
@@ -570,9 +569,9 @@ pub async fn get_block_operation(
 
     result_to_json_response(
         base_services::get_block_operation(
-            &chain_id,
+            chain_id,
             &block_hash,
-            env.persistent_storage(),
+            &env,
             validation_pass,
             operation_order,
         ),

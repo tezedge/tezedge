@@ -14,8 +14,8 @@ use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
-    BlockHeaderWithHash, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, ChainMetaStorage,
+    BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
+    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
 };
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -96,8 +96,7 @@ pub struct BlockHeaderInfo {
     pub operations_hash: String,
     pub fitness: Vec<String>,
     pub context: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol: Option<String>,
+    pub protocol: String,
 
     // TODO: refactor this to support multiple protocol version encoding
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -127,6 +126,25 @@ pub struct BlockHeaderShellInfo {
     pub context: String,
 }
 
+impl BlockHeaderShellInfo {
+    pub fn new(block: &BlockHeaderWithHash) -> Self {
+        BlockHeaderShellInfo {
+            level: block.header.level(),
+            proto: block.header.proto(),
+            predecessor: block.header.predecessor().to_base58_check(),
+            timestamp: ts_to_rfc3339(block.header.timestamp()),
+            validation_pass: block.header.validation_pass(),
+            operations_hash: block.header.operations_hash().to_base58_check(),
+            fitness: block
+                .header
+                .fitness()
+                .iter()
+                .map(|x| hex::encode(&x))
+                .collect(),
+            context: block.header.context().to_base58_check(),
+        }
+    }
+}
 impl FullBlockInfo {
     pub fn new(
         block: &BlockHeaderWithHash,
@@ -170,6 +188,7 @@ impl BlockHeaderInfo {
     pub fn new(
         block: &BlockHeaderWithHash,
         block_json_data: &BlockJsonData,
+        block_additional_data: &BlockAdditionalData,
         chain_id: &ChainId,
     ) -> Self {
         let header: &BlockHeader = &block.header;
@@ -196,14 +215,6 @@ impl BlockHeaderInfo {
             .get("liquidity_baking_escape_vote")
             .map(|val| val.as_bool().unwrap());
 
-        // FIXME: now we have bytes, not json
-        let proto_data: HashMap<String, Value> =
-            serde_json::from_str(block_json_data.block_header_proto_metadata_json())
-                .unwrap_or_default();
-        let protocol = proto_data
-            .get("protocol")
-            .map(|val| val.as_str().unwrap().to_string());
-
         let mut content: Option<HeaderContent> = None;
         if let Some(header_content) = header_data.get("content") {
             content = serde_json::from_value(header_content.clone()).unwrap();
@@ -211,7 +222,7 @@ impl BlockHeaderInfo {
 
         Self {
             hash,
-            chain_id: chain_id_to_b58_string(chain_id),
+            chain_id: chain_id.to_base58_check(),
             level: header.level(),
             proto: header.proto(),
             predecessor,
@@ -220,26 +231,13 @@ impl BlockHeaderInfo {
             operations_hash,
             fitness,
             context,
-            protocol,
+            protocol: block_additional_data.protocol_hash().to_base58_check(),
             signature,
             priority,
             seed_nonce_hash,
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
             content,
-        }
-    }
-
-    pub fn to_shell_header(&self) -> BlockHeaderShellInfo {
-        BlockHeaderShellInfo {
-            level: self.level,
-            proto: self.proto,
-            predecessor: self.predecessor.clone(),
-            timestamp: self.timestamp.clone(),
-            validation_pass: self.validation_pass,
-            operations_hash: self.operations_hash.clone(),
-            fitness: self.fitness.clone(),
-            context: self.context.clone(),
         }
     }
 }

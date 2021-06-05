@@ -630,7 +630,7 @@ pub struct BlockAdditionalData {
     #[get_copy = "pub"]
     last_allowed_fork_level: i32,
     #[get = "pub"]
-    protocol_hash: ProtocolHash,
+    pub protocol_hash: ProtocolHash,
     #[get = "pub"]
     pub next_protocol_hash: ProtocolHash,
     #[get = "pub"]
