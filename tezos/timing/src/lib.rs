@@ -47,7 +47,13 @@ impl ActionKind {
 pub enum TimingMessage {
     SetBlock {
         block_hash: Option<BlockHash>,
-        start_at: Option<(Duration, Instant)>,
+        /// Duration since std::time::UNIX_EPOCH.
+        /// It is `None` when `block_hash` is `None`.
+        timestamp: Option<Duration>,
+        /// Instant when the hook `set_block` was called.
+        /// `Instant` is required because it's monotonic, `SystemTime` (which
+        /// is used to get `timestamp`) is not.
+        instant: Instant,
     },
     SetOperation(Option<OperationHash>),
     Checkout {
@@ -345,8 +351,9 @@ impl Timing {
         match msg {
             TimingMessage::SetBlock {
                 block_hash,
-                start_at,
-            } => self.set_current_block(block_hash, start_at),
+                timestamp,
+                instant,
+            } => self.set_current_block(block_hash, timestamp, instant),
             TimingMessage::SetOperation(operation_hash) => {
                 self.set_current_operation(operation_hash)
             }
@@ -367,14 +374,23 @@ impl Timing {
     fn set_current_block(
         &mut self,
         block_hash: Option<BlockHash>,
-        mut start_at: Option<(Duration, Instant)>,
+        mut timestamp: Option<Duration>,
+        instant: Instant,
     ) -> Result<(), SQLError> {
-        if let Some(start_at) = start_at.take() {
-            self.block_started_at = Some(start_at);
-        } else if let Some((timestamp, instant)) = self.block_started_at.take() {
-            let duration_millis: u64 = instant.elapsed().as_millis().try_into().unwrap_or(u64::MAX);
-            let timestamp_secs = timestamp.as_secs();
-            let timestamp_nanos = timestamp.subsec_nanos();
+        if let Some(timestamp) = timestamp.take() {
+            self.block_started_at = Some((timestamp, instant));
+        } else if let Some(started_at) = self.block_started_at.take() {
+            let started_at_instant = started_at.1;
+            let started_at_timestamp = started_at.0;
+
+            let duration_millis: u64 = instant
+                .saturating_duration_since(started_at_instant)
+                .as_millis()
+                .try_into()
+                .unwrap_or(u64::MAX);
+
+            let timestamp_secs = started_at_timestamp.as_secs();
+            let timestamp_nanos = started_at_timestamp.subsec_nanos();
             let block_id = self.current_block.as_ref().unwrap().0.as_str();
 
             let mut query = self.sql.prepare_cached(
@@ -973,17 +989,23 @@ mod tests {
 
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
         timing
-            .set_current_block(Some(block_hash.clone()), None)
+            .set_current_block(Some(block_hash.clone()), None, Instant::now())
             .unwrap();
         let block_id = timing.current_block.clone().unwrap().0;
 
-        timing.set_current_block(Some(block_hash), None).unwrap();
+        timing
+            .set_current_block(Some(block_hash), None, Instant::now())
+            .unwrap();
         let same_block_id = timing.current_block.clone().unwrap().0;
 
         assert_eq!(block_id, same_block_id);
 
         timing
-            .set_current_block(Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()), None)
+            .set_current_block(
+                Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()),
+                None,
+                Instant::now(),
+            )
             .unwrap();
         let other_block_id = timing.current_block.clone().unwrap().0;
 
@@ -1016,7 +1038,8 @@ mod tests {
         TIMING_CHANNEL
             .send(TimingMessage::SetBlock {
                 block_hash: Some(block_hash),
-                start_at: None,
+                timestamp: None,
+                instant: Instant::now(),
             })
             .unwrap();
         TIMING_CHANNEL
