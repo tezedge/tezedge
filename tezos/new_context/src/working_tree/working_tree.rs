@@ -59,7 +59,7 @@ use failure::Fail;
 
 use crypto::hash::{FromBytesError, HashType};
 
-use crate::hash::{hash_commit, hash_entry, hash_tree, HashingError};
+use crate::hash::{hash_commit, hash_tree, HashingError};
 use crate::persistent;
 use crate::working_tree::working_tree_stats::{MerkleStoragePerfReport, TezedgeContextStatistics};
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
@@ -746,19 +746,18 @@ impl WorkingTree {
             message,
         };
         let entry = Entry::Commit(new_commit.clone());
+        let commit_hash = hash_commit(&new_commit)?;
 
         // produce entries to be persisted to storage
         let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
         let mut referenced_older_entries: HashSet<EntryHash> = HashSet::new();
         self.get_entries_recursively(
             &entry,
-            None,
+            &commit_hash,
             Some(root.as_ref()),
             &mut batch,
             &mut referenced_older_entries,
         )?;
-
-        let commit_hash = hash_commit(&new_commit)?;
 
         //stat_updater.update_execution_stats(&mut self.stats);
 
@@ -970,17 +969,13 @@ impl WorkingTree {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        entry_hash: Option<EntryHash>,
+        entry_hash: &EntryHash,
         root: Option<&Tree>,
         batch: &mut Vec<(EntryHash, ContextValue)>,
         referenced_older_entries: &mut HashSet<EntryHash>,
     ) -> Result<(), MerkleError> {
-        let entry_hash = match entry_hash {
-            None => hash_entry(entry)?,
-            Some(hash) => hash,
-        };
         // add entry to batch
-        batch.push((entry_hash, bincode::serialize(entry)?));
+        batch.push((entry_hash.clone(), bincode::serialize(entry)?));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -1004,7 +999,7 @@ impl WorkingTree {
                             None => Ok(()),
                             Some(entry) => self.get_entries_recursively(
                                 entry,
-                                child_node.entry_hash.borrow().clone(),
+                                &child_node.entry_hash.borrow().clone().unwrap(),
                                 None,
                                 batch,
                                 referenced_older_entries,
@@ -1022,7 +1017,7 @@ impl WorkingTree {
                     Some(root) => Entry::Tree(root.clone()),
                     None => self.get_entry_from_hash(&commit.root_hash)?,
                 };
-                self.get_entries_recursively(&entry, None, None, batch, referenced_older_entries)
+                self.get_entries_recursively(&entry, &commit.root_hash, None, batch, referenced_older_entries)
             }
         }
     }
