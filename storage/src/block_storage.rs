@@ -34,7 +34,7 @@ pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + 
 #[derive(Clone, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockJsonData {
     #[get = "pub"]
-    block_header_proto_json: String,
+    pub block_header_proto_json: String,
     #[get = "pub"]
     pub block_header_proto_metadata_bytes: Vec<u8>,
     #[get = "pub"]

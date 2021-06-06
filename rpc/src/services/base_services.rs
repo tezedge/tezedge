@@ -3,23 +3,24 @@
 
 use failure::bail;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::context::ContextApi;
 use storage::context::StringTreeEntry;
 use storage::{
-    context_key, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
-    OperationsStorage, OperationsStorageReader,
+    context_key, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
+    BlockStorageReader, OperationsStorage, OperationsStorageReader,
 };
 use storage::{BlockAdditionalData, PersistentStorage};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-use crate::encoding::chain::BlockInfo;
 use crate::helpers::{
-    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockMetadata, BlockOperation,
-    BlockOperations, BlockValidationPass, FullBlockInfo, NodeVersion, Protocols,
+    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata,
+    BlockOperation, BlockOperations, BlockValidationPass, InnerBlockHeader, NodeVersion, Protocols,
 };
 use crate::server::RpcServiceEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
+use tezos_messages::p2p::encoding::prelude::OperationsForBlocksMessage;
+use tezos_messages::ts_to_rfc3339;
 
 pub type BlockOperationsHashes = Vec<String>;
 
@@ -43,67 +44,105 @@ pub(crate) fn get_block_hashes(
 }
 
 /// Get block metadata
-pub(crate) fn get_block_metadata(
+pub(crate) async fn get_block_metadata(
     _: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<Option<BlockMetadata>, failure::Error> {
-    BlockStorage::new(env.persistent_storage())
-        .get_with_json_data(&block_hash)?
-        .map(|(block_header, block_json_data)| {
-            if let Some(block_additional_data) =
-                BlockMetaStorage::new(env.persistent_storage()).get_additional_data(&block_hash)?
-            {
-                let response = env
-                    .tezos_readonly_api()
-                    .pool
-                    .get()?
-                    .api
-                    .apply_block_result_metadata(
-                        block_header.header.context().clone(),
-                        block_json_data.block_header_proto_metadata_bytes,
-                        block_additional_data.max_operations_ttl().into(),
-                        block_additional_data.protocol_hash,
-                        block_additional_data.next_protocol_hash,
-                    )?;
+) -> Result<BlockMetadata, failure::Error> {
+    // header + jsons
+    let block_header_with_json_data = async {
+        match BlockStorage::new(env.persistent_storage()).get_with_json_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block header data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
 
-                Ok(serde_json::from_str(&response)?)
-            } else {
-                bail!(
-                    "No additional data found for block_hash: {}",
-                    block_hash.to_base58_check()
-                )
-            }
-        })
-        .transpose()
+    // additional data
+    let block_additional_data = async {
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // 1. wait for data to collect
+    let ((block_header, block_json_data), block_additional_data) =
+        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+
+    convert_block_metadata(
+        block_header.header.context().clone(),
+        block_json_data.block_header_proto_metadata_bytes,
+        &block_additional_data,
+        env,
+    )
+}
+
+fn convert_block_metadata(
+    context_hash: ContextHash,
+    block_header_proto_metadata_bytes: Vec<u8>,
+    block_additional_data: &BlockAdditionalData,
+    env: &RpcServiceEnvironment,
+) -> Result<BlockMetadata, failure::Error> {
+    let response = env
+        .tezos_readonly_api()
+        .pool
+        .get()?
+        .api
+        .apply_block_result_metadata(
+            context_hash,
+            block_header_proto_metadata_bytes,
+            block_additional_data.max_operations_ttl().into(),
+            block_additional_data.protocol_hash.clone(),
+            block_additional_data.next_protocol_hash.clone(),
+        )?;
+
+    serde_json::from_str::<BlockMetadata>(&response).map_err(|e| e.into())
 }
 
 /// Get information about block header
-pub(crate) fn get_block_header(
+pub(crate) async fn get_block_header(
     chain_id: ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<Option<BlockHeaderInfo>, failure::Error> {
-    BlockStorage::new(persistent_storage)
-        .get_with_json_data(&block_hash)?
-        .map(|(header, json_data)| {
-            if let Some(block_additional_data) =
-                BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash)?
-            {
-                Ok(BlockHeaderInfo::new(
-                    &header,
-                    &json_data,
-                    &block_additional_data,
-                    &chain_id,
-                ))
-            } else {
-                bail!(
-                    "No additional data found for block_hash: {}",
-                    block_hash.to_base58_check()
-                )
-            }
-        })
-        .transpose()
+) -> Result<BlockHeaderInfo, failure::Error> {
+    // header + jsons
+    let block_header_with_json_data = async {
+        match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block header data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // additional data
+    let block_additional_data = async {
+        match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // 1. wait for data to collect
+    let ((block_header, block_json_data), block_additional_data) =
+        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+
+    Ok(BlockHeaderInfo::new(
+        &block_header,
+        &block_json_data,
+        &block_additional_data,
+        &chain_id,
+    ))
 }
 
 /// Get information about block shell header
@@ -199,12 +238,12 @@ pub(crate) fn get_additional_data(
 }
 
 /// Returns the hashes of all the operations included in the block.
-pub(crate) fn get_block_operation_hashes(
+pub(crate) async fn get_block_operation_hashes(
     chain_id: ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<BlockOperationsHashes>, failure::Error> {
-    let block_operations = get_block_operations_metadata(chain_id, block_hash, env)?;
+    let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     let operations = block_operations
         .into_iter()
         .map(|op_group| {
@@ -218,59 +257,84 @@ pub(crate) fn get_block_operation_hashes(
 }
 
 /// Extract all the operations included in the block.
-pub(crate) fn get_block_operations_metadata(
+pub(crate) async fn get_block_operations_metadata(
     chain_id: ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<BlockOperations, failure::Error> {
-    let operations = match BlockStorage::new(env.persistent_storage()).get_json_data(&block_hash)? {
-        Some(block_json_data) => {
-            if let Some(block_additional_data) =
-                BlockMetaStorage::new(env.persistent_storage()).get_additional_data(&block_hash)?
-            {
-                let operations =
-                    OperationsStorage::new(env.persistent_storage()).get_operations(&block_hash)?;
-
-                let response = env
-                    .tezos_readonly_api()
-                    .pool
-                    .get()?
-                    .api
-                    .apply_block_operations_metadata(
-                        chain_id,
-                        ApplyBlockRequest::convert_operations(operations),
-                        block_json_data.operations_proto_metadata_bytes,
-                        block_additional_data.protocol_hash,
-                        block_additional_data.next_protocol_hash,
-                    )?;
-
-                serde_json::from_str::<BlockOperations>(&response)?
-            } else {
-                bail!(
-                    "No additional data found for block_hash: {}",
-                    block_hash.to_base58_check()
-                )
-            }
-        }
-        None => {
-            bail!(
-                "No json data found for block_hash: {}",
+    // header + jsons
+    let block_json_data = async {
+        match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block header data found for block_hash: {}",
                 block_hash.to_base58_check()
-            )
+            ),
         }
     };
 
-    Ok(operations)
+    // additional data
+    let block_additional_data = async {
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // operations
+    let operations = async {
+        OperationsStorage::new(env.persistent_storage())
+            .get_operations(block_hash)
+            .map_err(|e| failure::Error::from(e))
+    };
+
+    // 1. wait for data to collect
+    let (block_json_data, block_additional_data, operations) =
+        futures::try_join!(block_json_data, block_additional_data, operations)?;
+
+    convert_block_operations_metadata(
+        chain_id,
+        block_json_data.operations_proto_metadata_bytes,
+        &block_additional_data,
+        operations,
+        env,
+    )
+}
+
+fn convert_block_operations_metadata(
+    chain_id: ChainId,
+    operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
+    block_additional_data: &BlockAdditionalData,
+    operations: Vec<OperationsForBlocksMessage>,
+    env: &RpcServiceEnvironment,
+) -> Result<BlockOperations, failure::Error> {
+    let response = env
+        .tezos_readonly_api()
+        .pool
+        .get()?
+        .api
+        .apply_block_operations_metadata(
+            chain_id,
+            ApplyBlockRequest::convert_operations(operations),
+            operations_proto_metadata_bytes,
+            block_additional_data.protocol_hash.clone(),
+            block_additional_data.next_protocol_hash.clone(),
+        )?;
+
+    serde_json::from_str::<BlockOperations>(&response).map_err(|e| e.into())
 }
 
 /// Extract all the operations included in the provided validation pass.
-pub(crate) fn get_block_operations_validation_pass(
+pub(crate) async fn get_block_operations_validation_pass(
     chain_id: ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
     validation_pass: usize,
 ) -> Result<BlockValidationPass, failure::Error> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env)?;
+    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         Ok(block_validation_pass.clone())
     } else {
@@ -283,14 +347,14 @@ pub(crate) fn get_block_operations_validation_pass(
 }
 
 /// Extract a specific operation included in one of the block's validation pass.
-pub(crate) fn get_block_operation(
+pub(crate) async fn get_block_operation(
     chain_id: ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
     validation_pass: usize,
     operation_index: usize,
 ) -> Result<BlockOperation, failure::Error> {
-    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env)?;
+    let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         if let Some(operation) = block_validation_pass.get(operation_index) {
             Ok(operation.clone())
@@ -315,12 +379,92 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion 
     NodeVersion::new(network_version)
 }
 
-pub(crate) fn get_block(
+/// This is heavy operations, collects all various block data.
+/// Dont use it, it is dedicated just for one RPC
+pub(crate) async fn get_block(
     chain_id: &ChainId,
     block_hash: &BlockHash,
-    persistent_storage: &PersistentStorage,
-) -> Result<Option<BlockInfo>, failure::Error> {
-    Ok(BlockStorage::new(persistent_storage)
-        .get_with_json_data(&block_hash)?
-        .map(|(header, json_data)| FullBlockInfo::new(&header, &json_data, chain_id)))
+    env: &RpcServiceEnvironment,
+) -> Result<BlockInfo, failure::Error> {
+    // header + jsons
+    let block_header_with_json_data = async {
+        match BlockStorage::new(env.persistent_storage()).get_with_json_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block header data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // additional data
+    let block_additional_data = async {
+        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+            Some(data) => Ok(data),
+            None => bail!(
+                "No block additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }
+    };
+
+    // operations
+    let operations = async {
+        OperationsStorage::new(env.persistent_storage())
+            .get_operations(block_hash)
+            .map_err(|e| failure::Error::from(e))
+    };
+
+    // 1. wait for data to collect
+    let ((block_header, block_json_data), block_additional_data, operations) = futures::try_join!(
+        block_header_with_json_data,
+        block_additional_data,
+        operations
+    )?;
+
+    // 2. convert all data
+    let BlockJsonData {
+        block_header_proto_json,
+        block_header_proto_metadata_bytes,
+        operations_proto_metadata_bytes,
+    } = block_json_data;
+
+    let header = InnerBlockHeader {
+        level: block_header.header.level(),
+        proto: block_header.header.proto(),
+        predecessor: block_header.header.predecessor().to_base58_check(),
+        timestamp: ts_to_rfc3339(block_header.header.timestamp()),
+        validation_pass: block_header.header.validation_pass(),
+        operations_hash: block_header.header.operations_hash().to_base58_check(),
+        fitness: block_header
+            .header
+            .fitness()
+            .iter()
+            .map(|x| hex::encode(&x))
+            .collect(),
+        context: block_header.header.context().to_base58_check(),
+        protocol_data: serde_json::from_str(&block_header_proto_json).unwrap_or_default(),
+    };
+    let metadata = convert_block_metadata(
+        block_header.header.context().clone(),
+        block_header_proto_metadata_bytes,
+        &block_additional_data,
+        env,
+    )?;
+    let block_operations = convert_block_operations_metadata(
+        chain_id.clone(),
+        operations_proto_metadata_bytes,
+        &block_additional_data,
+        operations,
+        env,
+    )?;
+
+    Ok(BlockInfo::new(
+        chain_id,
+        block_hash,
+        block_additional_data.protocol_hash,
+        header,
+        metadata,
+        block_operations,
+    ))
 }

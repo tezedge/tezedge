@@ -14,8 +14,7 @@ use tokio::time::{Duration, Instant};
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use storage::{BlockHeaderWithHash, BlockStorage};
-use storage::{BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::ts_to_rfc3339;
 
 use crate::rpc_actor::RpcCollectedStateRef;
@@ -83,10 +82,8 @@ pub struct MonitoredOperation {
 }
 
 pub struct HeadMonitorStream {
-    block_storage: BlockStorage,
     block_meta_storage: BlockMetaStorage,
 
-    chain_id: ChainId,
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
     delay: Option<Interval>,
@@ -233,18 +230,15 @@ impl OperationMonitorStream {
 
 impl HeadMonitorStream {
     pub fn new(
-        chain_id: ChainId,
         state: RpcCollectedStateRef,
         protocol: Option<ProtocolHash>,
         persistent_storage: &PersistentStorage,
     ) -> Self {
         Self {
-            chain_id,
             state,
             protocol,
             last_checked_head: None,
             delay: None,
-            block_storage: BlockStorage::new(persistent_storage),
             block_meta_storage: BlockMetaStorage::new(persistent_storage),
         }
     }
@@ -253,9 +247,7 @@ impl HeadMonitorStream {
         &self,
         current_head: &BlockHeaderWithHash,
     ) -> Result<Option<String>, failure::Error> {
-        let HeadMonitorStream {
-            chain_id, protocol, ..
-        } = self;
+        let HeadMonitorStream { protocol, .. } = self;
 
         if let Some(protocol) = &protocol {
             let block_additional_data = match self

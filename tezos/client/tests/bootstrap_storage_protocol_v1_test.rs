@@ -6,9 +6,11 @@
 use serial_test::serial;
 
 use crypto::hash::{
-    BlockMetadataHash, ChainId, OperationMetadataHash, OperationMetadataListListHash, ProtocolHash,
+    BlockMetadataHash, ChainId, OperationMetadataHash, OperationMetadataListListHash,
 };
-use tezos_api::environment::{get_empty_operation_list_list_hash, TezosEnvironmentConfiguration};
+use tezos_api::environment::{
+    get_empty_operation_list_list_hash, GenesisAdditionalData, TezosEnvironmentConfiguration,
+};
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
     TezosRuntimeConfiguration,
@@ -35,7 +37,7 @@ fn init_test_protocol_context(
 ) -> (
     ChainId,
     BlockHeader,
-    ProtocolHash,
+    GenesisAdditionalData,
     InitProtocolContextResult,
 ) {
     let result = client::init_protocol_context(
@@ -63,7 +65,9 @@ fn init_test_protocol_context(
                 get_empty_operation_list_list_hash().unwrap(),
             )
             .expect("genesis header error"),
-        tezos_env.genesis_protocol().expect("protocol_hash error"),
+        tezos_env
+            .genesis_additional_data()
+            .expect("protocol_hash error"),
         result,
     )
 }
@@ -332,7 +336,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, genesis_protocol_hash, result) =
+    let (chain_id, genesis_block_header, genesis_additional_data, result) =
         init_test_protocol_context(
             "bootstrap_test_storage_10",
             test_data_protocol_v1::tezos_network(),
@@ -340,11 +344,24 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
 
     // check genesis data
     let genesis_context_hash = result.genesis_commit_hash.expect("no genesis context_hash");
-    let genesis_data =
-        client::genesis_result_data(&genesis_context_hash, &chain_id, &genesis_protocol_hash, 0)
-            .expect("no genesis data");
+    let genesis_data = client::genesis_result_data(
+        &genesis_context_hash,
+        &chain_id,
+        &genesis_additional_data.next_protocol_hash,
+        genesis_additional_data.max_operations_ttl.into(),
+    )
+    .expect("no genesis data");
+
+    let block_header_proto_metadata_json = client::apply_block_result_metadata(
+        genesis_context_hash.clone(),
+        genesis_data.block_header_proto_metadata_bytes,
+        0,
+        genesis_additional_data.protocol_hash.clone(),
+        genesis_additional_data.next_protocol_hash.clone(),
+    )
+    .expect("failed to get genesis json");
     assert_contains_metadata(
-        &genesis_data.block_header_proto_metadata_json,
+        &block_header_proto_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -356,7 +373,17 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         ],
     );
 
-    let max_operations_ttl = 0;
+    let operations_proto_metadata_json = client::apply_block_operations_metadata(
+        chain_id.clone(),
+        Vec::new(),
+        genesis_data.operations_proto_metadata_bytes,
+        genesis_additional_data.protocol_hash,
+        genesis_additional_data.next_protocol_hash,
+    )
+    .expect("failed to get genesis json");
+    assert_eq!("[]", operations_proto_metadata_json);
+
+    let max_operations_ttl = genesis_additional_data.max_operations_ttl.into();
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(ApplyBlockRequest {
@@ -710,7 +737,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     assert_eq!(
         ApplyBlockError::IncompleteOperations {
             expected: 4,
-            actual: 1
+            actual: 1,
         },
         apply_block_result.unwrap_err()
     );
@@ -919,32 +946,32 @@ mod test_data_protocol_v1 {
 
     pub fn tezos_network() -> TezosEnvironmentConfiguration {
         TezosEnvironmentConfiguration {
-                genesis: GenesisChain {
-                    time: "2020-11-30T12:00:00Z".to_string(),
-                    block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
-                    protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
-                },
-                bootstrap_lookup_addresses: vec![
-                    "51.75.246.56:9733".to_string(),
-                    "edonet.tezos.co.il".to_string(),
-                    "46.245.179.161:9733".to_string(),
-                    "edonet.smartpy.io".to_string(),
-                    "188.40.128.216:29732".to_string(),
-                    "51.79.165.131".to_string(),
-                    "edonet.boot.tezostaquito.io".to_string(),
-                    "95.216.228.228:9733".to_string(),
-                ],
-                version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
-                protocol_overrides: ProtocolOverrides {
-                    user_activated_upgrades: vec![],
-                    user_activated_protocol_overrides: vec![],
-                },
-                enable_testchain: true,
-                patch_context_genesis_parameters: Some(PatchContext {
-                    key: "sandbox_parameter".to_string(),
-                    json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
-                }),
-            }
+            genesis: GenesisChain {
+                time: "2020-11-30T12:00:00Z".to_string(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesis2431bbUwV2a".to_string(),
+                protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".to_string(),
+            },
+            bootstrap_lookup_addresses: vec![
+                "51.75.246.56:9733".to_string(),
+                "edonet.tezos.co.il".to_string(),
+                "46.245.179.161:9733".to_string(),
+                "edonet.smartpy.io".to_string(),
+                "188.40.128.216:29732".to_string(),
+                "51.79.165.131".to_string(),
+                "edonet.boot.tezostaquito.io".to_string(),
+                "95.216.228.228:9733".to_string(),
+            ],
+            version: "TEZOS_EDONET_2020-11-30T12:00:00Z".to_string(),
+            protocol_overrides: ProtocolOverrides {
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
+            },
+            enable_testchain: true,
+            patch_context_genesis_parameters: Some(PatchContext {
+                key: "sandbox_parameter".to_string(),
+                json: r#"{ "genesis_pubkey": "edpkugeDwmwuwyyD3Q5enapgEYDxZLtEUFFSrvVwXASQMVEqsvTqWu" }"#.to_string(),
+            }),
+        }
     }
 
     pub fn context_hash(hash: &str) -> ContextHash {
@@ -965,6 +992,7 @@ mod test_data_protocol_v1 {
     pub fn block_header_level1_operations() -> Vec<Vec<String>> {
         vec![]
     }
+
     pub fn block_header_level1_operation_metadata_hashes() -> Option<Vec<Vec<OperationMetadataHash>>>
     {
         Some(vec![])

@@ -72,7 +72,7 @@ mod tezos_ffi {
             chain_id: OCamlBytes,
             protocol_hash: OCamlBytes,
             genesis_max_operations_ttl: OCamlInt
-        ) -> TzResult<(OCamlBytes, OCamlBytes, OCamlBytes)>;
+        ) -> TzResult<(OCamlBytes, OCamlBytes, OCamlList<OCamlList<OCamlBytes>>)>;
         pub fn decode_context_data(
             protocol_hash: OCamlBytes,
             key: OCamlList<OCamlBytes>,
@@ -232,13 +232,13 @@ pub fn genesis_result_data(
             Ok(result) => {
                 let (
                     block_header_proto_json,
-                    block_header_proto_metadata_json,
-                    operations_proto_metadata_json,
+                    block_header_proto_metadata_bytes,
+                    operations_proto_metadata_bytes,
                 ) = result.to_rust();
                 Ok(CommitGenesisResult {
                     block_header_proto_json,
-                    block_header_proto_metadata_json,
-                    operations_proto_metadata_json,
+                    block_header_proto_metadata_bytes,
+                    operations_proto_metadata_bytes,
                 })
             }
             Err(e) => Err(GetDataError::from(e.to_rust::<TezosErrorTrace>())),

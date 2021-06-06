@@ -82,10 +82,21 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     let mut cycle_loop_counter: i64 = 0;
     const MAX_CYCLE_LOOPS: i64 = 4;
 
-    // lets run rpsc, which doeas not depend on block/level
+    // check genesis
+    test_rpc_compare_json("chains/main/blocks/genesis")
+        .await
+        .expect("test failed");
     test_rpc_compare_json("chains/main/blocks/genesis/header")
         .await
         .expect("test failed");
+    test_rpc_compare_json("chains/main/blocks/genesis/metadata")
+        .await
+        .expect("test failed");
+    test_rpc_compare_json("chains/main/blocks/genesis/operations")
+        .await
+        .expect("test failed");
+
+    // lets run rpsc, which doeas not depend on block/level
     test_rpc_compare_json("config/network/user_activated_upgrades")
         .await
         .expect("test failed");
@@ -96,9 +107,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     // lets iterate whole rps'c
     for level in from_block..to_block + 1 {
         if level <= 0 {
-            test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header"))
-                .await
-                .expect("test failed");
             println!(
                 "Genesis with level: {:?} - skipping another rpc comparisons for this block",
                 level
@@ -110,10 +118,13 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         // ---------------------- Please keep one function per test ----------------------
 
         // --------------------------- Tests for each block_id - shell rpcs ---------------------------
-        test_rpc_compare_json(&format!("{}/{}", "chains/main/blocks", level))
+        test_rpc_compare_json(&format!("chains/main/blocks/{}", level))
             .await
             .expect("test failed");
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "header"))
+        test_rpc_compare_json(&format!("chains/main/blocks/{}/header", level))
+            .await
+            .expect("test failed");
+        test_rpc_compare_json(&format!("chains/main/blocks/{}/metadata", level))
             .await
             .expect("test failed");
         test_rpc_compare_json(&format!(
@@ -122,7 +133,7 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         ))
         .await
         .expect("test failed");
-        test_rpc_compare_json(&format!("{}/{}/{}", "chains/main/blocks", level, "hash"))
+        test_rpc_compare_json(&format!("chains/main/blocks/{}/hash", level))
             .await
             .expect("test failed");
         test_rpc_compare_json(&format!(
@@ -182,13 +193,6 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         test_rpc_compare_json(&format!(
             "{}/{}/{}",
             "chains/main/blocks", level, "live_blocks"
-        ))
-        .await
-        .expect("test failed");
-
-        test_rpc_compare_json(&format!(
-            "{}/{}/{}",
-            "chains/main/blocks", level, "operations"
         ))
         .await
         .expect("test failed");
@@ -776,6 +780,10 @@ fn node_rpc_context_root_2() -> (String, String) {
 }
 
 async fn test_all_operations_for_block(level: i64) {
+    test_rpc_compare_json(&format!("chains/main/blocks/{}/operations", level))
+        .await
+        .expect("test failed");
+
     let validation_passes =
         try_get_data_as_json(&format!("chains/main/blocks/{}/operations", level))
             .await
