@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{convert::TryFrom, sync::Arc};
+use std::convert::TryFrom;
 
 use failure::Fail;
 use getset::Getters;
@@ -10,39 +10,22 @@ use serde::{Deserialize, Serialize};
 
 use crypto::{
     base58::FromBase58CheckError,
-    hash::{BlockHash, HashType, OperationHash},
+    hash::{BlockHash, OperationHash},
 };
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding, SchemaType};
-use tezos_encoding::has_encoding;
-
-use crate::cached_data;
-use crate::p2p::binary_message::cache::BinaryDataCache;
+use tezos_encoding::encoding::HasEncoding;
+use tezos_encoding::nom::NomReader;
 
 use super::limits::{GET_OPERATIONS_MAX_LENGTH, OPERATION_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct OperationMessage {
     #[get = "pub"]
     operation: Operation,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
-
-cached_data!(OperationMessage, body);
-has_encoding!(OperationMessage, OPERATION_MESSAGE_ENCODING, {
-    Encoding::Obj(
-        "OperationMessage",
-        vec![Field::new("operation", Operation::encoding().clone())],
-    )
-});
 
 impl From<Operation> for OperationMessage {
     fn from(operation: Operation) -> Self {
-        Self {
-            operation,
-            body: Default::default(),
-        }
+        Self { operation }
     }
 }
 
@@ -53,13 +36,11 @@ impl From<OperationMessage> for Operation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
 pub struct Operation {
     branch: BlockHash,
+    #[encoding(list = "OPERATION_MAX_SIZE")]
     data: Vec<u8>,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl Operation {
@@ -98,29 +79,9 @@ impl TryFrom<DecodedOperation> for Operation {
         Ok(Operation {
             branch: BlockHash::from_base58_check(&dop.branch)?,
             data: hex::decode(&dop.data)?,
-            body: Default::default(),
         })
     }
 }
-
-cached_data!(Operation, body);
-has_encoding!(Operation, OPERATION_ENCODING, {
-    Encoding::Obj(
-        "Operation",
-        vec![
-            Field::new("branch", Encoding::Hash(HashType::BlockHash)),
-            Field::new(
-                "data",
-                Encoding::Split(Arc::new(|schema_type| match schema_type {
-                    SchemaType::Json => Encoding::Bytes,
-                    SchemaType::Binary => {
-                        Encoding::bounded_list(OPERATION_MAX_SIZE, Encoding::Uint8)
-                    }
-                })),
-            ),
-        ],
-    )
-});
 
 // -----------------------------------------------------------------------------------------------
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -139,34 +100,17 @@ impl From<Operation> for DecodedOperation {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct GetOperationsMessage {
     #[get = "pub"]
+    #[encoding(dynamic, list = "GET_OPERATIONS_MAX_LENGTH")]
     get_operations: Vec<OperationHash>,
-
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl GetOperationsMessage {
     pub fn new(operations: Vec<OperationHash>) -> Self {
         Self {
             get_operations: operations,
-            body: Default::default(),
         }
     }
 }
-
-cached_data!(GetOperationsMessage, body);
-has_encoding!(GetOperationsMessage, GET_OPERATION_MESSAGE_ENCODING, {
-    Encoding::Obj(
-        "GetOperationsMessage",
-        vec![Field::new(
-            "get_operations",
-            Encoding::dynamic(Encoding::bounded_list(
-                GET_OPERATIONS_MAX_LENGTH,
-                Encoding::Hash(HashType::OperationHash),
-            )),
-        )],
-    )
-});

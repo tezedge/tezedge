@@ -725,7 +725,7 @@ impl ChainManager {
                                 let operation_hash = operation.message_typed_hash()?;
 
                                 match peer.queued_mempool_operations.remove(&operation_hash) {
-                                    Some((operation_type, op_ttl)) => {
+                                    Some((operation_type, _op_ttl)) => {
                                         // do prevalidation before add the operation to mempool
                                         let result = match validation::prevalidate_operation(
                                             chain_state.get_chain_id(),
@@ -760,11 +760,8 @@ impl ChainManager {
 
                                         // store mempool operation
                                         peer.mempool_operations_response_last = Instant::now();
-                                        mempool_storage.put(
-                                            operation_type.clone(),
-                                            message.clone(),
-                                            op_ttl,
-                                        )?;
+                                        mempool_storage
+                                            .put(operation_type.clone(), message.clone())?;
 
                                         // trigger CheckMempoolCompleteness
                                         ctx.myself().tell(CheckMempoolCompleteness, None);

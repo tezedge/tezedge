@@ -32,6 +32,15 @@ mod prefix_bytes {
 pub type Hash = Vec<u8>;
 
 pub trait HashTrait: Into<Hash> + AsRef<Hash> {
+    /// Returns this hash type.
+    fn hash_type() -> HashType;
+
+    /// Returns the size of this hash.
+    fn hash_size() -> usize {
+        Self::hash_type().size()
+    }
+
+    /// Tries to create this hash from the `bytes`.
     fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError>;
 }
 
@@ -90,6 +99,10 @@ macro_rules! define_hash {
         }
 
         impl HashTrait for $name {
+            fn hash_type() -> HashType {
+                HashType::$name
+            }
+
             fn try_from_bytes(bytes: &[u8]) -> Result<Self, FromBytesError> {
                 $name::try_from(bytes)
             }
@@ -149,7 +162,7 @@ define_hash!(PublicKeySecp256k1);
 define_hash!(PublicKeyP256);
 
 /// Note: see Tezos ocaml lib_crypto/base58.ml
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum HashType {
     // "\087\082\000" (* Net(15) *)
     ChainId,
@@ -267,11 +280,6 @@ impl HashType {
     }
 }
 
-#[inline]
-pub fn chain_id_to_b58_string(chain_id: &ChainId) -> String {
-    chain_id.to_base58_check()
-}
-
 /// Implementation of chain_id.ml -> of_block_hash
 #[inline]
 pub fn chain_id_from_block_hash(block_hash: &BlockHash) -> Result<ChainId, Blake2bError> {
@@ -297,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_chain_id_to_b58_string() -> Result<(), failure::Error> {
-        let encoded = chain_id_to_b58_string(&ChainId::from_bytes(&hex::decode("8eceda2f")?)?);
+        let encoded = &ChainId::from_bytes(&hex::decode("8eceda2f")?)?.to_base58_check();
         let expected = "NetXgtSLGNJvNye";
         assert_eq!(expected, encoded);
 
@@ -318,14 +326,14 @@ mod tests {
         let decoded_chain_id: ChainId = chain_id_from_block_hash(&BlockHash::from_base58_check(
             "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe",
         )?)?;
-        let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
+        let decoded_chain_id: &str = &decoded_chain_id.to_base58_check();
         let expected_chain_id = "NetXgtSLGNJvNye";
         assert_eq!(expected_chain_id, decoded_chain_id);
 
         let decoded_chain_id: ChainId = chain_id_from_block_hash(&BlockHash::from_base58_check(
             "BLockGenesisGenesisGenesisGenesisGenesisd6f5afWyME7",
         )?)?;
-        let decoded_chain_id: &str = &chain_id_to_b58_string(&decoded_chain_id);
+        let decoded_chain_id: &str = &decoded_chain_id.to_base58_check();
         let expected_chain_id = "NetXjD3HPJJjmcd";
         assert_eq!(expected_chain_id, decoded_chain_id);
 

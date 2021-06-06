@@ -2,20 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
-use tezos_encoding::{
-    encoding::{Encoding, Field, HasEncoding},
-    has_encoding,
-    types::BigInt,
-};
+use tezos_encoding::{encoding::HasEncoding, nom::NomReader, types::Zarith};
 
-use crate::non_cached_data;
-
-#[derive(Serialize, Deserialize, Debug, Clone, Getters)]
+#[derive(Serialize, Debug, Clone, Getters, HasEncoding, NomReader)]
 pub struct Counter {
     #[get = "pub"]
-    counter: BigInt,
+    counter: Zarith,
 }
 
 impl Counter {
@@ -23,8 +17,3 @@ impl Counter {
         self.counter.0.to_str_radix(10)
     }
 }
-
-non_cached_data!(Counter);
-has_encoding!(Counter, COUNTER_ENCODING, {
-    Encoding::Obj("Counter", vec![Field::new("counter", Encoding::Z)])
-});

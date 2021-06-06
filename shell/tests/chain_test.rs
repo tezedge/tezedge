@@ -83,6 +83,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -187,6 +188,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -300,6 +302,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -448,6 +451,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -559,6 +563,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
         (log, log_level),
         vec![],
         (false, false),
+        true,
     )?;
 
     // register network channel listener
@@ -729,6 +734,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         (log, log_level),
         context_action_recorders,
         (true, false),
+        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -960,6 +966,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
         (log, log_level),
         context_action_recorders,
         (true, true),
+        false,
     )?;
 
     // wait for storage initialization to genesis

@@ -1,15 +1,13 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::time::SystemTime;
-
 use crypto::hash::OperationHash;
 use failure::Error;
 
 use storage::mempool_storage::MempoolOperationType;
 use storage::tests_common::TmpStorage;
 use storage::MempoolStorage;
-use tezos_messages::p2p::binary_message::BinaryMessage;
+use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
@@ -20,9 +18,8 @@ fn mempool_storage_read_write() -> Result<(), Error> {
 
     let operation = make_test_operation_message()?;
     let operation_hash = operation.message_typed_hash::<OperationHash>()?;
-    let ttl = SystemTime::now();
 
-    storage.put_known_valid(operation.clone(), ttl)?;
+    storage.put_known_valid(operation.clone())?;
     let block_header_res = storage
         .get(MempoolOperationType::KnownValid, operation_hash.clone())?
         .unwrap();

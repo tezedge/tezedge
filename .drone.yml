@@ -6,31 +6,35 @@
 # Snapshoted data are prepared (on other server than drone, you need to have there actual tezos-node binary):
 #
 # - create/get snapshot:
-#   1. download it from xtz-shots.io, e.g.: `wget https://delphinet.xtz-shots.io/tezos-delphinet-173873.full`
+#   1. download it from xtz-shots.io, e.g.: `wget https://<testnet>.xtz-shots.io/tezos-<testnet>-<some-level>.full`
 #   2. or run node and create snapshot manually to desired level (recomended, you can set set level high):
-#     ./tezos-node config init --network edonet --data-dir /tmp/chain-data
-#     ./tezos-node run --network edonet --data-dir /tmp/chain-data --net-addr 0.0.0.0:9734 --rpc-addr 0.0.0.0:18888 --history-mode archive
-#     ./tezos-node snapshot export --block BM3qBTWs515g6Vforkns8o3AC4H57f3WdrKQSARwe4jbJoe2kEn edo.20000.full --data-dir /tmp/chain-data/
+#     ./tezos-node config init --network granadanet --data-dir /tmp/chain-data
+#     ./tezos-node run --network granadanet --data-dir /tmp/chain-data --net-addr 0.0.0.0:9734 --rpc-addr 0.0.0.0:18888 --history-mode archive
+#     ./tezos-node snapshot export --block BKyjtcb7VhJfTcqXWjf3p1beRmLVvMQsy5NvRJkPaVUkc6kx4e1 granadanet.20000.full --data-dir /tmp/chain-data/
 #
 # - import snapshot:
-#   ./tezos-node config init --network edonet --data-dir /tmp/edonet
-#   ./tezos-node snapshot import edo.20000.full --data-dir /tmp/edonet  --reconstruct --network edonet --history-mode full
-#   cd /tmp/edonet
-#   tar -czvf edonet.20000.snapshoted.tar.gz context store config.json version.json
-#   # copy to drone server
-#   scp edonet.20000.snapshoted.tar.gz root@95.217.110.217:/usr/local/etc/tezedge-ci/snapshots
+#   ./tezos-node config init --network granadanet --data-dir /tmp/granadanet
+#   ./tezos-node snapshot import granadanet.20000.full --data-dir /tmp/granadanet  --reconstruct --network granadanet --history-mode full
+#   cd /tmp/granadanet
+#   tar -czvf granadanet.20000.snapshoted.tar.gz context store config.json version.json
+#   # copy to drone server (see synchronize_ci.sh -> CI_HOSTS)
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.66:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.67:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.68:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.69:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.70:/usr/local/etc/tezedge-ci/snapshots
 #
 # - Drone server - extract and prepare dirs:
 #   cd /usr/local/etc/tezedge-ci/snapshots
-#   mkdir /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1 /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2 /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
-#   tar -xzvf edonet.20000.snapshoted.tar.gz -C /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/
-#   # check directory `/usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/`, should looks like this:
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/config.json
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/version.json
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/context
-#     /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/store
-#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-2
-#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-edonet-snapshot-data-3
+#   mkdir /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
+#   tar -xzvf granadanet.20000.snapshoted.tar.gz -C /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/
+#   # check directory `/usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/`, should looks like this:
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/config.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/version.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/context
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/store
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
 ##############################################################################################################
 
 kind: pipeline
@@ -125,6 +129,8 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
@@ -453,6 +459,8 @@ steps:
     # replay action file with sled
     - echo "... replay context action file with sled..."
     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
+  # TODO: enable with new context
+  detach: true
 
 depends_on:
   - build
@@ -664,11 +672,11 @@ trigger:
     - develop
 
 ##############################################################################################################
-# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_008
 ##############################################################################################################
 ---
 kind: pipeline
-name: tezos-python-tests
+name: tezos-python-tests-008
 
 clone:
   disable: true
@@ -677,12 +685,13 @@ environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
-  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_008
+  TEST_PROTO_DIR_SUFFIX: _008
 
 steps:
 
 - name: prepare-python-tests
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -712,7 +721,7 @@ steps:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
 - name: baker-endorser-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -726,11 +735,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_baker_endorser.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -742,11 +751,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_many_nodes.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -758,11 +767,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_multinode.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -774,11 +783,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_mempool.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -790,11 +799,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_fork.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -806,11 +815,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_double_endorsement.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -822,11 +831,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_programs.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -838,11 +847,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_many_bakers.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -854,11 +863,11 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_contract_baker.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -870,14 +879,14 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_contract_annotations.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
   failure: ignore
 
 - name: basic-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -892,8 +901,8 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir
-    - poetry run pytest -s --log-dir=$log_dir tests/test_basic.py
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
   - docker_pull_secret
@@ -913,6 +922,512 @@ trigger:
 
 depends_on:
   - build
+
+##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_009
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-009
+
+clone:
+  disable: true
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_009
+  TEST_PROTO_DIR_SUFFIX: _009
+
+steps:
+
+  - name: prepare-python-tests
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      RUST_BACKTRACE: 1
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - rm -rf $${TEZOS_SRC_PATH}/*
+      # copy the tezos src file from the image to a shared volume
+      - mkdir -p $${TEZOS_SRC_PATH}
+      - cp -R /home/appuser/tezos-src/tezos $${TEZOS_SRC_PATH}/tezos
+      # prepare modified python files for tests (compatibility with tezedge node)
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py $${TEZOS_SRC_PATH}/tezos/tests_python/daemons/node.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py $${TEZOS_SRC_PATH}/tezos/tests_python/launchers/sandbox.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py $${TEZOS_SRC_PATH}/tezos/tests_python/tools/constants.py
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${TEZOS_SRC_PATH}/tezos/sandbox-patch-context.json
+      # copy binaries to the test
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/light-node $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/libtezos.so $${TEZOS_SRC_PATH}/tezos/
+      # copy zcash-params init files - see constants.py light-node params
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
+
+  - name: baker-endorser-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
+
+  - name: test-many-nodes
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
+
+  - name: test-multinode
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
+
+  - name: mempool-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
+
+  - name: fork-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
+
+  - name: double-endorsement-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
+
+  - name: test-programs
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
+
+  - name: test-many-bakers
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
+
+  - name: test-contract-baker-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
+
+  - name: test-contract-annotations-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+
+  - name: basic-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_alpha
+##############################################################################################################
+---
+kind: pipeline
+name: tezos-python-tests-alpha
+
+clone:
+  disable: true
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  TEZOS_SRC_PATH: /tezos-src/build_${DRONE_BUILD_NUMBER}/proto_alpha
+  TEST_PROTO_DIR_SUFFIX: _alpha
+
+steps:
+
+  - name: prepare-python-tests
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      RUST_BACKTRACE: 1
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - rm -rf $${TEZOS_SRC_PATH}/*
+      # copy the tezos src file from the image to a shared volume
+      - mkdir -p $${TEZOS_SRC_PATH}
+      - cp -R /home/appuser/tezos-src/tezos $${TEZOS_SRC_PATH}/tezos
+      # prepare modified python files for tests (compatibility with tezedge node)
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py $${TEZOS_SRC_PATH}/tezos/tests_python/daemons/node.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py $${TEZOS_SRC_PATH}/tezos/tests_python/launchers/sandbox.py
+      - cp $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py $${TEZOS_SRC_PATH}/tezos/tests_python/tools/constants.py
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${TEZOS_SRC_PATH}/tezos/sandbox-patch-context.json
+      # copy binaries to the test
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/light-node $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/libtezos.so $${TEZOS_SRC_PATH}/tezos/
+      # copy zcash-params init files - see constants.py light-node params
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params $${TEZOS_SRC_PATH}/tezos/
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
+
+  - name: baker-endorser-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
+
+  - name: test-many-nodes
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
+
+  - name: test-multinode
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
+
+  - name: mempool-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
+
+  - name: fork-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
+
+  - name: double-endorsement-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
+
+  - name: test-programs
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
+
+  - name: test-many-bakers
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
+
+  - name: test-contract-baker-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
+
+  - name: test-contract-annotations-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+
+  - name: basic-test
+    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    pull: if-not-exists
+    # TODO: TE-275 remove failure: ignore
+    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
+    failure: ignore
+    user: root
+    volumes:
+      - name: tezos-src
+        path: /tezos-src
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - cd $${TEZOS_SRC_PATH}/tezos/tests_python
+      - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tezos-src
+    host:
+      path: /usr/local/etc/tezedge-ci/tezos-src
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+  - tezos-python-tests-008
+  - tezos-python-tests-009
 
 #############################################################################################################
 # This pipeline test the sandbox and its rpc sercver
@@ -1041,22 +1556,23 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "time_between_blocks"
 
-- name: bake-empty-block
-  user: root
-  image: cfmanteiga/alpine-bash-curl-jq
-  volumes:
-    - name: build
-      path: /artifacts
-  commands:
-    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_bake_empty_block.json)
-    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
-
-- name: wait-sandbox-node-start-level-2
-  image: simplestakingcom/tezos-node-bootstrap:latest
-  pull: if-not-exists
-  commands:
-    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+# TODO: not working with v9-release because of missing "bake for" command in tezos-client
+#- name: bake-empty-block
+#  user: root
+#  image: cfmanteiga/alpine-bash-curl-jq
+#  volumes:
+#    - name: build
+#      path: /artifacts
+#  commands:
+#    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+#    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_bake_empty_block.json)
+#    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
+#
+#- name: wait-sandbox-node-start-level-2
+#  image: simplestakingcom/tezos-node-bootstrap:latest
+#  pull: if-not-exists
+#  commands:
+#    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 - name: stop-tezedge-node-via-rpc
   user: root
@@ -1114,8 +1630,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-carthage-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-carthage-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -1125,7 +1641,7 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_187/sandbox_files
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
   SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/sandbox-carthage-node-tests
 
 steps:
@@ -1147,7 +1663,7 @@ steps:
     - cp $${SANDBOX_ARTIFACTS_PATH}/006-carthage-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
 # run empty rust node and wait for it
-- name: tezedge-node-sandbox-run
+- name: tezedge-node-sandbox-carthage-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -1165,7 +1681,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1174,7 +1690,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # run empty ocaml sandbox and wait for it
-- name: ocaml-node-sandbox-run
+- name: ocaml-node-sandbox-carthage-run
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -1315,7 +1831,7 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -1341,7 +1857,7 @@ depends_on:
   - build
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer with tezos_client
+# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer and integrates with baker/endorser
 ##############################################################################################################
 ---
 kind: pipeline
@@ -1353,8 +1869,8 @@ clone:
 environment:
   SODIUM_USE_PKG_CONFIG: 1
   NETWORK: sandbox
-  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-run:8732
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-run:18732
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-edo2-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-edo2-run:18732
   ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
   BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
   BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
@@ -1364,7 +1880,7 @@ environment:
   BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_187/sandbox_files
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
   SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-edo2-tests
   TEZOS_LOG: debug
   LWT_LOG: debug
@@ -1388,7 +1904,7 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/008-edo-protocol-parameters.json $${SANDBOX_DATA_PATH}
 
   # run empty rust node and wait for it
-  - name: tezedge-node-sandbox-run
+  - name: tezedge-node-sandbox-edo2-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -1406,7 +1922,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1415,9 +1931,9 @@ steps:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # run empty ocaml sandbox and wait for it
-  - name: ocaml-node-sandbox-run
+  - name: ocaml-node-sandbox-edo2-run
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: sandbox-data
@@ -1438,7 +1954,7 @@ steps:
   # connect both nodes with tezos-admin-client
   - name: connect-ocaml-and-rust
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1451,7 +1967,7 @@ steps:
   # inject protocol to ocaml node, means it creates the first block with level 1
   - name: inject-first-block-with-tezos_client
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1491,7 +2007,7 @@ steps:
   # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
   - name: do-transfer-with-tezos_client
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1523,7 +2039,7 @@ steps:
 
   - name: run-tezos-endorser-008-PtEdo2Zk
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1551,12 +2067,12 @@ steps:
       # check if applied is 2 (transfer + endorsement)
       - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
-      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind == "endorsement")] | length')
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
 
   - name: run-tezos-baker-008-PtEdo2Zk
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     volumes:
       - name: sandbox-data
         path: /data/sandbox
@@ -1590,6 +2106,557 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 009 Florence protocol and does transfer and integrates with baker/endorser
+##############################################################################################################
+---
+kind: pipeline
+name: baker/endorser-florence-tests
+
+clone:
+  disable: true
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-florence-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-florence-run:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
+  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
+  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
+  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
+  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-florence-tests
+  TEZOS_LOG: debug
+  LWT_LOG: debug
+
+steps:
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - rm -rf $${SANDBOX_DATA_PATH}
+      - mkdir -p $${SANDBOX_DATA_PATH}
+      - mkdir -p $${SANDBOX_DATA_PATH}/tezos-client
+      - echo $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/tezedge_drone_sandbox.config $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-parameters.json $${SANDBOX_DATA_PATH}
+
+  # run empty rust node and wait for it
+  - name: tezedge-node-sandbox-florence-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /data/sandbox
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > $${SANDBOX_DATA_PATH}/tezedge_ip.txt
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: wait-for-tezedge-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # run empty ocaml sandbox and wait for it
+  - name: ocaml-node-sandbox-florence-run
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > $${SANDBOX_DATA_PATH}/ocaml_ip.txt
+      - mkdir -p /home/tezos/data/
+      - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+      - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
+      - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+  - name: wait-for-ocaml-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+  # connect both nodes with tezos-admin-client
+  - name: connect-ocaml-and-rust
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 3
+  # TODO: instead of sleep 3, check status established
+  # TODO: write rpc test for check network/peers
+
+  # inject protocol to ocaml node, means it creates the first block with level 1
+  - name: inject-first-block-with-tezos_client
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --block genesis activate protocol PsFLorenaUUuikDWvMDr6fGBRG8kt3e3D3fHoXK1j1BFRxeSH4i with fitness 1 and key activator and parameters $${SANDBOX_DATA_PATH}/009-florence-protocol-parameters.json
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-1
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: check-mempool-before-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 0
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $applied_count
+
+  # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+  - name: do-transfer-with-tezos_client
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 1
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+      - sleep 2
+
+  - name: check-mempool-after-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 1
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_count
+
+  - name: run-tezos-endorser-009-PsFLoren
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - client_data_dir="$${SANDBOX_DATA_PATH}/tezos-client"
+      - tezos-endorser-009-PsFLoren -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir -l run bootstrap1 --endorsement-delay 1 &
+      - sleep 3
+
+  - name: check-endorsements-in-mempools
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 2 (transfer + endorsement)
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
+
+  - name: run-tezos-baker-009-PsFLoren
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - context_path="$${SANDBOX_DATA_PATH}/tezedge/tezos-node"
+      - client_data_dir="$${SANDBOX_DATA_PATH}/tezos-client"
+      - tezos-baker-009-PsFLoren -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 1
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-2
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # compare all rpc's from blocks 0 to 2 between defined nodes
+  - name: rpc-test-for-levels-0-2
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+      FROM_BLOCK_HEADER: 0
+      TO_BLOCK_HEADER: 2
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: sandbox-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/sandbox
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs tezedge node with sandbox configuration with 010 Granada protocol and does transfer and integrates with baker/endorser
+##############################################################################################################
+---
+kind: pipeline
+name: baker/endorser-granada-tests
+
+clone:
+  disable: true
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  OCAML_NODE_RPC_CONTEXT_ROOT: http://ocaml-node-sandbox-granada-run:8732
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-node-sandbox-granada-run:18732
+  ACTIVATOR_SECRET: unencrypted:edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6
+  BOOTSTRAP1_IDENTITY: tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx
+  BOOTSTRAP1_PUBLIC: edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav
+  BOOTSTRAP1_SECRET: unencrypted:edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh
+  BOOTSTRAP2_IDENTITY: tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN
+  BOOTSTRAP2_PUBLIC: edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9
+  BOOTSTRAP2_SECRET: unencrypted:edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-granada-tests
+  TEZOS_LOG: debug
+  LWT_LOG: debug
+
+steps:
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - rm -rf $${SANDBOX_DATA_PATH}
+      - mkdir -p $${SANDBOX_DATA_PATH}
+      - mkdir -p $${SANDBOX_DATA_PATH}/tezos-client
+      - echo $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/tezedge_drone_sandbox.config $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/010-granada-protocol-parameters.json $${SANDBOX_DATA_PATH}
+
+  # run empty rust node and wait for it
+  - name: tezedge-node-sandbox-granada-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: sandbox-data
+        path: /data/sandbox
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > $${SANDBOX_DATA_PATH}/tezedge_ip.txt
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: wait-for-tezedge-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # run empty ocaml sandbox and wait for it
+  - name: ocaml-node-sandbox-granada-run
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > $${SANDBOX_DATA_PATH}/ocaml_ip.txt
+      - mkdir -p /home/tezos/data/
+      - tezos-node config init --network sandbox --data-dir /home/tezos/data/ --net-addr 0.0.0.0:9732 --rpc-addr 0.0.0.0:8732 --expected-pow 0.0 --connections 1
+      - tezos-node identity generate 0.0 --data-dir /home/tezos/data/
+      - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
+
+  - name: wait-for-ocaml-to-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT}
+
+  # connect both nodes with tezos-admin-client
+  - name: connect-ocaml-and-rust
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 3
+  # TODO: instead of sleep 3, check status established
+  # TODO: write rpc test for check network/peers
+
+  # inject protocol to ocaml node, means it creates the first block with level 1
+  - name: inject-first-block-with-tezos_client
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key activator $${ACTIVATOR_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key bootstrap1 $${BOOTSTRAP1_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key bootstrap2 $${BOOTSTRAP2_SECRET}
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --block genesis activate protocol PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV with fitness 1 and key activator and parameters $${SANDBOX_DATA_PATH}/010-granada-protocol-parameters.json
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-1
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: check-mempool-before-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 0
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $applied_count
+
+  # transfer / inject operation into tezedge node, means it injects operations which is spread throught the p2p to other peers
+  - name: do-transfer-with-tezos_client
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 1
+      - tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 transfer 1 from bootstrap1 to bootstrap2 --burn-cap 1 &
+      - sleep 2
+
+  - name: check-mempool-after-transfer
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 1
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_count
+
+  - name: run-tezos-endorser-010-PtGRANAD
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - client_data_dir="$${SANDBOX_DATA_PATH}/tezos-client"
+      - tezos-endorser-010-PtGRANAD -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir -l run bootstrap1 --endorsement-delay 1 &
+      - sleep 3
+
+  - name: check-endorsements-in-mempools
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # get mempools
+      - OCAML_URL=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - TEZEDGE_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - ocaml_mempool=$(curl "$OCAML_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - tezedge_mempool=$(curl "$TEZEDGE_URL/chains/main/mempool/pending_operations" | jq -S .)
+      - echo "Ocaml mempool - $ocaml_mempool"
+      - echo "Tezedge mempool - $tezedge_mempool"
+      # check if both are equals
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh "$ocaml_mempool" "$tezedge_mempool"
+      # check if applied is 2 (transfer + endorsement)
+      - applied_count=$(echo $tezedge_mempool | jq '.applied | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $applied_count
+      - applied_endorsements_count=$(echo $tezedge_mempool | jq  '[.applied[] | select(.contents[].kind | startswith("endorsement"))] | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $applied_endorsements_count
+
+  - name: run-tezos-baker-010-PtGRANAD
+    user: root
+    image: tezos/tezos:v9-release
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - context_path="$${SANDBOX_DATA_PATH}/tezedge/tezos-node"
+      - client_data_dir="$${SANDBOX_DATA_PATH}/tezos-client"
+      - tezos-baker-010-PtGRANAD -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
+      - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/ocaml_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
+      - sleep 1
+
+  # test checks if this block is synchronized to rust node through p2p
+  - name: wait-for-sync-on-level-2
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # compare all rpc's from blocks 0 to 2 between defined nodes
+  - name: rpc-test-for-levels-0-2
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+      FROM_BLOCK_HEADER: 0
+      TO_BLOCK_HEADER: 2
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 image_pull_secrets:
@@ -1781,14 +2848,14 @@ environment:
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
   THROUGHPUTL_THRESHOLD: 10 # in %
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-delphinet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-delphinet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-delphinet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-delphinet-run-1:9734,ocaml-node-delphinet-run-2:9734,ocaml-node-delphinet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-delphinet-run:18732
+  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-node-delphinet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-delphinet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-delphinet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/delphinet-big-offline-tests
@@ -1805,7 +2872,7 @@ steps:
     - mkdir -p $${CACHE_DATA_PATH}
 
 # just run ocaml 3 delphinet snapshoted nodes
-- name: ocaml-node-run-1
+- name: ocaml-node-delphinet-run-1
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -1823,7 +2890,7 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-- name: ocaml-node-run-2
+- name: ocaml-node-delphinet-run-2
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -1841,7 +2908,7 @@ steps:
     - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-- name: ocaml-node-run-3
+- name: ocaml-node-delphinet-run-3
   user: root
   image: tezos/tezos:v8.2
   detach: true
@@ -1865,7 +2932,7 @@ steps:
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-- name: tezedge-updated-node-run
+- name: tezedge-updated-node-delphinet-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -1884,10 +2951,10 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
-- name: tezedge-old-node-run
+- name: tezedge-old-node-delphinet-run
   image: simplestakingcom/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
@@ -1925,7 +2992,7 @@ steps:
 # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
 # run both indexers on background to fill data
-- name: tz-indexer-tezedge
+- name: tz-indexer-delphinet-tezedge
   image: blockwatch/tzindex:latest
   pull: always
   user: root
@@ -1934,7 +3001,7 @@ steps:
     - name: indexer-tezedge-data
       path: /data
   environment:
-    TZ_RPC_HOST: tezedge-updated-node-run
+    TZ_RPC_HOST: tezedge-updated-node-delphinet-run
     TZ_RPC_PORT: 18732
     TZ_SERVER_ADDR: 0.0.0.0
     TZ_SERVER_PORT: 8002
@@ -1943,7 +3010,7 @@ steps:
     TZ_SNAPSHOT_PATH: /data/snapshots
   command: ["tzindex", "run", "--stop=521"]
 
-- name: tz-indexer-ocaml
+- name: tz-indexer-delphinet-ocaml
   image: blockwatch/tzindex:latest
   pull: if-not-exists
   user: root
@@ -1952,7 +3019,7 @@ steps:
     - name: indexer-ocaml-data
       path: /data
   environment:
-    TZ_RPC_HOST: ocaml-node-run-1
+    TZ_RPC_HOST: ocaml-node-delphinet-run-1
     TZ_RPC_PORT: 8732
     TZ_SERVER_ADDR: 0.0.0.0
     TZ_SERVER_PORT: 8002
@@ -1974,7 +3041,7 @@ steps:
   commands:
     - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
     - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+    - export IGNORE_PATH_PATTERNS=/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
     - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -2067,13 +3134,13 @@ environment:
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 256 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-edo2net-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-edo2net-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-edo2net-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-edo2net-run-1:9734,ocaml-node-edo2net-run-2:9734,ocaml-node-edo2net-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-edo2net-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-edo2net-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-edo2net-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/edo2net-offline-tests
@@ -2090,9 +3157,9 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 edo2net snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-edo2net-run-1
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2108,9 +3175,9 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-edo2net-run-2
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2126,9 +3193,9 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-edo2net-run-3
     user: root
-    image: tezos/tezos:master_4b80b7ae_20210225173318
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2149,7 +3216,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-node-edo2net-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -2168,7 +3235,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2178,7 +3245,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-edo2net-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -2187,7 +3254,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-edo2net-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -2196,7 +3263,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=257"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-edo2net-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -2205,7 +3272,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-edo2net-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -2227,6 +3294,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
@@ -2286,13 +3354,13 @@ environment:
   TO_BLOCK_HEADER: 130 # also check parameter --stop=
   TO_BLOCK_HEADER_FOR_RPC: 3
   SODIUM_USE_PKG_CONFIG: 1
-  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-run-1:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-run-2:8732
-  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-run-3:8732
-  OCAML_NODE_P2P_PEERS: ocaml-node-run-1:9734,ocaml-node-run-2:9734,ocaml-node-run-3:9734
-  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-run:18732
-  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
-  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-ocaml:8002
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-mainnet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-mainnet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-mainnet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-mainnet-run-1:9734,ocaml-node-mainnet-run-2:9734,ocaml-node-mainnet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-mainnet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-mainnet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-mainnet-tezedge:8002
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/mainnet-offline-tests
@@ -2309,9 +3377,9 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   # just run ocaml 3 mainnet snapshoted nodes
-  - name: ocaml-node-run-1
+  - name: ocaml-node-mainnet-run-1
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2327,9 +3395,9 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-2
+  - name: ocaml-node-mainnet-run-2
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2345,9 +3413,9 @@ steps:
       - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
-  - name: ocaml-node-run-3
+  - name: ocaml-node-mainnet-run-3
     user: root
-    image: tezos/tezos:v8.2
+    image: tezos/tezos:v9-release
     detach: true
     volumes:
       - name: build
@@ -2368,7 +3436,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
-  - name: tezedge-updated-node-run
+  - name: tezedge-updated-node-mainnet-run
     image: simplestakingcom/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
@@ -2387,7 +3455,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2397,7 +3465,7 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-tezedge
+  - name: tz-indexer-mainnet-tezedge
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -2406,7 +3474,7 @@ steps:
       - name: indexer-tezedge-data
         path: /data
     environment:
-      TZ_RPC_HOST: tezedge-updated-node-run
+      TZ_RPC_HOST: tezedge-updated-node-mainnet-run
       TZ_RPC_PORT: 18732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -2415,7 +3483,7 @@ steps:
       TZ_SNAPSHOT_PATH: /data/snapshots
     command: ["tzindex", "run", "--stop=131"]
 
-  - name: tz-indexer-ocaml
+  - name: tz-indexer-mainnet-ocaml
     image: blockwatch/tzindex:latest
     pull: if-not-exists
     user: root
@@ -2424,7 +3492,7 @@ steps:
       - name: indexer-ocaml-data
         path: /data
     environment:
-      TZ_RPC_HOST: ocaml-node-run-1
+      TZ_RPC_HOST: ocaml-node-mainnet-run-1
       TZ_RPC_PORT: 8732
       TZ_SERVER_ADDR: 0.0.0.0
       TZ_SERVER_PORT: 8002
@@ -2446,7 +3514,7 @@ steps:
     commands:
       - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
       - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
-      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes
+      - export IGNORE_PATH_PATTERNS=votes/listings,/minimal_valid_time,/operations_metadata_hash,/metadata_hash,/operation_metadata_hashes,/context/raw/bytes
       # mainnet rpcs of protocol 001 are too slow
       - export TO_BLOCK_HEADER=$${TO_BLOCK_HEADER_FOR_RPC}
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
@@ -2476,6 +3544,449 @@ volumes:
   - name: ocaml-node-mainnet-snapshot-data-3
     host:
       path: /usr/local/etc/tezedge-ci/data/ocaml-node-mainnet-snapshot-data-3
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache
+  - name: indexer-tezedge-data
+    temp: {}
+  - name: indexer-ocaml-data
+    temp: {}
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs tezedge node with florencenet configuration againts ocaml node with florencenet snapshot
+##############################################################################################################
+---
+kind: pipeline
+name: florencenet-offline-tests
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  FROM_BLOCK_HEADER: 0
+  TO_BLOCK_HEADER: 600 # also check parameter --stop=
+  SODIUM_USE_PKG_CONFIG: 1
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-florencenet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-florencenet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-florencenet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-florencenet-run-1:9734,ocaml-node-florencenet-run-2:9734,ocaml-node-florencenet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-florencenet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-florencenet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-florencenet-tezedge:8002
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/florencenet-offline-tests
+
+steps:
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: cache
+        path: /data/cache
+    commands:
+      - rm -rf $${CACHE_DATA_PATH}
+      - mkdir -p $${CACHE_DATA_PATH}
+
+  # just run ocaml 3 florencenet snapshoted nodes
+  - name: ocaml-node-florencenet-run-1
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-1
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip1.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_1.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-florencenet-run-2
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-2
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip2.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-florencenet-run-3
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-florencenet-snapshot-data-3
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip3.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: wait-for-ocaml-snapshoted-nodes
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+
+  - name: tezedge-updated-node-florencenet-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /data/cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
+      - echo "peers - $PEERS"
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
+
+  # run both indexers on background to fill data
+  - name: tz-indexer-florencenet-tezedge
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-tezedge-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: tezedge-updated-node-florencenet-run
+      TZ_RPC_PORT: 18732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=601"]
+
+  - name: tz-indexer-florencenet-ocaml
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-ocaml-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: ocaml-node-florencenet-run-1
+      TZ_RPC_PORT: 8732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=601"]
+
+  # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: rpc-test
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+  # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: indexer-test
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+    # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
+    detach: true
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: ocaml-node-florencenet-snapshot-data-1
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-1
+  - name: ocaml-node-florencenet-snapshot-data-2
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-2
+  - name: ocaml-node-florencenet-snapshot-data-3
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-3
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache
+  - name: indexer-tezedge-data
+    temp: {}
+  - name: indexer-ocaml-data
+    temp: {}
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+##############################################################################################################
+# This pipeline runs tezedge node with florencenet configuration againts ocaml node with florencenet snapshot
+##############################################################################################################
+---
+kind: pipeline
+name: granadanet-offline-tests
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: granadanet
+  FROM_BLOCK_HEADER: 4050 # 4096-4097 is florence-granada proto switch
+  TO_BLOCK_HEADER: 5000 # also check parameter --stop=
+  SODIUM_USE_PKG_CONFIG: 1
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-granadanet-run-1:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-granadanet-run-2:8732
+  OCAML_NODE_RPC_CONTEXT_ROOT_3: http://ocaml-node-granadanet-run-3:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node-granadanet-run-1:9734,ocaml-node-granadanet-run-2:9734,ocaml-node-granadanet-run-3:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-node-granadanet-run:18732
+  OCAML_NODE_INDEXER_ROOT: http://tz-indexer-granadanet-ocaml:8002
+  TEZEDGE_NODE_INDEXER_ROOT: http://tz-indexer-granadanet-tezedge:8002
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/granadanet-offline-tests
+
+steps:
+  - name: prepare-data
+    image: alpine/git
+    user: root
+    volumes:
+      - name: cache
+        path: /data/cache
+    commands:
+      - rm -rf $${CACHE_DATA_PATH}
+      - mkdir -p $${CACHE_DATA_PATH}
+
+  # just run ocaml 3 granadanet snapshoted nodes
+  - name: ocaml-node-granadanet-run-1
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-1
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip1.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_1.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-granadanet-run-2
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-2
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip2.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_2.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: ocaml-node-granadanet-run-3
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: ocaml-node-granadanet-snapshot-data-3
+        path: /home/tezos/data
+      - name: cache
+        path: /data/cache
+    commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip3.txt
+      - rm -f /home/tezos/data/lock
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_3.json /home/tezos/data/identity.json
+      - tezos-node config reset --data-dir /home/tezos/data --network $${NETWORK} --no-bootstrap-peers
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+  - name: wait-for-ocaml-snapshoted-nodes
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+
+  - name: tezedge-updated-node-granadanet-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /data/cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
+      - echo "peers - $PEERS"
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --one-context --actions-store-backend none --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: bootstrapping-tezedge
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
+
+  # run both indexers on background to fill data
+  - name: tz-indexer-granadanet-tezedge
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-tezedge-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: tezedge-updated-node-granadanet-run
+      TZ_RPC_PORT: 18732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=5001"]
+
+  - name: tz-indexer-granadanet-ocaml
+    image: blockwatch/tzindex:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: indexer-ocaml-data
+        path: /data
+    environment:
+      TZ_RPC_HOST: ocaml-node-granadanet-run-1
+      TZ_RPC_PORT: 8732
+      TZ_SERVER_ADDR: 0.0.0.0
+      TZ_SERVER_PORT: 8002
+      TZ_SERVER_CORS_ENABLE: true
+      TZ_DATABASE_PATH: /data/index
+      TZ_SNAPSHOT_PATH: /data/snapshots
+    command: ["tzindex", "run", "--stop=5001"]
+
+  # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: rpc-test
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: tests
+        path: /tests
+    environment:
+      RUST_BACKTRACE: 1
+    commands:
+      - export NODE_RPC_CONTEXT_ROOT_1=$${OCAML_NODE_RPC_CONTEXT_ROOT_1}
+      - export NODE_RPC_CONTEXT_ROOT_2=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - export IGNORE_PATH_PATTERNS=/context/raw/bytes,/live_blocks
+      - export IGNORE_JSON_PROPERTIES=max_operations_ttl
+      - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
+
+  # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
+  - name: indexer-test
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+    # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
+    detach: true
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: ocaml-node-granadanet-snapshot-data-1
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1
+  - name: ocaml-node-granadanet-snapshot-data-2
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2
+  - name: ocaml-node-granadanet-snapshot-data-3
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache
@@ -2542,11 +4053,16 @@ depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
   - baker/endorser-edo2-tests
-  - tezos-python-tests
+  - baker/endorser-florence-tests
+  - baker/endorser-granada-tests
+  - tezos-python-tests-008
+  - tezos-python-tests-009
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
   - mainnet-offline-tests
+  - florencenet-offline-tests
+  - granadanet-offline-tests
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (versioned/tagged) from master/release
@@ -2602,8 +4118,13 @@ depends_on:
   - sandbox-launcher-test
   - sandbox-carthage-node-tests
   - baker/endorser-edo2-tests
-  - tezos-python-tests
+  - baker/endorser-florence-tests
+  - baker/endorser-granada-tests
+  - tezos-python-tests-008
+  - tezos-python-tests-009
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
   - mainnet-offline-tests
+  - florencenet-offline-tests
+  - granadanet-offline-tests

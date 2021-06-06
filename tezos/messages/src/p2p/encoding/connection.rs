@@ -11,23 +11,23 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::binary_reader::BinaryReaderError;
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
+use tezos_encoding::{binary_reader::BinaryReaderError, encoding::HasEncoding, nom::NomReader};
 
-use crate::non_cached_data;
-use crate::p2p::binary_message::{BinaryChunk, BinaryMessage};
+use crate::p2p::binary_message::{BinaryChunk, BinaryRead};
 use crate::p2p::encoding::version::NetworkVersion;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone)]
+#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct ConnectionMessage {
     port: u16,
     #[get = "pub"]
-    version: NetworkVersion,
-    #[get = "pub"]
+    #[encoding(sized = "CRYPTO_KEY_SIZE", bytes)]
     public_key: Vec<u8>,
+    #[encoding(sized = "POW_SIZE", bytes)]
     proof_of_work_stamp: Vec<u8>,
+    #[encoding(sized = "NONCE_SIZE", bytes)]
     message_nonce: Vec<u8>,
+    #[get = "pub"]
+    version: NetworkVersion,
 }
 
 impl ConnectionMessage {
@@ -58,26 +58,3 @@ impl TryFrom<BinaryChunk> for ConnectionMessage {
         ConnectionMessage::from_bytes(cursor.into_inner())
     }
 }
-
-non_cached_data!(ConnectionMessage);
-has_encoding!(ConnectionMessage, CONNECTION_MESSAGE_ENCODING, {
-    Encoding::Obj(
-        "ConnectionMessage",
-        vec![
-            Field::new("port", Encoding::Uint16),
-            Field::new(
-                "public_key",
-                Encoding::sized(CRYPTO_KEY_SIZE, Encoding::Bytes),
-            ),
-            Field::new(
-                "proof_of_work_stamp",
-                Encoding::sized(POW_SIZE, Encoding::Bytes),
-            ),
-            Field::new(
-                "message_nonce",
-                Encoding::sized(NONCE_SIZE, Encoding::Bytes),
-            ),
-            Field::new("version", NetworkVersion::encoding().clone()),
-        ],
-    )
-});

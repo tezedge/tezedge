@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "1.4.0"
+version = "1.5.0"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "deploy-monitoring"
@@ -14,7 +14,6 @@ fs2 = "0.4"
 fs_extra = "1.2"
 itertools = "0.10"
 getset = "0.1"
-libflate = "1"
 merge = "0.1"
 http = "0.2.2"
 percentage = "0.1"

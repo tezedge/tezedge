@@ -14,10 +14,9 @@ use tokio::time::{Duration, Instant};
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::CurrentMempoolStateStorageRef;
-use storage::PersistentStorage;
-use storage::{BlockHeaderWithHash, BlockStorage, BlockStorageReader};
+use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
+use tezos_messages::ts_to_rfc3339;
 
-use crate::helpers::{BlockHeaderInfo, FullBlockInfo};
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
 
@@ -38,18 +37,23 @@ struct BlockHeaderMonitorInfo {
     pub protocol_data: String,
 }
 
-impl From<(&BlockHeaderInfo, &BlockHeaderWithHash)> for BlockHeaderMonitorInfo {
-    fn from((block_header_info, block): (&BlockHeaderInfo, &BlockHeaderWithHash)) -> Self {
+impl From<&BlockHeaderWithHash> for BlockHeaderMonitorInfo {
+    fn from(block: &BlockHeaderWithHash) -> Self {
         BlockHeaderMonitorInfo {
-            hash: block_header_info.hash.clone(),
-            level: block_header_info.level,
-            proto: block_header_info.proto,
-            predecessor: block_header_info.predecessor.clone(),
-            timestamp: block_header_info.timestamp.clone(),
-            validation_pass: block_header_info.validation_pass,
-            operations_hash: block_header_info.operations_hash.clone(),
-            fitness: block_header_info.fitness.clone(),
-            context: block_header_info.context.clone(),
+            hash: block.hash.to_base58_check(),
+            level: block.header.level(),
+            proto: block.header.proto(),
+            predecessor: block.header.predecessor().to_base58_check(),
+            timestamp: ts_to_rfc3339(block.header.timestamp()),
+            validation_pass: block.header.validation_pass(),
+            operations_hash: block.header.operations_hash().to_base58_check(),
+            fitness: block
+                .header
+                .fitness()
+                .iter()
+                .map(|x| hex::encode(&x))
+                .collect(),
+            context: block.header.context().to_base58_check(),
             protocol_data: hex::encode(block.header.protocol_data()),
         }
     }
@@ -78,9 +82,8 @@ pub struct MonitoredOperation {
 }
 
 pub struct HeadMonitorStream {
-    block_storage: BlockStorage,
+    block_meta_storage: BlockMetaStorage,
 
-    chain_id: ChainId,
     state: RpcCollectedStateRef,
     last_checked_head: Option<BlockHash>,
     delay: Option<Interval>,
@@ -227,18 +230,16 @@ impl OperationMonitorStream {
 
 impl HeadMonitorStream {
     pub fn new(
-        chain_id: ChainId,
         state: RpcCollectedStateRef,
         protocol: Option<ProtocolHash>,
         persistent_storage: &PersistentStorage,
     ) -> Self {
         Self {
-            chain_id,
             state,
             protocol,
             last_checked_head: None,
             delay: None,
-            block_storage: BlockStorage::new(persistent_storage),
+            block_meta_storage: BlockMetaStorage::new(persistent_storage),
         }
     }
 
@@ -246,37 +247,29 @@ impl HeadMonitorStream {
         &self,
         current_head: &BlockHeaderWithHash,
     ) -> Result<Option<String>, failure::Error> {
-        let HeadMonitorStream {
-            chain_id, protocol, ..
-        } = self;
-
-        let block_json_data = match self.block_storage.get_with_json_data(&current_head.hash)? {
-            Some((_, block_json_data)) => block_json_data,
-            None => {
-                return Err(format_err!(
-                    "Missing block json data for block_hash: {}",
-                    current_head.hash.to_base58_check(),
-                ));
-            }
-        };
-
-        let current_head_header = BlockHeaderMonitorInfo::from((
-            &BlockHeaderInfo::new(&current_head, &block_json_data, chain_id),
-            current_head,
-        ));
+        let HeadMonitorStream { protocol, .. } = self;
 
         if let Some(protocol) = &protocol {
-            let block_info = { FullBlockInfo::new(&current_head, &block_json_data, chain_id) };
-            let block_next_protocol = block_info.metadata["next_protocol"]
-                .to_string()
-                .replace("\"", "");
-            if &ProtocolHash::from_base58_check(&block_next_protocol)? != protocol {
+            let block_additional_data = match self
+                .block_meta_storage
+                .get_additional_data(&current_head.hash)?
+            {
+                Some(block_additional_data) => block_additional_data,
+                None => {
+                    return Err(format_err!(
+                        "Missing block additional data for block_hash: {}",
+                        current_head.hash.to_base58_check(),
+                    ));
+                }
+            };
+
+            if &block_additional_data.next_protocol_hash != protocol {
                 return Ok(None);
             }
         }
 
         // serialize the struct to a json string to yield by the stream
-        let mut head_string = serde_json::to_string(&current_head_header)?;
+        let mut head_string = serde_json::to_string(&BlockHeaderMonitorInfo::from(current_head))?;
 
         // push a newline character to the stream
         head_string.push('\n');

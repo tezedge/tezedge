@@ -76,3 +76,9 @@ pub struct Sandbox;
 impl DeployMonitoringContainer for Sandbox {
     const NAME: &'static str = "deploy-monitoring-tezedge-sandbox-launcher";
 }
+
+pub struct TezedgeMemprof;
+
+impl DeployMonitoringContainer for TezedgeMemprof {
+    const NAME: &'static str = "deploy-monitoring-tezedge-memprof";
+}

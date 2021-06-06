@@ -19,7 +19,7 @@ use tezos_client::client;
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::p2p::{
-    binary_message::{BinaryMessage, MessageHash},
+    binary_message::{BinaryRead, MessageHash},
     encoding::operations_for_blocks::PathItem,
 };
 
@@ -504,7 +504,7 @@ mod test_data {
     use crypto::hash::ContextHash;
     use tezos_api::environment::TezosEnvironment;
     use tezos_api::ffi::PatchContext;
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::*;
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Sandbox;

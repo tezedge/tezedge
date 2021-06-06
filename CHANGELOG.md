@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.5.0] - 2021-06-06
+
+### Added
+
+- New protocol 009_Florence/010_Granada (baker/endorser) integration support + (p2p, protocols, rpc, tests, CI pipelines)
+
+### Changed
+
+- Encodings - implemented NOM decoding
+- (FFI) Compatibility with Tezos v9-release
+- Store apply block results (header/operations) metadata as plain bytes and added rpc decoding to speedup block application
+- TezEdge node now works just with one Irmin context (temporary solution, custom context is coming soon...)
+
 ## [1.4.0] - 2021-05-20
 
 ### Changed
@@ -379,7 +392,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/tezedge/tezedge/releases/v1.5.0
 [1.4.0]: https://github.com/tezedge/tezedge/releases/v1.4.0
 [1.3.1]: https://github.com/tezedge/tezedge/releases/v1.3.1
 [1.2.0]: https://github.com/tezedge/tezedge/releases/v1.2.0

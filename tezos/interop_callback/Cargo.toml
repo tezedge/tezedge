@@ -1,11 +1,11 @@
 [package]
 name = "tezos_interop_callback"
-version = "1.4.0"
+version = "1.5.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
 [dependencies]
-ocaml-interop = { version = "0.7.2", features = ["without-ocamlopt"] }
+ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
 # local dependencies
 tezos-sys = { path = "../sys" }
 tezos_context = { path = "../context" }

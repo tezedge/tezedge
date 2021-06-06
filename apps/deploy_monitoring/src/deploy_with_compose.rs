@@ -8,7 +8,7 @@ use slog::{info, Logger};
 use tokio::time::{sleep, Duration};
 
 use crate::constants::{DEBUGGER_PORT, EXPLORER_PORT, OCAML_PORT, TEZEDGE_PORT};
-use crate::image::{DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger};
+use crate::image::{DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger, TezedgeMemprof};
 use crate::node::{OcamlNode, TezedgeNode};
 
 pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_only: bool) {
@@ -21,6 +21,10 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_onl
     start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
     info!(log, "Debugger is running");
+
+    info!(log, "Memprof is starting");
+    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    info!(log, "Memprof is running");
 
     info!(log, "Tezedge node is starting");
     start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
@@ -48,6 +52,10 @@ pub async fn launch_sandbox(compose_file_path: &PathBuf, log: &Logger) {
     start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
     wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
     info!(log, "Debugger is running");
+
+    info!(log, "Memprof is starting");
+    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    info!(log, "Memprof is running");
 
     info!(log, "Sandbox launcher starting");
     start_with_compose(compose_file_path, Sandbox::NAME, "tezedge-sandbox");

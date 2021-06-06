@@ -23,7 +23,7 @@ use tezos_api::{
 };
 use tezos_interop::runtime;
 use tezos_messages::p2p::{
-    binary_message::BinaryMessage, encoding::block_header::BlockHeader,
+    binary_message::BinaryRead, encoding::block_header::BlockHeader,
     encoding::operation::Operation, encoding::operations_for_blocks::OperationsForBlock,
     encoding::operations_for_blocks::OperationsForBlocksMessage,
     encoding::operations_for_blocks::Path,
@@ -85,9 +85,11 @@ mod tezos_ffi {
             apply_block_response: ApplyBlockResponse,
             validation_result_message: OCamlBytes,
             context_hash: OCamlContextHash,
+            protocol_hash: OCamlProtocolHash,
+            next_protocol_hash: OCamlProtocolHash,
             block_header_proto_json: OCamlBytes,
             block_header_proto_metadata_json: OCamlBytes,
-            operations_proto_metadata_json: OCamlBytes,
+            operations_proto_metadata_json: OCamlList<OCamlList<OCamlBytes>>,
             max_operations_ttl: OCamlInt,
             last_allowed_fork_level: OCamlInt32,
             forking_testchain: bool,
@@ -275,9 +277,19 @@ fn test_apply_block_response_conv() {
         validation_result_message: "validation_result_message".to_string(),
         context_hash: ContextHash::try_from("CoV16kW8WgL51SpcftQKdeqc94D6ekghMgPMmEn7TSZzFA697PeE")
             .expect("failed to convert"),
+        protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
+        next_protocol_hash: ProtocolHash::try_from(
+            "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb",
+        )
+        .expect("failed to convert"),
         block_header_proto_json: "block_header_proto_json".to_string(),
-        block_header_proto_metadata_json: "block_header_proto_metadata_json".to_string(),
-        operations_proto_metadata_json: "operations_proto_metadata_json".to_string(),
+        block_header_proto_metadata_bytes: "block_header_proto_metadata_json".to_string().into(),
+        operations_proto_metadata_bytes: vec![vec!["operations_proto_metadata_json"
+            .to_string()
+            .into()]],
         max_operations_ttl: 6,
         last_allowed_fork_level: 8,
         forking_testchain: true,
@@ -297,10 +309,13 @@ fn test_apply_block_response_conv() {
         let apply_block_response = response.to_boxroot(rt);
         let validation_result_message = response.validation_result_message.to_boxroot(rt);
         let context_hash = response.context_hash.to_boxroot(rt);
+        let protocol_hash = response.protocol_hash.to_boxroot(rt);
+        let next_protocol_hash = response.next_protocol_hash.to_boxroot(rt);
         let block_header_proto_json = response.block_header_proto_json.to_boxroot(rt);
-        let block_header_proto_metadata_json =
-            response.block_header_proto_metadata_json.to_boxroot(rt);
-        let operations_proto_metadata_json = response.operations_proto_metadata_json.to_boxroot(rt);
+        let block_header_proto_metadata_bytes =
+            response.block_header_proto_metadata_bytes.to_boxroot(rt);
+        let operations_proto_metadata_bytes =
+            response.operations_proto_metadata_bytes.to_boxroot(rt);
         let max_operations_ttl = OCaml::of_i32(response.max_operations_ttl);
         let last_allowed_fork_level = response.last_allowed_fork_level.to_boxroot(rt);
         let forking_testchain = response.forking_testchain.to_boxroot(rt);
@@ -314,9 +329,11 @@ fn test_apply_block_response_conv() {
             &apply_block_response,
             &validation_result_message,
             &context_hash,
+            &protocol_hash,
+            &next_protocol_hash,
             &block_header_proto_json,
-            &block_header_proto_metadata_json,
-            &operations_proto_metadata_json,
+            &block_header_proto_metadata_bytes,
+            &operations_proto_metadata_bytes,
             &max_operations_ttl,
             &last_allowed_fork_level,
             &forking_testchain,

@@ -337,6 +337,7 @@ impl TezedgeContext {
         parent_context_hash: &Option<ContextHash>,
     ) -> Result<(), ContextError> {
         if let Some(storage) = &self.block_storage {
+            // TODO: TE-238 - remove assign_to_context
             if let Err(e) = storage.assign_to_context(block_hash, &commit_hash) {
                 match e {
                     StorageError::MissingKey => {

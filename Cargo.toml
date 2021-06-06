@@ -11,6 +11,7 @@ members = [
     "tezos/interop",
     "tezos/interop_callback",
     "tezos/encoding",
+    "tezos/encoding-derive",
     "tezos/client",
     "tezos/wrapper",
     "networking",
@@ -27,10 +28,12 @@ members = [
     "fuzz/current_branch_message",
     "fuzz/current_head_message",
     "fuzz/connection_message",
-    "fuzz/encoding",
     "fuzz/metadata_message",
     "fuzz/operation_message",
     "fuzz/operations_for_blocks_message",
     "fuzz/peer_response_message",
     "fuzz/protocol_message",
 ]
+
+[patch.crates-io]
+ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }

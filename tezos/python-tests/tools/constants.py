@@ -1,78 +1,110 @@
-import os.path
 import json
+import os.path
+
 from tools import paths
 
-PARAMETERS_FILE = (f'{paths.TEZOS_HOME}src/proto_alpha/parameters/'
-                   'test-parameters.json')
-assert os.path.isfile(PARAMETERS_FILE), (f'{PARAMETERS_FILE}'
-                                         ' cannot be found; please first run'
-                                         ' `make` in TEZOS_HOME.')
-with open(PARAMETERS_FILE) as f:
-    PARAMETERS = json.load(f)
+
+def get_parameters(folder: str) -> dict:
+    """Takes a protocol folder ('proto_alpha', 'proto_005_PsBabyM1'...) and
+    retrieve json test parameters for that protocol. Assertion failure
+    if parameters can't be found."""
+
+    params_file = (
+        f'{paths.TEZOS_HOME}src/{folder}/parameters/' 'test-parameters.json'
+    )
+    assert os.path.isfile(params_file), (
+        f'{params_file}'
+        ' cannot be found; please first run'
+        ' `make` in TEZOS_HOME.'
+    )
+    with open(params_file) as params:
+        return json.load(params)
 
 
 # This is the secret key used to activate a protocol from genesis in sandbox
 # mode. The corresponding public key is hard-coded in the tezos node.
 GENESIS_SK = "edsk31vznjHSSpGExDMHYASz45VZqXN4DPxvsa4hAyY8dHM28cZzp6"
+GENESIS_PK = "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2"
+
 
 IDENTITIES = {
     'bootstrap1': {
         'identity': "tz1KqTpEZ7Yob7QbPE4Hy4Wo8fHG8LhKxZSx",
         'public': "edpkuBknW28nW72KG6RoHtYW7p12T6GKc7nAbwYX5m8Wd9sDVC9yav",
-        'secret': ("unencrypted:"
-                   "edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh")
+        'secret': (
+            "unencrypted:"
+            "edsk3gUfUPyBSfrS9CCgmCiQsTCHGkviBDusMxDJstFtojtc1zcpsh"
+        ),
     },
     'bootstrap2': {
         'identity': "tz1gjaF81ZRRvdzjobyfVNsAeSC6PScjfQwN",
         'public': "edpktzNbDAUjUk697W7gYg2CRuBQjyPxbEg8dLccYYwKSKvkPvjtV9",
-        'secret': ("unencrypted:"
-                   "edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo")
+        'secret': (
+            "unencrypted:"
+            "edsk39qAm1fiMjgmPkw1EgQYkMzkJezLNewd7PLNHTkr6w9XA2zdfo"
+        ),
     },
     'bootstrap3': {
         'identity': "tz1faswCTDciRzE4oJ9jn2Vm2dvjeyA9fUzU",
         'public': "edpkuTXkJDGcFd5nh6VvMz8phXxU3Bi7h6hqgywNFi1vZTfQNnS1RV",
-        'secret': ("unencrypted:"
-                   "edsk4ArLQgBTLWG5FJmnGnT689VKoqhXwmDPBuGx3z4cvwU9MmrPZZ")
+        'secret': (
+            "unencrypted:"
+            "edsk4ArLQgBTLWG5FJmnGnT689VKoqhXwmDPBuGx3z4cvwU9MmrPZZ"
+        ),
     },
     'bootstrap4': {
         'identity': "tz1b7tUupMgCNw2cCLpKTkSD1NZzB5TkP2sv",
         'public': "edpkuFrRoDSEbJYgxRtLx2ps82UdaYc1WwfS9sE11yhauZt5DgCHbU",
-        'secret': ("unencrypted:"
-                   "edsk2uqQB9AY4FvioK2YMdfmyMrer5R8mGFyuaLLFfSRo8EoyNdht3")
+        'secret': (
+            "unencrypted:"
+            "edsk2uqQB9AY4FvioK2YMdfmyMrer5R8mGFyuaLLFfSRo8EoyNdht3"
+        ),
     },
     'bootstrap5': {
         'identity': "tz1ddb9NMYHZi5UzPdzTZMYQQZoMub195zgv",
         'public': "edpkv8EUUH68jmo3f7Um5PezmfGrRF24gnfLpH3sVNwJnV5bVCxL2n",
-        'secret': ("unencrypted:"
-                   "edsk4QLrcijEffxV31gGdN2HU7UpyJjA8drFoNcmnB28n89YjPNRFm")
+        'secret': (
+            "unencrypted:"
+            "edsk4QLrcijEffxV31gGdN2HU7UpyJjA8drFoNcmnB28n89YjPNRFm"
+        ),
     },
-    'activator': {
-        'secret': "unencrypted:" + GENESIS_SK
-    }
+    'activator': {'secret': "unencrypted:" + GENESIS_SK},
 }
 
 
-IDENTITIES_SHORT = {
-    'activator': {
-        'secret': "unencrypted:" + GENESIS_SK
-    }
-}
+IDENTITIES_SHORT = {'activator': {'secret': "unencrypted:" + GENESIS_SK}}
 
+PROTO_GENESIS = 'ProtoGenesisGenesisGenesisGenesisGenesisGenesk612im'
+
+PROTO_DEMO_NOOPS = 'ProtoDemoNoopsDemoNoopsDemoNoopsDemoNoopsDemo6XBoYp'
+PROTO_DEMO_COUNTER = 'ProtoDemoCounterDemoCounterDemoCounterDemoCou4LSpdT'
 
 ALPHA = "ProtoALphaALphaALphaALphaALphaALphaALphaALphaDdp3zK"
 ALPHA_DAEMON = "alpha"  # tezos-baker-alpha
+ALPHA_FOLDER = "proto_alpha"
+ALPHA_PARAMETERS = get_parameters(ALPHA_FOLDER)
 
 BABYLON = "PsBabyM1eUXZseaJdmXFApDSBqj8YBfwELoxZHHW77EMcAbbwAS"
 BABYLON_DAEMON = "005-PsBabyM1"
+BABYLON_FOLDER = "proto_005_PsBabyM1"
 
 CARTHAGE = "PsCARTHAGazKbHtnKfLzQg3kms52kSRpgnDY982a9oYsSXRLQEb"
-CARTHAGE_DAEMON = "006-PsCARTHA"
+CARTHAGE_FOLDER = "proto_006_PsCARTHA"
 
-DELPHI = "PsDELPH1Kxsxt8f9eWbxQeRxkjfbxoqM52jvs5Y5fBxWWh4ifpo"
-DELPHI_DAEMON = "007-PsDELPH1"
+EDO = "PtEdo2ZkT9oKpimTah6x2embF25oss54njMuPzkJTEi5RqfdZFA"
+EDO_DAEMON = "008-PtEdo2Zk"
+EDO_FOLDER = "proto_008_PtEdo2Zk"
+EDO_PARAMETERS = get_parameters(EDO_FOLDER)
 
-# Protocols supported by the mockup mode
-MOCKUP_PROTOCOLS = [ALPHA, CARTHAGE, DELPHI]
+FLORENCE = "PsFLorenaUUuikDWvMDr6fGBRG8kt3e3D3fHoXK1j1BFRxeSH4i"
+FLORENCE_DAEMON = "009-PsFLoren"
+FLORENCE_FOLDER = "proto_009_PsFLoren"
+FLORENCE_PARAMETERS = get_parameters(FLORENCE_FOLDER)
+
+GRANADA = "PtGRANADsDU8R9daYKAgWnQYAJ64omN1o3KMGVCykShA97vQbvV"
+GRANADA_DAEMON = "010-PtGRANAD"
+GRANADA_FOLDER = "proto_010_PtGRANAD"
+GRANADA_PARAMETERS = get_parameters(GRANADA_FOLDER)
 
 TEZOS_CRT = """
 Certificate:
@@ -212,7 +244,7 @@ NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-
                '--ffi-pool-connection-timeout-in-secs=60',
                '--ffi-pool-max-lifetime-in-secs=21600',
                '--ffi-pool-idle-timeout-in-secs=1800',
-               '--actions-store-backend=none', '--compute-context-action-tree-hashes=false',
+               '--one-context', '--actions-store-backend=none', '--compute-context-action-tree-hashes=false',
                '--tokio-threads=0', '--enable-testchain=false', '--log-level=debug',
                '--synchronization-thresh', '0',
                # zcash-params files used for init, if zcash-params is not correctly setup it in OS

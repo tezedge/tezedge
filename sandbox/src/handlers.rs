@@ -260,7 +260,7 @@ pub async fn bake_block_with_client_arbitrary(
     client_runner: TezosClientRunnerRef,
     node_ref: Option<NodeRpcIpPort>,
 ) -> Result<impl warp::Reply, reject::Rejection> {
-    info!(log, "Received request to bake a block");
+    info!(log, "Received request to bake arbitrary a block");
 
     let node_ref = ensure_node(node_ref)?;
     let client_runner = client_runner

@@ -1,6 +1,6 @@
-from typing import Dict, List, Tuple, Callable, Optional
 import os
 import time
+from typing import Callable, Dict, List, Tuple
 
 from client.client import Client
 from daemons.baker import Baker
@@ -37,7 +37,7 @@ class Sandbox:
     """
 
     def _wrap_path(self, binary: str, branch: str, proto="") -> str:
-        """ construct binary name from branch and proto
+        """construct binary name from branch and proto
 
         - follows tezos naming convention for binaries based on protocol
         - use branch as a prefix dir.
@@ -56,7 +56,8 @@ class Sandbox:
                  websocket: int = 27730,
                  num_peers: int = 45,
                  log_dir: str = None,
-                 singleprocess: bool = False):
+        singleprocess: bool = False,
+    ):
         """
         Args:
             binaries_path (str): path to the binaries (client, node, baker,
@@ -98,14 +99,18 @@ class Sandbox:
     def __enter__(self):
         return self
 
-    def register_node(self, node_id: int,
+    def register_node(
+                      self,
+                      node_id: int,
                       node_dir: str = None,
                       peers: List[int] = None,
                       params: List[str] = None,
                       log_levels: Dict[str, str] = None,
                       private: bool = True,
                       use_tls: Tuple[str, str] = None,
-                      branch: str = ""):
+                      branch: str = "",
+                      node_config: dict = None,
+    ):
         """Instantiate a Node object and add to sandbox manager
 
         See add_node for args documentation.
@@ -147,29 +152,48 @@ class Sandbox:
         params = params + ['--network=sandbox']
         peers_rpc = [self.p2p + p for p in peers]
         node_bin = self._wrap_path(NODE, branch)
-        node = Node(node_bin, node_dir=node_dir, p2p_port=p2p_node,
-                    rpc_port=rpc_node, websocket_port=websocket_node, peers=peers_rpc, log_file=log_file,
-                    params=params, log_levels=log_levels, use_tls=use_tls,
-                    singleprocess=self.singleprocess,)
+        node = Node(
+            node_bin,
+            config=node_config,
+            node_dir=node_dir,
+            p2p_port=p2p_node,
+            rpc_port=rpc_node,
+            websocket_port=websocket_node,
+            peers=peers_rpc,
+            log_file=log_file,
+            params=params,
+            log_levels=log_levels,
+            use_tls=use_tls,
+            singleprocess=self.singleprocess,
+        )
 
         self.nodes[node_id] = node
         return node
 
-    def _instanciate_client(self,
-                            rpc_port: int,
-                            use_tls: Tuple[str, str] = None,
-                            branch: str = "",
-                            client_factory: Callable = Client):
+    def instanciate_client(
+        self,
+        rpc_port: int,
+        use_tls: Tuple[str, str] = None,
+        branch: str = "",
+        mode: str = None,
+        client_factory: Callable = Client,
+    ):
         scheme = 'https' if use_tls else 'http'
         endpoint = f'{scheme}://localhost:{rpc_port}'
-        return self.create_client(branch=branch,
-                                  client_factory=client_factory,
-                                  endpoint=endpoint)
+        return self.create_client(
+            branch=branch,
+            client_factory=client_factory,
+            mode=mode,
+            endpoint=endpoint,
+        )
 
-    def create_client(self,
-                      branch: str = "",
-                      client_factory: Callable = Client,
-                      **kwargs) -> Client:
+    def create_client(
+        self,
+        branch: str = "",
+        mode: str = None,
+        client_factory: Callable = Client,
+        **kwargs,
+    ) -> Client:
         """
         Creates a new client. Because this method doesn't require a Node,
         it is appropriate for tests that do not need a node, such as
@@ -182,20 +206,27 @@ class Sandbox:
             branch (str): sub-dir where to lookup the node and client
                           binary, default = "". Allows execution of different
                           versions of nodes.
+            mode (str): the client's mode to use. One of
+                        ["client", "mockup", "proxy]. None defaults to
+                        "client".
             client_factory (Callable): the constructor of clients. Defaults to
                                        Client. Allows e.g. regression testing.
             **kwargs: arguments passed to client_factory
         """
         local_admin_client = self._wrap_path(CLIENT_ADMIN, branch)
         local_client = self._wrap_path(CLIENT, branch)
-        return client_factory(local_client, local_admin_client, **kwargs)
+        return client_factory(
+            local_client, local_admin_client, mode=mode, **kwargs
+        )
 
-    def get_new_client(self,
+    def get_new_client(
+        self,
                        node: Node,
                        use_tls: Tuple[str, str] = None,
                        branch: str = "",
                        client_factory: Callable = Client,
-                       config_client: bool = True):
+        config_client: bool = True,
+    ):
         """
         Create a new client for a node.
             node (Node): the node the client should be initialised for
@@ -215,26 +246,34 @@ class Sandbox:
               a given node, so that the sandbox context manager can properly
               clean up all resources.
         """
-        client = self._instanciate_client(node.rpc_port,
-                                          use_tls,
-                                          branch,
-                                          client_factory)
+        client = self.instanciate_client(
+            rpc_port=node.rpc_port,
+            use_tls=use_tls,
+            branch=branch,
+            client_factory=client_factory,
+        )
         self.init_client(client, node, config_client)
         return client
 
-    def register_client(self,
-                        node_id: int,
-                        rpc_port: int,
-                        use_tls: Tuple[str, str] = None,
-                        branch: str = "",
-                        client_factory: Callable = Client):
+    def register_client(
+        self,
+        node_id: int,
+        rpc_port: int,
+        use_tls: Tuple[str, str] = None,
+        branch: str = "",
+        mode: str = None,
+        client_factory: Callable = Client,
+    ):
         """Instantiate a Client and add it to the sandbox manager"""
         error_msg = f'Already a client for id={node_id}'
         assert node_id not in self.clients, error_msg
-        client = self._instanciate_client(rpc_port,
-                                          use_tls,
-                                          branch,
-                                          client_factory)
+        client = self.instanciate_client(
+            rpc_port=rpc_port,
+            use_tls=use_tls,
+            branch=branch,
+            mode=mode,
+            client_factory=client_factory,
+        )
         self.clients[node_id] = client
         return client
 
@@ -246,12 +285,11 @@ class Sandbox:
             params = ['--reconstruct'] if reconstruct else []
             node.snapshot_import(snapshot, params)
 
-    def init_client(self,
-                    client,
-                    node: Node = None,
-                    config_client: bool = True):
+    def init_client(
+        self, client, node: Node = None, config_client: bool = True
+    ):
         """Initialize client with bootstrap keys. If node object is provided,
-           check whether the node is running and responsive """
+        check whether the node is running and responsive"""
 
         if node is not None and not client.check_node_listening():
             node_id = node.rpc_port - self.rpc
@@ -264,20 +302,24 @@ class Sandbox:
             for name, iden in self.identities.items():
                 client.import_secret_key(name, iden['secret'])
 
-    def add_node(self,
-                 node_id: int,
-                 node_dir: str = None,
-                 peers: List[int] = None,
-                 params: List[str] = None,
-                 log_levels: Dict[str, str] = None,
-                 private: bool = True,
-                 config_client: bool = True,
-                 use_tls: Tuple[str, str] = None,
-                 snapshot: str = None,
-                 reconstruct: bool = False,
-                 branch: str = "",
-                 client_factory: Callable = Client) -> None:
-        """ Launches new node with given node_id and initializes client
+    def add_node(
+        self,
+        node_id: int,
+        node_dir: str = None,
+        peers: List[int] = None,
+        params: List[str] = None,
+        log_levels: Dict[str, str] = None,
+        private: bool = True,
+        config_client: bool = True,
+        use_tls: Tuple[str, str] = None,
+        snapshot: str = None,
+        reconstruct: bool = False,
+        branch: str = "",
+        node_config: dict = None,
+        mode: str = None,
+        client_factory: Callable = Client,
+    ) -> None:
+        """Launches new node with given node_id and initializes client
 
         Args:
             node_id (int): id of the node, defines its RPC/P2P port and serves
@@ -295,6 +337,8 @@ class Sandbox:
             branch (str): sub-dir where to lookup the node and client
                           binary, default = "". Allows execution of different
                           versions of nodes.
+            mode (str): the mode to use, one of "client", "mockup", or
+                        "proxy", default=None (equivalent to "client").
             client_factory (Callable): the constructor of clients. Defaults to
                                        Client. Allows e.g. regression testing.
 
@@ -310,27 +354,42 @@ class Sandbox:
         Whenever a node has been added with `add_node()`, we can access a
         corresponding client object `client()` to interact with this node.
         """
-        node = self.register_node(node_id, node_dir, peers, params,
-                                  log_levels, private, use_tls, branch)
+        node = self.register_node(
+            node_id,
+            node_dir,
+            peers,
+            params,
+            log_levels,
+            private,
+            use_tls,
+            branch,
+            node_config,
+        )
 
         self.init_node(node, snapshot, reconstruct)
 
         node.run()
 
         rpc_port = node.rpc_port
-        client = self.register_client(node_id,
-                                      rpc_port, use_tls,
-                                      branch,
-                                      client_factory)
+        client = self.register_client(
+            node_id=node_id,
+            rpc_port=rpc_port,
+            use_tls=use_tls,
+            branch=branch,
+            mode=mode,
+            client_factory=client_factory,
+        )
 
         self.init_client(client, node, config_client)
 
-    def add_baker(self,
-                  node_id: int,
-                  account: str,
-                  proto: str,
-                  params: List[str] = None,
-                  branch: str = "") -> None:
+    def add_baker(
+        self,
+        node_id: int,
+        account: str,
+        proto: str,
+        params: List[str] = None,
+        branch: str = "",
+    ) -> None:
         """
         Add a baker associated to a node.
 
@@ -354,23 +413,34 @@ class Sandbox:
 
         log_file = None
         if self.log_dir:
-            log_file = (f'{self.log_dir}/baker-{proto}_{node_id}_#'
-                        f'{self.counter}.txt')
+            log_file = (
+                f'{self.log_dir}/baker-{proto}_{node_id}_#'
+                f'{self.counter}.txt'
+            )
             self.logs.append(log_file)
             self.counter += 1
 
-        baker = Baker(baker_path, rpc_node, client.base_dir, node.node_dir,
-                      account, params=params, log_file=log_file)
+        baker = Baker(
+            baker_path,
+            rpc_node,
+            client.base_dir,
+            node.node_dir,
+            account,
+            params=params,
+            log_file=log_file,
+        )
         time.sleep(0.1)
         assert baker.poll() is None, 'seems baker failed at startup'
         self.bakers[proto][node_id] = baker
 
-    def add_endorser(self,
-                     node_id: int,
-                     account: str,
-                     proto: str,
-                     endorsement_delay: float = 0.,
-                     branch: str = "") -> None:
+    def add_endorser(
+        self,
+        node_id: int,
+        account: str,
+        proto: str,
+        endorsement_delay: float = 0.0,
+        branch: str = "",
+    ) -> None:
         """
         Add an endorser associated to a node.
 
@@ -398,14 +468,24 @@ class Sandbox:
 
         log_file = None
         if self.log_dir:
-            log_file = (f'{self.log_dir}/endorser-{proto}_{node_id}_#'
-                        f'{self.counter}.txt')
+            log_file = (
+                f'{self.log_dir}/endorser-{proto}_{node_id}_#'
+                f'{self.counter}.txt'
+            )
             self.logs.append(log_file)
             self.counter += 1
-        params = (['run'] + account_param +
-                  ['--endorsement-delay', str(endorsement_delay)])
-        endorser = Endorser(endorser_path, rpc_node, client.base_dir,
-                            params=params, log_file=log_file)
+        params = (
+            ['run']
+            + account_param
+            + ['--endorsement-delay', str(endorsement_delay)]
+        )
+        endorser = Endorser(
+            endorser_path,
+            rpc_node,
+            client.base_dir,
+            params=params,
+            log_file=log_file,
+        )
         time.sleep(0.1)
         assert endorser.poll() is None, 'seems endorser failed at startup'
         self.endorsers[proto][node_id] = endorser
@@ -452,7 +532,7 @@ class Sandbox:
         return self.bakers[proto][node_id]
 
     def all_clients(self) -> List[Client]:
-        """ Returns the list of all clients to an active node
+        """Returns the list of all clients to an active node
            (no particular order)."""
         return list(self.clients.values())
 
@@ -478,7 +558,7 @@ class Sandbox:
             client.cleanup()
 
     def are_daemons_alive(self) -> bool:
-        """ Returns True iff all started daemons/nodes are still alive.
+        """Returns True iff all started daemons/nodes are still alive.
 
         This is useful to check that background processes didn't die
         accidentally. It assumes that all background processes are running.
@@ -522,64 +602,88 @@ class SandboxMultiBranch(Sandbox):
     simply changing the sandbox.
     """
 
-    def __init__(self,
-                 binaries_path: str,
-                 identities: Dict[str, Dict[str, str]],
-                 branch_map: Dict[int, str],
-                 rpc: int = 18730,
-                 p2p: int = 19730,
-                 num_peers: int = 45,
-                 log_dir: str = None,
-                 singleprocess: bool = False):
+    def __init__(
+        self,
+        binaries_path: str,
+        identities: Dict[str, Dict[str, str]],
+        branch_map: Dict[int, str],
+        rpc: int = 18730,
+        p2p: int = 19730,
+        num_peers: int = 45,
+        log_dir: str = None,
+        singleprocess: bool = False,
+    ):
         """Same semantics as Sandbox class, plus a `branch_map` parameter"""
-        super().__init__(binaries_path,
-                         identities,
-                         rpc,
-                         p2p,
-                         num_peers,
-                         log_dir,
-                         singleprocess)
+        super().__init__(
+            binaries_path,
+            identities,
+            rpc,
+            p2p,
+            num_peers,
+            log_dir,
+            singleprocess,
+        )
         self._branch_map = branch_map
         for branch in list(branch_map.values()):
             error_msg = f'{binaries_path}/{branch} not a dir'
             assert os.path.isdir(f'{binaries_path}/{branch}'), error_msg
 
-    def add_baker(self,
-                  node_id: int,
-                  account: str,
-                  proto: str,
-                  params: List[str] = None,
-                  branch: str = "") -> None:
+    def add_baker(
+        self,
+        node_id: int,
+        account: str,
+        proto: str,
+        params: List[str] = None,
+        branch: str = "",
+    ) -> None:
         """branch is overridden by branch_map"""
         branch = self._branch_map[node_id]
         super().add_baker(node_id, account, proto, params, branch)
 
-    def add_endorser(self,
-                     node_id: int,
-                     account: str,
-                     proto: str,
-                     endorsement_delay: float = 0.,
-                     branch: str = "") -> None:
+    def add_endorser(
+        self,
+        node_id: int,
+        account: str,
+        proto: str,
+        endorsement_delay: float = 0.0,
+        branch: str = "",
+    ) -> None:
         """branchs is overridden by branch_map"""
         branch = self._branch_map[node_id]
-        super().add_endorser(node_id, account, proto, endorsement_delay,
-                             branch)
+        super().add_endorser(node_id, account, proto, endorsement_delay, branch)
 
-    def add_node(self,
-                 node_id: int,
-                 node_dir: str = None,
-                 peers: List[int] = None,
-                 params: List[str] = None,
-                 log_levels: Dict[str, str] = None,
-                 private: bool = True,
-                 config_client: bool = True,
-                 use_tls: Tuple[str, str] = None,
-                 snapshot: str = None,
-                 reconstruct: bool = False,
-                 branch: str = "",
-                 client_factory: Callable = Client) -> None:
+    def add_node(
+        self,
+        node_id: int,
+        node_dir: str = None,
+        peers: List[int] = None,
+        params: List[str] = None,
+        log_levels: Dict[str, str] = None,
+        private: bool = True,
+        config_client: bool = True,
+        use_tls: Tuple[str, str] = None,
+        snapshot: str = None,
+        reconstruct: bool = False,
+        branch: str = "",
+        node_config: dict = None,
+        mode: str = None,
+        client_factory: Callable = Client,
+    ) -> None:
         assert not branch
         branch = self._branch_map[node_id]
-        super().add_node(node_id, node_dir, peers, params, log_levels, private,
-                         config_client, use_tls, snapshot, reconstruct,
-                         branch, client_factory)
+        super().add_node(
+            node_id,
+            node_dir,
+            peers,
+            params,
+            log_levels,
+            private,
+            config_client,
+            use_tls,
+            snapshot,
+            reconstruct,
+            branch,
+            node_config,
+            mode,
+            client_factory,
+        )

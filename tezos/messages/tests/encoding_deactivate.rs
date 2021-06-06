@@ -4,8 +4,10 @@
 use std::convert::TryFrom;
 
 use crypto::hash::ChainId;
-use tezos_messages::p2p::binary_message::BinaryMessage;
-use tezos_messages::p2p::encoding::prelude::*;
+use tezos_messages::p2p::{
+    binary_message::{BinaryRead, BinaryWrite},
+    encoding::prelude::*,
+};
 
 #[test]
 fn can_deserialize_deactivate_message() {

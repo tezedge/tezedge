@@ -3,6 +3,7 @@
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use tezos_api::ffi::*;
+use tezos_messages::p2p::encoding::operation::Operation;
 
 /// Provides trait that must be implemented by a protocol runner.
 pub trait ProtocolApi {
@@ -72,4 +73,22 @@ pub trait ProtocolApi {
         protocol_hash: ProtocolHash,
         protocol_data: Vec<u8>,
     ) -> Result<(), ProtocolDataError>;
+
+    /// Encode apply_block result metadata as JSON
+    fn apply_block_result_metadata(
+        context_hash: ContextHash,
+        metadata_bytes: RustBytes,
+        max_operations_ttl: i32,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
+    ) -> Result<String, FfiJsonEncoderError>;
+
+    /// Encode apply_block result operations metadata as JSON
+    fn apply_block_operations_metadata(
+        chain_id: ChainId,
+        operations: Vec<Vec<Operation>>,
+        operations_metadata_bytes: Vec<Vec<RustBytes>>,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
+    ) -> Result<String, FfiJsonEncoderError>;
 }

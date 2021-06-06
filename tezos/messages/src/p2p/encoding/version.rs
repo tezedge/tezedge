@@ -5,26 +5,20 @@ use std::fmt;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
-
-use tezos_encoding::encoding::{Encoding, Field, HasEncoding};
-use tezos_encoding::has_encoding;
-
-use crate::cached_data;
-use crate::p2p::binary_message::cache::BinaryDataCache;
+use tezos_encoding::{encoding::HasEncoding, nom::NomReader};
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
 
 /// Holds informations about chain compatibility, features compatibility...
-#[derive(Serialize, Deserialize, Getters, Clone)]
+#[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader)]
 pub struct NetworkVersion {
     #[get = "pub"]
+    #[encoding(string = "CHAIN_NAME_MAX_LENGTH")]
     chain_name: String,
     #[get = "pub"]
     distributed_db_version: u16,
     #[get = "pub"]
     p2p_version: u16,
-    #[serde(skip_serializing)]
-    body: BinaryDataCache,
 }
 
 impl fmt::Debug for NetworkVersion {
@@ -43,7 +37,6 @@ impl NetworkVersion {
             chain_name,
             distributed_db_version,
             p2p_version,
-            body: Default::default(),
         }
     }
 
@@ -51,18 +44,6 @@ impl NetworkVersion {
         self.p2p_version > 0
     }
 }
-
-cached_data!(NetworkVersion, body);
-has_encoding!(NetworkVersion, NETWORK_VERSION_ENCODING, {
-    Encoding::Obj(
-        "NetworkVersion",
-        vec![
-            Field::new("chain_name", Encoding::BoundedString(CHAIN_NAME_MAX_LENGTH)),
-            Field::new("distributed_db_version", Encoding::Uint16),
-            Field::new("p2p_version", Encoding::Uint16),
-        ],
-    )
-});
 
 impl Eq for NetworkVersion {}
 

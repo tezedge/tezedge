@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
 use riker::actors::*;
@@ -28,7 +28,7 @@ use storage::{
     BlockStorageReader, MempoolStorage,
 };
 use tezos_api::ffi::{Applied, Errored};
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
@@ -234,8 +234,7 @@ pub fn inject_operation(
     // store operation in mempool storage
     let mut mempool_storage = MempoolStorage::new(persistent_storage);
     let operation_hash_b58check_string = operation_hash.to_base58_check();
-    let ttl = SystemTime::now() + Duration::from_secs(60);
-    mempool_storage.put(MempoolOperationType::Pending, operation.into(), ttl)?;
+    mempool_storage.put(MempoolOperationType::Pending, operation.into())?;
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
     let result_callback = if is_async {
@@ -446,7 +445,7 @@ mod tests {
     use serde_json::json;
 
     use tezos_api::ffi::{Applied, Errored, OperationProtocolDataJsonWithErrorListJson};
-    use tezos_messages::p2p::binary_message::BinaryMessage;
+    use tezos_messages::p2p::binary_message::BinaryRead;
     use tezos_messages::p2p::encoding::prelude::Operation;
 
     use crate::services::mempool_services::{convert_applied, convert_errored};

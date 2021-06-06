@@ -14,7 +14,7 @@ use tezos_api::ocaml_conv::FfiBlockHeader;
 use tezos_context::channel::{context_receive, enable_context_channel, ContextAction};
 use tezos_interop::ffi;
 use tezos_interop::runtime;
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash};
+use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 const CHAIN_ID: &str = "8eceda2f";

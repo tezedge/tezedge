@@ -23,7 +23,7 @@ use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TezosEnvironmentError,
 };
 use tezos_api::ffi::{ApplyBlockResponse, CommitGenesisResult, PatchContext};
-use tezos_messages::p2p::binary_message::{BinaryMessage, MessageHash, MessageHashError};
+use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite, MessageHash, MessageHashError};
 use tezos_messages::p2p::encoding::prelude::BlockHeader;
 use tezos_messages::Head;
 
@@ -253,8 +253,8 @@ pub fn store_applied_block_result(
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
         block_result.block_header_proto_json,
-        block_result.block_header_proto_metadata_json,
-        block_result.operations_proto_metadata_json,
+        block_result.block_header_proto_metadata_bytes,
+        block_result.operations_proto_metadata_bytes,
     );
     block_storage.put_block_json_data(&block_hash, block_json_data)?;
 
@@ -262,6 +262,8 @@ pub fn store_applied_block_result(
     let block_additional_data = BlockAdditionalData::new(
         block_result.max_operations_ttl.try_into().unwrap(),
         block_result.last_allowed_fork_level,
+        block_result.protocol_hash,
+        block_result.next_protocol_hash,
         block_result.block_metadata_hash,
         {
             // Note: Ocaml introduces this two attributes (block_metadata_hash, ops_metadata_hash) in 008 edo
@@ -325,8 +327,8 @@ pub fn store_commit_genesis_result(
     // store result data - json and additional data
     let block_json_data = BlockJsonData::new(
         bock_result.block_header_proto_json,
-        bock_result.block_header_proto_metadata_json,
-        bock_result.operations_proto_metadata_json,
+        bock_result.block_header_proto_metadata_bytes,
+        bock_result.operations_proto_metadata_bytes,
     );
     block_storage.put_block_json_data(&genesis_block_hash, block_json_data)?;
 
@@ -380,10 +382,12 @@ pub fn initialize_storage_with_genesis_block(
     let _ = block_storage.put_block_header(&genesis_with_hash)?;
 
     // store additional data
-    let genesis_additional_data = tezos_env.genesis_additional_data();
+    let genesis_additional_data = tezos_env.genesis_additional_data()?;
     let block_additional_data = BlockAdditionalData::new(
         genesis_additional_data.max_operations_ttl,
         genesis_additional_data.last_allowed_fork_level,
+        genesis_additional_data.protocol_hash,
+        genesis_additional_data.next_protocol_hash,
         None,
         None,
         None,
@@ -391,6 +395,7 @@ pub fn initialize_storage_with_genesis_block(
     block_meta_storage
         .put_block_additional_data(&genesis_with_hash.hash, &block_additional_data)?;
 
+    // TODO: TE-238 - remove assign_to_context
     // context assign
     block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
 

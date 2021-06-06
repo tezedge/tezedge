@@ -1,8 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use riker::actors::*;
@@ -253,43 +252,26 @@ impl BlockchainState {
                     true => {
                         // if predecessor is applied, than we have exact protocol
                         match self
-                            .block_storage
-                            .get_with_json_data(validated_header.predecessor())?
+                            .block_meta_storage
+                            .get_additional_data(validated_header.predecessor())?
                         {
-                            Some((predecessor_header, predecessor_data)) => {
-                                // get next_protocol from predecessor
-                                let metadata: HashMap<String, serde_json::Value> =
-                                    serde_json::from_str(
-                                        &predecessor_data.block_header_proto_metadata_json(),
-                                    )
-                                    .map_err(|e| {
-                                        StateError::ProcessingError {
-                                            reason: format!("{}", e),
-                                        }
-                                    })?;
-                                let protocol_hash =
-                                    metadata.get("next_protocol").map(|value| value.as_str());
-                                if let Some(Some(protocol_hash)) = protocol_hash {
+                            Some(predecessor_additional_data) => {
+                                if let Some(predecessor_header) =
+                                    self.block_storage.get(validated_header.predecessor())?
+                                {
                                     // return next_protocol and header
                                     (
-                                        Some(
-                                            ProtocolHash::from_base58_check(protocol_hash)
-                                                .map_err(|e| StateError::ProcessingError {
-                                                    reason: format!("{:?}", e),
-                                                })?,
-                                        ),
+                                        Some(predecessor_additional_data.next_protocol_hash),
                                         Some(predecessor_header),
                                         false,
                                     )
                                 } else {
-                                    return Err(
-                                        StateError::ProcessingError {
-                                            reason: format!(
-                                                "Missing `next_protocol` attribute for applied predecessor: {}!",
-                                                validated_header.predecessor().to_base58_check()
-                                            )
-                                        }
-                                    );
+                                    // return next_protocol and header
+                                    (
+                                        Some(predecessor_additional_data.next_protocol_hash),
+                                        None,
+                                        true,
+                                    )
                                 }
                             }
                             None => {
@@ -320,29 +302,16 @@ impl BlockchainState {
         } else {
             // check protocol by current head for the same proto_level
             // if predecessor is applied, than we have exact protocol
-            match self
-                .block_storage
-                .get_with_json_data(current_head.block_hash())?
-            {
-                Some((current_head_header, current_head_header_data)) => {
+            match self.block_storage.get(current_head.block_hash())? {
+                Some(current_head_header) => {
                     if current_head_header.header.proto() == validated_header.proto() {
-                        // get protocol from predecessor
-                        let metadata: HashMap<String, serde_json::Value> = serde_json::from_str(
-                            &current_head_header_data.block_header_proto_metadata_json(),
-                        )
-                        .map_err(|e| StateError::ProcessingError {
-                            reason: format!("{}", e),
-                        })?;
-                        let protocol_hash =
-                            metadata.get("next_protocol").map(|value| value.as_str());
-                        if let Some(Some(protocol_hash)) = protocol_hash {
+                        if let Some(metadata) = self
+                            .block_meta_storage
+                            .get_additional_data(current_head.block_hash())?
+                        {
                             // return protocol
                             Ok((
-                                Some(ProtocolHash::try_from(protocol_hash).map_err(|e| {
-                                    StateError::ProcessingError {
-                                        reason: format!("{:?}", e),
-                                    }
-                                })?),
+                                Some(metadata.next_protocol_hash),
                                 predecessor_header,
                                 missing_predecessor,
                             ))
@@ -941,7 +910,7 @@ mod tests {
         use storage::{
             BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
         };
-        use tezos_messages::p2p::binary_message::BinaryMessage;
+        use tezos_messages::p2p::binary_message::BinaryRead;
         use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
         macro_rules! init_block {

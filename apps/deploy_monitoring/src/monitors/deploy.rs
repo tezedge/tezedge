@@ -18,6 +18,7 @@ use crate::deploy_with_compose::{
 };
 use crate::image::{
     local_hash, remote_hash, DeployMonitoringContainer, Explorer, Sandbox, TezedgeDebugger,
+    TezedgeMemprof,
 };
 
 use crate::constants::{DEBUGGER_PORT, TEZEDGE_NODE_P2P_PORT, TEZEDGE_VOLUME_PATH};
@@ -136,11 +137,12 @@ impl DeployMonitor {
         if self.is_node_container_running().await {
             let node_updated = self.changed::<TezedgeNode>().await?;
             let debugger_updated = self.changed::<TezedgeDebugger>().await?;
+            let memprof_updated = self.changed::<TezedgeMemprof>().await?;
             let explorer_updated = self.changed::<Explorer>().await?;
             // TODO: TE-499 here restart individually,
             // if debugger updated not need to restart explorer
             // if explorer updated, only need to restart explorer and so on...
-            if node_updated || debugger_updated || explorer_updated {
+            if node_updated || debugger_updated || explorer_updated || memprof_updated {
                 shutdown_and_update(&compose_file_path, log, self.cleanup, self.tezedge_only).await;
             } else {
                 // Do nothing, No update occurred
