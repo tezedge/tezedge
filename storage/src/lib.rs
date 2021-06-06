@@ -395,6 +395,7 @@ pub fn initialize_storage_with_genesis_block(
     block_meta_storage
         .put_block_additional_data(&genesis_with_hash.hash, &block_additional_data)?;
 
+    // TODO: TE-238 - remove assign_to_context
     // context assign
     block_storage.assign_to_context(&genesis_with_hash.hash, &context_hash)?;
 

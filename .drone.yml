@@ -3573,7 +3573,7 @@ clone:
 environment:
   NETWORK: florencenet
   FROM_BLOCK_HEADER: 0
-  TO_BLOCK_HEADER: 2060 # also check parameter --stop=
+  TO_BLOCK_HEADER: 600 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-florencenet-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-florencenet-run-2:8732
@@ -3702,7 +3702,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=131"]
+    command: ["tzindex", "run", "--stop=601"]
 
   - name: tz-indexer-florencenet-ocaml
     image: blockwatch/tzindex:latest
@@ -3720,7 +3720,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=131"]
+    command: ["tzindex", "run", "--stop=601"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
@@ -3793,8 +3793,8 @@ clone:
 
 environment:
   NETWORK: granadanet
-  FROM_BLOCK_HEADER: 4000 # 4096-4097 is florence-granada proto switch
-  TO_BLOCK_HEADER: 6250 # also check parameter --stop=
+  FROM_BLOCK_HEADER: 4050 # 4096-4097 is florence-granada proto switch
+  TO_BLOCK_HEADER: 5000 # also check parameter --stop=
   SODIUM_USE_PKG_CONFIG: 1
   OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node-granadanet-run-1:8732
   OCAML_NODE_RPC_CONTEXT_ROOT_2: http://ocaml-node-granadanet-run-2:8732
@@ -3923,7 +3923,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=6248"]
+    command: ["tzindex", "run", "--stop=5001"]
 
   - name: tz-indexer-granadanet-ocaml
     image: blockwatch/tzindex:latest
@@ -3941,7 +3941,7 @@ steps:
       TZ_SERVER_CORS_ENABLE: true
       TZ_DATABASE_PATH: /data/index
       TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=6248"]
+    command: ["tzindex", "run", "--stop=5001"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test

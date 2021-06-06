@@ -89,6 +89,7 @@ fn convert_block_metadata(
     block_additional_data: &BlockAdditionalData,
     env: &RpcServiceEnvironment,
 ) -> Result<BlockMetadata, failure::Error> {
+    // TODO: TE-521 - rewrite encoding part to rust
     let response = env
         .tezos_readonly_api()
         .pool
@@ -311,6 +312,7 @@ fn convert_block_operations_metadata(
     operations: Vec<OperationsForBlocksMessage>,
     env: &RpcServiceEnvironment,
 ) -> Result<BlockOperations, failure::Error> {
+    // TODO: TE-521 - rewrite encoding part to rust
     let response = env
         .tezos_readonly_api()
         .pool
@@ -445,6 +447,8 @@ pub(crate) async fn get_block(
         context: block_header.header.context().to_base58_check(),
         protocol_data: serde_json::from_str(&block_header_proto_json).unwrap_or_default(),
     };
+
+    // TODO: TE-521 - rewrite encoding part to rust - this two calls could be parallelized (once we have our encodings in rust)
     let metadata = convert_block_metadata(
         block_header.header.context().clone(),
         block_header_proto_metadata_bytes,
