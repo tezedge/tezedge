@@ -34,23 +34,23 @@ pub type BlockStorageCommitLog = dyn CommitLogWithSchema<BlockStorage> + Sync + 
 #[derive(Clone, Getters, Serialize, Deserialize, Debug)]
 pub struct BlockJsonData {
     #[get = "pub"]
-    block_header_proto_json: String,
+    pub block_header_proto_json: String,
     #[get = "pub"]
-    block_header_proto_metadata_json: String,
+    pub block_header_proto_metadata_bytes: Vec<u8>,
     #[get = "pub"]
-    operations_proto_metadata_json: String,
+    pub operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
 }
 
 impl BlockJsonData {
     pub fn new(
         block_header_proto_json: String,
-        block_header_proto_metadata_json: String,
-        operations_proto_metadata_json: String,
+        block_header_proto_metadata_bytes: Vec<u8>,
+        operations_proto_metadata_bytes: Vec<Vec<Vec<u8>>>,
     ) -> Self {
         Self {
             block_header_proto_json,
-            block_header_proto_metadata_json,
-            operations_proto_metadata_json,
+            block_header_proto_metadata_bytes,
+            operations_proto_metadata_bytes,
         }
     }
 }
@@ -67,6 +67,8 @@ pub trait BlockStorageReader: Sync + Send {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
+    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError>;
 
     fn get_multiple_with_json_data(
         &self,
@@ -86,6 +88,13 @@ pub trait BlockStorageReader: Sync + Send {
         from_block_hash: &BlockHash,
         limit: usize,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>;
+
+    fn get_every_nth(
+        &self,
+        every_nth: BlockLevel,
+        from_block_hash: &BlockHash,
+        limit: usize,
+    ) -> Result<Vec<BlockHeaderWithHash>, StorageError>;
 
     fn get_by_context_hash(
         &self,
@@ -268,6 +277,14 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
+    fn get_json_data(&self, block_hash: &BlockHash) -> Result<Option<BlockJsonData>, StorageError> {
+        match self.primary_index.get(block_hash)? {
+            Some(location) => self.get_block_json_data_by_location(&location),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
     fn get_multiple_with_json_data(
         &self,
         block_hash: &BlockHash,
@@ -295,6 +312,29 @@ impl BlockStorageReader for BlockStorage {
             },
         )?;
         self.get_blocks_with_json_data_by_location(locations)
+    }
+
+    #[inline]
+    fn get_every_nth(
+        &self,
+        every_nth: BlockLevel,
+        from_block_hash: &BlockHash,
+        limit: usize,
+    ) -> Result<Vec<BlockHeaderWithHash>, StorageError> {
+        self.get(from_block_hash)?
+            .map_or_else(
+                || Ok(Vec::new()),
+                |block| {
+                    self.by_level_index.get_blocks_by_nth_level(
+                        every_nth,
+                        block.header.level(),
+                        limit,
+                    )
+                },
+            )?
+            .into_iter()
+            .map(|location| self.get_block_header_by_location(&location))
+            .collect()
     }
 
     #[inline]

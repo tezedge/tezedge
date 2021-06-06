@@ -221,7 +221,9 @@ fn block_on_actors(
         IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
     let tezos_writeable_api_pool = Arc::new(
         create_tezos_writeable_api_pool(
-            if context_action_recorders.is_empty() && env.storage.one_context {
+            // TODO: ignore context_recorders and wait for new_context
+            // if context_action_recorders.is_empty() && env.storage.one_context {
+            if env.storage.one_context {
                 None
             } else {
                 Some(context_actions_event_server.server_path())
@@ -263,7 +265,7 @@ fn block_on_actors(
         MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
     // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
-    if context_action_recorders.is_empty() && env.storage.one_context {
+    if env.storage.one_context {
         ()
     } else {
         let _ = ContextListener::actor(

@@ -32,6 +32,9 @@ lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
 }
 
+pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &str =
+    "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";
+
 /// alternative to ocaml Operation_list_list_hash.empty
 pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, FromBase58CheckError> {
     OperationListListHash::try_from("LLoZS2LW3rEi7KYU4ouBQtorua37aWWCtpDmv1n2x3xoKi6sVXLWp")
@@ -105,35 +108,30 @@ impl TezosEnvironment {
                 TezosEnvironment::Edo2net,
             )),
             TezosEnvironment::Edo2net => None,
-            // TODO: remove, when florence supported
-            TezosEnvironment::Florencenet => Some(Self::not_yet_fully_supported_testnet_notice(
-                TezosEnvironment::Florencenet,
-            )),
-            TezosEnvironment::Granadanet => Some(Self::not_yet_fully_supported_testnet_notice(
-                TezosEnvironment::Granadanet,
-            )),
+            TezosEnvironment::Florencenet => None,
+            TezosEnvironment::Granadanet => None,
         }
     }
 
-    fn not_yet_fully_supported_testnet_notice(selected_network: TezosEnvironment) -> String {
-        let mut selected = selected_network.supported_values();
-        selected.sort();
-        format!(
-            "\n\n\n\n////////////////////////////////////////// \
-            \n//      !!! COOMING SOON TESTNET !!!      //\
-            \n////////////////////////////////////////// \
-            \n// Selected network: {:?} \
-            \n// Is not fully supported yet, \
-            \n// but will be soon. \
-            \n// Possible problems: \
-            \n// - no peers to connect \
-            \n// - no data to download \
-            \n// - no block application \
-            \n// - RPCs missing \
-            \n//////////////////////////////////////////\n\n\n\n",
-            selected
-        )
-    }
+    // fn not_yet_fully_supported_testnet_notice(selected_network: TezosEnvironment) -> String {
+    //     let mut selected = selected_network.supported_values();
+    //     selected.sort();
+    //     format!(
+    //         "\n\n\n\n////////////////////////////////////////// \
+    //         \n//      !!! COOMING SOON TESTNET !!!      //\
+    //         \n////////////////////////////////////////// \
+    //         \n// Selected network: {:?} \
+    //         \n// Is not fully supported yet, \
+    //         \n// but will be soon. \
+    //         \n// Possible problems: \
+    //         \n// - no peers to connect \
+    //         \n// - no data to download \
+    //         \n// - no block application \
+    //         \n// - RPCs missing \
+    //         \n//////////////////////////////////////////\n\n\n\n",
+    //         selected
+    //     )
+    // }
 
     fn deprecated_testnet_notice(
         selected_network: TezosEnvironment,
@@ -530,6 +528,8 @@ impl From<Blake2bError> for TezosEnvironmentError {
 pub struct GenesisAdditionalData {
     pub max_operations_ttl: u16,
     pub last_allowed_fork_level: i32,
+    pub protocol_hash: ProtocolHash,
+    pub next_protocol_hash: ProtocolHash,
 }
 
 /// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
@@ -604,11 +604,17 @@ impl TezosEnvironmentConfiguration {
             .unwrap())
     }
 
-    pub fn genesis_additional_data(&self) -> GenesisAdditionalData {
-        GenesisAdditionalData {
+    pub fn genesis_additional_data(&self) -> Result<GenesisAdditionalData, TezosEnvironmentError> {
+        Ok(GenesisAdditionalData {
             max_operations_ttl: 0,
             last_allowed_fork_level: 0,
-        }
+            protocol_hash: ProtocolHash::from_base58_check(PROTOCOL_HASH_ZERO_BASE58_CHECK)
+                .map_err(|e| TezosEnvironmentError::InvalidProtocolHash {
+                    hash: self.genesis.protocol.clone(),
+                    error: e,
+                })?,
+            next_protocol_hash: self.genesis_protocol()?,
+        })
     }
 }
 

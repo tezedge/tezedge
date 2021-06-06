@@ -5,9 +5,10 @@
 
 use serial_test::serial;
 
-use crypto::hash::{ChainId, ProtocolHash};
+use crypto::hash::ChainId;
 use tezos_api::environment::{
-    get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV,
+    get_empty_operation_list_list_hash, GenesisAdditionalData, TezosEnvironmentConfiguration,
+    TEZOS_ENV,
 };
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
@@ -34,7 +35,7 @@ fn init_test_protocol_context(
 ) -> (
     ChainId,
     BlockHeader,
-    ProtocolHash,
+    GenesisAdditionalData,
     InitProtocolContextResult,
 ) {
     let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
@@ -66,7 +67,9 @@ fn init_test_protocol_context(
                 get_empty_operation_list_list_hash().unwrap(),
             )
             .expect("genesis header error"),
-        tezos_env.genesis_protocol().expect("protocol_hash error"),
+        tezos_env
+            .genesis_additional_data()
+            .expect("failed get genesis additional data"),
         result,
     )
 }
@@ -218,16 +221,30 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
     init_test_runtime();
 
     // init empty context for test
-    let (chain_id, genesis_block_header, genesis_protocol_hash, result) =
+    let (chain_id, genesis_block_header, genesis_additional_data, result) =
         init_test_protocol_context("bootstrap_test_storage_10");
 
     // check genesis data
     let genesis_context_hash = result.genesis_commit_hash.expect("no genesis context_hash");
-    let genesis_data =
-        client::genesis_result_data(&genesis_context_hash, &chain_id, &genesis_protocol_hash, 0)
-            .expect("no genesis data");
+    let genesis_data = client::genesis_result_data(
+        &genesis_context_hash,
+        &chain_id,
+        &genesis_additional_data.next_protocol_hash,
+        0,
+    )
+    .expect("no genesis data");
+
+    let block_header_proto_metadata_json = client::apply_block_result_metadata(
+        genesis_context_hash.clone(),
+        genesis_data.block_header_proto_metadata_bytes,
+        genesis_additional_data.max_operations_ttl.into(),
+        genesis_additional_data.protocol_hash.clone(),
+        genesis_additional_data.next_protocol_hash.clone(),
+    )
+    .expect("failed to get genesis json");
+
     assert_contains_metadata(
-        &genesis_data.block_header_proto_metadata_json,
+        &block_header_proto_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -238,6 +255,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             "max_operation_list_length",
         ],
     );
+
+    let operations_proto_metadata_json = client::apply_block_operations_metadata(
+        chain_id.clone(),
+        Vec::new(),
+        genesis_data.operations_proto_metadata_bytes,
+        genesis_additional_data.protocol_hash,
+        genesis_additional_data.next_protocol_hash,
+    )
+    .expect("failed to get genesis json");
+    assert_eq!("[]", operations_proto_metadata_json);
+
+    let max_operations_ttl = genesis_additional_data.max_operations_ttl.into();
 
     // apply first block - level 0
     let apply_block_result = client::apply_block(ApplyBlockRequest {
@@ -251,7 +280,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::BLOCK_HEADER_HASH_LEVEL_1,
             test_data::block_header_level1_operations(),
         )),
-        max_operations_ttl: 0,
+        max_operations_ttl,
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     })
@@ -261,8 +290,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         &apply_block_result.block_header_proto_json,
         vec!["content", "signature"],
     );
+
+    let apply_block_result_metadata_json = tezos_interop::ffi::apply_block_result_metadata(
+        genesis_context_hash.clone(),
+        apply_block_result.block_header_proto_metadata_bytes,
+        max_operations_ttl,
+        apply_block_result.protocol_hash,
+        apply_block_result.next_protocol_hash,
+    )
+    .unwrap();
+
     assert_contains_metadata(
-        &apply_block_result.block_header_proto_metadata_json,
+        &apply_block_result_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -273,6 +312,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             "max_operation_list_length",
         ],
     );
+
+    let max_operations_ttl = 1;
 
     // apply second block - level 2
     let apply_block_result = client::apply_block(ApplyBlockRequest {
@@ -287,7 +328,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         )),
-        max_operations_ttl: 1,
+        max_operations_ttl,
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     })
@@ -301,8 +342,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         &apply_block_result.block_header_proto_json,
         vec!["signature", "proof_of_work_nonce", "priority"],
     );
+
+    let apply_block_result_metadata_json = tezos_interop::ffi::apply_block_result_metadata(
+        genesis_context_hash.clone(),
+        apply_block_result.block_header_proto_metadata_bytes,
+        max_operations_ttl,
+        apply_block_result.protocol_hash,
+        apply_block_result.next_protocol_hash,
+    )
+    .unwrap();
+
     assert_contains_metadata(
-        &apply_block_result.block_header_proto_metadata_json,
+        &apply_block_result_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -316,6 +367,8 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             "balance_updates",
         ],
     );
+
+    let max_operations_ttl = 1;
 
     // apply the second block twice, should return the same data
     let apply_block_result = client::apply_block(ApplyBlockRequest {
@@ -330,7 +383,7 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             test_data::BLOCK_HEADER_HASH_LEVEL_2,
             test_data::block_header_level2_operations(),
         )),
-        max_operations_ttl: 1,
+        max_operations_ttl,
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     })
@@ -344,8 +397,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         &apply_block_result.block_header_proto_json,
         vec!["signature", "proof_of_work_nonce", "priority"],
     );
+
+    let apply_block_result_metadata_json = tezos_interop::ffi::apply_block_result_metadata(
+        genesis_context_hash.clone(),
+        apply_block_result.block_header_proto_metadata_bytes,
+        max_operations_ttl,
+        apply_block_result.protocol_hash,
+        apply_block_result.next_protocol_hash,
+    )
+    .unwrap();
+
     assert_contains_metadata(
-        &apply_block_result.block_header_proto_metadata_json,
+        &apply_block_result_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -360,20 +423,23 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         ],
     );
 
+    let operations = ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
+        test_data::BLOCK_HEADER_HASH_LEVEL_3,
+        test_data::block_header_level3_operations(),
+    ));
+    let max_operations_ttl = 2;
+
     // apply third block - level 3
     let apply_block_result = client::apply_block(ApplyBlockRequest {
-        chain_id,
+        chain_id: chain_id.clone(),
         block_header: BlockHeader::from_bytes(
             hex::decode(test_data::BLOCK_HEADER_LEVEL_3).unwrap(),
         )
         .unwrap(),
         pred_header: BlockHeader::from_bytes(hex::decode(test_data::BLOCK_HEADER_LEVEL_2).unwrap())
             .unwrap(),
-        operations: ApplyBlockRequest::convert_operations(test_data::block_operations_from_hex(
-            test_data::BLOCK_HEADER_HASH_LEVEL_3,
-            test_data::block_header_level3_operations(),
-        )),
-        max_operations_ttl: 2,
+        operations: operations.clone(),
+        max_operations_ttl,
         predecessor_block_metadata_hash: None,
         predecessor_ops_metadata_hash: None,
     })
@@ -387,8 +453,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
         &apply_block_result.block_header_proto_json,
         vec!["signature", "proof_of_work_nonce", "priority"],
     );
+
+    let apply_block_result_metadata_json = tezos_interop::ffi::apply_block_result_metadata(
+        genesis_context_hash,
+        apply_block_result.block_header_proto_metadata_bytes,
+        max_operations_ttl,
+        apply_block_result.protocol_hash.clone(),
+        apply_block_result.next_protocol_hash.clone(),
+    )
+    .unwrap();
+
     assert_contains_metadata(
-        &apply_block_result.block_header_proto_metadata_json,
+        &apply_block_result_metadata_json,
         vec![
             "protocol",
             "next_protocol",
@@ -402,8 +478,18 @@ fn test_bootstrap_empty_storage_with_first_two_blocks_and_check_result_json_meta
             "balance_updates",
         ],
     );
+
+    let apply_block_operations_metadata_json = tezos_interop::ffi::apply_block_operations_metadata(
+        chain_id,
+        operations,
+        apply_block_result.operations_proto_metadata_bytes,
+        apply_block_result.protocol_hash,
+        apply_block_result.next_protocol_hash,
+    )
+    .unwrap();
+
     assert_contains_metadata(
-        &apply_block_result.operations_proto_metadata_json,
+        &apply_block_operations_metadata_json,
         vec!["protocol", "contents", "balance_updates"],
     );
 }
@@ -506,7 +592,7 @@ fn test_bootstrap_empty_storage_with_second_block_should_fail_incomplete_operati
     assert_eq!(
         ApplyBlockError::IncompleteOperations {
             expected: 4,
-            actual: 1
+            actual: 1,
         },
         apply_block_result.unwrap_err()
     );

@@ -11,7 +11,7 @@ use slog::{warn, Logger};
 
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, HashType, OperationMetadataHash,
-    OperationMetadataListListHash,
+    OperationMetadataListListHash, ProtocolHash,
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
@@ -630,6 +630,10 @@ pub struct BlockAdditionalData {
     #[get_copy = "pub"]
     last_allowed_fork_level: i32,
     #[get = "pub"]
+    pub protocol_hash: ProtocolHash,
+    #[get = "pub"]
+    pub next_protocol_hash: ProtocolHash,
+    #[get = "pub"]
     block_metadata_hash: Option<BlockMetadataHash>,
     // TODO: TE-238 - not needed, can be calculated from ops_metadata_hashes
     // TODO: TE-207 - not needed, can be calculated from ops_metadata_hashes
@@ -645,6 +649,8 @@ impl BlockAdditionalData {
     pub fn new(
         max_operations_ttl: u16,
         last_allowed_fork_level: i32,
+        protocol_hash: ProtocolHash,
+        next_protocol_hash: ProtocolHash,
         block_metadata_hash: Option<BlockMetadataHash>,
         ops_metadata_hash: Option<OperationMetadataListListHash>,
         ops_metadata_hashes: Option<Vec<Vec<OperationMetadataHash>>>,
@@ -652,6 +658,8 @@ impl BlockAdditionalData {
         Self {
             max_operations_ttl,
             last_allowed_fork_level,
+            protocol_hash,
+            next_protocol_hash,
             block_metadata_hash,
             ops_metadata_hash,
             ops_metadata_hashes,

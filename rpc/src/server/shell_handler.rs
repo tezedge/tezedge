@@ -9,13 +9,13 @@ use hyper::body::Buf;
 use hyper::{Body, Method, Request};
 use serde::Serialize;
 
-use crypto::hash::{chain_id_to_b58_string, ProtocolHash};
+use crypto::hash::ProtocolHash;
 use tezos_api::ffi::ProtocolRpcError;
 use tezos_messages::ts_to_rfc3339;
 use tezos_wrapper::service::{ProtocolError, ProtocolServiceError};
 
 use crate::helpers::{
-    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, SlimBlockData, MAIN_CHAIN_ID,
+    create_rpc_request, parse_async, parse_block_hash, parse_chain_id, MAIN_CHAIN_ID,
 };
 use crate::server::{HResult, HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{base_services, stream_services};
@@ -95,7 +95,7 @@ pub async fn head_chain(
     query: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let _chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let protocol = if let Some(protocol) = query.get_str("next_protocol") {
         ProtocolHash::from_base58_check(protocol).ok()
     } else {
@@ -109,7 +109,6 @@ pub async fn head_chain(
     } = env;
 
     make_json_stream_response(stream_services::HeadMonitorStream::new(
-        chain_id,
         state,
         protocol,
         &persistent_storage,
@@ -175,7 +174,8 @@ pub async fn blocks(
 
     // TODO: This can be implemented in a more optimised and cleaner way
     // Note: Need to investigate the "more heads per level" variant
-    make_json_response(&vec![base_services::get_blocks::<SlimBlockData>(
+
+    make_json_response(&vec![base_services::get_block_hashes(
         chain_id,
         head,
         None,
@@ -183,7 +183,7 @@ pub async fn blocks(
         env.persistent_storage(),
     )?
     .iter()
-    .map(|block| block.block_hash.clone())
+    .map(|block| block.to_base58_check())
     .collect::<Vec<String>>()])
 }
 
@@ -196,10 +196,8 @@ pub async fn chains_block_id(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    use crate::encoding::chain::BlockInfo;
-    result_option_to_json_response(
-        base_services::get_block(&chain_id, &block_hash, env.persistent_storage())
-            .map(|res| res.map(BlockInfo::from)),
+    result_to_json_response(
+        base_services::get_block(&chain_id, &block_hash, &env).await,
         env.log(),
     )
 }
@@ -213,8 +211,8 @@ pub async fn chains_block_id_header(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    result_option_to_json_response(
-        base_services::get_block_header(chain_id, block_hash, env.persistent_storage()),
+    result_to_json_response(
+        base_services::get_block_header(chain_id, block_hash, env.persistent_storage()).await,
         env.log(),
     )
 }
@@ -243,8 +241,8 @@ pub async fn chains_block_id_metadata(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    result_option_to_json_response(
-        base_services::get_block_metadata(&chain_id, &block_hash, &env),
+    result_to_json_response(
+        base_services::get_block_metadata(&chain_id, &block_hash, &env).await,
         env.log(),
     )
 }
@@ -378,7 +376,7 @@ pub async fn get_chain_id(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
-    result_to_json_response(Ok(chain_id_to_b58_string(&chain_id)), env.log())
+    result_to_json_response(Ok(chain_id.to_base58_check()), env.log())
 }
 
 pub async fn get_metadata_hash(
@@ -514,7 +512,7 @@ pub async fn get_block_operation_hashes(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        base_services::get_block_operation_hashes(&chain_id, &block_hash, env.persistent_storage()),
+        base_services::get_block_operation_hashes(chain_id, &block_hash, &env).await,
         env.log(),
     )
 }
@@ -529,7 +527,7 @@ pub async fn get_block_operations(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        base_services::get_block_operations(&chain_id, &block_hash, env.persistent_storage()),
+        base_services::get_block_operations_metadata(chain_id, &block_hash, &env).await,
         env.log(),
     )
 }
@@ -547,11 +545,12 @@ pub async fn get_block_operations_validation_pass(
 
     result_to_json_response(
         base_services::get_block_operations_validation_pass(
-            &chain_id,
+            chain_id,
             &block_hash,
-            env.persistent_storage(),
+            &env,
             validation_pass,
-        ),
+        )
+        .await,
         env.log(),
     )
 }
@@ -570,12 +569,13 @@ pub async fn get_block_operation(
 
     result_to_json_response(
         base_services::get_block_operation(
-            &chain_id,
+            chain_id,
             &block_hash,
-            env.persistent_storage(),
+            &env,
             validation_pass,
             operation_order,
-        ),
+        )
+        .await,
         env.log(),
     )
 }

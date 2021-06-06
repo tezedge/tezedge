@@ -169,7 +169,7 @@ impl Storage {
     const STORAGES_COUNT: usize = 3;
     const MINIMAL_THREAD_COUNT: usize = 1;
 
-    const DB_STORAGE_VERSION: i64 = 18;
+    const DB_STORAGE_VERSION: i64 = 19;
     const DB_CONTEXT_STORAGE_VERSION: i64 = 17;
     const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 17;
 
@@ -1089,7 +1089,10 @@ impl Environment {
                             }
                         }
                     },
-                    one_context: args.is_present("one-context"),
+                    // TODO: TE-447 - remove one_context when integration done
+                    // TODO: TE-447 - we will support just one context
+                    // one_context: args.is_present("one-context"),
+                    one_context: true,
                 }
             },
             identity: crate::configuration::Identity {

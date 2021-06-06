@@ -11,7 +11,7 @@ tezos_interop = { path = "../interop" }
 tezos_messages = { path = "../messages" }
 
 [dev-dependencies]
-assert-json-diff = "1.1"
+assert-json-diff = "2"
 strum = "0.20"
 failure = "0.1"
 hex = "0.4"
