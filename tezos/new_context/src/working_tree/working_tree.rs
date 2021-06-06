@@ -753,7 +753,7 @@ impl WorkingTree {
         let mut referenced_older_entries: HashSet<EntryHash> = HashSet::new();
         self.get_entries_recursively(
             &entry,
-            &commit_hash,
+            commit_hash,
             Some(root.as_ref()),
             &mut batch,
             &mut referenced_older_entries,
@@ -969,13 +969,13 @@ impl WorkingTree {
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        entry_hash: &EntryHash,
+        entry_hash: EntryHash,
         root: Option<&Tree>,
         batch: &mut Vec<(EntryHash, ContextValue)>,
         referenced_older_entries: &mut HashSet<EntryHash>,
     ) -> Result<(), MerkleError> {
         // add entry to batch
-        batch.push((entry_hash.clone(), bincode::serialize(entry)?));
+        batch.push((entry_hash, bincode::serialize(entry)?));
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -999,7 +999,7 @@ impl WorkingTree {
                             None => Ok(()),
                             Some(entry) => self.get_entries_recursively(
                                 entry,
-                                &child_node.entry_hash.borrow().clone().unwrap(),
+                                child_node.entry_hash()?,
                                 None,
                                 batch,
                                 referenced_older_entries,
@@ -1017,7 +1017,13 @@ impl WorkingTree {
                     Some(root) => Entry::Tree(root.clone()),
                     None => self.get_entry_from_hash(&commit.root_hash)?,
                 };
-                self.get_entries_recursively(&entry, &commit.root_hash, None, batch, referenced_older_entries)
+                self.get_entries_recursively(
+                    &entry,
+                    commit.root_hash,
+                    None,
+                    batch,
+                    referenced_older_entries,
+                )
             }
         }
     }
