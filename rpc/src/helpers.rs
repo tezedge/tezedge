@@ -10,7 +10,7 @@ use riker::actor::ActorReference;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{chain_id_to_b58_string, BlockHash, ChainId, ContextHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
@@ -604,7 +604,7 @@ pub(crate) fn get_prevalidators(
 
                     if accept_prevalidator {
                         vec![Prevalidator {
-                            chain_id: chain_id_to_b58_string(&prevalidator.chain_id),
+                            chain_id: prevalidator.chain_id.to_base58_check(),
                             // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
                             since: env.sys().start_date().to_rfc3339(),
                         }]
