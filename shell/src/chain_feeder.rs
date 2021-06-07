@@ -1038,14 +1038,15 @@ fn _apply_block(
                         "block_header_hash" => block_hash.to_base58_check(),
                         "context_hash" => apply_block_result.context_hash.to_base58_check(),
                         "validation_result_message" => &apply_block_result.validation_result_message,
+                        "level" => block_meta.level(),
                         "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()));
 
-    if protocol_call_elapsed.gt(&BLOCK_APPLY_DURATION_LONG_TO_LOG) {
+    if protocol_call_elapsed.gt(&Duration::from_millis(10)) {
         info!(log, "Block was validated with protocol with long processing";
                            "block_header_hash" => block_hash.to_base58_check(),
                            "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()),
-                           "validation_result_message" => &apply_block_result.validation_result_message);
+                           "level" => block_meta.level(),
+                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed.as_millis()));
     }
 
     // we need to check and wait for context_hash to be 100% sure, that everything is ok
