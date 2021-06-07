@@ -4,14 +4,13 @@
 use failure::bail;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::context::ContextApi;
-use storage::context::StringTreeEntry;
 use storage::{
     context_key, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader, OperationsStorage, OperationsStorageReader,
 };
 use storage::{BlockAdditionalData, PersistentStorage};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
+use tezos_new_context::StringTreeEntry;
 
 use crate::helpers::{
     get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata,
@@ -203,7 +202,7 @@ pub(crate) fn get_context_raw_bytes(
     let ctx_hash = get_context_hash(block_hash, env)?;
     Ok(env
         .tezedge_context()
-        .get_context_tree_by_prefix(&ctx_hash, &key_prefix, depth)?)
+        .get_context_tree_by_prefix(&ctx_hash, key_prefix, depth)?)
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata

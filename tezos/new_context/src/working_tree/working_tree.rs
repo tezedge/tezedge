@@ -47,7 +47,13 @@
 //! ``
 //!
 //! Reference: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-use std::{array::TryFromSliceError, borrow::{Borrow, Cow}, cell::{Cell, RefCell}, collections::HashSet, rc::Rc};
+use std::{
+    array::TryFromSliceError,
+    borrow::{Borrow, Cow},
+    cell::{Cell, RefCell},
+    collections::HashSet,
+    rc::Rc,
+};
 
 use failure::Fail;
 
@@ -1176,7 +1182,12 @@ impl WorkingTree {
     pub fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, MerkleError> {
         Ok(MerkleStoragePerfReport {
             perf_stats: self.stats.perf_stats.clone(),
-            kv_store_stats: self.index.repository.read().unwrap().total_get_mem_usage()?,
+            kv_store_stats: self
+                .index
+                .repository
+                .read()
+                .unwrap()
+                .total_get_mem_usage()?,
         })
     }
 

@@ -16,8 +16,8 @@ use std::convert::TryInto;
 use failure::format_err;
 use itertools::Itertools;
 
+use crate::server::TezedgeContextRemote;
 use storage::context::actions::context_action_storage::contract_id_to_contract_address_for_index;
-use storage::context::TezedgeContext;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_002::rights::{BakingRights, EndorsingRight};
@@ -49,7 +49,7 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    context: &TezedgeContext,
+    context: &TezedgeContextRemote,
 ) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -262,7 +262,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    context: &TezedgeContext,
+    context: &TezedgeContextRemote,
 ) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;

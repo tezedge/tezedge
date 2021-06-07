@@ -25,7 +25,6 @@ use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::C
 use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use shell::{context_listener::ContextListener, shell_channel::ShellChannelRef};
-use storage::context::TezedgeContext;
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
@@ -170,7 +169,6 @@ fn block_on_actors(
     init_storage_data: StorageInitInfo,
     identity: Arc<Identity>,
     persistent_storage: PersistentStorage,
-    tezedge_context: TezedgeContext,
     mut blocks_replay: Option<Vec<Arc<BlockHash>>>,
     log: Logger,
 ) {
@@ -366,7 +364,6 @@ fn block_on_actors(
         &tokio_runtime.handle(),
         &persistent_storage,
         current_mempool_state_storage,
-        &tezedge_context,
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
@@ -710,11 +707,6 @@ fn main() {
             merkle_context_actions_store,
         );
 
-        let tezedge_context = TezedgeContext::new(
-            Some(BlockStorage::new(&persistent_storage)),
-            persistent_storage.merkle(),
-        );
-
         match resolve_storage_init_chain_data(
             &tezos_env,
             &env.storage.db_path,
@@ -738,7 +730,6 @@ fn main() {
                     init_data,
                     Arc::new(tezos_identity),
                     persistent_storage,
-                    tezedge_context,
                     blocks_replay,
                     log,
                 )
