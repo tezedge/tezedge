@@ -21,7 +21,7 @@ do
 	LEVEL=$(curl -s $URL | jq .level)
     
     if [[ -z "$LEVEL" ]]; then
-        echo "Waiting for node"
+        echo -ne "Waiting for node..."\\r
     else
         echo "Head at $LEVEL"
     fi
