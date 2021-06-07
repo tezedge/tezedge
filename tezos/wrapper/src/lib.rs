@@ -62,6 +62,8 @@ pub enum TezosApiConnectionPoolError {
     InitializationError { source: r2d2::Error },
 }
 
+pub use r2d2::Error as InternalPoolError;
+
 impl From<r2d2::Error> for TezosApiConnectionPoolError {
     fn from(source: r2d2::Error) -> Self {
         Self::InitializationError { source }

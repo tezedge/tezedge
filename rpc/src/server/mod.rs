@@ -20,8 +20,8 @@ use crypto::hash::{BlockHash, ChainId};
 use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
-use storage::context::TezedgeContext;
 use storage::PersistentStorage;
+pub use tezedge_context_remote::{RemoteContextError, TezedgeContextRemote};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
@@ -33,6 +33,7 @@ mod dev_handler;
 mod protocol_handler;
 mod router;
 mod shell_handler;
+mod tezedge_context_remote;
 
 /// Server environment parameters
 #[derive(Getters, Clone)]
@@ -46,8 +47,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
-    // TODO - TE-261: this will not be available anymore
-    tezedge_context: TezedgeContext,
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
@@ -66,6 +65,8 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     main_chain_id: ChainId,
 
+    #[get = "pub(crate)"]
+    tezedge_context: TezedgeContextRemote,
     #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
@@ -89,8 +90,6 @@ impl RpcServiceEnvironment {
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        // TODO - TE-261: this will not be available anymore
-        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
@@ -101,6 +100,7 @@ impl RpcServiceEnvironment {
         context_stats_db_path: Option<PathBuf>,
         log: &Logger,
     ) -> Self {
+        let tezedge_context = TezedgeContextRemote::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
             actor,
@@ -110,11 +110,11 @@ impl RpcServiceEnvironment {
             network_version,
             persistent_storage: persistent_storage.clone(),
             current_mempool_state_storage,
-            tezedge_context: tezedge_context.clone(),
             main_chain_id,
             main_chain_genesis_hash,
             state,
             log: log.clone(),
+            tezedge_context,
             tezos_readonly_api,
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,

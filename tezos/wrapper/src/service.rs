@@ -1012,7 +1012,7 @@ impl ProtocolController {
         }
     }
 
-    pub fn context_get_key_from_history(
+    pub fn get_context_key_from_history(
         &self,
         context_hash: &ContextHash,
         key: ContextKeyOwned,
@@ -1037,7 +1037,7 @@ impl ProtocolController {
         }
     }
 
-    pub fn context_get_values_by_prefix(
+    pub fn get_context_key_values_by_prefix(
         &self,
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
@@ -1063,7 +1063,7 @@ impl ProtocolController {
         }
     }
 
-    pub fn context_get_tree_by_prefix(
+    pub fn get_context_tree_by_prefix(
         &self,
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
