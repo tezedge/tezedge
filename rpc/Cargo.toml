@@ -29,6 +29,7 @@ tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_timing = { path = "../tezos/timing" }
 tezos_wrapper = { path = "../tezos/wrapper" }
+tezos_new_context = { path = "../tezos/new_context" }
 rusqlite = "0.25.1"
 
 [dev-dependencies]

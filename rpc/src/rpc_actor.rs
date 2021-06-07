@@ -14,7 +14,6 @@ use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
-use storage::context::TezedgeContext;
 use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -59,8 +58,6 @@ impl RpcServer {
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        // TODO - TE-261: this will not be available anymore
-        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
@@ -93,7 +90,6 @@ impl RpcServer {
                 network_version,
                 persistent_storage,
                 current_mempool_state_storage,
-                tezedge_context,
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
                 tezos_without_context_api,

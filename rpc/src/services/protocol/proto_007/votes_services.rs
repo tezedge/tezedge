@@ -5,7 +5,6 @@ use crypto::hash::ContextHash;
 use failure::format_err;
 use itertools::Itertools;
 
-use storage::context::ContextApi;
 use storage::{context_key, num_from_slice};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_007::votes::VoteListings;
@@ -20,7 +19,7 @@ pub fn get_votes_listings(
     // filter out the listings data
     let listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(&context_hash, &context_key!("data/votes/listings"))?
+        .get_key_values_by_prefix(&context_hash, context_key!("data/votes/listings"))?
     {
         val
     } else {

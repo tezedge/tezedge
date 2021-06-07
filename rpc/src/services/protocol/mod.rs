@@ -15,8 +15,6 @@ use std::convert::{TryFrom, TryInto};
 use failure::{bail, format_err, Error, Fail};
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
-use storage::context::merkle::merkle_storage::MerkleError;
-use storage::context::ContextApi;
 use storage::{
     context_key, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
     BlockStorageReader,
@@ -29,6 +27,7 @@ use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 
 use crate::helpers::get_context_hash;
+use crate::server::RemoteContextError;
 use crate::server::RpcServiceEnvironment;
 
 mod proto_001;
@@ -325,16 +324,8 @@ impl From<failure::Error> for VotesError {
     }
 }
 
-impl From<storage::context::ContextError> for VotesError {
-    fn from(error: storage::context::ContextError) -> Self {
-        VotesError::ServiceError {
-            reason: error.into(),
-        }
-    }
-}
-
-impl From<MerkleError> for VotesError {
-    fn from(error: MerkleError) -> Self {
+impl From<RemoteContextError> for VotesError {
+    fn from(error: RemoteContextError) -> Self {
         VotesError::ServiceError {
             reason: error.into(),
         }
@@ -388,7 +379,7 @@ pub(crate) fn get_votes_listings(
     // get protocol version
     let protocol_hash = if let Some(protocol_hash) = env
         .tezedge_context()
-        .get_key_from_history(&context_hash, &context_key!("protocol"))?
+        .get_key_from_history(&context_hash, context_key!("protocol"))?
     {
         ProtocolHash::try_from(protocol_hash)?
     } else {
@@ -603,9 +594,7 @@ pub enum ContextParamsError {
     #[fail(display = "Storage error occurred, reason: {}", reason)]
     StorageError { reason: storage::StorageError },
     #[fail(display = "Context error occurred, reason: {}", reason)]
-    ContextError {
-        reason: storage::context::ContextError,
-    },
+    ContextError { reason: RemoteContextError },
     #[fail(display = "Context constants, reason: {}", reason)]
     ContextConstantsDecodeError {
         reason: tezos_messages::protocol::ContextConstantsDecodeError,
@@ -622,8 +611,8 @@ impl From<storage::StorageError> for ContextParamsError {
     }
 }
 
-impl From<storage::context::ContextError> for ContextParamsError {
-    fn from(error: storage::context::ContextError) -> Self {
+impl From<RemoteContextError> for ContextParamsError {
+    fn from(error: RemoteContextError) -> Self {
         ContextParamsError::ContextError { reason: error }
     }
 }
@@ -679,9 +668,7 @@ pub(crate) fn get_context_protocol_params(
         let context = env.tezedge_context();
         let context_hash = block_header.header.context();
 
-        if let Some(data) =
-            context.get_key_from_history(&context_hash, &context_key!("protocol"))?
-        {
+        if let Some(data) = context.get_key_from_history(&context_hash, context_key!("protocol"))? {
             protocol_hash = ProtocolHash::try_from(data)?;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(
@@ -690,7 +677,7 @@ pub(crate) fn get_context_protocol_params(
         }
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, &context_key!("data/v1/constants"))?
+            context.get_key_from_history(&context_hash, context_key!("data/v1/constants"))?
         {
             constants = data;
         } else {
