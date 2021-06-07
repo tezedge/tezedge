@@ -38,9 +38,9 @@ echo "Protocol switch block was applied"
 # Check if the file exists, the timeout it low, because once the node starts responding to the RPC above, the log file should be already create
 $SCRIPTPATH/wait_file.sh $LOG_FILE 1
 
-EXCEEDED=$(grep "Block was applied" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$9 > t {printf "Application time over threshold: level: %s - %s ms\n", $12, $9}')
+EXCEEDED=$(grep "Block was applied" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$9 > t {printf "Application time over threshold: level: %s - %s ms\n", $11, $9}')
 
-EXCEEDED_GREATLY=$(grep "Block was validated with protocol with long processing" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$23 > t {printf "Extra long application on level %s - %s ms", $15, $23}')
+EXCEEDED_GREATLY=$(grep "Block was validated with protocol with long processing" $LOG_FILE | tr -d ',' | awk -v t=$THRESHOLD '$14 > t {printf "Extra long application on level %s - %s ms\n", $16, $14}')
 
 if [[ -z $EXCEEDED && -z $EXCEEDED_GREATLY ]]; then
     echo "All applied blocks within threshold"
