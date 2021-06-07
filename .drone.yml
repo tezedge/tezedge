@@ -97,6 +97,10 @@ trigger:
 kind: pipeline
 name: build
 
+# TODO: remove when merging
+clone:
+  disable: true
+
 workspace:
   path: /drone/src
 
@@ -125,6 +129,7 @@ steps:
     LOG_LEVEL: info
     OCAML_LOG_ENABLED: false
   commands:
+    - git clone https://github.com/tezedge/tezedge.git --branch test/apply-proto-switch-block /drone/src
     # prepare rust toolchain dir
     - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
     # build and unit-test
@@ -232,6 +237,9 @@ name: test-protocol-switch-1-to-2
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
@@ -318,6 +326,9 @@ name: test-protocol-switch-2-to-3
 
 workspace:
   path: /drone/src
+
+clone:
+  disable: true
 
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
@@ -409,6 +420,9 @@ name: test-protocol-switch-3-to-4
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
@@ -498,6 +512,9 @@ name: test-protocol-switch-4-to-5
 
 workspace:
   path: /drone/src
+
+clone:
+  disable: true
 
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
@@ -589,6 +606,9 @@ name: test-protocol-switch-5-to-6
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
@@ -678,6 +698,9 @@ name: test-protocol-switch-6-to-7
 
 workspace:
   path: /drone/src
+
+clone:
+  disable: true
 
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
@@ -769,6 +792,9 @@ name: test-protocol-switch-7-to-8
 workspace:
   path: /drone/src
 
+clone:
+  disable: true
+
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
@@ -858,6 +884,9 @@ name: test-protocol-switch-8-to-9-latest
 
 workspace:
   path: /drone/src
+
+clone:
+  disable: true
 
 environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
