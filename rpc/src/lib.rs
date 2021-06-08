@@ -115,6 +115,9 @@ pub(crate) fn result_to_empty_json_response(
 pub(crate) fn empty() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(204)?)
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .body(Body::empty())?)
 }
 
@@ -122,6 +125,10 @@ pub(crate) fn empty() -> ServiceResult {
 pub(crate) fn not_found() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(404)?)
+        .header(hyper::header::CONTENT_TYPE, "text/plain")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .body(Body::from("not found"))?)
 }
 
