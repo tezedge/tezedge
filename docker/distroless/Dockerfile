@@ -12,7 +12,8 @@ ENV PATH=/home/appuser/.cargo/bin:$PATH
 ENV RUST_BACKTRACE=1
 ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
-RUN cd /home/appuser && git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && RUSTFLAGS="-Cforce-frame-pointers=yes" cargo build --release #5
+ARG RUSTFLAGS=""
+RUN cd /home/appuser && git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && RUSTFLAGS=${RUSTFLAGS} cargo build --release #5
 WORKDIR /home/appuser/tezedge
 RUN mkdir /tmp/tezedge
 RUN mkdir /tmp/tezedge/light-node

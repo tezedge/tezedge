@@ -4025,6 +4025,21 @@ steps:
     password:
       from_secret: docker_hub_pswd
 
+- name: build-light-node-debug-image
+  image: plugins/docker
+  settings:
+    repo: simplestakingcom/tezedge
+    target: light-node
+    tag: latest-frame-pointers-enabled
+    dockerfile: docker/distroless/Dockerfile
+    build_args:
+      - SOURCE_BRANCH=develop
+      - RUSTFLAGS="-Cforce-frame-pointers=yes"
+    username:
+      from_secret: docker_hub_username
+    password:
+      from_secret: docker_hub_pswd
+
 - name: build-sandbox-image
   image: plugins/docker
   settings:
@@ -4083,6 +4098,23 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-light-node-debug-image
+    image: plugins/docker
+    settings:
+      repo: simplestakingcom/tezedge
+      target: light-node
+      tags:
+        - ${DRONE_TAG}
+        - latest-frame-pointers-enabled-release
+      dockerfile: docker/distroless/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=${DRONE_TAG}
+        - RUSTFLAGS="-Cforce-frame-pointers=yes"
       username:
         from_secret: docker_hub_username
       password:
