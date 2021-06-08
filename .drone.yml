@@ -135,6 +135,8 @@ steps:
     - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json $${SANDBOX_ARTIFACTS_PATH}
     # copy other resources
     - cp ./light_node/etc/drone/assert_equals.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh
@@ -676,7 +678,7 @@ trigger:
 ##############################################################################################################
 ---
 kind: pipeline
-name: tezos-python-tests-008
+name: tezos-python-tests-008-edo2
 
 clone:
   disable: true
@@ -928,7 +930,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: tezos-python-tests-009
+name: tezos-python-tests-009-florence
 
 clone:
   disable: true
@@ -1426,15 +1428,15 @@ trigger:
 
 depends_on:
   - build
-  - tezos-python-tests-008
-  - tezos-python-tests-009
+  - tezos-python-tests-008-edo2
+  - tezos-python-tests-009-florence
 
 #############################################################################################################
-# This pipeline test the sandbox and its rpc sercver
+# This pipeline test the sandbox launcher and its rpc server with activation 009 protocol
 #############################################################################################################
 ---
 kind: pipeline
-name: sandbox-launcher-test
+name: sandbox-launcher-test-009-florence
 
 clone:
   disable: true
@@ -1533,7 +1535,7 @@ steps:
       path: /artifacts
   commands:
     - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_activate_protocol_request.json)
+    - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_activate_protocol_009_request.json)
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected B"
 
 - name: wait-sandbox-node-start-level-1
@@ -1556,23 +1558,22 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "time_between_blocks"
 
-# TODO: not working with v9-release because of missing "bake for" command in tezos-client
-#- name: bake-empty-block
-#  user: root
-#  image: cfmanteiga/alpine-bash-curl-jq
-#  volumes:
-#    - name: build
-#      path: /artifacts
-#  commands:
-#    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
-#    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_bake_empty_block.json)
-#    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
-#
-#- name: wait-sandbox-node-start-level-2
-#  image: simplestakingcom/tezos-node-bootstrap:latest
-#  pull: if-not-exists
-#  commands:
-#    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+- name: bake-empty-block
+  user: root
+  image: cfmanteiga/alpine-bash-curl-jq
+  volumes:
+    - name: build
+      path: /artifacts
+  commands:
+    - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+    - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_bake_empty_block.json)
+    - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
+
+- name: wait-sandbox-node-start-level-2
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 - name: stop-tezedge-node-via-rpc
   user: root
@@ -1597,6 +1598,193 @@ steps:
     - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
     - nodes_count=$(echo $resp | jq '. | length')
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $nodes_count
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - build
+
+#############################################################################################################
+# This pipeline test the sandbox launcher and its rpc server with activation 009 protocol
+#############################################################################################################
+---
+kind: pipeline
+name: sandbox-launcher-test-010-granada
+
+clone:
+  disable: true
+
+environment:
+  SODIUM_USE_PKG_CONFIG: 1
+  NETWORK: sandbox
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:18732
+  TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT: http://tezedge-sandbox-run:3030
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+
+steps:
+  - name: tezedge-sandbox-run
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      - rm -rf /tmp/sandbox
+      - mkdir -p /tmp/sandbox
+      - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+      - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+      - export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/sandbox --sandbox-rpc-port 3030 --light-node-path $${BUILD_ARTIFACTS_PATH}/build_files/light-node --protocol-runner-path $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --log-level info --tezos-client-path $${BUILD_ARTIFACTS_PATH}/build_files/tezos-client --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+  - name: start-tezedge-node-via-rpc
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - sleep 5
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - curl --request POST "$LAUNCHER_URL/start" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_start_light_node_args.json
+
+  - name: check-running-nodes
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+      - nodes_count=$(echo $resp | jq '. | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 1 $nodes_count
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "localhost"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "18732"
+
+  - name: wait-sandbox-node-start
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: always
+    commands:
+      - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: init-client
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/init_client" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_init_client_request.json)
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Tezos address added"
+
+  - name: check-wallets
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # call get wallets
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/wallets" | jq -S .)
+      - echo "Wallets - $resp"
+      - wallets_count=$(echo $resp | jq '. | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 2 $wallets_count
+
+  - name: activate_protocol
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/activate_protocol" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_activate_protocol_010_request.json)
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected B"
+
+  - name: wait-sandbox-node-start-level-1
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: check-context-constants
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      # call context/constants on sandbox node
+      - SANDBOX_URL=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$SANDBOX_URL/chains/main/blocks/head/context/constants" | jq -S .)
+      - echo "Sandbox node context constants - $resp"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "baking_reward_per_endorsement"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "time_between_blocks"
+
+  - name: bake-empty-block
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl --request POST "$LAUNCHER_URL/bake" -H "Content-Type:application/json" --data @$${SANDBOX_ARTIFACTS_PATH}/sandbox_bake_empty_block.json)
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
+
+  - name: wait-sandbox-node-start-level-2
+    image: simplestakingcom/tezos-node-bootstrap:latest
+    pull: if-not-exists
+    commands:
+      - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+  - name: stop-tezedge-node-via-rpc
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl -X GET -I "$LAUNCHER_URL/stop" |  head -n 1 | cut -d$' ' -f2)
+      # On a successfull stop, HTTP code 200 is returned
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 200 $resp
+
+  - name: check-running-nodes-empty
+    user: root
+    image: cfmanteiga/alpine-bash-curl-jq
+    volumes:
+      - name: build
+        path: /artifacts
+    commands:
+      - LAUNCHER_URL=$${TEZEDGE_LAUNCHER_RPC_CONTEXT_ROOT}
+      - resp=$(curl "$LAUNCHER_URL/list_nodes" | jq -S .)
+      - nodes_count=$(echo $resp | jq '. | length')
+      - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $nodes_count
 
 image_pull_secrets:
   - docker_pull_secret
@@ -1681,7 +1869,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
   image: simplestakingcom/tezos-node-bootstrap:latest
@@ -1861,7 +2049,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: baker/endorser-edo2-tests
+name: baker/endorser-tests-008-edo2
 
 clone:
   disable: true
@@ -1881,7 +2069,7 @@ environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
-  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-edo2-tests
+  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-tests-008-edo2
   TEZOS_LOG: debug
   LWT_LOG: debug
 
@@ -1922,7 +2110,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2136,7 +2324,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: baker/endorser-florence-tests
+name: baker/endorser-tests-009-florence
 
 clone:
   disable: true
@@ -2156,7 +2344,7 @@ environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
-  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-florence-tests
+  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-tests-009-florence
   TEZOS_LOG: debug
   LWT_LOG: debug
 
@@ -2197,7 +2385,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -2411,7 +2599,7 @@ depends_on:
 ##############################################################################################################
 ---
 kind: pipeline
-name: baker/endorser-granada-tests
+name: baker/endorser-tests-010-granada
 
 clone:
   disable: true
@@ -2431,7 +2619,7 @@ environment:
   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
-  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-granada-tests
+  SANDBOX_DATA_PATH: /data/sandbox/build_${DRONE_BUILD_NUMBER}/baker-endorser-tests-010-granada
   TEZOS_LOG: debug
   LWT_LOG: debug
 
@@ -2472,7 +2660,7 @@ steps:
       - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
       - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --one-context --actions-store-backend none --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
     image: simplestakingcom/tezos-node-bootstrap:latest
@@ -4065,13 +4253,14 @@ depends_on:
   - unit-tests
   - benchmarks
   - integration-tests
-  - sandbox-launcher-test
+  - sandbox-launcher-test-009-florence
+  - sandbox-launcher-test-010-granada
   - sandbox-carthage-node-tests
-  - baker/endorser-edo2-tests
-  - baker/endorser-florence-tests
-  - baker/endorser-granada-tests
-  - tezos-python-tests-008
-  - tezos-python-tests-009
+  - baker/endorser-tests-008-edo2
+  - baker/endorser-tests-009-florence
+  - baker/endorser-tests-010-granada
+  - tezos-python-tests-008-edo2
+  - tezos-python-tests-009-florence
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests
@@ -4147,13 +4336,14 @@ depends_on:
   - unit-tests
   - benchmarks
   - integration-tests
-  - sandbox-launcher-test
+  - sandbox-launcher-test-009-florence
+  - sandbox-launcher-test-010-granada
   - sandbox-carthage-node-tests
-  - baker/endorser-edo2-tests
-  - baker/endorser-florence-tests
-  - baker/endorser-granada-tests
-  - tezos-python-tests-008
-  - tezos-python-tests-009
+  - baker/endorser-tests-008-edo2
+  - baker/endorser-tests-009-florence
+  - baker/endorser-tests-010-granada
+  - tezos-python-tests-008-edo2
+  - tezos-python-tests-009-florence
   - connect-from-different-network-test
   - delphinet-big-offline-tests
   - edo2net-offline-tests

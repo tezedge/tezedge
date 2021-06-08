@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.5.1] - 2021-06-08
+
+### Added
+
+- Preserve frame pointer configuration (used by eBPF memprof docker image)
+
+### Changed
+
+- Updated docker-composes + README + sandbox update for 009/010
+
 ## [1.5.0] - 2021-06-06
 
 ### Added
@@ -392,7 +402,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/tezedge/tezedge/releases/v1.5.1
 [1.5.0]: https://github.com/tezedge/tezedge/releases/v1.5.0
 [1.4.0]: https://github.com/tezedge/tezedge/releases/v1.4.0
 [1.3.1]: https://github.com/tezedge/tezedge/releases/v1.3.1

@@ -4,7 +4,7 @@ services:
 
   node:
     image: simplestakingcom/tezedge:latest
-    command: ["--network=mainnet", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927"]
+    command: ["--network=mainnet", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
     hostname: node
     ports:
       - "4927:4927"
@@ -18,7 +18,7 @@ services:
     image: simplestakingcom/tezedge-explorer:latest
     hostname: explorer
     environment:
-      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927"}]'
+      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927"}, "features":["MONITORING","MEMPOOL_ACTION","STORAGE_BLOCK"]}]'
     ports:
       - "80:80"
       - "8080:8080"
