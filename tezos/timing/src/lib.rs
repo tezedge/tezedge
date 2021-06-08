@@ -11,7 +11,7 @@ use std::{
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use once_cell::sync::Lazy;
-use rusqlite::{named_params, Batch, Connection, Error as SQLError};
+use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
 
 pub const FILENAME_DB: &str = "context_stats.db";
@@ -258,7 +258,6 @@ struct Timing {
     irmin_commit_stats: RangeStats,
     tezedge_checkout_stats: RangeStats,
     irmin_checkout_stats: RangeStats,
-    sql: Connection,
 }
 
 impl std::fmt::Debug for Timing {
@@ -305,11 +304,13 @@ fn start_timing(recv: Receiver<TimingMessage>) {
         }
     }
 
-    let mut timing = Timing::new(db_path);
+    let sql = Timing::init_sqlite(db_path).unwrap();
+    let mut timing = Timing::new();
+    let mut transaction = None;
 
     for msg in recv {
-        if let Err(_err) = timing.process_msg(msg) {
-            // TODO: log error, and retry
+        if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+            eprintln!("Timing error={:?}", err);
         }
     }
 }
@@ -326,9 +327,7 @@ pub fn hash_to_string(hash: &[u8]) -> String {
 }
 
 impl Timing {
-    fn new(db_path: Option<PathBuf>) -> Timing {
-        let sql = Self::init_sqlite(db_path).unwrap();
-
+    fn new() -> Timing {
         Timing {
             current_block: None,
             current_operation: None,
@@ -343,39 +342,45 @@ impl Timing {
             irmin_commit_stats: RangeStats::default(),
             tezedge_checkout_stats: Default::default(),
             irmin_checkout_stats: RangeStats::default(),
-            sql,
         }
     }
 
-    fn process_msg(&mut self, msg: TimingMessage) -> Result<(), SQLError> {
+    fn process_msg<'a>(
+        &mut self,
+        sql: &'a Connection,
+        transaction: &mut Option<Transaction<'a>>,
+        msg: TimingMessage,
+    ) -> Result<(), SQLError> {
         match msg {
             TimingMessage::SetBlock {
                 block_hash,
                 timestamp,
                 instant,
-            } => self.set_current_block(block_hash, timestamp, instant),
+            } => self.set_current_block(sql, block_hash, timestamp, instant, transaction),
             TimingMessage::SetOperation(operation_hash) => {
-                self.set_current_operation(operation_hash)
+                self.set_current_operation(sql, operation_hash)
             }
-            TimingMessage::Action(action) => self.insert_action(&action),
+            TimingMessage::Action(action) => self.insert_action(sql, transaction, &action),
             TimingMessage::Checkout {
                 context_hash,
                 irmin_time,
                 tezedge_time,
-            } => self.insert_checkout(context_hash, irmin_time, tezedge_time),
+            } => self.insert_checkout(sql, context_hash, irmin_time, tezedge_time),
             TimingMessage::Commit {
                 irmin_time,
                 tezedge_time,
-            } => self.insert_commit(irmin_time, tezedge_time),
+            } => self.insert_commit(sql, irmin_time, tezedge_time),
             TimingMessage::InitTiming { .. } => Ok(()),
         }
     }
 
-    fn set_current_block(
+    fn set_current_block<'a>(
         &mut self,
+        sql: &'a Connection,
         block_hash: Option<BlockHash>,
         mut timestamp: Option<Duration>,
         instant: Instant,
+        transaction: &mut Option<Transaction<'a>>,
     ) -> Result<(), SQLError> {
         if let Some(timestamp) = timestamp.take() {
             self.block_started_at = Some((timestamp, instant));
@@ -393,7 +398,7 @@ impl Timing {
             let timestamp_nanos = started_at_timestamp.subsec_nanos();
             let block_id = self.current_block.as_ref().unwrap().0.as_str();
 
-            let mut query = self.sql.prepare_cached(
+            let mut query = sql.prepare_cached(
                 "
             UPDATE
               blocks
@@ -414,7 +419,12 @@ impl Timing {
             })?;
         }
 
-        Self::set_current(&self.sql, block_hash, &mut self.current_block, "blocks")?;
+        Self::set_current(sql, block_hash, &mut self.current_block, "blocks")?;
+
+        if let Some(transaction) = transaction.take() {
+            transaction.commit()?;
+        };
+        *transaction = Some(sql.unchecked_transaction()?);
 
         // Reset context and operation
         self.current_context = None;
@@ -428,19 +438,24 @@ impl Timing {
 
     fn set_current_operation(
         &mut self,
+        sql: &Connection,
         operation_hash: Option<OperationHash>,
     ) -> Result<(), SQLError> {
         Self::set_current(
-            &self.sql,
+            sql,
             operation_hash,
             &mut self.current_operation,
             "operations",
         )
     }
 
-    fn set_current_context(&mut self, context_hash: ContextHash) -> Result<(), SQLError> {
+    fn set_current_context(
+        &mut self,
+        sql: &Connection,
+        context_hash: ContextHash,
+    ) -> Result<(), SQLError> {
         Self::set_current(
-            &self.sql,
+            sql,
             Some(context_hash),
             &mut self.current_context,
             "contexts",
@@ -518,6 +533,7 @@ impl Timing {
 
     fn insert_checkout(
         &mut self,
+        sql: &Connection,
         context_hash: ContextHash,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
@@ -528,7 +544,7 @@ impl Timing {
 
         self.tezedge_checkout_stats.add_time(tezedge_time);
         self.irmin_checkout_stats.add_time(irmin_time);
-        self.set_current_context(context_hash)?;
+        self.set_current_context(sql, context_hash)?;
         self.checkout_time = Some((irmin_time, tezedge_time));
 
         Ok(())
@@ -536,6 +552,7 @@ impl Timing {
 
     fn insert_commit(
         &mut self,
+        sql: &Connection,
         irmin_time: Option<f64>,
         tezedge_time: Option<f64>,
     ) -> Result<(), SQLError> {
@@ -545,13 +562,18 @@ impl Timing {
 
         self.tezedge_commit_stats.add_time(tezedge_time);
         self.irmin_commit_stats.add_time(irmin_time);
-        self.sync_global_stats(irmin_time, tezedge_time)?;
-        self.sync_block_stats()?;
+        self.sync_global_stats(sql, irmin_time, tezedge_time)?;
+        self.sync_block_stats(sql)?;
 
         Ok(())
     }
 
-    fn insert_action(&mut self, action: &Action) -> Result<(), SQLError> {
+    fn insert_action<'a>(
+        &mut self,
+        sql: &'a Connection,
+        transaction: &mut Option<Transaction<'a>>,
+        action: &Action,
+    ) -> Result<(), SQLError> {
         if self.current_block.is_none() {
             return Ok(());
         }
@@ -567,22 +589,18 @@ impl Timing {
             let root = action.key[0].as_str();
             let key = action.key.join("/");
 
-            let mut stmt = self
-                .sql
-                .prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
+            let mut stmt = sql.prepare_cached("INSERT OR IGNORE INTO keys (key) VALUES (?1)")?;
 
             stmt.execute([key.as_str()])?;
 
-            let mut stmt = self
-                .sql
-                .prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
+            let mut stmt = sql.prepare_cached("SELECT id FROM keys WHERE key = ?1;")?;
 
             let key_id: usize = stmt.query_row([key.as_str()], |row| row.get(0))?;
 
             (Some(root), Some(key_id))
         };
 
-        let mut stmt = self.sql.prepare_cached(
+        let mut stmt = transaction.as_ref().unwrap().prepare_cached(
             "
         INSERT INTO actions
           (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
@@ -692,7 +710,7 @@ impl Timing {
         };
     }
 
-    fn sync_block_stats(&mut self) -> Result<(), SQLError> {
+    fn sync_block_stats(&mut self, sql: &Connection) -> Result<(), SQLError> {
         for action in self.block_stats.values_mut() {
             action.compute_mean();
         }
@@ -706,7 +724,7 @@ impl Timing {
         for (root, action_stats) in self.block_stats.iter() {
             let root = root.as_str();
 
-            let mut query = self.sql.prepare_cached(
+            let mut query = sql.prepare_cached(
                 "
             INSERT INTO block_action_stats
               (root, block_id, tezedge_count, irmin_count,
@@ -757,12 +775,13 @@ impl Timing {
     // Compute stats for the current block and global ones
     fn sync_global_stats(
         &mut self,
+        sql: &Connection,
         commit_time_irmin: Option<f64>,
         commit_time_tezedge: Option<f64>,
     ) -> Result<(), SQLError> {
         let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
 
-        let mut query = self.sql.prepare_cached(
+        let mut query = sql.prepare_cached(
             "
         UPDATE
           blocks
@@ -814,17 +833,17 @@ impl Timing {
             for (root, action_stats) in global_stats.iter() {
                 let root = root.as_str();
 
-                self.insert_action_stats(name, root, "mem", &action_stats.mem)?;
-                self.insert_action_stats(name, root, "mem_tree", &action_stats.mem_tree)?;
-                self.insert_action_stats(name, root, "find", &action_stats.find)?;
-                self.insert_action_stats(name, root, "find_tree", &action_stats.find_tree)?;
-                self.insert_action_stats(name, root, "add", &action_stats.add)?;
-                self.insert_action_stats(name, root, "add_tree", &action_stats.add_tree)?;
-                self.insert_action_stats(name, root, "remove", &action_stats.remove)?;
+                self.insert_action_stats(sql, name, root, "mem", &action_stats.mem)?;
+                self.insert_action_stats(sql, name, root, "mem_tree", &action_stats.mem_tree)?;
+                self.insert_action_stats(sql, name, root, "find", &action_stats.find)?;
+                self.insert_action_stats(sql, name, root, "find_tree", &action_stats.find_tree)?;
+                self.insert_action_stats(sql, name, root, "add", &action_stats.add)?;
+                self.insert_action_stats(sql, name, root, "add_tree", &action_stats.add_tree)?;
+                self.insert_action_stats(sql, name, root, "remove", &action_stats.remove)?;
             }
 
-            self.insert_action_stats(name, "commit", "commit", commits)?;
-            self.insert_action_stats(name, "checkout", "checkout", checkouts)?;
+            self.insert_action_stats(sql, name, "commit", "commit", commits)?;
+            self.insert_action_stats(sql, name, "checkout", "checkout", checkouts)?;
         }
 
         Ok(())
@@ -832,12 +851,13 @@ impl Timing {
 
     fn insert_action_stats(
         &self,
+        sql: &Connection,
         context_name: &str,
         root: &str,
         action_name: &str,
         range_stats: &RangeStats,
     ) -> Result<(), SQLError> {
-        let mut query = self.sql.prepare_cached(
+        let mut query = sql.prepare_cached(
             "
         INSERT OR IGNORE INTO global_action_stats
           (root, action_name, context_name)
@@ -852,7 +872,7 @@ impl Timing {
             ":context_name": context_name,
         })?;
 
-        let mut query = self.sql.prepare_cached(
+        let mut query = sql.prepare_cached(
             "
         UPDATE
           global_action_stats
@@ -983,18 +1003,32 @@ mod tests {
 
     #[test]
     fn test_timing_db() {
-        let mut timing = Timing::new(None);
+        let sql = Timing::init_sqlite(None).unwrap();
+        let mut timing = Timing::new();
+        let mut transaction = None;
 
         assert!(timing.current_block.is_none());
 
         let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
         timing
-            .set_current_block(Some(block_hash.clone()), None, Instant::now())
+            .set_current_block(
+                &sql,
+                Some(block_hash.clone()),
+                None,
+                Instant::now(),
+                &mut transaction,
+            )
             .unwrap();
         let block_id = timing.current_block.clone().unwrap().0;
 
         timing
-            .set_current_block(Some(block_hash), None, Instant::now())
+            .set_current_block(
+                &sql,
+                Some(block_hash),
+                None,
+                Instant::now(),
+                &mut transaction,
+            )
             .unwrap();
         let same_block_id = timing.current_block.clone().unwrap().0;
 
@@ -1002,9 +1036,11 @@ mod tests {
 
         timing
             .set_current_block(
+                &sql,
                 Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()),
                 None,
                 Instant::now(),
+                &mut transaction,
             )
             .unwrap();
         let other_block_id = timing.current_block.clone().unwrap().0;
@@ -1012,19 +1048,25 @@ mod tests {
         assert_ne!(block_id, other_block_id);
 
         timing
-            .insert_action(&Action {
-                action_name: ActionKind::Mem,
-                key: vec!["a", "b", "c"]
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect(),
-                irmin_time: Some(1.0),
-                tezedge_time: Some(2.0),
-            })
+            .insert_action(
+                &sql,
+                &mut transaction,
+                &Action {
+                    action_name: ActionKind::Mem,
+                    key: vec!["a", "b", "c"]
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect(),
+                    irmin_time: Some(1.0),
+                    tezedge_time: Some(2.0),
+                },
+            )
             .unwrap();
 
-        timing.sync_block_stats().unwrap();
-        timing.sync_global_stats(Some(1.0), Some(1.0)).unwrap();
+        timing.sync_block_stats(&sql).unwrap();
+        timing
+            .sync_global_stats(&sql, Some(1.0), Some(1.0))
+            .unwrap();
     }
 
     #[test]
