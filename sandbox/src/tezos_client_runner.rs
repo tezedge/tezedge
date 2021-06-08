@@ -191,6 +191,7 @@ impl TezosClientRunner {
         &self,
         mut activation_parameters: TezosProtcolActivationParameters,
         node_ref: &NodeRpcIpPort,
+        log: &Logger,
     ) -> Result<TezosClientReply, TezosClientRunnerError> {
         let data_dir = match self.sandbox_data.get(node_ref) {
             Some(data) => &data.data_dir_path,
@@ -257,6 +258,7 @@ impl TezosClientRunner {
             ]
             .to_vec(),
             &mut client_output,
+            log,
         )?;
 
         Ok(client_output)
@@ -267,6 +269,7 @@ impl TezosClientRunner {
         &self,
         request: Option<BakeRequest>,
         node_ref: &NodeRpcIpPort,
+        log: &Logger,
     ) -> Result<TezosClientReply, TezosClientRunnerError> {
         let mut client_output: TezosClientReply = Default::default();
 
@@ -293,6 +296,7 @@ impl TezosClientRunner {
             node_ref,
             ["bake", "for", &alias].to_vec(),
             &mut client_output,
+            log,
         )?;
 
         Ok(client_output)
@@ -303,6 +307,7 @@ impl TezosClientRunner {
         &mut self,
         requested_wallets: SandboxWallets,
         node_ref: &NodeRpcIpPort,
+        log: &Logger,
     ) -> Result<TezosClientReply, TezosClientRunnerError> {
         let mut client_output: TezosClientReply = Default::default();
 
@@ -317,6 +322,7 @@ impl TezosClientRunner {
             ]
             .to_vec(),
             &mut client_output,
+            log,
         )?;
 
         for wallet in requested_wallets {
@@ -331,6 +337,7 @@ impl TezosClientRunner {
                 ]
                 .to_vec(),
                 &mut client_output,
+                log,
             )?;
             self.insert_wallet(node_ref, wallet)?;
         }
@@ -359,6 +366,7 @@ impl TezosClientRunner {
         node_ref: &NodeRpcIpPort,
         command_args: Vec<&str>,
         client_output: &mut TezosClientReply,
+        log: &Logger,
     ) -> Result<(), TezosClientRunnerError> {
         let data_dir = match self.sandbox_data.get(node_ref) {
             Some(data) => data.data_dir_path.as_path().display().to_string(),
@@ -380,6 +388,8 @@ impl TezosClientRunner {
         ]
         .to_vec();
         args.extend(command_args);
+
+        info!(log, "Calling tezos-client ({})", self.executable_path.as_path().display().to_string(); "command" => args.join(" "));
 
         // call tezos-client
         let output = Command::new(&self.executable_path)
