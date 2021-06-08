@@ -24,7 +24,8 @@ In addition to implementing a new node, the project seeks to maintain and improv
     * [Call RPC](#example-of-how-to-call-the-rpc)
     * [Prearranged-docker-compose-files](#prearranged-docker-compose-files)
         * [Mainnet - node + explorer](#mainnet---light-node--tezedge-explorer)
-        * [Sandbox - node launcher + explorer + debugger](#sandbox-node-launcher--tezedge-explorer--tezedge-debugger)
+        * [Mainnet - node + explorer + debugger (eBPF)](#mainnet---light-node--tezedge-explorer--tezedge-debugger)
+        * [Sandbox - node launcher + explorer + debugger](#sandbox---sandbox-launcher--light-node--tezedge-explorer)
 
 ## Build status
 
@@ -309,6 +310,29 @@ docker-compose -f docker-compose.yml up
 ```
 docker-compose -f docker-compose.latest.yml pull
 docker-compose -f docker-compose.latest.yml up
+```
+
+#### Mainnet - light-node + tezedge-explorer + tezedge debugger
+
+**Last released version with TezEdge Debugger with integrated eBPF**
+
+_This requires Linux kernel at least 5.11_
+```
+docker-compose -f docker-compose.debug.yml pull
+docker-compose -f docker-compose.debug.yml up
+```
+
+#### Sandbox - sandbox launcher + light-node + tezedge-explorer
+_See more info about sandbox [here](sandbox/README.MD)_
+**Last released version:**
+```
+docker-compose -f docker-compose.sandbox.yml pull
+docker-compose -f docker-compose.sandbox.yml up
+```
+**Actual development version:**
+```
+docker-compose -f docker-compose.sandbox.latest.yml pull
+docker-compose -f docker-compose.sandbox.latest.yml up
 ```
 
 [comment]: <> (#### Sandbox node launcher + tezedge-explorer + tezedge-debugger)

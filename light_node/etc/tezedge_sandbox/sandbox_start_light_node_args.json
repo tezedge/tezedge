@@ -4,6 +4,7 @@
     "network": "sandbox",
     "peer_thresh_low": 1,
     "peer_thresh_high": 1,
+    "synchronization_thresh": "0",
     "sandbox_patch_context_json": {
         "genesis_pubkey": "edpkuSLWfVU1Vq7Jg9FucPyKmma6otcMHac9zG4oU1KMHSTBpJuGQ2"
     },

@@ -91,7 +91,9 @@ pub async fn start_node_with_config(
     let (node_ref, data_dir) = runner.spawn(cfg, &log)?;
 
     // initialize data for tezos client
-    info!(log, "Initializing tezos-client data  for light-node"; "node_ref" => format!("{}", &node_ref));
+    info!(log, "Initializing tezos-client data for light-node";
+               "node_ref" => format!("{}", &node_ref),
+               "client_data_dir" => data_dir.as_path().display().to_string());
     let mut client_runner = client_runner
         .write()
         .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
@@ -194,7 +196,7 @@ pub async fn init_client_data(
     let mut client_runner = client_runner
         .write()
         .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
-    let client_output = client_runner.init_client_data(wallets, &node_ref)?;
+    let client_output = client_runner.init_client_data(wallets, &node_ref, &log)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
@@ -233,7 +235,7 @@ pub async fn activate_protocol(
     let client_runner = client_runner
         .read()
         .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
-    let client_output = client_runner.activate_protocol(activation_parameters, &node_ref)?;
+    let client_output = client_runner.activate_protocol(activation_parameters, &node_ref, &log)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
@@ -250,7 +252,7 @@ pub async fn bake_block_with_client(
     let client_runner = client_runner
         .read()
         .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
-    let client_output = client_runner.bake_block(Some(request), &node_ref)?;
+    let client_output = client_runner.bake_block(Some(request), &node_ref, &log)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }
@@ -266,7 +268,7 @@ pub async fn bake_block_with_client_arbitrary(
     let client_runner = client_runner
         .read()
         .map_err(|e| LockErrorCause::new(e, "Cannot get write lock on client_runner"))?;
-    let client_output = client_runner.bake_block(None, &node_ref)?;
+    let client_output = client_runner.bake_block(None, &node_ref, &log)?;
 
     reply_with_client_output(client_output, &log).map_err(|e| e.into())
 }

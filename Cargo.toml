@@ -37,3 +37,4 @@ members = [
 
 [patch.crates-io]
 ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }
+librocksdb-sys = { git = "https://github.com/tezedge/rust-rocksdb.git", branch = "frame-pointer" }

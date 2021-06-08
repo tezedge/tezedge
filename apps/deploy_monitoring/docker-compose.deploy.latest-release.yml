@@ -31,10 +31,8 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: simplestakingcom/tezedge:latest-release
+    image: simplestakingcom/tezedge:latest-frame-pointers-enabled-release
     command: ["--network", "${TEZOS_NETWORK}", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--one-context", "--actions-store-backend", "none", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
-    depends_on:
-      - "tezedge-memprof"
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
