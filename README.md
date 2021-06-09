@@ -225,20 +225,22 @@ All arguments can be provided to the `run.sh` script in the same manner as descr
 
 To run the node in release mode, execute the following:
 
+_KEEP_DATA - this flag controls, if all the target directories should be cleaned on the startup, 1 means do not clean_
+
 ```
-./run.sh release --network=mainnet
+KEEP_DATA=1 ./run.sh release --network=mainnet
 ```
 
 The following command will execute the node in debug node:
 
 ```
-./run.sh node --network=mainnet
+KEEP_DATA=1 ./run.sh node --network=mainnet
 ```
 
 To run the node in debug mode with an address sanitizer, execute the following:
 
 ```
-./run.sh node-saddr --network=mainnet
+KEEP_DATA=1 ./run.sh node-saddr --network=mainnet
 ```
 
 If you are running OSX, you can use the docker version:
@@ -250,10 +252,35 @@ If you are running OSX, you can use the docker version:
 Listening for updates. Node emits statistics on the websocket server, which can be changed by `--websocket-address` argument, for example:
 
 ```
-./run.sh node --network=mainnet --websocket-address 0.0.0.0:12345
+KEEP_DATA=1  ./run.sh node --network=mainnet --websocket-address 0.0.0.0:12345
 ```
 
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
+
+### Running node from `binaries`
+
+_Note: This cmd runs from the main git sources directory_
+```
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
+    --network "mainnet" \
+    --identity-file "/tmp/data-dir-mainnet/identity.json" \
+    --identity-expected-pow 26.0 \
+    --tezos-data-dir "/tmp/data-dir-mainnet/context_data" \
+    --bootstrap-db-path "/tmp/data-dir-mainnet/tezedge_data" \
+    --peer-thresh-low 30 --peer-thresh-high 45 \
+    --protocol-runner "./target/release/protocol-runner" \
+    --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
+    --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
+    --p2p-port 12534 --rpc-port 12535 \
+    --websocket-address 0.0.0.0:12536 \
+    --tokio-threads 0 \
+    --ocaml-log-enabled false \
+    --one-context \
+    --actions-store-backend none \
+    --log terminal \
+    --log-level info \
+    --log-format simple
+```
 
 ### Running node from docker images
 
