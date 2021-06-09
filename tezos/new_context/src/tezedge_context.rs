@@ -2,19 +2,24 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    borrow::Borrow,
     cell::RefCell,
     collections::HashSet,
     convert::TryInto,
-    sync::{Arc, RwLock, RwLockReadGuard},
+    sync::{Arc, RwLock},
 };
 use std::{convert::TryFrom, rc::Rc};
 
-use crypto::hash::ContextHash;
+use crypto::hash::{ContextHash, HashType};
 use ocaml_interop::BoxRoot;
 
 use crate::{
     hash::EntryHash,
-    working_tree::{working_tree_stats::MerkleStoragePerfReport, Commit, Entry, KeyFragment, Tree},
+    persistent::DBError,
+    working_tree::{
+        working_tree_stats::MerkleStoragePerfReport, Commit, Entry, KeyFragment, Node, Tree,
+    },
+    StringTreeMap,
 };
 use crate::{
     working_tree::working_tree::{FoldDepth, TreeWalker},
@@ -43,6 +48,10 @@ pub struct TezedgeIndex {
     pub strings: Rc<RefCell<StringInterner>>,
 }
 
+// TODO: some of the utility methods here (and in `WorkingTree`) should probably be
+// standalone functions defined in a separate module that take the `index`
+// as an argument.
+// Also revise all errors defined, some may be obsolete now.
 impl TezedgeIndex {
     pub fn new(
         repository: Arc<RwLock<ContextKeyValueStore>>,
@@ -60,12 +69,354 @@ impl TezedgeIndex {
         let mut strings = self.strings.borrow_mut();
         strings.get_str(s)
     }
+
+    pub fn find_entry(&self, hash: &EntryHash) -> Result<Option<Entry>, DBError> {
+        let db = self.repository.read()?;
+        match db.get(hash)? {
+            None => Ok(None),
+            Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
+        }
+    }
+
+    pub fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
+        match self.find_entry(hash)? {
+            None => Err(MerkleError::EntryNotFound {
+                hash: HashType::ContextHash.hash_to_b58check(hash)?,
+            }),
+            Some(entry) => Ok(entry),
+        }
+    }
+
+    pub fn find_commit(&self, hash: &EntryHash) -> Result<Option<Commit>, DBError> {
+        match self.find_entry(hash)? {
+            Some(Entry::Commit(commit)) => Ok(Some(commit)),
+            Some(Entry::Tree(_)) => Err(DBError::FoundUnexpectedStructure {
+                sought: "commit".to_string(),
+                found: "tree".to_string(),
+            }),
+            Some(Entry::Blob(_)) => Err(DBError::FoundUnexpectedStructure {
+                sought: "commit".to_string(),
+                found: "blob".to_string(),
+            }),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_commit(&self, hash: &EntryHash) -> Result<Commit, MerkleError> {
+        match self.find_commit(hash)? {
+            None => Err(MerkleError::EntryNotFound {
+                hash: HashType::ContextHash.hash_to_b58check(hash)?,
+            }),
+            Some(entry) => Ok(entry),
+        }
+    }
+
+    pub fn find_tree(&self, hash: &EntryHash) -> Result<Option<Tree>, DBError> {
+        match self.find_entry(hash)? {
+            Some(Entry::Tree(tree)) => Ok(Some(tree)),
+            Some(Entry::Blob(_)) => Err(DBError::FoundUnexpectedStructure {
+                sought: "tree".to_string(),
+                found: "blob".to_string(),
+            }),
+            Some(Entry::Commit { .. }) => Err(DBError::FoundUnexpectedStructure {
+                sought: "tree".to_string(),
+                found: "commit".to_string(),
+            }),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
+        match self.find_tree(hash)? {
+            None => Err(MerkleError::EntryNotFound {
+                hash: HashType::ContextHash.hash_to_b58check(hash)?,
+            }),
+            Some(entry) => Ok(entry),
+        }
+    }
+
+    pub fn contains(&self, hash: &EntryHash) -> Result<bool, DBError> {
+        let db = self.repository.read()?;
+        Ok(db.contains(hash)?)
+    }
+
+    /// Convert key in array form to string form
+    pub fn key_to_string(&self, key: &ContextKey) -> String {
+        key.join("/")
+    }
+
+    /// Convert key in string form to array form
+    pub fn string_to_key(&self, string: &str) -> ContextKeyOwned {
+        string.split('/').map(str::to_string).collect()
+    }
+
+    pub fn node_entry(&self, node: &Node) -> Result<Entry, MerkleError> {
+        if let Some(e) = node
+            .entry
+            .try_borrow()
+            .map_err(|_| MerkleError::InvalidState("The Entry is borrowed more than once"))?
+            .as_ref()
+            .cloned()
+        {
+            return Ok(e);
+        };
+
+        let hash = node.get_hash()?;
+        let entry = self.get_entry(&hash)?;
+        node.set_entry(&entry)?;
+
+        Ok(entry)
+    }
+
+    /// Get context tree under given prefix in string form (for JSON)
+    /// depth - None returns full tree
+    pub fn _get_context_tree_by_prefix(
+        &self,
+        context_hash: &EntryHash,
+        prefix: &ContextKey,
+        depth: Option<usize>,
+    ) -> Result<StringTreeEntry, MerkleError> {
+        if let Some(0) = depth {
+            return Ok(StringTreeEntry::Null);
+        }
+
+        //let stat_updater =
+        //    StatUpdater::new(MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
+        let mut out = StringTreeMap::new();
+        let commit = self.get_commit(context_hash)?;
+
+        //let entry = self.get_entry()?.unwrap(); // TODO: make non-option version that raises error
+        let root_tree = self.get_tree(&commit.root_hash)?;
+        let prefixed_tree = self.find_raw_tree(&root_tree, prefix)?;
+        let delimiter = if prefix.is_empty() { "" } else { "/" };
+
+        for (key, child_node) in prefixed_tree.iter() {
+            let entry = self.node_entry(&child_node)?;
+
+            // construct full path as Tree key is only one chunk of it
+            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            let rdepth = depth.map(|d| d - 1);
+            let key_str: &str = key.borrow();
+            out.insert(
+                key_str.to_string(),
+                self.get_context_recursive(&fullpath, &entry, rdepth)?,
+            );
+        }
+
+        //stat_updater.update_execution_stats(&mut self.stats);
+        Ok(StringTreeEntry::Tree(out))
+    }
+
+    /// Go recursively down the tree from Entry, build string tree and return it
+    /// (or return hex value if Blob)
+    fn get_context_recursive(
+        &self,
+        path: &str,
+        entry: &Entry,
+        depth: Option<usize>,
+    ) -> Result<StringTreeEntry, MerkleError> {
+        if let Some(0) = depth {
+            return Ok(StringTreeEntry::Null);
+        }
+
+        match entry {
+            Entry::Blob(blob) => Ok(StringTreeEntry::Blob(hex::encode(blob))),
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                let mut new_tree = StringTreeMap::new();
+                for (key, child_node) in tree.iter() {
+                    let fullpath = path.to_owned() + "/" + key;
+
+                    let entry = self.node_entry(&child_node)?;
+                    let rdepth = depth.map(|d| d - 1);
+                    let key_str: &str = key.borrow();
+                    new_tree.insert(
+                        key_str.to_string(),
+                        self.get_context_recursive(&fullpath, &entry, rdepth)?,
+                    );
+                }
+                Ok(StringTreeEntry::Tree(new_tree))
+            }
+            Entry::Commit(_) => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "Tree/Blob".to_string(),
+                found: "Commit".to_string(),
+            }),
+        }
+    }
+
+    /// Find tree by path and return a copy. Return an empty tree if no tree under this path exists or if a blob
+    /// (= value) is encountered along the way.
+    ///
+    /// # Arguments
+    ///
+    /// * `root` - reference to a tree in which we search
+    /// * `key` - sought path
+    pub fn find_raw_tree(&self, root: &Tree, key: &[&str]) -> Result<Tree, MerkleError> {
+        let first = match key.first() {
+            Some(first) => *first,
+            None => {
+                // terminate recursion if end of path was reached
+                return Ok(root.clone());
+            }
+        };
+
+        // first get node at key
+        let child_node = match root.get(first) {
+            Some(hash) => hash,
+            None => {
+                return Ok(Tree::new());
+            }
+        };
+
+        // get entry (from working tree)
+        if let Ok(entry) = child_node.entry.try_borrow() {
+            match &*entry {
+                Some(Entry::Tree(tree)) => {
+                    return self.find_raw_tree(tree, &key[1..]);
+                }
+                Some(Entry::Blob(_)) => return Ok(Tree::new()),
+                Some(Entry::Commit { .. }) => {
+                    return Err(MerkleError::FoundUnexpectedStructure {
+                        sought: "Tree/Blob".to_string(),
+                        found: "commit".to_string(),
+                    })
+                }
+                None => {}
+            }
+            drop(entry);
+        }
+
+        // get entry by hash (from DB)
+        let hash = child_node.get_hash()?;
+        let entry = self.get_entry(&hash)?;
+        child_node.set_entry(&entry)?;
+
+        match entry {
+            Entry::Tree(tree) => self.find_raw_tree(&tree, &key[1..]),
+            Entry::Blob(_) => Ok(Tree::new()),
+            Entry::Commit { .. } => Err(MerkleError::FoundUnexpectedStructure {
+                sought: "Tree/Blob".to_string(),
+                found: "commit".to_string(),
+            }),
+        }
+    }
+
+    /// Get value from historical context identified by commit hash.
+    pub fn get_history(
+        &self,
+        commit_hash: &EntryHash,
+        key: &ContextKey,
+    ) -> Result<ContextValue, MerkleError> {
+        // let stat_updater = StatUpdater::new(MerkleStorageAction::GetHistory, Some(key));
+
+        let commit = self.get_commit(commit_hash)?;
+        let tree = self.get_tree(&commit.root_hash)?;
+        let rv = self.get_from_tree(&tree, key);
+
+        // stat_updater.update_execution_stats(&mut self.stats);
+        rv
+    }
+
+    fn get_from_tree(&self, root: &Tree, key: &ContextKey) -> Result<ContextValue, MerkleError> {
+        let (file, path) = key.split_last().ok_or(MerkleError::KeyEmpty)?;
+        let node = self.find_raw_tree(&root, &path)?;
+
+        // get file node from tree
+        let node = node.get(*file).ok_or_else(|| MerkleError::ValueNotFound {
+            key: self.key_to_string(key),
+        })?;
+
+        // get blob
+        match self.node_entry(&node)? {
+            Entry::Blob(blob) => Ok(blob),
+            _ => Err(MerkleError::ValueIsNotABlob {
+                key: self.key_to_string(key),
+            }),
+        }
+    }
+
+    /// Construct Vec of all context key-values under given prefix
+    pub fn get_context_key_values_by_prefix(
+        &self,
+        context_hash: &EntryHash,
+        prefix: &ContextKey,
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
+        let commit = self.get_commit(context_hash)?;
+        let root_tree = self.get_tree(&commit.root_hash)?;
+        let rv = self._get_context_key_values_by_prefix(&root_tree, prefix);
+
+        rv
+    }
+
+    fn _get_context_key_values_by_prefix(
+        &self,
+        root_tree: &Tree,
+        prefix: &ContextKey,
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
+        let prefixed_tree = self.find_raw_tree(root_tree, prefix)?;
+        let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
+        let delimiter = if prefix.is_empty() { "" } else { "/" };
+
+        for (key, child_node) in prefixed_tree.iter() {
+            let entry = self.node_entry(&child_node)?;
+
+            // construct full path as Tree key is only one chunk of it
+            let fullpath = self.key_to_string(prefix) + delimiter + key;
+            self.get_key_values_from_tree_recursively(&fullpath, &entry, &mut keyvalues)?;
+        }
+
+        if keyvalues.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(keyvalues))
+        }
+    }
+
+    // TODO: can we get rid of the recursion?
+    fn get_key_values_from_tree_recursively(
+        &self,
+        path: &str,
+        entry: &Entry,
+        entries: &mut Vec<(ContextKeyOwned, ContextValue)>,
+    ) -> Result<(), MerkleError> {
+        match entry {
+            Entry::Blob(blob) => {
+                // push key-value pair
+                entries.push((self.string_to_key(path), blob.clone()));
+                Ok(())
+            }
+            Entry::Tree(tree) => {
+                // Go through all descendants and gather errors. Remap error if there is a failure
+                // anywhere in the recursion paths. TODO: is revert possible?
+                tree.iter()
+                    .map(|(key, child_node)| {
+                        let fullpath = path.to_owned() + "/" + key;
+
+                        match self.node_entry(&child_node) {
+                            Err(_) => Ok(()),
+                            Ok(entry) => self
+                                .get_key_values_from_tree_recursively(&fullpath, &entry, entries),
+                        }
+                    })
+                    .find_map(|res| match res {
+                        Ok(_) => None,
+                        Err(err) => Some(Err(err)),
+                    })
+                    .unwrap_or(Ok(()))
+            }
+            Entry::Commit(commit) => match self.get_entry(&commit.root_hash) {
+                Err(err) => Err(err),
+                Ok(entry) => self.get_key_values_from_tree_recursively(path, &entry, entries),
+            },
+        }
+    }
 }
 
 impl IndexApi<TezedgeContext> for TezedgeIndex {
     fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        if let Some(Entry::Commit(_)) = db_get_entry(self.repository.read()?, &context_hash_arr)? {
+        if let Some(Entry::Commit(_)) = self.find_entry(&context_hash_arr)? {
             Ok(true)
         } else {
             Ok(false)
@@ -75,8 +426,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<TezedgeContext>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
 
-        if let Some(commit) = db_get_commit(self.repository.read()?, &context_hash_arr)? {
-            if let Some(tree) = db_get_tree(self.repository.read()?, &commit.root_hash)? {
+        if let Some(commit) = self.find_commit(&context_hash_arr)? {
+            if let Some(tree) = self.find_tree(&commit.root_hash)? {
                 let tree = WorkingTree::new_with_tree(self.clone(), tree);
 
                 Ok(Some(TezedgeContext::new(
@@ -112,10 +463,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        // TODO: this could be done without implementing the functiontionality in the tree,
-        // move that code to the index.
-        let context = self.checkout(context_hash)?.unwrap();
-        match context.tree.get_history(&context_hash_arr, key) {
+        match self.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
             Err(MerkleError::EntryNotFound { hash: _ }) => {
                 Err(ContextError::UnknownContextHashError {
@@ -149,12 +497,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        // TODO: this could be done without implementing the functiontionality in the tree,
-        // move that code to the index.
-        let context = self.checkout(context_hash)?.unwrap();
-        context
-            .tree
-            .get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
+
+        self._get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
             .map_err(ContextError::from)
     }
 }
@@ -296,7 +640,7 @@ impl ShellContextApi for TezedgeContext {
     }
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
-        Ok(self.tree.get_merkle_stats()?)
+        Ok(MerkleStoragePerfReport::default())
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {
@@ -360,51 +704,5 @@ impl TezedgeContext {
             index: self.index.clone(),
             ..*self
         }
-    }
-}
-
-fn db_get_entry(
-    db: RwLockReadGuard<ContextKeyValueStore>,
-    hash: &EntryHash,
-) -> Result<Option<Entry>, ContextError> {
-    match db.get(hash)? {
-        None => Ok(None),
-        Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
-    }
-}
-
-fn db_get_commit(
-    db: RwLockReadGuard<ContextKeyValueStore>,
-    hash: &EntryHash,
-) -> Result<Option<Commit>, ContextError> {
-    match db_get_entry(db, hash)? {
-        Some(Entry::Commit(commit)) => Ok(Some(commit)),
-        Some(Entry::Tree(_)) => Err(ContextError::FoundUnexpectedStructure {
-            sought: "commit".to_string(),
-            found: "tree".to_string(),
-        }),
-        Some(Entry::Blob(_)) => Err(ContextError::FoundUnexpectedStructure {
-            sought: "commit".to_string(),
-            found: "blob".to_string(),
-        }),
-        None => Ok(None),
-    }
-}
-
-fn db_get_tree(
-    db: RwLockReadGuard<ContextKeyValueStore>,
-    hash: &EntryHash,
-) -> Result<Option<Tree>, ContextError> {
-    match db_get_entry(db, hash)? {
-        Some(Entry::Tree(tree)) => Ok(Some(tree)),
-        Some(Entry::Blob(_)) => Err(ContextError::FoundUnexpectedStructure {
-            sought: "tree".to_string(),
-            found: "blob".to_string(),
-        }),
-        Some(Entry::Commit { .. }) => Err(ContextError::FoundUnexpectedStructure {
-            sought: "tree".to_string(),
-            found: "commit".to_string(),
-        }),
-        None => Ok(None),
     }
 }
