@@ -1,3 +1,5 @@
+ARG BASE_IMAGE=gcr.io/distroless/cc-debian10
+
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
 USER root
@@ -19,7 +21,7 @@ RUN mkdir /tmp/tezedge
 RUN mkdir /tmp/tezedge/light-node
 RUN chown appuser:appuser /tmp/tezedge
 
-FROM gcr.io/distroless/cc-debian10 as light-node
+FROM ${BASE_IMAGE} as light-node
 COPY --from=build-env /tmp/tezedge /
 
 # Copy binaries
