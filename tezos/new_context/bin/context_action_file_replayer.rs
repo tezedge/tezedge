@@ -260,10 +260,11 @@ impl StatsWriter {
         self.output.flush().unwrap();
     }
 
-    fn update(&mut self, block_nr: usize, tree: &WorkingTree) {
-        let report = tree.get_merkle_stats().unwrap();
+    fn update(&mut self, block_nr: usize, _tree: &WorkingTree) {
+        // TODO: this will not do anything as it is now
+        let report = tezos_new_context::working_tree::working_tree_stats::MerkleStoragePerfReport::default();
         let usage = report.kv_store_stats;
-        let block_latency = tree.get_block_latency(0).unwrap();
+        let block_latency = 0;
         self.block_latencies_total += block_latency as usize;
 
         let stats: String = format!(
