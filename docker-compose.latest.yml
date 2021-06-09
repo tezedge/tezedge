@@ -18,10 +18,10 @@ services:
     image: simplestakingcom/tezedge-explorer:latest
     hostname: explorer
     environment:
-      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927"}, "features":["MONITORING","MEMPOOL_ACTION","STORAGE_BLOCK"]}]'
+      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927", "features":["MONITORING","MEMPOOL_ACTION","STORAGE_BLOCK"]}]'
     ports:
       - "80:80"
-      - "8080:8080"
+      - "8080:80"
     networks:
       - default
     tty: true
