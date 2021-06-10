@@ -151,6 +151,10 @@ If you want to build from source code, you need to install this before:
     rustup default nightly-2020-12-31
     ```
 4. Install **required OS libs**
+    - OpenSSL
+    ```
+    sudo apt install openssl libssl-dev
+    ```
     - Sodiumoxide package:
     ```
     sudo apt install pkg-config libsodium-dev
