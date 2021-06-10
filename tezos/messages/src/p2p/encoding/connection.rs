@@ -11,12 +11,17 @@ use crypto::crypto_box::{PublicKey, CRYPTO_KEY_SIZE};
 use crypto::nonce::{Nonce, NONCE_SIZE};
 use crypto::proof_of_work::{ProofOfWork, POW_SIZE};
 use crypto::CryptoError;
-use tezos_encoding::{binary_reader::BinaryReaderError, encoding::HasEncoding, nom::NomReader};
+use tezos_encoding::generator::Generated;
+use tezos_encoding::{
+    binary_reader::BinaryReaderError, enc::BinWriter, encoding::HasEncoding, nom::NomReader,
+};
 
 use crate::p2p::binary_message::{BinaryChunk, BinaryRead};
 use crate::p2p::encoding::version::NetworkVersion;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, BinWriter, Generated,
+)]
 pub struct ConnectionMessage {
     #[get = "pub"]
     port: u16,

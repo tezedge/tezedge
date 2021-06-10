@@ -7,6 +7,7 @@ use std::{fs::File, io::Read, path::PathBuf};
 
 use criterion::{black_box, Criterion};
 use failure::{Error, ResultExt};
+use tezos_encoding::enc::{BinResult, BinWriter};
 use tezos_messages::p2p::binary_message::BinaryRead;
 
 pub fn read_data(file: &str) -> Result<Vec<u8>, Error> {
@@ -31,6 +32,20 @@ pub fn bench_decode<T: BinaryRead>(c: &mut Criterion, message: &str, data: &[u8]
     c.bench_function(&format!("{}-decode-nom", message), |b| {
         b.iter(|| {
             let _ = black_box(T::from_bytes(&data)).expect("Failed to decode with nom");
+        });
+    });
+}
+
+fn encode_bin<M: BinWriter>(msg: &M) -> BinResult {
+    let mut out = Vec::new();
+    msg.bin_write(&mut out)
+}
+
+pub fn bench_encode<T: BinaryRead + BinWriter>(c: &mut Criterion, message: &str, data: &[u8]) {
+    let msg = T::from_bytes(&data).expect("Failed to decode test message");
+    c.bench_function(&format!("{}-encode-bin", message), |b| {
+        b.iter(|| {
+            let _ = black_box(encode_bin(&msg)).expect("Failed to encode with new encoding");
         });
     });
 }

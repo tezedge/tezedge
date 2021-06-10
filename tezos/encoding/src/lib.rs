@@ -10,7 +10,7 @@ pub mod types;
 pub mod binary_reader;
 pub mod binary_writer;
 
+pub mod enc;
 pub mod encoding;
-pub mod error_context;
+pub mod generator;
 pub mod nom;
-pub mod ser;

@@ -8,6 +8,9 @@ use tezos_encoding::encoding::{Encoding, Field};
 use tezos_encoding::encoding::HasEncoding;
 use tezos_messages::p2p::binary_message::BinaryMessage;
 
+mod message_limit;
+use message_limit::*;
+
 /// Encoding node kind
 #[derive(Debug, PartialEq, Eq)]
 pub enum NodeKind {
@@ -55,9 +58,16 @@ impl NodePath {
     fn child(parent: &Rc<NodePath>, kind: NodeKind) -> Rc<Self> {
         Rc::new(NodePath::Child(parent.clone(), kind))
     }
+
+    fn is_child_of(self: &NodePath, other: &NodePath) -> bool {
+        match self {
+            NodePath::Root => false,
+            NodePath::Child(child, _) => child.as_ref() == other || child.is_child_of(other),
+        }
+    }
 }
 
-use std::fmt;
+use std::{cmp, fmt};
 
 impl fmt::Display for NodePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -217,6 +227,13 @@ impl EncodedDataGenerator {
         };
     }
 
+    fn increase_avail(&mut self, len: usize) {
+        self.avail = match self.avail {
+            Some(avail) => Some(avail + len),
+            _ => None,
+        };
+    }
+
     fn size(&mut self, size: usize) -> Vec<u8> {
         (size as u32).to_be_bytes().to_vec()
     }
@@ -282,12 +299,15 @@ impl EncodedDataGenerator {
         res
     }
 
-    fn bounded_non_min(&mut self, path: &Rc<NodePath>, max: usize, encoding: &Encoding) -> Vec<u8> {
-        self.avail = Some(max);
+    fn bounded_non_min(
+        &mut self,
+        path: &Rc<NodePath>,
+        _max: usize,
+        encoding: &Encoding,
+    ) -> Vec<u8> {
         self.mode = GenMode::Fill;
         let res = self.generate(path, encoding);
         self.mode = GenMode::MinNonEmpty;
-        self.avail = None;
         res
     }
 
@@ -303,19 +323,29 @@ impl EncodedDataGenerator {
     }
 
     fn bounded(&mut self, path: &Rc<NodePath>, max: usize, encoding: &Encoding) -> Vec<u8> {
-        if *path == self.path {
+        let self_avail = self.avail;
+        self.avail = Some(max);
+        let res = if *path == self.path {
             self.bounded_focused(path, max, encoding)
         } else {
             self.bounded_other(path, max, encoding)
-        }
+        };
+        self.avail = self_avail;
+        res
     }
 
-    fn dynamic_focused(&mut self, path: &Rc<NodePath>, max: usize, encoding: &Encoding) -> Vec<u8> {
-        self.avail = Some(max);
-        self.mode = GenMode::Fill;
+    fn dynamic_focused(
+        &mut self,
+        path: &Rc<NodePath>,
+        _max: usize,
+        encoding: &Encoding,
+    ) -> Vec<u8> {
+        self.mode = match self.kind {
+            GenKind::Min => GenMode::Min,
+            GenKind::Max | GenKind::Over => GenMode::Fill,
+        };
         let res = self.generate(path, encoding);
         self.mode = GenMode::MinNonEmpty;
-        self.avail = None;
         res
     }
 
@@ -325,13 +355,20 @@ impl EncodedDataGenerator {
 
     fn dynamic(&mut self, path: &Rc<NodePath>, max: Option<usize>, encoding: &Encoding) -> Vec<u8> {
         self.decrease_avail(4);
+        let self_avail = self.avail;
+        if let Some(max) = max {
+            self.avail = Some(cmp::min(max, self.avail.unwrap_or(max)));
+        }
         let res = if *path == self.path {
             self.dynamic_focused(path, max.expect("Focused dynamic without limit"), encoding)
         } else {
             self.dynamic_other(path, encoding)
         };
-        let mut size = self.size(res.len());
+        let len = res.len();
+        let mut size = self.size(len);
         size.extend(res);
+        self.avail = self_avail;
+        self.decrease_avail(len);
         size
     }
 
@@ -350,18 +387,30 @@ impl EncodedDataGenerator {
         self.filling = true;
         let mut res = Vec::new();
         let mut avail = self.available();
-        while avail > 0 {
-            let elt = self.generate(path, encoding);
-            assert!(elt.len() != 0);
-            if avail < elt.len() {
-                // restore avail
-                self.avail = Some(avail);
-                break;
-            }
-            avail -= elt.len();
-            self.avail = Some(avail);
-            res.extend(elt);
+        let self_kind = self.kind;
+        if self.kind == GenKind::Over {
+            self.kind = GenKind::Max;
         }
+        if let Encoding::Uint8 = encoding {
+            let elt = self.generate(path, encoding);
+            let elts = vec![elt[0]; avail];
+            self.avail = Some(0);
+            res.extend(elts);
+        } else {
+            while avail > 0 {
+                let elt = self.generate(path, encoding);
+                assert!(elt.len() != 0);
+                if avail < elt.len() {
+                    // restore avail
+                    self.avail = Some(avail);
+                    break;
+                }
+                avail -= elt.len();
+                self.avail = Some(avail);
+                res.extend(elt);
+            }
+        }
+        self.kind = self_kind;
         if self.kind == GenKind::Over {
             self.mode = GenMode::MinNonEmpty;
             let elt = self.generate(path, encoding);
@@ -394,26 +443,45 @@ impl EncodedDataGenerator {
 
     fn obj_fill(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
         let mut res = Vec::new();
-        self.mode = GenMode::MinNonEmpty;
-        // generate minimal non-empty for all fields except the last one
-        for i in 0..(fields.len() - 1) {
-            let field = &fields[i];
+        let self_kind = self.kind;
+        if self_kind == GenKind::Over {
+            self.kind = GenKind::Max;
+        }
+        let limits = fields
+            .iter()
+            .map(|f| get_limits(f.get_encoding()))
+            .collect::<Vec<_>>();
+        let min_sizes = limits.iter().map(Limits::lower).sum();
+        self.decrease_avail(min_sizes);
+        let last_var_len_field = limits.iter().enumerate().rev().find_map(|(i, l)| {
+            if l.upper().is_variable_length() {
+                Some(i)
+            } else {
+                None
+            }
+        });
+        for (i, (field, min_size)) in fields.iter().zip(limits.iter()).enumerate() {
+            self.increase_avail(min_size.lower());
             let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
+            if let Some(ind) = last_var_len_field {
+                if ind == i {
+                    self.kind = self_kind;
+                }
+            }
             res.extend(self.generate(&path, field.get_encoding()));
         }
-        // fill using the last field
-        self.mode = GenMode::Fill;
-        let field = &fields.last().unwrap();
-        let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
-        res.extend(self.generate(&path, field.get_encoding()));
         res
     }
 
     fn obj_other(&mut self, path: &Rc<NodePath>, fields: &Vec<Field>) -> Vec<u8> {
         let mut res = Vec::new();
-        self.mode = GenMode::MinNonEmpty;
         for field in fields {
             let path = NodePath::child(&path, NodeKind::Field(field.get_name().clone()));
+            self.mode = if self.path.is_child_of(&path) {
+                GenMode::MinNonEmpty
+            } else {
+                GenMode::Min
+            };
             res.extend(self.generate(&path, field.get_encoding()));
         }
         res
@@ -427,7 +495,7 @@ impl EncodedDataGenerator {
     }
 
     pub fn generate(&mut self, path: &Rc<NodePath>, encoding: &Encoding) -> Vec<u8> {
-        match encoding {
+        let res = match encoding {
             Encoding::Bounded(max, encoding) => {
                 let path = NodePath::child(&path, NodeKind::Bounded(Some(*max)));
                 self.bounded(&path, *max, encoding)
@@ -474,7 +542,8 @@ impl EncodedDataGenerator {
             }
             */
             _ => unimplemented!("{:?}", encoding),
-        }
+        };
+        res
     }
 }
 
@@ -500,10 +569,10 @@ where
     T: HasEncoding + BinaryMessage,
 {
     with_generated_encoded_data(T::encoding(), |data, correct, _, _| {
-        let res = T::from_bytes(data);
+        let res = T::from_bytes(&data);
         match (correct, res) {
             (true, Err(e)) => panic!("Expected correct decoding, got {:?}", e),
-            (false, Ok(_)) => panic!("Expected failing decoding, got Ok"),
+            (false, Ok(_)) => panic!("Expected failing decoding, got Ok: {}", hex::encode(data)),
             _ => (),
         }
     });

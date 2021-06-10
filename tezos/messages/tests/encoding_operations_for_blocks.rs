@@ -204,7 +204,7 @@ fn create_operations_for_blocks(depth: usize) -> PeerMessageResponse {
 
 #[test]
 fn can_deserialize_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
+    let depth = MAX_PASS_MERKLE_DEPTH;
     let message_bytes = create_operations_for_blocks_encoded(depth as usize);
     let message = PeerMessageResponse::from_bytes(message_bytes)?;
 
@@ -225,9 +225,7 @@ fn can_deserialize_operations_for_blocks_left_deep() -> Result<(), Error> {
 
 #[test]
 fn can_deserialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
-    let message_bytes = create_operations_for_blocks_encoded(
-        MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected") as usize + 1,
-    );
+    let message_bytes = create_operations_for_blocks_encoded(MAX_PASS_MERKLE_DEPTH as usize + 1);
     let result = PeerMessageResponse::from_bytes(message_bytes);
     assert!(result.is_err());
 
@@ -246,7 +244,7 @@ fn can_deserialize_operations_for_blocks_no_stack_overflow() -> Result<(), Error
 
 #[test]
 fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
-    let depth = MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected");
+    let depth = MAX_PASS_MERKLE_DEPTH;
     let message = create_operations_for_blocks(depth);
     let encoded = PeerMessageResponse::from(message).as_bytes()?;
     let expected = create_operations_for_blocks_encoded(depth);
@@ -257,8 +255,7 @@ fn can_serialize_operations_for_blocks_left_deep() -> Result<(), Error> {
 
 #[test]
 fn can_serialize_operations_for_blocks_left_too_deep() -> Result<(), Error> {
-    let message =
-        create_operations_for_blocks(MAX_PASS_MERKLE_DEPTH.expect("Bounded encoding expected") + 1);
+    let message = create_operations_for_blocks(MAX_PASS_MERKLE_DEPTH + 1);
     let result = PeerMessageResponse::from(message).as_bytes();
     assert!(result.is_err());
 

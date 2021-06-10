@@ -5,13 +5,14 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crate::p2p::{binary_message::SizeFromChunk, encoding::prelude::*, peer_message_size};
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
 use super::limits::MESSAGE_MAX_SIZE;
 
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
-#[encoding(tags = "u16", ignore_unknown)]
+#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader, BinWriter)]
+#[encoding(tags = "u16")]
 pub enum PeerMessage {
     #[encoding(tag = 0x01)]
     Disconnect,
@@ -51,7 +52,7 @@ pub enum PeerMessage {
     OperationsForBlocks(OperationsForBlocksMessage),
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader)]
+#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, BinWriter)]
 #[encoding(dynamic = "MESSAGE_MAX_SIZE")]
 pub struct PeerMessageResponse {
     #[get = "pub"]
@@ -95,6 +96,8 @@ into_peer_message!(GetCurrentHeadMessage, GetCurrentHead);
 into_peer_message!(CurrentHeadMessage, CurrentHead);
 into_peer_message!(GetOperationsForBlocksMessage, GetOperationsForBlocks);
 into_peer_message!(OperationsForBlocksMessage, OperationsForBlocks);
+into_peer_message!(GetProtocolsMessage, GetProtocols);
+into_peer_message!(ProtocolMessage, Protocol);
 into_peer_message!(GetOperationsMessage, GetOperations);
 into_peer_message!(OperationMessage, Operation);
 

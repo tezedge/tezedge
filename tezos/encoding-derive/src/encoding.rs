@@ -29,6 +29,15 @@ pub struct FieldEncoding<'a> {
     pub kind: FieldKind<'a>,
 }
 
+impl<'a> FieldEncoding<'a> {
+    pub fn encoding(&'a self) -> Option<&Encoding<'a>> {
+        match &self.kind {
+            FieldKind::Encoded(encoding) => Some(&encoding),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct EnumEncoding<'a> {
     pub name: &'a syn::Ident,

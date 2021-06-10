@@ -5,6 +5,7 @@ use getset::Getters;
 use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
@@ -12,7 +13,18 @@ use super::block_header::BlockHeader;
 use super::limits::BLOCK_HEADER_MAX_SIZE;
 use super::mempool::Mempool;
 
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader, PartialEq)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    PartialEq,
+    tezos_encoding::generator::Generated,
+)]
 pub struct CurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,
@@ -38,7 +50,17 @@ impl CurrentHeadMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize,
+    Deserialize,
+    Debug,
+    Getters,
+    Clone,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    tezos_encoding::generator::Generated,
+)]
 pub struct GetCurrentHeadMessage {
     #[get = "pub"]
     chain_id: ChainId,

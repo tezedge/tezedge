@@ -115,17 +115,12 @@ fn generate_bytes_nom_read(span: Span) -> TokenStream {
 
 fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
     let generate_nom_read = match encoding.fields.len() {
-        0 => generate_struct_no_fields_nom_read,
+        0 => unreachable!("No decoding for empty struct"),
         1 => generate_struct_one_field_nom_read,
         n if n < NOM_TUPLE_MAX => generate_struct_many_fields_nom_read,
         _ => generate_struct_multi_fields_nom_read,
     };
     generate_nom_read(encoding)
-}
-
-fn generate_struct_no_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
-    let name = encoding.name;
-    quote_spanned!(encoding.name.span()=> nom::combinator::success(#name {}))
 }
 
 fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream {
