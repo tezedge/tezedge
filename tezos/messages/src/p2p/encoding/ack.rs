@@ -10,10 +10,12 @@ use nom::{
     combinator::{map, success},
     sequence::preceded,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use tezos_encoding::{
+    enc::BinWriter,
     encoding::HasEncoding,
+    generator::Generated,
     nom::{size, NomReader},
 };
 
@@ -21,7 +23,7 @@ use crate::p2p::binary_message::{complete_input, SizeFromChunk};
 
 use super::limits::{NACK_PEERS_MAX_LENGTH, P2P_POINT_MAX_SIZE};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, HasEncoding, NomReader)]
+#[derive(Serialize, PartialEq, Clone, Debug, HasEncoding, NomReader, BinWriter, Generated)]
 pub enum AckMessage {
     #[encoding(tag = 0x00)]
     Ack,
@@ -51,7 +53,7 @@ impl SizeFromChunk for AckMessage {
     }
 }
 
-#[derive(Serialize, Deserialize, Getters, PartialEq, HasEncoding, NomReader)]
+#[derive(Serialize, Getters, PartialEq, Clone, HasEncoding, NomReader, BinWriter, Generated)]
 pub struct NackInfo {
     #[get = "pub"]
     motive: NackMotive,
@@ -64,7 +66,7 @@ pub struct NackInfo {
     potential_peers_to_connect: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, HasEncoding, NomReader)]
+#[derive(Serialize, PartialEq, Clone, HasEncoding, NomReader, BinWriter, Generated)]
 #[encoding(tags = "u16")]
 pub enum NackMotive {
     NoMotive,

@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use getset::Getters;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crypto::hash::{BlockHash, ChainId};
+use tezos_encoding::enc::BinWriter;
 use tezos_encoding::encoding::HasEncoding;
 use tezos_encoding::nom::NomReader;
 
@@ -12,7 +13,17 @@ use crate::p2p::encoding::block_header::BlockHeader;
 
 use super::limits::CURRENT_BRANCH_HISTORY_MAX_LENGTH;
 
-#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, PartialEq)]
+#[derive(
+    Clone,
+    Serialize,
+    Debug,
+    Getters,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    PartialEq,
+    tezos_encoding::generator::Generated,
+)]
 pub struct CurrentBranchMessage {
     #[get = "pub"]
     chain_id: ChainId,
@@ -30,7 +41,17 @@ impl CurrentBranchMessage {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Clone, Serialize, Deserialize, Debug, Getters, HasEncoding, NomReader, PartialEq)]
+#[derive(
+    Clone,
+    Serialize,
+    Debug,
+    Getters,
+    HasEncoding,
+    NomReader,
+    BinWriter,
+    PartialEq,
+    tezos_encoding::generator::Generated,
+)]
 pub struct CurrentBranch {
     #[get = "pub"]
     #[encoding(dynamic = "super::limits::BLOCK_HEADER_MAX_SIZE")]
@@ -51,7 +72,9 @@ impl CurrentBranch {
 }
 
 // -----------------------------------------------------------------------------------------------
-#[derive(Serialize, Deserialize, Debug, Clone, HasEncoding, NomReader)]
+#[derive(
+    Serialize, Debug, Clone, HasEncoding, NomReader, BinWriter, tezos_encoding::generator::Generated,
+)]
 pub struct GetCurrentBranchMessage {
     pub chain_id: ChainId,
 }

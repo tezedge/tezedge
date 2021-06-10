@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::lazy::SyncLazy;
+
 use crate::encoding::*;
 use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, quote_spanned};
@@ -44,38 +46,13 @@ fn generate_nom_read(encoding: &Encoding) -> TokenStream {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref PRIMITIVE_BYTES_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
-        use crate::encoding::PrimitiveEncoding::*;
-        vec![
-            (Int8, "i8"),
-            (Uint8, "u8"),
-        ]
-    };
-
-    static ref PRIMITIVE_NUMBERS_MAPPING: Vec<(PrimitiveEncoding, &'static str)> = {
-        use crate::encoding::PrimitiveEncoding::*;
-        vec![
-            (Int16, "i16"),
-            (Uint16, "u16"),
-            (Int31, "i32"),
-            (Int32, "i32"),
-            (Uint32, "u32"),
-            (Int64, "i64"),
-            (Float, "f64"),
-            (Timestamp, "i64"),
-        ]
-    };
-}
-
 fn get_primitive_byte_mapping(kind: PrimitiveEncoding) -> Option<&'static str> {
+    static PRIMITIVE_BYTES_MAPPING: SyncLazy<Vec<(PrimitiveEncoding, &'static str)>> =
+        SyncLazy::new(|| {
+            use crate::encoding::PrimitiveEncoding::*;
+            vec![(Int8, "i8"), (Uint8, "u8")]
+        });
     PRIMITIVE_BYTES_MAPPING
-        .iter()
-        .find_map(|(k, s)| if kind == *k { Some(*s) } else { None })
-}
-
-fn get_primitive_number_mapping(kind: PrimitiveEncoding) -> Option<&'static str> {
-    PRIMITIVE_NUMBERS_MAPPING
         .iter()
         .find_map(|(k, s)| if kind == *k { Some(*s) } else { None })
 }
@@ -115,17 +92,12 @@ fn generate_bytes_nom_read(span: Span) -> TokenStream {
 
 fn generate_struct_nom_read(encoding: &StructEncoding) -> TokenStream {
     let generate_nom_read = match encoding.fields.len() {
-        0 => generate_struct_no_fields_nom_read,
+        0 => unreachable!("No decoding for empty struct"),
         1 => generate_struct_one_field_nom_read,
         n if n < NOM_TUPLE_MAX => generate_struct_many_fields_nom_read,
         _ => generate_struct_multi_fields_nom_read,
     };
     generate_nom_read(encoding)
-}
-
-fn generate_struct_no_fields_nom_read(encoding: &StructEncoding) -> TokenStream {
-    let name = encoding.name;
-    quote_spanned!(encoding.name.span()=> nom::combinator::success(#name {}))
 }
 
 fn generate_struct_one_field_nom_read(encoding: &StructEncoding) -> TokenStream {
