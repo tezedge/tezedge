@@ -8,7 +8,6 @@ use failure::{bail, format_err, Fail};
 use getset::Getters;
 use tezos_new_context::context_key_owned;
 
-use crate::server::TezedgeContextRemote;
 use crypto::hash::ContextHash;
 use crypto::{
     blake2b::{self, Blake2bError},
@@ -17,6 +16,7 @@ use crypto::{
 use storage::{num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryRead;
+use tezos_wrapper::TezedgeContextClient;
 
 use crate::merge_slices;
 use crate::services::protocol::ContextProtocolParam;
@@ -125,7 +125,7 @@ impl RightsContextData {
     pub(crate) fn prepare_context_data_for_rights(
         parameters: RightsParams,
         constants: RightsConstants,
-        (ctx_hash, context): (&ContextHash, &TezedgeContextRemote),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
     ) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -198,7 +198,7 @@ impl RightsContextData {
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
     fn get_context_rolls(
-        (ctx_hash, context): (&ContextHash, &TezedgeContextRemote),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
         cycle: i64,
         snapshot: i16,
     ) -> Result<Option<HashMap<i32, String>>, failure::Error> {
