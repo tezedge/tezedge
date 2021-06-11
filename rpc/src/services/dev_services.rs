@@ -1,25 +1,36 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO - TE-261: many things commented out here because they don't work with the new
+// context until we reintroduce something equivalent to the context actions storage.
+// The timings database, along with the readonly IPC context access could be used
+// to reproduce the same functionality.
+
+use std::convert::TryFrom;
+
+use crypto::hash::ContractKt1Hash;
 use failure::bail;
 use serde::Serialize;
 use slog::Logger;
 
-use crypto::hash::{BlockHash, ChainId};
+use crypto::hash::{BlockHash, ChainId, ContractTz1Hash, ContractTz2Hash, ContractTz3Hash};
 use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
-use storage::context::actions::context_action_storage::{
-    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
-    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
-};
+//use tezos_new_context::actions::context_action_storage::{
+//    contract_id_to_contract_address_for_index, ContextActionBlockDetails, ContextActionFilters,
+//    ContextActionJson, ContextActionRecordValue, ContextActionStorageReader, ContextActionType,
+//};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
 };
 use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
+use tezos_messages::base::ConversionError;
 
 use crate::helpers::{BlockMetadata, PagedResult};
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
+
+pub type ContractAddress = Vec<u8>;
 
 /// Get actions for a specific block in ascending order.
 #[allow(dead_code)]
@@ -35,92 +46,107 @@ pub(crate) fn get_block_actions(
 
 #[allow(dead_code)]
 pub(crate) fn get_block_actions_by_hash(
-    context_action_storage: &ContextActionStorageReader,
-    block_hash: &BlockHash,
+    _context_action_storage: &(), /*&ContextActionStorageReader,*/
+    _block_hash: &BlockHash,
 ) -> Result<Vec<ContextAction>, failure::Error> {
-    context_action_storage
-        .get_by_block_hash(&block_hash)
-        .map(|values| values.into_iter().map(|v| v.into_action()).collect())
-        .map_err(|e| e.into())
+    //context_action_storage
+    //    .get_by_block_hash(&block_hash)
+    //    .map(|values| values.into_iter().map(|v| v.into_action()).collect())
+    //    .map_err(|e| e.into())
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
+    ))
 }
 
 pub(crate) fn get_block_actions_cursor(
-    block_hash: BlockHash,
-    cursor_id: Option<u64>,
-    limit: Option<usize>,
-    action_types: Option<&str>,
-    persistent_storage: &PersistentStorage,
-) -> Result<Vec<ContextActionJson>, failure::Error> {
-    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
-    let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
-    if let Some(action_types) = action_types {
-        filters = filters.with_action_types(get_action_types(action_types));
-    }
-    let values = context_action_storage
-        .load_cursor(cursor_id, limit, filters)?
-        .into_iter()
-        .map(ContextActionJson::from)
-        .collect();
-    Ok(values)
+    _block_hash: BlockHash,
+    _cursor_id: Option<u64>,
+    _limit: Option<usize>,
+    _action_types: Option<&str>,
+    _persistent_storage: &PersistentStorage,
+) -> Result<Vec<() /*ContextActionJson*/>, failure::Error> {
+    //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
+    //let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
+    //if let Some(action_types) = action_types {
+    //    filters = filters.with_action_types(get_action_types(action_types));
+    //}
+    //let values = context_action_storage
+    //    .load_cursor(cursor_id, limit, filters)?
+    //    .into_iter()
+    //    .map(ContextActionJson::from)
+    //    .collect();
+    //Ok(values)
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
+    ))
 }
 
 pub(crate) fn get_block_action_details(
-    block_hash: BlockHash,
-    persistent_storage: &PersistentStorage,
-) -> Result<ContextActionBlockDetails, failure::Error> {
-    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
+    _block_hash: BlockHash,
+    _persistent_storage: &PersistentStorage,
+) -> Result<() /*ContextActionBlockDetails*/, failure::Error> {
+    //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
 
-    let actions: Vec<ContextAction> = context_action_storage
-        .get_by_block_hash(&block_hash)?
-        .into_iter()
-        .map(|action_record| action_record.action)
-        .collect();
+    //let actions: Vec<ContextAction> = context_action_storage
+    //    .get_by_block_hash(&block_hash)?
+    //    .into_iter()
+    //    .map(|action_record| action_record.action)
+    //    .collect();
 
-    Ok(ContextActionBlockDetails::calculate_block_action_details(
-        actions,
+    //Ok(ContextActionBlockDetails::calculate_block_action_details(
+    //    actions,
+    //))
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
     ))
 }
 
 pub(crate) fn get_contract_actions_cursor(
-    contract_address: &str,
-    cursor_id: Option<u64>,
-    limit: Option<usize>,
-    action_types: Option<&str>,
-    persistent_storage: &PersistentStorage,
-) -> Result<Vec<ContextActionJson>, failure::Error> {
-    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
-    let contract_address = contract_id_to_contract_address_for_index(contract_address)?;
-    let mut filters = ContextActionFilters::with_contract_id(contract_address);
-    if let Some(action_types) = action_types {
-        filters = filters.with_action_types(get_action_types(action_types));
-    }
-    let values = context_action_storage
-        .load_cursor(cursor_id, limit, filters)?
-        .into_iter()
-        .map(ContextActionJson::from)
-        .collect();
-    Ok(values)
+    _contract_address: &str,
+    _cursor_id: Option<u64>,
+    _limit: Option<usize>,
+    _action_types: Option<&str>,
+    _persistent_storage: &PersistentStorage,
+) -> Result<Vec<() /*ContextActionJson*/>, failure::Error> {
+    //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
+    //let contract_address = contract_id_to_contract_address_for_index(contract_address)?;
+    //let mut filters = ContextActionFilters::with_contract_id(contract_address);
+    //if let Some(action_types) = action_types {
+    //    filters = filters.with_action_types(get_action_types(action_types));
+    //}
+    //let values = context_action_storage
+    //    .load_cursor(cursor_id, limit, filters)?
+    //    .into_iter()
+    //    .map(ContextActionJson::from)
+    //    .collect();
+    //Ok(values)
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
+    ))
 }
 
 /// Get actions for a specific contract in ascending order.
 #[allow(dead_code)]
 pub(crate) fn get_contract_actions(
-    contract_id: &str,
-    from_id: Option<u64>,
-    limit: usize,
-    persistent_storage: &PersistentStorage,
-) -> Result<PagedResult<Vec<ContextActionRecordValue>>, failure::Error> {
-    let context_action_storage = ensure_context_action_storage(persistent_storage)?;
-    let contract_address = contract_id_to_contract_address_for_index(contract_id)?;
-    let mut context_records =
-        context_action_storage.get_by_contract_address(&contract_address, from_id, limit + 1)?;
-    let next_id = if context_records.len() > limit {
-        context_records.last().map(|rec| rec.id())
-    } else {
-        None
-    };
-    context_records.truncate(std::cmp::min(context_records.len(), limit));
-    Ok(PagedResult::new(context_records, next_id, limit))
+    _contract_id: &str,
+    _from_id: Option<u64>,
+    _limit: usize,
+    _persistent_storage: &PersistentStorage,
+) -> Result<PagedResult<Vec<() /*ContextActionRecordValue*/>>, failure::Error> {
+    //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
+    //let contract_address = contract_id_to_contract_address_for_index(contract_id)?;
+    //let mut context_records =
+    //    context_action_storage.get_by_contract_address(&contract_address, from_id, limit + 1)?;
+    //let next_id = if context_records.len() > limit {
+    //    context_records.last().map(|rec| rec.id())
+    //} else {
+    //    None
+    //};
+    //context_records.truncate(std::cmp::min(context_records.len(), limit));
+    //Ok(PagedResult::new(context_records, next_id, limit))
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
+    ))
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
@@ -165,23 +191,21 @@ pub(crate) fn get_dev_version() -> String {
 }
 
 #[inline]
-pub(crate) fn get_action_types(action_types: &str) -> Vec<ContextActionType> {
-    action_types
-        .split(',')
-        .filter_map(|x: &str| x.parse().ok())
-        .collect()
+pub(crate) fn _get_action_types(_action_types: &str) -> Vec<() /*ContextActionType*/> {
+    //action_types
+    //    .split(',')
+    //    .filter_map(|x: &str| x.parse().ok())
+    //    .collect()
+    vec![]
 }
 
 #[inline]
 pub(crate) fn ensure_context_action_storage(
-    persistent_storage: &PersistentStorage,
-) -> Result<ContextActionStorageReader, failure::Error> {
-    match persistent_storage.merkle_context_actions() {
-        None => Err(failure::format_err!(
-            "Persistent context actions storage is not initialized!"
-        )),
-        Some(context_action_storage) => Ok(ContextActionStorageReader::new(context_action_storage)),
-    }
+    _persistent_storage: &PersistentStorage,
+) -> Result<() /*ContextActionStorageReader*/, failure::Error> {
+    Err(failure::format_err!(
+        "Persistent context actions storage is not implemented!"
+    ))
 }
 
 /// Retrieve blocks from database.
@@ -253,4 +277,54 @@ pub struct SlimBlockData {
     // Note: serde's Value can be converted into Option<i64> without panicing, the original tezos value is an i32
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cycle_position: Option<i64>,
+}
+
+/// Dedicated function to convert contract id to contract address for indexing in storage action,
+/// contract id index has specified length [LEN_TOTAL]
+///
+/// # Arguments
+///
+/// * `contract_id` - contract id (tz... or KT1...)
+#[inline]
+pub(crate) fn contract_id_to_contract_address_for_index(
+    contract_id: &str,
+) -> Result<ContractAddress, ConversionError> {
+    let contract_address = {
+        if contract_id.len() == 44 {
+            hex::decode(contract_id)?
+        } else if contract_id.len() > 3 {
+            let mut contract_address = Vec::with_capacity(22);
+            match &contract_id[0..3] {
+                "tz1" => {
+                    contract_address.extend(&[0, 0]);
+                    contract_address.extend(ContractTz1Hash::try_from(contract_id)?.as_ref());
+                }
+                "tz2" => {
+                    contract_address.extend(&[0, 1]);
+                    contract_address.extend(ContractTz2Hash::try_from(contract_id)?.as_ref());
+                }
+                "tz3" => {
+                    contract_address.extend(&[0, 2]);
+                    contract_address.extend(ContractTz3Hash::try_from(contract_id)?.as_ref());
+                }
+                "KT1" => {
+                    contract_address.push(1);
+                    contract_address.extend(ContractKt1Hash::try_from(contract_id)?.as_ref());
+                    contract_address.push(0);
+                }
+                _ => {
+                    return Err(ConversionError::InvalidCurveTag {
+                        curve_tag: contract_id.to_string(),
+                    });
+                }
+            }
+            contract_address
+        } else {
+            return Err(ConversionError::InvalidHash {
+                hash: contract_id.to_string(),
+            });
+        }
+    };
+
+    Ok(contract_address)
 }

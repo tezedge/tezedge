@@ -69,7 +69,6 @@ fn test_storage() -> Result<(), Error> {
         &tmp_storage_dir,
         &context_storage_configuration,
         &None,
-        false,
         &None,
         &None,
         &log,

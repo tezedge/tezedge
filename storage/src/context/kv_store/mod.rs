@@ -15,11 +15,8 @@ pub mod rocksdb_backend;
 pub mod sled_backend;
 pub mod stats;
 
-pub const ROCKSDB: &str = "rocksdb";
-
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {
-    RocksDB { path: PathBuf },
     InMem,
     Sled { path: PathBuf },
     BTreeMap,
@@ -36,7 +33,6 @@ impl SupportedContextKeyValueStore {
 
     fn supported_values(&self) -> Vec<&'static str> {
         match self {
-            SupportedContextKeyValueStore::RocksDB { .. } => vec![ROCKSDB],
             SupportedContextKeyValueStore::InMem => vec!["inmem"],
             SupportedContextKeyValueStore::Sled { .. } => vec!["sled"],
             SupportedContextKeyValueStore::BTreeMap => vec!["btree"],
@@ -115,14 +111,6 @@ pub mod test_support {
 
         for sckvs in SupportedContextKeyValueStore::iter() {
             let _ = match sckvs {
-                SupportedContextKeyValueStore::RocksDB { .. } => store_factories.insert(
-                    SupportedContextKeyValueStore::RocksDB {
-                        path: base_dir.clone(),
-                    },
-                    Box::new(RocksDbBackendTestContextKvStoreFactory {
-                        base_path: base_dir.clone(),
-                    }),
-                ),
                 SupportedContextKeyValueStore::InMem => store_factories.insert(
                     SupportedContextKeyValueStore::InMem,
                     Box::new(InMemoryBackendTestContextKvStoreFactory),

@@ -149,7 +149,6 @@ pub struct ProtocolEndpointConfiguration {
     pub storage: TezosContextStorageConfiguration,
     pub executable_path: PathBuf,
     pub log_level: Level,
-    pub event_server_path: Option<PathBuf>,
 }
 
 impl ProtocolEndpointConfiguration {
@@ -160,7 +159,6 @@ impl ProtocolEndpointConfiguration {
         storage: TezosContextStorageConfiguration,
         executable_path: P,
         log_level: Level,
-        event_server_path: Option<PathBuf>,
     ) -> Self {
         Self {
             runtime_configuration,
@@ -169,7 +167,6 @@ impl ProtocolEndpointConfiguration {
             storage,
             executable_path: executable_path.as_ref().into(),
             log_level,
-            event_server_path,
         }
     }
 }

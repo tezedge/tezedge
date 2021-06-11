@@ -35,10 +35,6 @@ clap = "2.33"
 slog-term = "2.6"
 slog-async = "2.6"
 
-[[bin]]
-name = "context-actions-replayer"
-path = "src/bin/context_action_file_replayer.rs"
-
 [[bench]]
 name = "predecessor_benchmarks"
 harness = false

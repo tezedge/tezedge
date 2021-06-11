@@ -1,10 +1,11 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+// NOTE: unsafe cannot be forbidden right now because of code in systems.rs
 // #![forbid(unsafe_code)]
 
+use std::sync::Condvar;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::{path::PathBuf, sync::Condvar};
 
 use riker::actors::*;
 use slog::{debug, error, info, warn, Logger};
@@ -18,19 +19,17 @@ use shell::mempool::init_mempool_state_storage;
 use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::peer_manager::PeerManager;
+use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
 use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
 use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
-use shell::{context_listener::ContextListener, shell_channel::ShellChannelRef};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::{
-    initializer::{
-        initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
-    },
+    initializer::{initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache},
     BlockMetaStorage, Replay,
 };
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
@@ -38,7 +37,6 @@ use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
-use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
@@ -77,6 +75,8 @@ fn create_tezos_readonly_api_pool(
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
+    // TODO: context_storage_configuration needs to be readjusted so that
+    // when tezedge is enabled, the IPC version is used
     TezosApiConnectionPool::new_with_readonly_context(
         String::from(pool_name),
         pool_cfg,
@@ -91,7 +91,6 @@ fn create_tezos_readonly_api_pool(
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            None,
         ),
         log,
     )
@@ -120,7 +119,6 @@ fn create_tezos_without_context_api_pool(
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            None,
         ),
         log,
     )
@@ -129,7 +127,6 @@ fn create_tezos_without_context_api_pool(
 /// Create pool for ffi protocol runner connection (used for write to context)
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 fn create_tezos_writeable_api_pool(
-    event_server_path: Option<PathBuf>,
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
@@ -148,16 +145,14 @@ fn create_tezos_writeable_api_pool(
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes
-                    && !env.storage.context_action_recorders.is_empty(),
-                debug_mode: !env.storage.context_action_recorders.is_empty(),
+                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
+                debug_mode: false,
             },
             tezos_env,
             env.enable_testchain,
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            event_server_path,
         ),
         log,
     )
@@ -181,11 +176,10 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    let context_action_recorders = env
-        .build_recorders(&persistent_storage)
-        .expect("Failed to configure context action recorders");
-
     info!(log, "Initializing protocol runners... (4/5)");
+
+    // TODO: create socket path here with temp_sock() and pass it around
+    // readonly protocol runners will poll it until it is available
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(
@@ -220,22 +214,9 @@ fn block_on_actors(
     );
 
     // pool and event server dedicated for applying blocks to chain
-    let context_actions_event_server =
-        IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
     let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(
-            // TODO: ignore context_recorders and wait for new_context
-            // if context_action_recorders.is_empty() && env.storage.one_context {
-            if env.storage.one_context {
-                None
-            } else {
-                Some(context_actions_event_server.server_path())
-            },
-            &env,
-            tezos_env.clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize writable API pool"),
+        create_tezos_writeable_api_pool(&env, tezos_env.clone(), log.clone())
+            .expect("Failed to initialize writable API pool"),
     );
     info!(log, "Protocol runners initialized");
 
@@ -267,20 +248,6 @@ fn block_on_actors(
     let mempool_channel =
         MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
-    if env.storage.one_context {
-        ()
-    } else {
-        let _ = ContextListener::actor(
-            &actor_system,
-            shell_channel.clone(),
-            &persistent_storage,
-            context_action_recorders,
-            context_actions_event_server,
-            log.clone(),
-        )
-        .expect("Failed to create context event listener");
-    }
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
@@ -667,52 +634,14 @@ fn main() {
     );
     let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
 
-    // TODO - TE-261: after the integration remove all the merkle stuff
-    // initialize merkle context
-    let merkle = Arc::new(Mutex::new(
-        initialize_merkle(
-            &env.storage.context_kv_store,
-            &main_chain,
-            &log,
-            &mut caches,
-        )
-        .expect("Failed to initialize merkle storage"),
-    ));
-
-    // context actions persistent db (optional)
-    let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {
-        Some(merkle_context_actions_store) => {
-            let kv_actions_cache =
-                RocksDbCache::new_lru_cache(merkle_context_actions_store.cache_size)
-                    .expect("Failed to initialize RocksDB cache (db_context_actions)");
-            let kv_actions = initialize_rocksdb(
-                &log,
-                &kv_actions_cache,
-                &merkle_context_actions_store,
-                &main_chain,
-            )
-            .expect("Failed to create/initialize RocksDB database (db_context_actions)");
-            caches.push(kv_actions_cache);
-            Some(kv_actions)
-        }
-        None => None,
-    };
-
     {
-        let persistent_storage = PersistentStorage::new(
-            kv,
-            commit_logs,
-            sequences,
-            merkle,
-            merkle_context_actions_store,
-        );
+        let persistent_storage = PersistentStorage::new(kv, commit_logs, sequences);
 
         match resolve_storage_init_chain_data(
             &tezos_env,
             &env.storage.db_path,
             &env.storage.context_storage_configuration,
             &env.storage.patch_context,
-            env.storage.one_context,
             &env.storage.context_stats_db_path,
             &env.replay,
             &log,

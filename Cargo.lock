@@ -2026,6 +2026,7 @@ dependencies = [
  "tezos_api",
  "tezos_identity",
  "tezos_messages",
+ "tezos_new_context",
  "tezos_wrapper",
  "tokio",
 ]
@@ -3543,6 +3544,7 @@ dependencies = [
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
+ "tezos_new_context",
  "tezos_wrapper",
  "tokio",
  "zip",
