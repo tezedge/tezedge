@@ -520,9 +520,6 @@ fn main() {
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
 
-
-
-
     // initialize dbs
     let maindb = initialize_maindb(
         &log,

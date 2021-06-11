@@ -7,16 +7,16 @@ use derive_builder::Builder;
 
 use crate::commit_log::{CommitLogError, CommitLogs};
 use crate::database::error::Error as DatabaseError;
+use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::database::tezedge_database::{
     TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
 };
+use crate::initializer::{DbsRocksDbTableInitializer, RocksDbColumnFactory, RocksDbConfig};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
-pub use schema::{CommitLogDescriptor, CommitLogSchema};
-use crate::database::rockdb_backend::RocksDBBackend;
 use rocksdb::Cache;
-use crate::initializer::{DbsRocksDbTableInitializer, RocksDbColumnFactory, RocksDbConfig};
+pub use schema::{CommitLogDescriptor, CommitLogSchema};
 
 pub mod codec;
 pub mod database;
@@ -39,9 +39,9 @@ impl Default for DbConfiguration {
 
 /// Open commit log at a given path.
 pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
-    where
-        P: AsRef<Path>,
-        I: IntoIterator<Item=CommitLogDescriptor>,
+where
+    P: AsRef<Path>,
+    I: IntoIterator<Item = CommitLogDescriptor>,
 {
     CommitLogs::new(path, cfs)
 }
@@ -49,12 +49,12 @@ pub fn open_cl<P, I>(path: P, cfs: I) -> Result<CommitLogs, CommitLogError>
 /// Open commit log at a given path.
 pub fn open_main_db<P, C: RocksDbColumnFactory>(
     cache: &Cache,
-    config : &RocksDbConfig<C>,
+    config: &RocksDbConfig<C>,
     _path: P,
     backend_config: TezedgeDatabaseBackendConfiguration,
 ) -> Result<TezedgeDatabase, DatabaseError>
-    where
-        P: AsRef<Path>,
+where
+    P: AsRef<Path>,
 {
     let backend = match backend_config {
         TezedgeDatabaseBackendConfiguration::Sled => {
@@ -66,7 +66,6 @@ pub fn open_main_db<P, C: RocksDbColumnFactory>(
     };
     Ok(TezedgeDatabase::new(backend))
 }
-
 
 /// This trait extends basic column family by introducing Codec types safety and enforcement
 pub trait KeyValueSchema {

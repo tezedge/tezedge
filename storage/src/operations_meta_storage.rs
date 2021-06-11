@@ -7,9 +7,7 @@ use std::sync::{Arc, RwLock};
 use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
-};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::PersistentStorage;
@@ -135,7 +133,6 @@ impl OperationsMetaStorage {
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
     }
-
 }
 
 impl KeyValueSchema for OperationsMetaStorage {
@@ -407,8 +404,8 @@ mod tests {
 
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+    use crate::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
     use crypto::hash::HashType;
-    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
     use std::path::PathBuf;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
@@ -510,7 +507,12 @@ mod tests {
                 columns: DbsRocksDbTableInitializer,
                 threads: Some(1),
             };
-            let db = open_main_db(&cache,&config,config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB)?;
+            let db = open_main_db(
+                &cache,
+                &config,
+                config.db_path.as_path(),
+                TezedgeDatabaseBackendConfiguration::RocksDB,
+            )?;
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,

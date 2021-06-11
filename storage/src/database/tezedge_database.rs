@@ -1,26 +1,24 @@
 use crate::block_storage::{BlockByContextHashIndex, BlockByLevelIndex, BlockPrimaryIndex};
-use crate::database::backend::{
-    BackendIteratorMode, TezedgeDatabaseBackendStore,
-};
+use crate::context::ContextError::StorageError;
+use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
+use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::sequence::Sequences;
-use crate::persistent::{KeyValueSchema, SchemaError, Decoder, Encoder};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{
     BlockMetaStorage, ChainMetaStorage, IteratorMode, OperationsMetaStorage, OperationsStorage,
     PredecessorStorage, SystemStorage,
 };
 use im::HashMap;
 use serde::{Deserialize, Serialize};
+use std::alloc::Global;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
-use std::alloc::Global;
-use crate::context::ContextError::StorageError;
-use crate::database::rockdb_backend::RocksDBBackend;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -68,14 +66,26 @@ pub trait KVStore<S: KeyValueSchema> {
 }
 
 pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
+    fn find(
+        &self,
+        mode: IteratorMode<S>,
+        limit: Option<usize>,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 
-    fn find(&self, mode: IteratorMode<S>, limit : Option<usize>, filter: Box<dyn Fn((&[u8], &[u8]) ) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
-
-    fn find_by_prefix(&self, key: &S::Key, max_key_len: usize, filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    fn find_by_prefix(
+        &self,
+        key: &S::Key,
+        max_key_len: usize,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 }
 
 //Todo Change name
-pub type List<S> = Vec<(Result<<S as KeyValueSchema>::Key, SchemaError>, Result<<S as KeyValueSchema>::Value, SchemaError>)>;
+pub type List<S> = Vec<(
+    Result<<S as KeyValueSchema>::Key, SchemaError>,
+    Result<<S as KeyValueSchema>::Value, SchemaError>,
+)>;
 
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
@@ -84,7 +94,8 @@ pub enum TezedgeDatabaseBackendOptions {
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezedgeDatabaseBackendConfiguration {
-    Sled,RocksDB
+    Sled,
+    RocksDB,
 }
 
 impl TezedgeDatabaseBackendConfiguration {
@@ -99,7 +110,7 @@ impl TezedgeDatabaseBackendConfiguration {
     pub fn supported_values(&self) -> Vec<&'static str> {
         match self {
             Self::Sled => vec!["sled"],
-            Self::RocksDB => vec!["rocksdb"]
+            Self::RocksDB => vec!["rocksdb"],
         }
     }
 }
@@ -125,15 +136,14 @@ impl FromStr for TezedgeDatabaseBackendConfiguration {
     }
 }
 
-pub trait TezdegeDatabaseBackendKV:
-TezedgeDatabaseBackendStore
-{}
+pub trait TezdegeDatabaseBackendKV: TezedgeDatabaseBackendStore {}
 
 pub type TezedgeDatabaseBackend = dyn TezdegeDatabaseBackendKV + Send + Sync;
 
 pub trait TezedgeDatabaseWithIterator<S: KVStoreKeyValueSchema>:
-KVStore<S> + KVStoreWithSchemaIterator<S>
-{}
+    KVStore<S> + KVStoreWithSchemaIterator<S>
+{
+}
 
 impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabase {}
 
@@ -291,10 +301,10 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
                 stats: Arc::new(DatabaseStats::default()),
             },
-            TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase{
+            TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
-                stats: Arc::new(Default::default())
-            }
+                stats: Arc::new(Default::default()),
+            },
         }
     }
 
@@ -361,7 +371,12 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 }
 
 impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase {
-    fn find(&self, mode: IteratorMode<S>, limit: Option<usize>, filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    fn find(
+        &self,
+        mode: IteratorMode<S>,
+        limit: Option<usize>,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let mode = match mode {
             IteratorMode::Start => BackendIteratorMode::Start,
             IteratorMode::End => BackendIteratorMode::End,
@@ -369,12 +384,18 @@ impl<S: KVStoreKeyValueSchema> KVStoreWithSchemaIterator<S> for TezedgeDatabase 
                 BackendIteratorMode::From(key.encode()?, direction)
             }
         };
-        self.backend.find(S::column_name(), mode, limit,filter)
+        self.backend.find(S::column_name(), mode, limit, filter)
     }
 
-    fn find_by_prefix(&self, key: &<S as KeyValueSchema>::Key, max_key_len: usize ,filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
+    fn find_by_prefix(
+        &self,
+        key: &<S as KeyValueSchema>::Key,
+        max_key_len: usize,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> {
         let key = key.encode()?;
-        self.backend.find_by_prefix(S::column_name(), &key,max_key_len,filter)
+        self.backend
+            .find_by_prefix(S::column_name(), &key, max_key_len, filter)
     }
 }
 

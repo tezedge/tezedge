@@ -8,9 +8,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
-use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
-};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
@@ -98,7 +96,6 @@ impl PredecessorStorage {
     pub fn get(&self, key: &PredecessorKey) -> Result<Option<BlockHash>, StorageError> {
         self.kv.get(key).map_err(StorageError::from)
     }
-
 }
 
 impl BincodeEncoded for PredecessorKey {}

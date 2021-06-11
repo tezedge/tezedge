@@ -1,6 +1,6 @@
 use crate::database::error::Error;
-use crate::Direction;
 use crate::persistent::SchemaError;
+use crate::Direction;
 
 #[derive(Clone)]
 pub enum BackendIteratorMode {
@@ -22,6 +22,18 @@ pub trait TezedgeDatabaseBackendStore {
     ) -> Result<(), Error>;
     fn flush(&self) -> Result<usize, Error>;
 
-    fn find(&self, column: &'static str, mode: BackendIteratorMode, limit : Option<usize>, filter : Box<dyn Fn((&[u8],&[u8])) -> Result<bool,SchemaError>>) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error> ;
-    fn find_by_prefix(&self, column: &'static str,key: &Vec<u8>, max_key_len: usize,filter : Box<dyn Fn((&[u8],&[u8])) -> Result<bool,SchemaError>> ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    fn find(
+        &self,
+        column: &'static str,
+        mode: BackendIteratorMode,
+        limit: Option<usize>,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
+    fn find_by_prefix(
+        &self,
+        column: &'static str,
+        key: &Vec<u8>,
+        max_key_len: usize,
+        filter: Box<dyn Fn((&[u8], &[u8])) -> Result<bool, SchemaError>>,
+    ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 }

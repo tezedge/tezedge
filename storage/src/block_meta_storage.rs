@@ -14,9 +14,7 @@ use crypto::hash::{
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::database::tezedge_database::{
-    KVStoreKeyValueSchema, TezedgeDatabaseWithIterator,
-};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
@@ -26,7 +24,7 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
 pub type BlockMetaStorageKV = dyn TezedgeDatabaseWithIterator<BlockMetaStorage> + Sync + Send;
 pub type BlockAdditionalDataStorageKV =
-dyn TezedgeDatabaseWithIterator<BlockAdditionalData> + Sync + Send;
+    dyn TezedgeDatabaseWithIterator<BlockAdditionalData> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
@@ -792,10 +790,10 @@ impl BlockAdditionalData {
 }
 
 impl
-Into<(
-    Option<BlockMetadataHash>,
-    Option<OperationMetadataListListHash>,
-)> for BlockAdditionalData
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+    )> for BlockAdditionalData
 {
     fn into(
         self,
@@ -808,11 +806,11 @@ Into<(
 }
 
 impl
-Into<(
-    Option<BlockMetadataHash>,
-    Option<OperationMetadataListListHash>,
-    u16,
-)> for BlockAdditionalData
+    Into<(
+        Option<BlockMetadataHash>,
+        Option<OperationMetadataListListHash>,
+        u16,
+    )> for BlockAdditionalData
 {
     fn into(
         self,
@@ -863,7 +861,7 @@ mod tests {
 
     use super::*;
     use crate::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
-    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
+    use crate::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -1005,7 +1003,13 @@ mod tests {
                 columns: DbsRocksDbTableInitializer,
                 threads: Some(1),
             };
-            let db = open_main_db(&cache, &config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
+            let db = open_main_db(
+                &cache,
+                &config,
+                config.db_path.as_path(),
+                TezedgeDatabaseBackendConfiguration::RocksDB,
+            )
+            .unwrap();
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,

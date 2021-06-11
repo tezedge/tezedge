@@ -529,7 +529,7 @@ pub mod initializer {
         Ok(db)
     }
 
-    pub fn initialize_maindb<P: AsRef<Path>, C : RocksDbColumnFactory>(
+    pub fn initialize_maindb<P: AsRef<Path>, C: RocksDbColumnFactory>(
         log: &Logger,
         cache: &Cache,
         config: &RocksDbConfig<C>,
@@ -538,7 +538,7 @@ pub mod initializer {
         expected_main_chain: &MainChain,
         backend_config: TezedgeDatabaseBackendConfiguration,
     ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
-        let db = Arc::new(open_main_db(cache,config,path.as_ref(), backend_config)?);
+        let db = Arc::new(open_main_db(cache, config, path.as_ref(), backend_config)?);
 
         match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
             Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
@@ -758,7 +758,7 @@ pub mod tests_common {
     use super::*;
     use crate::database::sled_backend::SledDBBackend;
     use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
-    use crate::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
+    use crate::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -788,9 +788,6 @@ pub mod tests_common {
                 fs::remove_dir_all(&path_buf.as_path()).unwrap();
             }
 
-
-
-
             // create common RocksDB block cache to be shared among column families
 
             //Sled DB storage
@@ -805,9 +802,9 @@ pub mod tests_common {
             };
 
             let backend = database::rockdb_backend::RocksDBBackend::new(&cache, &config)?;
-            let maindb = Arc::new(TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(
-                backend,
-            )));
+            let maindb = Arc::new(TezedgeDatabase::new(
+                TezedgeDatabaseBackendOptions::RocksDB(backend),
+            ));
 
             let path_buf = path.as_ref().to_path_buf();
             let cfg = DbConfiguration::default();
@@ -852,7 +849,7 @@ pub mod tests_common {
                     Arc::new(Mutex::new(merkle)),
                     Some(Arc::new(kv_context_action)),
                 ),
-                path : path_buf,
+                path: path_buf,
                 remove_on_destroy,
             })
         }

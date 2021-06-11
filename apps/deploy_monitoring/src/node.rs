@@ -36,14 +36,7 @@ impl TezedgeNode {
         ))
         .unwrap_or(0);
         */
-        let disk_data = TezedgeDiskData::new(
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        );
+        let disk_data = TezedgeDiskData::new(0, 0, 0, 0, 0, 0);
 
         Ok(disk_data)
     }

@@ -341,8 +341,7 @@ fn initialize_monitors(
                 chain_monitor.process_block_header(block_level);
                 downloaded_headers += 1;
 
-                if let Ok(is_complete) =
-                operations_meta_storage.is_complete(&header_with_hash.hash)
+                if let Ok(is_complete) = operations_meta_storage.is_complete(&header_with_hash.hash)
                 {
                     if is_complete {
                         chain_monitor.process_block_operations(block_level);

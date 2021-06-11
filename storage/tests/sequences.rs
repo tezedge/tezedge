@@ -9,9 +9,9 @@ use failure::Error;
 use rocksdb::Cache;
 
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::persistent::open_main_db;
 use storage::persistent::sequence::Sequences;
-use storage::initializer::{RocksDbConfig, DbsRocksDbTableInitializer};
 
 #[test]
 fn generator_test_multiple_gen() -> Result<(), Error> {
@@ -32,7 +32,13 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
             columns: DbsRocksDbTableInitializer,
             threads: Some(1),
         };
-        let db = open_main_db(&cache,&config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
+        let db = open_main_db(
+            &cache,
+            &config,
+            config.db_path.as_path(),
+            TezedgeDatabaseBackendConfiguration::RocksDB,
+        )
+        .unwrap();
         let sequences = Sequences::new(Arc::new(db), 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
@@ -66,7 +72,13 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
             columns: DbsRocksDbTableInitializer,
             threads: Some(1),
         };
-        let db = open_main_db(&cache,&config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
+        let db = open_main_db(
+            &cache,
+            &config,
+            config.db_path.as_path(),
+            TezedgeDatabaseBackendConfiguration::RocksDB,
+        )
+        .unwrap();
         let sequences = Sequences::new(Arc::new(db), 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
@@ -99,7 +111,13 @@ fn generator_test_batch() -> Result<(), Error> {
             columns: DbsRocksDbTableInitializer,
             threads: Some(1),
         };
-        let db = open_main_db(&cache,&config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap();
+        let db = open_main_db(
+            &cache,
+            &config,
+            config.db_path.as_path(),
+            TezedgeDatabaseBackendConfiguration::RocksDB,
+        )
+        .unwrap();
         let sequences = Sequences::new(Arc::new(db), 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
@@ -128,7 +146,15 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             columns: DbsRocksDbTableInitializer,
             threads: Some(1),
         };
-        let db = Arc::new(open_main_db(&cache,&config, config.db_path.as_path(), TezedgeDatabaseBackendConfiguration::RocksDB).unwrap());
+        let db = Arc::new(
+            open_main_db(
+                &cache,
+                &config,
+                config.db_path.as_path(),
+                TezedgeDatabaseBackendConfiguration::RocksDB,
+            )
+            .unwrap(),
+        );
         // First run
         {
             let sequences = Sequences::new(db.clone(), 10);
