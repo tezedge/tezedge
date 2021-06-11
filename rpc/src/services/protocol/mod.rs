@@ -27,8 +27,8 @@ use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
 use tezos_new_context::context_key_owned;
 
 use crate::helpers::get_context_hash;
-use crate::server::RemoteContextError;
 use crate::server::RpcServiceEnvironment;
+use tezos_wrapper::TezedgeContextClientError;
 
 mod proto_001;
 mod proto_002;
@@ -324,8 +324,8 @@ impl From<failure::Error> for VotesError {
     }
 }
 
-impl From<RemoteContextError> for VotesError {
-    fn from(error: RemoteContextError) -> Self {
+impl From<TezedgeContextClientError> for VotesError {
+    fn from(error: TezedgeContextClientError) -> Self {
         VotesError::ServiceError {
             reason: error.into(),
         }
@@ -595,7 +595,7 @@ pub enum ContextParamsError {
     #[fail(display = "Storage error occurred, reason: {}", reason)]
     StorageError { reason: storage::StorageError },
     #[fail(display = "Context error occurred, reason: {}", reason)]
-    ContextError { reason: RemoteContextError },
+    ContextError { reason: TezedgeContextClientError },
     #[fail(display = "Context constants, reason: {}", reason)]
     ContextConstantsDecodeError {
         reason: tezos_messages::protocol::ContextConstantsDecodeError,
@@ -612,8 +612,8 @@ impl From<storage::StorageError> for ContextParamsError {
     }
 }
 
-impl From<RemoteContextError> for ContextParamsError {
-    fn from(error: RemoteContextError) -> Self {
+impl From<TezedgeContextClientError> for ContextParamsError {
+    fn from(error: TezedgeContextClientError) -> Self {
         ContextParamsError::ContextError { reason: error }
     }
 }

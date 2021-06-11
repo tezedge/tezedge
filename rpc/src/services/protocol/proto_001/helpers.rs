@@ -18,8 +18,8 @@ use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_new_context::context_key_owned;
 
 use crate::merge_slices;
-use crate::server::TezedgeContextRemote;
 use crate::services::protocol::ContextProtocolParam;
+use tezos_wrapper::TezedgeContextClient;
 
 /// Context constants used in baking and endorsing rights
 #[derive(Debug, Clone, Getters)]
@@ -125,7 +125,7 @@ impl RightsContextData {
     pub(crate) fn prepare_context_data_for_rights(
         parameters: RightsParams,
         constants: RightsConstants,
-        (ctx_hash, context): (&ContextHash, &TezedgeContextRemote),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
     ) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -198,7 +198,7 @@ impl RightsContextData {
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
     fn get_context_rolls(
-        (ctx_hash, context): (&ContextHash, &TezedgeContextRemote),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
         cycle: i64,
         snapshot: i16,
     ) -> Result<Option<HashMap<i32, String>>, failure::Error> {

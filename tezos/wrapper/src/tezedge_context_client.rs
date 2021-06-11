@@ -3,49 +3,47 @@
 
 use std::sync::Arc;
 
+use crate::TezosApiConnectionPool;
 use crypto::hash::ContextHash;
 use failure::Fail;
 use tezos_new_context::{ContextError, ContextKeyOwned, ContextValue, StringTreeEntry};
-use tezos_wrapper::TezosApiConnectionPool;
 
 #[derive(Clone)]
-pub struct TezedgeContextRemote {
+pub struct TezedgeContextClient {
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
 }
 
 #[derive(Debug, Fail)]
-pub enum RemoteContextError {
+pub enum TezedgeContextClientError {
     #[fail(display = "Context error: {:?}", error)]
     ContextError { error: ContextError },
     #[fail(display = "Pool error: {:?}", error)]
-    PoolError {
-        error: tezos_wrapper::InternalPoolError,
-    },
+    PoolError { error: crate::InternalPoolError },
     #[fail(display = "Protocol service error: {:?}", error)]
     ProtocolServiceError {
-        error: tezos_wrapper::service::ProtocolServiceError,
+        error: crate::service::ProtocolServiceError,
     },
 }
 
-impl From<ContextError> for RemoteContextError {
+impl From<ContextError> for TezedgeContextClientError {
     fn from(error: ContextError) -> Self {
-        RemoteContextError::ContextError { error }
+        TezedgeContextClientError::ContextError { error }
     }
 }
 
-impl From<tezos_wrapper::InternalPoolError> for RemoteContextError {
-    fn from(error: tezos_wrapper::InternalPoolError) -> Self {
-        RemoteContextError::PoolError { error }
+impl From<crate::InternalPoolError> for TezedgeContextClientError {
+    fn from(error: crate::InternalPoolError) -> Self {
+        TezedgeContextClientError::PoolError { error }
     }
 }
 
-impl From<tezos_wrapper::service::ProtocolServiceError> for RemoteContextError {
-    fn from(error: tezos_wrapper::service::ProtocolServiceError) -> Self {
-        RemoteContextError::ProtocolServiceError { error }
+impl From<crate::service::ProtocolServiceError> for TezedgeContextClientError {
+    fn from(error: crate::service::ProtocolServiceError) -> Self {
+        TezedgeContextClientError::ProtocolServiceError { error }
     }
 }
 
-impl TezedgeContextRemote {
+impl TezedgeContextClient {
     pub fn new(tezos_readonly_api: Arc<TezosApiConnectionPool>) -> Self {
         Self { tezos_readonly_api }
     }
@@ -54,7 +52,7 @@ impl TezedgeContextRemote {
         &self,
         context_hash: &ContextHash,
         key: ContextKeyOwned,
-    ) -> Result<Option<ContextValue>, RemoteContextError> {
+    ) -> Result<Option<ContextValue>, TezedgeContextClientError> {
         Ok(self
             .tezos_readonly_api
             .pool
@@ -67,7 +65,7 @@ impl TezedgeContextRemote {
         &self,
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
-    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, RemoteContextError> {
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, TezedgeContextClientError> {
         Ok(self
             .tezos_readonly_api
             .pool
@@ -81,7 +79,7 @@ impl TezedgeContextRemote {
         context_hash: &ContextHash,
         prefix: ContextKeyOwned,
         depth: Option<usize>,
-    ) -> Result<StringTreeEntry, RemoteContextError> {
+    ) -> Result<StringTreeEntry, TezedgeContextClientError> {
         Ok(self
             .tezos_readonly_api
             .pool
