@@ -569,7 +569,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
-            .default_value("sled")
+            .default_value("rocksdb")
             .help("Options fo main database backend"))
         .arg(Arg::with_name("one-context")
             .long("one-context")
