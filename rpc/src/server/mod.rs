@@ -21,9 +21,9 @@ use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
 use storage::PersistentStorage;
-pub use tezedge_context_remote::{RemoteContextError, TezedgeContextRemote};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
+use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
@@ -33,7 +33,6 @@ mod dev_handler;
 mod protocol_handler;
 mod router;
 mod shell_handler;
-mod tezedge_context_remote;
 
 /// Server environment parameters
 #[derive(Getters, Clone)]
@@ -66,7 +65,7 @@ pub struct RpcServiceEnvironment {
     main_chain_id: ChainId,
 
     #[get = "pub(crate)"]
-    tezedge_context: TezedgeContextRemote,
+    tezedge_context: TezedgeContextClient,
     #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
@@ -96,7 +95,7 @@ impl RpcServiceEnvironment {
         context_stats_db_path: Option<PathBuf>,
         log: &Logger,
     ) -> Self {
-        let tezedge_context = TezedgeContextRemote::new(Arc::clone(&tezos_readonly_api));
+        let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
             actor,
