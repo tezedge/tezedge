@@ -508,7 +508,7 @@ impl BlockByLevelIndex {
         let items = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
-            Box::new(|(k, v)| Ok(true)),
+            Box::new(|(_, _)| Ok(true)),
         )?;
         let mut results = vec![];
         for (_, v) in items.iter() {
@@ -527,7 +527,7 @@ impl BlockByLevelIndex {
         let items = self.kv.find(
             IteratorMode::From(&from_level, direction),
             Some(limit),
-            Box::new(|(k, v)| Ok(true)),
+            Box::new(|(_, _)| Ok(true)),
         )?;
         let mut results = vec![];
         for (_, v) in items.iter() {
