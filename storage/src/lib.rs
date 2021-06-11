@@ -1,15 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO - TE-261: uncomment once storage has moved to protocol runner
-// #![forbid(unsafe_code)]
+#![forbid(unsafe_code)]
 #![feature(const_fn)]
 #![feature(allocator_api)]
 
 // TODO - TE-261: from this crate, remove everything related to "context"
 
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{
     convert::{TryFrom, TryInto},
     path::PathBuf,
@@ -40,7 +39,6 @@ pub use crate::block_meta_storage::{
 };
 pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
 pub use crate::chain_meta_storage::ChainMetaStorage;
-use crate::context::merkle::merkle_storage::MerkleStorage;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
@@ -48,16 +46,13 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
-use crate::persistent::{
-    CommitLogError, CommitLogs, DBError, Decoder, Encoder, Flushable, SchemaError,
-};
+use crate::persistent::{CommitLogError, CommitLogs, DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
-pub mod context;
 pub mod mempool_storage;
 pub mod operations_meta_storage;
 pub mod operations_storage;
@@ -221,9 +216,6 @@ pub struct StorageInitInfo {
     pub patch_context: Option<PatchContext>,
     pub context_stats_db_path: Option<PathBuf>,
     pub replay: Option<Replay>,
-
-    // TODO: TE-447 - remove one_context when integration done
-    pub one_context: bool,
 }
 
 /// Resolve main chain id and genesis header from configuration
@@ -232,7 +224,6 @@ pub fn resolve_storage_init_chain_data(
     storage_db_path: &Path,
     context_storage_configuration: &TezosContextStorageConfiguration,
     patch_context: &Option<PatchContext>,
-    one_context: bool,
     context_stats_db_path: &Option<PathBuf>,
     replay: &Option<Replay>,
     log: &Logger,
@@ -241,7 +232,6 @@ pub fn resolve_storage_init_chain_data(
         chain_id: tezos_env.main_chain_id()?,
         genesis_block_header_hash: tezos_env.genesis_header_hash()?,
         patch_context: patch_context.clone(),
-        one_context,
         replay: replay.clone(),
         context_stats_db_path: context_stats_db_path.clone(),
     };
@@ -255,7 +245,6 @@ pub fn resolve_storage_init_chain_data(
         "storage_db_path" => format!("{:?}", storage_db_path),
         "context_storage_configuration" => format!("{:?}", context_storage_configuration),
         "context_stats_db_path" => format!("{:?}", context_stats_db_path),
-        "one_context" => one_context,
         "patch_context" => match patch_context {
                 Some(pc) => format!("{:?}", pc),
                 None => "-none-".to_string()
@@ -439,7 +428,6 @@ pub mod initializer {
 
     use crypto::hash::ChainId;
 
-    use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::{DBError, DbConfiguration};
     use crate::{StorageError, SystemStorage};
@@ -457,22 +445,9 @@ pub mod initializer {
     #[derive(Debug, Clone)]
     pub struct DbsRocksDbTableInitializer;
 
-    /// Tables initializer for Context Rocksdb k-v store (if configured)
-    #[derive(Debug, Clone)]
-    pub struct ContextRocksDbTableInitializer;
-
     /// Tables initializer for context action rocksdb k-v store (if configured)
     #[derive(Debug, Clone)]
     pub struct ContextActionsRocksDbTableInitializer;
-
-    impl RocksDbColumnFactory for ContextRocksDbTableInitializer {
-        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
-            vec![
-                crate::SystemStorage::descriptor(cache),
-                crate::context::kv_store::rocksdb_backend::RocksDBBackend::descriptor(cache),
-            ]
-        }
-    }
 
     impl RocksDbColumnFactory for DbsRocksDbTableInitializer {
         fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
@@ -493,18 +468,6 @@ pub mod initializer {
         }
     }
 
-    impl RocksDbColumnFactory for ContextActionsRocksDbTableInitializer {
-        fn create(&self, cache: &RocksDbCache) -> Vec<ColumnFamilyDescriptor> {
-            vec![
-                crate::SystemStorage::descriptor(cache),
-                crate::context::actions::context_action_storage::ContextActionByBlockHashIndex::descriptor(cache),
-                crate::context::actions::context_action_storage::ContextActionByContractIndex::descriptor(cache),
-                crate::context::actions::context_action_storage::ContextActionByTypeIndex::descriptor(cache),
-                crate::context::actions::context_action_storage::ContextActionStorage::descriptor(cache),
-            ]
-        }
-    }
-
     #[derive(Debug, Clone)]
     pub struct RocksDbConfig<C: RocksDbColumnFactory> {
         pub cache_size: usize,
@@ -512,14 +475,6 @@ pub mod initializer {
         pub db_path: PathBuf,
         pub columns: C,
         pub threads: Option<usize>,
-    }
-
-    #[derive(Debug, Clone)]
-    pub enum ContextKvStoreConfiguration {
-        RocksDb(RocksDbConfig<ContextRocksDbTableInitializer>),
-        Sled { path: PathBuf },
-        InMem,
-        BTreeMap,
     }
 
     pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
@@ -623,40 +578,6 @@ pub mod initializer {
 
         Ok(db_version_ok && chain_id_ok)
     }
-
-    pub fn initialize_merkle(
-        context_kv_store: &ContextKvStoreConfiguration,
-        expected_main_chain: &MainChain,
-        log: &Logger,
-        caches: &mut GlobalRocksDbCacheHolder,
-    ) -> Result<MerkleStorage, failure::Error> {
-        Ok(MerkleStorage::new(match context_kv_store {
-            ContextKvStoreConfiguration::RocksDb(cfg) => {
-                let kv_context_cache = Cache::new_lru_cache(cfg.cache_size)
-                    .expect("Failed to initialize RocksDB cache (db_context)");
-                let kv_context =
-                    initialize_rocksdb(&log, &kv_context_cache, cfg, expected_main_chain)
-                        .expect("Failed to create/initialize RocksDB database (db_context)");
-                caches.push(kv_context_cache);
-                Box::new(crate::context::kv_store::rocksdb_backend::RocksDBBackend::new(kv_context))
-            }
-            ContextKvStoreConfiguration::Sled { path } => {
-                let sled = sled::Config::new()
-                    .path(path)
-                    .open()
-                    .expect("Failed to create/initialize Sled database (db_context)");
-                Box::new(crate::context::kv_store::sled_backend::SledBackend::new(
-                    sled,
-                ))
-            }
-            ContextKvStoreConfiguration::InMem => {
-                Box::new(crate::context::kv_store::in_memory_backend::InMemoryBackend::new())
-            }
-            ContextKvStoreConfiguration::BTreeMap => {
-                Box::new(crate::context::kv_store::btree_map::BTreeMapBackend::new())
-            }
-        }))
-    }
 }
 
 #[derive(Clone)]
@@ -667,28 +588,11 @@ pub struct PersistentStorage {
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
     seq: Arc<Sequences>,
-    // TODO - TE-261: this will not be here
-    /// merkle-tree based context storage
-    merkle: Arc<Mutex<MerkleStorage>>,
-    /// persistent context actions storage
-    merkle_context_actions: Option<Arc<DB>>,
 }
 
 impl PersistentStorage {
-    pub fn new(
-        db: Arc<DB>,
-        clog: Arc<CommitLogs>,
-        seq: Arc<Sequences>,
-        merkle: Arc<Mutex<MerkleStorage>>,
-        merkle_context_actions: Option<Arc<DB>>,
-    ) -> Self {
-        Self {
-            clog,
-            db,
-            seq,
-            merkle,
-            merkle_context_actions,
-        }
+    pub fn new(db: Arc<DB>, clog: Arc<CommitLogs>, seq: Arc<Sequences>) -> Self {
+        Self { clog, db, seq }
     }
 
     #[inline]
@@ -706,35 +610,14 @@ impl PersistentStorage {
         self.seq.clone()
     }
 
-    #[inline]
-    pub fn merkle(&self) -> Arc<Mutex<MerkleStorage>> {
-        self.merkle.clone()
-    }
-
-    #[inline]
-    pub fn merkle_context_actions(&self) -> Option<Arc<DB>> {
-        self.merkle_context_actions.clone()
-    }
-
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
         let db = self.db.flush();
-        let merkle = match self.merkle.lock() {
-            Ok(merkle) => merkle.flush(),
-            Err(e) => Err(failure::format_err!(
-                "Failed to write/lock for flush, reason: {:?}",
-                e
-            )),
-        };
-        let merkle_context_actions = match self.merkle_context_actions.as_ref() {
-            Some(merkle_context_actions) => merkle_context_actions.flush(),
-            None => Ok(()),
-        };
 
-        if clog.is_err() || db.is_err() || merkle.is_err() || merkle_context_actions.is_err() {
+        if clog.is_err() || db.is_err() {
             println!(
-                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}, merkle_err: {:?}, merkle_context_actions_err: {:?}",
-                clog, db, merkle, merkle_context_actions
+                "Failed to flush DBs. clog_err: {:?}, kv_err: {:?}",
+                clog, db,
             );
         }
     }
@@ -755,9 +638,6 @@ pub mod tests_common {
 
     use crate::block_storage;
     use crate::chain_meta_storage::ChainMetaStorage;
-    use crate::context::actions::context_action_storage;
-    use crate::context::kv_store::rocksdb_backend::RocksDBBackend;
-    use crate::context::merkle::merkle_storage::MerkleStorage;
     use crate::mempool_storage::MempoolStorage;
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
     use crate::persistent::sequence::Sequences;
@@ -818,36 +698,6 @@ pub mod tests_common {
                 &cfg,
             )?);
 
-            // context
-            let db_context_cache = Cache::new_lru_cache(64 * 1024 * 1024)?; // 64 MB
-            let context_kv_store = RocksDBBackend::new(Arc::new(open_kv(
-                path.join("context"),
-                vec![RocksDBBackend::descriptor(&db_context_cache)],
-                &cfg,
-            )?));
-            let merkle = MerkleStorage::new(Box::new(context_kv_store));
-
-            // context actions storage
-            let db_context_actions_cache = Cache::new_lru_cache(16 * 1024 * 1024)?; // 16 MB
-            let kv_context_action = open_kv(
-                path.join("context_actions"),
-                vec![
-                    context_action_storage::ContextActionStorage::descriptor(
-                        &db_context_actions_cache,
-                    ),
-                    context_action_storage::ContextActionByBlockHashIndex::descriptor(
-                        &db_context_actions_cache,
-                    ),
-                    context_action_storage::ContextActionByContractIndex::descriptor(
-                        &db_context_actions_cache,
-                    ),
-                    context_action_storage::ContextActionByTypeIndex::descriptor(
-                        &db_context_actions_cache,
-                    ),
-                ],
-                &cfg,
-            )?;
-
             // commit log storage
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
@@ -856,8 +706,6 @@ pub mod tests_common {
                     kv.clone(),
                     Arc::new(clog),
                     Arc::new(Sequences::new(kv, 1000)),
-                    Arc::new(Mutex::new(merkle)),
-                    Some(Arc::new(kv_context_action)),
                 ),
                 path,
                 remove_on_destroy,

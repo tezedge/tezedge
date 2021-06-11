@@ -5,9 +5,10 @@ use crypto::hash::ContextHash;
 use failure::format_err;
 use itertools::Itertools;
 
-use storage::{context_key, num_from_slice};
+use storage::num_from_slice;
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_008::votes::VoteListings;
+use tezos_new_context::context_key_owned;
 
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::VotesError;
@@ -19,7 +20,7 @@ pub fn get_votes_listings(
     // filter out the listings data
     let mut listings_data = if let Some(val) = env
         .tezedge_context()
-        .get_key_values_by_prefix(&context_hash, context_key!("data/votes/listings"))?
+        .get_key_values_by_prefix(&context_hash, context_key_owned!("data/votes/listings"))?
     {
         val
     } else {

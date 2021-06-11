@@ -16,13 +16,12 @@ use slog::{info, warn, Level, Logger};
 use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
-use crypto::hash::{BlockHash, ContextHash, OperationHash};
+use crypto::hash::{BlockHash, OperationHash};
 use networking::p2p::network_channel::{NetworkChannel, NetworkChannelRef};
 use networking::ShellCompatibilityVersion;
 use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
-use shell::context_listener::ContextListener;
 use shell::mempool::mempool_channel::MempoolChannel;
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
@@ -34,16 +33,14 @@ use shell::state::synchronization_state::{
 };
 use shell::PeerConnectionThreshold;
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::context::{ActionRecorder, ContextApi, TezedgeContext};
 use storage::tests_common::TmpStorage;
-use storage::{resolve_storage_init_chain_data, BlockStorage, ChainMetaStorage};
+use storage::{resolve_storage_init_chain_data, ChainMetaStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
     TezosRuntimeConfiguration,
 };
 use tezos_identity::Identity;
-use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
@@ -63,7 +60,6 @@ pub struct NodeInfrastructure {
     pub bootstrap_state: SynchronizationBootstrapStateRef,
     pub tezos_env: TezosEnvironmentConfiguration,
     pub tokio_runtime: Runtime,
-    pub one_context: bool,
 }
 
 impl NodeInfrastructure {
@@ -77,9 +73,7 @@ impl NodeInfrastructure {
         identity: Identity,
         pow_target: f64,
         (log, log_level): (Logger, Level),
-        context_action_recorders: Vec<Box<dyn ActionRecorder + Send>>,
         (record_also_readonly_context_action, compute_context_action_tree_hashes): (bool, bool),
-        one_context: bool,
     ) -> Result<Self, failure::Error> {
         warn!(log, "[NODE] Starting node infrastructure"; "name" => name);
 
@@ -111,7 +105,6 @@ impl NodeInfrastructure {
             &tmp_storage.path(),
             &context_storage_configuration,
             &patch_context,
-            one_context,
             &None,
             &None,
             &log,
@@ -139,13 +132,11 @@ impl NodeInfrastructure {
                 context_storage_configuration.clone(),
                 &common::protocol_runner_executable_path(),
                 log_level,
-                None,
             ),
             log.clone(),
         )?);
 
         // create pool for ffi protocol runner connections (used just for readonly context)
-        let apply_protocol_events = IpcEvtServer::try_bind_new()?;
         let tezos_writeable_api = Arc::new(TezosApiConnectionPool::new_without_context(
             String::from(&format!("{}_writeable_runner_pool", name)),
             TezosApiConnectionPoolConfiguration {
@@ -166,11 +157,6 @@ impl NodeInfrastructure {
                 context_storage_configuration,
                 &common::protocol_runner_executable_path(),
                 log_level,
-                if init_storage_data.one_context {
-                    None
-                } else {
-                    Some(apply_protocol_events.server_path())
-                },
             ),
             log.clone(),
         )?);
@@ -196,17 +182,6 @@ impl NodeInfrastructure {
         let mempool_channel =
             MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
 
-        if !one_context {
-            let _ = ContextListener::actor(
-                &actor_system,
-                shell_channel.clone(),
-                &persistent_storage,
-                context_action_recorders,
-                apply_protocol_events,
-                log.clone(),
-            )
-            .expect("Failed to create context event listener");
-        }
         let chain_current_head_manager = ChainCurrentHeadManager::actor(
             &actor_system,
             shell_channel.clone(),
@@ -293,7 +268,6 @@ impl NodeInfrastructure {
             current_mempool_state_storage,
             bootstrap_state,
             tezos_env: tezos_env.clone(),
-            one_context: init_storage_data.one_context,
         })
     }
 
@@ -349,43 +323,6 @@ impl NodeInfrastructure {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
-            }
-        };
-        result
-    }
-
-    // TODO: refactor with async/condvar, not to block main thread
-    /// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
-    pub fn wait_for_context(
-        &self,
-        marker: &str,
-        context_hash: ContextHash,
-        (timeout, delay): (Duration, Duration),
-    ) -> Result<(), failure::Error> {
-        if self.one_context {
-            return Ok(());
-        }
-
-        let start = SystemTime::now();
-
-        let context = TezedgeContext::new(
-            Some(BlockStorage::new(self.tmp_storage.storage())),
-            self.tmp_storage.storage().merkle(),
-        );
-
-        // try checkout context
-        let result = loop {
-            // if success, than ok
-            if let Ok(true) = context.is_committed(&context_hash) {
-                info!(self.log, "[NODE] Expected context found"; "context_hash" => context_hash.to_base58_check(), "marker" => marker);
-                break Ok(());
-            }
-
-            // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
-                thread::sleep(delay);
-            } else {
-                break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", context_hash.to_base58_check(), timeout, delay, marker));
             }
         };
         result

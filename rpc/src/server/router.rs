@@ -23,7 +23,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(_is_sandbox: bool, one_context: bool) -> PathTree<MethodHandler> {
+pub(crate) fn create_routes(_is_sandbox: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -162,18 +162,18 @@ pub(crate) fn create_routes(_is_sandbox: bool, one_context: bool) -> PathTree<Me
         "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index/:operation_index",
         shell_handler::get_block_operation,
     );
-    if !one_context {
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
-            shell_handler::context_raw_bytes,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
-            shell_handler::context_raw_bytes,
-        );
-    }
+    // TODO - TE-261: these should be disabled when only the irmin context is enabled
+    // or the functionality should be reimplemented on top of irmin too.
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
+        shell_handler::context_raw_bytes,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
+        shell_handler::context_raw_bytes,
+    );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/metadata",

@@ -110,7 +110,7 @@ pub struct TezosContextIrminStorageConfiguration {
 }
 
 // Must be in sync with ffi_config.ml
-pub type TezosContextTezEdgeStorageConfiguration = ();
+pub type TezosContextTezEdgeStorageConfiguration = (); // TODO - TE-261: InMemGc, ReadonlyIpc
 
 // Must be in sync with ffi_config.ml
 #[derive(Clone, Serialize, Deserialize, Debug)]

@@ -2003,9 +2003,7 @@ name = "light-node"
 version = "1.6.0"
 dependencies = [
  "clap",
- "crypto",
  "failure",
- "fs_extra",
  "futures",
  "jemallocator",
  "logging",
@@ -3170,7 +3168,6 @@ dependencies = [
  "tezos_api",
  "tezos_context",
  "tezos_messages",
- "tezos_new_context",
  "tezos_timing",
  "tezos_wrapper",
  "tokio",
@@ -4175,7 +4172,6 @@ dependencies = [
  "tezos_api",
  "tezos_context",
  "tezos_messages",
- "tezos_new_context",
  "wait-timeout",
 ]
 

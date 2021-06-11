@@ -26,21 +26,16 @@ use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage::context::actions::action_file_storage::ActionFileStorage;
-use storage::context::actions::context_action_storage::ContextActionStorage;
-use storage::context::actions::ContextActionStoreBackend;
-use storage::context::kv_store::SupportedContextKeyValueStore;
-use storage::context::ActionRecorder;
-use storage::initializer::{
-    ContextActionsRocksDbTableInitializer, ContextKvStoreConfiguration,
-    ContextRocksDbTableInitializer, DbsRocksDbTableInitializer, RocksDbConfig,
-};
-use storage::{PersistentStorage, Replay};
+use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
+use storage::Replay;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
 };
+use tezos_new_context::actions::ContextActionStoreBackend;
+use tezos_new_context::initializer::ContextKvStoreConfiguration;
+use tezos_new_context::kv_store::SupportedContextKeyValueStore;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 macro_rules! create_terminal_logger {
@@ -183,17 +178,8 @@ pub struct Storage {
     pub db_path: PathBuf,
     pub context_stats_db_path: Option<PathBuf>,
     pub context_storage_configuration: TezosContextStorageConfiguration,
-    pub context_action_recorders: Vec<ContextActionStoreBackend>,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
-
-    // merkle cfg
-    pub context_kv_store: ContextKvStoreConfiguration,
-    // context actions cfg
-    pub merkle_context_actions_store: Option<RocksDbConfig<ContextActionsRocksDbTableInitializer>>,
-
-    // TODO: TE-447 - remove one_context when integration done
-    pub one_context: bool,
 }
 
 impl Storage {
@@ -201,15 +187,10 @@ impl Storage {
     const MINIMAL_THREAD_COUNT: usize = 1;
 
     const DB_STORAGE_VERSION: i64 = 19;
-    const DB_CONTEXT_STORAGE_VERSION: i64 = 17;
-    const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 17;
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
-    const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
-    const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::ROCKSDB;
-    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::ROCKSDB;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEMGC;
 }
 
 #[derive(Debug, Clone)]
@@ -652,11 +633,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("STRING")
             .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
-        .arg(Arg::with_name("one-context")
-            .long("one-context")
-            .global(true)
-            .takes_value(false)
-            .help("TODO: TE-447 - temp/hack argument to turn off TezEdge second context"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
             .global(true)
@@ -1133,32 +1109,6 @@ impl Environment {
                         })
                         .expect("Provided value cannot be converted to number")
                 });
-                // TODO - TE-261: remove these
-                let db_context_threads_count =
-                    args.value_of("db-context-cfg-max-threads").map(|value| {
-                        value
-                            .parse::<usize>()
-                            .map(|val| {
-                                std::cmp::min(
-                                    Storage::MINIMAL_THREAD_COUNT,
-                                    val / Storage::STORAGES_COUNT,
-                                )
-                            })
-                            .expect("Provided value cannot be converted to number")
-                    });
-                let db_context_actions_threads_count = args
-                    .value_of("db-context-actions-cfg-max-threads")
-                    .map(|value| {
-                        value
-                            .parse::<usize>()
-                            .map(|val| {
-                                std::cmp::min(
-                                    Storage::MINIMAL_THREAD_COUNT,
-                                    val / Storage::STORAGES_COUNT,
-                                )
-                            })
-                            .expect("Provided value cannot be converted to number")
-                    });
 
                 let db = RocksDbConfig {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
@@ -1168,59 +1118,12 @@ impl Environment {
                     threads: db_threads_count,
                 };
 
-                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
-                    Some(v) => v.map(String::from).collect(),
-                    None => std::iter::once(Storage::DEFAULT_CONTEXT_ACTIONS_RECORDER.to_string())
-                        .collect(),
-                };
-
-                // TODO - TE-261: remove the merkle and context stuff
-                let mut merkle_context_actions_store = None;
-                let context_action_recorders = backends
-                    .iter()
-                    .map(|v| match v.parse::<ContextActionStoreBackend>() {
-                        Ok(ContextActionStoreBackend::RocksDB) => {
-                            merkle_context_actions_store = Some(RocksDbConfig {
-                                cache_size: Storage::LRU_CACHE_SIZE_16MB,
-                                expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
-                                db_path: db_path.join("context_actions"),
-                                columns: ContextActionsRocksDbTableInitializer,
-                                threads: db_context_actions_threads_count,
-                            });
-                            ContextActionStoreBackend::RocksDB
-                        }
-                        Ok(ContextActionStoreBackend::NoneBackend) => {
-                            ContextActionStoreBackend::NoneBackend
-                        }
-                        Ok(ContextActionStoreBackend::FileStorage { .. }) => {
-                            ContextActionStoreBackend::FileStorage {
-                                path: db_path.join("actionfile.bin"),
-                            }
-                        }
-                        Err(e) => panic!(
-                            "Invalid value: '{}', expecting one value from {:?}, error: {:?}",
-                            v,
-                            SupportedContextKeyValueStore::possible_values(),
-                            e
-                        ),
-                    })
-                    .collect::<Vec<_>>();
-
-                // TODO - TE-261: Add InMemGC here when tezos/new_context is used
+                // TODO - TE-261: use this value for the tezedge context config
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
-                        SupportedContextKeyValueStore::RocksDB { .. } => {
-                            ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
-                                cache_size: Storage::LRU_CACHE_SIZE_64MB,
-                                expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
-                                db_path: db_path.join("context"),
-                                columns: ContextRocksDbTableInitializer,
-                                threads: db_context_threads_count,
-                            })
-                        }
                         SupportedContextKeyValueStore::Sled { .. } => {
                             ContextKvStoreConfiguration::Sled {
                                 path: db_path.join("context_sled"),
@@ -1229,6 +1132,9 @@ impl Environment {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
                         SupportedContextKeyValueStore::BTreeMap => {
                             ContextKvStoreConfiguration::BTreeMap
+                        }
+                        SupportedContextKeyValueStore::InMemGC => {
+                            ContextKvStoreConfiguration::InMemGC
                         }
                     })
                     .unwrap_or_else(|e| {
@@ -1276,9 +1182,6 @@ impl Environment {
                     db_path,
                     context_stats_db_path,
                     compute_context_action_tree_hashes,
-                    context_action_recorders,
-                    context_kv_store,
-                    merkle_context_actions_store,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
@@ -1320,10 +1223,6 @@ impl Environment {
                             }
                         }
                     },
-                    // TODO: TE-447 - remove one_context when integration done
-                    // TODO: TE-447 - we will support just one context
-                    // one_context: args.is_present("one-context"),
-                    one_context: true,
                 }
             },
             identity: crate::configuration::Identity {
@@ -1436,63 +1335,6 @@ impl Environment {
                 slog::o!(),
             ))
         }
-    }
-
-    // TODO - TE-261 this will be handled in the protocol runner
-    pub(crate) fn build_recorders(
-        &self,
-        storage: &PersistentStorage,
-    ) -> Result<Vec<Box<dyn ActionRecorder + Send>>, InvalidRecorderConfigurationError> {
-        // filter all configurations and split to valid and ok
-        let (oks, errors): (Vec<_>, Vec<_>) =
-            self.storage
-                .context_action_recorders
-                .iter()
-                .map(|backend| match backend {
-                    storage::context::actions::ContextActionStoreBackend::RocksDB => {
-                        match storage.merkle_context_actions() {
-                            Some(merkle_context_actions) => Ok(Some(Box::new(
-                                ContextActionStorage::new(merkle_context_actions, storage.seq()),
-                            )
-                                as Box<dyn ActionRecorder + Send>)),
-                            None => Err(InvalidRecorderConfigurationError(
-                                "Missing RocksDB source 'storage.merkle_context_actions()'"
-                                    .to_string(),
-                            )),
-                        }
-                    }
-                    storage::context::actions::ContextActionStoreBackend::FileStorage { path } => {
-                        Ok(Some(Box::new(ActionFileStorage::new(path.to_path_buf()))
-                            as Box<dyn ActionRecorder + Send>))
-                    }
-                    storage::context::actions::ContextActionStoreBackend::NoneBackend => Ok(None),
-                })
-                .partition(Result::is_ok);
-
-        // collect all invalid
-        if !errors.is_empty() {
-            let errors = errors
-                .iter()
-                .filter_map(|e| match e {
-                    Ok(_) => None,
-                    Err(e) => Some(format!("{:?}", e)),
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(InvalidRecorderConfigurationError(format!(
-                "errors: {:?}",
-                errors
-            )));
-        }
-
-        // return just oks
-        Ok(oks
-            .into_iter()
-            .filter_map(|e| match e {
-                Ok(Some(recorder)) => Some(recorder),
-                _ => None,
-            })
-            .collect::<Vec<_>>())
     }
 }
 

@@ -96,7 +96,6 @@ impl RpcServer {
                 init_storage_data.chain_id.clone(),
                 init_storage_data.genesis_block_header_hash.clone(),
                 shared_state,
-                init_storage_data.one_context,
                 init_storage_data.context_stats_db_path.clone(),
                 &sys.log(),
             );

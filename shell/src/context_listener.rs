@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+// TODO - TE-261: this is obsolete, remove
+
 //! Listens for events from the `protocol_runner`.
 
 use failure::Error;

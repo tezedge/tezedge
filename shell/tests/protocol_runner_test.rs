@@ -147,7 +147,6 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             storage,
             &protocol_runner,
             log_level,
-            None,
         ),
         log.new(o!("endpoint" => endpoint_name.clone())),
     )?;
@@ -241,7 +240,6 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         storage,
         &protocol_runner,
         log_level,
-        None,
     );
 
     // create pool
