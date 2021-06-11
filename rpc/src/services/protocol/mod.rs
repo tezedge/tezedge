@@ -16,8 +16,7 @@ use failure::{bail, format_err, Error, Fail};
 
 use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
-    context_key, BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader,
+    BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
 };
 use tezos_api::ffi::{
     HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
@@ -25,6 +24,7 @@ use tezos_api::ffi::{
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
+use tezos_new_context::context_key_owned;
 
 use crate::helpers::get_context_hash;
 use crate::server::RemoteContextError;
@@ -368,18 +368,19 @@ pub(crate) fn get_votes_listings(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Option<serde_json::Value>, VotesError> {
-    // TODO: TE-447 - remove one_context when integration done
-    if env.one_context {
-        return Err(VotesError::UnsupportedProtocolError {
-            protocol: "TODO:one-context-not-supported-now".to_string(),
-        });
-    }
+    // TODO - TE-261: this will not work with Irmin right now, we should check that or
+    // try to reimplement the missing parts on top of Irmin too.
+    // if only_irmin {
+    //     return Err(ContextParamsError::UnsupportedProtocolError {
+    //         protocol: "only-supported-with-tezedge-context".to_string(),
+    //     });
+    // }
     let context_hash = get_context_hash(block_hash, env)?;
 
     // get protocol version
     let protocol_hash = if let Some(protocol_hash) = env
         .tezedge_context()
-        .get_key_from_history(&context_hash, context_key!("protocol"))?
+        .get_key_from_history(&context_hash, context_key_owned!("protocol"))?
     {
         ProtocolHash::try_from(protocol_hash)?
     } else {
@@ -650,12 +651,14 @@ pub(crate) fn get_context_protocol_params(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<ContextProtocolParam, ContextParamsError> {
-    // TODO: TE-447 - remove one_context when integration done
-    if env.one_context {
-        return Err(ContextParamsError::UnsupportedProtocolError {
-            protocol: "TODO:one-context-not-supported-now".to_string(),
-        });
-    }
+    // TODO - TE-261: this will not work with Irmin right now, we should check that or
+    // try to reimplement the missing parts on top of Irmin too.
+    // if only_irmin {
+    //     return Err(ContextParamsError::UnsupportedProtocolError {
+    //         protocol: "only-supported-with-tezedge-context".to_string(),
+    //     });
+    // }
+
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,
@@ -668,7 +671,9 @@ pub(crate) fn get_context_protocol_params(
         let context = env.tezedge_context();
         let context_hash = block_header.header.context();
 
-        if let Some(data) = context.get_key_from_history(&context_hash, context_key!("protocol"))? {
+        if let Some(data) =
+            context.get_key_from_history(&context_hash, context_key_owned!("protocol"))?
+        {
             protocol_hash = ProtocolHash::try_from(data)?;
         } else {
             return Err(ContextParamsError::NoProtocolForBlock(
@@ -677,7 +682,7 @@ pub(crate) fn get_context_protocol_params(
         }
 
         if let Some(data) =
-            context.get_key_from_history(&context_hash, context_key!("data/v1/constants"))?
+            context.get_key_from_history(&context_hash, context_key_owned!("data/v1/constants"))?
         {
             constants = data;
         } else {

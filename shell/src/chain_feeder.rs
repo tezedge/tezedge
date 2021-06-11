@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO - TE-261: remove all mentions of context from here
-
 //! Sends blocks to the `protocol_runner`.
 //! This actor is responsible for correct applying of blocks with Tezos protocol in context
 //! This actor is aslo responsible for correct initialization of genesis in storage.
@@ -18,9 +16,8 @@ use failure::{format_err, Error, Fail};
 use riker::actors::*;
 use slog::{debug, info, trace, warn, Logger};
 
-use crypto::hash::{BlockHash, ChainId, ContextHash};
+use crypto::hash::{BlockHash, ChainId};
 use storage::chain_meta_storage::ChainMetaStorageReader;
-use storage::context::{ContextApi, TezedgeContext};
 use storage::{
     block_meta_storage, BlockAdditionalData, BlockHeaderWithHash, BlockMetaStorageReader,
     PersistentStorage,
@@ -549,10 +546,6 @@ impl BlockApplierThreadSpawner {
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let operations_storage = OperationsStorage::new(&persistent_storage);
                 let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
-                let context: Box<dyn ContextApi> = Box::new(TezedgeContext::new(
-                    Some(block_storage.clone()),
-                    persistent_storage.merkle(),
-                ));
 
                 block_applier_run.store(true, Ordering::Release);
                 info!(log, "Chain feeder started processing");
@@ -569,7 +562,6 @@ impl BlockApplierThreadSpawner {
                             &chain_meta_storage,
                             &operations_storage,
                             &operations_meta_storage,
-                            &context,
                             &protocol_controller.api,
                             &mut block_applier_event_receiver,
                             &log,
@@ -613,7 +605,6 @@ fn feed_chain_to_protocol(
     chain_meta_storage: &ChainMetaStorage,
     operations_storage: &OperationsStorage,
     operations_meta_storage: &OperationsMetaStorage,
-    context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     block_applier_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
@@ -627,7 +618,6 @@ fn feed_chain_to_protocol(
         block_meta_storage,
         chain_meta_storage,
         operations_meta_storage,
-        context,
         &protocol_controller,
         &log,
         &tezos_env,
@@ -701,7 +691,6 @@ fn feed_chain_to_protocol(
                             load_metadata_elapsed,
                             block_storage,
                             block_meta_storage,
-                            context,
                             protocol_controller,
                             init_storage_data,
                             &log,
@@ -851,7 +840,6 @@ fn _apply_block(
     load_metadata_elapsed: Duration,
     block_storage: &BlockStorage,
     block_meta_storage: &BlockMetaStorage,
-    context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     storage_init_info: &StorageInitInfo,
     log: &Logger,
@@ -889,23 +877,6 @@ fn _apply_block(
                            "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
     }
 
-    // we need to check and wait for context_hash to be 100% sure, that everything is ok
-    let context_wait_timer = Instant::now();
-    // TODO - TE-261: wait_for_context will not be needed anymore
-    wait_for_context(
-        context,
-        &apply_block_result.context_hash,
-        storage_init_info.one_context,
-    )?;
-    let context_wait_elapsed = context_wait_timer.elapsed();
-    if context_wait_elapsed.gt(&CONTEXT_WAIT_DURATION_LONG_TO_LOG) {
-        info!(log, "Block was applied with long context processing";
-                           "block_header_hash" => block_hash.to_base58_check(),
-                           "context_hash" => apply_block_result.context_hash.to_base58_check(),
-                           "context_wait_elapsed" => format!("{:?}", &context_wait_elapsed),
-                           "protocol_call_elapsed" => format!("{:?}", &protocol_call_elapsed));
-    }
-
     // Lets mark header as applied and store result
     // store success result
     let store_result_timer = Instant::now();
@@ -925,7 +896,6 @@ fn _apply_block(
             validated_at_timer.elapsed(),
             load_metadata_elapsed,
             protocol_call_elapsed,
-            context_wait_elapsed,
             store_result_elapsed,
         ),
     )))
@@ -1047,7 +1017,6 @@ pub(crate) fn initialize_protocol_context(
     block_meta_storage: &BlockMetaStorage,
     chain_meta_storage: &ChainMetaStorage,
     operations_meta_storage: &OperationsMetaStorage,
-    context: &Box<dyn ContextApi>,
     protocol_controller: &ProtocolController,
     log: &Logger,
     tezos_env: &TezosEnvironmentConfiguration,
@@ -1092,15 +1061,6 @@ pub(crate) fn initialize_protocol_context(
                 &log,
             )?;
 
-            let context_wait_timer = Instant::now();
-            // TODO - TE-261: wait_for_context will not be needed anymore
-            wait_for_context(
-                context,
-                &genesis_context_hash,
-                init_storage_data.one_context,
-            )?;
-            let context_wait_elapsed = context_wait_timer.elapsed();
-
             // call get additional/json data for genesis (this must be second call, because this triggers context.checkout)
             // this needs to be second step, because, this triggers context.checkout, so we need to call it after store_commit_genesis_result
             let commit_data = protocol_controller.genesis_result_data(&genesis_context_hash)?;
@@ -1122,7 +1082,6 @@ pub(crate) fn initialize_protocol_context(
                 validated_at_timer.elapsed(),
                 load_metadata_elapsed,
                 protocol_call_elapsed,
-                context_wait_elapsed,
                 store_result_elapsed,
             ));
 
@@ -1146,39 +1105,4 @@ pub(crate) fn initialize_protocol_context(
     Ok(())
 }
 
-const CONTEXT_WAIT_DURATION: (Duration, Duration) =
-    (Duration::from_secs(60 * 60 * 2), Duration::from_millis(15));
-const CONTEXT_WAIT_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
 const BLOCK_APPLY_DURATION_LONG_TO_LOG: Duration = Duration::from_secs(30);
-
-// TODO - TE-261: remove after integration, will not be needed
-/// Context_listener is now asynchronous, so we need to make sure, that it is processed, so we wait a little bit
-pub fn wait_for_context(
-    context: &Box<dyn ContextApi>,
-    context_hash: &ContextHash,
-    one_context: bool,
-) -> Result<(), FeedChainError> {
-    if one_context {
-        return Ok(());
-    }
-    let (timeout, delay): (Duration, Duration) = CONTEXT_WAIT_DURATION;
-    let start = Instant::now();
-
-    // try find context_hash
-    loop {
-        // if success, than ok
-        if let Ok(true) = context.is_committed(context_hash) {
-            break Ok(());
-        }
-
-        // kind of simple retry policy
-        if start.elapsed().le(&timeout) {
-            thread::sleep(delay);
-        } else {
-            break Err(FeedChainError::MissingContextError {
-                reason: format!("Block inject - context was not processed for context_hash: {}, timeout (timeout: {:?}, delay: {:?})", context_hash.to_base58_check(), timeout, delay),
-                context_hash: context_hash.to_base58_check(),
-            });
-        }
-    }
-}

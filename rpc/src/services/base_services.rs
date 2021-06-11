@@ -4,13 +4,13 @@
 use failure::bail;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{
-    context_key, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, OperationsStorage, OperationsStorageReader,
-};
 use storage::{BlockAdditionalData, PersistentStorage};
+use storage::{
+    BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
+    OperationsStorage, OperationsStorageReader,
+};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
-use tezos_new_context::StringTreeEntry;
+use tezos_new_context::{context_key_owned, StringTreeEntry};
 
 use crate::helpers::{
     get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata,
@@ -191,7 +191,7 @@ pub(crate) fn get_context_raw_bytes(
     env: &RpcServiceEnvironment,
 ) -> Result<StringTreeEntry, failure::Error> {
     // we assume that root is at "/data"
-    let mut key_prefix = context_key!("data");
+    let mut key_prefix = context_key_owned!("data");
 
     // clients may pass in a prefix (without /data) with elements containing slashes (expecting us to split)
     // we need to join with '/' and split again

@@ -12,9 +12,10 @@ use crypto::{
     blake2b::{self, Blake2bError},
     crypto_box::PublicKeyError,
 };
-use storage::{context_key, num_from_slice, BlockHeaderWithHash};
+use storage::{num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryRead;
+use tezos_new_context::context_key_owned;
 
 use crate::merge_slices;
 use crate::server::TezedgeContextRemote;
@@ -143,7 +144,7 @@ impl RightsContextData {
         let roll_snapshot: i16 = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                context_key!("data/cycle/{}/roll_snapshot", requested_cycle),
+                context_key_owned!("data/cycle/{}/roll_snapshot", requested_cycle),
             )? {
                 num_from_slice!(data, 0, i16)
             } else {
@@ -155,7 +156,7 @@ impl RightsContextData {
         let random_seed = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                context_key!("data/cycle/{}/random_seed", requested_cycle),
+                context_key_owned!("data/cycle/{}/random_seed", requested_cycle),
             )? {
                 data
             } else {
@@ -168,7 +169,7 @@ impl RightsContextData {
         let last_roll = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                context_key!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
+                context_key_owned!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
             )? {
                 num_from_slice!(data, 0, i32)
             } else {
@@ -203,7 +204,7 @@ impl RightsContextData {
     ) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let rolls = if let Some(val) = context.get_key_values_by_prefix(
             &ctx_hash,
-            context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
+            context_key_owned!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
         )? {
             val
         } else {
