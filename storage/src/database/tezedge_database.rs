@@ -322,7 +322,6 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
         let key = key.encode()?;
         let value = value.encode()?;
         self.backend.put(S::column_name(), key, value)?;
-        self.stats.incr_write(S::column_name());
         Ok(())
     }
 
@@ -335,14 +334,12 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
         let key = key.encode()?;
         let value = value.encode()?;
         self.backend.merge(S::column_name(), key, value)?;
-        self.stats.incr_write(S::column_name());
         Ok(())
     }
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, Error> {
         let key = key.encode()?;
         let result = self.backend.get(S::column_name(), key);
-        self.stats.incr_read(S::column_name());
         match result {
             Ok(value) => match value {
                 None => Ok(None),
