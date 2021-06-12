@@ -321,25 +321,25 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
     fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
-        self.backend.put(S::column_name(), key, value)?;
+        self.backend.put(S::column_name(), &key, &value)?;
         Ok(())
     }
 
     fn delete(&self, key: &S::Key) -> Result<(), Error> {
         let key = key.encode()?;
-        self.backend.delete(S::column_name(), key)
+        self.backend.delete(S::column_name(), &key)
     }
 
     fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), Error> {
         let key = key.encode()?;
         let value = value.encode()?;
-        self.backend.merge(S::column_name(), key, value)?;
+        self.backend.merge(S::column_name(), &key, &value)?;
         Ok(())
     }
 
     fn get(&self, key: &S::Key) -> Result<Option<S::Value>, Error> {
         let key = key.encode()?;
-        let result = self.backend.get(S::column_name(), key);
+        let result = self.backend.get(S::column_name(), &key);
         match result {
             Ok(value) => match value {
                 None => Ok(None),
@@ -351,7 +351,7 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
 
     fn contains(&self, key: &S::Key) -> Result<bool, Error> {
         let key = key.encode()?;
-        self.backend.contains(S::column_name(), key)
+        self.backend.contains(S::column_name(), &key)
     }
 
     fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), Error> {

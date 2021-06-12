@@ -39,25 +39,25 @@ impl SledDBBackend {
 }
 
 impl TezedgeDatabaseBackendStore for SledDBBackend {
-    fn put(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error> {
+    fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
         let tree = self.get_tree(column)?;
         let _ = tree.insert(key, value).map_err(Error::from)?;
         Ok(())
     }
 
-    fn delete(&self, column: &'static str, key: Vec<u8>) -> Result<(), Error> {
+    fn delete(&self, column: &'static str, key: &[u8]) -> Result<(), Error> {
         let tree = self.get_tree(column)?;
         let _ = tree.remove(key).map_err(Error::from)?;
         Ok(())
     }
 
-    fn merge(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error> {
+    fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
         let tree = self.get_tree(column)?;
         let _ = tree.merge(key, value).map_err(Error::from)?;
         Ok(())
     }
 
-    fn get(&self, column: &'static str, key: Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
+    fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         let tree = self.get_tree(column)?;
         tree.get(key)
             .map(|value| {
@@ -70,7 +70,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
             .map_err(Error::from)
     }
 
-    fn contains(&self, column: &'static str, key: Vec<u8>) -> Result<bool, Error> {
+    fn contains(&self, column: &'static str, key: &[u8]) -> Result<bool, Error> {
         let tree = self.get_tree(column)?;
         tree.contains_key(key).map_err(Error::from)
     }

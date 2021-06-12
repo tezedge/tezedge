@@ -43,52 +43,52 @@ impl RocksDBBackend {
 }
 impl TezdegeDatabaseBackendKV for RocksDBBackend {}
 impl TezedgeDatabaseBackendStore for RocksDBBackend {
-    fn put(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error> {
+    fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
         self.db
-            .put_cf_opt(cf, &key, &value, &default_write_options())
+            .put_cf_opt(cf, key, value, &default_write_options())
             .map_err(Error::from)
     }
 
-    fn delete(&self, column: &'static str, key: Vec<u8>) -> Result<(), Error> {
+    fn delete(&self, column: &'static str, key: &[u8]) -> Result<(), Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
         self.db
-            .delete_cf_opt(cf, &key, &default_write_options())
+            .delete_cf_opt(cf, key, &default_write_options())
             .map_err(Error::from)
     }
 
-    fn merge(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error> {
+    fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
 
         self.db
-            .merge_cf_opt(cf, &key, &value, &default_write_options())
+            .merge_cf_opt(cf, key, value, &default_write_options())
             .map_err(Error::from)
     }
 
-    fn get(&self, column: &'static str, key: Vec<u8>) -> Result<Option<Vec<u8>>, Error> {
+    fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
-        self.db.get_cf(cf, &key).map_err(Error::from)
+        self.db.get_cf(cf, key).map_err(Error::from)
     }
 
-    fn contains(&self, column: &'static str, key: Vec<u8>) -> Result<bool, Error> {
+    fn contains(&self, column: &'static str, key: &[u8]) -> Result<bool, Error> {
         let cf = self
             .db
             .cf_handle(column)
             .ok_or(Error::MissingColumnFamily { name: column })?;
-        let val = self.db.get_pinned_cf(cf, &key)?;
+        let val = self.db.get_pinned_cf(cf, key)?;
         Ok(val.is_some())
     }
 

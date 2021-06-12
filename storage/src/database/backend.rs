@@ -10,11 +10,11 @@ pub enum BackendIteratorMode {
 }
 
 pub trait TezedgeDatabaseBackendStore {
-    fn put(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error>;
-    fn delete(&self, column: &'static str, key: Vec<u8>) -> Result<(), Error>;
-    fn merge(&self, column: &'static str, key: Vec<u8>, value: Vec<u8>) -> Result<(), Error>;
-    fn get(&self, column: &'static str, key: Vec<u8>) -> Result<Option<Vec<u8>>, Error>;
-    fn contains(&self, column: &'static str, key: Vec<u8>) -> Result<bool, Error>;
+    fn put(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error>;
+    fn delete(&self, column: &'static str, key: &[u8]) -> Result<(), Error>;
+    fn merge(&self, column: &'static str, key: &[u8], value: &[u8]) -> Result<(), Error>;
+    fn get(&self, column: &'static str, key: &[u8]) -> Result<Option<Vec<u8>>, Error>;
+    fn contains(&self, column: &'static str, key: &[u8]) -> Result<bool, Error>;
     fn write_batch(
         &self,
         column: &'static str,
