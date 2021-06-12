@@ -17,11 +17,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use crate::commit_log::compression::{zstd_compress, zstd_decompress};
+use commitlog::message::MessageSet;
+use commitlog::{AppendError, CommitLog, LogOptions, Offset, ReadError, ReadLimit};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use commitlog::{CommitLog, LogOptions, Offset, ReadError, ReadLimit, AppendError};
-use commitlog::message::MessageSet;
 
 pub type CommitLogRef = Arc<RwLock<CommitLog>>;
 
@@ -505,9 +505,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-        where
-            P: AsRef<Path>,
-            I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
@@ -574,7 +574,6 @@ impl Location {
         self.0
     }
 }
-
 
 #[cfg(test)]
 mod tests {
