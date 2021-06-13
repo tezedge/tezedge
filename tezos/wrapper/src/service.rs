@@ -17,7 +17,6 @@ use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_context::channel::{context_receive, context_send, ContextAction};
 use tezos_messages::p2p::encoding::operation::Operation;
 use tezos_new_context::IndexApi;
 use tezos_new_context::{ContextKeyOwned, ContextValue, StringTreeEntry};
@@ -144,19 +143,6 @@ enum NodeMessage {
 /// Empty message
 #[derive(Serialize, Deserialize, Debug)]
 struct NoopMessage;
-
-pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
-    let (_, mut tx) = ipc_client.connect()?;
-    while let Ok(action) = context_receive() {
-        tx.send(&action)?;
-        if let ContextAction::Shutdown = action {
-            break;
-        }
-    }
-
-    Ok(())
-}
 
 /// Establish connection to existing IPC endpoint (which was created by tezedge node).
 /// Begin receiving commands from the tezedge node until `ShutdownCall` command is received.
@@ -324,11 +310,6 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 tx.send(&NodeMessage::ContextGetTreeByPrefixResult(result))?;
             }
             ProtocolMessage::ShutdownCall => {
-                // send shutdown event to context listener, that we dont need it anymore
-                if let Err(e) = context_send(ContextAction::Shutdown) {
-                    warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
-                }
-
                 // we trigger shutdown callback before, returning response
                 shutdown_callback(log);
 
@@ -495,32 +476,6 @@ impl IpcCmdServer {
             configuration: self.1.clone(),
             shutting_down: false,
         })
-    }
-}
-
-/// IPC event server is listening for incoming IPC connections.
-pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
-
-/// Difference between `IpcCmdServer` and `IpcEvtServer` is:
-/// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
-/// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
-impl IpcEvtServer {
-    pub fn try_bind_new() -> Result<Self, IpcError> {
-        Ok(IpcEvtServer(IpcServer::bind_path(&temp_sock())?))
-    }
-
-    /// Synchronously wait for new incoming IPC connection.
-    pub fn try_accept(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
-        let (rx, _) = self.0.try_accept(timeout)?;
-        Ok(rx)
-    }
-
-    /// Returns socket path
-    pub fn server_path(&self) -> PathBuf {
-        self.0.path.clone()
     }
 }
 

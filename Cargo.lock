@@ -723,20 +723,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd01a6eb3daaafa260f6fc94c3a6c36390abc2080e38e3e34ced87393fb77d80"
-dependencies = [
- "cfg-if 1.0.0",
- "crossbeam-channel",
- "crossbeam-deque",
- "crossbeam-epoch",
- "crossbeam-queue",
- "crossbeam-utils",
-]
-
-[[package]]
 name = "crossbeam-channel"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -768,16 +754,6 @@ dependencies = [
  "lazy_static",
  "memoffset",
  "scopeguard",
-]
-
-[[package]]
-name = "crossbeam-queue"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f6cb3c7f5b8e51bc3ebb73a2327ad4abdbd119dc13223f14f961d2f38486756"
-dependencies = [
- "cfg-if 1.0.0",
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -2003,7 +1979,9 @@ name = "light-node"
 version = "1.6.0"
 dependencies = [
  "clap",
+ "crypto",
  "failure",
+ "fs_extra",
  "futures",
  "ipc",
  "jemallocator",
@@ -2025,6 +2003,7 @@ dependencies = [
  "tezos_api",
  "tezos_identity",
  "tezos_messages",
+ "tezos_new_context",
  "tezos_wrapper",
  "tokio",
 ]
@@ -2831,7 +2810,6 @@ dependencies = [
  "tezos_api",
  "tezos_client",
  "tezos_interop",
- "tezos_interop_callback",
  "tezos_messages",
  "tezos_wrapper",
 ]
@@ -3167,6 +3145,7 @@ dependencies = [
  "strum_macros",
  "tezos_api",
  "tezos_messages",
+ "tezos_new_context",
  "tezos_timing",
  "tezos_wrapper",
  "tokio",
@@ -3538,6 +3517,7 @@ dependencies = [
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
+ "tezos_new_context",
  "tezos_wrapper",
  "tokio",
  "zip",
@@ -3992,17 +3972,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tezos_context"
-version = "1.6.0"
-dependencies = [
- "crossbeam",
- "lazy_static",
- "ocaml-interop",
- "serde 1.0.123",
- "tezos-sys",
-]
-
-[[package]]
 name = "tezos_encoding"
 version = "1.6.0"
 dependencies = [
@@ -4060,19 +4029,8 @@ dependencies = [
  "serial_test",
  "tezos-sys",
  "tezos_api",
- "tezos_context",
- "tezos_interop_callback",
  "tezos_messages",
  "tezos_new_context",
-]
-
-[[package]]
-name = "tezos_interop_callback"
-version = "1.6.0"
-dependencies = [
- "ocaml-interop",
- "tezos-sys",
- "tezos_context",
 ]
 
 [[package]]
@@ -4105,7 +4063,7 @@ dependencies = [
 
 [[package]]
 name = "tezos_new_context"
-version = "1.4.0"
+version = "1.6.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -4167,8 +4125,8 @@ dependencies = [
  "slog",
  "strum_macros",
  "tezos_api",
- "tezos_context",
  "tezos_messages",
+ "tezos_new_context",
  "wait-timeout",
 ]
 

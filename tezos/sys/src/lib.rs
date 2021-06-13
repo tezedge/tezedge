@@ -3,14 +3,10 @@
 
 #![forbid(unsafe_code)]
 
-//! This crate exists to handle linking against libtezos.so, this file is empty on purpose.
+//! Bindings to tezedge FFI functions in libtezos.so.
 
 #[link(name = "tezos")]
 extern "C" {
-    pub fn initialize_ml_context_functions(
-        ml_context_send_action: unsafe extern "C" fn(isize) -> isize,
-    );
-
     pub fn initialize_tezedge_context_callbacks(
         tezedge_context_commit: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,
         tezedge_context_hash: unsafe extern "C" fn(isize, isize, isize, isize) -> isize,

@@ -3,26 +3,23 @@
 #![feature(test)]
 extern crate test;
 
-use std::{convert::TryFrom, env, thread};
+use std::{convert::TryFrom, env};
 
-use ocaml_interop::{OCaml, OCamlRuntime, ToOCaml};
+use ocaml_interop::{OCamlRuntime, ToOCaml};
 use serial_test::serial;
 
 use crypto::hash::{chain_id_from_block_hash, BlockHash, ChainId};
 use tezos_api::ffi::{RustBytes, TezosRuntimeConfiguration};
 use tezos_api::ocaml_conv::FfiBlockHeader;
-use tezos_context::channel::{context_receive, enable_context_channel, ContextAction};
 use tezos_interop::ffi;
 use tezos_interop::runtime;
 use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::block_header::BlockHeader;
 
 const CHAIN_ID: &str = "8eceda2f";
-const CONTEXT_HASH: &str = "2f358bab4d28c4ee733ad7f2b01dcf116b33474b8c3a6cb40cccda2bdddd6d72";
 const HEADER_HASH: &str = "61e687e852460b28f0f9540ccecf8f6cf87a5ad472c814612f0179caf4b9f673";
 const HEADER: &str = "0000000301a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000005c017ed604dfcb6b41e91650bb908618b2740a6167d9072c3230e388b24feeef04c98dc27f000000110000000100000000080000000000000005f06879947f3d9959090f27054062ed23dbf9f7bd4b3c8a6e86008daabb07913e000c00000003e5445371002b9745d767d7f164a39e7f373a0f25166794cba491010ab92b0e281b570057efc78120758ff26a33301870f361d780594911549bcb7debbacd8a142e0b76a605";
 const OPERATION: &str = "a14f19e0df37d7b71312523305d71ac79e3d989c1c1d4e8e884b6857e4ec1627000000000236663bacdca76094fdb73150092659d463fec94eda44ba4db10973a1ad057ef53a5b3239a1b9c383af803fc275465bd28057d68f3cab46adfd5b2452e863ff0a";
-const OPERATION_HASH: &str = "7e73e3da041ea251037af062b7bc04b37a5ee38bc7e229e7e20737071ed73af4";
 
 mod tezos_ffi {
     use ocaml_interop::{ocaml, OCamlBytes, OCamlInt, OCamlList};
@@ -259,111 +256,6 @@ fn test_operations_list_list_roundtrip(
     );
 
     Ok(())
-}
-
-#[test]
-#[serial]
-fn test_context_callback() {
-    init_test_runtime();
-
-    let expected_count = 10000;
-    let expected_context_hash = hex::decode(CONTEXT_HASH).unwrap();
-    let expected_header_hash = hex::decode(HEADER_HASH).unwrap();
-    let expected_operation_hash = hex::decode(OPERATION_HASH).unwrap();
-    let expected_key: Vec<String> = vec![
-        "data".to_string(),
-        "contracts".to_string(),
-        "contract".to_string(),
-        "amount".to_string(),
-    ];
-    let expected_data = hex::decode(HEADER).unwrap();
-
-    let expected_context_hash_cloned = expected_context_hash.clone();
-    let expected_header_hash_cloned = expected_header_hash.clone();
-    let expected_operation_hash_cloned = expected_operation_hash.clone();
-    let expected_key_cloned = expected_key.clone();
-    let expected_data_cloned = expected_data.clone();
-
-    enable_context_channel();
-    let handle = thread::spawn(move || {
-        let mut received = 0;
-        for _ in 0..expected_count {
-            let action = context_receive().unwrap();
-            received += 1;
-
-            match action {
-                ContextAction::Set {
-                    context_hash,
-                    block_hash,
-                    operation_hash,
-                    key,
-                    value,
-                    ..
-                } => {
-                    assert!(context_hash.is_some());
-                    assert_eq!(expected_context_hash_cloned, context_hash.unwrap());
-
-                    assert!(block_hash.is_some());
-                    assert_eq!(expected_header_hash_cloned, block_hash.unwrap());
-
-                    assert!(operation_hash.is_some());
-                    assert_eq!(expected_operation_hash_cloned, operation_hash.unwrap());
-
-                    assert_eq!(expected_key_cloned.clone(), key);
-                    assert_eq!(expected_data_cloned.clone(), value);
-                }
-                ContextAction::Checkout { context_hash, .. } => {
-                    assert_eq!(expected_context_hash_cloned, context_hash);
-                }
-                _ => panic!("test failed - waiting just 'Set' action!"),
-            }
-        }
-        received
-    });
-
-    call_to_send_context_events(
-        expected_count,
-        expected_context_hash,
-        expected_header_hash,
-        expected_operation_hash,
-        expected_key,
-        expected_data,
-    );
-
-    let received = handle.join().unwrap();
-    assert_eq!(expected_count, received)
-}
-
-fn call_to_send_context_events(
-    count: i32,
-    context_hash: RustBytes,
-    block_header_hash: RustBytes,
-    operation_hash: RustBytes,
-    key: Vec<String>,
-    data: RustBytes,
-) {
-    let result = runtime::execute(move |rt: &mut OCamlRuntime| {
-        // sent bytes to ocaml
-        let count = OCaml::of_i32(count);
-        let context_hash = context_hash.to_boxroot(rt);
-        let block_header_hash = block_header_hash.to_boxroot(rt);
-        let operation_hash = operation_hash.to_boxroot(rt);
-        let key = key.to_boxroot(rt);
-        let data = data.to_boxroot(rt);
-
-        tezos_ffi::context_callback_roundtrip(
-            rt,
-            &count,
-            &context_hash,
-            &block_header_hash,
-            &operation_hash,
-            &key,
-            &data,
-        );
-    });
-
-    // check
-    assert!(result.is_ok());
 }
 
 fn sample_operations() -> Vec<Option<Vec<RustBytes>>> {
