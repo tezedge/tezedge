@@ -25,7 +25,6 @@ crypto = { path = "../crypto" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
 tezos_api = { path = "../tezos/api" }
-tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_timing = { path = "../tezos/timing" }
 tezos_wrapper = { path = "../tezos/wrapper" }

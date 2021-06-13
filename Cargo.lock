@@ -2830,7 +2830,6 @@ dependencies = [
  "slog-term",
  "tezos_api",
  "tezos_client",
- "tezos_context",
  "tezos_interop",
  "tezos_interop_callback",
  "tezos_messages",
@@ -3167,7 +3166,6 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_api",
- "tezos_context",
  "tezos_messages",
  "tezos_timing",
  "tezos_wrapper",
@@ -3537,7 +3535,6 @@ dependencies = [
  "storage",
  "tezos-sys",
  "tezos_api",
- "tezos_context",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
@@ -3787,7 +3784,6 @@ dependencies = [
  "strum",
  "strum_macros",
  "tezos_api",
- "tezos_context",
  "tezos_messages",
 ]
 

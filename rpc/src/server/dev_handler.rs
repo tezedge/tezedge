@@ -143,16 +143,18 @@ pub async fn dev_stats_storage(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    _env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    result_to_json_response(
-        crate::services::stats_services::compute_storage_stats(
-            env.state(),
-            env.main_chain_genesis_hash(),
-            env.persistent_storage(),
-        ),
-        env.log(),
-    )
+    // TODO - TE-261: disabled for now because we don't have the context actions database
+    // result_to_json_response(
+    //     crate::services::stats_services::compute_storage_stats(
+    //         env.state(),
+    //         env.main_chain_genesis_hash(),
+    //         env.persistent_storage(),
+    //     ),
+    //     env.log(),
+    // )
+    empty()
 }
 
 pub async fn dev_stats_memory(
