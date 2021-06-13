@@ -288,7 +288,7 @@ pub(crate) async fn get_block_operations_metadata(
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(|e| failure::Error::from(e))
+            .map_err(failure::Error::from)
     };
 
     // 1. wait for data to collect
@@ -413,7 +413,7 @@ pub(crate) async fn get_block(
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(|e| failure::Error::from(e))
+            .map_err(failure::Error::from)
     };
 
     // 1. wait for data to collect
