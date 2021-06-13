@@ -569,7 +569,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
-            .default_value("rocksdb")
+            .default_value("sled")
             .help("Options fo main database backend"))
         .arg(Arg::with_name("one-context")
             .long("one-context")
@@ -982,9 +982,9 @@ impl Environment {
 
                 let maindb_backend: TezedgeDatabaseBackendConfiguration = args
                     .value_of("maindb-backend")
-                    .unwrap_or("sled")
+                    .unwrap_or("rocksdb")
                     .parse::<TezedgeDatabaseBackendConfiguration>()
-                    .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
+                    .unwrap_or(TezedgeDatabaseBackendConfiguration::RocksDB);
 
                 let mut merkle_context_actions_store = None;
                 let context_action_recorders = backends
