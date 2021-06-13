@@ -75,8 +75,6 @@ fn create_tezos_readonly_api_pool(
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-    // TODO: context_storage_configuration needs to be readjusted so that
-    // when tezedge is enabled, the IPC version is used
     TezosApiConnectionPool::new_with_readonly_context(
         String::from(pool_name),
         pool_cfg,
@@ -88,7 +86,7 @@ fn create_tezos_readonly_api_pool(
             },
             tezos_env,
             env.enable_testchain,
-            env.storage.context_storage_configuration.clone(),
+            env.storage.context_storage_configuration.readonly(),
             &env.ffi.protocol_runner,
             env.logging.level,
         ),
@@ -178,8 +176,11 @@ fn block_on_actors(
 
     info!(log, "Initializing protocol runners... (4/5)");
 
-    // TODO: create socket path here with temp_sock() and pass it around
-    // readonly protocol runners will poll it until it is available
+    // pool and event server dedicated for applying blocks to chain
+    let tezos_writeable_api_pool = Arc::new(
+        create_tezos_writeable_api_pool(&env, tezos_env.clone(), log.clone())
+            .expect("Failed to initialize writable API pool"),
+    );
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(
@@ -213,11 +214,6 @@ fn block_on_actors(
         .expect("Failed to initialize API pool without context"),
     );
 
-    // pool and event server dedicated for applying blocks to chain
-    let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(&env, tezos_env.clone(), log.clone())
-            .expect("Failed to initialize writable API pool"),
-    );
     info!(log, "Protocol runners initialized");
 
     info!(log, "Initializing actors... (5/5)");

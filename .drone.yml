@@ -446,46 +446,47 @@ steps:
     - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
     - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_fail
 
-- name: record/replay-context-action-file-test
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: if-not-exists
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-  environment:
-    RUST_BACKTRACE: 1
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-    OUT_DIR: .
-  commands:
-    - export LD_LIBRARY_PATH=$${BUILD_ARTIFACTS_PATH}/build_files/ffi && echo $${LD_LIBRARY_PATH}
-    - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
-    - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
-    # cleanup
-    - rm -rf /tmp/context-replay_output
-    - mkdir /tmp/context-replay_output
-    - export TARGET_ACTION_FILE="/tmp/context-replay_output/generated-1324-context-action-file.data"
-    # generate action file for 1324 blocks
-    - echo "... generating context action file ... $TARGET_ACTION_FILE"
-    - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
-    - ls -lrt $${TARGET_ACTION_FILE}
-    # replay action file with rocksdb
-    - echo "... replay context action file with rocksdb... $TARGET_ACTION_FILE"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store rocksdb
-    # replay action file with inmemory
-    - echo "... replay context action file with in-memory..."
-    - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store inmem
-    # replay action file with btree
-    - echo "... replay context action file with in-memory..."
-    - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store btree
-    # replay action file with sled
-    - echo "... replay context action file with sled..."
-    - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
-  # TODO: enable with new context
-  detach: true
+# TODO - TE-261: we don't have an equivalent of this right now
+# - name: record/replay-context-action-file-test
+#   image: simplestakingcom/tezedge-ci-builder:latest
+#   pull: if-not-exists
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: tests
+#       path: /tests
+#   environment:
+#     RUST_BACKTRACE: 1
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#     OUT_DIR: .
+#   commands:
+#     - export LD_LIBRARY_PATH=$${BUILD_ARTIFACTS_PATH}/build_files/ffi && echo $${LD_LIBRARY_PATH}
+#     - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
+#     - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
+#     # cleanup
+#     - rm -rf /tmp/context-replay_output
+#     - mkdir /tmp/context-replay_output
+#     - export TARGET_ACTION_FILE="/tmp/context-replay_output/generated-1324-context-action-file.data"
+#     # generate action file for 1324 blocks
+#     - echo "... generating context action file ... $TARGET_ACTION_FILE"
+#     - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
+#     - ls -lrt $${TARGET_ACTION_FILE}
+#     # replay action file with rocksdb
+#     - echo "... replay context action file with rocksdb... $TARGET_ACTION_FILE"
+#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store rocksdb
+#     # replay action file with inmemory
+#     - echo "... replay context action file with in-memory..."
+#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store inmem
+#     # replay action file with btree
+#     - echo "... replay context action file with in-memory..."
+#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store btree
+#     # replay action file with sled
+#     - echo "... replay context action file with sled..."
+#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
+#   # TODO: enable with new context
+#   detach: true
 
 
 depends_on:

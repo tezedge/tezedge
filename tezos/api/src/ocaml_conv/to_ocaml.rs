@@ -9,10 +9,10 @@ use super::{
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    ForkingTestchainData, HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest,
-    RpcMethod, RpcRequest, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
-    ValidateOperationRequest,
+    ContextKvStoreConfiguration, ForkingTestchainData, HelpersPreapplyBlockRequest,
+    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosContextConfiguration,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, ValidateOperationRequest,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
@@ -79,6 +79,22 @@ to_ocaml_hash!(
 impl_to_ocaml_record! {
     TezosContextIrminStorageConfiguration {
         data_dir: String,
+    }
+}
+
+impl_to_ocaml_variant! {
+    ContextKvStoreConfiguration {
+        ContextKvStoreConfiguration::ReadOnlyIpc,
+        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::BTreeMap,
+        ContextKvStoreConfiguration::InMemGC,
+    }
+}
+
+impl_to_ocaml_record! {
+    TezosContextTezEdgeStorageConfiguration {
+        backend: ContextKvStoreConfiguration,
+        ipc_socket_path: Option<String>,
     }
 }
 

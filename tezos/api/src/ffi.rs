@@ -110,7 +110,20 @@ pub struct TezosContextIrminStorageConfiguration {
 }
 
 // Must be in sync with ffi_config.ml
-pub type TezosContextTezEdgeStorageConfiguration = (); // TODO - TE-261: InMemGc, ReadonlyIpc
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum ContextKvStoreConfiguration {
+    ReadOnlyIpc,
+    InMem,
+    BTreeMap,
+    InMemGC,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextTezEdgeStorageConfiguration {
+    pub backend: ContextKvStoreConfiguration,
+    pub ipc_socket_path: Option<String>,
+}
 
 // Must be in sync with ffi_config.ml
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -121,6 +134,43 @@ pub enum TezosContextStorageConfiguration {
         TezosContextIrminStorageConfiguration,
         TezosContextTezEdgeStorageConfiguration,
     ),
+}
+
+impl TezosContextStorageConfiguration {
+    pub fn readonly(&self) -> Self {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => self.clone(),
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+            TezosContextStorageConfiguration::Both(irmin, tezedge) => {
+                TezosContextStorageConfiguration::Both(
+                    irmin.clone(),
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+        }
+    }
+
+    pub fn get_ipc_socket_path(&self) -> Option<String> {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => None,
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+        }
+    }
 }
 
 // Must be in sync with ffi_config.ml

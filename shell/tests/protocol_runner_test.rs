@@ -13,6 +13,7 @@ use serial_test::serial;
 use slog::{error, info, o, warn, Level, Logger};
 
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
     InitProtocolContextResult, TezosContextIrminStorageConfiguration,
     TezosContextStorageConfiguration, TezosRuntimeConfiguration,
@@ -129,7 +130,10 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
                 .expect("Invalid context_db_path value")
                 .to_string(),
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
 
     // init protocol runner endpoint
@@ -225,7 +229,10 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
                 .expect("Invalid context_db_path value")
                 .to_string(),
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
 
     // cfg for protocol runner

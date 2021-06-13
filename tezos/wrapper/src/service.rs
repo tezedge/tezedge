@@ -10,7 +10,7 @@ use std::time::Duration;
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use slog::{debug, warn, Logger};
+use slog::{debug, info, warn, Logger};
 use strum_macros::IntoStaticStr;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
@@ -54,6 +54,7 @@ enum ProtocolMessage {
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
+    InitProtocolContextIpcServer(TezosContextStorageConfiguration),
     GenesisResultDataCall(GenesisResultDataParams),
     JsonEncodeApplyBlockResultMetadata {
         context_hash: ContextHash,
@@ -128,6 +129,7 @@ enum NodeMessage {
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
+    InitProtocolContextIpcServerResult(Result<(), ()>), // TODO - TE-261: use actual error result
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
     JsonEncodeApplyBlockResultMetadataResponse(Result<String, FfiJsonEncoderError>),
@@ -218,8 +220,25 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     sandbox_json_patch_context: params.patch_context,
                     context_stats_db_path: params.context_stats_db_path,
                 };
+                // TODO - TE-261: what to do with init protocol result on readonly? init context anyway to get it?
                 let res = Proto::init_protocol_context(context_config);
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
+            }
+            ProtocolMessage::InitProtocolContextIpcServer(storage_cfg) => {
+                // TODO - TE-261: needs better error handling
+                if let Some(socket_path) = storage_cfg.get_ipc_socket_path() {
+                    let log = log.clone();
+                    std::thread::spawn(move || {
+                        info!(&log, "Listening to context IPC request at {}", socket_path);
+                        let mut listener =
+                            tezos_new_context::kv_store::readonly_ipc::IpcContextListener::try_new(
+                                socket_path,
+                            )
+                            .unwrap();
+                        listener.handle_incoming_connections(&log);
+                    });
+                }
+                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
             }
             ProtocolMessage::GenesisResultDataCall(params) => {
                 let res = Proto::genesis_result_data(
@@ -264,7 +283,6 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 );
                 tx.send(&NodeMessage::JsonEncodeApplyBlockOperationsMetadata(res))?;
             }
-            // TODO: move these to their own channel? Will block (and be blocked) by block application, etc otherwise
             ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
                 context_hash,
                 key,
@@ -388,6 +406,9 @@ pub enum ProtocolServiceError {
     /// Lock error
     #[fail(display = "Lock error: {:?}", message)]
     LockPoisonError { message: String },
+    /// Context IPC server error
+    #[fail(display = "Context IPC server error: {:?}", message)]
+    ContextIpcServerError { message: String },
 }
 
 impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
@@ -955,6 +976,7 @@ impl ProtocolController {
     pub fn init_protocol_for_read(
         &self,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
+        // TODO - TE-261: should use a different message exchange for readonly contexts?
         self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
             self.configuration.storage.clone(),
@@ -965,6 +987,36 @@ impl ProtocolController {
             None,
             None,
         )
+    }
+
+    // TODO - TE-261: this requires more descriptive errors.
+
+    /// Initializes server to listen for readonly context clients through IPC.
+    ///
+    /// Must be called after the writable context has been initialized.
+    pub fn init_context_ipc_server(&self) -> Result<(), ProtocolServiceError> {
+        if let Some(_) = self.configuration.storage.get_ipc_socket_path() {
+            let mut io = self.io.borrow_mut();
+            io.tx.send(&ProtocolMessage::InitProtocolContextIpcServer(
+                self.configuration.storage.clone(),
+            ))?;
+
+            match io.rx.try_receive(
+                Some(IpcCmdServer::IO_TIMEOUT),
+                Some(IpcCmdServer::IO_TIMEOUT),
+            )? {
+                NodeMessage::InitProtocolContextIpcServerResult(result) => {
+                    result.map_err(|_err| ProtocolServiceError::ContextIpcServerError {
+                        message: "Failure when starting context IPC server".to_owned(),
+                    })
+                }
+                message => Err(ProtocolServiceError::UnexpectedMessage {
+                    message: message.into(),
+                }),
+            }
+        } else {
+            Ok(())
+        }
     }
 
     /// Gets data for genesis.

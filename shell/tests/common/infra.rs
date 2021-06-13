@@ -13,6 +13,7 @@ use std::time::{Duration, SystemTime};
 use riker::actors::*;
 use riker::system::SystemBuilder;
 use slog::{info, warn, Level, Logger};
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tokio::runtime::Runtime;
 
 use common::contains_all_keys;
@@ -97,7 +98,10 @@ impl NodeInfrastructure {
             TezosContextIrminStorageConfiguration {
                 data_dir: context_db_path,
             },
-            (),
+            TezosContextTezEdgeStorageConfiguration {
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                ipc_socket_path: None,
+            },
         );
 
         let init_storage_data = resolve_storage_init_chain_data(
