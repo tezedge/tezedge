@@ -589,7 +589,7 @@ pub fn init_prng(
 #[inline]
 pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
     if bound < 1 {
-        return Err(TezosPRNGError::BoundNotCorrect { bound: bound });
+        return Err(TezosPRNGError::BoundNotCorrect { bound });
     }
     let v: i32;
     // Note: this part aims to be similar
