@@ -42,6 +42,7 @@ fn main() {
                 .empty_values(false)
                 .required(true),
         )
+        // TODO - TE-261: remove this, not used anymore
         .arg(
             Arg::with_name("sock-evt")
                 .short("e")

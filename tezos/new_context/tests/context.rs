@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crypto::hash::ContextHash;
 use storage::tests_common::TmpStorage;
 use storage::{BlockHeaderWithHash, BlockStorage};
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_messages::p2p::encoding::prelude::BlockHeaderBuilder;
 use tezos_new_context::context_key;
 use tezos_new_context::initializer::initialize_tezedge_context;
@@ -25,9 +26,10 @@ pub fn test_context_set_get_commit() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // context
-    let mut context = initialize_tezedge_context(
-        &tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
-    )
+    let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
+        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
+        ipc_socket_path: None,
+    })
     .unwrap();
 
     // add to context
@@ -67,9 +69,10 @@ pub fn test_context_delete_and_remove() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // context
-    let mut context = initialize_tezedge_context(
-        &tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
-    )
+    let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
+        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
+        ipc_socket_path: None,
+    })
     .unwrap();
 
     // add to context
@@ -216,9 +219,10 @@ pub fn test_context_copy() -> Result<(), failure::Error> {
     block_storage.put_block_header(&block)?;
 
     // context
-    let mut context = initialize_tezedge_context(
-        &tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
-    )
+    let mut context = initialize_tezedge_context(&TezosContextTezEdgeStorageConfiguration {
+        backend: tezos_new_context::initializer::ContextKvStoreConfiguration::InMemGC,
+        ipc_socket_path: None,
+    })
     .unwrap();
 
     // add to context

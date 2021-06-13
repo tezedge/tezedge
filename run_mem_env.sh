@@ -70,7 +70,7 @@ start_tezedge_node() {
     --websocket-address 0.0.0.0:4927 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
-    --actions-store-backend rocksdb \
+    --actions-store-backend none \
     --log-level debug \
     --log-format simple \
     &> nohup-tezedge.out &

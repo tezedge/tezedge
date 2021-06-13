@@ -291,9 +291,21 @@ impl<
 macro_rules! context_key {
     ($key:expr) => {{
         $key.split('/').collect::<Vec<&str>>()
+
     }};
     ($($arg:tt)*) => {{
         context_key!(format!($($arg)*))
+    }};
+}
+
+// Like [`context_key`] but produces ann owned key.
+#[macro_export]
+macro_rules! context_key_owned {
+    ($key:expr) => {{
+        $key.split('/').map(String::from).collect::<Vec<String>>()
+    }};
+    ($($arg:tt)*) => {{
+        context_key_owned!(format!($($arg)*))
     }};
 }
 

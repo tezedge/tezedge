@@ -15,7 +15,7 @@ use crate::ContextValue;
 use self::working_tree::MerkleError;
 
 pub mod working_tree;
-pub mod working_tree_stats;
+pub mod working_tree_stats; // TODO - TE-261 remove or reimplement
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize)]
 pub struct KeyFragment(pub(crate) Rc<str>);
@@ -57,11 +57,6 @@ pub enum NodeKind {
     Leaf,
 }
 
-// TODO: the value is serialized like this,
-// but it is not the most convenient representation for working with the tree
-// because it requires a hashmap to be able to retrieve objects by hash.
-// If nodes contain inline values, serialization must not be direct but instead
-// conversion into this representation must happen first.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Node {
     pub node_kind: NodeKind,
@@ -128,7 +123,7 @@ impl Node {
             .ok_or(MerkleError::InvalidState("Missing entry hash"))
     }
 
-    fn set_entry(&self, entry: &Entry) -> Result<(), MerkleError> {
+    pub fn set_entry(&self, entry: &Entry) -> Result<(), MerkleError> {
         self.entry
             .try_borrow_mut()
             .map_err(|_| MerkleError::InvalidState("The Entry is borrowed more than once"))?

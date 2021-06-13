@@ -9,7 +9,8 @@ use crypto::hash::{ContextHash, ProtocolHash};
 use tezos_api::environment::{TezosEnvironment, TezosEnvironmentConfiguration, TEZOS_ENV};
 use tezos_api::ffi::{
     PatchContext, TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosRuntimeConfiguration,
 };
 use tezos_client::client;
 
@@ -44,7 +45,10 @@ fn test_init_empty_context_for_all_enviroment_nets() {
             TezosContextIrminStorageConfiguration {
                 data_dir: common::prepare_empty_dir(storage_data_dir),
             },
-            (),
+            TezosContextTezEdgeStorageConfiguration {
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                ipc_socket_path: None,
+            },
         );
         let context_config = TezosContextConfiguration {
             storage,
@@ -111,7 +115,10 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
         TezosContextIrminStorageConfiguration {
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
     let context_config = TezosContextConfiguration {
         storage,
@@ -167,7 +174,10 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
         TezosContextIrminStorageConfiguration {
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
     let context_config = TezosContextConfiguration {
         storage,

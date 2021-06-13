@@ -8,7 +8,8 @@ use tezos_api::environment::{get_empty_operation_list_list_hash, TezosEnvironmen
 use tezos_api::ffi::{
     ApplyBlockRequest, BeginConstructionRequest, InitProtocolContextResult,
     TezosContextConfiguration, TezosContextIrminStorageConfiguration,
-    TezosContextStorageConfiguration, TezosRuntimeConfiguration, ValidateOperationRequest,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
+    TezosRuntimeConfiguration, ValidateOperationRequest,
 };
 use tezos_client::client;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -76,7 +77,10 @@ fn test_begin_construction_and_validate_operation() -> Result<(), failure::Error
             TezosContextIrminStorageConfiguration {
                 data_dir: common::prepare_empty_dir("mempool_test_storage_01"),
             },
-            (),
+            TezosContextTezEdgeStorageConfiguration {
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                ipc_socket_path: None,
+            },
         ),
         test_data_protocol_v1::tezos_network(),
     );

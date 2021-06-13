@@ -1,8 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-// TODO - TE-261: there is a bunch of context stuff here, remove
-
 use std::env;
 use std::ffi::OsString;
 use std::fs;
@@ -30,6 +28,7 @@ use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::Replay;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
 };
@@ -639,7 +638,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'inmem-gc', 'btree'"))
+            .help("Choose the merkle storege backend - supported backends: 'inmem', 'inmem-gc', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
             .global(true)
@@ -1118,17 +1117,11 @@ impl Environment {
                     threads: db_threads_count,
                 };
 
-                // TODO - TE-261: use this value for the tezedge context config
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
-                        SupportedContextKeyValueStore::Sled { .. } => {
-                            ContextKvStoreConfiguration::Sled {
-                                path: db_path.join("context_sled"),
-                            }
-                        }
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
                         SupportedContextKeyValueStore::BTreeMap => {
                             ContextKvStoreConfiguration::BTreeMap
@@ -1151,9 +1144,19 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
 
+                // TODO - TE-261: can this conversion be made prettier without `to_string_lossy`?
+                // Path for the socket that will be used for IPC access to the context
+                let context_ipc_socket_path =
+                    ipc::temp_sock().to_string_lossy().as_ref().to_owned();
+
                 let context_storage_configuration = match context_storage {
                     TezosContextStorageChoice::TezEdge => {
-                        TezosContextStorageConfiguration::TezEdgeOnly(())
+                        TezosContextStorageConfiguration::TezEdgeOnly(
+                            TezosContextTezEdgeStorageConfiguration {
+                                backend: context_kv_store,
+                                ipc_socket_path: Some(context_ipc_socket_path),
+                            },
+                        )
                     }
                     TezosContextStorageChoice::Irmin => {
                         TezosContextStorageConfiguration::IrminOnly(
@@ -1172,7 +1175,10 @@ impl Environment {
                                 .expect("Invalid tezos_data_dir value")
                                 .to_string(),
                         },
-                        (),
+                        TezosContextTezEdgeStorageConfiguration {
+                            backend: context_kv_store,
+                            ipc_socket_path: Some(context_ipc_socket_path),
+                        },
                     ),
                 };
 

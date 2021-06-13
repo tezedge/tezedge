@@ -70,9 +70,12 @@ impl TezedgeIndex {
         strings.get_str(s)
     }
 
+    pub fn find_entry_bytes(&self, hash: &EntryHash) -> Result<Option<Vec<u8>>, DBError> {
+        self.repository.read()?.get(hash)
+    }
+
     pub fn find_entry(&self, hash: &EntryHash) -> Result<Option<Entry>, DBError> {
-        let db = self.repository.read()?;
-        match db.get(hash)? {
+        match self.find_entry_bytes(hash)? {
             None => Ok(None),
             Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
         }

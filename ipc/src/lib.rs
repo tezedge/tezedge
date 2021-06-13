@@ -268,6 +268,17 @@ where
         split(stream.0, false, false)
     }
 
+    /// Accept new connection a return sender/receiver for it
+    pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
+        let stream = self
+            .listener
+            .accept()
+            .map_err(|e| IpcError::ConnectionError { reason: e })?;
+
+        // see explaination at `try_accept`.
+        split(stream.0, false, false)
+    }
+
     /// Create new IpcClient for this server
     pub fn client(&self) -> IpcClient<R, S> {
         IpcClient::new(&self.path)

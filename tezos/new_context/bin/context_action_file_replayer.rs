@@ -12,6 +12,7 @@ use crypto::hash::{BlockHash, ContextHash};
 use failure::Error;
 use slog::{debug, info, warn, Drain, Level, Logger};
 
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_new_context::initializer::initialize_tezedge_context;
 use tezos_new_context::kv_store::SupportedContextKeyValueStore;
 use tezos_new_context::working_tree::working_tree::WorkingTree;
@@ -65,7 +66,7 @@ impl Args {
                 .required(true)
                 .default_value("inmem-gc")
                 .possible_values(&SupportedContextKeyValueStore::possible_values())
-                .help("Choose the merkle storege backend - supported backends: 'sled', 'inmem', 'inmem-gc', 'btree'"));
+                .help("Choose the merkle storege backend - supported backends: 'inmem', 'inmem-gc', 'btree'"));
 
         let matches = app.get_matches();
 
@@ -85,11 +86,6 @@ impl Args {
                 .unwrap()
                 .parse::<SupportedContextKeyValueStore>()
                 .map(|v| match v {
-                    SupportedContextKeyValueStore::Sled { .. } => {
-                        ContextKvStoreConfiguration::Sled {
-                            path: out_dir.join("replayed_context_sled"),
-                        }
-                    }
                     SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
                     SupportedContextKeyValueStore::InMemGC => ContextKvStoreConfiguration::InMemGC,
                     SupportedContextKeyValueStore::BTreeMap => {
@@ -262,7 +258,8 @@ impl StatsWriter {
 
     fn update(&mut self, block_nr: usize, _tree: &WorkingTree) {
         // TODO: this will not do anything as it is now
-        let report = tezos_new_context::working_tree::working_tree_stats::MerkleStoragePerfReport::default();
+        let report =
+            tezos_new_context::working_tree::working_tree_stats::MerkleStoragePerfReport::default();
         let usage = report.kv_store_stats;
         let block_latency = 0;
         self.block_latencies_total += block_latency as usize;
@@ -350,10 +347,10 @@ fn resolve_context_kv_store(
     context_kv_store_configuration: &ContextKvStoreConfiguration,
 ) -> (String, Option<PathBuf>) {
     match context_kv_store_configuration {
-        ContextKvStoreConfiguration::Sled { path } => ("sled".to_string(), Some(path.clone())),
         ContextKvStoreConfiguration::InMem => ("inmem".to_string(), None),
         ContextKvStoreConfiguration::InMemGC => ("inmem-gc".to_string(), None),
         ContextKvStoreConfiguration::BTreeMap => ("btree".to_string(), None),
+        ContextKvStoreConfiguration::ReadOnlyIpc => ("readonly-ipc".to_string(), None),
     }
 }
 
@@ -402,7 +399,11 @@ fn main() -> Result<(), Error> {
                "target_context_kv_store_path" => params.output.to_str().unwrap(),
                "target_context_kv_store" => context_kv_storage_name);
 
-    let mut context = initialize_tezedge_context(&params.context_kv_store)?;
+    let configuration = TezosContextTezEdgeStorageConfiguration {
+        backend: params.context_kv_store.clone(),
+        ipc_socket_path: None,
+    };
+    let mut context = initialize_tezedge_context(&configuration)?;
     let mut contexts: HashMap<TreeId, TezedgeContext> = Default::default();
     let mut stat_writer = StatsWriter::new(File::create(stats_output_file)?);
 

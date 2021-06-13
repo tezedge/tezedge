@@ -44,7 +44,7 @@ pub type OperationLatencyStats = HashMap<MerkleStorageAction, OperationLatencies
 // Latency statistics per path indexed by first chunk of path (under /data/)
 pub type PerPathOperationStats = HashMap<String, OperationLatencyStats>;
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct MerkleStoragePerfReport {
     pub perf_stats: MerklePerfStats,
     pub kv_store_stats: usize,

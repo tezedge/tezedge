@@ -1,41 +1,36 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use ocaml_interop::BoxRoot;
+pub use tezos_api::ffi::ContextKvStoreConfiguration;
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 
 use crate::gc::mark_move_gced::MarkMoveGCed;
-use crate::kv_store::{
-    btree_map::BTreeMapBackend, in_memory_backend::InMemoryBackend, sled_backend::SledBackend,
-};
+use crate::kv_store::readonly_ipc::ReadonlyIpcBackend;
+use crate::kv_store::{btree_map::BTreeMapBackend, in_memory_backend::InMemoryBackend};
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
 
 // TODO: should this be here?
 const PRESERVE_CYCLE_COUNT: usize = 7;
 
-#[derive(Debug, Clone)]
-pub enum ContextKvStoreConfiguration {
-    Sled { path: PathBuf },
-    InMem,
-    BTreeMap,
-    InMemGC,
-}
-
 // TODO: are errors not possible here? recheck that
 pub fn initialize_tezedge_index(
-    context_kv_store: &ContextKvStoreConfiguration,
+    configuration: &TezosContextTezEdgeStorageConfiguration,
     patch_context: Option<BoxRoot<PatchContextFunction>>,
 ) -> TezedgeIndex {
     TezedgeIndex::new(
-        match context_kv_store {
-            ContextKvStoreConfiguration::Sled { path } => {
-                let sled = sled::Config::new()
-                    .path(path)
-                    .open()
-                    .expect("Failed to create/initialize Sled database (db_context)");
-                Arc::new(RwLock::new(SledBackend::new(sled)))
+        match configuration.backend {
+            ContextKvStoreConfiguration::ReadOnlyIpc => {
+                // TODO - TE-261: remove expect
+                // TODO - TE-261: client connection can fail
+                Arc::new(RwLock::new(ReadonlyIpcBackend::connect(
+                    configuration
+                        .ipc_socket_path
+                        .clone()
+                        .expect("Expected IPC socket path for the readonly backend"),
+                )))
             }
             ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
             ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
@@ -50,8 +45,8 @@ pub fn initialize_tezedge_index(
 }
 
 pub fn initialize_tezedge_context(
-    context_kv_store: &ContextKvStoreConfiguration,
+    configuration: &TezosContextTezEdgeStorageConfiguration,
 ) -> Result<TezedgeContext, failure::Error> {
-    let index = initialize_tezedge_index(context_kv_store, None);
+    let index = initialize_tezedge_index(configuration, None);
     Ok(TezedgeContext::new(index, None, None))
 }
