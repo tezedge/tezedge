@@ -9,10 +9,11 @@ use super::{
     OCamlOperationMetadataListListHash, OCamlProtocolHash,
 };
 use crate::ffi::{
-    Applied, ApplyBlockResponse, BeginApplicationResponse, Errored, ForkingTestchainData,
-    HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson, PrevalidatorWrapper,
-    ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod, TezosErrorTrace,
-    ValidateOperationResponse, ValidateOperationResult,
+    Applied, ApplyBlockResponse, BeginApplicationResponse, ContextKvStoreConfiguration, Errored,
+    ForkingTestchainData, HelpersPreapplyResponse, OperationProtocolDataJsonWithErrorListJson,
+    PrevalidatorWrapper, ProtocolRpcError, ProtocolRpcResponse, RpcArgDesc, RpcMethod,
+    TezosContextTezEdgeStorageConfiguration, TezosErrorTrace, ValidateOperationResponse,
+    ValidateOperationResult,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationMetadataHash,
@@ -67,6 +68,22 @@ unsafe impl FromOCaml<OCamlChainId> for ChainId {
         let v: OCaml<OCamlBytes> = unsafe { std::mem::transmute(v) };
         let vec: Vec<u8> = v.to_rust();
         ChainId::try_from(vec).unwrap()
+    }
+}
+
+impl_from_ocaml_variant! {
+    ContextKvStoreConfiguration {
+        ContextKvStoreConfiguration::ReadOnlyIpc,
+        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::BTreeMap,
+        ContextKvStoreConfiguration::InMemGC,
+    }
+}
+
+impl_from_ocaml_record! {
+    TezosContextTezEdgeStorageConfiguration {
+        backend: ContextKvStoreConfiguration,
+        ipc_socket_path: Option<String>,
     }
 }
 

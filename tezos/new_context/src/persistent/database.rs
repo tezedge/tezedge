@@ -11,6 +11,7 @@ use failure::Fail;
 
 use crypto::hash::FromBytesError;
 
+use crate::kv_store::readonly_ipc::ContextServiceError;
 use crate::persistent::codec::SchemaError;
 
 /// Possible errors for schema
@@ -24,10 +25,15 @@ pub enum DBError {
     DatabaseIncompatibility { name: String },
     #[fail(display = "Value already exists {}", key)]
     ValueExists { key: String },
+    #[fail(
+        display = "Found wrong structure. Was looking for {}, but found {}",
+        sought, found
+    )]
+    FoundUnexpectedStructure { sought: String, found: String },
     #[fail(display = "Guard Poison {} ", error)]
     GuardPoison { error: String },
-    #[fail(display = "SledDB error: {}", error)]
-    SledDBError { error: sled::Error },
+    #[fail(display = "Serialization error: {:?}", error)]
+    SerializationError { error: bincode::Error },
     #[fail(display = "Hash encode error : {}", error)]
     HashEncodeError { error: FromBytesError },
     #[fail(display = "Mutex/lock lock error! Reason: {}", reason)]
@@ -36,6 +42,8 @@ pub enum DBError {
     IOError { error: io::Error },
     #[fail(display = "MemoryStatisticsOverflow")]
     MemoryStatisticsOverflow,
+    #[fail(display = "IPC Context access error: {:?}", reason)]
+    IpcAccessError { reason: ContextServiceError },
 }
 
 impl From<SchemaError> for DBError {
@@ -50,6 +58,12 @@ impl From<FromBytesError> for DBError {
     }
 }
 
+impl From<bincode::Error> for DBError {
+    fn from(error: bincode::Error) -> Self {
+        Self::SerializationError { error }
+    }
+}
+
 impl slog::Value for DBError {
     fn serialize(
         &self,
@@ -58,12 +72,6 @@ impl slog::Value for DBError {
         serializer: &mut dyn slog::Serializer,
     ) -> slog::Result {
         serializer.emit_arguments(key, &format_args!("{}", self))
-    }
-}
-
-impl From<sled::Error> for DBError {
-    fn from(error: sled::Error) -> Self {
-        DBError::SledDBError { error }
     }
 }
 

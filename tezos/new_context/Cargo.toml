@@ -1,6 +1,6 @@
 [package]
 name = "tezos_new_context"
-version = "1.4.0"
+version = "1.6.0"
 authors = ["Branislav Kontur <branislav.kontur@simplestaking.com>"]
 edition = "2018"
 
@@ -19,12 +19,12 @@ leb128 = "0.2"
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
 ocaml-sys = { version = "0.20.1" }
 serde = { version = "1.0", features = ["derive"] }
-sled = "0.34.6"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 snap = "1.0.4"
 strum = "0.20"
 strum_macros = "0.20"
 # Internal dependencies
+ipc = { path = "../../ipc" }
 tezos-sys = { path = "../sys" }
 tezos_api = { path = "../api" }
 crypto = { path = "../../crypto" }

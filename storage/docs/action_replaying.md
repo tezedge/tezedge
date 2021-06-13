@@ -77,4 +77,4 @@ e.g.:
 ```
 
 ## 5. Configuration
-`--context-kv-store <kv-store>` - **rocksdb, inmem, btree, sled**
+`--context-kv-store <kv-store>` - **inmem-gc, inmem, btree**

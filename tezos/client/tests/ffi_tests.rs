@@ -5,7 +5,9 @@ use std::convert::TryFrom;
 
 use crypto::hash::ProtocolHash;
 use serial_test::serial;
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    InitProtocolContextResult, TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
+};
 use tezos_api::{
     environment::{self, TezosEnvironment},
     ffi::{
@@ -118,7 +120,10 @@ fn prepare_protocol_context(
         TezosContextIrminStorageConfiguration {
             data_dir: common::prepare_empty_dir(dir_name),
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
     let context_config = TezosContextConfiguration {
         storage,

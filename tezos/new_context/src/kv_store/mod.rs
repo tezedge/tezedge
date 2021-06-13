@@ -3,7 +3,6 @@
 
 //! This sub module provides different KV alternatives for context persistence
 
-use std::path::PathBuf;
 use std::str::FromStr;
 
 use strum::IntoEnumIterator;
@@ -11,14 +10,15 @@ use strum_macros::EnumIter;
 
 pub mod btree_map;
 pub mod in_memory_backend;
-pub mod sled_backend;
+pub mod readonly_ipc;
 pub mod stats;
+
+pub const INMEMGC: &str = "inmem-gc";
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {
     InMem,
     InMemGC,
-    Sled { path: PathBuf },
     BTreeMap,
 }
 
@@ -35,7 +35,6 @@ impl SupportedContextKeyValueStore {
         match self {
             SupportedContextKeyValueStore::InMem => vec!["inmem"],
             SupportedContextKeyValueStore::InMemGC => vec!["inmem-gc"],
-            SupportedContextKeyValueStore::Sled { .. } => vec!["sled"],
             SupportedContextKeyValueStore::BTreeMap => vec!["btree"],
         }
     }
@@ -65,8 +64,7 @@ impl FromStr for SupportedContextKeyValueStore {
 pub mod test_support {
     use std::collections::HashMap;
     use std::convert::TryFrom;
-    use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     use strum::IntoEnumIterator;
 
@@ -101,7 +99,7 @@ pub mod test_support {
     }
 
     pub fn all_kv_stores(
-        base_dir: PathBuf,
+        _base_dir: PathBuf, // TODO - TE-261: not used anymore now
     ) -> HashMap<SupportedContextKeyValueStore, TestContextKvStoreFactoryInstance> {
         let mut store_factories: HashMap<
             SupportedContextKeyValueStore,
@@ -117,14 +115,6 @@ pub mod test_support {
                 SupportedContextKeyValueStore::InMemGC => store_factories.insert(
                     SupportedContextKeyValueStore::InMemGC,
                     Box::new(InMemoryGCBackendTestContextKvStoreFactory),
-                ),
-                SupportedContextKeyValueStore::Sled { .. } => store_factories.insert(
-                    SupportedContextKeyValueStore::Sled {
-                        path: base_dir.clone(),
-                    },
-                    Box::new(SledBackendTestContextKvStoreFactory {
-                        base_path: base_dir.clone(),
-                    }),
                 ),
                 SupportedContextKeyValueStore::BTreeMap => store_factories.insert(
                     SupportedContextKeyValueStore::BTreeMap,
@@ -193,49 +183,6 @@ pub mod test_support {
     impl Persistable for BTreeMapBackendTestContextKvStoreFactory {
         fn is_persistent(&self) -> bool {
             false
-        }
-    }
-
-    /// Sled map kv-store
-    pub struct SledBackendTestContextKvStoreFactory {
-        base_path: PathBuf,
-    }
-
-    impl SledBackendTestContextKvStoreFactory {
-        fn db_path(&self, name: &str) -> PathBuf {
-            self.base_path.join(format!("sled_{}", name))
-        }
-
-        fn db(&self, db_name: &str, create_new: bool) -> Result<sled::Db, TestKeyValueStoreError> {
-            Ok(sled::Config::new()
-                .path(self.db_path(db_name))
-                .create_new(create_new)
-                .open()?)
-        }
-    }
-
-    impl TestContextKvStoreFactory for SledBackendTestContextKvStoreFactory {
-        fn create(&self, name: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
-            use crate::kv_store::sled_backend::SledBackend;
-
-            // clear files
-            let db_path = self.db_path(name);
-            if Path::new(&db_path).exists() {
-                let _ = fs::remove_dir_all(&db_path)?;
-            }
-
-            // open and clear db
-            let db = self.db(name, true)?;
-            db.clear()?;
-            db.flush()?;
-
-            Ok(Box::new(SledBackend::new(db)))
-        }
-    }
-
-    impl Persistable for SledBackendTestContextKvStoreFactory {
-        fn is_persistent(&self) -> bool {
-            true
         }
     }
 }

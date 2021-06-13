@@ -16,8 +16,9 @@ use storage::tests_common::TmpStorage;
 use storage::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::{
-    ApplyBlockResponse, CommitGenesisResult, GenesisChain, ProtocolOverrides,
-    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    ApplyBlockResponse, CommitGenesisResult, ContextKvStoreConfiguration, GenesisChain,
+    ProtocolOverrides, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration,
 };
 use tezos_messages::p2p::binary_message::BinaryRead;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -60,7 +61,10 @@ fn test_storage() -> Result<(), Error> {
         TezosContextIrminStorageConfiguration {
             data_dir: context_dir,
         },
-        (),
+        TezosContextTezEdgeStorageConfiguration {
+            backend: ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
     );
 
     // initialize empty storage

@@ -65,8 +65,6 @@ pub enum GarbageCollectionError {
     MissingColumnFamily { name: &'static str },
     #[fail(display = "Backend Error")]
     BackendError,
-    #[fail(display = "SledDB error: {}", error)]
-    SledDBError { error: sled::Error },
     #[fail(display = "Guard Poison {} ", error)]
     GuardPoison { error: String },
     #[fail(display = "Serialization error: {:?}", error)]
@@ -89,12 +87,6 @@ pub enum GarbageCollectionError {
     InvalidOutputSize,
     #[fail(display = "Expected value instead of `None` for {}", _0)]
     ValueExpected(&'static str),
-}
-
-impl From<sled::Error> for GarbageCollectionError {
-    fn from(error: sled::Error) -> Self {
-        GarbageCollectionError::SledDBError { error }
-    }
 }
 
 impl From<DBError> for GarbageCollectionError {

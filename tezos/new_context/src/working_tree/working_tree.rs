@@ -61,7 +61,6 @@ use crypto::hash::FromBytesError;
 
 use crate::hash::{hash_commit, hash_tree, HashingError};
 use crate::persistent;
-use crate::working_tree::working_tree_stats::MerkleStoragePerfReport;
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::EntryHash, ContextKeyOwned};
@@ -893,7 +892,7 @@ impl WorkingTree {
         }
     }
 
-    fn get_leaf(entry: Entry) -> Node {
+    pub fn get_leaf(entry: Entry) -> Node {
         Node {
             node_kind: NodeKind::Leaf,
             entry_hash: RefCell::new(None),

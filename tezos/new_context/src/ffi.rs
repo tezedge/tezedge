@@ -18,7 +18,6 @@ use crypto::hash::ContextHash;
 
 use crate::{
     initializer::initialize_tezedge_index,
-    initializer::ContextKvStoreConfiguration,
     timings,
     working_tree::{
         working_tree::{FoldDepth, TreeWalker, WorkingTree},
@@ -27,6 +26,7 @@ use crate::{
     ContextKeyValueStore, ContextValue, IndexApi, PatchContextFunction, ProtocolContextApi,
     ShellContextApi, TezedgeContext, TezedgeIndex,
 };
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
 
 // TODO: instead of converting errors into strings, it may be useful to pass
@@ -132,13 +132,14 @@ pub fn get_context_index() -> Option<TezedgeIndex> {
 ocaml_export! {
     // Index API
 
-    // TODO: This needs to support more configuration options
     fn tezedge_index_init(
         rt,
+        configuration: OCamlRef<TezosContextTezEdgeStorageConfiguration>,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
     ) -> OCaml<DynBox<TezedgeIndexFFI>> {
         let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);
-        let index = initialize_tezedge_index(&ContextKvStoreConfiguration::InMemGC, patch_context);
+        let configuration: TezosContextTezEdgeStorageConfiguration = configuration.to_rust(rt);
+        let index = initialize_tezedge_index(&configuration, patch_context);
 
         set_context_index(&index);
 
