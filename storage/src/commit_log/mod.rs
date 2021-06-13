@@ -232,9 +232,9 @@ pub struct CommitLogs {
 
 impl CommitLogs {
     pub(crate) fn new<P, I>(path: P, cfs: I) -> Result<Self, CommitLogError>
-        where
-            P: AsRef<Path>,
-            I: IntoIterator<Item = CommitLogDescriptor>,
+    where
+        P: AsRef<Path>,
+        I: IntoIterator<Item = CommitLogDescriptor>,
     {
         let myself = Self {
             base_path: path.as_ref().into(),
