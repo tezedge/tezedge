@@ -326,7 +326,8 @@ impl IpcContextServer {
     /// Begin receiving commands from context readers until `ShutdownCall` command is received.
     pub fn process_context_requests(&self, log: &Logger) -> Result<(), IpcError> {
         let mut io = self.io.borrow_mut();
-        while let Ok(cmd) = io.rx.receive() {
+        loop {
+            let cmd = io.rx.receive()?;
             match cmd {
                 ContextRequest::GetEntry(hash) => {
                     // TODO - TE-261: remove unwrap
