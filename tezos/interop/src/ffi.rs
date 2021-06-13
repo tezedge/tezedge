@@ -103,7 +103,6 @@ pub fn setup() -> OCamlRuntime {
     let ocaml_runtime = OCamlRuntime::init();
 
     INIT.call_once(|| {
-        tezos_interop_callback::initialize_callbacks();
         tezos_new_context::ffi::initialize_callbacks();
     });
 
