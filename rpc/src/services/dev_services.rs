@@ -22,7 +22,7 @@ use shell::stats::memory::{Memory, MemoryData, MemoryStatsResult};
 use storage::{
     BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader, PersistentStorage,
 };
-use tezos_context::channel::ContextAction;
+//use tezos_context::channel::ContextAction;
 use tezos_messages::base::rpc_support::UniversalValue;
 use tezos_messages::base::ConversionError;
 
@@ -37,7 +37,7 @@ pub type ContractAddress = Vec<u8>;
 pub(crate) fn get_block_actions(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<ContextAction>, failure::Error> {
+) -> Result<Vec<() /*ContextAction*/>, failure::Error> {
     get_block_actions_by_hash(
         &ensure_context_action_storage(persistent_storage)?,
         &block_hash,
@@ -48,7 +48,7 @@ pub(crate) fn get_block_actions(
 pub(crate) fn get_block_actions_by_hash(
     _context_action_storage: &(), /*&ContextActionStorageReader,*/
     _block_hash: &BlockHash,
-) -> Result<Vec<ContextAction>, failure::Error> {
+) -> Result<Vec<() /*ContextAction*/>, failure::Error> {
     //context_action_storage
     //    .get_by_block_hash(&block_hash)
     //    .map(|values| values.into_iter().map(|v| v.into_action()).collect())
