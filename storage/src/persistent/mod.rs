@@ -12,7 +12,7 @@ use crate::database::sled_backend::SledDBBackend;
 use crate::database::tezedge_database::{
     TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
 };
-use crate::initializer::{DbsRocksDbTableInitializer, RocksDbColumnFactory, RocksDbConfig};
+use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
 use rocksdb::Cache;

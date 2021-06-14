@@ -756,7 +756,6 @@ pub mod tests_common {
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
-    use crate::database::sled_backend::SledDBBackend;
     use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
     use crate::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 

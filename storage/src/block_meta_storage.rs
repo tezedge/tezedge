@@ -15,7 +15,7 @@ use crypto::hash::{
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
-use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};

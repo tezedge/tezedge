@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::{BlockHash, ContextHash};
 
 use crate::commit_log::{CommitLogWithSchema, Location};
-use crate::database::tezedge_database::{KVStoreKeyValueSchema, List, TezedgeDatabaseWithIterator};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema, SchemaError};
+use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
@@ -546,7 +546,7 @@ impl BlockByLevelIndex {
         let items = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
-            Box::new(move |(_, _)| {
+            Box::new(move |(_, v)| {
                 use crate::persistent::codec::Decoder;
                 let level = <Self as KeyValueSchema>::Key::decode(v)?;
                 Ok(level % every_nth == 0)

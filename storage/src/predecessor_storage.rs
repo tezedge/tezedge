@@ -9,7 +9,7 @@ use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
 use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
-use crate::persistent::database::{default_table_options, IteratorMode, RocksDbKeyValueSchema};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
 use rocksdb::{Cache, ColumnFamilyDescriptor};

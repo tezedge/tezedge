@@ -1,11 +1,10 @@
 use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
 use crate::database::tezedge_database::TezdegeDatabaseBackendKV;
-use crate::initializer::{initialize_rocksdb, RocksDbColumnFactory, RocksDbConfig};
+use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 use crate::persistent::database::default_kv_options;
 use crate::persistent::{DbConfiguration, SchemaError};
 use rocksdb::{Cache, ColumnFamilyDescriptor, WriteBatch, WriteOptions, DB};
-use std::f32::consts::E;
 use std::path::Path;
 use std::sync::Arc;
 

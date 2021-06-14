@@ -1,5 +1,4 @@
 use crate::block_storage::{BlockByContextHashIndex, BlockByLevelIndex, BlockPrimaryIndex};
-use crate::context::ContextError::StorageError;
 use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
 use crate::database::rockdb_backend::RocksDBBackend;
@@ -7,13 +6,12 @@ use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::sequence::Sequences;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{
-    BlockMetaStorage, ChainMetaStorage, IteratorMode, OperationsMetaStorage, OperationsStorage,
+    BlockMetaStorage, ChainMetaStorage, OperationsMetaStorage, OperationsStorage,
     PredecessorStorage, SystemStorage,
 };
 use im::HashMap;
 use serde::{Deserialize, Serialize};
 use std::alloc::Global;
-use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
