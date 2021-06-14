@@ -330,6 +330,13 @@ impl WorkingTree {
         }
     }
 
+    pub fn get_value(&self) -> Option<ContextValue> {
+        match &self.value {
+            WorkingTreeValue::Tree(_) => None,
+            WorkingTreeValue::Value(value) => Some(value.clone())
+        }
+    }
+
     pub fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
         let root = self.get_working_tree_root_ref();
         let tree = self.find_raw_tree(root.as_ref(), key)?;
