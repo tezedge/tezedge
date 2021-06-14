@@ -496,12 +496,45 @@ ocaml_export! {
         result.to_ocaml(rt)
     }
 
-    // TODO: implement
+    // OCaml = val empty : context -> tree
     fn tezedge_tree_empty(
         rt,
-        _unit: OCamlRef<()>,
-    ) {
-        OCaml::unit()
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
+    ) -> OCaml<DynBox<WorkingTreeFFI>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
+        let empty_tree = WorkingTree::new_with_tree(context.index, Default::default());
+
+        empty_tree.to_ocaml(rt)
+    }
+
+    // OCaml = val to_value : tree -> value option Lwt.t
+    fn tezedge_tree_to_value(
+        rt,
+        tree: OCamlRef<DynBox<WorkingTreeFFI>>,
+    ) -> OCaml<Option<OCamlBytes>> {
+        let ocaml_tree = rt.get(tree);
+        let tree: &WorkingTreeFFI = ocaml_tree.borrow();
+
+        let result = tree.get_value();
+
+        result.to_ocaml(rt)
+    }
+
+    // OCaml = val of_value : context -> value -> tree Lwt.t
+    fn tezedge_tree_of_value(
+        rt,
+        context: OCamlRef<DynBox<TezedgeContextFFI>>,
+        value: OCamlRef<OCamlBytes>
+    ) -> OCaml<DynBox<WorkingTreeFFI>> {
+        let ocaml_context = rt.get(context);
+        let context: &TezedgeContextFFI = ocaml_context.borrow();
+        let context = context.0.borrow().clone();
+        let value = value.to_rust(rt);
+        let tree = WorkingTree::new_with_value(context.index, value);
+
+        tree.to_ocaml(rt)
     }
 
     // OCaml = val is_empty : tree -> bool
@@ -833,6 +866,8 @@ pub fn initialize_callbacks() {
             tezedge_tree_walker_make,
             tezedge_tree_walker_next,
             tezedge_tree_empty,
+            tezedge_tree_to_value,
+            tezedge_tree_of_value,
             tezedge_tree_is_empty,
             tezedge_tree_equal,
             tezedge_tree_kind,
