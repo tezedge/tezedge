@@ -30,13 +30,26 @@ impl DeployMonitoringContainer for TezedgeNode {
 impl TezedgeNode {
     pub fn collect_disk_data() -> Result<TezedgeDiskData, failure::Error> {
         // context actions DB is optional
-        /*let context_actions = dir::get_size(&format!(
+        let context_actions = dir::get_size(&format!(
             "{}/{}",
             TEZEDGE_VOLUME_PATH, "bootstrap_db/context_actions"
         ))
         .unwrap_or(0);
-        */
-        let disk_data = TezedgeDiskData::new(0, 0, 0, 0, 0, 0);
+
+        let disk_data = TezedgeDiskData::new(
+            dir::get_size(&format!("{}/{}", DEBUGGER_VOLUME_PATH, "tezedge"))?,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "context"))?,
+            dir::get_size(&format!(
+                "{}/{}",
+                TEZEDGE_VOLUME_PATH, "bootstrap_db/context"
+            ))?,
+            dir::get_size(&format!(
+                "{}/{}",
+                TEZEDGE_VOLUME_PATH, "bootstrap_db/block_storage"
+            ))?,
+            context_actions,
+            dir::get_size(&format!("{}/{}", TEZEDGE_VOLUME_PATH, "bootstrap_db/db"))?,
+        );
 
         Ok(disk_data)
     }

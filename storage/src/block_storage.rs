@@ -447,7 +447,7 @@ impl BlockPrimaryIndex {
     fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
         let items = self
             .kv
-            .find(IteratorMode::Start, None, Box::new(|(k, v)| Ok(true)))?;
+            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;
         let mut results = vec![];
         for (k, _) in items.iter() {
             let key = {
@@ -546,7 +546,7 @@ impl BlockByLevelIndex {
         let items = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
-            Box::new(move |(k, v)| {
+            Box::new(move |(_, _)| {
                 use crate::persistent::codec::Decoder;
                 let level = <Self as KeyValueSchema>::Key::decode(v)?;
                 Ok(level % every_nth == 0)

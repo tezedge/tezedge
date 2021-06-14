@@ -74,7 +74,7 @@ impl OperationsStorageReader for OperationsStorage {
         for (_key, value) in self.kv.find_by_prefix(
             &key,
             HashType::BlockHash.size(),
-            Box::new(|(k, v)| Ok(true)),
+            Box::new(|(_, _)| Ok(true)),
         )? {
             operations.push(BincodeEncoded::decode(value.as_ref())?);
         }
