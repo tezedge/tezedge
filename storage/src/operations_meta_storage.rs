@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 
 use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
@@ -12,7 +12,6 @@ use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::PersistentStorage;
 use crate::{BlockHeaderWithHash, StorageError};
-use bloomfilter::Bloom;
 use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 
 /// Convenience type for operation meta storage database
@@ -23,8 +22,6 @@ pub type OperationsMetaStorageKV =
 #[derive(Clone)]
 pub struct OperationsMetaStorage {
     kv: Arc<OperationsMetaStorageKV>,
-    //bloom filter
-    bloom_filter: Arc<RwLock<Bloom<BlockHash>>>,
 }
 
 impl OperationsMetaStorage {
@@ -32,8 +29,6 @@ impl OperationsMetaStorage {
         let kv = persistent_storage.main_db();
         Self {
             kv,
-            //Create bloom filter with estimated size of 1 MiB and Block count of 1.5m
-            bloom_filter: Arc::new(RwLock::new(Bloom::new(1_000_000, 1_500_000))),
         }
     }
 
@@ -77,19 +72,6 @@ impl OperationsMetaStorage {
                     .iter()
                     .all(|v| *v == (true as u8));
 
-                if meta.is_complete {
-                    let bloom_filter = self.bloom_filter.clone();
-
-                    let mut bloom_filter =
-                        bloom_filter
-                            .write()
-                            .map_err(|e| StorageError::GuardPoisonError {
-                                error: e.to_string(),
-                            })?;
-
-                    bloom_filter.set(&block_hash)
-                }
-
                 self.put(&block_hash, &meta)
                     .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
@@ -104,21 +86,6 @@ impl OperationsMetaStorage {
             None => Ok(false),
         }
     }
-
-    #[inline]
-    pub fn is_complete_with_bloom_filters(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<bool, StorageError> {
-        let filter = self
-            .bloom_filter
-            .read()
-            .map_err(|e| StorageError::GuardPoisonError {
-                error: e.to_string(),
-            })?;
-        Ok(filter.check(block_hash))
-    }
-
     #[inline]
     pub fn put(&self, block_hash: &BlockHash, meta: &Meta) -> Result<(), StorageError> {
         self.kv.merge(block_hash, meta).map_err(StorageError::from)

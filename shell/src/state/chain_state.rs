@@ -257,7 +257,7 @@ impl BlockchainState {
                         {
                             Some(predecessor_additional_data) => {
                                 if let Some(predecessor_header) =
-                                    self.block_storage.get(validated_header.predecessor())?
+                                self.block_storage.get(validated_header.predecessor())?
                                 {
                                     // return next_protocol and header
                                     (
@@ -387,7 +387,7 @@ impl BlockchainState {
                     // we split history
                     // all before index we throw away
                     if let Some((last_applied, _)) =
-                        branch_history_locator_lowest_level_first.get(last_applied_idx)
+                    branch_history_locator_lowest_level_first.get(last_applied_idx)
                     {
                         (
                             last_applied.clone(),
@@ -438,9 +438,9 @@ impl BlockchainState {
                             bootstrap_constants::MAX_BLOCK_APPLY_BATCH,
                         ),
                     )
-                    .map_err(|e| StateError::ProcessingError {
-                        reason: format!("{}", e),
-                    })?,
+                        .map_err(|e| StateError::ProcessingError {
+                            reason: format!("{}", e),
+                        })?,
                 );
             };
 
@@ -578,16 +578,14 @@ impl BlockchainState {
     ) -> Result<bool, StateError> {
         // TODO: TE-369 - optimize double check
         // we need to differ this flag
-        let (are_operations_complete, was_block_finished_now) = if self
-            .operations_meta_storage
-            .is_complete_with_bloom_filters(&block_hash)?
-        {
-            (true, false)
-        } else {
-            // update operations metadata for block
-            let (are_operations_complete, _) = self.process_block_operations(message)?;
-            (are_operations_complete, are_operations_complete)
-        };
+        let (are_operations_complete, was_block_finished_now) =
+            if self.operations_meta_storage.is_complete(&block_hash)? {
+                (true, false)
+            } else {
+                // update operations metadata for block
+                let (are_operations_complete, _) = self.process_block_operations(message)?;
+                (are_operations_complete, are_operations_complete)
+            };
 
         if are_operations_complete {
             // ping branch bootstrapper with received operations
@@ -615,7 +613,7 @@ impl BlockchainState {
     ) -> Result<(bool, Option<HashSet<u8>>), StorageError> {
         if self
             .operations_meta_storage
-            .is_complete_with_bloom_filters(message.operations_for_block().hash())?
+            .is_complete(message.operations_for_block().hash())?
         {
             return Ok((true, None));
         }
