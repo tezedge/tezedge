@@ -25,14 +25,9 @@ unsafe impl Sync for ReadonlyIpcBackend {}
 impl ReadonlyIpcBackend {
     /// Connects the IPC backend to a socket in `socket_path`. This operation is blocking.
     /// Will wait for a few seconds if the socket file is not found yet.
-    pub fn connect<P: AsRef<Path>>(socket_path: P) -> Self {
-        // TODO - TE-261: remove this expect and return `Result`
-        let err_msg = format!(
-            "Failed to connect IPC client with path={:?}",
-            socket_path.as_ref()
-        );
-        let client = IpcContextClient::try_connect(socket_path).expect(&err_msg);
-        Self { client }
+    pub fn try_connect<P: AsRef<Path>>(socket_path: P) -> Result<Self, IpcError> {
+        let client = IpcContextClient::try_connect(socket_path)?;
+        Ok(Self { client })
     }
 }
 
@@ -329,22 +324,28 @@ impl IpcContextServer {
         loop {
             let cmd = io.rx.receive()?;
             match cmd {
-                ContextRequest::GetEntry(hash) => {
-                    // TODO - TE-261: remove unwrap
-                    let index = crate::ffi::get_context_index().unwrap();
-                    let res = index
-                        .find_entry_bytes(&hash)
-                        .map_err(|err| format!("Context error: {:?}", err));
-                    io.tx.send(&ContextResponse::GetEntryResponse(res))?;
-                }
-                ContextRequest::ContainsEntry(hash) => {
-                    // TODO - TE-261: remove unwrap
-                    let index = crate::ffi::get_context_index().unwrap();
-                    let res = index
-                        .contains(&hash)
-                        .map_err(|err| format!("Context error: {:?}", err));
-                    io.tx.send(&ContextResponse::ContainsEntryResponse(res))?;
-                }
+                ContextRequest::GetEntry(hash) => match crate::ffi::get_context_index() {
+                    None => io.tx.send(&ContextResponse::GetEntryResponse(Err(
+                        "Context index unavailable".to_owned(),
+                    )))?,
+                    Some(index) => {
+                        let res = index
+                            .find_entry_bytes(&hash)
+                            .map_err(|err| format!("Context error: {:?}", err));
+                        io.tx.send(&ContextResponse::GetEntryResponse(res))?;
+                    }
+                },
+                ContextRequest::ContainsEntry(hash) => match crate::ffi::get_context_index() {
+                    None => io.tx.send(&ContextResponse::GetEntryResponse(Err(
+                        "Context index unavailable".to_owned(),
+                    )))?,
+                    Some(index) => {
+                        let res = index
+                            .contains(&hash)
+                            .map_err(|err| format!("Context error: {:?}", err));
+                        io.tx.send(&ContextResponse::ContainsEntryResponse(res))?;
+                    }
+                },
 
                 ContextRequest::ShutdownCall => {
                     if let Err(e) = io.tx.send(&ContextResponse::ShutdownResult) {

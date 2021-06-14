@@ -5,8 +5,6 @@
 #![feature(const_fn)]
 #![feature(allocator_api)]
 
-// TODO - TE-261: from this crate, remove everything related to "context"
-
 use std::path::Path;
 use std::sync::Arc;
 use std::{

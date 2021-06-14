@@ -128,7 +128,7 @@ enum NodeMessage {
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
-    InitProtocolContextIpcServerResult(Result<(), ()>), // TODO - TE-261: use actual error result
+    InitProtocolContextIpcServerResult(Result<(), String>), // TODO - TE-261: use actual error result
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
     JsonEncodeApplyBlockResultMetadataResponse(Result<String, FfiJsonEncoderError>),
@@ -212,19 +212,28 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             }
             ProtocolMessage::InitProtocolContextIpcServer(storage_cfg) => {
                 // TODO - TE-261: needs better error handling
-                if let Some(socket_path) = storage_cfg.get_ipc_socket_path() {
-                    let log = log.clone();
-                    std::thread::spawn(move || {
-                        info!(&log, "Listening to context IPC request at {}", socket_path);
-                        let mut listener =
-                            tezos_new_context::kv_store::readonly_ipc::IpcContextListener::try_new(
-                                socket_path,
-                            )
-                            .unwrap();
-                        listener.handle_incoming_connections(&log);
-                    });
+                match storage_cfg.get_ipc_socket_path() {
+                    None => tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?,
+                    Some(socket_path) => {
+                        match tezos_new_context::kv_store::readonly_ipc::IpcContextListener::try_new(
+                            socket_path.clone(),
+                        ) {
+                            Ok(mut listener) => {
+                                info!(&log, "Listening to context IPC request at {}", socket_path);
+                                let log = log.clone();
+                                std::thread::spawn(move || {
+                                    listener.handle_incoming_connections(&log);
+                                });
+                                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
+                            }
+                            Err(err) => {
+                                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Err(
+                                    format!("Failed to initialize context IPC server: {:?}", err),
+                                )))?;
+                            }
+                        }
+                    }
                 }
-                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
             }
             ProtocolMessage::GenesisResultDataCall(params) => {
                 let res = Proto::genesis_result_data(
@@ -272,43 +281,50 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
                 context_hash,
                 key,
-            }) => {
-                let index = tezos_new_context::ffi::get_context_index();
-                let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
-                // TODO: remove unwrap
-                let result = index
-                    .unwrap()
-                    .get_key_from_history(&context_hash, &key_borrowed)
-                    .map_err(|err| format!("{:?}", err));
-                tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(result))?;
-            }
+            }) => match tezos_new_context::ffi::get_context_index() {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
+                    let result = index
+                        .get_key_from_history(&context_hash, &key_borrowed)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(result))?;
+                }
+            },
             ProtocolMessage::ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest {
                 context_hash,
                 prefix,
-            }) => {
-                let index = tezos_new_context::ffi::get_context_index();
-                let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
-                // TODO: remove unwrap
-                let result = index
-                    .unwrap()
-                    .get_key_values_by_prefix(&context_hash, &prefix_borrowed)
-                    .map_err(|err| format!("{:?}", err));
-                tx.send(&NodeMessage::ContextGetKeyValuesByPrefixResult(result))?;
-            }
+            }) => match tezos_new_context::ffi::get_context_index() {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
+                    let result = index
+                        .get_key_values_by_prefix(&context_hash, &prefix_borrowed)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetKeyValuesByPrefixResult(result))?;
+                }
+            },
             ProtocolMessage::ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest {
                 context_hash,
                 prefix,
                 depth,
-            }) => {
-                let index = tezos_new_context::ffi::get_context_index();
-                let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
-                // TODO: remove unwraps
-                let result = index
-                    .unwrap()
-                    .get_context_tree_by_prefix(&context_hash, &prefix_borrowed, depth)
-                    .map_err(|err| format!("{:?}", err));
-                tx.send(&NodeMessage::ContextGetTreeByPrefixResult(result))?;
-            }
+            }) => match tezos_new_context::ffi::get_context_index() {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
+                    // TODO: remove unwraps
+                    let result = index
+                        .get_context_tree_by_prefix(&context_hash, &prefix_borrowed, depth)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetTreeByPrefixResult(result))?;
+                }
+            },
             ProtocolMessage::ShutdownCall => {
                 // we trigger shutdown callback before, returning response
                 shutdown_callback(log);

@@ -3,6 +3,8 @@
 
 use std::sync::{Arc, RwLock};
 
+use failure::Fail;
+use ipc::IpcError;
 use ocaml_interop::BoxRoot;
 pub use tezos_api::ffi::ContextKvStoreConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
@@ -15,22 +17,34 @@ use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
 // TODO: should this be here?
 const PRESERVE_CYCLE_COUNT: usize = 7;
 
-// TODO: are errors not possible here? recheck that
+/// IPC communication errors
+#[derive(Debug, Fail)]
+pub enum IndexInitializationError {
+    #[fail(display = "Failure when initializing IPC context: {}", reason)]
+    IpcError { reason: IpcError },
+    #[fail(display = "Attempted to initialize an IPC context without a socket path")]
+    IpcSocketPathMissing,
+}
+
+impl From<IpcError> for IndexInitializationError {
+    fn from(error: IpcError) -> Self {
+        Self::IpcError { reason: error }
+    }
+}
+
 pub fn initialize_tezedge_index(
     configuration: &TezosContextTezEdgeStorageConfiguration,
     patch_context: Option<BoxRoot<PatchContextFunction>>,
-) -> TezedgeIndex {
-    TezedgeIndex::new(
+) -> Result<TezedgeIndex, IndexInitializationError> {
+    Ok(TezedgeIndex::new(
         match configuration.backend {
             ContextKvStoreConfiguration::ReadOnlyIpc => {
-                // TODO - TE-261: remove expect
-                // TODO - TE-261: client connection can fail
-                Arc::new(RwLock::new(ReadonlyIpcBackend::connect(
-                    configuration
-                        .ipc_socket_path
-                        .clone()
-                        .expect("Expected IPC socket path for the readonly backend"),
-                )))
+                match configuration.ipc_socket_path.clone() {
+                    None => return Err(IndexInitializationError::IpcSocketPathMissing),
+                    Some(ipc_socket_path) => Arc::new(RwLock::new(
+                        ReadonlyIpcBackend::try_connect(ipc_socket_path)?,
+                    )),
+                }
             }
             ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
             ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
@@ -41,12 +55,12 @@ pub fn initialize_tezedge_index(
             }
         },
         patch_context,
-    )
+    ))
 }
 
 pub fn initialize_tezedge_context(
     configuration: &TezosContextTezEdgeStorageConfiguration,
-) -> Result<TezedgeContext, failure::Error> {
-    let index = initialize_tezedge_index(configuration, None);
+) -> Result<TezedgeContext, IndexInitializationError> {
+    let index = initialize_tezedge_index(configuration, None)?;
     Ok(TezedgeContext::new(index, None, None))
 }
