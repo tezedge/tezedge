@@ -136,15 +136,17 @@ ocaml_export! {
         rt,
         configuration: OCamlRef<TezosContextTezEdgeStorageConfiguration>,
         patch_context: OCamlRef<Option<PatchContextFunction>>,
-    ) -> OCaml<DynBox<TezedgeIndexFFI>> {
+    ) -> OCaml<Result<DynBox<TezedgeIndexFFI>, String>> {
         let patch_context = rt.get(patch_context).to_option().map(BoxRoot::new);
         let configuration: TezosContextTezEdgeStorageConfiguration = configuration.to_rust(rt);
-        // TODO - TE-261: remove this unwrap, and return Result on this function.
-        let index = initialize_tezedge_index(&configuration, patch_context).unwrap();
+        let result = initialize_tezedge_index(&configuration, patch_context)
+            .map_err(|err| format!("{:?}", err));
 
-        set_context_index(&index);
+        if let Ok(index) = &result {
+            set_context_index(index);
+        }
 
-        OCaml::box_value(rt, index.into())
+        result.map(|index| OCaml::box_value(rt, index.into()).root()).to_ocaml(rt)
     }
 
     fn tezedge_index_close(
