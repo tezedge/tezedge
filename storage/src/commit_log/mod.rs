@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use crate::commit_log::compression::{zstd_compress, zstd_decompress};
-use commitlog::message::MessageSet;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, BufWriter, Read, Seek, SeekFrom, Write};

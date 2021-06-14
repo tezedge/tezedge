@@ -6,7 +6,6 @@ use crate::operations_meta_storage;
 use crate::persistent::SchemaError;
 use crate::{BlockMetaStorage, Direction, OperationsMetaStorage};
 use sled::{Config, IVec, Tree};
-use std::alloc::Global;
 use std::path::Path;
 
 pub struct SledDBBackend {
