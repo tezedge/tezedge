@@ -5,7 +5,10 @@ use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
 use crate::persistent::sequence::Sequences;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
-use crate::{BlockMetaStorage, ChainMetaStorage, OperationsMetaStorage, OperationsStorage, PredecessorStorage, SystemStorage, IteratorMode};
+use crate::{
+    BlockMetaStorage, ChainMetaStorage, IteratorMode, OperationsMetaStorage, OperationsStorage,
+    PredecessorStorage, SystemStorage,
+};
 use im::HashMap;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
