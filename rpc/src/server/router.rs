@@ -220,26 +220,28 @@ pub(crate) fn create_routes(_is_sandbox: bool) -> PathTree<MethodHandler> {
     );
 
     // Protocol rpcs - implemented
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/constants",
-        protocol_handler::context_constants,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
-        protocol_handler::baking_rights,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
-        protocol_handler::endorsing_rights,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/votes/listings",
-        protocol_handler::votes_listings,
-    );
+    // TODO - TE-261: re-enable once we have figure out what causes these to break in python tests
+    // TODO - TE-261: when only Irmin is enabled these should probably be disabled and routed through OCaml instead
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/context/constants",
+    //     protocol_handler::context_constants,
+    // );
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
+    //     protocol_handler::baking_rights,
+    // );
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
+    //     protocol_handler::endorsing_rights,
+    // );
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/votes/listings",
+    //     protocol_handler::votes_listings,
+    // );
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(
