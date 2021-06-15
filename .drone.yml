@@ -6026,6 +6026,19 @@ steps:
     password:
       from_secret: docker_hub_pswd
 
+- name: build-monitoring-image
+  image: plugins/docker
+  settings:
+    repo: tezedge/node-monitoring
+    tag: latest
+    dockerfile: apps/node_monitoring/Dockerfile
+    build_args:
+      - SOURCE_BRANCH=develop
+    username:
+      from_secret: docker_hub_username
+    password:
+      from_secret: docker_hub_pswd
+
 image_pull_secrets:
   - docker_pull_secret
 
@@ -6111,6 +6124,21 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-monitoring-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/node-monitoring
+      tags:
+        - ${DRONE_TAG}
+        - latest-release
+      dockerfile: apps/node_monitoring/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=develop
       username:
         from_secret: docker_hub_username
       password:

@@ -8,17 +8,19 @@ services:
     environment:
       - RUST_BACKTRACE=1
     volumes:
-      - "tezedge-shared-data:/tmp/volume/tezedge:ro"
+      - "tezedge-debug-data:/tmp/volume/tezedge:ro"
       - "./docker/debug.debugger-config.toml:/home/appuser/config.toml:ro"
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
       - "/tmp/report:/tmp/report:rw"
-      - "debugger-data:/tmp/debugger_database"
+      - "debugger-debug-data:/tmp/debugger_database"
     ports:
       - "17732:17732"      # debugger RPC port
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
     image: tezedge/tezedge:v1.6.9
+    pid: host
+    network_mode: host
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}", "--context-stats-db-path", "context-stats-db"]
     logging:
       # Produce syslogs instead of terminal logs
@@ -29,23 +31,31 @@ services:
         # Always in same RFC 5424 format (with microseconds precision)
         syslog-format: "rfc5424micro"
     volumes:
-      - "tezedge-shared-data:/tmp/tezedge"
-    ports:
-      - "4927:4927"       # node WS port (required only for tezedge)
-      - "9732:9732"       # node P2P port
-      - "18732:18732"     # node RPC port
+      - "tezedge-debug-data:/tmp/tezedge"
 
   explorer:
     image: tezedge/tezedge-explorer:v1.6.7
     environment:
       # need a better way to provide such information
-      - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"tezedge","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
+      - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"tezedge","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4444/resources/tezedge"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
       - "8080:80"
+    logging:
+      driver: none
+
+  monitoring:
+    privileged: true
+    network_mode: host
+    image: tezedge/node-monitoring:latest
+    pid: "host"
+    command: ["--tezedge-nodes", "tezedge:18732:/tmp/tezedge", "--wait-for-nodes", "--debugger-path", "/tmp/debugger", "--rpc-port", "4444"]
+    volumes:
+      - "tezedge-debug-data:/tmp/tezedge"
+      - "debugger-debug-data:/tmp/debugger"
 
 volumes:
-  tezedge-shared-data:
+  tezedge-debug-data:
     external: false
-  debugger-data:
+  debugger-debug-data:
     external: false

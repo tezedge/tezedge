@@ -9,10 +9,7 @@ use getset::Getters;
 use percentage::{Percentage, PercentageInteger};
 use slog::{crit, Logger};
 
-use shell::stats::memory::ProcessMemoryStats;
-
 use crate::configuration::AlertThresholds;
-use crate::constants::TEZEDGE_VOLUME_PATH;
 use crate::display_info::NodeInfo;
 use crate::slack::SlackServer;
 use crate::ResourceUtilization;
@@ -241,25 +238,20 @@ impl Alerts {
         slack: Option<&SlackServer>,
         time: i64,
         head_info: NodeInfo,
-    ) -> Result<(), failure::Error> {
-        // gets the total space on the filesystem of the specified path
-        let free_disk_space = fs2::free_space(TEZEDGE_VOLUME_PATH)?;
-        // let total_disk_space = fs2::total_space(TEZEDGE_VOLUME_PATH)?;
-        let total_disk_space = fs2::total_space(TEZEDGE_VOLUME_PATH)?;
-
+        last_measurement: ResourceUtilization,
+    ) {
         // set it to a percentage of the max capacity
-        let disk_threshold = 100 / thresholds.disk * total_disk_space;
+        let disk_threshold = 100 / thresholds.disk * last_measurement.total_disk_space();
 
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Disk,
             disk_threshold,
-            total_disk_space - free_disk_space,
+            last_measurement.total_disk_space() - last_measurement.free_disk_space(),
             Some(time),
             head_info,
         );
-        send_resource_alert(node_tag, slack, res).await?;
-        Ok(())
+        send_resource_alert(node_tag, slack, res).await;
     }
 
     pub async fn check_memory_alert(
@@ -269,24 +261,9 @@ impl Alerts {
         slack: Option<&SlackServer>,
         time: i64,
         last_measurement: ResourceUtilization,
-    ) -> Result<(), failure::Error> {
-        let ram_total = if node_tag == "tezedge" {
-            last_measurement.memory().node().resident_mem()
-                + last_measurement
-                    .memory()
-                    .protocol_runners()
-                    .as_ref()
-                    .unwrap_or(&ProcessMemoryStats::default())
-                    .resident_mem()
-        } else {
-            last_measurement.memory().node().resident_mem()
-                + last_measurement
-                    .memory()
-                    .validators()
-                    .as_ref()
-                    .unwrap_or(&ProcessMemoryStats::default())
-                    .resident_mem()
-        };
+    ) {
+        let ram_total =
+            last_measurement.memory().node() + last_measurement.memory().validators().total();
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Memory,
@@ -296,35 +273,36 @@ impl Alerts {
             last_measurement.head_info().clone(),
         );
 
-        send_resource_alert(node_tag, slack, res).await?;
-
-        Ok(())
+        send_resource_alert(node_tag, slack, res).await;
     }
 
     pub async fn check_cpu_alert(
         &mut self,
         node_tag: &str,
-        thresholds: &AlertThresholds,
+        threshold: u64,
         slack: Option<&SlackServer>,
         time: i64,
         last_measurement: ResourceUtilization,
         head_info: NodeInfo,
-    ) -> Result<(), failure::Error> {
-        let cpu_total: i32 =
-            last_measurement.cpu().node() + last_measurement.cpu().protocol_runners().unwrap_or(0);
+    ) {
+        let cpu_total: f32 = last_measurement.cpu().node().collective()
+            + last_measurement
+                .cpu()
+                .validators()
+                .validators()
+                .iter()
+                .map(|(_, v)| v.collective())
+                .sum::<f32>();
         let res = self.assign_resource_alert(
             node_tag,
             AlertKind::Cpu,
-            // TODO: TE-499 rework for multinode
-            thresholds.cpu.unwrap(),
+            threshold,
             cpu_total as u64,
             Some(time),
             head_info,
         );
 
-        send_resource_alert(node_tag, slack, res).await?;
-
-        Ok(())
+        send_resource_alert(node_tag, slack, res).await;
     }
 
     pub async fn check_node_stuck_alert(
@@ -337,7 +315,7 @@ impl Alerts {
         slack: Option<&SlackServer>,
         log: &Logger,
         head_info: NodeInfo,
-    ) -> Result<(), failure::Error> {
+    ) {
         let alert_result = self.assign_node_stuck_alert(
             node_tag,
             thresholds,
@@ -354,7 +332,7 @@ impl Alerts {
                             ":warning: Node [{}] is stuck on level: {}\nHead Info: {}",
                             node_tag, alert.value, head_info
                         ))
-                        .await?;
+                        .await;
                 }
                 AlertResult::Decreased(_, alert) => {
                     if alert.reported {
@@ -364,14 +342,12 @@ impl Alerts {
                                 node_tag,
                                 alert.value
                             ))
-                            .await?;
+                            .await;
                     }
                 }
                 AlertResult::Unchanged => (/* Do not alert on unchanged */),
             }
         }
-
-        Ok(())
     }
 
     #[cfg(test)]
@@ -441,7 +417,7 @@ async fn send_resource_alert(
     node_tag: &str,
     slack: Option<&SlackServer>,
     alert_result: AlertResult,
-) -> Result<(), failure::Error> {
+) {
     if let Some(slack_server) = slack {
         match alert_result {
             AlertResult::Incresed(alert) => {
@@ -461,7 +437,7 @@ async fn send_resource_alert(
                         current_value,
                         alert.head_info,
                     ))
-                        .await?;
+                        .await;
                 }
             }
             AlertResult::Decreased(previous_alert, alert) => {
@@ -480,14 +456,12 @@ async fn send_resource_alert(
                         alert.kind,
                         current_value
                     ))
-                    .await?;
+                    .await;
                 }
             }
             AlertResult::Unchanged => (/* Do nothing */),
         }
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

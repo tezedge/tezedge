@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 use clap::{App, Arg};
-use std::fs;
+use std::fmt;
 use std::path::{Path, PathBuf};
-use std::{env, fmt};
+
+use crate::node::{Node, NodeStatus, NodeType};
 
 #[derive(Clone, Debug)]
 pub struct DeployMonitoringEnvironment {
@@ -12,7 +13,7 @@ pub struct DeployMonitoringEnvironment {
     pub log_level: slog::Level,
 
     // interval in seconds to check for new remote image
-    pub image_monitor_interval: Option<u64>,
+    // pub image_monitor_interval: Option<u64>,
 
     // interval in seconds to check for new remote image
     pub resource_monitor_interval: u64,
@@ -20,11 +21,8 @@ pub struct DeployMonitoringEnvironment {
     // rpc server port
     pub rpc_port: u16,
 
-    // flag for sandbox mode
-    pub is_sandbox: bool,
-
-    // Path for the compose file needed to manage the deployed containers
-    pub compose_file_path: PathBuf,
+    // optional proxy port to monitor
+    pub proxy_port: Option<u16>,
 
     // Thresholds to alerts
     pub tezedge_alert_thresholds: AlertThresholds,
@@ -32,16 +30,11 @@ pub struct DeployMonitoringEnvironment {
     // Thresholds to alerts
     pub ocaml_alert_thresholds: AlertThresholds,
 
-    // flag for volume cleanup mode
-    pub cleanup_volumes: bool,
-
     pub slack_configuration: Option<SlackConfiguration>,
 
-    pub tezedge_only: bool,
+    pub nodes: Vec<Node>,
 
-    pub disable_debugger: bool,
-
-    pub tezedge_volume_path: String,
+    pub wait_for_nodes: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -78,8 +71,8 @@ pub struct SlackConfiguration {
 }
 
 fn deploy_monitoring_app() -> App<'static, 'static> {
-    let app = App::new("Tezedge deploy monitoring app")
-        .version("0.10.0")
+    let app = App::new("Tezedge node monitoring app")
+        .version("1.7.0")
         .author("SimpleStaking and the project contributors")
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(
@@ -96,19 +89,19 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                     }
                 }),
         )
-        .arg(
-            Arg::with_name("compose-file-path")
-                .long("compose-file-path")
-                .takes_value(true)
-                .value_name("PATH")
-                .help("Path for the compose file needed to manage the deployed containers")
-                .validator(|v| {
-                    if Path::new(&v).exists() {
-                        Ok(())
-                    } else {
-                        Err(format!("Configuration file not found at '{}'", v))
-                    }
-                }),
+        .arg(Arg::with_name("tezedge-nodes")
+            .long("tezedge-nodes")
+            .takes_value(true)
+            .multiple(true)
+            .value_name("TAG:PORT")
+            .help("The tagged tezedge nodes to moitor running on this system. Format: TAG1:PORT1,TAG2:PORT2,TAG3:PORT3")
+        )
+        .arg(Arg::with_name("ocaml-nodes")
+            .long("ocaml-nodes")
+            .takes_value(true)
+            .multiple(true)
+            .value_name("TAG:PORT")
+            .help("The tagged ocaml nodes to moitor running on this system. Format: TAG1:PORT1,TAG2:PORT2,TAG3:PORT3")
         )
         .arg(
             Arg::with_name("log-level")
@@ -117,13 +110,6 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .value_name("LEVEL")
                 .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
                 .help("Set log level"),
-        )
-        .arg(
-            Arg::with_name("image-tag")
-                .long("image-tag")
-                .takes_value(true)
-                .value_name("IMAGE-TAG")
-                .help("Image tag on docker hub to watch"),
         )
         .arg(
             Arg::with_name("slack-token")
@@ -147,13 +133,6 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("The slack url of the channel to send the messages to"),
         )
         .arg(
-            Arg::with_name("image-monitor-interval")
-                .long("image-monitor-interval")
-                .takes_value(true)
-                .value_name("IMAGE-MONITOR-INTERVAL")
-                .help("Interval in seconds to check for new remote images"),
-        )
-        .arg(
             Arg::with_name("resource-monitor-interval")
                 .long("resource-monitor-interval")
                 .takes_value(true)
@@ -168,14 +147,11 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Port number to open the monitoring rpc server on"),
         )
         .arg(
-            Arg::with_name("sandbox")
-                .long("sandbox")
-                .help("Watch only the sandbox launcher and a debugger"),
-        )
-        .arg(
-            Arg::with_name("cleanup-volumes")
-                .long("cleanup-volumes")
-                .help("Enable and dissable volume cleanup"),
+            Arg::with_name("proxy-port")
+                .long("proxy-port")
+                .takes_value(true)
+                .value_name("RPC-PORT")
+                .help("Node's proxy port"),
         )
         .arg(
             Arg::with_name("tezedge-alert-threshold-disk")
@@ -234,19 +210,23 @@ fn deploy_monitoring_app() -> App<'static, 'static> {
                 .help("Thershold in seconds for critical alerts - synchronization"),
         )
         .arg(
-            Arg::with_name("cleanup-volumes")
-                .long("cleanup-volumes")
-                .help("Enable and dissable volume cleanup"),
+            Arg::with_name("wait-for-nodes")
+                .long("wait-for-nodes")
+                .help("Waits for the defined nodes to come online."),
         )
         .arg(
-            Arg::with_name("disable-debugger")
-                .long("disable-debugger")
-                .help("Launches the stack without the debugger"),
-        )
-        .arg(
-            Arg::with_name("tezedge-only")
-                .long("tezedge-only")
-                .help("Only launches the tezedge node (without the ocaml node)"),
+            Arg::with_name("debugger-path")
+                .long("debugger-path")
+                .takes_value(true)
+                .value_name("PATH")
+                .help("Path to the debugger data")
+                .validator(|v| {
+                    if Path::new(&v).exists() {
+                        Ok(())
+                    } else {
+                        Err(format!("Debugger data dir not found at '{}'", v))
+                    }
+                }),
         );
     app
 }
@@ -259,7 +239,13 @@ pub fn validate_required_arg(args: &clap::ArgMatches, arg_name: &str) {
 }
 
 fn validate_required_args(args: &clap::ArgMatches) {
-    validate_required_arg(args, "compose-file-path");
+    if !args.is_present("tezedge-nodes") {
+        validate_required_arg(args, "ocaml-nodes");
+    }
+
+    if !args.is_present("ocaml-nodes") {
+        validate_required_arg(args, "tezedge-nodes");
+    }
 }
 
 fn check_slack_args(args: &clap::ArgMatches) -> Option<SlackConfiguration> {
@@ -282,6 +268,53 @@ fn check_slack_args(args: &clap::ArgMatches) -> Option<SlackConfiguration> {
         })
     } else {
         None
+    }
+}
+
+fn parse_nodes_args(
+    args: &clap::ArgMatches,
+    node_type: &NodeType,
+    proxy_port: Option<u16>,
+    debugger_path: Option<PathBuf>,
+) -> Vec<Node> {
+    let arg_string = match node_type {
+        NodeType::Tezedge => "tezedge-nodes",
+        NodeType::Ocaml => "ocaml-nodes",
+    };
+
+    if let Some(vals) = args.values_of(arg_string) {
+        vals.into_iter()
+            .map(|val| {
+                let components: Vec<&str> = val.split(':').collect();
+                if components.len() == 3 {
+                    let port = components[1]
+                        .parse::<u16>()
+                        .expect("Expected valid port number");
+                    let tag = components[0].to_string();
+                    let volume_path = PathBuf::from(components[2]);
+
+                    // if we have a proxy port defined, make the proxy status online, if not keep it None indicating
+                    // no proxy
+                    let proxy_status = proxy_port.map(|_| NodeStatus::Online);
+
+                    Node::new(
+                        port,
+                        proxy_port,
+                        tag,
+                        None,
+                        volume_path,
+                        debugger_path.clone(),
+                        node_type.clone(),
+                        NodeStatus::Online,
+                        proxy_status,
+                    )
+                } else {
+                    panic!("Wrong node format!!!")
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
     }
 }
 
@@ -320,6 +353,10 @@ impl DeployMonitoringEnvironment {
                 }),
         };
 
+        let proxy_port = args
+            .value_of("proxy-port")
+            .map(|port| port.parse::<u16>().expect("Was port number [u16]"));
+
         let ocaml_alert_thresholds = AlertThresholds {
             memory: args
                 .value_of("ocaml-alert-threshold-memory")
@@ -346,16 +383,18 @@ impl DeployMonitoringEnvironment {
                         .expect("Was expecting percentage [u64]")
                 }),
         };
+        let debugger_path = args.value_of("debugger-path").map(|debugger_path| {
+            debugger_path
+                .parse::<PathBuf>()
+                .expect("The provided path is invalid")
+        });
 
-        let tezedge_volume_path = env::var("TEZEDGE_VOLUME_PATH").unwrap_or(
-            "/var/lib/docker/volumes/deploy_monitoring_tezedge-shared-data/_data".to_string(),
-        );
+        let mut tezedge_nodes =
+            parse_nodes_args(&args, &NodeType::Tezedge, proxy_port, debugger_path.clone());
+        let ocaml_nodes = parse_nodes_args(&args, &NodeType::Ocaml, proxy_port, debugger_path);
 
-        if !Path::new(&tezedge_volume_path).exists() {
-            fs::create_dir_all(&tezedge_volume_path).unwrap_or_else(|_| {
-                panic!("Failed to create directory: {:?}", &tezedge_volume_path)
-            });
-        }
+        // combine the nodes
+        tezedge_nodes.extend(ocaml_nodes);
 
         DeployMonitoringEnvironment {
             log_level: args
@@ -363,18 +402,6 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("info")
                 .parse::<slog::Level>()
                 .expect("Was expecting one value from slog::Level"),
-            compose_file_path: args
-                .value_of("compose-file-path")
-                .unwrap_or("")
-                .parse::<PathBuf>()
-                .expect("Expected valid path for the compose file"),
-            image_monitor_interval: args
-                .value_of("image-monitor-interval")
-                .map(|image_interval| {
-                    image_interval
-                        .parse::<u64>()
-                        .expect("Expected u64 value of seconds")
-                }),
             resource_monitor_interval: args
                 .value_of("resource-monitor-interval")
                 .unwrap_or("5")
@@ -385,14 +412,12 @@ impl DeployMonitoringEnvironment {
                 .unwrap_or("38732")
                 .parse::<u16>()
                 .expect("Expected u16 value of valid port number"),
-            is_sandbox: args.is_present("sandbox"),
-            cleanup_volumes: args.is_present("cleanup-volumes"),
-            tezedge_only: args.is_present("tezedge-only"),
-            disable_debugger: args.is_present("disable-debugger"),
             tezedge_alert_thresholds,
             ocaml_alert_thresholds,
             slack_configuration,
-            tezedge_volume_path,
+            nodes: tezedge_nodes,
+            wait_for_nodes: args.is_present("wait-for-nodes"),
+            proxy_port,
         }
     }
 }
