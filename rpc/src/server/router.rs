@@ -164,16 +164,18 @@ pub(crate) fn create_routes(_is_sandbox: bool) -> PathTree<MethodHandler> {
     );
     // TODO - TE-261: these should be disabled when only the irmin context is enabled
     // or the functionality should be reimplemented on top of irmin too.
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
-        shell_handler::context_raw_bytes,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
-        shell_handler::context_raw_bytes,
-    );
+    // TODO - TE-261: re-enable once we have an implementation that doesn't break because
+    // of timeouts
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
+    //     shell_handler::context_raw_bytes,
+    // );
+    // routes.handle(
+    //     hash_set![Method::GET],
+    //     "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
+    //     shell_handler::context_raw_bytes,
+    // );
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/metadata",
