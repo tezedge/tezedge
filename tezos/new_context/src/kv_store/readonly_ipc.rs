@@ -200,7 +200,7 @@ pub struct IpcContextServer {
 
 /// IPC context client for readers.
 impl IpcContextClient {
-    const TIMEOUT: Duration = Duration::from_secs(60);
+    const TIMEOUT: Duration = Duration::from_secs(180);
 
     pub fn try_connect<P: AsRef<Path>>(socket_path: P) -> Result<Self, IpcError> {
         // TODO - TE-261: do this in a better way
@@ -266,7 +266,7 @@ impl<'a> Iterator for ContextIncoming<'a> {
 }
 
 impl IpcContextListener {
-    const IO_TIMEOUT: Duration = Duration::from_secs(60);
+    const IO_TIMEOUT: Duration = Duration::from_secs(180);
 
     /// Create new IPC endpoint
     pub fn try_new<P: AsRef<Path>>(socket_path: P) -> Result<Self, IpcError> {
