@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::ChainId;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::StorageError;
 
-pub type SystemStorageKv = dyn KeyValueStoreWithSchema<SystemStorage> + Sync + Send;
+pub type SystemStorageKv = dyn TezedgeDatabaseWithIterator<SystemStorage> + Sync + Send;
 pub type DbVersion = i64;
 
 /// Represents storage of the system settings.
@@ -123,7 +124,11 @@ impl RocksDbKeyValueSchema for SystemStorage {
         "system_storage"
     }
 }
-
+impl KVStoreKeyValueSchema for SystemStorage {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
 #[derive(Serialize, Deserialize)]
 pub enum SystemValue {
     String(String),
