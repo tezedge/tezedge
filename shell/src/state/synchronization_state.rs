@@ -69,7 +69,7 @@ pub struct SynchronizationBootstrapState {
 impl SynchronizationBootstrapState {
     /// This constant is used for solving, if something is bootstrapped
     /// This means, that the compared level, should be on at least 96%
-    const HIGH_LEVEL_MARGIN_PERCENTAGE: i32 = 98;
+    const HIGH_LEVEL_MARGIN_PERCENTAGE: i32 = 99;
 
     pub fn new(
         num_of_peers_for_bootstrap_threshold: usize,
@@ -267,7 +267,7 @@ pub mod tests {
 
         // update with one with higher level
         bootstrap_state.update_by_peer_state(
-            &done_peer(98, &peer_state1),
+            &done_peer(99, &peer_state1),
             &mut peer_state1,
             100,
             0,
@@ -309,7 +309,7 @@ pub mod tests {
             97,
         );
         bootstrap_state.update_by_peer_state(
-            &done_peer(98, &peer_state2),
+            &done_peer(99, &peer_state2),
             &mut peer_state2,
             100,
             97,
@@ -326,7 +326,7 @@ pub mod tests {
         assert!(peer_state2.is_bootstrapped());
         assert!(!bootstrap_state.is_bootstrapped());
 
-        assert!(bootstrap_state.update_by_new_local_head(100, 98));
+        assert!(bootstrap_state.update_by_new_local_head(100, 99));
         assert_eq!(0, bootstrap_state.num_of_bootstrapped_peers(100));
         assert!(peer_state1.is_bootstrapped());
         assert!(peer_state2.is_bootstrapped());

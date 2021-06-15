@@ -604,34 +604,37 @@ impl ChainManager {
                                                 history,
                                             )?;
 
-                                            // schedule mempool download
-                                            let peer_current_mempool = message.current_mempool();
+                                            // schedule mempool download, if enabled
+                                            if !self.p2p_disable_mempool {
+                                                let peer_current_mempool =
+                                                    message.current_mempool();
 
-                                            // all operations (known_valid + pending) should be added to pending and validated afterwards
-                                            // enqueue mempool operations for retrieval
-                                            peer_current_mempool
-                                                .known_valid()
-                                                .iter()
-                                                .cloned()
-                                                .for_each(|operation_hash| {
-                                                    peer.missing_mempool_operations.push((
-                                                        operation_hash,
-                                                        MempoolOperationType::Pending,
-                                                    ));
-                                                });
-                                            peer_current_mempool
-                                                .pending()
-                                                .iter()
-                                                .cloned()
-                                                .for_each(|operation_hash| {
-                                                    peer.missing_mempool_operations.push((
-                                                        operation_hash,
-                                                        MempoolOperationType::Pending,
-                                                    ));
-                                                });
+                                                // all operations (known_valid + pending) should be added to pending and validated afterwards
+                                                // enqueue mempool operations for retrieval
+                                                peer_current_mempool
+                                                    .known_valid()
+                                                    .iter()
+                                                    .cloned()
+                                                    .for_each(|operation_hash| {
+                                                        peer.add_missing_mempool_operations(
+                                                            operation_hash,
+                                                            MempoolOperationType::Pending,
+                                                        );
+                                                    });
+                                                peer_current_mempool
+                                                    .pending()
+                                                    .iter()
+                                                    .cloned()
+                                                    .for_each(|operation_hash| {
+                                                        peer.add_missing_mempool_operations(
+                                                            operation_hash,
+                                                            MempoolOperationType::Pending,
+                                                        );
+                                                    });
 
-                                            // trigger CheckMempoolCompleteness
-                                            ctx.myself().tell(CheckMempoolCompleteness, None);
+                                                // trigger CheckMempoolCompleteness
+                                                ctx.myself().tell(CheckMempoolCompleteness, None);
+                                            }
                                         }
                                         BlockAcceptanceResult::IgnoreBlock => {
                                             // doing nothing
@@ -725,7 +728,7 @@ impl ChainManager {
                                 let operation_hash = operation.message_typed_hash()?;
 
                                 match peer.queued_mempool_operations.remove(&operation_hash) {
-                                    Some((operation_type, _op_ttl)) => {
+                                    Some(operation_type) => {
                                         // do prevalidation before add the operation to mempool
                                         let result = match validation::prevalidate_operation(
                                             chain_state.get_chain_id(),
@@ -739,8 +742,9 @@ impl ChainManager {
                                             Ok(result) => result,
                                             Err(e) => match e {
                                                 validation::PrevalidateOperationError::UnknownBranch { .. }
-                                                | validation::PrevalidateOperationError::BranchNotAppliedYet { .. } => {
-                                                    // here we just ignore UnknownBranch
+                                                | validation::PrevalidateOperationError::AlreadyInMempool { .. }
+                                                | validation::PrevalidateOperationError::BranchNotAppliedYet { .. }  => {
+                                                    // here we just ignore scenarios
                                                     return Ok(());
                                                 }
                                                 poe => {
@@ -781,7 +785,7 @@ impl ChainManager {
                                         );
                                     }
                                     None => {
-                                        debug!(log, "Unexpected mempool operation received")
+                                        debug!(log, "Unexpected mempool operation received"; "operation_branch" => operation.branch().to_base58_check(), "operation_hash" => operation_hash.to_base58_check())
                                     }
                                 }
                             }

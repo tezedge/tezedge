@@ -2,8 +2,8 @@
 
 ## Table of Contents
 * [Get free XTZ](#get-free-xtz)
-* [Run with Docker](#run-with-docker)
 * [Run from sources/binaries](#run-from-sourcesbinaries)
+* [Run with Docker](#run-with-docker)
 
 # Get free XTZ
 
@@ -21,123 +21,6 @@ endorser.faucet.json
 accuser.faucet.json
 ```
 
-# Run with Docker
-
-1. **Create external volume**
-
-    _Tezos baker requires access to the context directory, which is produced by TezEdge node._
-    ```
-    docker volume create --name=data-dir-010-PtGRANAD
-    ```
-
-2. **Run TezEdge node + TezEdge explorer**
-
-   _Download TezEdge source code_
-   ```
-   git clone https://github.com/tezedge/tezedge
-   cd tezedge/delegates
-   ```
-
-   ```
-   NODE_HOST=localhost docker-compose -f docker-compose.node.010-granadanet.yml up
-   ```
-
-3. **Wait for TezEdge node to sync with network**
-
-   _Check explorer for 100%:_
-   ![alt text](explorer_bootstrapped.jpg)
-
-   _Check RPC:_
-   ```
-   curl http:://localhost:12535/chains/main/blocks/head
-   ```
-
-4. **Initialize keys**
-
-   _TezEdge node have to be synced already._
-   ```
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker DELEGATE_FAUCET_JSON_FILE=./baker.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker DELEGATE_FAUCET_JSON_FILE=./baker.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
-
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser DELEGATE_FAUCET_JSON_FILE=./endorser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser DELEGATE_FAUCET_JSON_FILE=./endorser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
-
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=accuser DELEGATE_FAUCET_JSON_FILE=./accuser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=accuser DELEGATE_FAUCET_JSON_FILE=./accuser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
-   ```
-
-   *Once operations are baked, you should see output:*
-   ```
-   ...
-   Account baker (tz1XXXXXX) activated with ꜩ76351.572618.
-   Account endorser (tz1XXXXXX) activated with ꜩ76351.572618.
-   Account accuser (tz1XXXXXX) activated with ꜩ76351.572618.
-   ...
-   ```
-
-5. **Register baker/endorser delegate**
-
-   _TezEdge node have to be synced already._
-   ```
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.register-delegate.010-granadanet.yml up
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.register-delegate.010-granadanet.yml down
-
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.register-delegate.010-granadanet.yml up
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.register-delegate.010-granadanet.yml down
-   ```
-
-   _Check explorer - mempool_
-   ![alt text](explorer_reveal_manager.jpg)
-
-   *Once operations are baked, you should see output:*
-   ```
-   ...
-   This revelation was successfully applied
-   ...
-   This delegation was successfully applied
-   ...
-   ```
-
-6. **Run baker**
-   ```
-   docker-compose -f docker-compose.baker.010-granadanet.yml pull
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.baker.010-granadanet.yml up
-   ```
-
-   *You should see output:*
-   ```
-   tezos-baker-010-PtGRANAD_1  | Node is bootstrapped.
-   tezos-baker-010-PtGRANAD_1  | Baker started.
-   tezos-baker-010-PtGRANAD_1  | Jun  9 22:25:39.760 - 010-PtGRANAD.delegate.baking_forge: no slot found at level 40714 (max_priority = 64)
-   ...
-   ```
-
-7. **Run endorser**
-   ```
-   docker-compose -f docker-compose.endorser.010-granadanet.yml pull
-   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.endorser.010-granadanet.yml up
-   ```
-
-   *You should see output:*
-   ```
-   tezos-endorer-010-PtGRANAD_1  | Node is bootstrapped.
-   tezos-endorer-010-PtGRANAD_1  | Endorser started.
-   ...
-   ```
-
-8. **Run accuser**
-   ```
-   docker-compose -f docker-compose.accuser.010-granadanet.yml pull
-   NODE_HOST=localhost NODE_RPC_PORT=12535 docker-compose -f docker-compose.accuser.010-granadanet.yml up
-   ```
-
-   *You should see output:*
-   ```
-   tezos-accuser-010-PtGRANAD_1  | Node is bootstrapped.
-   tezos-accuser-010-PtGRANAD_1  | Accuser started.
-   ...
-   ```
-
 # Run from sources/binaries
 
 1. **Create working directory**
@@ -154,7 +37,7 @@ accuser.faucet.json
 
 2. **Run TezEdge node**
 
-   At first you need to [build TezEdge from sources](../README.md#build-from-source-code) and then check [how to run it](../README.md#how-to-run).
+   At first you need to [build TezEdge from sources](../../README.md#build-from-source-code) and then check [how to run it](../../README.md#how-to-run).
 
    E.g. for granadanet to support baking/endorsing:
 
@@ -330,5 +213,122 @@ accuser.faucet.json
    Node is bootstrapped.
    ...
    Accuser started.
+   ...
+   ```
+
+# Run with Docker
+
+1. **Create external volume**
+
+   _Tezos baker requires access to the context directory, which is produced by TezEdge node._
+    ```
+    docker volume create --name=data-dir-010-PtGRANAD
+    ```
+
+2. **Run TezEdge node + TezEdge explorer**
+
+   _Download TezEdge source code_
+   ```
+   git clone https://github.com/tezedge/tezedge
+   cd tezedge/delegates
+   ```
+
+   ```
+   NODE_HOST=localhost docker-compose -f docker-compose.node.010-granadanet.yml up
+   ```
+
+3. **Wait for TezEdge node to sync with network**
+
+   _Check explorer for 100%:_
+   ![alt text](../explorer_bootstrapped.jpg)
+
+   _Check RPC:_
+   ```
+   curl http:://localhost:12535/chains/main/blocks/head
+   ```
+
+4. **Initialize keys**
+
+   _TezEdge node have to be synced already._
+   ```
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker DELEGATE_FAUCET_JSON_FILE=./baker.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker DELEGATE_FAUCET_JSON_FILE=./baker.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
+
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser DELEGATE_FAUCET_JSON_FILE=./endorser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser DELEGATE_FAUCET_JSON_FILE=./endorser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
+
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=accuser DELEGATE_FAUCET_JSON_FILE=./accuser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml up
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=accuser DELEGATE_FAUCET_JSON_FILE=./accuser.faucet.json docker-compose -f docker-compose.init.010-granadanet.yml down
+   ```
+
+   *Once operations are baked, you should see output:*
+   ```
+   ...
+   Account baker (tz1XXXXXX) activated with ꜩ76351.572618.
+   Account endorser (tz1XXXXXX) activated with ꜩ76351.572618.
+   Account accuser (tz1XXXXXX) activated with ꜩ76351.572618.
+   ...
+   ```
+
+5. **Register baker/endorser delegate**
+
+   _TezEdge node have to be synced already._
+   ```
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.register-delegate.010-granadanet.yml up
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.register-delegate.010-granadanet.yml down
+
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.register-delegate.010-granadanet.yml up
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.register-delegate.010-granadanet.yml down
+   ```
+
+   _Check explorer - mempool_
+   ![alt text](../explorer_reveal_manager.jpg)
+
+   *Once operations are baked, you should see output:*
+   ```
+   ...
+   This revelation was successfully applied
+   ...
+   This delegation was successfully applied
+   ...
+   ```
+
+6. **Run baker**
+   ```
+   docker-compose -f docker-compose.baker.010-granadanet.yml pull
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=baker docker-compose -f docker-compose.baker.010-granadanet.yml up
+   ```
+
+   *You should see output:*
+   ```
+   tezos-baker-010-PtGRANAD_1  | Node is bootstrapped.
+   tezos-baker-010-PtGRANAD_1  | Baker started.
+   tezos-baker-010-PtGRANAD_1  | Jun  9 22:25:39.760 - 010-PtGRANAD.delegate.baking_forge: no slot found at level 40714 (max_priority = 64)
+   ...
+   ```
+
+7. **Run endorser**
+   ```
+   docker-compose -f docker-compose.endorser.010-granadanet.yml pull
+   NODE_HOST=localhost NODE_RPC_PORT=12535 DELEGATE_ALIAS=endorser docker-compose -f docker-compose.endorser.010-granadanet.yml up
+   ```
+
+   *You should see output:*
+   ```
+   tezos-endorer-010-PtGRANAD_1  | Node is bootstrapped.
+   tezos-endorer-010-PtGRANAD_1  | Endorser started.
+   ...
+   ```
+
+8. **Run accuser**
+   ```
+   docker-compose -f docker-compose.accuser.010-granadanet.yml pull
+   NODE_HOST=localhost NODE_RPC_PORT=12535 docker-compose -f docker-compose.accuser.010-granadanet.yml up
+   ```
+
+   *You should see output:*
+   ```
+   tezos-accuser-010-PtGRANAD_1  | Node is bootstrapped.
+   tezos-accuser-010-PtGRANAD_1  | Accuser started.
    ...
    ```

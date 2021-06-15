@@ -243,7 +243,12 @@ To run the node in debug mode with an address sanitizer, execute the following:
 KEEP_DATA=1 ./run.sh node-saddr --network=mainnet
 ```
 
-If you are running OSX, you can use the docker version:
+You can use the docker version to build and run node from the actual source code.
+- you can experiment and change source code without installing all requirements, just docker.
+- you can build/run node on Windows/OSX
+- this is just for development, because docker is based on full Linux (pre-build docker images are Distroless)
+
+_If you do not need to build from souce code, just use our pre-build [docker images](#running-node-from-docker-images)_
 
 ```
 ./run.sh docker --network=mainnet

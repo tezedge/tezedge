@@ -18,6 +18,7 @@ use crate::p2p::encoding::version::NetworkVersion;
 
 #[derive(Serialize, Deserialize, Debug, Getters, Clone, HasEncoding, NomReader)]
 pub struct ConnectionMessage {
+    #[get = "pub"]
     port: u16,
     #[get = "pub"]
     #[encoding(sized = "CRYPTO_KEY_SIZE", bytes)]
