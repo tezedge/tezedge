@@ -1924,7 +1924,7 @@ dependencies = [
 [[package]]
 name = "librocksdb-sys"
 version = "6.11.4"
-source = "git+https://github.com/tezedge/rust-rocksdb.git?branch=frame-pointer#479fe0851c3332c80fe7514b26be933ca6a82c0d"
+source = "git+https://github.com/tezedge/rust-rocksdb.git?branch=frame-pointer#717c99c798a2d9219db9a774afbf8843b7f4b168"
 dependencies = [
  "bindgen",
  "cc",
