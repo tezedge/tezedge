@@ -4222,7 +4222,7 @@ steps:
     dockerfile: docker/distroless/Dockerfile
     build_args:
       - SOURCE_BRANCH=develop
-      - BASE_IMAGE=simplestakingcom/glibc:latest-frame-pointers-enabled
+      - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
       - RUSTFLAGS=-Cforce-frame-pointers=yes
     username:
       from_secret: docker_hub_username
@@ -4304,7 +4304,7 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
-        - BASE_IMAGE=simplestakingcom/glibc:latest-frame-pointers-enabled
+        - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
         - RUSTFLAGS=-Cforce-frame-pointers=yes
       username:
         from_secret: docker_hub_username

@@ -1,4 +1,5 @@
-ARG BASE_IMAGE=gcr.io/distroless/cc-debian10
+# TODO: deafult should be `tezedge-libs:latest`, remove `-profile` when the image will be on hub.docker.com
+ARG BASE_IMAGE=tezedge-libs:latest-profile
 
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
@@ -34,9 +35,7 @@ COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 
 # Copy shared libraries
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /usr/lib/x86_64-linux-gnu/libtezos.so
-COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsodium.so.23 /usr/lib/x86_64-linux-gnu/libsodium.so.23
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
-COPY --from=build-env /usr/lib/x86_64-linux-gnu/libgmp.so.10 /usr/lib/x86_64-linux-gnu/libgmp.so.10
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
 
 # Copy zcash-params init files for sapling
