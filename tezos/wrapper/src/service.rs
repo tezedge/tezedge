@@ -467,6 +467,8 @@ pub struct IpcCmdServer(
 /// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
 impl IpcCmdServer {
     const IO_TIMEOUT: Duration = Duration::from_secs(10);
+    /// Long timeout for slow calls
+    const IO_TIMEOUT_LONG: Duration = Duration::from_secs(300);
 
     /// Create new IPC endpoint
     pub fn try_new(configuration: ProtocolEndpointConfiguration) -> Result<Self, IpcError> {
@@ -1049,7 +1051,7 @@ impl ProtocolController {
         ))?;
 
         match io.rx.try_receive(
-            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::ContextGetKeyFromHistoryResult(result) => result
@@ -1074,7 +1076,7 @@ impl ProtocolController {
         ))?;
 
         match io.rx.try_receive(
-            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::ContextGetKeyValuesByPrefixResult(result) => result.map_err(|err| {
@@ -1102,7 +1104,7 @@ impl ProtocolController {
         ))?;
 
         match io.rx.try_receive(
-            Some(IpcCmdServer::IO_TIMEOUT),
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::ContextGetTreeByPrefixResult(result) => result.map_err(|err| {
