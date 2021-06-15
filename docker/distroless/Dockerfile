@@ -1,5 +1,4 @@
-# TODO: deafult should be `tezedge-libs:latest`, remove `-profile` when the image will be on hub.docker.com
-ARG BASE_IMAGE=tezedge-libs:latest-profile
+ARG BASE_IMAGE=tezedge-libs:latest
 
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
