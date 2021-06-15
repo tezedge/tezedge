@@ -13,7 +13,7 @@ use std::{
 };
 
 use failure::Fail;
-use rocksdb::{Cache, DB};
+use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
 
@@ -37,6 +37,8 @@ pub use crate::block_meta_storage::{
 };
 pub use crate::block_storage::{BlockJsonData, BlockStorage, BlockStorageReader};
 pub use crate::chain_meta_storage::ChainMetaStorage;
+use crate::commit_log::{CommitLogError, CommitLogs};
+use crate::database::tezedge_database::TezedgeDatabase;
 pub use crate::mempool_storage::{MempoolStorage, MempoolStorageKV};
 pub use crate::operations_meta_storage::{OperationsMetaStorage, OperationsMetaStorageKV};
 pub use crate::operations_storage::{
@@ -44,13 +46,15 @@ pub use crate::operations_storage::{
 };
 pub use crate::persistent::database::{Direction, IteratorMode};
 use crate::persistent::sequence::{SequenceError, Sequences};
-use crate::persistent::{CommitLogError, CommitLogs, DBError, Decoder, Encoder, SchemaError};
+use crate::persistent::{DBError, Decoder, Encoder, SchemaError};
 pub use crate::predecessor_storage::PredecessorStorage;
 pub use crate::system_storage::SystemStorage;
 
 pub mod block_meta_storage;
 pub mod block_storage;
 pub mod chain_meta_storage;
+pub mod commit_log;
+pub mod database;
 pub mod mempool_storage;
 pub mod operations_meta_storage;
 pub mod operations_storage;
@@ -136,6 +140,8 @@ pub enum StorageError {
     HashError { error: FromBytesError },
     #[fail(display = "Error decoding hash: {}", error)]
     HashDecodeError { error: FromBase58CheckError },
+    #[fail(display = "Database error: {}", error)]
+    MainDBError { error: database::error::Error },
 }
 
 impl From<DBError> for StorageError {
@@ -185,6 +191,11 @@ impl From<FromBytesError> for StorageError {
 impl From<FromBase58CheckError> for StorageError {
     fn from(error: FromBase58CheckError) -> Self {
         StorageError::HashDecodeError { error }
+    }
+}
+impl From<database::error::Error> for StorageError {
+    fn from(error: database::error::Error) -> Self {
+        StorageError::MainDBError { error }
     }
 }
 
@@ -424,11 +435,12 @@ pub mod initializer {
     use rocksdb::{Cache, ColumnFamilyDescriptor, DB};
     use slog::{error, Logger};
 
-    use crypto::hash::ChainId;
-
+    use crate::database::error::Error as DatabaseError;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendConfiguration};
     use crate::persistent::database::{open_kv, RocksDbKeyValueSchema};
-    use crate::persistent::{DBError, DbConfiguration};
+    use crate::persistent::{open_main_db, DBError, DbConfiguration};
     use crate::{StorageError, SystemStorage};
+    use crypto::hash::ChainId;
 
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     pub type GlobalRocksDbCacheHolder = Vec<RocksDbCache>;
@@ -476,10 +488,10 @@ pub mod initializer {
     }
 
     pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
-        log: &Logger,
+        _log: &Logger,
         cache: &Cache,
         config: &RocksDbConfig<Factory>,
-        expected_main_chain: &MainChain,
+        _expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
             &config.db_path,
@@ -490,23 +502,7 @@ pub mod initializer {
         )
         .map(Arc::new)?;
 
-        match check_database_compatibility(
-            db.clone(),
-            config.expected_db_version,
-            expected_main_chain,
-            &log,
-        ) {
-            Ok(false) => Err(DBError::DatabaseIncompatibility {
-                name: format!(
-                    "Database is incompatible with version {}",
-                    config.expected_db_version
-                ),
-            }),
-            Err(e) => Err(DBError::DatabaseIncompatibility {
-                name: format!("Failed to verify database compatibility reason: '{}'", e),
-            }),
-            _ => Ok(db),
-        }
+        Ok(db)
     }
 
     pub struct MainChain {
@@ -523,8 +519,29 @@ pub mod initializer {
         }
     }
 
+    pub fn initialize_maindb<C: RocksDbColumnFactory>(
+        log: &Logger,
+        kv: Option<Arc<DB>>,
+        config: &RocksDbConfig<C>,
+        db_version: i64,
+        expected_main_chain: &MainChain,
+        backend_config: TezedgeDatabaseBackendConfiguration,
+    ) -> Result<Arc<TezedgeDatabase>, DatabaseError> {
+        let db = Arc::new(open_main_db(kv, config, backend_config)?);
+
+        match check_database_compatibility(db.clone(), db_version, expected_main_chain, &log) {
+            Ok(false) => Err(DatabaseError::DatabaseIncompatibility {
+                name: format!("Database is incompatible with version {}", db_version),
+            }),
+            Err(e) => Err(DatabaseError::DatabaseIncompatibility {
+                name: format!("Failed to verify database compatibility reason: '{}'", e),
+            }),
+            _ => Ok(db),
+        }
+    }
+
     fn check_database_compatibility(
-        db: Arc<DB>,
+        db: Arc<TezedgeDatabase>,
         expected_database_version: i64,
         expected_main_chain: &MainChain,
         log: &Logger,
@@ -580,8 +597,8 @@ pub mod initializer {
 
 #[derive(Clone)]
 pub struct PersistentStorage {
-    /// key-value store for operational database
-    db: Arc<DB>,
+    /// key-value store for main db
+    main_db: Arc<TezedgeDatabase>,
     /// commit log store for storing plain block header data
     clog: Arc<CommitLogs>,
     /// autoincrement  id generators
@@ -589,13 +606,13 @@ pub struct PersistentStorage {
 }
 
 impl PersistentStorage {
-    pub fn new(db: Arc<DB>, clog: Arc<CommitLogs>, seq: Arc<Sequences>) -> Self {
-        Self { clog, db, seq }
+    pub fn new(main_db: Arc<TezedgeDatabase>, clog: Arc<CommitLogs>, seq: Arc<Sequences>) -> Self {
+        Self { clog, main_db, seq }
     }
 
     #[inline]
-    pub fn db(&self) -> Arc<DB> {
-        self.db.clone()
+    pub fn main_db(&self) -> Arc<TezedgeDatabase> {
+        self.main_db.clone()
     }
 
     #[inline]
@@ -610,7 +627,7 @@ impl PersistentStorage {
 
     pub fn flush_dbs(&mut self) {
         let clog = self.clog.flush();
-        let db = self.db.flush();
+        let db = self.main_db.flush();
 
         if clog.is_err() || db.is_err() {
             println!(
@@ -642,6 +659,7 @@ pub mod tests_common {
     use crate::persistent::{open_cl, CommitLogSchema, DbConfiguration};
 
     use super::*;
+    use crate::database::tezedge_database::TezedgeDatabaseBackendOptions;
 
     pub struct TmpStorage {
         persistent_storage: PersistentStorage,
@@ -695,15 +713,18 @@ pub mod tests_common {
                 ],
                 &cfg,
             )?);
-
+            let backend = database::rockdb_backend::RocksDBBackend::from_db(kv)?;
+            let maindb = Arc::new(TezedgeDatabase::new(
+                TezedgeDatabaseBackendOptions::RocksDB(backend),
+            ));
             // commit log storage
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 
             Ok(Self {
                 persistent_storage: PersistentStorage::new(
-                    kv.clone(),
+                    maindb.clone(),
                     Arc::new(clog),
-                    Arc::new(Sequences::new(kv, 1000)),
+                    Arc::new(Sequences::new(maindb, 1000)),
                 ),
                 path,
                 remove_on_destroy,

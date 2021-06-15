@@ -335,24 +335,21 @@ fn initialize_monitors(
 
     // populate the monitors with the data from storage
     if let Ok(iter) = block_storage.iterator() {
-        iter.for_each(|(k, _)| {
-            if let Ok(key) = k {
-                if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
-                    let block_level = header_with_hash.header.level();
-                    chain_monitor.process_block_header(block_level);
-                    downloaded_headers += 1;
+        for key in iter {
+            if let Ok(Some(header_with_hash)) = block_storage.get(&key) {
+                let block_level = header_with_hash.header.level();
+                chain_monitor.process_block_header(block_level);
+                downloaded_headers += 1;
 
-                    if let Ok(is_complete) =
-                        operations_meta_storage.is_complete(&header_with_hash.hash)
-                    {
-                        if is_complete {
-                            chain_monitor.process_block_operations(block_level);
-                            downloaded_blocks += 1;
-                        }
+                if let Ok(is_complete) = operations_meta_storage.is_complete(&header_with_hash.hash)
+                {
+                    if is_complete {
+                        chain_monitor.process_block_operations(block_level);
+                        downloaded_blocks += 1;
                     }
                 }
             }
-        })
+        }
     }
 
     let current_head_level = if let Ok(Some(head)) =

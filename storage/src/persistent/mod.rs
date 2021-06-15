@@ -5,13 +5,21 @@ use std::path::Path;
 
 use derive_builder::Builder;
 
+use crate::commit_log::{CommitLogError, CommitLogs};
+use crate::database::error::Error as DatabaseError;
+use crate::database::rockdb_backend::RocksDBBackend;
+use crate::database::sled_backend::SledDBBackend;
+use crate::database::tezedge_database::{
+    TezedgeDatabase, TezedgeDatabaseBackendConfiguration, TezedgeDatabaseBackendOptions,
+};
+use crate::initializer::{RocksDbColumnFactory, RocksDbConfig};
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
-pub use commit_log::{CommitLogError, CommitLogRef, CommitLogWithSchema, CommitLogs, Location};
 pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIterator};
+use rocksdb::DB;
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
+use std::sync::Arc;
 
 pub mod codec;
-pub mod commit_log;
 pub mod database;
 pub mod schema;
 pub mod sequence;
@@ -69,6 +77,28 @@ pub trait MultiInstanceable {
             ))
         }
     }
+}
+
+/// Open commit log at a given path.
+pub fn open_main_db<C: RocksDbColumnFactory>(
+    rocks_db: Option<Arc<DB>>,
+    config: &RocksDbConfig<C>,
+    backend_config: TezedgeDatabaseBackendConfiguration,
+) -> Result<TezedgeDatabase, DatabaseError> {
+    //Todo Change this
+    let backend = match backend_config {
+        TezedgeDatabaseBackendConfiguration::Sled => {
+            TezedgeDatabaseBackendOptions::SledDB(SledDBBackend::new(config.db_path.as_path())?)
+        }
+        TezedgeDatabaseBackendConfiguration::RocksDB => {
+            if let Some(db) = rocks_db {
+                TezedgeDatabaseBackendOptions::RocksDB(RocksDBBackend::from_db(db)?)
+            } else {
+                panic!("RockDB not initialized")
+            }
+        }
+    };
+    Ok(TezedgeDatabase::new(backend))
 }
 
 #[derive(Debug, Clone)]

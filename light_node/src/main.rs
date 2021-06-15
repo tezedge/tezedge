@@ -39,6 +39,8 @@ use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::Environment;
+use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+use storage::initializer::initialize_maindb;
 
 mod configuration;
 mod identity;
@@ -619,18 +621,46 @@ fn main() {
     // initialize dbs
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
-    let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
+
+    /* let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
         .expect("Failed to create/initialize RocksDB database (db)");
-    caches.push(kv_cache);
+    caches.push(kv_cache);*/
+    //Todo For testing only, change this
+
+    let maindb = match env.storage.main_db {
+        TezedgeDatabaseBackendConfiguration::Sled => initialize_maindb(
+            &log,
+            None,
+            &env.storage.db,
+            env.storage.db.expected_db_version,
+            &main_chain,
+            env.storage.main_db,
+        )
+        .expect("Failed to create/initialize MainDB database (db)"),
+        TezedgeDatabaseBackendConfiguration::RocksDB => {
+            let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
+                .expect("Failed to create/initialize RocksDB database (db)");
+            caches.push(kv_cache);
+            initialize_maindb(
+                &log,
+                Some(kv),
+                &env.storage.db,
+                env.storage.db.expected_db_version,
+                &main_chain,
+                env.storage.main_db,
+            )
+            .expect("Failed to create/initialize MainDB database (db)")
+        }
+    };
 
     let commit_logs = Arc::new(
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),
     );
-    let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
+    let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
     {
-        let persistent_storage = PersistentStorage::new(kv, commit_logs, sequences);
+        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
 
         match resolve_storage_init_chain_data(
             &tezos_env,

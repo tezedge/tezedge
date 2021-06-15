@@ -24,6 +24,7 @@ use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
+use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::Replay;
 use tezos_api::environment;
@@ -178,6 +179,7 @@ pub struct Storage {
     pub context_storage_configuration: TezosContextStorageConfiguration,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
+    pub main_db: TezedgeDatabaseBackendConfiguration,
 }
 
 impl Storage {
@@ -622,6 +624,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("maindb-backend")
+            .long("maindb-backend")
+            .takes_value(true)
+            .value_name("STRING")
+            .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
+            .default_value("sled")
+            .help("Options fo main database backend"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
             .global(true)
@@ -1106,7 +1115,11 @@ impl Environment {
                     columns: DbsRocksDbTableInitializer,
                     threads: db_threads_count,
                 };
-
+                let maindb_backend: TezedgeDatabaseBackendConfiguration = args
+                    .value_of("maindb-backend")
+                    .unwrap_or("rocksdb")
+                    .parse::<TezedgeDatabaseBackendConfiguration>()
+                    .unwrap_or(TezedgeDatabaseBackendConfiguration::RocksDB);
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
@@ -1167,8 +1180,9 @@ impl Environment {
                 };
 
                 crate::configuration::Storage {
-                    context_storage_configuration,
                     db,
+                    context_storage_configuration,
+                    main_db: maindb_backend,
                     db_path,
                     context_stats_db_path,
                     compute_context_action_tree_hashes,
