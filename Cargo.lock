@@ -3494,6 +3494,7 @@ dependencies = [
  "futures",
  "getset",
  "hex",
+ "ipc",
  "itertools 0.10.0",
  "lazy_static",
  "merge",

@@ -94,13 +94,15 @@ impl NodeInfrastructure {
             context_db_path.to_string()
         };
 
+        let ipc_socket_path = Some(ipc::temp_sock().to_string_lossy().as_ref().to_owned());
+
         let context_storage_configuration = TezosContextStorageConfiguration::Both(
             TezosContextIrminStorageConfiguration {
                 data_dir: context_db_path,
             },
             TezosContextTezEdgeStorageConfiguration {
                 backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
-                ipc_socket_path: None,
+                ipc_socket_path,
             },
         );
 
@@ -133,7 +135,7 @@ impl NodeInfrastructure {
                 },
                 tezos_env.clone(),
                 false,
-                context_storage_configuration.clone(),
+                context_storage_configuration.readonly(),
                 &common::protocol_runner_executable_path(),
                 log_level,
             ),
