@@ -1139,6 +1139,7 @@ steps:
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
+    CONTEXT_MUST_SURVIVE_RESTARTS: 1
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
@@ -1155,6 +1156,7 @@ steps:
   environment:
     SODIUM_USE_PKG_CONFIG: 1
     RUST_BACKTRACE: 1
+    CONTEXT_MUST_SURVIVE_RESTARTS: 1
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
@@ -1391,6 +1393,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
       RUST_BACKTRACE: 1
+      CONTEXT_MUST_SURVIVE_RESTARTS: 1
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
@@ -1407,6 +1410,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
       RUST_BACKTRACE: 1
+      CONTEXT_MUST_SURVIVE_RESTARTS: 1
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
@@ -1643,6 +1647,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
       RUST_BACKTRACE: 1
+      CONTEXT_MUST_SURVIVE_RESTARTS: 1
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
@@ -1659,6 +1664,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
       RUST_BACKTRACE: 1
+      CONTEXT_MUST_SURVIVE_RESTARTS: 1
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
