@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=tezedge-libs:latest
+ARG BASE_IMAGE=simplestakingcom/tezedge-libs:latest
 
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
