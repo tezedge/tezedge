@@ -468,9 +468,10 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
         match self.get_history(&context_hash_arr, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
-            Err(MerkleError::EntryNotFound { hash: _ }) => {
-                Err(ContextError::UnknownContextHashError {
+            Err(MerkleError::EntryNotFound { hash }) => {
+                Err(ContextError::UnknownContextHashAndEntryError {
                     context_hash: context_hash.to_base58_check(),
+                    entry_hash: hash,
                 })
             }
             Err(err) => Err(ContextError::MerkleStorageError { error: err }),
