@@ -61,7 +61,7 @@ steps:
       - apt-get update && apt-get install time
       - sleep 5
       - cd /app
-      - time -f "%E" -o /cache/time sh -c 'dotnet Tzkt.Sync.dll > /tmp/tzkt.log & sleep 1; tail -f /tmp/tzkt.log | awk "/Applied .*0 of/ { print } /Applied 100 of/ { exit }"; kill $$!'
+      - time -f "%E" -o /cache/time sh -c 'dotnet Tzkt.Sync.dll > /tmp/tzkt.log & sleep 1; tail -f /tmp/tzkt.log | awk "/Applied .*00 of/ { print } /Applied 865 of/ { exit }"; kill $$!'
 
   - name: report-time
     image: busybox
