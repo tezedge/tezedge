@@ -380,6 +380,12 @@ mod tests {
 
     use super::*;
 
+    macro_rules! assert_float_eq {
+        ($l:expr, $r:expr) => {{
+            assert!(($l - $r).abs() < f64::EPSILON);
+        }};
+    }
+
     #[test]
     fn test_read_db() {
         let sql = Connection::open_in_memory().unwrap();
@@ -422,8 +428,8 @@ mod tests {
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap().unwrap();
 
         assert_eq!(block_stats.actions_count, 4);
-        assert_eq!(block_stats.tezedge_checkout_context_time.unwrap(), 10.0);
-        assert_eq!(block_stats.tezedge_commit_context_time.unwrap(), 11.0);
+        assert_float_eq!(block_stats.tezedge_checkout_context_time.unwrap(), 10.0);
+        assert_float_eq!(block_stats.tezedge_commit_context_time.unwrap(), 11.0);
         assert_eq!(block_stats.operations_context.len(), 2);
 
         let action = block_stats
@@ -432,9 +438,9 @@ mod tests {
             .find(|a| a.data.root == "a")
             .unwrap();
         assert_eq!(action.data.root, "a");
-        assert_eq!(action.data.tezedge_mean_time, 100.5);
-        assert_eq!(action.tezedge_add, 1.4);
-        assert_eq!(action.tezedge_find_tree, 1.3);
+        assert_float_eq!(action.data.tezedge_mean_time, 100.5);
+        assert_float_eq!(action.tezedge_add, 1.4);
+        assert_float_eq!(action.tezedge_find_tree, 1.3);
 
         sql.execute(
             "
@@ -455,28 +461,28 @@ mod tests {
         let context_stats = make_context_stats_impl(&sql, "tezedge").unwrap();
 
         assert_eq!(context_stats.operations_context.len(), 2);
-        assert_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
+        assert_float_eq!(context_stats.commit_context.one_to_ten_us.mean_time, 30.3);
         assert_eq!(context_stats.commit_context.actions_count, 1);
-        assert_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
+        assert_float_eq!(context_stats.checkout_context.one_to_ten_us.mean_time, 40.3);
 
         let action = context_stats
             .operations_context
             .iter()
             .find(|a| a.root == "a")
             .unwrap();
-        assert_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
+        assert_float_eq!(action.mem.one_to_ten_us.mean_time, 1.3);
         assert_eq!(action.mem.one_to_ten_us.count, 2);
-        assert_eq!(action.total_time, 2.0);
-        assert_eq!(action.mem.total_time, 2.0);
+        assert_float_eq!(action.total_time, 2.0);
+        assert_float_eq!(action.mem.total_time, 2.0);
 
         let action = context_stats
             .operations_context
             .iter()
             .find(|a| a.root == "b")
             .unwrap();
-        assert_eq!(action.mem.one_to_ten_us.mean_time, 10.3);
+        assert_float_eq!(action.mem.one_to_ten_us.mean_time, 10.3);
         assert_eq!(action.mem.one_to_ten_us.count, 3);
-        assert_eq!(action.add.one_to_ten_us.mean_time, 20.3);
+        assert_float_eq!(action.add.one_to_ten_us.mean_time, 20.3);
         assert_eq!(action.add.one_to_ten_us.count, 4);
 
         let block_hash = BlockHash::try_from_bytes(&vec![32; 32]).unwrap();
