@@ -173,8 +173,14 @@ where
 /// Possible errors for context
 #[derive(Debug, Fail)]
 pub enum ContextError {
-    #[fail(display = "Unknown context_hash: {:?}", context_hash)]
-    UnknownContextHashError { context_hash: String },
+    #[fail(
+        display = "Unknown context_hash: {:?} - {:?}",
+        context_hash, entry_hash
+    )]
+    UnknownContextHashAndEntryError {
+        context_hash: String,
+        entry_hash: String,
+    },
     #[fail(display = "Failed operation on Merkle storage: {}", error)]
     MerkleStorageError { error: MerkleError },
     #[fail(display = "Invalid commit date: {}", error)]
