@@ -175,6 +175,14 @@ impl TezosContextStorageConfiguration {
             }
         }
     }
+
+    pub fn tezedge_is_enabled(&self) -> bool {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => false,
+            TezosContextStorageConfiguration::TezEdgeOnly(_) => true,
+            TezosContextStorageConfiguration::Both(_, _) => true,
+        }
+    }
 }
 
 // Must be in sync with ffi_config.ml

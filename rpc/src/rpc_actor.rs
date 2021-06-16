@@ -65,6 +65,7 @@ impl RpcServer {
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
         is_sandbox: bool,
+        tezedge_is_enabled: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(
@@ -97,6 +98,7 @@ impl RpcServer {
                 init_storage_data.genesis_block_header_hash.clone(),
                 shared_state,
                 init_storage_data.context_stats_db_path.clone(),
+                tezedge_is_enabled,
                 &sys.log(),
             );
             let inner_log = sys.log();
