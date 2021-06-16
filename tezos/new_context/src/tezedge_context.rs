@@ -485,13 +485,14 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
         let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        // TODO: this could be done without implementing the functiontionality in the tree,
-        // move that code to the index.
-        let context = self.checkout(context_hash)?.unwrap();
-        context
-            .tree
-            .get_key_values_by_prefix(&context_hash_arr, prefix)
-            .map_err(ContextError::from)
+        let context = self.checkout(context_hash)?;
+        match context {
+            None => Ok(None),
+            Some(context) => Ok(context
+                .tree
+                .get_key_values_by_prefix(&context_hash_arr, prefix)
+                .map_err(ContextError::from)?),
+        }
     }
 
     fn get_context_tree_by_prefix(
