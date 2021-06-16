@@ -23,7 +23,10 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(_is_sandbox: bool) -> PathTree<MethodHandler> {
+pub(crate) fn create_routes(
+    _is_sandbox: bool,
+    tezedge_is_enabled: bool,
+) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented
@@ -220,27 +223,29 @@ pub(crate) fn create_routes(_is_sandbox: bool) -> PathTree<MethodHandler> {
     );
 
     // Protocol rpcs - implemented
-    // TODO - TE-261: when only Irmin is enabled these should probably be disabled and routed through OCaml instead
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/context/constants",
-        protocol_handler::context_constants,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
-        protocol_handler::baking_rights,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
-        protocol_handler::endorsing_rights,
-    );
-    routes.handle(
-        hash_set![Method::GET],
-        "/chains/:chain_id/blocks/:block_id/votes/listings",
-        protocol_handler::votes_listings,
-    );
+    if tezedge_is_enabled {
+        // These only work if the TezEdge context is available
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/context/constants",
+            protocol_handler::context_constants,
+        );
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
+            protocol_handler::baking_rights,
+        );
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
+            protocol_handler::endorsing_rights,
+        );
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/votes/listings",
+            protocol_handler::votes_listings,
+        );
+    }
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(

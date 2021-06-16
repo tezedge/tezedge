@@ -334,6 +334,9 @@ fn block_on_actors(
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
         is_sandbox,
+        env.storage
+            .context_storage_configuration
+            .tezedge_is_enabled(),
     )
     .expect("Failed to create RPC server");
 

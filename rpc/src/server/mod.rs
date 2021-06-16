@@ -46,7 +46,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
-    #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
     shell_channel: ShellChannelRef,
@@ -74,6 +73,7 @@ pub struct RpcServiceEnvironment {
     tezos_without_context_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     context_stats_db_path: Option<PathBuf>,
+    pub tezedge_is_enabled: bool,
 }
 
 impl RpcServiceEnvironment {
@@ -93,6 +93,7 @@ impl RpcServiceEnvironment {
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
+        tezedge_is_enabled: bool,
         log: &Logger,
     ) -> Self {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
@@ -114,6 +115,7 @@ impl RpcServiceEnvironment {
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
             context_stats_db_path,
+            tezedge_is_enabled,
         }
     }
 }
@@ -156,6 +158,7 @@ pub fn spawn_server(
 ) -> impl Future<Output = Result<(), hyper::Error>> {
     let routes = Arc::new(router::create_routes(
         env.state().read().unwrap().is_sandbox(),
+        env.tezedge_is_enabled,
     ));
 
     hyper::Server::bind(bind_address)
