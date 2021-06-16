@@ -212,13 +212,15 @@ If you want to build from source code, you need to install this before:
 To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH`. It is required
 by the `protocol-runner`. When put together, the node can be run, for example, like this:
 ```
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --network=mainnet
+cargo build --release
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 
 All parameters can also be provided as command line arguments in the same format as in the config file, in which case
 they have a higher priority than the ones in the config file. For example, we can use the default config and change the log file path:
 ```
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --network=mainnet
+cargo build --release
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
 
