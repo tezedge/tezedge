@@ -525,6 +525,9 @@ steps:
       # message_benchmark
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - cargo bench --bench message_benchmark -- --noplot
+      # decoders_benchmark
+      - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
+      - cargo bench --bench decoders_benchmark -- --noplot
       # stream_benchmark
       - echo "" && echo "" && echo "...stream_benchmark..." && echo "" && echo ""
       - cargo bench --bench stream_benchmark -- --noplot
@@ -561,6 +564,9 @@ steps:
       # message_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench message_benchmark --no-run
+      # decoders_benchmark
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
       # stream_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -590,7 +596,7 @@ steps:
       RUST_BACKTRACE: 1
     commands:
       # we should have here precompiled target branch
-      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 240
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 600
       - branch=$(git status | grep "On branch")
       - echo "...running bench for git - $branch"
       # message_benchmark - target
@@ -598,6 +604,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
       - critcmp --export message_benchmark_target_branch_result > $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json
+      # decoders_benchmark - target
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
+      - cargo bench --bench decoders_benchmark -- --noplot --save-baseline decoders_benchmark_target_branch_result
+      - critcmp --export decoders_benchmark_target_branch_result > $${CACHE_DATA_PATH}/decoders_benchmark_target_branch_result.json
       # stream_benchmark - target
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -623,6 +634,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
       - critcmp --export message_benchmark_current_branch_result > $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json
+      # decoders_benchmark - current
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
+      - cargo bench --bench decoders_benchmark -- --noplot --save-baseline decoders_benchmark_current_branch_result
+      - critcmp --export decoders_benchmark_current_branch_result > $${CACHE_DATA_PATH}/decoders_benchmark_current_branch_result.json
       # stream_benchmark - current
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -641,16 +657,37 @@ steps:
       # compare results
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json --list
+      - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
+      - critcmp $${CACHE_DATA_PATH}/decoders_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/decoders_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/interop_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/interop_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/predecessor_benchmarks_target_branch_result.json $${CACHE_DATA_PATH}/predecessor_benchmarks_current_branch_result.json --list
+      - cp /dev/null "$${CACHE_DATA_PATH}/bench.done"
     when:
       ref:
         - refs/pull/*/head
     # TODO: needs rework and speedup with new CI
     detach: true
 
+  - name: wait-for-completion
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /data/cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # we should have here precompiled target branch
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 600
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/bench.done" 1800
+
+  
 depends_on:
   - prepare-and-cleanup
 
