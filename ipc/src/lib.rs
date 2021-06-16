@@ -47,6 +47,8 @@ pub enum IpcError {
     SplitError { reason: io::Error },
     #[fail(display = "Socker configuration error: {}", reason)]
     SocketConfigurationError { reason: io::Error },
+    #[fail(display = "IPC error: {}", reason)]
+    OtherError { reason: String },
 }
 
 /// Represents sending end of the IPC channel.

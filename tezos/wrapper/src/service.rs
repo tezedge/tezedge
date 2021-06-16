@@ -281,7 +281,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
                 context_hash,
                 key,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
@@ -296,7 +300,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest {
                 context_hash,
                 prefix,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
@@ -312,7 +320,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 context_hash,
                 prefix,
                 depth,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,

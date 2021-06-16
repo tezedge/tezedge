@@ -110,23 +110,27 @@ lazy_static! {
         RwLock::new(None);
 }
 
+#[derive(Debug)]
+pub enum TezedgeIndexError {
+    LockPoisonError,
+}
+
 // Set the repository so that it can be accessed by the context IPC
-fn set_context_index(index: &TezedgeIndex) {
-    // TODO: remove this unwrap (will require changes to OCaml-side too)
+fn set_context_index(index: &TezedgeIndex) -> Result<(), TezedgeIndexError> {
     TEZEDGE_CONTEXT_REPOSITORY
         .write()
-        .unwrap()
+        .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .replace(Arc::clone(&index.repository));
+    Ok(())
 }
 
 // Obtain the context index (for context IPC access)
-pub fn get_context_index() -> Option<TezedgeIndex> {
-    // TODO: remove this unwrap
-    TEZEDGE_CONTEXT_REPOSITORY
+pub fn get_context_index() -> Result<Option<TezedgeIndex>, TezedgeIndexError> {
+    Ok(TEZEDGE_CONTEXT_REPOSITORY
         .read()
-        .unwrap()
+        .map_err(|_| TezedgeIndexError::LockPoisonError)?
         .as_ref()
-        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None))
+        .map(|repository| TezedgeIndex::new(Arc::clone(repository), None)))
 }
 
 ocaml_export! {
@@ -143,10 +147,14 @@ ocaml_export! {
             .map_err(|err| format!("{:?}", err));
 
         if let Ok(index) = &result {
-            set_context_index(index);
+            if let Err(err) = set_context_index(index) {
+                Err::<BoxRoot<DynBox<TezedgeIndexFFI>>, String>(format!("{:?}", err)).to_ocaml(rt)
+            } else {
+                result.map(|index| OCaml::box_value(rt, index.into()).root()).to_ocaml(rt)
+            }
+        } else {
+            result.map(|index| OCaml::box_value(rt, index.into()).root()).to_ocaml(rt)
         }
-
-        result.map(|index| OCaml::box_value(rt, index.into()).root()).to_ocaml(rt)
     }
 
     fn tezedge_index_close(
