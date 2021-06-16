@@ -153,8 +153,13 @@ impl TezosContextStorageConfiguration {
                     },
                 )
             }
-            TezosContextStorageConfiguration::Both(irmin, _tezedge) => {
-                TezosContextStorageConfiguration::IrminOnly(irmin.clone())
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
             }
         }
     }
