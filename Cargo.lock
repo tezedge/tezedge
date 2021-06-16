@@ -77,8 +77,7 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 [[package]]
 name = "assert-json-diff"
 version = "2.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50f1c3703dd33532d7f0ca049168930e9099ecac238e23cf932f3a69c42f06da"
+source = "git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module#849165fc3197c90c36b638c2ad3d97d8af9b9e67"
 dependencies = [
  "serde 1.0.123",
  "serde_json",
@@ -87,7 +86,8 @@ dependencies = [
 [[package]]
 name = "assert-json-diff"
 version = "2.0.1"
-source = "git+https://github.com/tezedge/assert-json-diff.git?tag=v2.0.1-public-diff-module#849165fc3197c90c36b638c2ad3d97d8af9b9e67"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50f1c3703dd33532d7f0ca049168930e9099ecac238e23cf932f3a69c42f06da"
 dependencies = [
  "serde 1.0.123",
  "serde_json",
@@ -1402,6 +1402,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "generator"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1d9279ca822891c1a4dae06d185612cf8fc6acfe5dff37781b41297811b12ee"
+dependencies = [
+ "cc",
+ "libc",
+ "log",
+ "rustversion",
+ "winapi",
+]
+
+[[package]]
 name = "generic-array"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2064,6 +2077,17 @@ dependencies = [
  "slog",
  "slog-json",
  "tempfile",
+]
+
+[[package]]
+name = "loom"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7aa5348dc45fa5f2419b6dd4ea20345e6b01b1fcc9d176a322eada1ac3f382ba"
+dependencies = [
+ "cfg-if 1.0.0",
+ "generator",
+ "scoped-tls",
 ]
 
 [[package]]
@@ -4073,6 +4097,7 @@ dependencies = [
  "bytes 1.0.1",
  "clap",
  "commitlog",
+ "crossbeam-channel",
  "crypto",
  "derive_builder",
  "failure",
@@ -4097,7 +4122,15 @@ dependencies = [
  "tezos-sys",
  "tezos_api",
  "tezos_messages",
+ "tezos_spsc",
  "tezos_timing",
+]
+
+[[package]]
+name = "tezos_spsc"
+version = "0.1.0"
+dependencies = [
+ "loom",
 ]
 
 [[package]]

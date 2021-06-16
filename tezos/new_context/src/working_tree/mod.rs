@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    borrow::Borrow,
+    borrow::{Borrow, Cow},
     cell::{Cell, RefCell},
     rc::Rc,
 };
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::hash::{hash_entry, EntryHash, HashingError};
 use crate::ContextValue;
+use crate::{gc::repository::HashId, ContextKeyValueStore};
 
 use self::working_tree::MerkleError;
 
@@ -66,7 +67,7 @@ pub struct Node {
     #[serde(default = "node_serialized")]
     pub commited: Cell<bool>,
     #[serde(serialize_with = "ensure_non_null_entry_hash")]
-    pub entry_hash: RefCell<Option<EntryHash>>,
+    pub entry_hash: Cell<Option<HashId>>,
     #[serde(skip)]
     pub entry: RefCell<Option<Entry>>,
 }
@@ -78,8 +79,8 @@ fn node_serialized() -> Cell<bool> {
 
 #[derive(Debug, Hash, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub struct Commit {
-    pub(crate) parent_commit_hash: Option<EntryHash>,
-    pub(crate) root_hash: EntryHash,
+    pub(crate) parent_commit_hash: Option<HashId>,
+    pub(crate) root_hash: HashId,
     pub(crate) time: u64,
     pub(crate) author: String,
     pub(crate) message: String,
@@ -93,33 +94,35 @@ pub enum Entry {
 }
 
 impl Node {
-    pub fn entry_hash(&self) -> Result<EntryHash, HashingError> {
-        match &mut *self
-            .entry_hash
-            .try_borrow_mut()
-            .map_err(|_| HashingError::EntryBorrow)?
-        {
-            Some(hash) => Ok(*hash),
-            entry_hash @ None => {
-                let hash = hash_entry(
+    pub fn entry_hash<'a>(
+        &self,
+        store: &'a mut ContextKeyValueStore,
+    ) -> Result<Cow<'a, EntryHash>, HashingError> {
+        let hash_id = self.entry_hash_id(store)?;
+        Ok(store.get_hash(hash_id)?.unwrap())
+    }
+
+    pub fn entry_hash_id(&self, store: &mut ContextKeyValueStore) -> Result<HashId, HashingError> {
+        match self.entry_hash.get() {
+            Some(hash_id) => Ok(hash_id),
+            None => {
+                let hash_id = hash_entry(
                     self.entry
                         .try_borrow()
                         .map_err(|_| HashingError::EntryBorrow)?
                         .as_ref()
                         .ok_or(HashingError::MissingEntry)?,
+                    store,
                 )?;
-                entry_hash.replace(hash);
-                Ok(hash)
+                self.entry_hash.set(Some(hash_id));
+                Ok(hash_id)
             }
         }
     }
 
-    pub fn get_hash(&self) -> Result<EntryHash, MerkleError> {
+    pub fn get_hash_id(&self) -> Result<HashId, MerkleError> {
         self.entry_hash
-            .try_borrow()
-            .map_err(|_| MerkleError::InvalidState("The Entry hash is borrowed more than once"))?
-            .as_ref()
-            .copied()
+            .get()
             .ok_or(MerkleError::InvalidState("Missing entry hash"))
     }
 
@@ -134,17 +137,13 @@ impl Node {
 }
 
 // Make sure the node contains the entry hash when serializing
-fn ensure_non_null_entry_hash<S>(
-    entry_hash: &RefCell<Option<EntryHash>>,
-    s: S,
-) -> Result<S::Ok, S::Error>
+fn ensure_non_null_entry_hash<S>(entry_hash: &Cell<Option<HashId>>, s: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    let entry_hash_ref = entry_hash.borrow();
-    let entry_hash = entry_hash_ref
-        .as_ref()
+    let entry_hash = entry_hash
+        .get()
         .ok_or_else(|| serde::ser::Error::custom("entry_hash missing in Node"))?;
 
-    s.serialize_some(entry_hash)
+    s.serialize_some(&entry_hash)
 }

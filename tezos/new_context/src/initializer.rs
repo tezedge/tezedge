@@ -9,13 +9,8 @@ use ocaml_interop::BoxRoot;
 pub use tezos_api::ffi::ContextKvStoreConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 
-use crate::gc::mark_move_gced::MarkMoveGCed;
-use crate::kv_store::readonly_ipc::ReadonlyIpcBackend;
-use crate::kv_store::{btree_map::BTreeMapBackend, in_memory_backend::InMemoryBackend};
+use crate::{gc::repository::Repository, kv_store::readonly_ipc::ReadonlyIpcBackend};
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
-
-// TODO: should this be here?
-const PRESERVE_CYCLE_COUNT: usize = 7;
 
 /// IPC communication errors
 #[derive(Debug, Fail)]
@@ -46,13 +41,14 @@ pub fn initialize_tezedge_index(
                     )),
                 }
             }
-            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
-            ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
-            ContextKvStoreConfiguration::InMemGC => {
-                Arc::new(RwLock::new(MarkMoveGCed::<InMemoryBackend>::new(
-                    PRESERVE_CYCLE_COUNT,
-                )))
-            }
+            _ => Arc::new(RwLock::new(Repository::new())),
+            // ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
+            // ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
+            // ContextKvStoreConfiguration::InMemGC => {
+            //     Arc::new(RwLock::new(MarkMoveGCed::<InMemoryBackend>::new(
+            //         PRESERVE_CYCLE_COUNT,
+            //     )))
+            // }
         },
         patch_context,
     ))
