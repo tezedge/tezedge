@@ -137,6 +137,11 @@ pub enum TezosContextStorageConfiguration {
 }
 
 impl TezosContextStorageConfiguration {
+    /// Used to produce a configuration for the readonly protocol runners from the configuration used in the main protocol runner.
+    ///
+    /// If only Irmin is enabled, the resulting configuration is the same.
+    /// If only TezEdge is enabled, the resulting configuration switches the backend to the readonly IPC implementation.
+    /// If both Irmin and TezEdge are enabled, an only-Irmin configuration is enabled.
     pub fn readonly(&self) -> Self {
         match self {
             TezosContextStorageConfiguration::IrminOnly(_) => self.clone(),
@@ -148,14 +153,8 @@ impl TezosContextStorageConfiguration {
                     },
                 )
             }
-            TezosContextStorageConfiguration::Both(irmin, tezedge) => {
-                TezosContextStorageConfiguration::Both(
-                    irmin.clone(),
-                    TezosContextTezEdgeStorageConfiguration {
-                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
-                        ..tezedge.clone()
-                    },
-                )
+            TezosContextStorageConfiguration::Both(irmin, _tezedge) => {
+                TezosContextStorageConfiguration::IrminOnly(irmin.clone())
             }
         }
     }
