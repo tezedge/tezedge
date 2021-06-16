@@ -281,7 +281,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
                 context_hash,
                 key,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
@@ -296,7 +300,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
             ProtocolMessage::ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest {
                 context_hash,
                 prefix,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
@@ -312,7 +320,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 context_hash,
                 prefix,
                 depth,
-            }) => match tezos_new_context::ffi::get_context_index() {
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
                 None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
@@ -376,8 +388,14 @@ pub enum ProtocolError {
     /// OCaml part failed to get genesis data.
     #[fail(display = "Failed to get genesis data: {}", reason)]
     GenesisResultDataError { reason: GetDataError },
-    #[fail(display = "Failed to decode binary data to json: {}", reason)]
-    FfiJsonEncoderError { reason: FfiJsonEncoderError },
+    #[fail(
+        display = "Failed to decode binary data to json ({}): {}",
+        caller, reason
+    )]
+    FfiJsonEncoderError {
+        caller: String,
+        reason: FfiJsonEncoderError,
+    },
 
     #[fail(display = "Failed to get key from history: {}", reason)]
     ContextGetKeyFromHistoryError { reason: String },
@@ -688,7 +706,13 @@ impl ProtocolController {
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::JsonEncodeApplyBlockResultMetadataResponse(result) => {
-                result.map_err(|err| ProtocolError::FfiJsonEncoderError { reason: err }.into())
+                result.map_err(|err| {
+                    ProtocolError::FfiJsonEncoderError {
+                        caller: "apply_block_result_metadata".to_owned(),
+                        reason: err,
+                    }
+                    .into()
+                })
             }
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
@@ -719,9 +743,13 @@ impl ProtocolController {
             Some(Self::JSON_ENCODE_DATA_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
-            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result) => {
-                result.map_err(|err| ProtocolError::FfiJsonEncoderError { reason: err }.into())
-            }
+            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result) => result.map_err(|err| {
+                ProtocolError::FfiJsonEncoderError {
+                    caller: "apply_block_operations_metadata".to_owned(),
+                    reason: err,
+                }
+                .into()
+            }),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
             }),
