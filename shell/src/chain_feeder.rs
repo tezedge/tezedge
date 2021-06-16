@@ -10,7 +10,7 @@ use std::sync::mpsc::{channel, Receiver as QueueReceiver, Sender as QueueSender}
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use failure::{format_err, Error, Fail};
 use riker::actors::*;
@@ -1146,7 +1146,7 @@ pub fn wait_for_context(
         return Ok(());
     }
     let (timeout, delay): (Duration, Duration) = CONTEXT_WAIT_DURATION;
-    let start = SystemTime::now();
+    let start = Instant::now();
 
     // try find context_hash
     loop {
@@ -1156,13 +1156,7 @@ pub fn wait_for_context(
         }
 
         // kind of simple retry policy
-        let elapsed = start
-            .elapsed()
-            .map_err(|e| FeedChainError::MissingContextError {
-                reason: format!("{}", e),
-                context_hash: context_hash.to_base58_check(),
-            })?;
-        if elapsed.le(&timeout) {
+        if start.elapsed().le(&timeout) {
             thread::sleep(delay);
         } else {
             break Err(FeedChainError::MissingContextError {

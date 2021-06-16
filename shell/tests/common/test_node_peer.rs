@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 
 use futures::lock::Mutex;
 use slog::{crit, debug, error, info, trace, warn, Logger};
@@ -314,7 +314,7 @@ impl TestNodePeer {
         &mut self,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         loop {
             if self.connected.load(Ordering::Acquire) {
@@ -322,7 +322,7 @@ impl TestNodePeer {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 std::thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("[{}] wait_for_connection - something is wrong - timeout (timeout: {:?}, delay: {:?}) exceeded!", self.name, timeout, delay));
@@ -337,7 +337,7 @@ impl TestNodePeer {
         expected_operations: &HashSet<OperationHash>,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         let result = loop {
             let mempool_state = self.test_mempool.read().expect("Failed to obtain lock");
@@ -352,7 +352,7 @@ impl TestNodePeer {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("[{}] wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", self.name, timeout, delay, marker));

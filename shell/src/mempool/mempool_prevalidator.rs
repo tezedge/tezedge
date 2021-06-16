@@ -392,7 +392,7 @@ fn process_prevalidation(
                             .write()?
                             .add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
-                            trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
+                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
                             if let Err(e) = dispatch_condvar_result(
                                 result_callback,
                                 || {

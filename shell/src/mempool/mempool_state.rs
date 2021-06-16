@@ -194,6 +194,10 @@ impl MempoolState {
         false
     }
 
+    pub fn is_already_in_mempool(&self, operation_hash: &OperationHash) -> bool {
+        self.pending.contains(operation_hash) || self.is_already_validated(operation_hash)
+    }
+
     pub fn prevalidator(&self) -> Option<&PrevalidatorWrapper> {
         self.prevalidator.as_ref()
     }

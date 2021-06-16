@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 
 use riker::actors::*;
 use riker::system::SystemBuilder;
@@ -319,7 +319,7 @@ impl NodeInfrastructure {
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
         let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
@@ -334,7 +334,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
@@ -355,7 +355,7 @@ impl NodeInfrastructure {
             return Ok(());
         }
 
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         let context = TezedgeContext::new(
             Some(BlockStorage::new(self.tmp_storage.storage())),
@@ -371,7 +371,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", context_hash.to_base58_check(), timeout, delay, marker));
@@ -387,7 +387,7 @@ impl NodeInfrastructure {
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
         let result = loop {
@@ -403,7 +403,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_mempool_on_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
@@ -419,7 +419,7 @@ impl NodeInfrastructure {
         expected_operations: &HashSet<OperationHash>,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         let result = loop {
             let mempool_state = self
@@ -433,7 +433,7 @@ impl NodeInfrastructure {
             drop(mempool_state);
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
@@ -466,7 +466,7 @@ fn create_tokio_runtime() -> tokio::runtime::Runtime {
 pub mod test_actor {
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant};
 
     use riker::actors::*;
 
@@ -606,7 +606,7 @@ pub mod test_actor {
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
-            let start = SystemTime::now();
+            let start = Instant::now();
             let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
@@ -618,7 +618,7 @@ pub mod test_actor {
                 }
 
                 // kind of simple retry policy
-                if start.elapsed()?.le(&timeout) {
+                if start.elapsed().le(&timeout) {
                     std::thread::sleep(delay);
                 } else {
                     break Err(

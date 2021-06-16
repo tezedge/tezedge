@@ -13,7 +13,7 @@ use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
 use serial_test::serial;
@@ -762,7 +762,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 
     // wait for current head on level 1324
     node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
-    let current_head_reached = SystemTime::now();
+    let current_head_reached = Instant::now();
     println!(
         "\nProcessed current_branch[1324] in {:?}!\n",
         clocks.elapsed()
@@ -994,7 +994,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     // wait for current head on level 1324
     let current_head_wait_timeout = (Duration::from_secs(120), Duration::from_millis(500));
     node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
-    let current_head_reached = SystemTime::now();
+    let current_head_reached = Instant::now();
     println!(
         "\nProcessed current_branch[1324] in {:?}!\n",
         clocks.elapsed()
