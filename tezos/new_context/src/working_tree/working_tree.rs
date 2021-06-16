@@ -333,7 +333,7 @@ impl WorkingTree {
     pub fn get_value(&self) -> Option<ContextValue> {
         match &self.value {
             WorkingTreeValue::Tree(_) => None,
-            WorkingTreeValue::Value(value) => Some(value.clone())
+            WorkingTreeValue::Value(value) => Some(value.clone()),
         }
     }
 
