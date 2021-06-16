@@ -14,9 +14,9 @@
 
 # Run from sources/binaries
 
-1. #### **Create working directory**
+1. #### **Create a working directory**
 
-   _Tezos baker requires access to the context directory, which is produced by TezEdge node._
+   _The Tezos baker requires access to the context directory, which is produced by TezEdge node._
     ```
     mkdir $HOME/data-mainnet
     mkdir $HOME/data-mainnet/client
@@ -24,9 +24,9 @@
 
 2. #### **Download snapshot data**
 
-   _If you want to run node from empty storage, you can aviod this step._
+   _If you want to run node from empty storage, you can skip this step._
 
-   There are to ways how to download snapshot data:
+   There are two ways how to download the snapshot data:
    a) **http download**
    ```
    cd $HOME/data-mainnet
@@ -34,7 +34,7 @@
    ```
 
    b) **scp download**
-   _For user/password please contact [juraj.selep@viablesystems.io](juraj.selep@viablesystems.io)_
+   _For user/password please contact [jurajselep@viablesystems.io](jurajselep@viablesystems.io)_
    ```
    cd $HOME/data-mainnet
    scp -r <user>@65.21.165.81:/home/dev/tezedge-data/tezedge_data_from_block_0_1516280 $HOME/data-mainnet
@@ -49,25 +49,25 @@
 
 3. #### **Identity json file**
 
-   a) If you already have `identity.json`, just copy it here
+   a) If you already have the `identity.json` file, just copy it here
    ```
    cp <your-identity.json> $HOME/data-mainnet/identity.json
    ```
 
-   b) If you dont have, dont worry, TezEdge node will generate one here:
+   b) If you dont have it, don't worry. The TezEdge node will generate one here:
    ```
    $HOME/data-mainnet/identity.json
    ```
 
-4. #### **Run TezEdge node**
+4. #### **Run the TezEdge node**
 
-   At first you need to:
+   First, you need to:
    - check [supported OS](../../README.md#supported-os-distributions)
    - install [prerequisites](../../README.md#prerequisites-installation)
    - build [TezEdge from sources](../../README.md#build-from-source-code)
    - check [how to run it](../../README.md#how-to-run)
 
-   Once everything works, you can continue to run node.
+   Once everything works, you can continue to launching the node.
 
    _Note: This cmd runs from the main TezEdge git sources directory - see the relative './' paths_
    ```
@@ -92,7 +92,7 @@
     --log-format simple
    ```
 
-   *You should see output:*
+   *You should see this output:*
    ```
    Jun 16 13:01:24.804 INFO Configured network ["mainnet"] -> TEZOS_MAINNET
    Jun 16 13:01:24.804 INFO Checking zcash-params for sapling... (1/5)
@@ -103,9 +103,9 @@
    ...
    ```
 
-   _Note1: Now TezEdge node is running._
+   _Note1: Now the TezEdge node is running._
 
-   _Note2: Recommended to run node with nohup_
+   _Note2: It is recommended to run node with nohup_
 
    ```
    LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts nohup ./target/release/light-node \
@@ -129,19 +129,19 @@
     --log-format simple &> $HOME/data-mainnet/nohup-node.out &
    ```
 
-   You can check logs:
+   You can check the logs by typing this command:
    ```
    tail -f $HOME/data-mainnet/nohup-node.out
    ```
 
-5. #### **Wait for TezEdge node to sync with network**
+5. #### **Wait for the TezEdge node to sync with the network**
 
-   _Check RPC for currrent head to reach the Mainnet:_
+   _Check RPC for current head to reach the Mainnet:_
    ```
    curl http:://localhost:18732/chains/main/blocks/head/header
    ```
 
-   Or check logs and see `local_level` to reach the Mainnet:
+   Or check the logs and see if `local_level` has reached the Mainnet:
    ```
    dev@test-node:~/tezedge$ cat $HOME/data-mainnet/nohup-node.out | grep Head
    ...
@@ -151,9 +151,9 @@
 
 6. #### **Build Tezos Baker/Endorser/Accuser binaries from source**
 
-   Please, see [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam)
+   Please see [https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam](https://tezos.gitlab.io/introduction/howtoget.html#building-from-sources-via-opam)
 
-   After successfull compilation, you should see this binaries in Tezos source directory:
+   After successful compilation, you should see these binaries in Tezos source directory:
    ```
    tezos-baker-009-PsFLoren
    tezos-baker-010-PtGRANAD
@@ -168,9 +168,9 @@
 
    _It is recommended to have different accounts for baker/endorser/accuser._
 
-   _Note: All cmd runs from the main Tezos git sources directory_
+   _Note: All cmd run from the main Tezos git sources directory_
 
-   a) If you already have existing accounts for baking/endorsing, you just need to import keys:
+   a) If you already have existing accounts for baking/endorsing, you just need to import the keys:
    ```
    ./tezos-client \
       --endpoint "http://localhost:18732" \
@@ -188,7 +188,7 @@
 
    b) If you dont have any keys, you need to activate and register accounts as delegate:
 
-   _TezEdge node have to be synced already._
+   _The TezEdge node has to be already synced._
    ```
    ./tezos-client \
       --endpoint "http://localhost:18732" \
@@ -205,7 +205,7 @@
        activate account <endorser_alias> with "<key/ledger/faucet>"
    ```
 
-   *Once operations are baked, you should see output:*
+   *Once operations are baked, you should see this output:*
    ```
    ...
    Account baker (tz1XXXXXX) activated with ꜩ76351.572618.
@@ -213,7 +213,7 @@
    ...
    ```
 
-   And then register as delegate:
+   And then register as a delegate:
 
    ```
    ./tezos-client \
@@ -231,7 +231,7 @@
        register key <endorser_alias> as delegate
    ```
 
-   *Once operations are baked, you should see output:*
+   *Once operations are baked, you should see this output:*
    ```
    ...
    This revelation was successfully applied
@@ -242,7 +242,7 @@
 
 8. #### **Run baker**
 
-   _Note: All cmd runs from the main Tezos git sources directory_
+   _Note: All cmd run from the main Tezos git sources directory_
    ```
    ./tezos-baker-009-PsFLoren \
       --endpoint "http://localhost:18732" \
@@ -251,7 +251,7 @@
       run with local node "$HOME/data-mainnet" <baker_alias>
    ```
 
-   *You should see output:*
+   *You should see this output:*
    ```
    Node is bootstrapped.
    ...
@@ -271,7 +271,7 @@
       run <endorser_alias>
    ```
 
-   *You should see output:*
+   *You should see this output:*
    ```
    Node is bootstrapped.
    ...
