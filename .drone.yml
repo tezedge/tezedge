@@ -22,9 +22,6 @@ trigger:
   branch:
     - develop
 
-depends_on:
-  - build
-
 steps:
 
   - name: tezos-node
