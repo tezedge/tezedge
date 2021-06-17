@@ -3,7 +3,7 @@ ARG BASE_IMAGE=simplestakingcom/tezedge-libs:latest
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
 USER root
-RUN apt-get update && apt-get install -y libssl-dev
+RUN apt-get update && apt-get install -y libssl-dev libsqlite3-dev
 
 # Checkout and compile tezedge source code
 ARG tezedge_git="https://github.com/tezedge/tezedge.git"
@@ -15,7 +15,11 @@ ENV RUST_BACKTRACE=1
 ENV SODIUM_USE_PKG_CONFIG=1
 ENV OCAML_BUILD_CHAIN=remote
 ARG RUSTFLAGS=""
+ENV OCAML_WHERE_PATH=/tmp/ocaml-includes
+RUN wget https://gitlab.com/simplestaking/tezos/uploads/1bf4d1d130e75129be82a148149b04b3/libtezos-ffi-headers.tar.gz
+RUN mkdir -p $OCAML_WHERE_PATH; tar xvzf libtezos-ffi-headers.tar.gz -C $OCAML_WHERE_PATH
 RUN cd /home/appuser && git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && RUSTFLAGS=${RUSTFLAGS} cargo build --release #5
+
 WORKDIR /home/appuser/tezedge
 RUN mkdir /tmp/tezedge
 RUN mkdir /tmp/tezedge/light-node
@@ -36,6 +40,7 @@ COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /usr/lib/x86_64-linux-gnu/libtezos.so
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
+COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 /usr/lib/x86_64-linux-gnu/libsqlite3.so.0
 
 # Copy zcash-params init files for sapling
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-spend.params /
