@@ -165,20 +165,20 @@ pub(crate) fn create_routes(
         "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index/:operation_index",
         shell_handler::get_block_operation,
     );
-    // TODO - TE-261: these should be disabled when only the irmin context is enabled
-    // or the functionality should be reimplemented on top of irmin too.
-    // TODO - TE-261: re-enable once we have an implementation that doesn't break because
-    // of timeouts
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
-    //     shell_handler::context_raw_bytes,
-    // );
-    // routes.handle(
-    //     hash_set![Method::GET],
-    //     "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
-    //     shell_handler::context_raw_bytes,
-    // );
+    // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
+    // context is available. Once these handlers have been tested better and revised, enable again.
+    if tezedge_is_enabled && false {
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
+            shell_handler::context_raw_bytes,
+        );
+        routes.handle(
+            hash_set![Method::GET],
+            "/chains/:chain_id/blocks/:block_id/context/raw/bytes/*any",
+            shell_handler::context_raw_bytes,
+        );
+    }
     routes.handle(
         hash_set![Method::GET],
         "/chains/:chain_id/blocks/:block_id/metadata",
@@ -223,7 +223,10 @@ pub(crate) fn create_routes(
     );
 
     // Protocol rpcs - implemented
-    if tezedge_is_enabled {
+
+    // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
+    // context is available. Once these handlers have been tested better and revised, enable again.
+    if tezedge_is_enabled && false {
         // These only work if the TezEdge context is available
         routes.handle(
             hash_set![Method::GET],
