@@ -600,7 +600,12 @@ impl Timing {
             (Some(root), Some(key_id))
         };
 
-        let mut stmt = transaction.as_ref().unwrap().prepare_cached(
+        // TODO - TE-261: disabled for now because it is not used for anything
+        // Re-enable once needed, and maybe add a command-line flag for it.
+        // We probably want to also add some kind of garbage collection to only keep
+        // values for the last N cycles, and not everything since the beginning.
+        if false {
+            let mut stmt = transaction.as_ref().unwrap().prepare_cached(
             "
         INSERT INTO actions
           (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
@@ -609,18 +614,19 @@ impl Timing {
             "
         )?;
 
-        stmt.execute(named_params! {
-            ":name": action_name,
-            ":key_root": &root,
-            ":key_id": &key_id,
-            ":irmin_time": &action.irmin_time,
-            ":tezedge_time": &action.tezedge_time,
-            ":block_id": block_id,
-            ":operation_id": operation_id,
-            ":context_id": context_id
-        })?;
+            stmt.execute(named_params! {
+                ":name": action_name,
+                ":key_root": &root,
+                ":key_id": &key_id,
+                ":irmin_time": &action.irmin_time,
+                ":tezedge_time": &action.tezedge_time,
+                ":block_id": block_id,
+                ":operation_id": operation_id,
+                ":context_id": context_id
+            })?;
 
-        drop(stmt);
+            drop(stmt);
+        }
 
         self.nactions = self.nactions.saturating_add(1);
 
