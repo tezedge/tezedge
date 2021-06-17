@@ -8,7 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Nothing.
+- A reworked in-memory backend for the TezEdge context that conforms to the Tezos context API and is now directly accessed from the Tezos protocol code.
+- Flag `--tezos-context-storage` to choose the context backend. Default is `irmin`, supported values are:
+  - `tezedge` - Use the TezEdge context backend.
+  - `irmin` - Use the Irmin context backend.
+  - `both` - Use both backends at the same time
+- `inmem-gc` option to the `--context-kv-store` flag.
+- Flag `--context-stats-db-path=<PATH>` that enables the context storage stats. When this option is enabled, the node will measure the time it takes to complete each context query. When available, these will be rendered in the TezEdge explorer UI.
+- A new `replay` subcommand to the `light-node` program. This subcommand will take as input a range of blocks, a blocks store and re-apply all those blocks to the context store and validate the results.
 
 ### Changed
 
@@ -20,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
-- Nothing.
+- Flag `--one-context` was removed, now all context backends are accessed directly by the protocol runner.
+- RocksDB and Sled backends are not supported anymore by the TezEdge context.
+- The actions store enabled by `--actions-store-backend` is currently disabled and will not record anything.
 
 ### Fixed
 
@@ -191,7 +200,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated Tokio dependency from 0.2.x to 1.1.x
 - RocksDB kv store splitted into three instances (db, context, context_actions)
 - Reworked websocket implementation, now uses warp::ws instead of default ws
-- Various changes around the P2P layer and bootstrapping 
+- Various changes around the P2P layer and bootstrapping
 
 ### Deprecated
 
