@@ -9,6 +9,9 @@ environment:
   NETWORK: florencenet
 
 volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
@@ -50,6 +53,8 @@ steps:
   - name: tzkt-sync
     image: bakingbad/tzkt-sync:latest
     volumes:
+      - name: tools
+        path: /tools
       - name: cache
         path: /cache
     environment:
@@ -61,7 +66,7 @@ steps:
       - apt-get update && apt-get install time
       - sleep 5
       - cd /app
-      - time -f "%E" -o /cache/time sh -c 'dotnet Tzkt.Sync.dll > /tmp/tzkt.log & sleep 1; tail -f /tmp/tzkt.log | awk "/Applied .*00 of/ { print } /Applied 700 of/ { exit }"; kill $$!'
+      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 850 of" -- dotnet Tzkt.Sync.dll
 
   - name: report-time
     image: busybox
