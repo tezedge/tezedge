@@ -66,7 +66,7 @@ steps:
       - apt-get update && apt-get install time
       - sleep 5
       - cd /app
-      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 850 of" -- dotnet Tzkt.Sync.dll
+      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 865 of" -- dotnet Tzkt.Sync.dll
 
   - name: report-time
     image: busybox
