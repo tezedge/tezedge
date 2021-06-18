@@ -35,8 +35,7 @@ steps:
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
     - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
     # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
+    - chown -R appuser:appuser /home/appuser/.ssh/
     - chmod 600 /home/appuser/.ssh/id_rsa
     - ls -la /home/appuser/.ssh
     - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
