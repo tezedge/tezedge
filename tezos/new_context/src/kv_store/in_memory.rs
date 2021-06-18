@@ -130,7 +130,7 @@ impl KeyValueStoreBackend for InMemory {
     }
 
     fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError> {
-        Ok(self.put_context_hash_impl(hash_id))
+        self.put_context_hash_impl(hash_id)
     }
 
     fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError> {
@@ -236,8 +236,13 @@ impl InMemory {
         self.context_hashes.get(&hashed).cloned()
     }
 
-    pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) {
-        let commit_hash = self.hashes.get_hash(commit_hash_id).unwrap();
+    pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) -> Result<(), DBError> {
+        let commit_hash = self
+            .hashes
+            .get_hash(commit_hash_id)
+            .ok_or(DBError::MissingEntry {
+                hash_id: commit_hash_id,
+            })?;
 
         let mut hasher = DefaultHasher::new();
         hasher.write(&commit_hash[..]);
@@ -245,6 +250,8 @@ impl InMemory {
 
         self.context_hashes.insert(hashed, commit_hash_id);
         self.context_hashes_cycles.back_mut().unwrap().push(hashed);
+
+        Ok(())
     }
 
     #[cfg(test)]

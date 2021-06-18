@@ -160,7 +160,10 @@ impl GCThread {
                 Entry::Tree(tree) => {
                     // Push every entry in this directory
                     for node in tree.values() {
-                        reused.push(node.entry_hash.get().unwrap().clone());
+                        reused.push(match node.entry_hash.get() {
+                            Some(hash) => hash,
+                            None => continue,
+                        });
                     }
                 }
                 Entry::Commit(commit) => {

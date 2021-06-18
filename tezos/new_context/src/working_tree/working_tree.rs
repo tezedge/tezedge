@@ -402,7 +402,7 @@ impl WorkingTree {
 
         match repo.get_hash(hash_id)? {
             Some(hash) => Ok(hash.into_owned()),
-            None => Err(MerkleError::EntryNotFound { hash_id })
+            None => Err(MerkleError::EntryNotFound { hash_id }),
         }
     }
 

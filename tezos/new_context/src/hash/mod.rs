@@ -199,7 +199,7 @@ fn hash_long_inode(
 
             for (index, hash) in pointers {
                 hasher.update(&[*index]);
-                let hash = store.get_hash(*hash)?.unwrap();
+                let hash = store.get_hash(*hash)?.ok_or(HashingError::MissingEntry)?;
                 hasher.update(hash.as_ref());
             }
         }

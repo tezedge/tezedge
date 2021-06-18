@@ -113,7 +113,7 @@ pub struct TezosContextIrminStorageConfiguration {
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum ContextKvStoreConfiguration {
     ReadOnlyIpc,
-    InMem
+    InMem,
 }
 
 // Must be in sync with ffi_config.ml
