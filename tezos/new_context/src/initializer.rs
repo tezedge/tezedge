@@ -9,7 +9,7 @@ use ocaml_interop::BoxRoot;
 pub use tezos_api::ffi::ContextKvStoreConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 
-use crate::{gc::repository::Repository, kv_store::readonly_ipc::ReadonlyIpcBackend};
+use crate::{kv_store::in_memory::Repository, kv_store::readonly_ipc::ReadonlyIpcBackend};
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
 
 /// IPC communication errors

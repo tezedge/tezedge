@@ -27,7 +27,8 @@ use std::num::TryFromIntError;
 use std::sync::PoisonError;
 
 use failure::Fail;
-use gc::{repository::HashId, GarbageCollectionError};
+use gc::GarbageCollectionError;
+use kv_store::HashId;
 use persistent::{DBError, KeyValueStoreBackend};
 use serde::Deserialize;
 use serde::Serialize;

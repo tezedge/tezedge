@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::hash::{hash_entry, EntryHash, HashingError};
 use crate::ContextValue;
-use crate::{gc::repository::HashId, ContextKeyValueStore};
+use crate::{kv_store::HashId, ContextKeyValueStore};
 
 use self::working_tree::MerkleError;
 

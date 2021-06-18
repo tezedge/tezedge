@@ -3,15 +3,67 @@
 
 //! This sub module provides different KV alternatives for context persistence
 
+use std::num::NonZeroUsize;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+use crate::EntryHash;
+
+pub mod entries;
+pub mod in_memory;
 pub mod readonly_ipc;
 pub mod stats;
 
 pub const INMEMGC: &str = "inmem-gc";
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HashId(NonZeroUsize); // NonZeroUsize so that `Option<HashId>` is 8 bytes
+
+impl Into<usize> for HashId {
+    fn into(self) -> usize {
+        self.0.get().checked_sub(1).unwrap()
+    }
+}
+
+impl From<usize> for HashId {
+    fn from(v: usize) -> Self {
+        let v = v.checked_add(1).unwrap();
+        HashId(NonZeroUsize::new(v).unwrap())
+    }
+}
+
+impl HashId {
+    pub(crate) fn invalid() -> Self {
+        Self(NonZeroUsize::new(usize::MAX).unwrap())
+    }
+}
+
+pub struct VacantEntryHash<'a> {
+    entry: Option<&'a mut EntryHash>,
+    hash_id: HashId,
+}
+
+impl<'a> VacantEntryHash<'a> {
+    pub(crate) fn invalid() -> Self {
+        Self {
+            entry: None,
+            hash_id: HashId::invalid(),
+        }
+    }
+
+    pub(crate) fn write_with<F>(self, fun: F) -> HashId
+    where
+        F: FnOnce(&mut EntryHash),
+    {
+        if let Some(entry) = self.entry {
+            fun(entry)
+        };
+        self.hash_id
+    }
+}
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {

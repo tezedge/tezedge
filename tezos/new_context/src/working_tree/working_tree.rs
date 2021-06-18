@@ -60,12 +60,12 @@ use failure::Fail;
 use crypto::hash::FromBytesError;
 
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
-use crate::{
-    gc::repository::HashId,
-    hash::{hash_commit, hash_tree, HashingError},
-};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::EntryHash, ContextKeyOwned};
+use crate::{
+    hash::{hash_commit, hash_tree, HashingError},
+    kv_store::HashId,
+};
 use crate::{persistent, ContextKeyValueStore};
 use crate::{ContextKey, ContextValue};
 

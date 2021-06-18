@@ -14,7 +14,7 @@ use failure::Fail;
 use ocaml::ocaml_hash_string;
 
 use crate::{
-    gc::repository::HashId,
+    kv_store::HashId,
     persistent::{BincodeEncoded, DBError},
     working_tree::{Commit, Entry, Node, NodeKind, Tree},
     ContextKeyValueStore,

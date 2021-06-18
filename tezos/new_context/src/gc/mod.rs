@@ -11,13 +11,10 @@ use failure::Fail;
 
 use crypto::hash::FromBytesError;
 
-use crate::hash::HashingError;
 use crate::persistent::DBError;
+use crate::{hash::HashingError, kv_store::HashId};
 
-use self::repository::HashId;
-
-pub(crate) mod entries;
-pub(crate) mod repository;
+pub(crate) mod worker;
 
 pub trait GarbageCollector {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError>;

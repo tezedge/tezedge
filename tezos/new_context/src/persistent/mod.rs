@@ -13,7 +13,7 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::DBError;
 
 use crate::{
-    gc::repository::{HashId, VacantEntryHash},
+    kv_store::{HashId, VacantEntryHash},
     EntryHash,
 };
 

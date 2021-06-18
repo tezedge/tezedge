@@ -3,46 +3,25 @@ use std::{
     collections::{hash_map::DefaultHasher, BTreeMap, HashMap, VecDeque},
     convert::TryFrom,
     hash::Hasher,
-    num::NonZeroUsize,
     sync::Arc,
 };
 
-use crossbeam_channel::{Receiver, Sender};
+use crossbeam_channel::Sender;
 use crypto::hash::ContextHash;
-use serde::{Deserialize, Serialize};
 
-use super::entries::Entries;
 use crate::{
+    gc::{
+        worker::{Command, Cycles, GCThread, PRESERVE_CYCLE_COUNT},
+        GarbageCollectionError, GarbageCollector,
+    },
     hash::EntryHash,
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
-    working_tree::Entry,
 };
 
-use tezos_spsc::{Consumer, Producer};
+use tezos_spsc::Consumer;
 
-const PRESERVE_CYCLE_COUNT: usize = 7;
-
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct HashId(NonZeroUsize); // NonZeroUsize so that `Option<HashId>` is 8 bytes
-
-impl Into<usize> for HashId {
-    fn into(self) -> usize {
-        self.0.get().checked_sub(1).unwrap()
-    }
-}
-
-impl From<usize> for HashId {
-    fn from(v: usize) -> Self {
-        let v = v.checked_add(1).unwrap();
-        HashId(NonZeroUsize::new(v).unwrap())
-    }
-}
-
-impl HashId {
-    pub(crate) fn invalid() -> Self {
-        Self(NonZeroUsize::new(usize::MAX).unwrap())
-    }
-}
+use super::{HashId, VacantEntryHash};
+use super::entries::Entries;
 
 #[derive(Debug)]
 pub struct HashValueStore {
@@ -50,30 +29,6 @@ pub struct HashValueStore {
     values: Entries<HashId, Option<Arc<[u8]>>>,
     free_ids: Consumer<HashId>,
     new_ids: Vec<HashId>,
-}
-
-pub struct VacantEntryHash<'a> {
-    entry: Option<&'a mut EntryHash>,
-    hash_id: HashId,
-}
-
-impl<'a> VacantEntryHash<'a> {
-    pub(crate) fn invalid() -> Self {
-        Self {
-            entry: None,
-            hash_id: HashId::invalid(),
-        }
-    }
-
-    pub(crate) fn write_with<F>(self, fun: F) -> HashId
-    where
-        F: FnOnce(&mut EntryHash),
-    {
-        if let Some(entry) = self.entry {
-            fun(entry)
-        };
-        self.hash_id
-    }
 }
 
 impl HashValueStore {
@@ -132,79 +87,14 @@ pub struct Repository {
     context_hashes_cycles: VecDeque<Vec<u64>>,
 }
 
-struct GCThread {
-    cycles: Cycles,
-    free_ids: Producer<HashId>,
-    recv: Receiver<Command>,
-    pending: Vec<HashId>,
-}
-
-enum Command {
-    StartNewCycle {
-        values_in_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
-        new_ids: Vec<HashId>,
-    },
-    MarkReused {
-        reused: Vec<HashId>,
-    },
-    Exit,
-}
-
-struct Cycles {
-    list: VecDeque<BTreeMap<HashId, Option<Arc<[u8]>>>>,
-}
-
-impl Default for Cycles {
-    fn default() -> Self {
-        let mut list = VecDeque::with_capacity(PRESERVE_CYCLE_COUNT);
-
-        for _ in 0..PRESERVE_CYCLE_COUNT {
-            list.push_back(Default::default());
-        }
-
-        Self { list }
-    }
-}
-
-impl Cycles {
-    fn move_to_last_cycle(&mut self, hash_id: HashId) -> Option<Arc<[u8]>> {
-        let len = self.list.len();
-        let mut value = None;
-
-        for store in &mut self.list.iter_mut().take(len - 1) {
-            if let Some(item) = store.remove(&hash_id).flatten() {
-                value = Some(item);
-            };
-        }
-
-        let value = value?;
-        self.list
-            .back_mut()
-            .unwrap()
-            .insert(hash_id, Some(Arc::clone(&value)));
-        return Some(value);
-    }
-
-    fn roll(&mut self, new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>) -> Vec<HashId> {
-        let unused = self.list.pop_front().unwrap();
-        self.list.push_back(new_cycle);
-
-        let mut vec = Vec::with_capacity(unused.len());
-        for id in unused.keys() {
-            vec.push(*id);
-        }
-        vec
-    }
-}
-
 impl Default for Repository {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl super::GarbageCollector for Repository {
-    fn new_cycle_started(&mut self) -> Result<(), super::GarbageCollectionError> {
+impl GarbageCollector for Repository {
+    fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.new_cycle_started();
         Ok(())
     }
@@ -212,7 +102,7 @@ impl super::GarbageCollector for Repository {
     fn block_applied(
         &mut self,
         referenced_older_entries: Vec<HashId>,
-    ) -> Result<(), super::GarbageCollectionError> {
+    ) -> Result<(), GarbageCollectionError> {
         self.block_applied(referenced_older_entries);
         Ok(())
     }
@@ -364,102 +254,5 @@ impl Repository {
     pub(crate) fn put_entry_hash(&mut self, entry_hash: EntryHash) -> HashId {
         let vacant = self.get_vacant_entry_hash();
         vacant.write_with(|entry| *entry = entry_hash)
-    }
-}
-
-impl GCThread {
-    fn run(mut self) {
-        while let Ok(msg) = self.recv.recv() {
-            match msg {
-                Command::StartNewCycle {
-                    values_in_cycle,
-                    new_ids,
-                } => self.start_new_cycle(values_in_cycle, new_ids),
-                Command::MarkReused { reused } => self.mark_reused(reused),
-                Command::Exit => {
-                    return;
-                }
-            }
-        }
-    }
-
-    fn start_new_cycle(
-        &mut self,
-        mut new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
-        new_ids: Vec<HashId>,
-    ) {
-        for hash_id in new_ids.into_iter() {
-            new_cycle.entry(hash_id).or_insert(None);
-        }
-        let unused = self.cycles.roll(new_cycle);
-        self.send_unused(unused);
-    }
-
-    /// Notify the main thread that the ids are free to reused
-    fn send_unused(&mut self, unused: Vec<HashId>) {
-        let unused_length = unused.len();
-        let navailable = self.free_ids.available();
-
-        let (to_send, pending) = if navailable < unused_length {
-            unused.split_at(navailable)
-        } else {
-            (&unused[..], &[][..])
-        };
-
-        self.free_ids.push_slice(&to_send).unwrap();
-
-        if !pending.is_empty() {
-            self.pending.extend_from_slice(pending);
-        }
-    }
-
-    fn send_pending(&mut self) {
-        if self.pending.is_empty() {
-            return;
-        }
-
-        let navailable = self.free_ids.available();
-        if navailable == 0 {
-            return;
-        }
-
-        let n_to_send = navailable.min(self.pending.len());
-        let start = self.pending.len() - n_to_send;
-        let to_send = &self.pending[start..];
-
-        self.free_ids.push_slice(&to_send).unwrap();
-        self.pending.truncate(start);
-    }
-
-    fn mark_reused(&mut self, mut reused: Vec<HashId>) {
-        while let Some(hash_id) = reused.pop() {
-            let value = match self.cycles.move_to_last_cycle(hash_id) {
-                Some(v) => v,
-                None => continue,
-            };
-
-            let entry: Entry = match bincode::deserialize(&value) {
-                Ok(value) => value,
-                Err(err) => {
-                    eprintln!("WorkingTree GC: error while decerializing entry: {:?}", err);
-                    continue;
-                }
-            };
-
-            match entry {
-                Entry::Blob(_) => {}
-                Entry::Tree(tree) => {
-                    // Push every entry in this directory
-                    for node in tree.values() {
-                        reused.push(node.entry_hash.get().unwrap().clone());
-                    }
-                }
-                Entry::Commit(commit) => {
-                    // Push the root tree for this commit
-                    reused.push(commit.root_hash);
-                }
-            }
-        }
-        self.send_pending();
     }
 }

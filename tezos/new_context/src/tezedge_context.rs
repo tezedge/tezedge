@@ -14,8 +14,8 @@ use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
 
 use crate::{
-    gc::repository::HashId,
     hash::EntryHash,
+    kv_store::HashId,
     persistent::DBError,
     working_tree::{
         working_tree::MerkleError, working_tree_stats::MerkleStoragePerfReport, Commit, Entry,
