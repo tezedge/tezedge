@@ -1,3 +1,48 @@
+##############################################################################################################
+# Ocaml stuff is based on image tezos/tezos:v8 (if released new one, fell free to upgrade it here)
+##############################################################################################################
+
+##############################################################################################################
+# Snapshoted data are prepared (on other server than drone, you need to have there actual tezos-node binary):
+#
+# - create/get snapshot:
+#   1. download it from xtz-shots.io, e.g.: `wget https://<testnet>.xtz-shots.io/tezos-<testnet>-<some-level>.full`
+#   2. or run node and create snapshot manually to desired level (recomended, you can set set level high):
+#     ./tezos-node config init --network granadanet --data-dir /tmp/chain-data
+#     ./tezos-node run --network granadanet --data-dir /tmp/chain-data --net-addr 0.0.0.0:9734 --rpc-addr 0.0.0.0:18888 --history-mode archive
+#     ./tezos-node snapshot export --block BKyjtcb7VhJfTcqXWjf3p1beRmLVvMQsy5NvRJkPaVUkc6kx4e1 granadanet.20000.full --data-dir /tmp/chain-data/
+#
+# - import snapshot:
+#   ./tezos-node config init --network granadanet --data-dir /tmp/granadanet
+#   ./tezos-node snapshot import granadanet.20000.full --data-dir /tmp/granadanet  --reconstruct --network granadanet --history-mode full
+#   cd /tmp/granadanet
+#   tar -czvf granadanet.20000.snapshoted.tar.gz context store config.json version.json
+#   # copy to drone server (see synchronize_ci.sh -> CI_HOSTS)
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.66:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.67:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.68:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.69:/usr/local/etc/tezedge-ci/snapshots
+#   scp granadanet.20000.snapshoted.tar.gz dev@65.21.119.70:/usr/local/etc/tezedge-ci/snapshots
+#
+# - Drone server - extract and prepare dirs:
+#   cd /usr/local/etc/tezedge-ci/snapshots
+#   mkdir /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2 /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
+#   tar -xzvf granadanet.20000.snapshoted.tar.gz -C /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/
+#   # check directory `/usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/`, should looks like this:
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/config.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/version.json
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/context
+#     /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/store
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-2
+#   cp -R /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-1/* /usr/local/etc/tezedge-ci/data/ocaml-node-granadanet-snapshot-data-3
+##############################################################################################################
+
+##############################################################################################################
+# This pipeline:
+# - only one which checkouts git
+# - runs just run tests, and build artifacts to 'build' volume,
+# - aslo copies files needed from git for other pipelines
+##############################################################################################################
 kind: pipeline
 name: build
 
@@ -29,16 +74,78 @@ steps:
     LOG_LEVEL: info
     OCAML_LOG_ENABLED: false
   commands:
+    # prepare rust toolchain dir
+    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
+    # build and unit-test
+    - cargo clean
+    - cargo build --release --workspace
+    - cargo test --release --workspace --no-run
     # collect binary artefacts
     - mkdir $${BUILD_ARTIFACTS_PATH}
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
+    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
+    - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - mkdir $${TEST_ARTIFACTS_PATH}/tests
+    - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
+    # copy binaries
+    - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
+    - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
+    - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files
+    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+    - cp ./sandbox/artifacts/tezos-client $${BUILD_ARTIFACTS_PATH}/build_files
+    # copy sapling init files
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+    # copy sandbox resources
+    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json $${SANDBOX_ARTIFACTS_PATH}
+    # copy other resources
+    - cp ./light_node/etc/drone/assert_equals.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh
+    - cp ./light_node/etc/drone/assert_contains.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh
+    - cp ./light_node/etc/drone/wait_file.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh
+    - cp ./light_node/etc/drone/assert_cyclic_test_result.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh
     - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
+    - cp ./light_node/etc/tezedge/tezedge_drone.config $${BUILD_ARTIFACTS_PATH}/build_files/tezedge/
+    # copy test binaries
+    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test
+    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test
+    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test
+    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/p2p_test
+    # copy test resources
+    - cp ./shell/tests/resources/apply_block_request_until_1326.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+    # collect modified python tests stuff
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/daemons
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/launchers
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/tools
+    - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
+    - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
+    - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
     # Modify permissions for ssh key
-    - chown -R appuser:appuser /home/appuser/.ssh/
+    - chown appuser /home/appuser/.ssh/id_rsa
+    - chown appuser /home/appuser/.ssh
     - chmod 600 /home/appuser/.ssh/id_rsa
     - ls -la /home/appuser/.ssh
-    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh/
+    # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
+    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+
 image_pull_secrets:
   - docker_pull_secret
 
@@ -58,7 +165,7 @@ trigger:
     - master
     - develop
 
----
+----
 ##############################################################################################################
 # This pipeline runs tezedge node with florencenet configuration againts ocaml node with florencenet snapshot
 ##############################################################################################################
