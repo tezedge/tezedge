@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `inmem-gc` option to the `--context-kv-store` flag.
 - Flag `--context-stats-db-path=<PATH>` that enables the context storage stats. When this option is enabled, the node will measure the time it takes to complete each context query. When available, these will be rendered in the TezEdge explorer UI.
 - A new `replay` subcommand to the `light-node` program. This subcommand will take as input a range of blocks, a blocks store and re-apply all those blocks to the context store and validate the results.
+- A new CI runner running on linux with real-time patch kernel to increase determinism of performance tests
 
 ### Changed
 
