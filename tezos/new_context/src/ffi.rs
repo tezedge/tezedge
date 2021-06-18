@@ -6,7 +6,6 @@
 use core::borrow::Borrow;
 use lazy_static::lazy_static;
 use std::{
-    borrow::Cow,
     cell::RefCell,
     convert::TryFrom,
     rc::Rc,
@@ -483,17 +482,13 @@ ocaml_export! {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
-        let result = {
-            let mut repo = (*tree.index.repository).write().unwrap();
-
-            match tree.get_working_tree_root_hash(&mut *repo)  {
-                Err(err) => Err(format!("{:?}", err)),
-                Ok(hash) => {
-                    let hash = repo.get_hash(hash).unwrap().unwrap();
-                    ContextHash::try_from(&Cow::as_ref(&hash)[..]).map_err(|err| format!("{:?}", err))
-                }
-            }
-        };
+        let result = tree
+            .hash()
+            .map_err(|err| format!("{:?}", err))
+            .map(|h| {
+                ContextHash::try_from(&h[..]).map_err(|err| format!("{:?}", err))
+            })
+            .unwrap_or_else(|v| Err(v));
 
         result.to_ocaml(rt)
     }

@@ -203,12 +203,9 @@ impl TezedgeIndex {
             return Ok(StringTreeEntry::Null);
         }
 
-        //let stat_updater =
-        //    StatUpdater::new(MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
 
-        //let entry = self.get_entry()?.unwrap(); // TODO: make non-option version that raises error
         let root_tree = self.get_tree(commit.root_hash)?;
         let prefixed_tree = self.find_raw_tree(&root_tree, prefix)?;
         let delimiter = if prefix.is_empty() { "" } else { "/" };
@@ -662,9 +659,7 @@ impl ProtocolContextApi for TezedgeContext {
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {
-        let mut repo = self.index.repository.write()?;
-        let hash_id = self.tree.get_working_tree_root_hash(&mut *repo)?;
-        Ok(repo.get_hash(hash_id)?.unwrap().into_owned())
+        self.tree.hash().map_err(Into::into)
     }
 }
 

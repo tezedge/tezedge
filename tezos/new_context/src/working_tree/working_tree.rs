@@ -398,9 +398,12 @@ impl WorkingTree {
 
     pub fn hash(&self) -> Result<EntryHash, MerkleError> {
         let mut repo = self.index.repository.write()?;
-        // let store = repo.get_store();
         let hash_id = self.get_working_tree_root_hash(&mut *repo)?;
-        Ok(repo.get_hash(hash_id)?.unwrap().into_owned())
+
+        match repo.get_hash(hash_id)? {
+            Some(hash) => Ok(hash.into_owned()),
+            None => Err(MerkleError::EntryNotFound { hash_id })
+        }
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -828,7 +831,7 @@ impl WorkingTree {
     ) -> Result<(), MerkleError> {
         // Add entry to batch
         data.serialized.clear();
-        bincode::serialize_into(&mut data.serialized, entry).unwrap();
+        bincode::serialize_into(&mut data.serialized, entry)?;
         data.batch
             .push((entry_hash, Arc::from(data.serialized.as_slice())));
 
