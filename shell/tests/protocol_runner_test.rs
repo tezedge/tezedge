@@ -13,7 +13,11 @@ use serial_test::serial;
 use slog::{error, info, o, warn, Level, Logger};
 
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
+use tezos_api::ffi::{
+    InitProtocolContextResult, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+};
 use tezos_wrapper::runner::{ExecutableProtocolRunner, ProtocolRunner};
 use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -64,7 +68,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
                         if flag_readonly {
                             proto.init_protocol_for_read()?
                         } else {
-                            proto.init_protocol_for_write(false, &None)?
+                            proto.init_protocol_for_write(false, &None, None)?
                         }
                     }),
                     Err(e) => Err(format_err!("{:?}", e)),
@@ -119,6 +123,19 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
         .get(&test_data::TEZOS_NETWORK)
         .expect("no environment configuration");
 
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: context_db_path
+                .to_str()
+                .expect("Invalid context_db_path value")
+                .to_string(),
+        },
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
+    );
+
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
     let protocol_runner_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
@@ -131,10 +148,9 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             },
             tezos_env.clone(),
             false,
-            &context_db_path,
+            storage,
             &protocol_runner,
             log_level,
-            None,
         ),
         log.new(o!("endpoint" => endpoint_name.clone())),
     )?;
@@ -190,7 +206,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
 
     let mut write_api = write_context_commands.try_accept(Duration::from_secs(3))?;
     let genesis_context_hash = write_api
-        .init_protocol_for_write(true, &None)?
+        .init_protocol_for_write(true, &None, None)?
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
     write_api.shutdown()?;
@@ -206,6 +222,19 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         idle_timeout: Duration::from_secs(1),
     };
 
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: context_db_path
+                .to_str()
+                .expect("Invalid context_db_path value")
+                .to_string(),
+        },
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
+    );
+
     // cfg for protocol runner
     let endpoint_cfg = ProtocolEndpointConfiguration::new(
         TezosRuntimeConfiguration {
@@ -215,10 +244,9 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         },
         tezos_env.clone(),
         false,
-        &context_db_path,
+        storage,
         &protocol_runner,
         log_level,
-        None,
     );
 
     // create pool

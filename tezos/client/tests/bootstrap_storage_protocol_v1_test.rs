@@ -13,6 +13,8 @@ use tezos_api::environment::{
 };
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
+    TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+    TezosContextStorageConfiguration, TezosContextTezEdgeStorageConfiguration,
     TezosRuntimeConfiguration,
 };
 use tezos_client::client;
@@ -40,17 +42,27 @@ fn init_test_protocol_context(
     GenesisAdditionalData,
     InitProtocolContextResult,
 ) {
-    let result = client::init_protocol_context(
-        common::prepare_empty_dir(dir_name),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        tezos_env.patch_context_genesis_parameters.clone(),
-    )
-    .unwrap();
+    // TODO: maybe accept storage configuration instead
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: common::prepare_empty_dir(dir_name),
+        },
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: tezos_env.patch_context_genesis_parameters.clone(),
+        context_stats_db_path: None,
+    };
+    let result = client::init_protocol_context(context_config).unwrap();
 
     let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
         None => panic!("we needed commit_genesis and here should be result of it"),

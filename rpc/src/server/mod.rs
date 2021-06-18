@@ -1,11 +1,14 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use getset::Getters;
 use hyper::service::{make_service_fn, service_fn};
@@ -17,10 +20,10 @@ use crypto::hash::{BlockHash, ChainId};
 use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::ShellChannelRef;
-use storage::context::TezedgeContext;
 use storage::PersistentStorage;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
+use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
@@ -43,8 +46,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     #[get = "pub(crate)"]
-    tezedge_context: TezedgeContext,
-    #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
     shell_channel: ShellChannelRef,
@@ -63,14 +64,16 @@ pub struct RpcServiceEnvironment {
     main_chain_id: ChainId,
 
     #[get = "pub(crate)"]
+    tezedge_context: TezedgeContextClient,
+    #[get = "pub(crate)"]
     tezos_readonly_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
     #[get = "pub(crate)"]
     tezos_without_context_api: Arc<TezosApiConnectionPool>,
-
-    // TODO: TE-447 - remove one_context when integration done
-    pub one_context: bool,
+    #[get = "pub(crate)"]
+    context_stats_db_path: Option<PathBuf>,
+    pub tezedge_is_enabled: bool,
 }
 
 impl RpcServiceEnvironment {
@@ -83,16 +86,17 @@ impl RpcServiceEnvironment {
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
         main_chain_id: ChainId,
         main_chain_genesis_hash: BlockHash,
         state: RpcCollectedStateRef,
-        one_context: bool,
+        context_stats_db_path: Option<PathBuf>,
+        tezedge_is_enabled: bool,
         log: &Logger,
     ) -> Self {
+        let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
             actor,
@@ -102,15 +106,16 @@ impl RpcServiceEnvironment {
             network_version,
             persistent_storage: persistent_storage.clone(),
             current_mempool_state_storage,
-            tezedge_context: tezedge_context.clone(),
             main_chain_id,
             main_chain_genesis_hash,
             state,
             log: log.clone(),
+            tezedge_context,
             tezos_readonly_api,
             tezos_readonly_prevalidation_api,
             tezos_without_context_api,
-            one_context,
+            context_stats_db_path,
+            tezedge_is_enabled,
         }
     }
 }
@@ -153,7 +158,7 @@ pub fn spawn_server(
 ) -> impl Future<Output = Result<(), hyper::Error>> {
     let routes = Arc::new(router::create_routes(
         env.state().read().unwrap().is_sandbox(),
-        env.one_context,
+        env.tezedge_is_enabled,
     ));
 
     hyper::Server::bind(bind_address)

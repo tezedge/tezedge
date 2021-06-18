@@ -6,16 +6,17 @@ use std::convert::TryFrom;
 
 use failure::{bail, format_err, Fail};
 use getset::Getters;
+use tezos_new_context::context_key_owned;
 
 use crypto::hash::ContextHash;
 use crypto::{
     blake2b::{self, Blake2bError},
     crypto_box::PublicKeyError,
 };
-use storage::context::{ContextApi, TezedgeContext};
-use storage::{context_key, num_from_slice, BlockHeaderWithHash};
+use storage::{num_from_slice, BlockHeaderWithHash};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::p2p::binary_message::BinaryRead;
+use tezos_wrapper::TezedgeContextClient;
 
 use crate::merge_slices;
 use crate::services::protocol::ContextProtocolParam;
@@ -124,7 +125,7 @@ impl RightsContextData {
     pub(crate) fn prepare_context_data_for_rights(
         parameters: RightsParams,
         constants: RightsConstants,
-        (ctx_hash, context): (&ContextHash, &TezedgeContext),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
     ) -> Result<Self, failure::Error> {
         // prepare constants that are used
         let blocks_per_cycle = *constants.blocks_per_cycle();
@@ -143,7 +144,7 @@ impl RightsContextData {
         let roll_snapshot: i16 = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                &context_key!("data/cycle/{}/roll_snapshot", requested_cycle),
+                context_key_owned!("data/cycle/{}/roll_snapshot", requested_cycle),
             )? {
                 num_from_slice!(data, 0, i16)
             } else {
@@ -155,7 +156,7 @@ impl RightsContextData {
         let random_seed = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                &context_key!("data/cycle/{}/random_seed", requested_cycle),
+                context_key_owned!("data/cycle/{}/random_seed", requested_cycle),
             )? {
                 data
             } else {
@@ -168,7 +169,7 @@ impl RightsContextData {
         let last_roll = {
             if let Some(data) = context.get_key_from_history(
                 &ctx_hash,
-                &context_key!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
+                context_key_owned!("data/cycle/{}/last_roll/{}", requested_cycle, roll_snapshot),
             )? {
                 num_from_slice!(data, 0, i32)
             } else {
@@ -197,13 +198,13 @@ impl RightsContextData {
     ///
     /// Return rollers for [RightsContextData.rolls](RightsContextData.rolls)
     fn get_context_rolls(
-        (ctx_hash, context): (&ContextHash, &TezedgeContext),
+        (ctx_hash, context): (&ContextHash, &TezedgeContextClient),
         cycle: i64,
         snapshot: i16,
     ) -> Result<Option<HashMap<i32, String>>, failure::Error> {
         let rolls = if let Some(val) = context.get_key_values_by_prefix(
             &ctx_hash,
-            &context_key!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
+            context_key_owned!("data/rolls/owner/snapshot/{}/{}", cycle, snapshot),
         )? {
             val
         } else {
@@ -588,7 +589,7 @@ pub fn init_prng(
 #[inline]
 pub fn get_prng_number(state: RandomSeedState, bound: i32) -> TezosPRNGResult {
     if bound < 1 {
-        return Err(TezosPRNGError::BoundNotCorrect { bound: bound });
+        return Err(TezosPRNGError::BoundNotCorrect { bound });
     }
     let v: i32;
     // Note: this part aims to be similar

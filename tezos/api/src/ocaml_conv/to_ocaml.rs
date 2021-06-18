@@ -9,8 +9,10 @@ use super::{
 };
 use crate::ffi::{
     ApplyBlockRequest, ApplyBlockResponse, BeginApplicationRequest, BeginConstructionRequest,
-    ForkingTestchainData, HelpersPreapplyBlockRequest, PrevalidatorWrapper, ProtocolRpcRequest,
-    RpcMethod, RpcRequest, ValidateOperationRequest,
+    ContextKvStoreConfiguration, ForkingTestchainData, HelpersPreapplyBlockRequest,
+    PrevalidatorWrapper, ProtocolRpcRequest, RpcMethod, RpcRequest, TezosContextConfiguration,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, ValidateOperationRequest,
 };
 use crypto::hash::{
     BlockHash, BlockMetadataHash, ChainId, ContextHash, Hash, OperationHash, OperationListListHash,
@@ -71,6 +73,59 @@ to_ocaml_hash!(
     OCamlOperationMetadataListListHash,
     OperationMetadataListListHash
 );
+
+// Configuration
+
+impl_to_ocaml_record! {
+    TezosContextIrminStorageConfiguration {
+        data_dir: String,
+    }
+}
+
+impl_to_ocaml_variant! {
+    ContextKvStoreConfiguration {
+        ContextKvStoreConfiguration::ReadOnlyIpc,
+        ContextKvStoreConfiguration::InMem,
+        ContextKvStoreConfiguration::BTreeMap,
+        ContextKvStoreConfiguration::InMemGC,
+    }
+}
+
+impl_to_ocaml_record! {
+    TezosContextTezEdgeStorageConfiguration {
+        backend: ContextKvStoreConfiguration,
+        ipc_socket_path: Option<String>,
+    }
+}
+
+impl_to_ocaml_variant! {
+    TezosContextStorageConfiguration {
+        TezosContextStorageConfiguration::IrminOnly(cfg: TezosContextIrminStorageConfiguration),
+        TezosContextStorageConfiguration::TezEdgeOnly(cfg: TezosContextTezEdgeStorageConfiguration),
+        TezosContextStorageConfiguration::Both(
+            irmin: TezosContextIrminStorageConfiguration,
+            tezedge: TezosContextTezEdgeStorageConfiguration,
+        )
+    }
+}
+
+impl_to_ocaml_record! {
+    TezosContextConfiguration {
+        storage: TezosContextStorageConfiguration,
+        genesis: (String, String, String) =>
+            (genesis.time.clone(), genesis.block.clone(), genesis.protocol.clone()),
+        protocol_overrides: (OCamlList<(OCamlInt32, String)>, OCamlList<(String, String)>) =>
+            (protocol_overrides.user_activated_upgrades.clone(),
+             protocol_overrides.user_activated_protocol_overrides.clone()),
+        commit_genesis: bool,
+        enable_testchain: bool,
+        readonly: bool,
+        sandbox_json_patch_context: Option<(String, String)> =>
+            sandbox_json_patch_context.clone().map(|pc| (pc.key, pc.json)),
+        context_stats_db_path: Option<String> =>
+            context_stats_db_path.clone().map(|pb| pb.to_string_lossy().into_owned()),
+    }
+}
 
 // Other
 

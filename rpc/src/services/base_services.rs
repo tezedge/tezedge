@@ -4,14 +4,13 @@
 use failure::bail;
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::context::ContextApi;
-use storage::context::StringTreeEntry;
-use storage::{
-    context_key, BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage,
-    BlockStorageReader, OperationsStorage, OperationsStorageReader,
-};
 use storage::{BlockAdditionalData, PersistentStorage};
+use storage::{
+    BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
+    OperationsStorage, OperationsStorageReader,
+};
 use tezos_messages::p2p::encoding::version::NetworkVersion;
+use tezos_new_context::{context_key_owned, StringTreeEntry};
 
 use crate::helpers::{
     get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata,
@@ -192,7 +191,7 @@ pub(crate) fn get_context_raw_bytes(
     env: &RpcServiceEnvironment,
 ) -> Result<StringTreeEntry, failure::Error> {
     // we assume that root is at "/data"
-    let mut key_prefix = context_key!("data");
+    let mut key_prefix = context_key_owned!("data");
 
     // clients may pass in a prefix (without /data) with elements containing slashes (expecting us to split)
     // we need to join with '/' and split again
@@ -203,7 +202,7 @@ pub(crate) fn get_context_raw_bytes(
     let ctx_hash = get_context_hash(block_hash, env)?;
     Ok(env
         .tezedge_context()
-        .get_context_tree_by_prefix(&ctx_hash, &key_prefix, depth)?)
+        .get_context_tree_by_prefix(&ctx_hash, key_prefix, depth)?)
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
@@ -289,7 +288,7 @@ pub(crate) async fn get_block_operations_metadata(
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(|e| failure::Error::from(e))
+            .map_err(failure::Error::from)
     };
 
     // 1. wait for data to collect
@@ -414,7 +413,7 @@ pub(crate) async fn get_block(
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(|e| failure::Error::from(e))
+            .map_err(failure::Error::from)
     };
 
     // 1. wait for data to collect

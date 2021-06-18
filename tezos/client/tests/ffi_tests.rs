@@ -5,8 +5,16 @@ use std::convert::TryFrom;
 
 use crypto::hash::ProtocolHash;
 use serial_test::serial;
-use tezos_api::environment::{self, TezosEnvironment};
-use tezos_api::ffi::{InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    InitProtocolContextResult, TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
+};
+use tezos_api::{
+    environment::{self, TezosEnvironment},
+    ffi::{
+        TezosContextConfiguration, TezosContextIrminStorageConfiguration,
+        TezosContextStorageConfiguration,
+    },
+};
 use tezos_client::client;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -108,16 +116,25 @@ fn prepare_protocol_context(
         .expect("no tezos environment configured");
 
     // init empty storage for test
-    let storage_data_dir_path = common::prepare_empty_dir(dir_name);
-    ffi::init_protocol_context(
-        storage_data_dir_path,
-        cfg.genesis.clone(),
-        cfg.protocol_overrides.clone(),
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration {
+            data_dir: common::prepare_empty_dir(dir_name),
+        },
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            ipc_socket_path: None,
+        },
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: cfg.genesis.clone(),
+        protocol_overrides: cfg.protocol_overrides.clone(),
         commit_genesis,
-        false,
-        false,
-        false,
-        None,
-    )
-    .unwrap()
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: None,
+        context_stats_db_path: None,
+    };
+
+    ffi::init_protocol_context(context_config).unwrap()
 }

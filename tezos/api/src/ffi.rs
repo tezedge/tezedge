@@ -1,9 +1,9 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt::Debug;
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 use std::{convert::TryFrom, fmt};
+use std::{fmt::Debug, path::PathBuf};
 
 use derive_builder::Builder;
 use failure::Fail;
@@ -101,6 +101,101 @@ pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub debug_mode: bool,
     pub compute_context_action_tree_hashes: bool,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextIrminStorageConfiguration {
+    pub data_dir: String,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum ContextKvStoreConfiguration {
+    ReadOnlyIpc,
+    InMem,
+    BTreeMap,
+    InMemGC,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextTezEdgeStorageConfiguration {
+    pub backend: ContextKvStoreConfiguration,
+    pub ipc_socket_path: Option<String>,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum TezosContextStorageConfiguration {
+    IrminOnly(TezosContextIrminStorageConfiguration),
+    TezEdgeOnly(TezosContextTezEdgeStorageConfiguration),
+    Both(
+        TezosContextIrminStorageConfiguration,
+        TezosContextTezEdgeStorageConfiguration,
+    ),
+}
+
+impl TezosContextStorageConfiguration {
+    /// Used to produce a configuration for the readonly protocol runners from the configuration used in the main protocol runner.
+    ///
+    /// If only Irmin is enabled, the resulting configuration is the same.
+    /// If only TezEdge is enabled, the resulting configuration switches the backend to the readonly IPC implementation.
+    /// If both Irmin and TezEdge are enabled, an only-Irmin configuration is enabled.
+    pub fn readonly(&self) -> Self {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => self.clone(),
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+        }
+    }
+
+    pub fn get_ipc_socket_path(&self) -> Option<String> {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => None,
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+        }
+    }
+
+    pub fn tezedge_is_enabled(&self) -> bool {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => false,
+            TezosContextStorageConfiguration::TezEdgeOnly(_) => true,
+            TezosContextStorageConfiguration::Both(_, _) => true,
+        }
+    }
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TezosContextConfiguration {
+    pub storage: TezosContextStorageConfiguration,
+    pub genesis: GenesisChain,
+    pub protocol_overrides: ProtocolOverrides,
+    pub commit_genesis: bool,
+    pub enable_testchain: bool,
+    pub readonly: bool,
+    pub sandbox_json_patch_context: Option<PatchContext>,
+    pub context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Builder)]

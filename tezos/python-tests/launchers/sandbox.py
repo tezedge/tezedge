@@ -150,6 +150,10 @@ class Sandbox:
             # TODO: FIX THIS IN TEZEDGE
             params = params + ['--private-node', 'true']
         params = params + ['--network=sandbox']
+        if os.environ.get('CONTEXT_MUST_SURVIVE_RESTARTS'):
+            # NOTE: The TezEdge in-memory context doesn't survive restarts,
+            # and some tests require that, disable for now.
+            params = params + ['--tezos-context-storage=irmin']
         peers_rpc = [self.p2p + p for p in peers]
         node_bin = self._wrap_path(NODE, branch)
         node = Node(

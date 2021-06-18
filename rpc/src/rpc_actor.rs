@@ -14,7 +14,6 @@ use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
-use storage::context::TezedgeContext;
 use storage::PersistentStorage;
 use storage::{BlockHeaderWithHash, StorageInitInfo};
 use tezos_api::environment::TezosEnvironmentConfiguration;
@@ -59,7 +58,6 @@ impl RpcServer {
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
-        tezedge_context: &TezedgeContext,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         tezos_without_context_api: Arc<TezosApiConnectionPool>,
@@ -67,6 +65,7 @@ impl RpcServer {
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
         is_sandbox: bool,
+        tezedge_is_enabled: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(
@@ -92,14 +91,14 @@ impl RpcServer {
                 network_version,
                 persistent_storage,
                 current_mempool_state_storage,
-                tezedge_context,
                 tezos_readonly_api,
                 tezos_readonly_prevalidation_api,
                 tezos_without_context_api,
                 init_storage_data.chain_id.clone(),
                 init_storage_data.genesis_block_header_hash.clone(),
                 shared_state,
-                init_storage_data.one_context,
+                init_storage_data.context_stats_db_path.clone(),
+                tezedge_is_enabled,
                 &sys.log(),
             );
             let inner_log = sys.log();

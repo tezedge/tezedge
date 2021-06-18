@@ -19,23 +19,22 @@ use slog::{Drain, Duplicate, Logger, Never, SendSyncRefUnwindSafeDrain};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
+use crypto::hash::BlockHash;
 use logging::detailed_json;
 use logging::file::FileAppenderBuilder;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage::context::actions::action_file_storage::ActionFileStorage;
-use storage::context::actions::context_action_storage::ContextActionStorage;
-use storage::context::actions::ContextActionStoreBackend;
-use storage::context::kv_store::SupportedContextKeyValueStore;
-use storage::context::ActionRecorder;
-use storage::initializer::{
-    ContextActionsRocksDbTableInitializer, ContextKvStoreConfiguration,
-    ContextRocksDbTableInitializer, DbsRocksDbTableInitializer, RocksDbConfig,
-};
-use storage::PersistentStorage;
+use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
+use storage::Replay;
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
-use tezos_api::ffi::PatchContext;
+use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
+use tezos_api::ffi::{
+    PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+};
+use tezos_new_context::actions::ContextActionStoreBackend;
+use tezos_new_context::initializer::ContextKvStoreConfiguration;
+use tezos_new_context::kv_store::SupportedContextKeyValueStore;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
 macro_rules! create_terminal_logger {
@@ -136,6 +135,31 @@ impl MultipleValueArg for LoggerType {
 #[fail(display = "No logger target was provided")]
 pub struct NoDrainError;
 
+#[derive(Debug, Clone)]
+pub struct ParseTezosContextStorageChoiceError(String);
+
+enum TezosContextStorageChoice {
+    Irmin,
+    TezEdge,
+    Both,
+}
+
+impl FromStr for TezosContextStorageChoice {
+    type Err = ParseTezosContextStorageChoiceError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_ref() {
+            "both" => Ok(TezosContextStorageChoice::Both),
+            "irmin" => Ok(TezosContextStorageChoice::Irmin),
+            "tezedge" => Ok(TezosContextStorageChoice::TezEdge),
+            _ => Err(ParseTezosContextStorageChoiceError(format!(
+                "Invalid context storage name: {}",
+                s
+            ))),
+        }
+    }
+}
+
 pub trait MultipleValueArg: IntoEnumIterator {
     fn possible_values() -> Vec<&'static str> {
         let mut possible_values = Vec::new();
@@ -151,18 +175,10 @@ pub trait MultipleValueArg: IntoEnumIterator {
 pub struct Storage {
     pub db: RocksDbConfig<DbsRocksDbTableInitializer>,
     pub db_path: PathBuf,
-    pub tezos_data_dir: PathBuf,
-    pub context_action_recorders: Vec<ContextActionStoreBackend>,
+    pub context_stats_db_path: Option<PathBuf>,
+    pub context_storage_configuration: TezosContextStorageConfiguration,
     pub compute_context_action_tree_hashes: bool,
     pub patch_context: Option<PatchContext>,
-
-    // merkle cfg
-    pub context_kv_store: ContextKvStoreConfiguration,
-    // context actions cfg
-    pub merkle_context_actions_store: Option<RocksDbConfig<ContextActionsRocksDbTableInitializer>>,
-
-    // TODO: TE-447 - remove one_context when integration done
-    pub one_context: bool,
 }
 
 impl Storage {
@@ -170,15 +186,10 @@ impl Storage {
     const MINIMAL_THREAD_COUNT: usize = 1;
 
     const DB_STORAGE_VERSION: i64 = 19;
-    const DB_CONTEXT_STORAGE_VERSION: i64 = 17;
-    const DB_CONTEXT_ACTIONS_STORAGE_VERSION: i64 = 17;
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
-    const LRU_CACHE_SIZE_64MB: usize = 64 * 1024 * 1024;
-    const LRU_CACHE_SIZE_16MB: usize = 16 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = storage::context::kv_store::ROCKSDB;
-    const DEFAULT_CONTEXT_ACTIONS_RECORDER: &'static str = storage::context::actions::ROCKSDB;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEMGC;
 }
 
 #[derive(Debug, Clone)]
@@ -233,6 +244,7 @@ pub struct Environment {
     pub storage: Storage,
     pub identity: Identity,
     pub ffi: Ffi,
+    pub replay: Option<Replay>,
 
     pub tezos_network: TezosEnvironment,
     pub enable_testchain: bool,
@@ -271,16 +283,25 @@ pub fn tezos_app() -> App<'static, 'static> {
         .setting(clap::AppSettings::AllArgsOverrideSelf)
         .arg(Arg::with_name("validate-cfg-identity-and-stop")
             .long("validate-cfg-identity-and-stop")
+            .global(true)
             .takes_value(false)
             .help("Validate configuration and generated identity, than just stops application"))
         .arg(Arg::with_name("config-file")
             .long("config-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Configuration file with start-up arguments (same format as cli arguments)")
             .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Configuration file not found at '{}'", v)) }))
+        .arg(Arg::with_name("tezos-context-storage")
+            .long("tezos-context-storage")
+            .global(true)
+            .takes_value(true)
+            .value_name("NAME")
+            .help("Context storage to use (irmin/tezedge/both)"))
         .arg(Arg::with_name("tezos-data-dir")
             .long("tezos-data-dir")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("A directory for Tezos OCaml runtime storage (context/store)")
@@ -303,53 +324,69 @@ pub fn tezos_app() -> App<'static, 'static> {
             }))
         .arg(Arg::with_name("identity-file")
             .long("identity-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to the json identity file with peer-id, public-key, secret-key and pow-stamp.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("identity-expected-pow")
             .long("identity-expected-pow")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Expected power of identity for node. It is used to generate new identity. Default: 26.0")
             .validator(parse_validator_fn!(f64, "Value must be a valid f64 number for expected_pow")))
         .arg(Arg::with_name("bootstrap-db-path")
             .long("bootstrap-db-path")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to bootstrap database directory.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("context-stats-db-path")
+            .long("context-stats-db-path")
+            .global(true)
+            .takes_value(true)
+            .value_name("PATH")
+            .help("Path to context-stats database directory.
+                       In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("db-context-cfg-max-threads")
             .long("db-context-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("db-context-actions-cfg-max-threads")
             .long("db-context-actions-cfg-max-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
+            .global(true)
             .takes_value(true)
             .conflicts_with("peers")
             .conflicts_with("private-node")
             .help("A peers for dns lookup to get the peers to bootstrap the network from. Peers are delimited by a colon. Default: used according to --network parameter see TezosEnvironment"))
         .arg(Arg::with_name("disable-bootstrap-lookup")
             .long("disable-bootstrap-lookup")
+            .global(true)
             .takes_value(false)
             .conflicts_with("bootstrap-lookup-address")
             .help("Disables dns lookup to get the peers to bootstrap the network from. Default: false"))
         .arg(Arg::with_name("log")
             .long("log")
+            .global(true)
             .takes_value(true)
             .multiple(true)
             .value_name("STRING")
@@ -357,31 +394,37 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Set the logger target. Default: terminal"))
         .arg(Arg::with_name("log-file")
             .long("log-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("log-format")
             .long("log-format")
+            .global(true)
             .takes_value(true)
             .possible_values(&["json", "simple"])
             .help("Set output format of the log"))
         .arg(Arg::with_name("log-level")
             .long("log-level")
+            .global(true)
             .takes_value(true)
             .value_name("LEVEL")
             .possible_values(&["critical", "error", "warn", "info", "debug", "trace"])
             .help("Set log level"))
         .arg(Arg::with_name("ocaml-log-enabled")
             .long("ocaml-log-enabled")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Flag for turn on/off logging in Tezos OCaml runtime"))
         .arg(Arg::with_name("disable-mempool")
             .long("disable-mempool")
+            .global(true)
             .help("Enable or disable mempool"))
         .arg(Arg::with_name("private-node")
             .long("private-node")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .requires("peers")
@@ -389,35 +432,41 @@ pub fn tezos_app() -> App<'static, 'static> {
             .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
         .arg(Arg::with_name("network")
             .long("network")
+            .global(true)
             .takes_value(true)
             .possible_values(&TezosEnvironment::possible_values())
             .help("Choose the Tezos environment")
         )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
+            .global(true)
             .takes_value(true)
             .value_name("PORT")
             .help("Socket listening port for p2p for communication with tezos world")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("rpc-port")
             .long("rpc-port")
+            .global(true)
             .takes_value(true)
             .value_name("PORT")
             .help("Rust server RPC port for communication with rust node")
             .validator(parse_validator_fn!(u16, "Value must be a valid port number")))
         .arg(Arg::with_name("enable-testchain")
             .long("enable-testchain")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Flag for enable/disable test chain switching for block applying. Default: false"))
         .arg(Arg::with_name("websocket-address")
             .long("websocket-address")
+            .global(true)
             .takes_value(true)
             .value_name("IP:PORT")
             .help("Websocket address where various node metrics and statistics are available")
             .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
         .arg(Arg::with_name("peers")
             .long("peers")
+            .global(true)
             .takes_value(true)
             .value_name("IP:PORT")
             .help("A peer to bootstrap the network from. Peers are delimited by a colon. Format: IP1:PORT1,IP2:PORT2,IP3:PORT3")
@@ -434,24 +483,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             }))
         .arg(Arg::with_name("peer-thresh-low")
             .long("peer-thresh-low")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Minimal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("peer-thresh-high")
             .long("peer-thresh-high")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Maximal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("synchronization-thresh")
             .long("synchronization-thresh")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Maximal number of peers to connect to")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("protocol-runner")
             .long("protocol-runner")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a tezos protocol runner executable")
@@ -460,24 +513,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-pool-max-connections")
                     .long("ffi-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-connection-timeout-in-secs")
                     .long("ffi-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-max-lifetime-in-secs")
                     .long("ffi-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-pool-idle-timeout-in-secs")
                     .long("ffi-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -487,24 +544,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-trpap-pool-max-connections")
                     .long("ffi-trpap-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-connection-timeout-in-secs")
                     .long("ffi-trpap-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-max-lifetime-in-secs")
                     .long("ffi-trpap-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-trpap-pool-idle-timeout-in-secs")
                     .long("ffi-trpap-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -514,24 +575,28 @@ pub fn tezos_app() -> App<'static, 'static> {
             &[
                 Arg::with_name("ffi-twcap-pool-max-connections")
                     .long("ffi-twcap-pool-max-connections")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of max ffi pool connections, default: 10")
                     .validator(parse_validator_fn!(u8, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-connection-timeout-in-secs")
                     .long("ffi-twcap-pool-connection-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to wait for connection, default: 60")
                     .validator(parse_validator_fn!(u16, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-max-lifetime-in-secs")
                     .long("ffi-twcap-pool-max-lifetime-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove protocol_runner from pool, default: 21600 means 6 hours")
                     .validator(parse_validator_fn!(u64, "Value must be a valid number")),
                 Arg::with_name("ffi-twcap-pool-idle-timeout-in-secs")
                     .long("ffi-twcap-pool-idle-timeout-in-secs")
+                    .global(true)
                     .takes_value(true)
                     .value_name("NUM")
                     .help("Number of seconds to remove unused protocol_runner from pool, default: 1800 means 30 minutes")
@@ -539,52 +604,112 @@ pub fn tezos_app() -> App<'static, 'static> {
             ])
         .arg(Arg::with_name("init-sapling-spend-params-file")
             .long("init-sapling-spend-params-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-spend.params")
         )
         .arg(Arg::with_name("init-sapling-output-params-file")
             .long("init-sapling-output-params-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .help("Path to a init file for sapling-output.params")
         )
         .arg(Arg::with_name("tokio-threads")
             .long("tokio-threads")
+            .global(true)
             .takes_value(true)
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("actions-store-backend")
             .long("actions-store-backend")
+            .global(true)
             .takes_value(true)
             // TODO: hard to override, do as single atribute commanseparated
             // .multiple(true)
             .value_name("STRING")
             .possible_values(&ContextActionStoreBackend::possible_values())
             .help("Activate recording of context storage actions"))
-        .arg(Arg::with_name("one-context")
-            .long("one-context")
-            .takes_value(false)
-            .help("TODO: TE-447 - temp/hack argument to turn off TezEdge second context"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
+            .global(true)
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'rocksdb', 'sled', 'inmem', 'btree'"))
+            .help("Choose the merkle storege backend - supported backends: 'inmem', 'inmem-gc', 'btree'"))
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
+            .global(true)
             .takes_value(true)
             .value_name("BOOL")
             .help("Activate the computation of tree hashes when applying context actions"))
         .arg(Arg::with_name("sandbox-patch-context-json-file")
             .long("sandbox-patch-context-json-file")
+            .global(true)
             .takes_value(true)
             .value_name("PATH")
             .required(false)
             .help("Path to the json file with key-values, which will be added to empty context on startup and commit genesis.")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }));
+            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Sandbox patch-context json file not found at '{}'", v)) }))
+        .subcommand(
+            clap::SubCommand::with_name("replay")
+                .arg(Arg::with_name("from-block")
+                     .long("from-block")
+                     .takes_value(true)
+                     .value_name("HASH")
+                     .display_order(0)
+                     .help("Block from which we start the replay")
+                     .validator(|value| {
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                     })
+                )
+                .arg(Arg::with_name("to-block")
+                     .long("to-block")
+                     .takes_value(true)
+                     .value_name("HASH")
+                     .display_order(0)
+                     .required(true)
+                     .help("Replay until this block")
+                     .validator(|value| {
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                     })
+                )
+                .arg(Arg::with_name("target-path")
+                     .long("target-path")
+                     .takes_value(true)
+                     .value_name("PATH")
+                     .display_order(1)
+                     .required(true)
+                     .help("A directory for the replay")
+                     .validator(|v| {
+                         let dir = Path::new(&v);
+                         if dir.exists() {
+                             if dir.is_dir() {
+                                 Ok(())
+                             } else {
+                                 Err(format!("Required replay data dir '{}' exists, but is not a directory!", v))
+                             }
+                         } else {
+                             // Tezos data dir does not exists, try to create it
+                             if let Err(e) = fs::create_dir_all(dir) {
+                                 Err(format!("Unable to create required replay data dir '{}': {} ", v, e))
+                             } else {
+                                 Ok(())
+                             }
+                         }
+                     }))
+                .arg(Arg::with_name("fail-above")
+                     .long("fail-above")
+                     .takes_value(true)
+                     .value_name("NUM")
+                     .display_order(1)
+                     .required(false)
+                     .help("Panic if the block application took longer than this number of milliseconds")
+                     .validator(parse_validator_fn!(u64, "Value must be a valid number"))
+                )
+        );
     app
 }
 
@@ -767,11 +892,56 @@ impl Environment {
             .parse::<TezosEnvironment>()
             .expect("Was expecting one value from TezosEnvironment");
 
-        let data_dir: PathBuf = args
+        let context_storage: TezosContextStorageChoice = args
+            .value_of("tezos-context-storage")
+            .unwrap_or("both")
+            .parse::<TezosContextStorageChoice>()
+            .expect("Provided value cannot be converted to a context storage option");
+        let mut tezos_data_dir: PathBuf = args
             .value_of("tezos-data-dir")
             .unwrap_or("")
             .parse::<PathBuf>()
             .expect("Provided value cannot be converted to path");
+
+        let replay = args.subcommand_matches("replay").map(|args| {
+            let target_path = args
+                .value_of("target-path")
+                .unwrap()
+                .parse::<PathBuf>()
+                .expect("Provided value cannot be converted to path");
+
+            let to_block = args
+                .value_of("to-block")
+                .unwrap()
+                .parse::<BlockHash>()
+                .expect("Provided value cannot be converted to BlockHash");
+
+            let from_block = args.value_of("from-block").map(|b| {
+                b.parse::<BlockHash>()
+                    .expect("Provided value cannot be converted to BlockHash")
+            });
+
+            let fail_above = std::time::Duration::from_millis(
+                args.value_of("fail-above")
+                    .unwrap_or(&format!("{}", u64::MAX))
+                    .parse::<u64>()
+                    .expect("Provided value cannot be converted to number"),
+            );
+
+            let mut options = fs_extra::dir::CopyOptions::default();
+            options.content_only = true;
+            options.overwrite = true;
+
+            fs_extra::dir::copy(tezos_data_dir.as_path(), target_path.as_path(), &options).unwrap();
+
+            tezos_data_dir = target_path;
+
+            Replay {
+                from_block,
+                to_block,
+                fail_above,
+            }
+        });
 
         let log_targets: HashSet<String> = match args.values_of("log") {
             Some(v) => v.map(String::from).collect(),
@@ -906,7 +1076,7 @@ impl Environment {
                     });
 
                     if let Some(path) = log_file_path {
-                        Some(get_final_path(&data_dir, path))
+                        Some(get_final_path(&tezos_data_dir, path))
                     } else {
                         log_file_path
                     }
@@ -918,7 +1088,14 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<PathBuf>()
                     .expect("Provided value cannot be converted to path");
-                let db_path = get_final_path(&data_dir, path);
+                let db_path = get_final_path(&tezos_data_dir, path.clone());
+
+                let context_stats_db_path = args.value_of("context-stats-db-path").map(|value| {
+                    let path = value
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path");
+                    get_final_path(&tezos_data_dir, path)
+                });
 
                 let db_threads_count = args.value_of("db-cfg-max-threads").map(|value| {
                     value
@@ -931,31 +1108,6 @@ impl Environment {
                         })
                         .expect("Provided value cannot be converted to number")
                 });
-                let db_context_threads_count =
-                    args.value_of("db-context-cfg-max-threads").map(|value| {
-                        value
-                            .parse::<usize>()
-                            .map(|val| {
-                                std::cmp::min(
-                                    Storage::MINIMAL_THREAD_COUNT,
-                                    val / Storage::STORAGES_COUNT,
-                                )
-                            })
-                            .expect("Provided value cannot be converted to number")
-                    });
-                let db_context_actions_threads_count = args
-                    .value_of("db-context-actions-cfg-max-threads")
-                    .map(|value| {
-                        value
-                            .parse::<usize>()
-                            .map(|val| {
-                                std::cmp::min(
-                                    Storage::MINIMAL_THREAD_COUNT,
-                                    val / Storage::STORAGES_COUNT,
-                                )
-                            })
-                            .expect("Provided value cannot be converted to number")
-                    });
 
                 let db = RocksDbConfig {
                     cache_size: Storage::LRU_CACHE_SIZE_96MB,
@@ -965,65 +1117,17 @@ impl Environment {
                     threads: db_threads_count,
                 };
 
-                let backends: HashSet<String> = match args.values_of("actions-store-backend") {
-                    Some(v) => v.map(String::from).collect(),
-                    None => std::iter::once(Storage::DEFAULT_CONTEXT_ACTIONS_RECORDER.to_string())
-                        .collect(),
-                };
-
-                let mut merkle_context_actions_store = None;
-                let context_action_recorders = backends
-                    .iter()
-                    .map(|v| match v.parse::<ContextActionStoreBackend>() {
-                        Ok(ContextActionStoreBackend::RocksDB) => {
-                            merkle_context_actions_store = Some(RocksDbConfig {
-                                cache_size: Storage::LRU_CACHE_SIZE_16MB,
-                                expected_db_version: Storage::DB_CONTEXT_ACTIONS_STORAGE_VERSION,
-                                db_path: db_path.join("context_actions"),
-                                columns: ContextActionsRocksDbTableInitializer,
-                                threads: db_context_actions_threads_count,
-                            });
-                            ContextActionStoreBackend::RocksDB
-                        }
-                        Ok(ContextActionStoreBackend::NoneBackend) => {
-                            ContextActionStoreBackend::NoneBackend
-                        }
-                        Ok(ContextActionStoreBackend::FileStorage { .. }) => {
-                            ContextActionStoreBackend::FileStorage {
-                                path: db_path.join("actionfile.bin"),
-                            }
-                        }
-                        Err(e) => panic!(
-                            "Invalid value: '{}', expecting one value from {:?}, error: {:?}",
-                            v,
-                            SupportedContextKeyValueStore::possible_values(),
-                            e
-                        ),
-                    })
-                    .collect::<Vec<_>>();
-
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
-                        SupportedContextKeyValueStore::RocksDB { .. } => {
-                            ContextKvStoreConfiguration::RocksDb(RocksDbConfig {
-                                cache_size: Storage::LRU_CACHE_SIZE_64MB,
-                                expected_db_version: Storage::DB_CONTEXT_STORAGE_VERSION,
-                                db_path: db_path.join("context"),
-                                columns: ContextRocksDbTableInitializer,
-                                threads: db_context_threads_count,
-                            })
-                        }
-                        SupportedContextKeyValueStore::Sled { .. } => {
-                            ContextKvStoreConfiguration::Sled {
-                                path: db_path.join("context_sled"),
-                            }
-                        }
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
                         SupportedContextKeyValueStore::BTreeMap => {
                             ContextKvStoreConfiguration::BTreeMap
+                        }
+                        SupportedContextKeyValueStore::InMemGC => {
+                            ContextKvStoreConfiguration::InMemGC
                         }
                     })
                     .unwrap_or_else(|e| {
@@ -1040,21 +1144,57 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool");
 
+                // TODO - TE-261: can this conversion be made prettier without `to_string_lossy`?
+                // Path for the socket that will be used for IPC access to the context
+                let context_ipc_socket_path =
+                    ipc::temp_sock().to_string_lossy().as_ref().to_owned();
+
+                let context_storage_configuration = match context_storage {
+                    TezosContextStorageChoice::TezEdge => {
+                        TezosContextStorageConfiguration::TezEdgeOnly(
+                            TezosContextTezEdgeStorageConfiguration {
+                                backend: context_kv_store,
+                                ipc_socket_path: Some(context_ipc_socket_path),
+                            },
+                        )
+                    }
+                    TezosContextStorageChoice::Irmin => {
+                        TezosContextStorageConfiguration::IrminOnly(
+                            TezosContextIrminStorageConfiguration {
+                                data_dir: tezos_data_dir
+                                    .to_str()
+                                    .expect("Invalid tezos_data_dir value")
+                                    .to_string(),
+                            },
+                        )
+                    }
+                    TezosContextStorageChoice::Both => TezosContextStorageConfiguration::Both(
+                        TezosContextIrminStorageConfiguration {
+                            data_dir: tezos_data_dir
+                                .to_str()
+                                .expect("Invalid tezos_data_dir value")
+                                .to_string(),
+                        },
+                        TezosContextTezEdgeStorageConfiguration {
+                            backend: context_kv_store,
+                            ipc_socket_path: Some(context_ipc_socket_path),
+                        },
+                    ),
+                };
+
                 crate::configuration::Storage {
-                    tezos_data_dir: data_dir.clone(),
+                    context_storage_configuration,
                     db,
                     db_path,
+                    context_stats_db_path,
                     compute_context_action_tree_hashes,
-                    context_action_recorders,
-                    context_kv_store,
-                    merkle_context_actions_store,
                     patch_context: {
                         match args.value_of("sandbox-patch-context-json-file") {
                             Some(path) => {
                                 let path = path
                                     .parse::<PathBuf>()
                                     .expect("Provided value cannot be converted to path");
-                                let path = get_final_path(&data_dir, path);
+                                let path = get_final_path(&tezos_data_dir, path);
                                 match fs::read_to_string(&path) {
                                     Ok(content) => {
                                         // validate valid json
@@ -1089,10 +1229,6 @@ impl Environment {
                             }
                         }
                     },
-                    // TODO: TE-447 - remove one_context when integration done
-                    // TODO: TE-447 - we will support just one context
-                    // one_context: args.is_present("one-context"),
-                    one_context: true,
                 }
             },
             identity: crate::configuration::Identity {
@@ -1102,7 +1238,7 @@ impl Environment {
                         .unwrap_or("")
                         .parse::<PathBuf>()
                         .expect("Provided value cannot be converted to path");
-                    get_final_path(&data_dir, identity_path)
+                    get_final_path(&tezos_data_dir, identity_path)
                 },
                 expected_pow: args
                     .value_of("identity-expected-pow")
@@ -1141,6 +1277,7 @@ impl Environment {
                         .expect("Provided value cannot be converted to path"),
                 },
             },
+            replay,
             tokio_threads: args
                 .value_of("tokio-threads")
                 .unwrap_or("0")
@@ -1204,62 +1341,6 @@ impl Environment {
                 slog::o!(),
             ))
         }
-    }
-
-    pub(crate) fn build_recorders(
-        &self,
-        storage: &PersistentStorage,
-    ) -> Result<Vec<Box<dyn ActionRecorder + Send>>, InvalidRecorderConfigurationError> {
-        // filter all configurations and split to valid and ok
-        let (oks, errors): (Vec<_>, Vec<_>) =
-            self.storage
-                .context_action_recorders
-                .iter()
-                .map(|backend| match backend {
-                    storage::context::actions::ContextActionStoreBackend::RocksDB => {
-                        match storage.merkle_context_actions() {
-                            Some(merkle_context_actions) => Ok(Some(Box::new(
-                                ContextActionStorage::new(merkle_context_actions, storage.seq()),
-                            )
-                                as Box<dyn ActionRecorder + Send>)),
-                            None => Err(InvalidRecorderConfigurationError(
-                                "Missing RocksDB source 'storage.merkle_context_actions()'"
-                                    .to_string(),
-                            )),
-                        }
-                    }
-                    storage::context::actions::ContextActionStoreBackend::FileStorage { path } => {
-                        Ok(Some(Box::new(ActionFileStorage::new(path.to_path_buf()))
-                            as Box<dyn ActionRecorder + Send>))
-                    }
-                    storage::context::actions::ContextActionStoreBackend::NoneBackend => Ok(None),
-                })
-                .partition(Result::is_ok);
-
-        // collect all invalid
-        if !errors.is_empty() {
-            let errors = errors
-                .iter()
-                .filter_map(|e| match e {
-                    Ok(_) => None,
-                    Err(e) => Some(format!("{:?}", e)),
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            return Err(InvalidRecorderConfigurationError(format!(
-                "errors: {:?}",
-                errors
-            )));
-        }
-
-        // return just oks
-        Ok(oks
-            .into_iter()
-            .filter_map(|e| match e {
-                Ok(Some(recorder)) => Some(recorder),
-                _ => None,
-            })
-            .collect::<Vec<_>>())
     }
 }
 

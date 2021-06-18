@@ -95,9 +95,7 @@ fn test_proof_of_work(
         node_identity,
         node_pow_target,
         (node_log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -166,9 +164,7 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         tezos_identity::Identity::generate(TRIVIAL_POW_TARGET)?,
         TRIVIAL_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // register network channel listener

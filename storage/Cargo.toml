@@ -27,17 +27,12 @@ strum_macros = "0.20"
 # local dependencies
 crypto = { path = "../crypto" }
 tezos_api = { path = "../tezos/api" }
-tezos_context = { path = "../tezos/context" }
 tezos_messages = { path = "../tezos/messages" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
 slog-term = "2.6"
 slog-async = "2.6"
-
-[[bin]]
-name = "context-actions-replayer"
-path = "src/bin/context_action_file_replayer.rs"
 
 [[bench]]
 name = "predecessor_benchmarks"

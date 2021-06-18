@@ -47,6 +47,8 @@ pub enum IpcError {
     SplitError { reason: io::Error },
     #[fail(display = "Socker configuration error: {}", reason)]
     SocketConfigurationError { reason: io::Error },
+    #[fail(display = "IPC error: {}", reason)]
+    OtherError { reason: String },
 }
 
 /// Represents sending end of the IPC channel.
@@ -265,6 +267,17 @@ where
         // maybe it is enought to set non_blocking to the [`stream`], but we make sure,
         // also On macOS and FreeBSD new sockets inherit flags from accepting fd,
         // but we expect this to be in blocking by default.
+        split(stream.0, false, false)
+    }
+
+    /// Accept new connection a return sender/receiver for it
+    pub fn accept(&mut self) -> Result<(IpcReceiver<R>, IpcSender<S>), IpcError> {
+        let stream = self
+            .listener
+            .accept()
+            .map_err(|e| IpcError::ConnectionError { reason: e })?;
+
+        // see explaination at `try_accept`.
         split(stream.0, false, false)
     }
 
