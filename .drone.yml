@@ -28,7 +28,6 @@ steps:
     OCAML_BUILD_CHAIN: remote
     LOG_LEVEL: info
     OCAML_LOG_ENABLED: false
-    RSA_PATH: /home/appuser/.ssh/
   commands:
     # collect binary artefacts
     - mkdir $${BUILD_ARTIFACTS_PATH}
@@ -39,7 +38,7 @@ steps:
     - chown -R appuser:appuser /home/appuser/.ssh/
     - chmod 600 /home/appuser/.ssh/id_rsa
     - ls -la /home/appuser/.ssh
-    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh/
 image_pull_secrets:
   - docker_pull_secret
 
