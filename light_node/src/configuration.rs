@@ -1113,12 +1113,6 @@ impl Environment {
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
-                        SupportedContextKeyValueStore::BTreeMap => {
-                            ContextKvStoreConfiguration::BTreeMap
-                        }
-                        SupportedContextKeyValueStore::InMemGC => {
-                            ContextKvStoreConfiguration::InMemGC
-                        }
                     })
                     .unwrap_or_else(|e| {
                         panic!(

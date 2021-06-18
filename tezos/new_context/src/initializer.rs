@@ -41,14 +41,7 @@ pub fn initialize_tezedge_index(
                     )),
                 }
             }
-            _ => Arc::new(RwLock::new(InMemory::new())),
-            // ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
-            // ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
-            // ContextKvStoreConfiguration::InMemGC => {
-            //     Arc::new(RwLock::new(MarkMoveGCed::<InMemoryBackend>::new(
-            //         PRESERVE_CYCLE_COUNT,
-            //     )))
-            // }
+            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::new())),
         },
         patch_context,
     ))

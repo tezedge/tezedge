@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::{borrow::Cow, convert::TryFrom, path::Path, sync::Arc};
+use std::{borrow::Cow, path::Path, sync::Arc};
 
 use crypto::hash::ContextHash;
 use failure::Error;
@@ -47,14 +47,9 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
             .map_err(|reason| DBError::IpcAccessError { reason })
     }
 
-    fn put_context_hash(&mut self, hash_id: HashId) -> Result<ContextHash, DBError> {
-        let hash = self
-            .client
-            .get_hash(hash_id)
-            .map_err(|reason| DBError::IpcAccessError { reason })?;
-
-        let hash = hash.unwrap().into_owned();
-        Ok(ContextHash::try_from(&hash[..]).unwrap())
+    fn put_context_hash(&mut self, _hash_id: HashId) -> Result<(), DBError> {
+        // This context is readonly
+        Ok(())
     }
 
     fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError> {

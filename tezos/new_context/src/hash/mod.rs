@@ -360,7 +360,10 @@ mod tests {
 
     use crypto::hash::{ContextHash, HashTrait};
 
-    use crate::{kv_store::in_memory::InMemory, working_tree::{Node, NodeKind, Tree}};
+    use crate::{
+        kv_store::in_memory::InMemory,
+        working_tree::{Node, NodeKind, Tree},
+    };
 
     use super::*;
 

@@ -924,10 +924,6 @@ impl WorkingTree {
         self.index.node_entry(node)
     }
 
-    // fn get_entry_from_hash(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-    //     self.index.get_entry(hash)
-    // }
-
     fn get_non_leaf(entry: Entry) -> Node {
         Node {
             node_kind: NodeKind::NonLeaf,

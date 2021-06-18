@@ -1,7 +1,6 @@
 use std::{
     borrow::Cow,
     collections::{hash_map::DefaultHasher, BTreeMap, HashMap, VecDeque},
-    convert::TryFrom,
     hash::Hasher,
     sync::Arc,
 };
@@ -20,8 +19,8 @@ use crate::{
 
 use tezos_spsc::Consumer;
 
-use super::{HashId, VacantEntryHash};
 use super::entries::Entries;
+use super::{HashId, VacantEntryHash};
 
 #[derive(Debug)]
 pub struct HashValueStore {
@@ -130,7 +129,7 @@ impl KeyValueStoreBackend for InMemory {
         self.contains(hash_id)
     }
 
-    fn put_context_hash(&mut self, hash_id: HashId) -> Result<ContextHash, DBError> {
+    fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError> {
         Ok(self.put_context_hash_impl(hash_id))
     }
 
@@ -237,7 +236,7 @@ impl InMemory {
         self.context_hashes.get(&hashed).cloned()
     }
 
-    pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) -> ContextHash {
+    pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) {
         let commit_hash = self.hashes.get_hash(commit_hash_id).unwrap();
 
         let mut hasher = DefaultHasher::new();
@@ -246,8 +245,6 @@ impl InMemory {
 
         self.context_hashes.insert(hashed, commit_hash_id);
         self.context_hashes_cycles.back_mut().unwrap().push(hashed);
-
-        ContextHash::try_from(&commit_hash[..]).unwrap()
     }
 
     #[cfg(test)]

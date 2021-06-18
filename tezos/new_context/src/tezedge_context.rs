@@ -1,7 +1,6 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::rc::Rc;
 use std::{
     borrow::Borrow,
     cell::RefCell,
@@ -9,6 +8,7 @@ use std::{
     convert::TryInto,
     sync::{Arc, RwLock},
 };
+use std::{convert::TryFrom, rc::Rc};
 
 use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
@@ -687,10 +687,10 @@ impl ShellContextApi for TezedgeContext {
         )?;
         // FIXME: only write entries if there are any, empty commits should not produce anything
         repository.write_batch(batch)?;
-        let commit_hash = repository.put_context_hash(commit_hash_id)?;
+        repository.put_context_hash(commit_hash_id)?;
+        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
 
         std::mem::drop(repository);
-
         self.index.block_applied(referenced_older_entries)?;
 
         Ok(commit_hash)
@@ -714,7 +714,8 @@ impl ShellContextApi for TezedgeContext {
         )?;
 
         repository.write_batch(batch)?;
-        let commit_hash = repository.put_context_hash(commit_hash_id)?;
+        repository.put_context_hash(commit_hash_id)?;
+        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
 
         Ok(commit_hash)
     }
@@ -796,5 +797,23 @@ impl TezedgeContext {
             index: self.index.clone(),
             ..*self
         }
+    }
+
+    fn get_commit_hash(
+        &self,
+        commit_hash_id: HashId,
+        repo: &ContextKeyValueStore,
+    ) -> Result<ContextHash, ContextError> {
+        let commit_hash = match repo.get_hash(commit_hash_id)? {
+            Some(hash) => hash,
+            None => {
+                return Err(MerkleError::EntryNotFound {
+                    hash_id: commit_hash_id,
+                }
+                .into())
+            }
+        };
+        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
+        Ok(commit_hash)
     }
 }
