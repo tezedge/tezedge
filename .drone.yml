@@ -28,6 +28,7 @@ steps:
     OCAML_BUILD_CHAIN: remote
     LOG_LEVEL: info
     OCAML_LOG_ENABLED: false
+    RSA_PATH: /home/appuser/.ssh/
   commands:
     # collect binary artefacts
     - mkdir $${BUILD_ARTIFACTS_PATH}
