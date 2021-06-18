@@ -287,7 +287,6 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --one-context \
-    --actions-store-backend none \
     --log terminal \
     --log-level info \
     --log-format simple

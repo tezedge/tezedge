@@ -86,7 +86,6 @@
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --one-context \
-    --actions-store-backend none \
     --log terminal \
     --log-level info \
     --log-format simple
@@ -123,7 +122,6 @@
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --one-context \
-    --actions-store-backend none \
     --log terminal \
     --log-level info \
     --log-format simple &> $HOME/data-mainnet/nohup-node.out &

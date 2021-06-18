@@ -11,7 +11,6 @@ services:
         "--websocket-address=0.0.0.0:12536",
         "--peer-thresh-low", "30", "--peer-thresh-high", "45",
         "--log", "terminal", "file", "--log-file", "/context-data/tezedge.log",
-        "--actions-store-backend", "none",
         "--identity-file=/data/data/identity.json",
         "--bootstrap-db-path=/data/data/tezedge-data",
         "--tezos-data-dir=/data/data/node/data",

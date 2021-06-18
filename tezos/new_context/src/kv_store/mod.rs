@@ -17,7 +17,7 @@ pub mod in_memory;
 pub mod readonly_ipc;
 pub mod stats;
 
-pub const INMEMGC: &str = "inmem-gc";
+pub const INMEM: &str = "inmem";
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HashId(NonZeroUsize); // NonZeroUsize so that `Option<HashId>` is 8 bytes
