@@ -235,7 +235,7 @@ steps:
   - name: wait-for-ocaml-snapshoted-nodes
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
-      - tezos-node-bootstrap bootstrap --level=$${TOP_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+      - tezos-node-bootstrap bootstrap --level=$${TOP_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1}
 
 
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
