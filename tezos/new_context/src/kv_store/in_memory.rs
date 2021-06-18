@@ -79,7 +79,7 @@ impl HashValueStore {
     }
 }
 
-pub struct Repository {
+pub struct InMemory {
     current_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
     pub hashes: HashValueStore,
     sender: Sender<Command>,
@@ -87,13 +87,13 @@ pub struct Repository {
     context_hashes_cycles: VecDeque<Vec<u64>>,
 }
 
-impl Default for Repository {
+impl Default for InMemory {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl GarbageCollector for Repository {
+impl GarbageCollector for InMemory {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.new_cycle_started();
         Ok(())
@@ -108,19 +108,19 @@ impl GarbageCollector for Repository {
     }
 }
 
-impl Flushable for Repository {
+impl Flushable for InMemory {
     fn flush(&self) -> Result<(), failure::Error> {
         Ok(())
     }
 }
 
-impl Persistable for Repository {
+impl Persistable for InMemory {
     fn is_persistent(&self) -> bool {
         false
     }
 }
 
-impl KeyValueStoreBackend for Repository {
+impl KeyValueStoreBackend for InMemory {
     fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
         self.write_batch(batch);
         Ok(())
@@ -151,7 +151,7 @@ impl KeyValueStoreBackend for Repository {
     }
 }
 
-impl Repository {
+impl InMemory {
     pub fn new() -> Self {
         let (sender, recv) = crossbeam_channel::unbounded();
         let (prod, cons) = tezos_spsc::bounded(2_000_000);

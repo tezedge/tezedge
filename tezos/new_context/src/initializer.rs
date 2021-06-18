@@ -9,7 +9,7 @@ use ocaml_interop::BoxRoot;
 pub use tezos_api::ffi::ContextKvStoreConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 
-use crate::{kv_store::in_memory::Repository, kv_store::readonly_ipc::ReadonlyIpcBackend};
+use crate::{kv_store::in_memory::InMemory, kv_store::readonly_ipc::ReadonlyIpcBackend};
 use crate::{PatchContextFunction, TezedgeContext, TezedgeIndex};
 
 /// IPC communication errors
@@ -41,7 +41,7 @@ pub fn initialize_tezedge_index(
                     )),
                 }
             }
-            _ => Arc::new(RwLock::new(Repository::new())),
+            _ => Arc::new(RwLock::new(InMemory::new())),
             // ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemoryBackend::new())),
             // ContextKvStoreConfiguration::BTreeMap => Arc::new(RwLock::new(BTreeMapBackend::new())),
             // ContextKvStoreConfiguration::InMemGC => {
