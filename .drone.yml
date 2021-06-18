@@ -749,6 +749,9 @@ steps:
       # we should have here precompiled target branch
       - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 600
       - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/bench.done" 2400
+    when:
+      ref:
+        - refs/pull/*/head
 
 depends_on:
   - verify-real-time-environment
