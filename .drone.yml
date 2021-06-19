@@ -79,7 +79,7 @@ steps:
       - name: perf
         path: /perf
     commands:
-      - time -f "%E" -o tezos.time xargs -a /perf/conseil-rpc.txt -n 1 -i echo wget -O /dev/null -q $${OCAML_NODE_RPC_CONTEXT_ROOT_1}{}
+      - time -f "%E" -o tezos.time xargs -a /perf/conseil-rpc-list.txt -n 1 -i echo wget -O /dev/null -q $${OCAML_NODE_RPC_CONTEXT_ROOT_1}{}
       - 'echo "Ocaml node time:       $(tezos.time)"'
 
 image_pull_secrets:
