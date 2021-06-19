@@ -77,7 +77,7 @@ steps:
     image: busybox
     volumes:
       - name: perf
-      - path: /perf
+        path: /perf
     commands:
       - |
         cat > /tmp/list <<EOF
