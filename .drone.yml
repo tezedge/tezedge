@@ -124,5 +124,5 @@ trigger:
     - master
     - develop
 
-depends_on:
-  - build
+#depends_on:
+#  - build
