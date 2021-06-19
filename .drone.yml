@@ -79,15 +79,8 @@ steps:
       - name: perf
         path: /perf
     commands:
-      - |
-        cat > /tmp/list <<EOF
-        /chains/main/blocks/head~
-        /chains/main/blocks/BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC/operations
-        END
-
-      - time -f "%E" -o tezos.time xargs -a /tmp/list -n 1 -i echo wget -O /dev/null -q $${OCAML_NODE_RPC_CONTEXT_ROOT_1}{}
-#      - time -f "%E" -o tezos.time xargs -a /perf/conseil-rpc.txt -n 1 -i echo wget -O /dev/null -q $${OCAML_NODE_RPC_CONTEXT_ROOT_1}{}
-#      - 'echo "Ocaml node time:       $(tezos.time)"'
+      - time -f "%E" -o tezos.time xargs -a /perf/conseil-rpc.txt -n 1 -i echo wget -O /dev/null -q $${OCAML_NODE_RPC_CONTEXT_ROOT_1}{}
+      - 'echo "Ocaml node time:       $(tezos.time)"'
 
 image_pull_secrets:
   - docker_pull_secret
