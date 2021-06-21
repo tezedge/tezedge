@@ -56,7 +56,7 @@ pub enum PeerMessage {
 #[encoding(dynamic = "MESSAGE_MAX_SIZE")]
 pub struct PeerMessageResponse {
     #[get = "pub"]
-    message: PeerMessage,
+    pub message: PeerMessage,
 
     /// Encrypted bytes read from stream including chunk sizes.
     #[encoding(skip)]
