@@ -207,6 +207,7 @@ steps:
     - name: build
       path: /artifacts
   commands:
+    - echo "Running on $${DRONE_RUNNER_NAME}"
     - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
@@ -261,6 +262,7 @@ steps:
     - name: build
       path: /artifacts
   commands:
+    - echo "Running on $${DRONE_RUNNER_NAME}"
     - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
