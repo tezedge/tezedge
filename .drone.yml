@@ -43,129 +43,129 @@
 # - runs just run tests, and build artifacts to 'build' volume,
 # - aslo copies files needed from git for other pipelines
 ##############################################################################################################
-kind: pipeline
-name: build
+# kind: pipeline
+# name: build
 
-workspace:
-  path: /drone/src
+# workspace:
+#   path: /drone/src
 
-environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
-  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
-  SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
+# environment:
+#   BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+#   TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+#   SANDBOX_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}/sandbox_files
 
-steps:
+# steps:
 
-- name: build-artifacts
-  image: simplestakingcom/tezedge-ci-builder:latest
-  pull: always
-  user: root
-  volumes:
-    - name: build
-      path: /artifacts
-    - name: tests
-      path: /tests
-    - name: ids
-      path: /home/appuser/.ssh
-  environment:
-    RUST_BACKTRACE: 1
-    SODIUM_USE_PKG_CONFIG: 1
-    OCAML_BUILD_CHAIN: remote
-    LOG_LEVEL: info
-    OCAML_LOG_ENABLED: false
-  commands:
-    # prepare rust toolchain dir
-    - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
-    # build and unit-test
-    - cargo clean
-    - cargo build --release --workspace
-    - cargo test --release --workspace --no-run
-    # collect binary artefacts
-    - mkdir $${BUILD_ARTIFACTS_PATH}
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
-    - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
-    - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - mkdir $${TEST_ARTIFACTS_PATH}/tests
-    - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
-    # copy binaries
-    - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
-    - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
-    - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files
-    - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    - cp ./sandbox/artifacts/tezos-client $${BUILD_ARTIFACTS_PATH}/build_files
-    # copy sapling init files
-    - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
-    # copy sandbox resources
-    - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json $${SANDBOX_ARTIFACTS_PATH}
-    # copy other resources
-    - cp ./light_node/etc/drone/assert_equals.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh
-    - cp ./light_node/etc/drone/assert_contains.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh
-    - cp ./light_node/etc/drone/wait_file.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh
-    - cp ./light_node/etc/drone/assert_cyclic_test_result.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh
-    - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
-    - cp ./light_node/etc/tezedge/tezedge_drone.config $${BUILD_ARTIFACTS_PATH}/build_files/tezedge/
-    # copy test binaries
-    - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test
-    - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test
-    - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test
-    - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/p2p_test
-    # copy test resources
-    - cp ./shell/tests/resources/apply_block_request_until_1326.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
-    # collect modified python tests stuff
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/daemons
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/launchers
-    - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/tools
-    - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
-    - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
-    - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
-    # Modify permissions for ssh key
-    - chown appuser /home/appuser/.ssh/id_rsa
-    - chown appuser /home/appuser/.ssh
-    - chmod 600 /home/appuser/.ssh/id_rsa
-    - ls -la /home/appuser/.ssh
-    # copy build files to all other runner machines
-    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+# - name: build-artifacts
+#   image: simplestakingcom/tezedge-ci-builder:latest
+#   pull: always
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /artifacts
+#     - name: tests
+#       path: /tests
+#     - name: ids
+#       path: /home/appuser/.ssh
+#   environment:
+#     RUST_BACKTRACE: 1
+#     SODIUM_USE_PKG_CONFIG: 1
+#     OCAML_BUILD_CHAIN: remote
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#   commands:
+#     # prepare rust toolchain dir
+#     - echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib"
+#     # build and unit-test
+#     - cargo clean
+#     - cargo build --release --workspace
+#     - cargo test --release --workspace --no-run
+#     # collect binary artefacts
+#     - mkdir $${BUILD_ARTIFACTS_PATH}
+#     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files
+#     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+#     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/tezedge
+#     - mkdir $${BUILD_ARTIFACTS_PATH}/build_files/identities
+#     - mkdir -p $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+#     - mkdir $${TEST_ARTIFACTS_PATH}/tests
+#     - mkdir -p $${SANDBOX_ARTIFACTS_PATH}
+#     # copy binaries
+#     - cp ./target/release/light-node $${BUILD_ARTIFACTS_PATH}/build_files
+#     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files
+#     - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files
+#     - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+#     - cp ./sandbox/artifacts/tezos-client $${BUILD_ARTIFACTS_PATH}/build_files
+#     # copy sapling init files
+#     - cp ./tezos/sys/lib_tezos/artifacts/sapling-spend.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+#     - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
+#     # copy sandbox resources
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/010-granada-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/tezedge_drone_sandbox.config $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_start_light_node_args.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_init_client_request.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_request.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_009_request.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_activate_protocol_010_request.json $${SANDBOX_ARTIFACTS_PATH}
+#     - cp ./light_node/etc/tezedge_sandbox/sandbox_bake_empty_block.json $${SANDBOX_ARTIFACTS_PATH}
+#     # copy other resources
+#     - cp ./light_node/etc/drone/assert_equals.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh
+#     - cp ./light_node/etc/drone/assert_contains.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh
+#     - cp ./light_node/etc/drone/wait_file.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh
+#     - cp ./light_node/etc/drone/assert_cyclic_test_result.sh $${BUILD_ARTIFACTS_PATH}/build_files/ && chmod 755 $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh
+#     - cp ./light_node/etc/drone/identities/* $${BUILD_ARTIFACTS_PATH}/build_files/identities/
+#     - cp ./light_node/etc/tezedge/tezedge_drone.config $${BUILD_ARTIFACTS_PATH}/build_files/tezedge/
+#     # copy test binaries
+#     - cp `find ./target/release/deps/ | grep integration_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test
+#     - cp `find ./target/release/deps/ | grep chain_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test
+#     - cp `find ./target/release/deps/ | grep protocol_runner_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test
+#     - cp `find ./target/release/deps/ | grep p2p_test | grep -v "\.d" | head -1` $${TEST_ARTIFACTS_PATH}/tests/p2p_test
+#     # copy test resources
+#     - cp ./shell/tests/resources/apply_block_request_until_1326.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+#     - cp ./shell/tests/resources/sandbox_branch_1_level3.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+#     - cp ./shell/tests/resources/sandbox_branch_2_level4.zip $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+#     - cp ./shell/tests/resources/sandbox-patch-context.json $${TEST_ARTIFACTS_PATH}/test_data/tests/resources
+#     # collect modified python tests stuff
+#     - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/daemons
+#     - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/launchers
+#     - mkdir -p $${BUILD_ARTIFACTS_PATH}/python-tests/tools
+#     - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
+#     - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
+#     - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
+#     # Modify permissions for ssh key
+#     - chown appuser /home/appuser/.ssh/id_rsa
+#     - chown appuser /home/appuser/.ssh
+#     - chmod 600 /home/appuser/.ssh/id_rsa
+#     - ls -la /home/appuser/.ssh
+#     # copy build files to all other runner machines
+#     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+#     - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+#     - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
+#     - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
 
-image_pull_secrets:
-  - docker_pull_secret
+# image_pull_secrets:
+#   - docker_pull_secret
 
-volumes:
-  - name: build
-    host:
-      path: /usr/local/etc/tezedge-ci/build/
-  - name: tests
-    host:
-      path: /usr/local/etc/tezedge-ci/tests/
-  - name: ids
-    host:
-      path: /usr/local/etc/tezedge-ci/id
+# volumes:
+#   - name: build
+#     host:
+#       path: /usr/local/etc/tezedge-ci/build/
+#   - name: tests
+#     host:
+#       path: /usr/local/etc/tezedge-ci/tests/
+#   - name: ids
+#     host:
+#       path: /usr/local/etc/tezedge-ci/id
 
-trigger:
-  branch:
-    - master
-    - develop
+# trigger:
+#   branch:
+#     - master
+#     - develop
 
----
+# ---
 ##############################################################################################################
 kind: pipeline
 name: verify-real-time-environment
@@ -174,7 +174,7 @@ clone:
   disable: true
 
 environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BUILD_ARTIFACTS_PATH: /artifacts/build_874
 
 steps:
 
@@ -208,11 +208,13 @@ steps:
       path: /artifacts
   commands:
     - echo "Running on $${DRONE_RUNNER_NAME}"
+    - echo "Running with kernel:"
+    - uname -r
     - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
-depends_on:
-  - build
+# depends_on:
+#   - build
 
 image_pull_secrets:
   - docker_pull_secret
@@ -239,7 +241,7 @@ clone:
   disable: true
 
 environment:
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BUILD_ARTIFACTS_PATH: /artifacts/build_874
 
 steps:
 
@@ -263,11 +265,13 @@ steps:
       path: /artifacts
   commands:
     - echo "Running on $${DRONE_RUNNER_NAME}"
+    - echo "Running with kernel:"
+    - uname -r
     - /rt-tests/cyclictest --mlockall --smp --priority=80 --interval=200 --distance=0 --duration=1m --quiet > cyclictest.out
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_cyclic_test_result.sh 100 ./cyclictest.out
 
-depends_on:
-  - build
+# depends_on:
+#   - build
 
 image_pull_secrets:
   - docker_pull_secret
