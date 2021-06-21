@@ -26,22 +26,25 @@ use super::{HashId, VacantEntryHash};
 pub struct HashValueStore {
     hashes: Entries<HashId, EntryHash>,
     values: Entries<HashId, Option<Arc<[u8]>>>,
-    free_ids: Consumer<HashId>,
+    free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
 }
 
 impl HashValueStore {
-    fn new(consumer: Consumer<HashId>) -> Self {
+    pub(crate) fn new<T>(consumer: T) -> Self
+    where
+        T: Into<Option<Consumer<HashId>>>,
+    {
         Self {
             hashes: Entries::new(),
             values: Entries::new(),
-            free_ids: consumer,
+            free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
         }
     }
 
     pub(crate) fn get_vacant_entry_hash(&mut self) -> VacantEntryHash {
-        let (hash_id, entry) = if let Some(free_id) = self.free_ids.pop().ok() {
+        let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
             self.values[free_id] = None;
             (free_id, &mut self.hashes[free_id])
         } else {
@@ -53,6 +56,10 @@ impl HashValueStore {
             entry: Some(entry),
             hash_id,
         }
+    }
+
+    fn get_free_id(&mut self) -> Option<HashId> {
+        self.free_ids.as_mut()?.pop().ok()
     }
 
     pub(crate) fn insert_value_at(&mut self, hash_id: HashId, value: Arc<[u8]>) {

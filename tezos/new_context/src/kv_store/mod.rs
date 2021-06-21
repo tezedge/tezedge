@@ -35,6 +35,26 @@ impl From<usize> for HashId {
     }
 }
 
+const SHIFT: usize = (std::mem::size_of::<usize>() * 8) - 1;
+const READONLY: usize = 1 << SHIFT;
+
+impl HashId {
+    fn set_readonly_runner(&mut self) {
+        let hash_id = self.0.get();
+
+        self.0 = NonZeroUsize::new(hash_id | READONLY).unwrap();
+    }
+
+    fn get_readonly_id(self) -> Option<HashId> {
+        let hash_id = self.0.get();
+        if hash_id & READONLY != 0 {
+            Some(HashId(NonZeroUsize::new(hash_id & !READONLY).unwrap()))
+        } else {
+            None
+        }
+    }
+}
+
 pub struct VacantEntryHash<'a> {
     entry: Option<&'a mut EntryHash>,
     hash_id: HashId,
@@ -49,6 +69,11 @@ impl<'a> VacantEntryHash<'a> {
             fun(entry)
         };
         self.hash_id
+    }
+
+    pub(crate) fn set_readonly_runner(mut self) -> Self {
+        self.hash_id.set_readonly_runner();
+        self
     }
 }
 
