@@ -46,6 +46,8 @@ pub enum DBError {
     IpcAccessError { reason: ContextServiceError },
     #[fail(display = "Missing entry: {:?}", hash_id)]
     MissingEntry { hash_id: HashId },
+    #[fail(display = "Attempt to hash tree on a readonly protocol runner")]
+    AttemptToHashOnReadOnly,
 }
 
 impl From<SchemaError> for DBError {

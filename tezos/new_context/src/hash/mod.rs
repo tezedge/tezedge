@@ -49,6 +49,8 @@ pub enum HashingError {
     EntryBorrow,
     #[fail(display = "Database error error {:?}", error)]
     DBError { error: DBError },
+    #[fail(display = "HashId not found: {:?}", hash_id)]
+    HashIdNotFound { hash_id: HashId },
 }
 
 impl From<DBError> for HashingError {
@@ -199,16 +201,17 @@ fn hash_long_inode(
 
             for (index, hash) in pointers {
                 hasher.update(&[*index]);
-                let hash = store.get_hash(*hash)?.ok_or(HashingError::MissingEntry)?;
+                let hash = store
+                    .get_hash(*hash)?
+                    .ok_or_else(|| HashingError::HashIdNotFound { hash_id: *hash })?;
                 hasher.update(hash.as_ref());
             }
         }
     }
 
-    let vacant = store.get_vacant_entry_hash()?;
-    let hash_id = vacant.write_with(|entry| {
-        hasher.finalize_variable(|r| entry.copy_from_slice(r));
-    });
+    let hash_id = store
+        .get_vacant_entry_hash()?
+        .write_with(|entry| hasher.finalize_variable(|r| entry.copy_from_slice(r)));
 
     Ok(hash_id)
 }
@@ -244,10 +247,9 @@ fn hash_short_inode(tree: &Tree, store: &mut ContextKeyValueStore) -> Result<Has
         hasher.update(v.entry_hash(store)?.as_ref());
     }
 
-    let vacant = store.get_vacant_entry_hash()?;
-    let hash_id = vacant.write_with(|entry| {
-        hasher.finalize_variable(|r| entry.copy_from_slice(r));
-    });
+    let hash_id = store
+        .get_vacant_entry_hash()?
+        .write_with(|entry| hasher.finalize_variable(|r| entry.copy_from_slice(r)));
 
     Ok(hash_id)
 }
@@ -280,10 +282,9 @@ pub(crate) fn hash_blob(
     hasher.update(&(blob.len() as u64).to_be_bytes());
     hasher.update(blob);
 
-    let vacant = store.get_vacant_entry_hash()?;
-    let hash_id = vacant.write_with(|entry| {
-        hasher.finalize_variable(|r| entry.copy_from_slice(r));
-    });
+    let hash_id = store
+        .get_vacant_entry_hash()?
+        .write_with(|entry| hasher.finalize_variable(|r| entry.copy_from_slice(r)));
 
     Ok(hash_id)
 }
@@ -324,10 +325,9 @@ pub(crate) fn hash_commit(
     hasher.update(&(commit.message.len() as u64).to_be_bytes());
     hasher.update(&commit.message.clone().into_bytes());
 
-    let vacant = store.get_vacant_entry_hash()?;
-    let hash_id = vacant.write_with(|entry| {
-        hasher.finalize_variable(|r| entry.copy_from_slice(r));
-    });
+    let hash_id = store
+        .get_vacant_entry_hash()?
+        .write_with(|entry| hasher.finalize_variable(|r| entry.copy_from_slice(r)));
 
     Ok(hash_id)
 }

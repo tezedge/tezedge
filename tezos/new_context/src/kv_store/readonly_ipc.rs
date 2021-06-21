@@ -71,7 +71,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     }
 
     fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
-        Ok(VacantEntryHash::invalid())
+        Err(DBError::AttemptToHashOnReadOnly)
     }
 }
 

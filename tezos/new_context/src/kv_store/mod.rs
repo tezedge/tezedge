@@ -35,25 +35,12 @@ impl From<usize> for HashId {
     }
 }
 
-impl HashId {
-    pub(crate) fn invalid() -> Self {
-        Self(NonZeroUsize::new(usize::MAX).unwrap())
-    }
-}
-
 pub struct VacantEntryHash<'a> {
     entry: Option<&'a mut EntryHash>,
     hash_id: HashId,
 }
 
 impl<'a> VacantEntryHash<'a> {
-    pub(crate) fn invalid() -> Self {
-        Self {
-            entry: None,
-            hash_id: HashId::invalid(),
-        }
-    }
-
     pub(crate) fn write_with<F>(self, fun: F) -> HashId
     where
         F: FnOnce(&mut EntryHash),

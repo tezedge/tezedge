@@ -99,7 +99,9 @@ impl Node {
         store: &'a mut ContextKeyValueStore,
     ) -> Result<Cow<'a, EntryHash>, HashingError> {
         let hash_id = self.entry_hash_id(store)?;
-        Ok(store.get_hash(hash_id)?.ok_or(HashingError::MissingEntry)?)
+        Ok(store
+            .get_hash(hash_id)?
+            .ok_or_else(|| HashingError::HashIdNotFound { hash_id })?)
     }
 
     pub fn entry_hash_id(&self, store: &mut ContextKeyValueStore) -> Result<HashId, HashingError> {
