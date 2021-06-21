@@ -372,7 +372,10 @@ pub enum ProtocolError {
     #[fail(display = "Validate operation error: {}", reason)]
     ValidateOperationError { reason: ValidateOperationError },
     #[fail(display = "Protocol rpc call error: {}", reason)]
-    ProtocolRpcError { reason: ProtocolRpcError },
+    ProtocolRpcError {
+        reason: ProtocolRpcError,
+        request_path: String,
+    },
     #[fail(display = "Helper Preapply call error: {}", reason)]
     HelpersPreapplyError { reason: HelpersPreapplyError },
     #[fail(display = "Compute path call error: {}", reason)]
@@ -759,6 +762,7 @@ impl ProtocolController {
     /// Call protocol  rpc - internal
     fn call_protocol_rpc_internal(
         &self,
+        request_path: String,
         msg: ProtocolMessage,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
@@ -769,9 +773,13 @@ impl ProtocolController {
             Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
-            NodeMessage::RpcResponse(result) => {
-                result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into())
-            }
+            NodeMessage::RpcResponse(result) => result.map_err(|err| {
+                ProtocolError::ProtocolRpcError {
+                    reason: err,
+                    request_path,
+                }
+                .into()
+            }),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
             }),
@@ -783,7 +791,10 @@ impl ProtocolController {
         &self,
         request: ProtocolRpcRequest,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
-        self.call_protocol_rpc_internal(ProtocolMessage::ProtocolRpcCall(request))
+        self.call_protocol_rpc_internal(
+            request.request.context_path.clone(),
+            ProtocolMessage::ProtocolRpcCall(request),
+        )
     }
 
     /// Call helpers_preapply_* shell service - internal
