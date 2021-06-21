@@ -4690,7 +4690,7 @@ trigger:
 ##############################################################################################################
 ---
 kind: pipeline
-name: delphinet-wrk-tests
+name: florencenet-wrk-tests
 # default build goes with: --network "delphinet"
 # integration test is using env variables:
 # - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
