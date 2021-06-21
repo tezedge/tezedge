@@ -14,9 +14,9 @@ use riker::actors::*;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::p2p::peer::SendMessage;
 use networking::PeerId;
 use shell_integration::InjectBlockOneshotResultCallback;
+use networking::p2p::network_channel::{NetworkChannelRef, NetworkChannelMsg, NetworkChannelTopic};
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{
@@ -42,6 +42,7 @@ pub struct DataRequester {
     pub(crate) block_meta_storage: BlockMetaStorage,
     pub(crate) operations_meta_storage: OperationsMetaStorage,
 
+    network_channel: NetworkChannelRef,
     /// Chain feeder - actor, which is responsible to apply_block to context
     block_applier: ChainFeederRef,
 }
@@ -50,11 +51,13 @@ impl DataRequester {
     pub fn new(
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
+        network_channel: NetworkChannelRef,
         block_applier: ChainFeederRef,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
+            network_channel,
             block_applier,
         }
     }
@@ -124,6 +127,8 @@ impl DataRequester {
                 .chunks(limits::GET_BLOCK_HEADERS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
+                        self.network_channel.clone(),
+                        peer,
                         GetBlockHeadersMessage::new(
                             blocks_to_download
                                 .iter()
@@ -131,11 +136,12 @@ impl DataRequester {
                                 .collect::<Vec<BlockHash>>(),
                         )
                         .into(),
-                        peer,
                     );
                 });
         } else {
             tell_peer(
+                self.network_channel.clone(),
+                peer,
                 GetBlockHeadersMessage::new(
                     blocks_to_download
                         .iter()
@@ -143,7 +149,6 @@ impl DataRequester {
                         .collect::<Vec<BlockHash>>(),
                 )
                 .into(),
-                peer,
             );
         }
 
@@ -244,12 +249,15 @@ impl DataRequester {
                 .chunks(limits::GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        GetOperationsForBlocksMessage::new(blocks_to_download.into()).into(),
+                        self.network_channel.clone(),
                         peer,
+                        GetOperationsForBlocksMessage::new(blocks_to_download.into()).into(),
                     );
                 });
         } else {
             tell_peer(
+                self.network_channel.clone(),
+                peer,
                 GetOperationsForBlocksMessage::new(
                     blocks_to_download
                         .into_iter()
@@ -261,7 +269,6 @@ impl DataRequester {
                         .collect(),
                 )
                 .into(),
-                peer,
             );
         }
 
@@ -495,8 +502,15 @@ impl Drop for RequestedOperationDataLock {
     }
 }
 
-fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerId) {
-    peer.peer_ref.tell(SendMessage::new(msg), None);
+pub fn tell_peer(
+    network_channel: NetworkChannelRef,
+    peer_id: &PeerId,
+    msg: Arc<PeerMessageResponse>,
+) {
+    network_channel.tell(Publish {
+        msg: NetworkChannelMsg::SendMessage(Arc::new(peer_id.clone()), msg),
+        topic: NetworkChannelTopic::NetworkCommands.into(),
+    }, None);
 }
 
 #[cfg(test)]
@@ -590,6 +604,7 @@ mod tests {
 
         // requester instance
         let data_requester = DataRequester::new(
+            network_channel.clone(),
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock,
@@ -664,6 +679,7 @@ mod tests {
 
         // requester instance
         let data_requester = DataRequester::new(
+            network_channel.clone(),
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock,
@@ -813,6 +829,7 @@ mod tests {
 
         // requester instance
         let data_requester = DataRequester::new(
+            network_channel.clone(),
             BlockMetaStorage::new(storage.storage()),
             OperationsMetaStorage::new(storage.storage()),
             chain_feeder_mock,

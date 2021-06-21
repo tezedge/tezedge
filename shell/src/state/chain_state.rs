@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use networking::p2p::network_channel::NetworkChannelRef;
 use riker::actors::*;
 use slog::Logger;
 
@@ -90,12 +91,15 @@ pub struct BlockchainState {
     /// Actor resposible for bootstrapping branches of peers per one chain_id
     peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
+    network_channel: NetworkChannelRef,
+
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
 }
 
 impl BlockchainState {
     pub fn new(
+        network_channel: NetworkChannelRef,
         block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
         chain_id: Arc<ChainId>,
@@ -103,8 +107,9 @@ impl BlockchainState {
     ) -> Self {
         BlockchainState {
             requester: DataRequesterRef::new(DataRequester::new(
-                BlockMetaStorage::new(persistent_storage),
-                OperationsMetaStorage::new(persistent_storage),
+                BlockMetaStorage::new(&persistent_storage),
+                OperationsMetaStorage::new(&persistent_storage),
+                network_channel.clone(),
                 block_applier,
             )),
             peer_branch_bootstrapper: None,
@@ -113,6 +118,7 @@ impl BlockchainState {
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
+            network_channel,
             chain_id,
             chain_genesis_block_hash,
         }
@@ -420,6 +426,7 @@ impl BlockchainState {
                         self.chain_id.clone(),
                         self.requester.clone(),
                         chain_manager_ref.clone(),
+                        self.network_channel.clone(),
                         PeerBranchBootstrapperConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,

@@ -527,14 +527,14 @@ pub mod test_actor {
                 NetworkChannelMsg::PeerMessageReceived(_) => {}
                 NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                     self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
+                        peer_id.public_key_hash.clone(),
                         PeerConnectionStatus::Connected,
                     );
                 }
                 NetworkChannelMsg::BlacklistPeer(..) => {}
                 NetworkChannelMsg::PeerBlacklisted(peer_id) => {
                     self.peers_mirror.write().unwrap().insert(
-                        peer_id.peer_public_key_hash.clone(),
+                        peer_id.public_key_hash.clone(),
                         PeerConnectionStatus::Blacklisted,
                     );
                 }
@@ -573,12 +573,12 @@ pub mod test_actor {
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), anyhow::Error> {
-            let start = Instant::now();
-            let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
+            let start = SystemTime::now();
+            let public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
                 let peers_mirror = peers_mirror.read().unwrap();
-                if let Some(peer_state) = peers_mirror.get(peer_public_key_hash) {
+                if let Some(peer_state) = peers_mirror.get(public_key_hash) {
                     if peer_state == &expected_state {
                         break Ok(());
                     }
@@ -591,7 +591,7 @@ pub mod test_actor {
                     break Err(
                         anyhow::format_err!(
                             "[{}] verify_state - peer_public_key({}) - (expected_state: {:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded!",
-                            peer.name, peer_public_key_hash.to_base58_check(), expected_state, timeout, delay
+                            peer.name, public_key_hash.to_base58_check(), expected_state, timeout, delay
                         )
                     );
                 }

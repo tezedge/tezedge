@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use networking::PeerAddress;
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
 use slog::{debug, info, trace, warn, Logger};
 
@@ -41,7 +42,6 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
 #[actor(
     BroadcastSignal,
     NetworkChannelMsg,
-    SystemEvent,
     ShellChannelMsg,
     LogStats
 )]
@@ -52,7 +52,7 @@ pub struct Monitor {
     shell_channel: ShellChannelRef,
     websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
-    peer_monitors: HashMap<ActorUri, PeerMonitor>,
+    peer_monitors: HashMap<PeerAddress, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
     blocks_monitor: BlocksMonitor,
     block_application_monitor: ApplicationMonitor,
@@ -98,7 +98,7 @@ impl Monitor {
             }
         }
 
-        if let Some(monitor) = self.peer_monitors.get_mut(msg.peer.uri()) {
+        if let Some(monitor) = self.peer_monitors.get_mut(&msg.peer_address) {
             // TODO: TE-190 - reimplement correctly, now not all messages are counted in (Ack, Metadata, ConnectionMessage is not involved)
             let size = if let Some(size_hint) = msg.message.size_hint() {
                 *size_hint
@@ -108,7 +108,7 @@ impl Monitor {
             };
             monitor.incoming_bytes(size);
         } else {
-            debug!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
+            debug!(log, "Missing monitor for peer"; "peer" => msg.peer_address.to_string());
         }
     }
 
@@ -160,7 +160,6 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_actor_terminated(ctx.system.sys_events(), ctx.myself());
         subscribe_to_shell_events(&self.shell_channel, ctx.myself());
         subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
         subscribe_to_network_events(&self.network_channel, ctx.myself());
@@ -202,35 +201,6 @@ impl Actor for Monitor {
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
         self.actor_received_messages_count += 1;
         self.receive(ctx, msg, sender);
-    }
-
-    fn sys_recv(
-        &mut self,
-        ctx: &Context<Self::Msg>,
-        msg: SystemMsg,
-        sender: Option<BasicActorRef>,
-    ) {
-        if let SystemMsg::Event(evt) = msg {
-            self.actor_received_messages_count += 1;
-            self.receive(ctx, evt, sender);
-        }
-    }
-}
-
-impl Receive<SystemEvent> for Monitor {
-    type Msg = MonitorMsg;
-
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SystemEvent, _sender: Sender) {
-        if let SystemEvent::ActorTerminated(evt) = msg {
-            if let Some(monitor) = self.peer_monitors.remove(evt.actor.uri()) {
-                ctx.myself.tell(
-                    BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(
-                        monitor.peer_address(),
-                    )),
-                    None,
-                );
-            }
-        }
     }
 }
 
@@ -284,17 +254,19 @@ impl Receive<NetworkChannelMsg> for Monitor {
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _: Sender) {
         match msg {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
-                let key = peer_id.peer_ref.uri();
                 let previous = self.peer_monitors.insert(
-                    key.clone(),
-                    PeerMonitor::new(peer_id.peer_address, peer_id.peer_id_marker.clone()),
+                    peer_id.address.clone(),
+                    PeerMonitor::new(
+                        peer_id.address.into(),
+                        peer_id.public_key_hash.clone(),
+                    ),
                 );
                 if let Some(previous) = previous {
-                    warn!(ctx.system.log(), "Duplicate monitor found for peer"; "key" => key.to_string(), "peer_address" => previous.peer_address());
+                    warn!(ctx.system.log(), "Duplicate monitor found for peer"; "key" => peer_id.address.to_string());
                 } else {
                     ctx.myself.tell(
                         BroadcastSignal::PeerUpdate(PeerConnectionStatus::connected(
-                            peer_id.peer_address.to_string(),
+                            peer_id.address.to_string(),
                         )),
                         None,
                     );
@@ -303,8 +275,15 @@ impl Receive<NetworkChannelMsg> for Monitor {
             NetworkChannelMsg::PeerMessageReceived(msg) => {
                 self.process_peer_message(msg, &ctx.system.log())
             }
-            NetworkChannelMsg::PeerStalled(actor_uri) => {
-                let _ = self.peer_monitors.remove(&actor_uri);
+            NetworkChannelMsg::PeerDisconnected(peer) | NetworkChannelMsg::PeerBlacklisted(peer) => {
+                if let Some(_) = self.peer_monitors.remove(&peer) {
+                    ctx.myself.tell(
+                        BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(
+                            peer.to_string(),
+                        )),
+                        None,
+                    );
+                }
             }
             _ => (),
         }
