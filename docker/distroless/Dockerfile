@@ -3,7 +3,7 @@ ARG BASE_IMAGE=simplestakingcom/tezedge-libs:latest
 FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
 
 USER root
-RUN apt-get update && apt-get install -y libssl-dev libsqlite3-dev
+RUN apt-get update && apt-get install -y libssl-dev
 
 # Checkout and compile tezedge source code
 ARG tezedge_git="https://github.com/tezedge/tezedge.git"
@@ -40,7 +40,6 @@ COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /usr/lib/x86_64-linux-gnu/libtezos.so
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
-COPY --from=build-env /usr/lib/x86_64-linux-gnu/libsqlite3.so.0 /usr/lib/x86_64-linux-gnu/libsqlite3.so.0
 
 # Copy zcash-params init files for sapling
 COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/sapling-spend.params /
