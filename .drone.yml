@@ -4740,7 +4740,7 @@ steps:
 # just run ocaml 3 florencenet snapshoted nodes
 - name: ocaml-node-florencenet-run-1
   user: root
-  image: tezos/tezos:v8.2
+  image: tezos/tezos:v9-release
   detach: true
   volumes:
     - name: build
@@ -4758,7 +4758,7 @@ steps:
 
 - name: ocaml-node-florencenet-run-2
   user: root
-  image: tezos/tezos:v8.2
+  image: tezos/tezos:v9-release
   detach: true
   volumes:
     - name: build
@@ -4776,7 +4776,7 @@ steps:
 
 - name: ocaml-node-florencenet-run-3
   user: root
-  image: tezos/tezos:v8.2
+  image: tezos/tezos:v9-release
   detach: true
   volumes:
     - name: build
