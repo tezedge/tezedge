@@ -4712,7 +4712,7 @@ environment:
   TOP_BLOCK_HEADER: 20000 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
-  WRK2_TEST_DURATION: 10  # in seconds
+  WRK2_TEST_DURATION: 40  # in seconds
   WRK2_REQ_RATE: 100  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
