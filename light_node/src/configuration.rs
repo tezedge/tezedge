@@ -894,7 +894,7 @@ impl Environment {
 
         let context_storage: TezosContextStorageChoice = args
             .value_of("tezos-context-storage")
-            .unwrap_or("both")
+            .unwrap_or("irmin")
             .parse::<TezosContextStorageChoice>()
             .expect("Provided value cannot be converted to a context storage option");
         let mut tezos_data_dir: PathBuf = args
