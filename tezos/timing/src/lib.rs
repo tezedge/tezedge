@@ -5,10 +5,10 @@ use std::{
     collections::HashMap,
     convert::TryInto,
     path::PathBuf,
+    sync::mpsc::{sync_channel, Receiver, SyncSender},
     time::{Duration, Instant},
 };
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
@@ -278,15 +278,17 @@ pub struct Action {
     pub tezedge_time: Option<f64>,
 }
 
-pub static TIMING_CHANNEL: Lazy<Sender<TimingMessage>> = Lazy::new(|| {
-    let (sender, receiver) = unbounded();
+pub static TIMING_CHANNEL: Lazy<SyncSender<TimingMessage>> = Lazy::new(|| {
+    let (sender, receiver) = sync_channel(10_000);
 
-    std::thread::Builder::new()
+    if let Err(e) = std::thread::Builder::new()
         .name("timing".to_string())
         .spawn(|| {
             start_timing(receiver);
         })
-        .unwrap();
+    {
+        eprintln!("Fail to create timing channel: {:?}", e);
+    }
 
     sender
 });
@@ -295,16 +297,20 @@ fn start_timing(recv: Receiver<TimingMessage>) {
     let mut db_path: Option<PathBuf> = None;
 
     for msg in &recv {
-        match msg {
-            TimingMessage::InitTiming { db_path: path } => {
-                db_path = path.clone();
-                break;
-            }
-            _ => {}
-        }
+        if let TimingMessage::InitTiming { db_path: path } = msg {
+            db_path = path.clone();
+            break;
+        };
     }
 
-    let sql = Timing::init_sqlite(db_path).unwrap();
+    let sql = match Timing::init_sqlite(db_path) {
+        Ok(sql) => sql,
+        Err(e) => {
+            eprintln!("Fail to initialize timing {:?}", e);
+            return;
+        }
+    };
+
     let mut timing = Timing::new();
     let mut transaction = None;
 
@@ -396,7 +402,7 @@ impl Timing {
 
             let timestamp_secs = started_at_timestamp.as_secs();
             let timestamp_nanos = started_at_timestamp.subsec_nanos();
-            let block_id = self.current_block.as_ref().unwrap().0.as_str();
+            let block_id = self.current_block.as_ref().map(|b| b.0.as_str());
 
             let mut query = sql.prepare_cached(
                 "
@@ -483,7 +489,7 @@ impl Timing {
             _ => {}
         };
 
-        let hash = hash.unwrap();
+        let hash = hash.unwrap(); // `hash` is never None, it would have matched on the statement above
         let hash_string = hash_to_string(hash.as_ref());
 
         if let Some(id) = Self::get_id_on_table(sql, table_name, &hash_string)? {
@@ -605,27 +611,31 @@ impl Timing {
         // We probably want to also add some kind of garbage collection to only keep
         // values for the last N cycles, and not everything since the beginning.
         if false {
-            let mut stmt = transaction.as_ref().unwrap().prepare_cached(
-            "
+            if let Some(transaction) = transaction.as_ref() {
+                let mut stmt = transaction.prepare_cached(
+                    "
         INSERT INTO actions
           (name, key_root, key_id, irmin_time, tezedge_time, block_id, operation_id, context_id)
         VALUES
           (:name, :key_root, :key_id, :irmin_time, :tezedge_time, :block_id, :operation_id, :context_id);
-            "
-        )?;
+                    "
+                )?;
 
-            stmt.execute(named_params! {
-                ":name": action_name,
-                ":key_root": &root,
-                ":key_id": &key_id,
-                ":irmin_time": &action.irmin_time,
-                ":tezedge_time": &action.tezedge_time,
-                ":block_id": block_id,
-                ":operation_id": operation_id,
-                ":context_id": context_id
-            })?;
+                stmt.execute(named_params! {
+                    ":name": action_name,
+                    ":key_root": &root,
+                    ":key_id": &key_id,
+                    ":irmin_time": &action.irmin_time,
+                    ":tezedge_time": &action.tezedge_time,
+                    ":block_id": block_id,
+                    ":operation_id": operation_id,
+                    ":context_id": context_id
+                })?;
 
-            drop(stmt);
+                drop(stmt);
+            } else {
+                eprintln!("Timing cannot insert action: missing `transaction`");
+            }
         }
 
         self.nactions = self.nactions.saturating_add(1);
@@ -659,7 +669,13 @@ impl Timing {
                         ..Default::default()
                     };
                     global_stats.insert(root.to_string(), stats);
-                    global_stats.get_mut(root).unwrap()
+                    match global_stats.get_mut(root) {
+                        Some(entry) => entry,
+                        None => {
+                            eprintln!("Fail to get timing entry {:?}", root);
+                            continue;
+                        }
+                    }
                 }
             };
 
@@ -687,7 +703,13 @@ impl Timing {
                 let mut stats = ActionStats::default();
                 stats.data.root = root.to_string();
                 self.block_stats.insert(root.to_string(), stats);
-                self.block_stats.get_mut(root).unwrap()
+                match self.block_stats.get_mut(root) {
+                    Some(entry) => entry,
+                    None => {
+                        eprintln!("Fail to get timing entry {:?}", root);
+                        return;
+                    }
+                }
             }
         };
 
@@ -721,11 +743,7 @@ impl Timing {
             action.compute_mean();
         }
 
-        let block_id = self
-            .current_block
-            .as_ref()
-            .map(|(id, _)| id.as_str())
-            .unwrap();
+        let block_id = self.current_block.as_ref().map(|(id, _)| id.as_str());
 
         for (root, action_stats) in self.block_stats.iter() {
             let root = root.as_str();

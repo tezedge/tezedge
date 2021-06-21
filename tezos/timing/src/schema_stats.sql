@@ -40,10 +40,10 @@ CREATE TABLE IF NOT EXISTS actions (
   block_id INTEGER DEFAULT NULL,
   operation_id INTEGER DEFAULT NULL,
   context_id INTEGER DEFAULT NULL,
-  FOREIGN KEY(key_id) REFERENCES keys(id),
-  FOREIGN KEY(block_id) REFERENCES blocks(id),
-  FOREIGN KEY(operation_id) REFERENCES operations(id),
-  FOREIGN KEY(context_id) REFERENCES contexts(id)
+  FOREIGN KEY(key_id) REFERENCES keys(id) DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY(block_id) REFERENCES blocks(id) DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY(operation_id) REFERENCES operations(id) DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY(context_id) REFERENCES contexts(id) DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS block_action_stats (
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS block_action_stats (
   irmin_remove_time REAL DEFAULT NULL,
 
   block_id INTEGER DEFAULT NULL,
-  FOREIGN KEY(block_id) REFERENCES blocks(id)
+  FOREIGN KEY(block_id) REFERENCES blocks(id) DEFERRABLE INITIALLY DEFERRED
 );
 
 CREATE TABLE IF NOT EXISTS global_action_stats (

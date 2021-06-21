@@ -21,21 +21,21 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
         None
     };
 
-    TIMING_CHANNEL
-        .send(TimingMessage::SetBlock {
-            block_hash,
-            timestamp,
-            instant,
-        })
-        .unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::SetBlock {
+        block_hash,
+        timestamp,
+        instant,
+    }) {
+        eprintln!("Timing set_block hook error = {:?}", e);
+    }
 }
 
 pub fn set_operation(rt: &OCamlRuntime, operation_hash: OCamlRef<Option<OCamlOperationHash>>) {
     let operation_hash: Option<OperationHash> = operation_hash.to_rust(rt);
 
-    TIMING_CHANNEL
-        .send(TimingMessage::SetOperation(operation_hash))
-        .unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::SetOperation(operation_hash)) {
+        eprintln!("Timing set_operation hook error = {:?}", e);
+    }
 }
 
 pub fn checkout(
@@ -48,13 +48,13 @@ pub fn checkout(
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
-    TIMING_CHANNEL
-        .send(TimingMessage::Checkout {
-            context_hash,
-            irmin_time,
-            tezedge_time,
-        })
-        .unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Checkout {
+        context_hash,
+        irmin_time,
+        tezedge_time,
+    }) {
+        eprintln!("Timing checkout hook error = {:?}", e);
+    }
 }
 
 pub fn commit(
@@ -66,12 +66,12 @@ pub fn commit(
     let irmin_time = get_time(irmin_time);
     let tezedge_time = get_time(tezedge_time);
 
-    TIMING_CHANNEL
-        .send(TimingMessage::Commit {
-            irmin_time,
-            tezedge_time,
-        })
-        .unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Commit {
+        irmin_time,
+        tezedge_time,
+    }) {
+        eprintln!("Timing commit hook error = {:?}", e);
+    }
 }
 
 pub fn context_action(
@@ -104,15 +104,17 @@ pub fn context_action(
         tezedge_time,
     };
 
-    TIMING_CHANNEL.send(TimingMessage::Action(action)).unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::Action(action)) {
+        eprintln!("Timing context_action hook error = {:?}", e);
+    }
 }
 
 pub fn init_timing(db_path: String) {
-    TIMING_CHANNEL
-        .send(TimingMessage::InitTiming {
-            db_path: Some(db_path.into()),
-        })
-        .unwrap();
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::InitTiming {
+        db_path: Some(db_path.into()),
+    }) {
+        eprintln!("Timing init_timing hook error = {:?}", e);
+    }
 }
 
 fn get_time(time: f64) -> Option<f64> {
