@@ -4709,6 +4709,7 @@ environment:
   NETWORK: florencenet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
+  TOP_BLOCK_HEADER: 20000 # also check parameter --stop=
   WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   WRK2_TEST_DURATION: 10  # in seconds
@@ -4796,7 +4797,7 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+    - tezos-node-bootstrap bootstrap --level=$${TOP_BLOCK_HEADER} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-florencenet-run
   image: simplestakingcom/tezedge-ci-builder:latest
@@ -4853,7 +4854,7 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap bootstrap --level=$${TOP_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # now we have prepared ocaml and tezedge node, that can run wrk tests
 
@@ -4874,21 +4875,7 @@ steps:
 - name: bootstrapping-tezedge-target-branch
   image: simplestakingcom/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
-  when:
-    ref:
-    - refs/pull/*/head
-
-#  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
-- name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
-  image: akoptelov/tezos-node-bootstrap:latest
-  pull: always
-  user: root
-  volumes:
-    - name: perf
-      path: /perf
-  commands:
-    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=10 --throughput-threshold=10 --latency-no-fail --url-file=/perf/wrk-rpc-list.txt
+    - tezos-node-bootstrap bootstrap --level=$${TOP_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
     ref:
     - refs/pull/*/head
@@ -4903,6 +4890,20 @@ steps:
       path: /perf
   commands:
     - tezos-node-bootstrap latency-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK2_TEST_DURATION}  --wrk-request-rate=$${WRK2_REQ_RATE} --url-file=/perf/wrk-rpc-list.txt
+  when:
+    ref:
+    - refs/pull/*/head
+
+#  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
+- name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
+  image: akoptelov/tezos-node-bootstrap:latest
+  pull: always
+  user: root
+  volumes:
+    - name: perf
+      path: /perf
+  commands:
+    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=10 --throughput-threshold=10 --latency-no-fail --url-file=/perf/wrk-rpc-list.txt
   when:
     ref:
     - refs/pull/*/head
