@@ -645,6 +645,7 @@ pub async fn preapply_block(
                 reason:
                     ProtocolError::ProtocolRpcError {
                         reason: ProtocolRpcError::FailedToCallProtocolRpc(message),
+                        ..
                     },
             }) = e.as_fail().downcast_ref::<ProtocolServiceError>()
             {
