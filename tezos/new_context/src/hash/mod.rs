@@ -337,8 +337,8 @@ pub(crate) fn hash_entry(
     store: &mut ContextKeyValueStore,
 ) -> Result<HashId, HashingError> {
     match entry {
-        Entry::Commit(commit) => hash_commit(&commit, store),
-        Entry::Tree(tree) => hash_tree(&tree, store),
+        Entry::Commit(commit) => hash_commit(commit, store),
+        Entry::Tree(tree) => hash_tree(tree, store),
         Entry::Blob(blob) => hash_blob(blob, store),
     }
 }

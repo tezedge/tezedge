@@ -329,16 +329,43 @@ struct SerializingData<'a> {
     referenced_older_entries: Vec<HashId>,
     store: &'a mut ContextKeyValueStore,
     serialized: Vec<u8>,
+    /// When false, do not serialize or keeps older entries
+    commit_to_storage: bool,
 }
 
 impl<'a> SerializingData<'a> {
-    fn new(store: &'a mut ContextKeyValueStore) -> Self {
+    fn new(store: &'a mut ContextKeyValueStore, commit_to_storage: bool) -> Self {
+        let cap = if commit_to_storage { 2048 } else { 0 };
+
         Self {
-            batch: Vec::with_capacity(2048),
-            referenced_older_entries: Vec::with_capacity(2048),
+            batch: Vec::with_capacity(cap),
+            referenced_older_entries: Vec::with_capacity(cap),
             store,
-            serialized: Vec::with_capacity(2048),
+            serialized: Vec::with_capacity(cap),
+            commit_to_storage,
         }
+    }
+
+    fn add_serialized_entry(
+        &mut self,
+        entry_hash: HashId,
+        entry: &Entry,
+    ) -> Result<(), MerkleError> {
+        if self.commit_to_storage {
+            self.serialized.clear();
+            bincode::serialize_into(&mut self.serialized, entry)?;
+            self.batch
+                .push((entry_hash, Arc::from(self.serialized.as_slice())));
+        }
+        Ok(())
+    }
+
+    fn add_older_entry(&mut self, node: &Node) -> Result<(), MerkleError> {
+        if self.commit_to_storage {
+            self.referenced_older_entries
+                .push(node.entry_hash_id(self.store)?);
+        }
+        Ok(())
     }
 }
 
@@ -657,6 +684,7 @@ impl WorkingTree {
         message: String,
         parent_commit_hash: Option<HashId>,
         store: &mut ContextKeyValueStore,
+        commit_to_storage: bool,
     ) -> Result<(HashId, Vec<(HashId, Arc<[u8]>)>, Vec<HashId>), MerkleError> {
         //let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
         let root_hash = self.get_working_tree_root_hash(store)?;
@@ -673,7 +701,7 @@ impl WorkingTree {
         let commit_hash = hash_commit(&new_commit, store)?;
 
         // produce entries to be persisted to storage
-        let mut data = SerializingData::new(store);
+        let mut data = SerializingData::new(store, commit_to_storage);
         self.get_entries_recursively(&entry, commit_hash, Some(root.as_ref()), &mut data)?;
 
         Ok((commit_hash, data.batch, data.referenced_older_entries))
@@ -830,10 +858,7 @@ impl WorkingTree {
         data: &mut SerializingData,
     ) -> Result<(), MerkleError> {
         // Add entry to batch
-        data.serialized.clear();
-        bincode::serialize_into(&mut data.serialized, entry)?;
-        data.batch
-            .push((entry_hash, Arc::from(data.serialized.as_slice())));
+        data.add_serialized_entry(entry_hash, entry)?;
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -843,8 +868,7 @@ impl WorkingTree {
                 tree.iter()
                     .map(|(_, child_node)| {
                         if child_node.commited.get() {
-                            data.referenced_older_entries
-                                .push(child_node.entry_hash_id(data.store)?);
+                            data.add_older_entry(&child_node)?;
                             return Ok(());
                         }
                         child_node.commited.set(true);

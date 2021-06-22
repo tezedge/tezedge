@@ -24,22 +24,10 @@ use crate::{
     ContextKeyValueStore, StringTreeMap,
 };
 use crate::{working_tree::working_tree::WorkingTree, IndexApi};
-// use crate::{
-// hash::EntryHash,
-// persistent::DBError,
-// working_tree::{
-//     working_tree_stats::MerkleStoragePerfReport, Commit, Entry, KeyFragment, Node, Tree,
-// },
-// StringTreeMap,
-// };
 use crate::{
     working_tree::working_tree::{FoldDepth, TreeWalker},
     ContextKeyOwned,
 };
-// use crate::{
-//     working_tree::working_tree::{MerkleError, WorkingTree},
-//     IndexApi,
-// };
 use crate::{
     ContextError, ContextKey, ContextValue, ProtocolContextApi, ShellContextApi, StringTreeEntry,
     TreeId,
@@ -679,6 +667,7 @@ impl ShellContextApi for TezedgeContext {
             message,
             self.parent_commit_hash,
             &mut *repository,
+            true,
         )?;
         // FIXME: only write entries if there are any, empty commits should not produce anything
         repository.write_batch(batch)?;
@@ -700,16 +689,14 @@ impl ShellContextApi for TezedgeContext {
         let date: u64 = date.try_into()?;
         let mut repository = self.index.repository.write()?;
 
-        let (commit_hash_id, batch, _referenced_older_entries) = self.tree.prepare_commit(
+        let (commit_hash_id, _, _) = self.tree.prepare_commit(
             date,
             author,
             message,
             self.parent_commit_hash,
             &mut *repository,
+            false,
         )?;
-
-        repository.write_batch(batch)?;
-        repository.put_context_hash(commit_hash_id)?;
         let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
 
         Ok(commit_hash)
