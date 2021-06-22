@@ -309,16 +309,17 @@ pub(crate) fn hash_commit(
         .ok_or(HashingError::ValueExpected("root_hash"))?;
     hasher.update(root_hash.as_ref());
 
-    if commit.parent_commit_hash.is_none() {
-        hasher.update(&(0_u64).to_be_bytes());
-    } else {
+    if let Some(parent) = commit.parent_commit_hash {
         let parent_commit_hash = store
-            .get_hash(commit.parent_commit_hash.unwrap())?
+            .get_hash(parent)?
             .ok_or(HashingError::ValueExpected("parent_commit_hash"))?;
         hasher.update(&(1_u64).to_be_bytes()); // # of parents; we support only 1
         hasher.update(&(parent_commit_hash.len() as u64).to_be_bytes());
         hasher.update(&parent_commit_hash.as_ref());
+    } else {
+        hasher.update(&(0_u64).to_be_bytes());
     }
+
     hasher.update(&(commit.time as u64).to_be_bytes());
     hasher.update(&(commit.author.len() as u64).to_be_bytes());
     hasher.update(&commit.author.clone().into_bytes());

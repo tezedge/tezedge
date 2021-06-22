@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::Arc,
@@ -79,15 +82,20 @@ impl Cycles {
 
 impl GCThread {
     pub(crate) fn run(mut self) {
-        while let Ok(msg) = self.recv.recv() {
-            match msg {
-                Command::StartNewCycle {
+        loop {
+            match self.recv.recv() {
+                Ok(Command::StartNewCycle {
                     values_in_cycle,
                     new_ids,
-                } => self.start_new_cycle(values_in_cycle, new_ids),
-                Command::MarkReused { reused } => self.mark_reused(reused),
+                }) => self.start_new_cycle(values_in_cycle, new_ids),
+                Ok(Command::MarkReused { reused }) => self.mark_reused(reused),
+                Err(e) => {
+                    eprintln!("GC channel is closed {:?}", e);
+                    break;
+                }
             }
         }
+        eprintln!("GC exited");
     }
 
     fn start_new_cycle(
@@ -113,8 +121,8 @@ impl GCThread {
             (&unused[..], &[][..])
         };
 
-        if self.free_ids.push_slice(&to_send).is_err() {
-            eprintln!("GC: Fail to send free ids");
+        if let Err(e) = self.free_ids.push_slice(&to_send) {
+            eprintln!("GC: Fail to send free ids {:?}", e);
             self.pending.extend_from_slice(&unused);
             return;
         }
@@ -138,8 +146,8 @@ impl GCThread {
         let start = self.pending.len() - n_to_send;
         let to_send = &self.pending[start..];
 
-        if self.free_ids.push_slice(&to_send).is_err() {
-            eprintln!("GC: Fail to send free ids");
+        if let Err(e) = self.free_ids.push_slice(&to_send) {
+            eprintln!("GC: Fail to send free ids {:?}", e);
             return;
         }
 

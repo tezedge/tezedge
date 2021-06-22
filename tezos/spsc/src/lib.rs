@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{fmt::Debug, mem::MaybeUninit};
 
 use crate::sync::{Acquire, Arc, AtomicUsize, Relaxed, Release, UnsafeCell};

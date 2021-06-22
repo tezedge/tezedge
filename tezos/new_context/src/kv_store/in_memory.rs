@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{
     borrow::Cow,
     collections::{hash_map::DefaultHasher, BTreeMap, HashMap, VecDeque},

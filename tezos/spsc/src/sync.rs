@@ -1,3 +1,6 @@
+// Copyright (c) SimpleStaking and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 #[cfg(not(loom))]
 pub(crate) use std::sync::{
     atomic::{
