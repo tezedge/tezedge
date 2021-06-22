@@ -11,7 +11,7 @@ use failure::Fail;
 
 use crypto::hash::FromBytesError;
 
-use crate::kv_store::{readonly_ipc::ContextServiceError, HashId};
+use crate::kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError};
 use crate::persistent::codec::SchemaError;
 
 /// Possible errors for schema
@@ -48,6 +48,14 @@ pub enum DBError {
     MissingEntry { hash_id: HashId },
     #[fail(display = "Attempt to hash tree on a readonly protocol runner")]
     AttemptToHashOnReadOnly,
+    #[fail(display = "Conversion from/to HashId failed")]
+    HashIdFailed,
+}
+
+impl From<HashIdError> for DBError {
+    fn from(_: HashIdError) -> Self {
+        DBError::HashIdFailed
+    }
 }
 
 impl From<SchemaError> for DBError {

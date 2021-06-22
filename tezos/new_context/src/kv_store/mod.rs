@@ -3,8 +3,11 @@
 
 //! This sub module provides different KV alternatives for context persistence
 
-use std::num::NonZeroUsize;
 use std::str::FromStr;
+use std::{
+    convert::{TryFrom, TryInto},
+    num::NonZeroUsize,
+};
 
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -22,16 +25,25 @@ pub const INMEM: &str = "inmem";
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HashId(NonZeroUsize); // NonZeroUsize so that `Option<HashId>` is 8 bytes
 
-impl Into<usize> for HashId {
-    fn into(self) -> usize {
-        self.0.get().checked_sub(1).unwrap()
+pub struct HashIdError;
+
+impl TryInto<usize> for HashId {
+    type Error = HashIdError;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        self.0.get().checked_sub(1).ok_or(HashIdError)
     }
 }
 
-impl From<usize> for HashId {
-    fn from(v: usize) -> Self {
-        let v = v.checked_add(1).unwrap();
-        HashId(NonZeroUsize::new(v).unwrap())
+impl TryFrom<usize> for HashId {
+    type Error = HashIdError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        value
+            .checked_add(1)
+            .and_then(NonZeroUsize::new)
+            .map(HashId)
+            .ok_or(HashIdError)
     }
 }
 
@@ -39,18 +51,22 @@ const SHIFT: usize = (std::mem::size_of::<usize>() * 8) - 1;
 const READONLY: usize = 1 << SHIFT;
 
 impl HashId {
-    fn set_readonly_runner(&mut self) {
+    fn set_readonly_runner(&mut self) -> Result<(), HashIdError> {
         let hash_id = self.0.get();
 
-        self.0 = NonZeroUsize::new(hash_id | READONLY).unwrap();
+        self.0 = NonZeroUsize::new(hash_id | READONLY).ok_or(HashIdError)?;
+
+        Ok(())
     }
 
-    fn get_readonly_id(self) -> Option<HashId> {
+    fn get_readonly_id(self) -> Result<Option<HashId>, HashIdError> {
         let hash_id = self.0.get();
         if hash_id & READONLY != 0 {
-            Some(HashId(NonZeroUsize::new(hash_id & !READONLY).unwrap()))
+            Ok(Some(HashId(
+                NonZeroUsize::new(hash_id & !READONLY).ok_or(HashIdError)?,
+            )))
         } else {
-            None
+            Ok(None)
         }
     }
 }
@@ -71,9 +87,9 @@ impl<'a> VacantEntryHash<'a> {
         self.hash_id
     }
 
-    pub(crate) fn set_readonly_runner(mut self) -> Self {
-        self.hash_id.set_readonly_runner();
-        self
+    pub(crate) fn set_readonly_runner(mut self) -> Result<Self, HashIdError> {
+        self.hash_id.set_readonly_runner()?;
+        Ok(self)
     }
 }
 

@@ -26,7 +26,6 @@ pub(crate) enum Command {
     MarkReused {
         reused: Vec<HashId>,
     },
-    Exit,
 }
 
 pub(crate) struct Cycles {
@@ -57,15 +56,17 @@ impl Cycles {
         }
 
         let value = value?;
-        self.list
-            .back_mut()
-            .unwrap()
-            .insert(hash_id, Some(Arc::clone(&value)));
+        if let Some(v) = self.list.back_mut() {
+            v.insert(hash_id, Some(Arc::clone(&value)));
+        } else {
+            eprintln!("GC: Failed to insert value in Cycles")
+        }
+
         return Some(value);
     }
 
     fn roll(&mut self, new_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>) -> Vec<HashId> {
-        let unused = self.list.pop_front().unwrap();
+        let unused = self.list.pop_front().unwrap_or_else(BTreeMap::new);
         self.list.push_back(new_cycle);
 
         let mut vec = Vec::with_capacity(unused.len());
@@ -85,9 +86,6 @@ impl GCThread {
                     new_ids,
                 } => self.start_new_cycle(values_in_cycle, new_ids),
                 Command::MarkReused { reused } => self.mark_reused(reused),
-                Command::Exit => {
-                    return;
-                }
             }
         }
     }
@@ -115,7 +113,11 @@ impl GCThread {
             (&unused[..], &[][..])
         };
 
-        self.free_ids.push_slice(&to_send).unwrap();
+        if self.free_ids.push_slice(&to_send).is_err() {
+            eprintln!("GC: Fail to send free ids");
+            self.pending.extend_from_slice(&unused);
+            return;
+        }
 
         if !pending.is_empty() {
             self.pending.extend_from_slice(pending);
@@ -136,7 +138,11 @@ impl GCThread {
         let start = self.pending.len() - n_to_send;
         let to_send = &self.pending[start..];
 
-        self.free_ids.push_slice(&to_send).unwrap();
+        if self.free_ids.push_slice(&to_send).is_err() {
+            eprintln!("GC: Fail to send free ids");
+            return;
+        }
+
         self.pending.truncate(start);
     }
 

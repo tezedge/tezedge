@@ -46,8 +46,8 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
-        if let Some(hash_id) = hash_id.get_readonly_id() {
-            Ok(self.hashes.contains(hash_id))
+        if let Some(hash_id) = hash_id.get_readonly_id()? {
+            self.hashes.contains(hash_id).map_err(Into::into)
         } else {
             self.client
                 .contains_entry(hash_id)
@@ -67,8 +67,8 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError> {
-        if let Some(hash_id) = hash_id.get_readonly_id() {
-            Ok(self.hashes.get_hash(hash_id).map(|h| Cow::Borrowed(h)))
+        if let Some(hash_id) = hash_id.get_readonly_id()? {
+            Ok(self.hashes.get_hash(hash_id)?.map(|h| Cow::Borrowed(h)))
         } else {
             self.client
                 .get_hash(hash_id)
@@ -77,8 +77,8 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     }
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
-        if let Some(hash_id) = hash_id.get_readonly_id() {
-            Ok(self.hashes.get_value(hash_id).map(|v| Cow::Borrowed(v)))
+        if let Some(hash_id) = hash_id.get_readonly_id()? {
+            Ok(self.hashes.get_value(hash_id)?.map(|v| Cow::Borrowed(v)))
         } else {
             self.client
                 .get_value(hash_id)
@@ -87,7 +87,10 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     }
 
     fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
-        Ok(self.hashes.get_vacant_entry_hash().set_readonly_runner())
+        self.hashes
+            .get_vacant_entry_hash()?
+            .set_readonly_runner()
+            .map_err(Into::into)
     }
 }
 

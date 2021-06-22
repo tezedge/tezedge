@@ -19,7 +19,7 @@ use crate::{
 
 use tezos_spsc::Consumer;
 
-use super::entries::Entries;
+use super::{entries::Entries, HashIdError};
 use super::{HashId, VacantEntryHash};
 
 #[derive(Debug)]
@@ -43,39 +43,46 @@ impl HashValueStore {
         }
     }
 
-    pub(crate) fn get_vacant_entry_hash(&mut self) -> VacantEntryHash {
+    pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
-            self.values[free_id] = None;
-            (free_id, &mut self.hashes[free_id])
+            self.values.set(free_id, None)?;
+            (free_id, self.hashes.get_mut(free_id)?.ok_or(HashIdError)?)
         } else {
-            self.hashes.get_vacant_entry()
+            self.hashes.get_vacant_entry()?
         };
         self.new_ids.push(hash_id);
 
-        VacantEntryHash {
+        Ok(VacantEntryHash {
             entry: Some(entry),
             hash_id,
-        }
+        })
     }
 
     fn get_free_id(&mut self) -> Option<HashId> {
         self.free_ids.as_mut()?.pop().ok()
     }
 
-    pub(crate) fn insert_value_at(&mut self, hash_id: HashId, value: Arc<[u8]>) {
-        self.values.insert_at(hash_id, Some(value));
+    pub(crate) fn insert_value_at(
+        &mut self,
+        hash_id: HashId,
+        value: Arc<[u8]>,
+    ) -> Result<(), HashIdError> {
+        self.values.insert_at(hash_id, Some(value))
     }
 
-    pub(crate) fn get_hash(&self, hash_id: HashId) -> Option<&EntryHash> {
+    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, HashIdError> {
         self.hashes.get(hash_id)
     }
 
-    pub(crate) fn get_value(&self, hash_id: HashId) -> Option<&[u8]> {
-        self.values.get(hash_id)?.as_ref().map(|v| v.as_ref())
+    pub(crate) fn get_value(&self, hash_id: HashId) -> Result<Option<&[u8]>, HashIdError> {
+        match self.values.get(hash_id)? {
+            Some(value) => Ok(value.as_ref().map(|v| v.as_ref())),
+            None => return Ok(None),
+        }
     }
 
-    pub(crate) fn contains(&self, hash_id: HashId) -> bool {
-        self.values.get(hash_id).unwrap_or(&None).is_some()
+    pub(crate) fn contains(&self, hash_id: HashId) -> Result<bool, HashIdError> {
+        Ok(self.values.get(hash_id)?.unwrap_or(&None).is_some())
     }
 
     fn take_new_ids(&mut self) -> Vec<HashId> {
@@ -128,8 +135,7 @@ impl Persistable for InMemory {
 
 impl KeyValueStoreBackend for InMemory {
     fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
-        self.write_batch(batch);
-        Ok(())
+        self.write_batch(batch)
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
@@ -145,15 +151,15 @@ impl KeyValueStoreBackend for InMemory {
     }
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError> {
-        Ok(self.get_hash(hash_id).map(|h| Cow::Borrowed(h)))
+        Ok(self.get_hash(hash_id)?.map(|h| Cow::Borrowed(h)))
     }
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
-        Ok(self.get_value(hash_id).map(|v| Cow::Borrowed(v)))
+        Ok(self.get_value(hash_id)?.map(|v| Cow::Borrowed(v)))
     }
 
     fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
-        Ok(self.get_vacant_entry_hash())
+        self.get_vacant_entry_hash()
     }
 }
 
@@ -190,49 +196,53 @@ impl InMemory {
         }
     }
 
-    pub(crate) fn get_vacant_entry_hash(&mut self) -> VacantEntryHash {
-        self.hashes.get_vacant_entry_hash()
+    pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
+        self.hashes.get_vacant_entry_hash().map_err(Into::into)
     }
 
-    pub(crate) fn get_hash(&self, hash_id: HashId) -> Option<&EntryHash> {
-        self.hashes.get_hash(hash_id)
+    pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, DBError> {
+        self.hashes.get_hash(hash_id).map_err(Into::into)
     }
 
-    pub(crate) fn get_value(&self, hash_id: HashId) -> Option<&[u8]> {
-        self.hashes.get_value(hash_id)
+    pub(crate) fn get_value(&self, hash_id: HashId) -> Result<Option<&[u8]>, DBError> {
+        self.hashes.get_value(hash_id).map_err(Into::into)
     }
 
     fn contains(&self, hash_id: HashId) -> Result<bool, DBError> {
-        Ok(self.hashes.contains(hash_id))
+        self.hashes.contains(hash_id).map_err(Into::into)
     }
 
-    pub fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) {
+    pub fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError> {
         for (hash_id, value) in batch {
-            self.hashes.insert_value_at(hash_id, Arc::clone(&value));
+            self.hashes.insert_value_at(hash_id, Arc::clone(&value))?;
             self.current_cycle.insert(hash_id, Some(value));
         }
+        Ok(())
     }
 
     pub fn new_cycle_started(&mut self) {
         let values_in_cycle = std::mem::take(&mut self.current_cycle);
         let new_ids = self.hashes.take_new_ids();
 
-        self.sender
-            .send(Command::StartNewCycle {
-                values_in_cycle,
-                new_ids,
-            })
-            .unwrap();
+        if let Err(e) = self.sender.try_send(Command::StartNewCycle {
+            values_in_cycle,
+            new_ids,
+        }) {
+            eprintln!("Fail to send Command::StartNewCycle to GC worker: {:?}", e);
+        }
 
-        let unused = self.context_hashes_cycles.pop_front().unwrap();
-        for hash in unused {
-            self.context_hashes.remove(&hash);
+        if let Some(unused) = self.context_hashes_cycles.pop_front() {
+            for hash in unused {
+                self.context_hashes.remove(&hash);
+            }
         }
         self.context_hashes_cycles.push_back(Default::default());
     }
 
     pub fn block_applied(&mut self, reused: Vec<HashId>) {
-        self.sender.send(Command::MarkReused { reused }).unwrap()
+        if let Err(e) = self.sender.send(Command::MarkReused { reused }) {
+            eprintln!("Fail to send Command::MarkReused to GC worker: {:?}", e);
+        }
     }
 
     pub fn get_context_hash_impl(&self, context_hash: &ContextHash) -> Option<HashId> {
@@ -246,7 +256,7 @@ impl InMemory {
     pub fn put_context_hash_impl(&mut self, commit_hash_id: HashId) -> Result<(), DBError> {
         let commit_hash = self
             .hashes
-            .get_hash(commit_hash_id)
+            .get_hash(commit_hash_id)?
             .ok_or(DBError::MissingEntry {
                 hash_id: commit_hash_id,
             })?;
@@ -256,14 +266,16 @@ impl InMemory {
         let hashed = hasher.finish();
 
         self.context_hashes.insert(hashed, commit_hash_id);
-        self.context_hashes_cycles.back_mut().unwrap().push(hashed);
+        self.context_hashes_cycles
+            .back_mut()
+            .map(|v| v.push(hashed));
 
         Ok(())
     }
 
     #[cfg(test)]
     pub(crate) fn put_entry_hash(&mut self, entry_hash: EntryHash) -> HashId {
-        let vacant = self.get_vacant_entry_hash();
+        let vacant = self.get_vacant_entry_hash().unwrap();
         vacant.write_with(|entry| *entry = entry_hash)
     }
 }

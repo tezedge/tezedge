@@ -1,4 +1,7 @@
-use std::marker::PhantomData;
+use std::{
+    convert::{TryFrom, TryInto},
+    marker::PhantomData,
+};
 
 #[derive(Debug)]
 pub struct Entries<K, V> {
@@ -17,52 +20,42 @@ impl<K, V> Entries<K, V> {
 
 impl<K, T> Entries<K, T>
 where
-    K: Into<usize>,
+    K: TryInto<usize>,
 {
-    pub fn get(&self, key: K) -> Option<&T> {
-        self.entries.get(key.into())
+    pub fn set(&mut self, key: K, value: T) -> Result<(), K::Error> {
+        self.entries[key.try_into()?] = value;
+        Ok(())
+    }
+
+    pub fn get(&self, key: K) -> Result<Option<&T>, K::Error> {
+        Ok(self.entries.get(key.try_into()?))
+    }
+
+    pub fn get_mut(&mut self, key: K) -> Result<Option<&mut T>, K::Error> {
+        Ok(self.entries.get_mut(key.try_into()?))
     }
 }
 
 impl<K, V> Entries<K, V>
 where
-    K: Into<usize>,
-    K: From<usize>,
+    K: TryInto<usize>,
+    K: TryFrom<usize>,
     V: Default,
 {
-    pub fn get_vacant_entry(&mut self) -> (K, &mut V) {
+    pub fn get_vacant_entry(&mut self) -> Result<(K, &mut V), <K as TryFrom<usize>>::Error> {
         let current = self.entries.len();
         self.entries.push(Default::default());
-        (K::from(current), &mut self.entries[current])
+        Ok((K::try_from(current)?, &mut self.entries[current]))
     }
 
-    pub fn insert_at(&mut self, key: K, value: V) {
-        let index: usize = key.into();
+    pub fn insert_at(&mut self, key: K, value: V) -> Result<(), <K as TryInto<usize>>::Error> {
+        let index: usize = key.try_into()?;
 
         if index >= self.entries.len() {
             self.entries.resize_with(index + 1, V::default);
         }
 
         self.entries[index] = value;
-    }
-}
-
-impl<K, V> std::ops::Index<K> for Entries<K, V>
-where
-    K: Into<usize>,
-{
-    type Output = V;
-
-    fn index(&self, index: K) -> &Self::Output {
-        &self.entries[index.into()]
-    }
-}
-
-impl<K, V> std::ops::IndexMut<K> for Entries<K, V>
-where
-    K: Into<usize>,
-{
-    fn index_mut(&mut self, index: K) -> &mut Self::Output {
-        &mut self.entries[index.into()]
+        Ok(())
     }
 }

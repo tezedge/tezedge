@@ -458,7 +458,7 @@ mod tests {
 
         assert_eq!(
             calculated_commit_hash.as_ref(),
-            repo.get_hash(hash_id).unwrap()
+            repo.get_hash(hash_id).unwrap().unwrap()
         );
         assert_eq!(
             expected_commit_hash,
@@ -537,7 +537,7 @@ mod tests {
 
         assert_eq!(
             calculated_tree_hash.as_ref(),
-            repo.get_hash(hash_id).unwrap()
+            repo.get_hash(hash_id).unwrap().unwrap()
         );
         assert_eq!(
             calculated_tree_hash.as_ref(),
@@ -609,7 +609,7 @@ mod tests {
 
             let expected_hash = ContextHash::from_base58_check(&test_case.hash).unwrap();
             let computed_hash = hash_tree(&tree, &mut repo).unwrap();
-            let computed_hash = repo.get_hash(computed_hash).unwrap();
+            let computed_hash = repo.get_hash(computed_hash).unwrap().unwrap();
             let computed_hash = ContextHash::try_from_bytes(computed_hash).unwrap();
 
             assert_eq!(
