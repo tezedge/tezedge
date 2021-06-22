@@ -718,8 +718,8 @@ impl ShellContextApi for TezedgeContext {
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {
-        todo!()
-        // Ok(self.index.repository.borrow().total_get_mem_usage()?)
+        // TODO: Implement this
+        Ok(0)
     }
 }
 
