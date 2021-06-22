@@ -68,6 +68,9 @@ pub trait KeyValueStoreBackend {
     /// Find an entry to insert a new EntryHash
     /// Return the entry
     fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError>;
+    /// Manually clear the entries, this should be a no-operation if the implementation
+    /// has its own garbage collection
+    fn clear_entries(&mut self) -> Result<(), DBError>;
 }
 
 /// Possible errors for storage

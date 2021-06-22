@@ -92,6 +92,11 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
             .set_readonly_runner()
             .map_err(Into::into)
     }
+
+    fn clear_entries(&mut self) -> Result<(), DBError> {
+        self.hashes.clear();
+        Ok(())
+    }
 }
 
 impl Flushable for ReadonlyIpcBackend {

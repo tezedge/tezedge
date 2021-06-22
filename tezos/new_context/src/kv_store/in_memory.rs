@@ -43,6 +43,15 @@ impl HashValueStore {
         }
     }
 
+    pub(crate) fn clear(&mut self) {
+        *self = Self {
+            hashes: Entries::new(),
+            values: Entries::new(),
+            free_ids: self.free_ids.take(),
+            new_ids: Vec::new(),
+        }
+    }
+
     pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
             self.values.set(free_id, None)?;
@@ -160,6 +169,11 @@ impl KeyValueStoreBackend for InMemory {
 
     fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {
         self.get_vacant_entry_hash()
+    }
+
+    fn clear_entries(&mut self) -> Result<(), DBError> {
+        // `InMemory` has its own garbage collection
+        Ok(())
     }
 }
 

@@ -672,11 +672,10 @@ impl ShellContextApi for TezedgeContext {
         // FIXME: only write entries if there are any, empty commits should not produce anything
         repository.write_batch(batch)?;
         repository.put_context_hash(commit_hash_id)?;
+        repository.block_applied(referenced_older_entries)?;
+
         let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
-
-        std::mem::drop(repository);
-        self.index.block_applied(referenced_older_entries)?;
-
+        repository.clear_entries()?;
         Ok(commit_hash)
     }
 
@@ -697,8 +696,9 @@ impl ShellContextApi for TezedgeContext {
             &mut *repository,
             false,
         )?;
-        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
 
+        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
+        repository.clear_entries()?;
         Ok(commit_hash)
     }
 
