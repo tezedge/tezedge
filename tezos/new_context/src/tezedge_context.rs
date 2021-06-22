@@ -558,6 +558,8 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 #[derive(Default)]
 pub struct StringInterner {
     strings: HashSet<Rc<str>>,
+    nbytes: usize,
+    nstrings: usize,
 }
 
 impl StringInterner {
@@ -566,7 +568,21 @@ impl StringInterner {
             return Rc::from(s);
         }
 
-        self.strings.get_or_insert_with(s, |s| Rc::from(s)).clone()
+        let mut new_str = false;
+        let string = self
+            .strings
+            .get_or_insert_with(s, |s| {
+                new_str = true;
+                Rc::from(s)
+            })
+            .clone();
+
+        if new_str {
+            self.nbytes = self.nbytes.saturating_add(s.len());
+            self.nstrings = self.nstrings.saturating_add(1);
+        }
+
+        string
     }
 }
 

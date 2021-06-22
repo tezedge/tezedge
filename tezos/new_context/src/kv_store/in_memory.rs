@@ -25,12 +25,29 @@ use tezos_spsc::Consumer;
 use super::{entries::Entries, HashIdError};
 use super::{HashId, VacantEntryHash};
 
+pub struct StorageMemoryUsage {
+    /// Number of bytes for all values Arc<[u8]>
+    values_bytes: usize,
+    /// Number of values in the store (when it's a `Some(Arc<[u8]>)`, not a `None`)
+    values_occupied: usize,
+    /// Capacity of the Vec for the values
+    values_capacity: usize,
+    /// Length of the Vec for the values
+    values_length: usize,
+    /// Capacity of the Vec for the hashes
+    hashes_capacity: usize,
+    /// Capacity of the Vec for the hashes
+    hashes_length: usize,
+}
+
 #[derive(Debug)]
 pub struct HashValueStore {
     hashes: Entries<HashId, EntryHash>,
     values: Entries<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
+    values_bytes: usize,
+    values_occupied: usize,
 }
 
 impl HashValueStore {
@@ -43,6 +60,19 @@ impl HashValueStore {
             values: Entries::new(),
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
+            values_bytes: 0,
+            values_occupied: 0,
+        }
+    }
+
+    pub fn get_memory_usage(&self) -> StorageMemoryUsage {
+        StorageMemoryUsage {
+            values_bytes: self.values_bytes,
+            values_occupied: self.values_occupied,
+            values_capacity: self.values.capacity(),
+            values_length: self.values.len(),
+            hashes_capacity: self.hashes.capacity(),
+            hashes_length: self.hashes.len(),
         }
     }
 
@@ -52,12 +82,17 @@ impl HashValueStore {
             values: Entries::new(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
+            values_bytes: 0,
+            values_occupied: 0,
         }
     }
 
     pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
-            self.values.set(free_id, None)?;
+            if let Some(old_value) = self.values.set(free_id, None)? {
+                self.values_occupied = self.values_occupied.saturating_sub(1);
+                self.values_bytes = self.values_bytes.saturating_sub(old_value.len());
+            }
             (free_id, self.hashes.get_mut(free_id)?.ok_or(HashIdError)?)
         } else {
             self.hashes.get_vacant_entry()?
@@ -79,7 +114,13 @@ impl HashValueStore {
         hash_id: HashId,
         value: Arc<[u8]>,
     ) -> Result<(), HashIdError> {
-        self.values.insert_at(hash_id, Some(value))
+        self.values_bytes = self.values_occupied.saturating_add(value.len());
+        if let Some(old) = self.values.insert_at(hash_id, Some(value))? {
+            self.values_bytes = self.values_bytes.saturating_sub(old.len());
+        } else {
+            self.values_occupied = self.values_occupied.saturating_add(1);
+        }
+        Ok(())
     }
 
     pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, HashIdError> {
@@ -177,6 +218,10 @@ impl KeyValueStoreBackend for InMemory {
     fn clear_entries(&mut self) -> Result<(), DBError> {
         // `InMemory` has its own garbage collection
         Ok(())
+    }
+
+    fn memory_usage(&self) -> StorageMemoryUsage {
+        self.hashes.get_memory_usage()
     }
 }
 

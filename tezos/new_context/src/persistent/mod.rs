@@ -13,7 +13,7 @@ pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::DBError;
 
 use crate::{
-    kv_store::{HashId, VacantEntryHash},
+    kv_store::{in_memory::StorageMemoryUsage, HashId, VacantEntryHash},
     EntryHash,
 };
 
@@ -71,6 +71,8 @@ pub trait KeyValueStoreBackend {
     /// Manually clear the entries, this should be a no-operation if the implementation
     /// has its own garbage collection
     fn clear_entries(&mut self) -> Result<(), DBError>;
+    /// Memory usage
+    fn memory_usage(&self) -> StorageMemoryUsage;
 }
 
 /// Possible errors for storage
