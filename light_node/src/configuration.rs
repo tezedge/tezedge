@@ -32,7 +32,6 @@ use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
     PatchContext, TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
 };
-use tezos_new_context::actions::ContextActionStoreBackend;
 use tezos_new_context::initializer::ContextKvStoreConfiguration;
 use tezos_new_context::kv_store::SupportedContextKeyValueStore;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
@@ -189,7 +188,7 @@ impl Storage {
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
-    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEMGC;
+    const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEM;
 }
 
 #[derive(Debug, Clone)]
@@ -623,15 +622,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("actions-store-backend")
-            .long("actions-store-backend")
-            .global(true)
-            .takes_value(true)
-            // TODO: hard to override, do as single atribute commanseparated
-            // .multiple(true)
-            .value_name("STRING")
-            .possible_values(&ContextActionStoreBackend::possible_values())
-            .help("Activate recording of context storage actions"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
             .global(true)
@@ -1123,12 +1113,6 @@ impl Environment {
                     .parse::<SupportedContextKeyValueStore>()
                     .map(|v| match v {
                         SupportedContextKeyValueStore::InMem => ContextKvStoreConfiguration::InMem,
-                        SupportedContextKeyValueStore::BTreeMap => {
-                            ContextKvStoreConfiguration::BTreeMap
-                        }
-                        SupportedContextKeyValueStore::InMemGC => {
-                            ContextKvStoreConfiguration::InMemGC
-                        }
                     })
                     .unwrap_or_else(|e| {
                         panic!(

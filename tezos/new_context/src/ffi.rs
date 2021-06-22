@@ -482,10 +482,13 @@ ocaml_export! {
         let ocaml_tree = rt.get(tree);
         let tree: &WorkingTreeFFI = ocaml_tree.borrow();
 
-        let result = match tree.get_working_tree_root_hash()  {
-            Err(err) => Err(format!("{:?}", err)),
-            Ok(hash) => ContextHash::try_from(hash.as_ref()).map_err(|err| format!("{:?}", err))
-        };
+        let result = tree
+            .hash()
+            .map_err(|err| format!("{:?}", err))
+            .map(|h| {
+                ContextHash::try_from(&h[..]).map_err(|err| format!("{:?}", err))
+            })
+            .unwrap_or_else(|v| Err(v));
 
         result.to_ocaml(rt)
     }

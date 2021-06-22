@@ -75,8 +75,6 @@ impl_from_ocaml_variant! {
     ContextKvStoreConfiguration {
         ContextKvStoreConfiguration::ReadOnlyIpc,
         ContextKvStoreConfiguration::InMem,
-        ContextKvStoreConfiguration::BTreeMap,
-        ContextKvStoreConfiguration::InMemGC,
     }
 }
 

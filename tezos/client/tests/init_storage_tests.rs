@@ -46,7 +46,7 @@ fn test_init_empty_context_for_all_enviroment_nets() {
                 data_dir: common::prepare_empty_dir(storage_data_dir),
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path: None,
             },
         );
@@ -116,7 +116,7 @@ fn test_init_empty_context_for_sandbox_with_patch_json() -> Result<(), failure::
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -175,7 +175,7 @@ fn test_init_empty_context_for_sandbox_without_patch_json() -> Result<(), failur
             data_dir: common::prepare_empty_dir(storage_data_dir),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

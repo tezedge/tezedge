@@ -4,28 +4,24 @@
 //! This sub module provides different KV alternatives for context persistence
 
 use std::array::TryFromSliceError;
-use std::collections::HashSet;
 use std::sync::PoisonError;
 
 use blake2::digest::InvalidOutputSize;
 use failure::Fail;
 
-use crypto::hash::{FromBytesError, HashType};
+use crypto::hash::FromBytesError;
 
-use crate::hash::HashingError;
-use crate::persistent::{DBError, KeyValueStoreBackend};
-use crate::working_tree::Entry;
-use crate::{ContextKeyValueStoreSchema, EntryHash};
+use crate::persistent::DBError;
+use crate::{hash::HashingError, kv_store::HashId};
 
-pub mod mark_move_gced;
-pub mod mark_sweep_gced;
+pub(crate) mod worker;
 
 pub trait GarbageCollector {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError>;
 
     fn block_applied(
         &mut self,
-        referenced_older_entries: HashSet<EntryHash>,
+        referenced_older_entries: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError>;
 }
 
@@ -38,24 +34,9 @@ impl<T: NotGarbageCollected> GarbageCollector for T {
 
     fn block_applied(
         &mut self,
-        _referenced_older_entries: HashSet<EntryHash>,
+        _referenced_older_entries: Vec<HashId>,
     ) -> Result<(), GarbageCollectionError> {
         Ok(())
-    }
-}
-
-/// helper function for fetching and deserializing entry from the store
-pub fn fetch_entry_from_store(
-    store: &dyn KeyValueStoreBackend<ContextKeyValueStoreSchema>,
-    hash: &EntryHash,
-    path: &str,
-) -> Result<Entry, GarbageCollectionError> {
-    match store.get(&hash)? {
-        None => Err(GarbageCollectionError::EntryNotFound {
-            hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            path: path.to_string(),
-        }),
-        Some(entry_bytes) => Ok(bincode::deserialize(&entry_bytes)?),
     }
 }
 

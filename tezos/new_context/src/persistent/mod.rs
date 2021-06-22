@@ -1,11 +1,21 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crypto::{base58::FromBase58CheckError, hash::FromBytesError};
+use std::{borrow::Cow, sync::Arc};
+
+use crypto::{
+    base58::FromBase58CheckError,
+    hash::{ContextHash, FromBytesError},
+};
 use failure::Fail;
 
 pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
 pub use database::DBError;
+
+use crate::{
+    kv_store::{HashId, VacantEntryHash},
+    EntryHash,
+};
 
 pub mod codec;
 pub mod database;
@@ -24,67 +34,43 @@ pub trait Persistable {
     fn is_persistent(&self) -> bool;
 }
 
-/// Custom trait to unify any kv-store schema access
-pub trait KeyValueStoreBackend<S: KeyValueSchema> {
-    /// Insert new key value pair into the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn put(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
-
-    /// Delete existing value associated with given key from the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn delete(&self, key: &S::Key) -> Result<(), DBError>;
-
-    /// Delete existing value associated with given key from the database.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn try_delete(&self, key: &S::Key) -> Result<Option<S::Value>, DBError> {
-        let v = self.get(key)?;
-        if v.is_some() {
-            self.delete(key)?;
-        }
-        Ok(v)
-    }
-
-    /// Insert key value pair into the database, overriding existing value if exists.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    /// * `value` - Value to be inserted associated with given key, specified by schema
-    fn merge(&self, key: &S::Key, value: &S::Value) -> Result<(), DBError>;
-
-    /// Read value associated with given key, if exists.
-    ///
-    /// # Arguments
-    /// * `key` - Value of key specified by schema
-    fn get(&self, key: &S::Key) -> Result<Option<S::Value>, DBError>;
-
-    /// Check, if database contains given key
-    ///
-    /// # Arguments
-    /// * `key` - Key (specified by schema), to be checked for existence
-    fn contains(&self, key: &S::Key) -> Result<bool, DBError>;
-
-    /// Removes every element that predicate(elem) evaluates to false
-    ///
-    /// # Arguments
-    /// * `predicate` - functor used for assessment
-    fn retain(&self, predicate: &dyn Fn(&S::Key) -> bool) -> Result<(), DBError>;
-
+pub trait KeyValueStoreBackend {
     /// Write batch into DB atomically
     ///
     /// # Arguments
     /// * `batch` - WriteBatch containing all batched writes to be written to DB
-    fn write_batch(&self, batch: Vec<(S::Key, S::Value)>) -> Result<(), DBError>;
-
-    /// Return memory usage statistics
+    fn write_batch(&mut self, batch: Vec<(HashId, Arc<[u8]>)>) -> Result<(), DBError>;
+    /// Check if database contains given hash id
     ///
-    fn total_get_mem_usage(&self) -> Result<usize, DBError>;
+    /// # Arguments
+    /// * `hash_id` - HashId, to be checked for existence
+    fn contains(&self, hash_id: HashId) -> Result<bool, DBError>;
+    /// Mark the HashId as a ContextHash
+    ///
+    /// # Arguments
+    /// * `hash_id` - HashId to mark
+    fn put_context_hash(&mut self, hash_id: HashId) -> Result<(), DBError>;
+    /// Get the HashId corresponding to the ContextHash
+    ///
+    /// # Arguments
+    /// * `context_hash` - ContextHash to find the HashId
+    fn get_context_hash(&self, context_hash: &ContextHash) -> Result<Option<HashId>, DBError>;
+    /// Read hash associated with given HashId, if exists.
+    ///
+    /// # Arguments
+    /// * `hash_id` - HashId of the EntryHash
+    fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError>;
+    /// Read value associated with given HashId, if exists.
+    ///
+    /// # Arguments
+    /// * `hash_id` - HashId of the value
+    fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError>;
+    /// Find an entry to insert a new EntryHash
+    /// Return the entry
+    fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError>;
+    /// Manually clear the entries, this should be a no-operation if the implementation
+    /// has its own garbage collection
+    fn clear_entries(&mut self) -> Result<(), DBError>;
 }
 
 /// Possible errors for storage

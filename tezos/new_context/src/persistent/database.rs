@@ -11,7 +11,7 @@ use failure::Fail;
 
 use crypto::hash::FromBytesError;
 
-use crate::kv_store::readonly_ipc::ContextServiceError;
+use crate::kv_store::{readonly_ipc::ContextServiceError, HashId, HashIdError};
 use crate::persistent::codec::SchemaError;
 
 /// Possible errors for schema
@@ -44,6 +44,16 @@ pub enum DBError {
     MemoryStatisticsOverflow,
     #[fail(display = "IPC Context access error: {:?}", reason)]
     IpcAccessError { reason: ContextServiceError },
+    #[fail(display = "Missing entry: {:?}", hash_id)]
+    MissingEntry { hash_id: HashId },
+    #[fail(display = "Conversion from/to HashId failed")]
+    HashIdFailed,
+}
+
+impl From<HashIdError> for DBError {
+    fn from(_: HashIdError) -> Self {
+        DBError::HashIdFailed
+    }
 }
 
 impl From<SchemaError> for DBError {

@@ -101,7 +101,7 @@ impl NodeInfrastructure {
                 data_dir: context_db_path,
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path,
             },
         );

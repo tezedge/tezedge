@@ -29,7 +29,6 @@ start_sandbox_node() {
       "ffi_pool_connection_timeout_in_secs": 60,
       "ffi_pool_max_lifetime_in_secs": 21600,
       "ffi_pool_idle_timeout_in_secs": 1800,
-      "actions_store_backend" : "none",
       "tokio_threads": 0,
       "enable_testchain": false
     }'

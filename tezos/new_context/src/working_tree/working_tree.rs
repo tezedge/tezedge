@@ -51,19 +51,22 @@ use std::{
     array::TryFromSliceError,
     borrow::Cow,
     cell::{Cell, RefCell},
-    collections::HashSet,
     rc::Rc,
+    sync::{Arc, PoisonError},
 };
 
 use failure::Fail;
 
 use crypto::hash::FromBytesError;
 
-use crate::hash::{hash_commit, hash_tree, HashingError};
-use crate::persistent;
 use crate::working_tree::{Commit, Entry, Node, NodeKind, Tree};
 use crate::{gc::GarbageCollectionError, tezedge_context::TezedgeIndex};
 use crate::{hash::EntryHash, ContextKeyOwned};
+use crate::{
+    hash::{hash_commit, hash_tree, HashingError},
+    kv_store::HashId,
+};
+use crate::{persistent, ContextKeyValueStore};
 use crate::{ContextKey, ContextValue};
 
 use super::KeyFragment;
@@ -78,7 +81,7 @@ enum WorkingTreeValue {
 #[derive(Clone)]
 pub struct WorkingTree {
     value: WorkingTreeValue,
-    index: TezedgeIndex,
+    pub index: TezedgeIndex,
 }
 
 #[derive(Clone, Copy)]
@@ -240,8 +243,8 @@ pub enum MerkleError {
         sought, found
     )]
     FoundUnexpectedStructure { sought: String, found: String },
-    #[fail(display = "Entry not found! Hash={}", hash)]
-    EntryNotFound { hash: String },
+    #[fail(display = "Entry not found! HashId={:?}", hash_id)]
+    EntryNotFound { hash_id: HashId },
 
     /// Wrong user input errors
     #[fail(display = "No value under key {:?}.", key)]
@@ -258,6 +261,8 @@ pub enum MerkleError {
     ValueExpected(&'static str),
     #[fail(display = "Invalid state: {}", _0)]
     InvalidState(&'static str),
+    #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
+    LockError { reason: String },
 }
 
 impl From<persistent::database::DBError> for MerkleError {
@@ -296,6 +301,14 @@ impl From<FromBytesError> for MerkleError {
     }
 }
 
+impl<T> From<PoisonError<T>> for MerkleError {
+    fn from(pe: PoisonError<T>) -> Self {
+        Self::LockError {
+            reason: format!("{}", pe),
+        }
+    }
+}
+
 #[derive(Debug, Fail)]
 pub enum CheckEntryHashError {
     #[fail(display = "MerkleError error: {:?}", error)]
@@ -309,6 +322,51 @@ pub enum CheckEntryHashError {
         calculated: String,
         expected: String,
     },
+}
+
+struct SerializingData<'a> {
+    batch: Vec<(HashId, Arc<[u8]>)>,
+    referenced_older_entries: Vec<HashId>,
+    store: &'a mut ContextKeyValueStore,
+    serialized: Vec<u8>,
+    /// When false, do not serialize or keeps older entries
+    commit_to_storage: bool,
+}
+
+impl<'a> SerializingData<'a> {
+    fn new(store: &'a mut ContextKeyValueStore, commit_to_storage: bool) -> Self {
+        let cap = if commit_to_storage { 2048 } else { 0 };
+
+        Self {
+            batch: Vec::with_capacity(cap),
+            referenced_older_entries: Vec::with_capacity(cap),
+            store,
+            serialized: Vec::with_capacity(cap),
+            commit_to_storage,
+        }
+    }
+
+    fn add_serialized_entry(
+        &mut self,
+        entry_hash: HashId,
+        entry: &Entry,
+    ) -> Result<(), MerkleError> {
+        if self.commit_to_storage {
+            self.serialized.clear();
+            bincode::serialize_into(&mut self.serialized, entry)?;
+            self.batch
+                .push((entry_hash, Arc::from(self.serialized.as_slice())));
+        }
+        Ok(())
+    }
+
+    fn add_older_entry(&mut self, node: &Node) -> Result<(), MerkleError> {
+        if self.commit_to_storage {
+            self.referenced_older_entries
+                .push(node.entry_hash_id(self.store)?);
+        }
+        Ok(())
+    }
 }
 
 impl WorkingTree {
@@ -366,7 +424,13 @@ impl WorkingTree {
     }
 
     pub fn hash(&self) -> Result<EntryHash, MerkleError> {
-        self.get_working_tree_root_hash()
+        let mut repo = self.index.repository.write()?;
+        let hash_id = self.get_working_tree_root_hash(&mut *repo)?;
+
+        match repo.get_hash(hash_id)? {
+            Some(hash) => Ok(hash.into_owned()),
+            None => Err(MerkleError::EntryNotFound { hash_id }),
+        }
     }
 
     pub fn kind(&self) -> NodeKind {
@@ -532,6 +596,7 @@ impl WorkingTree {
         path: &str,
         entry: &Entry,
         entries: &mut Vec<(ContextKeyOwned, ContextValue)>,
+        store: &ContextKeyValueStore,
     ) -> Result<(), MerkleError> {
         match entry {
             Entry::Blob(blob) => {
@@ -548,8 +613,9 @@ impl WorkingTree {
 
                         match self.node_entry(&child_node) {
                             Err(_) => Ok(()),
-                            Ok(entry) => self
-                                .get_key_values_from_tree_recursively(&fullpath, &entry, entries),
+                            Ok(entry) => self.get_key_values_from_tree_recursively(
+                                &fullpath, &entry, entries, store,
+                            ),
                         }
                     })
                     .find_map(|res| match res {
@@ -558,9 +624,11 @@ impl WorkingTree {
                     })
                     .unwrap_or(Ok(()))
             }
-            Entry::Commit(commit) => match self.get_entry_from_hash(&commit.root_hash) {
+            Entry::Commit(commit) => match self.get_entry_from_hash_id(commit.root_hash, store) {
                 Err(err) => Err(err),
-                Ok(entry) => self.get_key_values_from_tree_recursively(path, &entry, entries),
+                Ok(entry) => {
+                    self.get_key_values_from_tree_recursively(path, &entry, entries, store)
+                }
             },
         }
     }
@@ -568,13 +636,14 @@ impl WorkingTree {
     /// Construct Vec of all context key-values under given prefix
     pub fn get_key_values_by_prefix(
         &self,
-        context_hash: &EntryHash,
+        context_hash_id: HashId,
         prefix: &ContextKey,
+        store: &ContextKeyValueStore,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
-        let commit = self.get_commit(context_hash)?;
-        let entry = self.get_entry_from_hash(&commit.root_hash)?;
+        let commit = self.get_commit(context_hash_id)?;
+        let entry = self.get_entry_from_hash_id(commit.root_hash, store)?;
         let root_tree = self.entry_tree(&entry)?;
-        let rv = self._get_key_values_by_prefix(root_tree, prefix);
+        let rv = self._get_key_values_by_prefix(root_tree, prefix, store);
 
         rv
     }
@@ -583,6 +652,7 @@ impl WorkingTree {
         &self,
         root_tree: &Tree,
         prefix: &ContextKey,
+        store: &ContextKeyValueStore,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let prefixed_tree = self.find_raw_tree(root_tree, prefix)?;
         let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
@@ -593,7 +663,7 @@ impl WorkingTree {
 
             // construct full path as Tree key is only one chunk of it
             let fullpath = self.key_to_string(prefix) + delimiter + key;
-            self.get_key_values_from_tree_recursively(&fullpath, &entry, &mut keyvalues)?;
+            self.get_key_values_from_tree_recursively(&fullpath, &entry, &mut keyvalues, store)?;
         }
 
         if keyvalues.is_empty() {
@@ -612,16 +682,12 @@ impl WorkingTree {
         time: u64,
         author: String,
         message: String,
-        parent_commit_hash: Option<EntryHash>,
-    ) -> Result<
-        (
-            EntryHash,
-            Vec<(EntryHash, ContextValue)>,
-            HashSet<EntryHash>,
-        ),
-        MerkleError,
-    > {
-        let root_hash = self.get_working_tree_root_hash()?;
+        parent_commit_hash: Option<HashId>,
+        store: &mut ContextKeyValueStore,
+        commit_to_storage: bool,
+    ) -> Result<(HashId, Vec<(HashId, Arc<[u8]>)>, Vec<HashId>), MerkleError> {
+        //let stat_updater = StatUpdater::new(MerkleStorageAction::Commit, None);
+        let root_hash = self.get_working_tree_root_hash(store)?;
         let root = self.get_working_tree_root_ref();
 
         let new_commit = Commit {
@@ -632,20 +698,13 @@ impl WorkingTree {
             message,
         };
         let entry = Entry::Commit(new_commit.clone());
-        let commit_hash = hash_commit(&new_commit)?;
+        let commit_hash = hash_commit(&new_commit, store)?;
 
         // produce entries to be persisted to storage
-        let mut batch: Vec<(EntryHash, ContextValue)> = Vec::new();
-        let mut referenced_older_entries: HashSet<EntryHash> = HashSet::new();
-        self.get_entries_recursively(
-            &entry,
-            commit_hash,
-            Some(root.as_ref()),
-            &mut batch,
-            &mut referenced_older_entries,
-        )?;
+        let mut data = SerializingData::new(store, commit_to_storage);
+        self.get_entries_recursively(&entry, commit_hash, Some(root.as_ref()), &mut data)?;
 
-        Ok((commit_hash, batch, referenced_older_entries))
+        Ok((commit_hash, data.batch, data.referenced_older_entries))
     }
 
     /// Returns a new version of the WorkingTree with the tree replaced
@@ -781,23 +840,25 @@ impl WorkingTree {
         self.index.find_raw_tree(root, key)
     }
 
-    pub fn get_working_tree_root_hash(&self) -> Result<EntryHash, MerkleError> {
+    pub fn get_working_tree_root_hash(
+        &self,
+        store: &mut ContextKeyValueStore,
+    ) -> Result<HashId, MerkleError> {
         // TOOD: unnecessery recalculation, should be one when set_staged_root
         let root = self.get_working_tree_root_ref();
-        hash_tree(root.as_ref()).map_err(MerkleError::from)
+        hash_tree(root.as_ref(), store).map_err(MerkleError::from)
     }
 
     /// Builds vector of entries to be persisted to DB, recursively
     fn get_entries_recursively(
         &self,
         entry: &Entry,
-        entry_hash: EntryHash,
+        entry_hash: HashId,
         root: Option<&Tree>,
-        batch: &mut Vec<(EntryHash, ContextValue)>,
-        referenced_older_entries: &mut HashSet<EntryHash>,
+        data: &mut SerializingData,
     ) -> Result<(), MerkleError> {
-        // add entry to batch
-        batch.push((entry_hash, bincode::serialize(entry)?));
+        // Add entry to batch
+        data.add_serialized_entry(entry_hash, entry)?;
 
         match entry {
             Entry::Blob(_) => Ok(()),
@@ -807,7 +868,7 @@ impl WorkingTree {
                 tree.iter()
                     .map(|(_, child_node)| {
                         if child_node.commited.get() {
-                            referenced_older_entries.insert(child_node.entry_hash()?);
+                            data.add_older_entry(&child_node)?;
                             return Ok(());
                         }
                         child_node.commited.set(true);
@@ -821,10 +882,9 @@ impl WorkingTree {
                             None => Ok(()),
                             Some(entry) => self.get_entries_recursively(
                                 entry,
-                                child_node.entry_hash()?,
+                                child_node.entry_hash_id(data.store)?,
                                 None,
-                                batch,
-                                referenced_older_entries,
+                                data,
                             ),
                         }
                     })
@@ -837,16 +897,21 @@ impl WorkingTree {
             Entry::Commit(commit) => {
                 let entry = match root {
                     Some(root) => Entry::Tree(root.clone()),
-                    None => self.get_entry_from_hash(&commit.root_hash)?,
+                    None => self.get_entry_from_hash_id(commit.root_hash, data.store)?,
                 };
-                self.get_entries_recursively(
-                    &entry,
-                    commit.root_hash,
-                    None,
-                    batch,
-                    referenced_older_entries,
-                )
+                self.get_entries_recursively(&entry, commit.root_hash, None, data)
             }
+        }
+    }
+
+    fn get_entry_from_hash_id(
+        &self,
+        hash_id: HashId,
+        store: &ContextKeyValueStore,
+    ) -> Result<Entry, MerkleError> {
+        match store.get_value(hash_id)? {
+            None => Err(MerkleError::EntryNotFound { hash_id }),
+            Some(entry_bytes) => Ok(bincode::deserialize(entry_bytes.as_ref())?),
         }
     }
 
@@ -878,7 +943,7 @@ impl WorkingTree {
         }
     }
 
-    fn get_commit(&self, hash: &EntryHash) -> Result<Commit, MerkleError> {
+    fn get_commit(&self, hash: HashId) -> Result<Commit, MerkleError> {
         self.index.get_commit(hash)
     }
 
@@ -886,14 +951,10 @@ impl WorkingTree {
         self.index.node_entry(node)
     }
 
-    fn get_entry_from_hash(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
-        self.index.get_entry(hash)
-    }
-
     fn get_non_leaf(entry: Entry) -> Node {
         Node {
             node_kind: NodeKind::NonLeaf,
-            entry_hash: RefCell::new(None),
+            entry_hash: Cell::new(None),
             entry: RefCell::new(Some(entry)),
             commited: Cell::new(false),
         }
@@ -902,7 +963,7 @@ impl WorkingTree {
     pub fn get_leaf(entry: Entry) -> Node {
         Node {
             node_kind: NodeKind::Leaf,
-            entry_hash: RefCell::new(None),
+            entry_hash: Cell::new(None),
             entry: RefCell::new(Some(entry)),
             commited: Cell::new(false),
         }

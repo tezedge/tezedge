@@ -62,7 +62,7 @@ fn test_storage() -> Result<(), Error> {
             data_dir: context_dir,
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: ContextKvStoreConfiguration::InMemGC,
+            backend: ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

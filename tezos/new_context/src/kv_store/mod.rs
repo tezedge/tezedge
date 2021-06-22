@@ -4,22 +4,98 @@
 //! This sub module provides different KV alternatives for context persistence
 
 use std::str::FromStr;
+use std::{
+    convert::{TryFrom, TryInto},
+    num::NonZeroUsize,
+};
 
+use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
-pub mod btree_map;
-pub mod in_memory_backend;
+use crate::EntryHash;
+
+pub mod entries;
+pub mod in_memory;
 pub mod readonly_ipc;
 pub mod stats;
 
-pub const INMEMGC: &str = "inmem-gc";
+pub const INMEM: &str = "inmem";
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HashId(NonZeroUsize); // NonZeroUsize so that `Option<HashId>` is 8 bytes
+
+pub struct HashIdError;
+
+impl TryInto<usize> for HashId {
+    type Error = HashIdError;
+
+    fn try_into(self) -> Result<usize, Self::Error> {
+        self.0.get().checked_sub(1).ok_or(HashIdError)
+    }
+}
+
+impl TryFrom<usize> for HashId {
+    type Error = HashIdError;
+
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        value
+            .checked_add(1)
+            .and_then(NonZeroUsize::new)
+            .map(HashId)
+            .ok_or(HashIdError)
+    }
+}
+
+const SHIFT: usize = (std::mem::size_of::<usize>() * 8) - 1;
+const READONLY: usize = 1 << SHIFT;
+
+impl HashId {
+    fn set_readonly_runner(&mut self) -> Result<(), HashIdError> {
+        let hash_id = self.0.get();
+
+        self.0 = NonZeroUsize::new(hash_id | READONLY).ok_or(HashIdError)?;
+
+        Ok(())
+    }
+
+    fn get_readonly_id(self) -> Result<Option<HashId>, HashIdError> {
+        let hash_id = self.0.get();
+        if hash_id & READONLY != 0 {
+            Ok(Some(HashId(
+                NonZeroUsize::new(hash_id & !READONLY).ok_or(HashIdError)?,
+            )))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+pub struct VacantEntryHash<'a> {
+    entry: Option<&'a mut EntryHash>,
+    hash_id: HashId,
+}
+
+impl<'a> VacantEntryHash<'a> {
+    pub(crate) fn write_with<F>(self, fun: F) -> HashId
+    where
+        F: FnOnce(&mut EntryHash),
+    {
+        if let Some(entry) = self.entry {
+            fun(entry)
+        };
+        self.hash_id
+    }
+
+    pub(crate) fn set_readonly_runner(mut self) -> Result<Self, HashIdError> {
+        self.hash_id.set_readonly_runner()?;
+        Ok(self)
+    }
+}
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, EnumIter)]
 pub enum SupportedContextKeyValueStore {
     InMem,
-    InMemGC,
-    BTreeMap,
 }
 
 impl SupportedContextKeyValueStore {
@@ -34,8 +110,6 @@ impl SupportedContextKeyValueStore {
     fn supported_values(&self) -> Vec<&'static str> {
         match self {
             SupportedContextKeyValueStore::InMem => vec!["inmem"],
-            SupportedContextKeyValueStore::InMemGC => vec!["inmem-gc"],
-            SupportedContextKeyValueStore::BTreeMap => vec!["btree"],
         }
     }
 }
@@ -112,14 +186,6 @@ pub mod test_support {
                     SupportedContextKeyValueStore::InMem,
                     Box::new(InMemoryBackendTestContextKvStoreFactory),
                 ),
-                SupportedContextKeyValueStore::InMemGC => store_factories.insert(
-                    SupportedContextKeyValueStore::InMemGC,
-                    Box::new(InMemoryGCBackendTestContextKvStoreFactory),
-                ),
-                SupportedContextKeyValueStore::BTreeMap => store_factories.insert(
-                    SupportedContextKeyValueStore::BTreeMap,
-                    Box::new(BTreeMapBackendTestContextKvStoreFactory),
-                ),
             };
         }
 
@@ -142,45 +208,12 @@ pub mod test_support {
 
     impl TestContextKvStoreFactory for InMemoryBackendTestContextKvStoreFactory {
         fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
-            use crate::kv_store::in_memory_backend::InMemoryBackend;
-            Ok(Box::new(InMemoryBackend::new()))
+            use crate::kv_store::in_memory::InMemory;
+            Ok(Box::new(InMemory::new()))
         }
     }
 
     impl Persistable for InMemoryBackendTestContextKvStoreFactory {
-        fn is_persistent(&self) -> bool {
-            false
-        }
-    }
-
-    /// Garbage-collected In-memory kv-store
-    pub struct InMemoryGCBackendTestContextKvStoreFactory;
-
-    impl TestContextKvStoreFactory for InMemoryGCBackendTestContextKvStoreFactory {
-        fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
-            use crate::gc::mark_move_gced::MarkMoveGCed;
-            use crate::kv_store::in_memory_backend::InMemoryBackend;
-            Ok(Box::new(MarkMoveGCed::<InMemoryBackend>::new(7)))
-        }
-    }
-
-    impl Persistable for InMemoryGCBackendTestContextKvStoreFactory {
-        fn is_persistent(&self) -> bool {
-            false
-        }
-    }
-
-    /// BTree map kv-store
-    pub struct BTreeMapBackendTestContextKvStoreFactory;
-
-    impl TestContextKvStoreFactory for BTreeMapBackendTestContextKvStoreFactory {
-        fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
-            use crate::kv_store::btree_map::BTreeMapBackend;
-            Ok(Box::new(BTreeMapBackend::new()))
-        }
-    }
-
-    impl Persistable for BTreeMapBackendTestContextKvStoreFactory {
         fn is_persistent(&self) -> bool {
             false
         }

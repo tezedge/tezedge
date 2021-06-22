@@ -48,7 +48,7 @@ fn init_test_protocol_context(
     let storage = TezosContextStorageConfiguration::Both(
         TezosContextIrminStorageConfiguration { data_dir },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

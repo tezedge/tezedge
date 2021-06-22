@@ -427,6 +427,7 @@ fn schedule_replay_blocks(
     let pair = Arc::new((Mutex::new(None), Condvar::new()));
     let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
     let nblocks = blocks.len();
+    let now = std::time::Instant::now();
 
     for (index, block) in blocks.into_iter().enumerate() {
         let batch = ApplyBlockBatch::one((&*block).clone());
@@ -449,24 +450,34 @@ fn schedule_replay_blocks(
         if let Some(Err(_)) = &*result {
             replay_shutdown(shell_channel);
             panic!(
-                "{:.5}% Block {} failed in {:?}. Result={:?}",
-                percent, hash, time, result
+                "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
+                index, percent, hash, time, result
             );
         } else if time > fail_above && index > 0 {
             replay_shutdown(shell_channel);
             panic!(
-                "{:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
-                percent, hash, time, fail_above, result
+                "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
+                index, percent, hash, time, fail_above, result
             );
         } else {
             info!(
                 log,
-                "{:.5}% Block {} applied in {:?}. Result={:?}", percent, hash, time, result
+                "{:08} {:.5}% Block {} applied in {:?}. Result={:?}",
+                index,
+                percent,
+                hash,
+                time,
+                result
             );
         }
     }
 
-    info!(log, "Replayer successfully applied {} blocks", nblocks);
+    info!(
+        log,
+        "Replayer successfully applied {} blocks in {:?}",
+        nblocks,
+        now.elapsed()
+    );
 
     replay_shutdown(shell_channel);
 }

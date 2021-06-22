@@ -10,31 +10,28 @@ use std::{
 };
 use std::{convert::TryFrom, rc::Rc};
 
-use crypto::hash::{ContextHash, HashType};
+use crypto::hash::ContextHash;
 use ocaml_interop::BoxRoot;
 
 use crate::{
     hash::EntryHash,
+    kv_store::HashId,
     persistent::DBError,
     working_tree::{
-        working_tree_stats::MerkleStoragePerfReport, Commit, Entry, KeyFragment, Node, Tree,
+        working_tree::MerkleError, working_tree_stats::MerkleStoragePerfReport, Commit, Entry,
+        KeyFragment, Node, Tree,
     },
-    StringTreeMap,
+    ContextKeyValueStore, StringTreeMap,
 };
+use crate::{working_tree::working_tree::WorkingTree, IndexApi};
 use crate::{
     working_tree::working_tree::{FoldDepth, TreeWalker},
     ContextKeyOwned,
 };
 use crate::{
-    working_tree::working_tree::{MerkleError, WorkingTree},
-    IndexApi,
-};
-use crate::{
     ContextError, ContextKey, ContextValue, ProtocolContextApi, ShellContextApi, StringTreeEntry,
     TreeId,
 };
-
-use crate::ContextKeyValueStore;
 
 // Represents the patch_context function passed from the OCaml side
 // It is opaque to rust, we don't care about it's actual type
@@ -59,9 +56,9 @@ impl TezedgeIndex {
     ) -> Self {
         let patch_context = Rc::new(patch_context);
         Self {
-            repository,
             patch_context,
             strings: Default::default(),
+            repository,
         }
     }
 
@@ -70,27 +67,34 @@ impl TezedgeIndex {
         strings.get_str(s)
     }
 
-    pub fn find_entry_bytes(&self, hash: &EntryHash) -> Result<Option<Vec<u8>>, DBError> {
-        self.repository.read()?.get(hash)
+    pub fn find_entry_bytes(&self, hash: HashId) -> Result<Option<Vec<u8>>, DBError> {
+        let repo = self.repository.read()?;
+        Ok(repo.get_value(hash)?.map(|v| v.to_vec()))
     }
 
-    pub fn find_entry(&self, hash: &EntryHash) -> Result<Option<Entry>, DBError> {
+    pub fn find_entry(&self, hash: HashId) -> Result<Option<Entry>, DBError> {
         match self.find_entry_bytes(hash)? {
             None => Ok(None),
             Some(entry_bytes) => Ok(Some(bincode::deserialize(&entry_bytes)?)),
         }
     }
 
-    pub fn get_entry(&self, hash: &EntryHash) -> Result<Entry, MerkleError> {
+    pub fn get_hash(&self, hash_id: HashId) -> Result<Option<EntryHash>, DBError> {
+        Ok(self
+            .repository
+            .read()?
+            .get_hash(hash_id)?
+            .map(|h| h.into_owned()))
+    }
+
+    pub fn get_entry(&self, hash: HashId) -> Result<Entry, MerkleError> {
         match self.find_entry(hash)? {
-            None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            }),
+            None => Err(MerkleError::EntryNotFound { hash_id: hash }),
             Some(entry) => Ok(entry),
         }
     }
 
-    pub fn find_commit(&self, hash: &EntryHash) -> Result<Option<Commit>, DBError> {
+    pub fn find_commit(&self, hash: HashId) -> Result<Option<Commit>, DBError> {
         match self.find_entry(hash)? {
             Some(Entry::Commit(commit)) => Ok(Some(commit)),
             Some(Entry::Tree(_)) => Err(DBError::FoundUnexpectedStructure {
@@ -105,16 +109,14 @@ impl TezedgeIndex {
         }
     }
 
-    pub fn get_commit(&self, hash: &EntryHash) -> Result<Commit, MerkleError> {
+    pub fn get_commit(&self, hash: HashId) -> Result<Commit, MerkleError> {
         match self.find_commit(hash)? {
-            None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            }),
+            None => Err(MerkleError::EntryNotFound { hash_id: hash }),
             Some(entry) => Ok(entry),
         }
     }
 
-    pub fn find_tree(&self, hash: &EntryHash) -> Result<Option<Tree>, DBError> {
+    pub fn find_tree(&self, hash: HashId) -> Result<Option<Tree>, DBError> {
         match self.find_entry(hash)? {
             Some(Entry::Tree(tree)) => Ok(Some(tree)),
             Some(Entry::Blob(_)) => Err(DBError::FoundUnexpectedStructure {
@@ -129,18 +131,24 @@ impl TezedgeIndex {
         }
     }
 
-    pub fn get_tree(&self, hash: &EntryHash) -> Result<Tree, MerkleError> {
+    pub fn get_tree(&self, hash: HashId) -> Result<Tree, MerkleError> {
         match self.find_tree(hash)? {
-            None => Err(MerkleError::EntryNotFound {
-                hash: HashType::ContextHash.hash_to_b58check(hash)?,
-            }),
+            None => Err(MerkleError::EntryNotFound { hash_id: hash }),
             Some(entry) => Ok(entry),
         }
     }
 
-    pub fn contains(&self, hash: &EntryHash) -> Result<bool, DBError> {
+    pub fn contains(&self, hash: HashId) -> Result<bool, DBError> {
         let db = self.repository.read()?;
         Ok(db.contains(hash)?)
+    }
+
+    pub fn get_context_hash_id(
+        &self,
+        context_hash: &ContextHash,
+    ) -> Result<Option<HashId>, MerkleError> {
+        let db = self.repository.read()?;
+        Ok(db.get_context_hash(context_hash)?)
     }
 
     /// Convert key in array form to string form
@@ -164,8 +172,8 @@ impl TezedgeIndex {
             return Ok(e);
         };
 
-        let hash = node.get_hash()?;
-        let entry = self.get_entry(&hash)?;
+        let hash = node.get_hash_id()?;
+        let entry = self.get_entry(hash)?;
         node.set_entry(&entry)?;
 
         Ok(entry)
@@ -175,7 +183,7 @@ impl TezedgeIndex {
     /// depth - None returns full tree
     pub fn _get_context_tree_by_prefix(
         &self,
-        context_hash: &EntryHash,
+        context_hash: HashId,
         prefix: &ContextKey,
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, MerkleError> {
@@ -183,13 +191,10 @@ impl TezedgeIndex {
             return Ok(StringTreeEntry::Null);
         }
 
-        //let stat_updater =
-        //    StatUpdater::new(MerkleStorageAction::GetContextTreeByPrefix, Some(prefix));
         let mut out = StringTreeMap::new();
         let commit = self.get_commit(context_hash)?;
 
-        //let entry = self.get_entry()?.unwrap(); // TODO: make non-option version that raises error
-        let root_tree = self.get_tree(&commit.root_hash)?;
+        let root_tree = self.get_tree(commit.root_hash)?;
         let prefixed_tree = self.find_raw_tree(&root_tree, prefix)?;
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
@@ -291,8 +296,8 @@ impl TezedgeIndex {
         }
 
         // get entry by hash (from DB)
-        let hash = child_node.get_hash()?;
-        let entry = self.get_entry(&hash)?;
+        let hash = child_node.get_hash_id()?;
+        let entry = self.get_entry(hash)?;
         child_node.set_entry(&entry)?;
 
         match entry {
@@ -308,13 +313,13 @@ impl TezedgeIndex {
     /// Get value from historical context identified by commit hash.
     pub fn get_history(
         &self,
-        commit_hash: &EntryHash,
+        commit_hash: HashId,
         key: &ContextKey,
     ) -> Result<ContextValue, MerkleError> {
         // let stat_updater = StatUpdater::new(MerkleStorageAction::GetHistory, Some(key));
 
         let commit = self.get_commit(commit_hash)?;
-        let tree = self.get_tree(&commit.root_hash)?;
+        let tree = self.get_tree(commit.root_hash)?;
         let rv = self.get_from_tree(&tree, key);
 
         // stat_updater.update_execution_stats(&mut self.stats);
@@ -342,11 +347,11 @@ impl TezedgeIndex {
     /// Construct Vec of all context key-values under given prefix
     pub fn get_context_key_values_by_prefix(
         &self,
-        context_hash: &EntryHash,
+        context_hash: HashId,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, MerkleError> {
         let commit = self.get_commit(context_hash)?;
-        let root_tree = self.get_tree(&commit.root_hash)?;
+        let root_tree = self.get_tree(commit.root_hash)?;
         let rv = self._get_context_key_values_by_prefix(&root_tree, prefix);
 
         rv
@@ -408,7 +413,7 @@ impl TezedgeIndex {
                     })
                     .unwrap_or(Ok(()))
             }
-            Entry::Commit(commit) => match self.get_entry(&commit.root_hash) {
+            Entry::Commit(commit) => match self.get_entry(commit.root_hash) {
                 Err(err) => Err(err),
                 Ok(entry) => self.get_key_values_from_tree_recursively(path, &entry, entries),
             },
@@ -418,8 +423,16 @@ impl TezedgeIndex {
 
 impl IndexApi<TezedgeContext> for TezedgeIndex {
     fn exists(&self, context_hash: &ContextHash) -> Result<bool, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        if let Some(Entry::Commit(_)) = self.find_entry(&context_hash_arr)? {
+        let hash_id = {
+            let repository = self.repository.read()?;
+
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => return Ok(false),
+            }
+        };
+
+        if let Some(Entry::Commit(_)) = self.find_entry(hash_id)? {
             Ok(true)
         } else {
             Ok(false)
@@ -427,15 +440,22 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
     }
 
     fn checkout(&self, context_hash: &ContextHash) -> Result<Option<TezedgeContext>, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
+        let hash_id = {
+            let repository = self.repository.read()?;
 
-        if let Some(commit) = self.find_commit(&context_hash_arr)? {
-            if let Some(tree) = self.find_tree(&commit.root_hash)? {
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => return Ok(None),
+            }
+        };
+
+        if let Some(commit) = self.find_commit(hash_id)? {
+            if let Some(tree) = self.find_tree(commit.root_hash)? {
                 let tree = WorkingTree::new_with_tree(self.clone(), tree);
 
                 Ok(Some(TezedgeContext::new(
                     self.clone(),
-                    Some(context_hash_arr),
+                    Some(hash_id),
                     Some(Rc::new(tree)),
                 )))
             } else {
@@ -446,10 +466,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         }
     }
 
-    fn block_applied(
-        &self,
-        referenced_older_entries: HashSet<EntryHash>,
-    ) -> Result<(), ContextError> {
+    fn block_applied(&self, referenced_older_entries: Vec<HashId>) -> Result<(), ContextError> {
         Ok(self
             .repository
             .write()?
@@ -465,10 +482,22 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         context_hash: &ContextHash,
         key: &ContextKey,
     ) -> Result<Option<ContextValue>, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        match self.get_history(&context_hash_arr, key) {
+        let hash_id = {
+            let repository = self.repository.read()?;
+
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
+
+        match self.get_history(hash_id, key) {
             Err(MerkleError::ValueNotFound { key: _ }) => Ok(None),
-            Err(MerkleError::EntryNotFound { hash: _ }) => Ok(None),
+            Err(MerkleError::EntryNotFound { hash_id: _ }) => Ok(None),
             Err(err) => Err(ContextError::MerkleStorageError { error: err }),
             Ok(val) => Ok(Some(val)),
         }
@@ -479,15 +508,28 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         context_hash: &ContextHash,
         prefix: &ContextKey,
     ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
-        let context = self.checkout(context_hash)?;
-        match context {
-            None => Ok(None),
-            Some(context) => Ok(context
-                .tree
-                .get_key_values_by_prefix(&context_hash_arr, prefix)
-                .map_err(ContextError::from)?),
-        }
+        let hash_id = {
+            let repository = self.repository.read()?;
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
+
+        let context = match self.checkout(context_hash)? {
+            Some(context) => context,
+            None => return Ok(None),
+        };
+
+        let repository = self.repository.read()?;
+        context
+            .tree
+            .get_key_values_by_prefix(hash_id, prefix, &*repository)
+            .map_err(ContextError::from)
     }
 
     fn get_context_tree_by_prefix(
@@ -496,9 +538,19 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
         prefix: &ContextKey,
         depth: Option<usize>,
     ) -> Result<StringTreeEntry, ContextError> {
-        let context_hash_arr: EntryHash = context_hash.as_ref().as_slice().try_into()?;
+        let hash_id = {
+            let repository = self.repository.read()?;
+            match repository.get_context_hash(context_hash)? {
+                Some(hash_id) => hash_id,
+                None => {
+                    return Err(ContextError::UnknownContextHashError {
+                        context_hash: context_hash.to_base58_check(),
+                    })
+                }
+            }
+        };
 
-        self._get_context_tree_by_prefix(&context_hash_arr, prefix, depth)
+        self._get_context_tree_by_prefix(hash_id, prefix, depth)
             .map_err(ContextError::from)
     }
 }
@@ -522,7 +574,7 @@ impl StringInterner {
 #[derive(Clone)]
 pub struct TezedgeContext {
     pub index: TezedgeIndex,
-    pub parent_commit_hash: Option<EntryHash>, // TODO: Rc instead?
+    pub parent_commit_hash: Option<HashId>,
     pub tree_id: TreeId,
     tree_id_generator: Rc<RefCell<TreeIdGenerator>>,
     pub tree: Rc<WorkingTree>,
@@ -595,7 +647,7 @@ impl ProtocolContextApi for TezedgeContext {
     }
 
     fn get_merkle_root(&self) -> Result<EntryHash, ContextError> {
-        Ok(self.tree.get_working_tree_root_hash()?)
+        self.tree.hash().map_err(Into::into)
     }
 }
 
@@ -608,14 +660,22 @@ impl ShellContextApi for TezedgeContext {
     ) -> Result<ContextHash, ContextError> {
         // Entries to be inserted are obtained from the commit call and written here
         let date: u64 = date.try_into()?;
-        let (commit_hash, batch, referenced_older_entries) =
-            self.tree
-                .prepare_commit(date, author, message, self.parent_commit_hash)?;
-        self.index.block_applied(referenced_older_entries)?;
+        let mut repository = self.index.repository.write()?;
+        let (commit_hash_id, batch, referenced_older_entries) = self.tree.prepare_commit(
+            date,
+            author,
+            message,
+            self.parent_commit_hash,
+            &mut *repository,
+            true,
+        )?;
         // FIXME: only write entries if there are any, empty commits should not produce anything
-        self.index.repository.write()?.write_batch(batch)?;
-        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
+        repository.write_batch(batch)?;
+        repository.put_context_hash(commit_hash_id)?;
+        repository.block_applied(referenced_older_entries)?;
 
+        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
+        repository.clear_entries()?;
         Ok(commit_hash)
     }
 
@@ -625,18 +685,32 @@ impl ShellContextApi for TezedgeContext {
         message: String,
         date: i64,
     ) -> Result<ContextHash, ContextError> {
-        // FIXME: does more work than needed, just calculate the hash, no batch
         let date: u64 = date.try_into()?;
-        let (commit_hash, _batch, _referenced_older_entries) =
-            self.tree
-                .prepare_commit(date, author, message, self.parent_commit_hash)?;
-        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
+        let mut repository = self.index.repository.write()?;
 
+        let (commit_hash_id, _, _) = self.tree.prepare_commit(
+            date,
+            author,
+            message,
+            self.parent_commit_hash,
+            &mut *repository,
+            false,
+        )?;
+
+        let commit_hash = self.get_commit_hash(commit_hash_id, &*repository)?;
+        repository.clear_entries()?;
         Ok(commit_hash)
     }
 
     fn get_last_commit_hash(&self) -> Result<Option<Vec<u8>>, ContextError> {
-        Ok(self.parent_commit_hash.map(|x| x.to_vec()))
+        let repository = self.index.repository.read()?;
+
+        let value = match self.parent_commit_hash {
+            Some(hash_id) => repository.get_value(hash_id)?,
+            None => return Ok(None),
+        };
+
+        Ok(value.map(|v| v.to_vec()))
     }
 
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError> {
@@ -644,7 +718,8 @@ impl ShellContextApi for TezedgeContext {
     }
 
     fn get_memory_usage(&self) -> Result<usize, ContextError> {
-        Ok(self.index.repository.read()?.total_get_mem_usage()?)
+        // TODO: Implement this
+        Ok(0)
     }
 }
 
@@ -672,7 +747,7 @@ impl TezedgeContext {
     // NOTE: only used to start from scratch, otherwise checkout should be used
     pub fn new(
         index: TezedgeIndex,
-        parent_commit_hash: Option<EntryHash>,
+        parent_commit_hash: Option<HashId>,
         tree: Option<Rc<WorkingTree>>,
     ) -> Self {
         let tree = if let Some(tree) = tree {
@@ -704,5 +779,23 @@ impl TezedgeContext {
             index: self.index.clone(),
             ..*self
         }
+    }
+
+    fn get_commit_hash(
+        &self,
+        commit_hash_id: HashId,
+        repo: &ContextKeyValueStore,
+    ) -> Result<ContextHash, ContextError> {
+        let commit_hash = match repo.get_hash(commit_hash_id)? {
+            Some(hash) => hash,
+            None => {
+                return Err(MerkleError::EntryNotFound {
+                    hash_id: commit_hash_id,
+                }
+                .into())
+            }
+        };
+        let commit_hash = ContextHash::try_from(&commit_hash[..])?;
+        Ok(commit_hash)
     }
 }

@@ -78,7 +78,7 @@ fn test_begin_construction_and_validate_operation() -> Result<(), failure::Error
                 data_dir: common::prepare_empty_dir("mempool_test_storage_01"),
             },
             TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
                 ipc_socket_path: None,
             },
         ),

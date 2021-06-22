@@ -131,7 +131,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
                 .to_string(),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
@@ -230,7 +230,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
                 .to_string(),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );

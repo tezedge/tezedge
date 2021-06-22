@@ -121,7 +121,7 @@ fn prepare_protocol_context(
             data_dir: common::prepare_empty_dir(dir_name),
         },
         TezosContextTezEdgeStorageConfiguration {
-            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMemGC,
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
             ipc_socket_path: None,
         },
     );
