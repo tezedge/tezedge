@@ -12,14 +12,14 @@
 use std::sync::Arc;
 
 use riker::actors::*;
-use slog::{debug, info, warn};
+use slog::{debug, info, warn, Logger};
 
 use crypto::hash::ChainId;
 use storage::StorageInitInfo;
 use storage::{BlockHeaderWithHash, PersistentStorage};
 
-use crate::mempool::mempool_channel::{MempoolChannelMsg, MempoolChannelRef, MempoolChannelTopic};
-use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::mempool::mempool_prevalidator::{MempoolPrevalidatorBasicRef, ResetMempool};
+use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::head_state::{CurrentHeadRef, HeadResult, HeadState};
 use crate::state::synchronization_state::SynchronizationBootstrapStateRef;
@@ -46,9 +46,6 @@ pub struct ChainCurrentHeadManager {
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
 
-    /// Dedicated channel for mempool
-    mempool_channel: MempoolChannelRef,
-
     /// Helps to manage current head
     head_state: HeadState,
     /// Holds bootstrapped state
@@ -56,8 +53,10 @@ pub struct ChainCurrentHeadManager {
     /// Holds "best" known remote head
     remote_current_head_state: CurrentHeadRef,
 
-    /// check if mempool is supported
-    p2p_disable_mempool: bool,
+    /// Mempool prevalidator
+    mempool_prevalidator: Option<MempoolPrevalidatorBasicRef>,
+    /// mempool factory
+    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
 }
 
 /// Reference to [chain manager](ChainManager) actor.
@@ -68,27 +67,25 @@ impl ChainCurrentHeadManager {
     pub fn actor(
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
-        mempool_channel: MempoolChannelRef,
         persistent_storage: PersistentStorage,
         init_storage_data: StorageInitInfo,
         local_current_head_state: CurrentHeadRef,
         remote_current_head_state: CurrentHeadRef,
         current_mempool_state: CurrentMempoolStateStorageRef,
         current_bootstrap_state: SynchronizationBootstrapStateRef,
-        p2p_disable_mempool: bool,
+        mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
     ) -> Result<ChainCurrentHeadManagerRef, CreateError> {
         sys.actor_of_props::<ChainCurrentHeadManager>(
             ChainCurrentHeadManager::name(),
             Props::new_args((
                 shell_channel,
-                mempool_channel,
                 persistent_storage,
                 init_storage_data,
                 local_current_head_state,
                 remote_current_head_state,
                 current_mempool_state,
                 current_bootstrap_state,
-                p2p_disable_mempool,
+                mempool_prevalidator_factory,
             )),
         )
     }
@@ -167,14 +164,31 @@ impl ChainCurrentHeadManager {
             // e.g. if we just start to bootstrap from the scratch, we dont want to spam other nodes (with higher level)
             if is_bootstrapped {
                 // notify mempool if enabled
-                if !self.p2p_disable_mempool {
-                    self.mempool_channel.tell(
-                        Publish {
-                            msg: MempoolChannelMsg::ResetMempool(block),
-                            topic: MempoolChannelTopic.into(),
-                        },
-                        None,
-                    );
+                if !self.mempool_prevalidator_factory.p2p_disable_mempool {
+                    // find prevalidator for chain_id, if not found, then stop
+                    match self.mempool_if_allowed(&chain_id, &ctx.system, &ctx.system.log()) {
+                        Ok(Some(mempool_prevalidator)) => {
+                            // ping mempool to reset head
+                            if let Err(_) =
+                                mempool_prevalidator.try_tell(ResetMempool { block }, None)
+                            {
+                                warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!");
+                            }
+                        }
+                        Ok(None) => {
+                            warn!(ctx.system.log(), "No mempool prevalidator was found, so cannot reset mempool";
+                                                    "chain_id" => chain_id.to_base58_check(),
+                                                    "block_hash" => new_head.block_hash().to_base58_check(),
+                                                    "caller" => "chain_current_head_manager");
+                        }
+                        Err(err) => {
+                            warn!(ctx.system.log(), "Failed to instantiate mempool_prevalidator";
+                                                    "chain_id" => chain_id.to_base58_check(),
+                                                    "block_hash" => new_head.block_hash().to_base58_check(),
+                                                    "caller" => "chain_current_head_manager",
+                                                    "reason" => err);
+                        }
+                    }
                 }
 
                 // advertise new branch or new head
@@ -240,47 +254,59 @@ impl ChainCurrentHeadManager {
             "local_fitness" => local_fitness,
         );
     }
+
+    fn mempool_if_allowed(
+        &mut self,
+        chain_id: &ChainId,
+        sys: &ActorSystem,
+        log: &Logger,
+    ) -> Result<Option<&MempoolPrevalidatorBasicRef>, StateError> {
+        if self.mempool_prevalidator.is_none() {
+            self.mempool_prevalidator = self.mempool_prevalidator_factory.get_or_start_mempool(
+                chain_id.clone(),
+                sys,
+                log,
+            )?;
+        }
+        Ok(self.mempool_prevalidator.as_ref())
+    }
 }
 
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
-        MempoolChannelRef,
         PersistentStorage,
         StorageInitInfo,
         CurrentHeadRef,
         CurrentHeadRef,
         CurrentMempoolStateStorageRef,
         SynchronizationBootstrapStateRef,
-        bool,
+        Arc<MempoolPrevalidatorFactory>,
     )> for ChainCurrentHeadManager
 {
     fn create_args(
         (
             shell_channel,
-            mempool_channel,
             persistent_storage,
             init_storage_data,
             local_current_head_state,
             remote_current_head_state,
             current_mempool_state,
             current_bootstrap_state,
-            p2p_disable_mempool,
+            mempool_prevalidator_factory,
         ): (
             ShellChannelRef,
-            MempoolChannelRef,
             PersistentStorage,
             StorageInitInfo,
             CurrentHeadRef,
             CurrentHeadRef,
             CurrentMempoolStateStorageRef,
             SynchronizationBootstrapStateRef,
-            bool,
+            Arc<MempoolPrevalidatorFactory>,
         ),
     ) -> Self {
         ChainCurrentHeadManager {
             shell_channel,
-            mempool_channel,
             head_state: HeadState::new(
                 &persistent_storage,
                 local_current_head_state,
@@ -290,7 +316,8 @@ impl
             ),
             current_bootstrap_state,
             remote_current_head_state,
-            p2p_disable_mempool,
+            mempool_prevalidator: None,
+            mempool_prevalidator_factory,
         }
     }
 }

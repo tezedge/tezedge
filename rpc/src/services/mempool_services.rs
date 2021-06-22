@@ -10,13 +10,11 @@ use failure::{bail, format_err};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use slog::info;
+use slog::{info, warn};
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
-use shell::mempool::mempool_channel::{
-    MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
-};
-use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::mempool::mempool_prevalidator::MempoolOperationReceived;
+use shell::mempool::{find_mempool_prevalidator, CurrentMempoolStateStorageRef};
 use shell::shell_channel::{
     InjectBlock, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
@@ -32,7 +30,6 @@ use tezos_messages::p2p::binary_message::{BinaryRead, MessageHash};
 use tezos_messages::p2p::encoding::operation::DecodedOperation;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
 
-use crate::helpers::get_prevalidators;
 use crate::server::RpcServiceEnvironment;
 
 const INJECT_BLOCK_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
@@ -185,7 +182,6 @@ pub fn inject_operation(
     chain_id: ChainId,
     operation_data: &str,
     env: &RpcServiceEnvironment,
-    mempool_channel: &MempoolChannelRef,
 ) -> Result<String, failure::Error> {
     info!(env.log(),
           "Operation injection requested";
@@ -203,9 +199,14 @@ pub fn inject_operation(
         Box::new(BlockMetaStorage::new(persistent_storage));
 
     // find prevalidator for chain_id, if not found, then stop
-    if get_prevalidators(env, Some(&chain_id))?.is_empty() {
+    let mempool_prevalidator = if let Some(mempool_prevalidator) =
+        find_mempool_prevalidator(env.sys(), &chain_id)
+    {
+        mempool_prevalidator
+    } else {
+        warn!(env.log(), "No mempool prevalidator was found"; "chain_id" => chain_id.to_base58_check(), "caller" => "mempool_services");
         bail!("Prevalidator is not running, cannot inject the operation.");
-    }
+    };
 
     // parse operation data
     let operation: Operation = Operation::from_bytes(hex::decode(operation_data)?)?;
@@ -216,7 +217,7 @@ pub fn inject_operation(
         &chain_id,
         &operation_hash,
         &operation,
-        env.current_mempool_state_storage().clone(),
+        env.current_mempool_state_storage(),
         &env.tezos_readonly_prevalidation_api().pool.get()?.api,
         &block_storage,
         &block_meta_storage,
@@ -248,18 +249,19 @@ pub fn inject_operation(
     let start_async = Instant::now();
 
     // ping mempool with new operation for mempool validation
-    mempool_channel.tell(
-        Publish {
-            msg: MempoolOperationReceived {
-                operation_hash,
-                operation_type: MempoolOperationType::Pending,
-                result_callback: result_callback.clone(),
-            }
-            .into(),
-            topic: MempoolChannelTopic.into(),
+    if let Err(_) = mempool_prevalidator.try_tell(
+        MempoolOperationReceived {
+            operation_hash,
+            operation_type: MempoolOperationType::Pending,
+            result_callback: result_callback.clone(),
         },
         None,
-    );
+    ) {
+        return Err(format_err!(
+                    "Operation injection - error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
+                    &operation_hash_b58check_string,
+                ));
+    }
 
     // wait for result
     if let Some(result_callback) = result_callback {

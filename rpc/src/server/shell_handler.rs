@@ -297,13 +297,7 @@ pub async fn inject_operation(
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_operation(
-            is_async,
-            chain_id,
-            &operation_data,
-            &env,
-            env.mempool_channel(),
-        ),
+        services::mempool_services::inject_operation(is_async, chain_id, &operation_data, &env),
         env.log(),
     )
 }
@@ -791,5 +785,5 @@ pub async fn worker_prevalidators(
     _: Query,
     env: RpcServiceEnvironment,
 ) -> ServiceResult {
-    result_to_json_response(helpers::get_prevalidators(&env, None), env.log())
+    result_to_json_response(helpers::get_prevalidators(&env), env.log())
 }

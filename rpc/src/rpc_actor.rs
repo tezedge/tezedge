@@ -10,7 +10,6 @@ use slog::{error, info, warn, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
@@ -54,7 +53,6 @@ impl RpcServer {
     pub fn actor(
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
-        mempool_channel: MempoolChannelRef,
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
@@ -87,7 +85,6 @@ impl RpcServer {
                 sys.clone(),
                 actor_ref.clone(),
                 shell_channel,
-                mempool_channel,
                 tezos_env,
                 network_version,
                 persistent_storage,
