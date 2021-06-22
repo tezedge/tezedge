@@ -6,6 +6,7 @@ use std::{borrow::Cow, path::Path, sync::Arc};
 use crypto::hash::ContextHash;
 use failure::Error;
 use slog::{error, info};
+use tezos_timing::RepositoryMemoryUsage;
 
 use crate::persistent::database::DBError;
 use crate::persistent::{Flushable, Persistable};
@@ -68,7 +69,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
 
     fn get_hash(&self, hash_id: HashId) -> Result<Option<Cow<EntryHash>>, DBError> {
         if let Some(hash_id) = hash_id.get_readonly_id()? {
-            Ok(self.hashes.get_hash(hash_id)?.map(|h| Cow::Borrowed(h)))
+            Ok(self.hashes.get_hash(hash_id)?.map(Cow::Borrowed))
         } else {
             self.client
                 .get_hash(hash_id)
@@ -78,7 +79,7 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
 
     fn get_value(&self, hash_id: HashId) -> Result<Option<Cow<[u8]>>, DBError> {
         if let Some(hash_id) = hash_id.get_readonly_id()? {
-            Ok(self.hashes.get_value(hash_id)?.map(|v| Cow::Borrowed(v)))
+            Ok(self.hashes.get_value(hash_id)?.map(Cow::Borrowed))
         } else {
             self.client
                 .get_value(hash_id)
@@ -96,6 +97,10 @@ impl KeyValueStoreBackend for ReadonlyIpcBackend {
     fn clear_entries(&mut self) -> Result<(), DBError> {
         self.hashes.clear();
         Ok(())
+    }
+
+    fn memory_usage(&self) -> RepositoryMemoryUsage {
+        self.hashes.get_memory_usage()
     }
 }
 
@@ -278,7 +283,7 @@ impl IpcContextClient {
             .try_receive(Some(Self::TIMEOUT), Some(IpcContextListener::IO_TIMEOUT))?
         {
             ContextResponse::GetValueResponse(result) => result
-                .map(|h| h.map(|h| Cow::Owned(h)))
+                .map(|h| h.map(Cow::Owned))
                 .map_err(|err| ContextError::GetValueError { reason: err }.into()),
             message => Err(ContextServiceError::UnexpectedMessage {
                 message: message.into(),
@@ -339,7 +344,7 @@ impl IpcContextClient {
             .try_receive(Some(Self::TIMEOUT), Some(IpcContextListener::IO_TIMEOUT))?
         {
             ContextResponse::GetContextHashResponse(result) => result
-                .map(|h| h.map(|h| Cow::Owned(h)))
+                .map(|h| h.map(Cow::Owned))
                 .map_err(|err| ContextError::GetContextHashError { reason: err }.into()),
             message => Err(ContextServiceError::UnexpectedMessage {
                 message: message.into(),

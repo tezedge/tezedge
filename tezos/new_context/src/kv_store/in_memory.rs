@@ -3,13 +3,15 @@
 
 use std::{
     borrow::Cow,
-    collections::{hash_map::DefaultHasher, BTreeMap, HashMap, VecDeque},
+    collections::{hash_map::DefaultHasher, BTreeMap, VecDeque},
     hash::Hasher,
+    mem::size_of,
     sync::Arc,
 };
 
 use crossbeam_channel::Sender;
 use crypto::hash::ContextHash;
+use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
     gc::{
@@ -18,6 +20,7 @@ use crate::{
     },
     hash::EntryHash,
     persistent::{DBError, Flushable, KeyValueStoreBackend, Persistable},
+    Map,
 };
 
 use tezos_spsc::Consumer;
@@ -31,6 +34,7 @@ pub struct HashValueStore {
     values: Entries<HashId, Option<Arc<[u8]>>>,
     free_ids: Option<Consumer<HashId>>,
     new_ids: Vec<HashId>,
+    values_bytes: usize,
 }
 
 impl HashValueStore {
@@ -43,6 +47,26 @@ impl HashValueStore {
             values: Entries::new(),
             free_ids: consumer.into(),
             new_ids: Vec::with_capacity(1024),
+            values_bytes: 0,
+        }
+    }
+
+    pub fn get_memory_usage(&self) -> RepositoryMemoryUsage {
+        let values_bytes = self.values_bytes;
+        let values_capacity = self.values.capacity();
+        let hashes_capacity = self.hashes.capacity();
+        let total_bytes = values_bytes
+            .saturating_add(values_capacity * size_of::<Option<Arc<[u8]>>>())
+            .saturating_add(values_capacity * 16) // Each `Arc` has 16 extra bytes for the counters
+            .saturating_add(hashes_capacity * size_of::<EntryHash>());
+
+        RepositoryMemoryUsage {
+            values_bytes,
+            values_capacity,
+            values_length: self.values.len(),
+            hashes_capacity,
+            hashes_length: self.hashes.len(),
+            total_bytes,
         }
     }
 
@@ -52,12 +76,15 @@ impl HashValueStore {
             values: Entries::new(),
             free_ids: self.free_ids.take(),
             new_ids: Vec::new(),
+            values_bytes: 0,
         }
     }
 
     pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, HashIdError> {
         let (hash_id, entry) = if let Some(free_id) = self.get_free_id() {
-            self.values.set(free_id, None)?;
+            if let Some(old_value) = self.values.set(free_id, None)? {
+                self.values_bytes = self.values_bytes.saturating_sub(old_value.len());
+            }
             (free_id, self.hashes.get_mut(free_id)?.ok_or(HashIdError)?)
         } else {
             self.hashes.get_vacant_entry()?
@@ -79,7 +106,11 @@ impl HashValueStore {
         hash_id: HashId,
         value: Arc<[u8]>,
     ) -> Result<(), HashIdError> {
-        self.values.insert_at(hash_id, Some(value))
+        self.values_bytes = self.values_bytes.saturating_add(value.len());
+        if let Some(old) = self.values.insert_at(hash_id, Some(value))? {
+            self.values_bytes = self.values_bytes.saturating_sub(old.len());
+        }
+        Ok(())
     }
 
     pub(crate) fn get_hash(&self, hash_id: HashId) -> Result<Option<&EntryHash>, HashIdError> {
@@ -89,7 +120,7 @@ impl HashValueStore {
     pub(crate) fn get_value(&self, hash_id: HashId) -> Result<Option<&[u8]>, HashIdError> {
         match self.values.get(hash_id)? {
             Some(value) => Ok(value.as_ref().map(|v| v.as_ref())),
-            None => return Ok(None),
+            None => Ok(None),
         }
     }
 
@@ -108,7 +139,7 @@ pub struct InMemory {
     current_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
     pub hashes: HashValueStore,
     sender: Option<Sender<Command>>,
-    pub context_hashes: HashMap<u64, HashId>,
+    pub context_hashes: Map<u64, HashId>,
     context_hashes_cycles: VecDeque<Vec<u64>>,
 }
 
@@ -171,6 +202,10 @@ impl KeyValueStoreBackend for InMemory {
     fn clear_entries(&mut self) -> Result<(), DBError> {
         // `InMemory` has its own garbage collection
         Ok(())
+    }
+
+    fn memory_usage(&self) -> RepositoryMemoryUsage {
+        self.hashes.get_memory_usage()
     }
 }
 
@@ -295,9 +330,9 @@ impl InMemory {
         let hashed = hasher.finish();
 
         self.context_hashes.insert(hashed, commit_hash_id);
-        self.context_hashes_cycles
-            .back_mut()
-            .map(|v| v.push(hashed));
+        if let Some(back) = self.context_hashes_cycles.back_mut() {
+            back.push(hashed);
+        };
 
         Ok(())
     }
