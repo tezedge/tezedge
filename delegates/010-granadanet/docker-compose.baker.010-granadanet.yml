@@ -11,7 +11,7 @@ services:
       - DATA_DIR=/data/data
       - NODE_HOST=${NODE_HOST}
       - NODE_RPC_PORT=${NODE_RPC_PORT}
-    command: tezos-baker ${DELEGATE_ALIAS} --keep-alive
+    command: tezos-baker ${DELEGATE_ALIAS} --max-priority 2 --keep-alive
     network_mode: host
     volumes:
       - "data-dir-010-PtGRANAD:/data:rw"

@@ -3,6 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use chrono::{DateTime, Utc};
+
 use crypto::hash::{BlockHash, OperationHash};
 use tezos_api::ffi::{Applied, PrevalidatorWrapper, ValidateOperationResult};
 use tezos_messages::p2p::encoding::prelude::{Mempool, Operation};
@@ -21,6 +23,7 @@ pub struct MempoolState {
     /// Original tezos prevalidator has prevalidator.fitness which is used for set_head comparision
     /// So, we keep it in-memory here
     prevalidator: Option<PrevalidatorWrapper>,
+    prevalidator_started: Option<DateTime<Utc>>,
     predecessor: Option<BlockHash>,
 
     /// Actual cumulated operation results
@@ -200,6 +203,14 @@ impl MempoolState {
 
     pub fn prevalidator(&self) -> Option<&PrevalidatorWrapper> {
         self.prevalidator.as_ref()
+    }
+
+    pub fn prevalidator_started(&self) -> Option<&DateTime<Utc>> {
+        self.prevalidator_started.as_ref()
+    }
+
+    pub fn set_prevalidator_started(&mut self) {
+        self.prevalidator_started = Some(Utc::now());
     }
 
     pub fn head(&self) -> Option<&BlockHash> {

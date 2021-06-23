@@ -5,7 +5,6 @@
 // TODO: TE-244 - reimplement
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use crypto::hash::CryptoboxPublicKeyHash;
@@ -14,7 +13,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 /// Type hold information if node is bootstrapped shareable between threads/actors
 /// Indicates that node/shell is bootstrapped, which means, that can broadcast stuff (new branch, new head) to the network
-type BootstrappedStatusRef = Arc<AtomicBool>;
+type BootstrappedStatusRef = bool;
 
 /// Trait for struct witch has updatable flag [`is_bootstrapped`]
 pub trait UpdateIsBootstrapped {
@@ -50,7 +49,7 @@ pub fn init_synchronization_bootstrap_state_storage(
 ) -> SynchronizationBootstrapStateRef {
     Arc::new(RwLock::new(SynchronizationBootstrapState::new(
         num_of_peers_for_bootstrap_threshold,
-        BootstrappedStatusRef::new(AtomicBool::new(false)),
+        false,
     )))
 }
 
@@ -73,11 +72,11 @@ impl SynchronizationBootstrapState {
 
     pub fn new(
         num_of_peers_for_bootstrap_threshold: usize,
-        current_bootstrapped_status: BootstrappedStatusRef,
+        mut current_bootstrapped_status: BootstrappedStatusRef,
     ) -> Self {
         // if no limit, just mark as bootstrapped
         if num_of_peers_for_bootstrap_threshold == 0 {
-            current_bootstrapped_status.store(true, Ordering::Release);
+            current_bootstrapped_status = true;
         }
 
         Self {
@@ -88,7 +87,7 @@ impl SynchronizationBootstrapState {
     }
 
     pub fn is_bootstrapped(&self) -> bool {
-        self.current_bootstrapped_status.load(Ordering::Acquire)
+        self.current_bootstrapped_status
     }
 
     fn consider_as_bootstrapped(
@@ -171,8 +170,7 @@ impl SynchronizationBootstrapState {
                 remote_best_known_level,
                 Self::HIGH_LEVEL_MARGIN_PERCENTAGE,
             ) {
-                self.current_bootstrapped_status
-                    .store(true, Ordering::Release);
+                self.current_bootstrapped_status = true;
                 self.state.clear();
             }
         }
@@ -200,7 +198,6 @@ impl SynchronizationBootstrapState {
 
 #[cfg(test)]
 pub mod tests {
-    use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
     use slog::Level;
@@ -217,7 +214,7 @@ pub mod tests {
     #[test]
     fn test_resolve_is_bootstrapped_no_threshold() {
         // prepare empty states
-        let bootstrap_status = BootstrappedStatusRef::new(AtomicBool::new(false));
+        let bootstrap_status = false;
         let bootstrap_state = SynchronizationBootstrapState::new(0, bootstrap_status);
 
         // check
@@ -240,7 +237,7 @@ pub mod tests {
         };
 
         // prepare empty states with threshold = 2
-        let bootstrap_status = BootstrappedStatusRef::new(AtomicBool::new(false));
+        let bootstrap_status = false;
         let mut bootstrap_state = SynchronizationBootstrapState::new(2, bootstrap_status);
 
         // check

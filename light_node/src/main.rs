@@ -3,8 +3,7 @@
 // NOTE: unsafe cannot be forbidden right now because of code in systems.rs
 // #![forbid(unsafe_code)]
 
-use std::sync::Condvar;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use riker::actors::*;
@@ -15,9 +14,7 @@ use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
-use shell::mempool::init_mempool_state_storage;
-use shell::mempool::mempool_channel::MempoolChannel;
-use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
+use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::peer_manager::PeerManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
@@ -241,20 +238,24 @@ fn block_on_actors(
     let network_channel =
         NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-    let mempool_channel =
-        MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
+    let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+        shell_channel.clone(),
+        persistent_storage.clone(),
+        current_mempool_state_storage.clone(),
+        tezos_readonly_api_pool.clone(),
+        env.p2p.disable_mempool,
+    ));
 
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
-        mempool_channel.clone(),
         persistent_storage.clone(),
         init_storage_data.clone(),
         local_current_head_state.clone(),
         remote_current_head_state.clone(),
         current_mempool_state_storage.clone(),
         bootstrap_state.clone(),
-        env.p2p.disable_mempool,
+        mempool_prevalidator_factory.clone(),
     )
     .expect("Failed to create chain current head manager");
     let block_applier = ChainFeeder::actor(
@@ -273,7 +274,6 @@ fn block_on_actors(
         block_applier.clone(),
         network_channel.clone(),
         shell_channel.clone(),
-        mempool_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         init_storage_data.clone(),
@@ -282,27 +282,11 @@ fn block_on_actors(
         remote_current_head_state,
         current_mempool_state_storage.clone(),
         bootstrap_state,
-        env.p2p.disable_mempool,
+        mempool_prevalidator_factory,
         identity.clone(),
     )
     .expect("Failed to create chain manager");
 
-    if env.p2p.disable_mempool {
-        info!(log, "Mempool disabled");
-    } else {
-        info!(log, "Mempool enabled");
-        let _ = MempoolPrevalidator::actor(
-            &actor_system,
-            shell_channel.clone(),
-            mempool_channel.clone(),
-            &persistent_storage,
-            current_mempool_state_storage.clone(),
-            init_storage_data.chain_id.clone(),
-            tezos_readonly_api_pool.clone(),
-            log.clone(),
-        )
-        .expect("Failed to create mempool prevalidator");
-    }
     let websocket_handler = WebsocketHandler::actor(
         &actor_system,
         tokio_runtime.handle().clone(),
@@ -322,7 +306,6 @@ fn block_on_actors(
     let _ = RpcServer::actor(
         &actor_system,
         shell_channel.clone(),
-        mempool_channel,
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
         &tokio_runtime.handle(),
         &persistent_storage,
@@ -333,7 +316,6 @@ fn block_on_actors(
         tezos_env.clone(),
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
-        is_sandbox,
         env.storage
             .context_storage_configuration
             .tezedge_is_enabled(),
@@ -424,14 +406,17 @@ fn schedule_replay_blocks(
     log: Logger,
 ) {
     let chain_id = Arc::new(init_storage_data.chain_id.clone());
-    let pair = Arc::new((Mutex::new(None), Condvar::new()));
+    let (result_callback_sender, result_callback_receiver) = {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        (Arc::new(sender), receiver)
+    };
     let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
     let nblocks = blocks.len();
     let now = std::time::Instant::now();
 
     for (index, block) in blocks.into_iter().enumerate() {
         let batch = ApplyBlockBatch::one((&*block).clone());
-        let result_callback = Some(Arc::clone(&pair));
+        let result_callback = Some(result_callback_sender.clone());
 
         let now = std::time::Instant::now();
         block_applier.tell(
@@ -439,15 +424,15 @@ fn schedule_replay_blocks(
             None,
         );
 
-        let (lock, cvar) = &*pair;
-        let lock = lock.lock().unwrap();
-        let result = cvar.wait(lock).unwrap();
+        let result = result_callback_receiver
+            .recv()
+            .expect("Failed to wait for block aplication");
         let time = now.elapsed();
 
         let hash = block.to_base58_check();
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
-        if let Some(Err(_)) = &*result {
+        if let Err(_) = result.as_ref() {
             replay_shutdown(shell_channel);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",

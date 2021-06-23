@@ -39,15 +39,15 @@ use tezos_messages::Head;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_feeder::ChainFeederRef;
-use crate::mempool::mempool_channel::{
-    MempoolChannelMsg, MempoolChannelRef, MempoolChannelTopic, MempoolOperationReceived,
+use crate::mempool::mempool_prevalidator::{
+    MempoolOperationReceived, MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg, ResetMempool,
 };
 use crate::mempool::mempool_state::MempoolState;
-use crate::mempool::CurrentMempoolStateStorageRef;
+use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
 use crate::shell_channel::{
-    AllBlockOperationsReceived, BlockReceived, InjectBlock, ShellChannelMsg, ShellChannelRef,
-    ShellChannelTopic,
+    AllBlockOperationsReceived, BlockReceived, InjectBlock, InjectBlockOneshotResultCallback,
+    ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
 use crate::state::head_state::CurrentHeadRef;
@@ -57,7 +57,7 @@ use crate::state::synchronization_state::{
 };
 use crate::state::StateError;
 use crate::subscription::*;
-use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::utils::dispatch_oneshot_result;
 use crate::validation;
 
 /// How often to ask all connected peers for current head
@@ -206,8 +206,10 @@ pub struct ChainManager {
     network_channel: NetworkChannelRef,
     /// All events from shell will be published to this channel
     shell_channel: ShellChannelRef,
-    /// Mempool channel
-    mempool_channel: MempoolChannelRef,
+    /// Mempool prevalidator
+    mempool_prevalidator: Option<MempoolPrevalidatorBasicRef>,
+    /// mempool factory
+    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
 
     /// Block storage
     block_storage: Box<dyn BlockStorageReader>,
@@ -235,8 +237,6 @@ pub struct ChainManager {
     /// Holds bootstrapped state
     current_bootstrap_state: SynchronizationBootstrapStateRef,
 
-    /// Indicates if mempool is disabled to propagate to p2p
-    p2p_disable_mempool: bool,
     /// Indicates that system is shutting down
     shutting_down: bool,
     /// Indicates node mode
@@ -256,7 +256,6 @@ impl ChainManager {
         block_applier: ChainFeederRef,
         network_channel: NetworkChannelRef,
         shell_channel: ShellChannelRef,
-        mempool_channel: MempoolChannelRef,
         persistent_storage: PersistentStorage,
         tezos_readonly_prevalidation_api: Arc<TezosApiConnectionPool>,
         init_storage_data: StorageInitInfo,
@@ -265,7 +264,7 @@ impl ChainManager {
         remote_current_head_state: CurrentHeadRef,
         current_mempool_state: CurrentMempoolStateStorageRef,
         current_bootstrap_state: SynchronizationBootstrapStateRef,
-        p2p_disable_mempool: bool,
+        mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         identity: Arc<Identity>,
     ) -> Result<ChainManagerRef, CreateError> {
         sys.actor_of_props::<ChainManager>(
@@ -274,7 +273,6 @@ impl ChainManager {
                 block_applier,
                 network_channel,
                 shell_channel,
-                mempool_channel,
                 persistent_storage,
                 tezos_readonly_prevalidation_api,
                 init_storage_data,
@@ -283,7 +281,7 @@ impl ChainManager {
                 remote_current_head_state,
                 current_mempool_state,
                 current_bootstrap_state,
-                p2p_disable_mempool,
+                mempool_prevalidator_factory,
                 identity.peer_id(),
             )),
         )
@@ -311,7 +309,7 @@ impl ChainManager {
             peers,
             chain_state,
             shell_channel,
-            mempool_channel,
+            mempool_prevalidator,
             network_channel,
             block_storage,
             block_meta_storage,
@@ -477,7 +475,8 @@ impl ChainManager {
                                                 current_head.header.as_ref().clone(),
                                                 Self::resolve_mempool_to_send_to_peer(
                                                     &peer,
-                                                    self.p2p_disable_mempool,
+                                                    self.mempool_prevalidator_factory
+                                                        .p2p_disable_mempool,
                                                     self.current_mempool_state.clone(),
                                                     &current_head_local,
                                                 )?,
@@ -605,7 +604,10 @@ impl ChainManager {
                                             )?;
 
                                             // schedule mempool download, if enabled
-                                            if !self.p2p_disable_mempool {
+                                            if !self
+                                                .mempool_prevalidator_factory
+                                                .p2p_disable_mempool
+                                            {
                                                 let peer_current_mempool =
                                                     message.current_mempool();
 
@@ -734,7 +736,7 @@ impl ChainManager {
                                             chain_state.get_chain_id(),
                                             &operation_hash,
                                             &operation,
-                                            self.current_mempool_state.clone(),
+                                            &self.current_mempool_state,
                                             &self.tezos_readonly_prevalidation_api.pool.get()?.api,
                                             block_storage,
                                             block_meta_storage,
@@ -771,18 +773,22 @@ impl ChainManager {
                                         ctx.myself().tell(CheckMempoolCompleteness, None);
 
                                         // notify others that new operation was received
-                                        mempool_channel.tell(
-                                            Publish {
-                                                msg: MempoolOperationReceived {
-                                                    operation_hash,
-                                                    operation_type,
-                                                    result_callback: None,
-                                                }
-                                                .into(),
-                                                topic: MempoolChannelTopic.into(),
-                                            },
-                                            None,
-                                        );
+                                        if let Some(mempool_prevalidator) =
+                                            mempool_prevalidator.as_ref()
+                                        {
+                                            if mempool_prevalidator.try_tell(
+                                                MempoolPrevalidatorMsg::MempoolOperationReceived(
+                                                    MempoolOperationReceived {
+                                                        operation_hash,
+                                                        operation_type,
+                                                        result_callback: None,
+                                                    },
+                                                ),
+                                                None,
+                                            ).is_err() {
+                                                warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `MempoolOperationReceived`!"; "caller" => "chain_manager");
+                                            }
+                                        }
                                     }
                                     None => {
                                         debug!(log, "Unexpected mempool operation received"; "operation_branch" => operation.branch().to_base58_check(), "operation_hash" => operation_hash.to_base58_check())
@@ -896,7 +902,7 @@ impl ChainManager {
                 });
             }
             ShellChannelMsg::PeerBranchSynchronizationDone(msg) => {
-                if let Err(e) = self.resolve_is_bootstrapped(&msg, &ctx.system.log()) {
+                if let Err(e) = self.resolve_is_bootstrapped(&msg, ctx, &ctx.system.log()) {
                     warn!(ctx.system.log(), "Failed to resolve is_bootstrapped for chain manager"; "msg" => format!("{:?}", msg), "reason" => format!("{:?}", e))
                 }
             }
@@ -943,7 +949,7 @@ impl ChainManager {
     fn process_injected_block(
         &mut self,
         injected_block: InjectBlock,
-        result_callback: Option<CondvarResult<(), failure::Error>>,
+        result_callback: Option<InjectBlockOneshotResultCallback>,
         ctx: &Context<ChainManagerMsg>,
     ) -> Result<(), Error> {
         let InjectBlock {
@@ -964,18 +970,16 @@ impl ChainManager {
         {
             Ok(data) => data,
             Err(e) => {
-                if let Err(e) = dispatch_condvar_result(
-                    result_callback,
-                    || {
-                        Err(format_err!(
+                if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                    Err(StateError::ProcessingError {
+                        reason: format!(
                             "Failed to store injected block, block_hash: {}, reason: {}",
                             block_header_with_hash.hash.to_base58_check(),
                             e
-                        ))
-                    },
-                    true,
-                ) {
-                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        ),
+                    })
+                }) {
+                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                 }
                 return Err(e.into());
             }
@@ -1007,17 +1011,15 @@ impl ChainManager {
                 let operations = match operations {
                     Some(operations) => operations,
                     None => {
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!(
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {
+                                reason: format!(
                                     "Missing operations in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
-                                ))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                ),
+                            })
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                         return Err(format_err!(
                             "Missing operations in request, block_hash: {}",
@@ -1028,17 +1030,15 @@ impl ChainManager {
                 let op_paths = match operation_paths {
                     Some(op_paths) => op_paths,
                     None => {
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!(
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {
+                                reason: format!(
                                     "Missing operation paths in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
-                                ))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                ),
+                            })
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                         return Err(format_err!(
                             "Missing operation paths in request, block_hash: {}",
@@ -1057,14 +1057,10 @@ impl ChainManager {
                     let operation_hashes_path = match op_paths.get(idx) {
                         Some(path) => path.to_owned(),
                         None => {
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check()))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check())})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                             return Err(format_err!(
                                 "Missing operation paths in request for index: {}, block_hash: {}",
@@ -1102,14 +1098,10 @@ impl ChainManager {
                             }
                         }
                         Err(e) => {
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                             return Err(e.into());
                         }
@@ -1123,30 +1115,24 @@ impl ChainManager {
                 block_header_with_hash.hash.clone(),
                 result_callback.clone(),
             ) {
-                if let Err(e) = dispatch_condvar_result(
-                    result_callback,
-                    || {
-                        Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
-                    },
-                    true,
-                ) {
-                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                    Err(StateError::ProcessingError {reason: format!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                }) {
+                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                 }
                 return Err(e.into());
             };
         } else {
             warn!(log, "Injected duplicated block - will be ignored!");
-            if let Err(e) = dispatch_condvar_result(
-                result_callback,
-                || {
-                    Err(format_err!(
+            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                Err(StateError::ProcessingError {
+                    reason: format!(
                         "Injected duplicated block - will be ignored!, block_hash: {}",
                         block_header_with_hash.hash.to_base58_check()
-                    ))
-                },
-                true,
-            ) {
-                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                    ),
+                })
+            }) {
+                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
             }
         }
 
@@ -1160,6 +1146,7 @@ impl ChainManager {
     fn resolve_is_bootstrapped(
         &mut self,
         msg: &PeerBranchSynchronizationDone,
+        ctx: &Context<ChainManagerMsg>,
         log: &Logger,
     ) -> Result<(), StateError> {
         if self.current_bootstrap_state.read()?.is_bootstrapped() {
@@ -1199,6 +1186,8 @@ impl ChainManager {
             peer_state.missing_operations_for_blocks.clear();
         }
 
+        let mut can_activate_mempool = false;
+        let mut advertise_current_head = None;
         {
             // lock and log
             let current_bootstrap_state = self.current_bootstrap_state.read()?;
@@ -1215,26 +1204,12 @@ impl ChainManager {
                 if let Some(current_head) = self.current_head.local.read()?.as_ref() {
                     // get current header
                     if let Some(header) = self.block_storage.get(current_head.block_hash())? {
-                        let block = Arc::new(header);
+                        advertise_current_head = Some(Arc::new(header));
 
                         // notify mempool if enabled
-                        if !self.p2p_disable_mempool {
-                            self.mempool_channel.tell(
-                                Publish {
-                                    msg: MempoolChannelMsg::ResetMempool(block.clone()),
-                                    topic: MempoolChannelTopic.into(),
-                                },
-                                None,
-                            );
+                        if !self.mempool_prevalidator_factory.p2p_disable_mempool {
+                            can_activate_mempool = true;
                         }
-
-                        // advertise our current_head
-                        self.advertise_current_head_to_p2p(
-                            self.chain_state.get_chain_id(),
-                            block.header.clone(),
-                            Mempool::default(),
-                            false,
-                        );
                     } else {
                         return Err(StateError::ProcessingError {
                             reason: format!(
@@ -1245,6 +1220,45 @@ impl ChainManager {
                     }
                 }
             }
+        }
+
+        if let Some(block) = advertise_current_head {
+            // start mempool if needed
+            if can_activate_mempool {
+                if let Err(e) = self.start_mempool_if_needed(
+                    self.chain_state.get_chain_id().as_ref().clone(),
+                    &ctx.system,
+                    log,
+                ) {
+                    warn!(log, "(Chain manager) Failed to start mempool prevalidator";
+                                "chain_id" => self.chain_state.get_chain_id().to_base58_check(),
+                                "reason" => e,
+                    );
+                }
+
+                // ping mempool to reset head
+                if let Some(mempool_prevalidator) = self.mempool_prevalidator.as_ref() {
+                    if mempool_prevalidator
+                        .try_tell(
+                            MempoolPrevalidatorMsg::ResetMempool(ResetMempool {
+                                block: block.clone(),
+                            }),
+                            None,
+                        )
+                        .is_err()
+                    {
+                        warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_manager");
+                    }
+                }
+            }
+
+            // advertise our current_head
+            self.advertise_current_head_to_p2p(
+                self.chain_state.get_chain_id(),
+                block.header.clone(),
+                Mempool::default(),
+                false,
+            );
         }
 
         Ok(())
@@ -1303,7 +1317,7 @@ impl ChainManager {
             let current_head_msg =
                 CurrentHeadMessage::new(chain_id.clone(), block_header.as_ref().clone(), {
                     // we must check, if we have allowed mempool
-                    if self.p2p_disable_mempool {
+                    if self.mempool_prevalidator_factory.p2p_disable_mempool {
                         Mempool::default()
                     } else {
                         mempool
@@ -1376,6 +1390,20 @@ impl ChainManager {
             Ok(Mempool::default())
         }
     }
+
+    fn start_mempool_if_needed(
+        &mut self,
+        chain_id: ChainId,
+        sys: &ActorSystem,
+        log: &Logger,
+    ) -> Result<(), StateError> {
+        if self.mempool_prevalidator.is_none() {
+            self.mempool_prevalidator = self
+                .mempool_prevalidator_factory
+                .get_or_start_mempool(chain_id, sys, log)?;
+        }
+        Ok(())
+    }
 }
 
 impl
@@ -1383,7 +1411,6 @@ impl
         ChainFeederRef,
         NetworkChannelRef,
         ShellChannelRef,
-        MempoolChannelRef,
         PersistentStorage,
         Arc<TezosApiConnectionPool>,
         StorageInitInfo,
@@ -1392,7 +1419,7 @@ impl
         CurrentHeadRef,
         CurrentMempoolStateStorageRef,
         SynchronizationBootstrapStateRef,
-        bool,
+        Arc<MempoolPrevalidatorFactory>,
         CryptoboxPublicKeyHash,
     )> for ChainManager
 {
@@ -1401,7 +1428,6 @@ impl
             block_applier,
             network_channel,
             shell_channel,
-            mempool_channel,
             persistent_storage,
             tezos_readonly_prevalidation_api,
             init_storage_data,
@@ -1410,13 +1436,12 @@ impl
             remote_current_head_state,
             current_mempool_state,
             current_bootstrap_state,
-            p2p_disable_mempool,
+            mempool_prevalidator_factory,
             identity_peer_id,
         ): (
             ChainFeederRef,
             NetworkChannelRef,
             ShellChannelRef,
-            MempoolChannelRef,
             PersistentStorage,
             Arc<TezosApiConnectionPool>,
             StorageInitInfo,
@@ -1425,14 +1450,13 @@ impl
             CurrentHeadRef,
             CurrentMempoolStateStorageRef,
             SynchronizationBootstrapStateRef,
-            bool,
+            Arc<MempoolPrevalidatorFactory>,
             CryptoboxPublicKeyHash,
         ),
     ) -> Self {
         ChainManager {
             network_channel,
             shell_channel: shell_channel.clone(),
-            mempool_channel,
             block_storage: Box::new(BlockStorage::new(&persistent_storage)),
             block_meta_storage: Box::new(BlockMetaStorage::new(&persistent_storage)),
             operations_storage: Box::new(OperationsStorage::new(&persistent_storage)),
@@ -1461,7 +1485,8 @@ impl
             identity_peer_id,
             current_mempool_state,
             current_bootstrap_state,
-            p2p_disable_mempool,
+            mempool_prevalidator: None,
+            mempool_prevalidator_factory,
             tezos_readonly_prevalidation_api,
         }
     }
@@ -1512,15 +1537,33 @@ impl Actor for ChainManager {
     }
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        let log = ctx.system.log();
+        let mut can_start_mempool = false;
+
         match self.current_bootstrap_state.read() {
             Ok(current_bootstrap_state) => {
                 if current_bootstrap_state.is_bootstrapped() {
-                    info!(ctx.system.log(), "Bootstrapped on startup (chain_manager)";
+                    info!(log, "Bootstrapped on startup (chain_manager)";
                        "num_of_peers_for_bootstrap_threshold" => current_bootstrap_state.num_of_peers_for_bootstrap_threshold());
+                    can_start_mempool = true;
                 }
             }
             Err(e) => {
-                warn!(ctx.system.log(), "Failed to read current_bootstrap_state on startup"; "reason" => format!("{}", e))
+                warn!(ctx.system.log(), "Failed to read current_bootstrap_state on startup"; "reason" => format!("{}", e));
+            }
+        }
+
+        // run mempool if needed
+        if can_start_mempool {
+            if let Err(e) = self.start_mempool_if_needed(
+                self.chain_state.get_chain_id().as_ref().clone(),
+                &ctx.system,
+                &log,
+            ) {
+                warn!(log, "Failed to start mempool prevalidator on startup";
+                           "chain_id" => self.chain_state.get_chain_id().to_base58_check(),
+                           "reason" => e,
+                );
             }
         }
     }
