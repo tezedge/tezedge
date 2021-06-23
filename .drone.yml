@@ -8,6 +8,7 @@ steps:
   image: akoptelov/test-plugin
   settings:
     var: val
+    var-with-dash: other val
 
 trigger:
   branch:
