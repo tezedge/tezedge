@@ -5194,7 +5194,7 @@ steps:
   image: simplestakingcom/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
   image: simplestakingcom/tezedge-ci-builder:latest
