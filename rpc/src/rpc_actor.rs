@@ -33,8 +33,6 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<Arc<BlockHeaderWithHash>>,
-    #[get_copy = "pub(crate)"]
-    is_sandbox: bool,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -64,7 +62,6 @@ impl RpcServer {
         tezos_env: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
-        is_sandbox: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(
@@ -72,7 +69,6 @@ impl RpcServer {
                 &init_storage_data.chain_id,
                 &sys.log(),
             ),
-            is_sandbox,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),

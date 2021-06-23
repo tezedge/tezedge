@@ -297,7 +297,8 @@ pub async fn inject_operation(
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_operation(is_async, chain_id, &operation_data, &env),
+        services::mempool_services::inject_operation(is_async, chain_id, &operation_data, &env)
+            .await,
         env.log(),
     )
 }
@@ -318,7 +319,8 @@ pub async fn inject_block(
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_block(is_async, chain_id, &body, &env, shell_channel),
+        services::mempool_services::inject_block(is_async, chain_id, &body, &env, shell_channel)
+            .await,
         env.log(),
     )
 }

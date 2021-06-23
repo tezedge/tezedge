@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::convert::TryInto;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use failure::{bail, format_err};
@@ -13,12 +13,11 @@ use serde_json::Value;
 use slog::{info, warn};
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
-use shell::mempool::mempool_prevalidator::MempoolOperationReceived;
+use shell::mempool::mempool_prevalidator::{MempoolOperationReceived, MempoolPrevalidatorMsg};
 use shell::mempool::{find_mempool_prevalidator, CurrentMempoolStateStorageRef};
 use shell::shell_channel::{
     InjectBlock, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
-use shell::utils::try_wait_for_condvar_result;
 use shell::validation;
 use storage::mempool_storage::MempoolOperationType;
 use storage::{
@@ -177,7 +176,7 @@ fn convert_errored(
     Ok(result)
 }
 
-pub fn inject_operation(
+pub async fn inject_operation(
     is_async: bool,
     chain_id: ChainId,
     operation_data: &str,
@@ -238,23 +237,27 @@ pub fn inject_operation(
     mempool_storage.put(MempoolOperationType::Pending, operation.into())?;
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let result_callback = if is_async {
+    let (result_callback_sender, result_callback_receiver) = if is_async {
         // if async no wait
-        None
+        (None, None)
     } else {
-        // if not async, means sync and we wait
-        Some(Arc::new((Mutex::new(None), Condvar::new())))
+        // if not async, means sync and we wait till operations is added to pendings
+        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
+        (
+            Some(Arc::new(result_callback_sender)),
+            Some(result_callback_receiver),
+        )
     };
 
     let start_async = Instant::now();
 
     // ping mempool with new operation for mempool validation
     if let Err(_) = mempool_prevalidator.try_tell(
-        MempoolOperationReceived {
+        MempoolPrevalidatorMsg::MempoolOperationReceived(MempoolOperationReceived {
             operation_hash,
             operation_type: MempoolOperationType::Pending,
-            result_callback: result_callback.clone(),
-        },
+            result_callback: result_callback_sender,
+        }),
         None,
     ) {
         return Err(format_err!(
@@ -263,41 +266,40 @@ pub fn inject_operation(
                 ));
     }
 
-    // wait for result
-    if let Some(result_callback) = result_callback {
-        let wait_result =
-            try_wait_for_condvar_result(result_callback, INJECT_OPERATION_WAIT_TIMEOUT).map_err(
-                |e| {
-                    format_err!(
-                        "Operation injection - failed to inject, operation_hash: {}, reason: {:?}!",
-                        &operation_hash_b58check_string,
-                        e
-                    )
-                },
-            )?;
-        match wait_result {
-            Ok(_) => {
-                info!(env.log(),
-                      "Operation injected";
-                      "operation_hash" => &operation_hash_b58check_string,
-                      "elapsed" => format!("{:?}", start_request.elapsed()),
-                      "elapsed_async" => format!("{:?}", start_async.elapsed()),
-                );
+    if let Some(receiver) = result_callback_receiver {
+        // we spawn as blocking because we are under async/await
+        let result = tokio::task::spawn_blocking(move || {
+            receiver.recv_timeout(INJECT_OPERATION_WAIT_TIMEOUT)
+        })
+        .await;
+        match result {
+            Ok(Ok(_)) => {
+                info!(env.log(), "Operation injected";
+                                     "operation_hash" => &operation_hash_b58check_string,
+                                     "elapsed" => format!("{:?}", start_request.elapsed()),
+                                     "elapsed_async" => format!("{:?}", start_async.elapsed()));
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 return Err(format_err!(
-                    "Operation injection - error received, operation_hash: {}, reason: {}!",
+                    "Operation injection error received, operation_hash: {}, reason: {}!",
                     &operation_hash_b58check_string,
                     e
                 ));
             }
-        };
+            Err(e) => {
+                return Err(format_err!(
+                    "Operation injection error async wait, operation_hash: {}, reason: {}!",
+                    &operation_hash_b58check_string,
+                    e
+                ));
+            }
+        }
     }
 
     Ok(operation_hash_b58check_string)
 }
 
-pub fn inject_block(
+pub async fn inject_block(
     is_async: bool,
     chain_id: ChainId,
     injection_data: &str,
@@ -366,12 +368,16 @@ pub fn inject_block(
     };
 
     // callback will wait all the asynchonous processing to finish, and then returns rpc response
-    let result_callback = if is_async {
+    let (result_callback_sender, result_callback_receiver) = if is_async {
         // if async no wait
-        None
+        (None, None)
     } else {
-        // if not async, means sync and we wait
-        Some(Arc::new((Mutex::new(None), Condvar::new())))
+        // if not async, means sync and we wait till operations is added to pendings
+        let (result_callback_sender, result_callback_receiver) = std::sync::mpsc::sync_channel(1);
+        (
+            Some(Arc::new(result_callback_sender)),
+            Some(result_callback_receiver),
+        )
     };
 
     let start_async = Instant::now();
@@ -386,7 +392,7 @@ pub fn inject_block(
                     operations: validation_passes,
                     operation_paths: paths,
                 },
-                result_callback.clone(),
+                result_callback_sender,
             ),
             topic: ShellChannelTopic::ShellCommands.into(),
         },
@@ -394,17 +400,13 @@ pub fn inject_block(
     );
 
     // wait for result
-    if let Some(result_callback) = result_callback {
-        let wait_result = try_wait_for_condvar_result(result_callback, INJECT_BLOCK_WAIT_TIMEOUT)
-            .map_err(|e| {
-            format_err!(
-                "Block injection - failed to inject, block_hash: {}, reason: {:?}!",
-                &block_hash_b58check_string,
-                e
-            )
-        })?;
-        match wait_result {
-            Ok(_) => {
+    if let Some(receiver) = result_callback_receiver {
+        // we spawn as blocking because we are under async/await
+        let result =
+            tokio::task::spawn_blocking(move || receiver.recv_timeout(INJECT_BLOCK_WAIT_TIMEOUT))
+                .await;
+        match result {
+            Ok(Ok(_)) => {
                 info!(env.log(),
                       "Block injected";
                       "block_hash" => block_hash_b58check_string.clone(),
@@ -413,14 +415,21 @@ pub fn inject_block(
                       "elapsed_async" => format!("{:?}", start_async.elapsed()),
                 );
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 return Err(format_err!(
-                    "Block injection - error received, block_hash: {}, reason: {}!",
+                    "Block injection error received, block_hash: {}, reason: {}!",
                     &block_hash_b58check_string,
                     e
                 ));
             }
-        };
+            Err(e) => {
+                return Err(format_err!(
+                    "Block injection error async wait, block_hash: {}, reason: {}!",
+                    &block_hash_b58check_string,
+                    e
+                ));
+            }
+        }
     }
 
     // return the block hash to the caller

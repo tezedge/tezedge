@@ -146,10 +146,7 @@ pub fn spawn_server(
     bind_address: &SocketAddr,
     env: RpcServiceEnvironment,
 ) -> impl Future<Output = Result<(), hyper::Error>> {
-    let routes = Arc::new(router::create_routes(
-        env.state().read().unwrap().is_sandbox(),
-        env.one_context,
-    ));
+    let routes = Arc::new(router::create_routes(env.one_context));
 
     hyper::Server::bind(bind_address)
         .serve(make_service_fn(move |_| {

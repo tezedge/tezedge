@@ -4,6 +4,7 @@
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
+use chrono::SecondsFormat;
 use failure::{bail, format_err};
 use hyper::{Body, Request};
 use riker::actors::*;
@@ -631,8 +632,18 @@ pub(crate) fn get_prevalidators(
                         chain_id: mempool_prevalidator.chain_id.to_base58_check(),
                         status: WorkerStatus {
                             phase: WorkerStatusPhase::Running,
-                            // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
-                            since: env.sys().start_date().to_rfc3339(),
+                            since: {
+                                match mempool_state.prevalidator_started() {
+                                    Some(since) => {
+                                        since.to_rfc3339_opts(SecondsFormat::Millis, true)
+                                    }
+                                    // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
+                                    None => env
+                                        .sys()
+                                        .start_date()
+                                        .to_rfc3339_opts(SecondsFormat::Millis, true),
+                                }
+                            },
                         },
                     })
                 }

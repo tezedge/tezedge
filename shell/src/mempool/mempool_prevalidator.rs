@@ -38,8 +38,9 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::state::StateError;
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_condvar_result2, CondvarResult};
+use crate::utils::{dispatch_oneshot_result, OneshotResultCallback};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
@@ -47,7 +48,7 @@ type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 pub struct MempoolOperationReceived {
     pub operation_hash: OperationHash,
     pub operation_type: MempoolOperationType,
-    pub result_callback: Option<CondvarResult<(), failure::Error>>,
+    pub result_callback: Option<OneshotResultCallback<Result<(), StateError>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -70,7 +71,7 @@ enum Event {
     ValidateOperation(
         OperationHash,
         MempoolOperationType,
-        Option<CondvarResult<(), failure::Error>>,
+        Option<OneshotResultCallback<Result<(), StateError>>>,
     ),
     ShuttingDown,
 }
@@ -205,8 +206,10 @@ impl MempoolPrevalidator {
 
     /// The `MempoolPrevalidator` is intended to serve as a singleton actor so that's why
     /// we won't support multiple names per instance.
+    ///
+    /// e.g.: mempool-prevalidator-NetXdQprcVkpaWU
     pub fn name(chain_id: &ChainId) -> String {
-        format!("{}-{}", Self::PREFIX_NAME, chain_id.to_base58_check())
+        format!("{}{}", Self::PREFIX_NAME, chain_id.to_base58_check())
     }
 
     pub fn is_mempool_prevalidator_actor_name(actor_name: &str) -> bool {
@@ -426,32 +429,22 @@ fn process_prevalidation(
                             .add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
                             debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check()))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                         } else {
-                            if let Err(e) =
-                                dispatch_condvar_result(result_callback, || Ok(()), true)
-                            {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check()))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check())})
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                     }
                 }
@@ -508,6 +501,11 @@ fn hydrate_state(
     for (oph, op) in pending {
         let _ = state.add_to_pending(&oph, op.into());
     }
+    // ste started date
+    if state.prevalidator_started().is_none() {
+        state.set_prevalidator_started();
+    }
+
     // drop write lock
     drop(state);
 

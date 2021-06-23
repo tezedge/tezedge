@@ -40,14 +40,14 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::chain_feeder::ChainFeederRef;
 use crate::mempool::mempool_prevalidator::{
-    MempoolOperationReceived, MempoolPrevalidatorBasicRef, ResetMempool,
+    MempoolOperationReceived, MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg, ResetMempool,
 };
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
 use crate::shell_channel::{
-    AllBlockOperationsReceived, BlockReceived, InjectBlock, ShellChannelMsg, ShellChannelRef,
-    ShellChannelTopic,
+    AllBlockOperationsReceived, BlockReceived, InjectBlock, InjectBlockOneshotResultCallback,
+    ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
 use crate::state::chain_state::{BlockAcceptanceResult, BlockchainState};
 use crate::state::head_state::CurrentHeadRef;
@@ -57,7 +57,7 @@ use crate::state::synchronization_state::{
 };
 use crate::state::StateError;
 use crate::subscription::*;
-use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::utils::dispatch_oneshot_result;
 use crate::validation;
 
 /// How often to ask all connected peers for current head
@@ -777,14 +777,16 @@ impl ChainManager {
                                             mempool_prevalidator.as_ref()
                                         {
                                             if let Err(_) = mempool_prevalidator.try_tell(
-                                                MempoolOperationReceived {
-                                                    operation_hash,
-                                                    operation_type,
-                                                    result_callback: None,
-                                                },
+                                                MempoolPrevalidatorMsg::MempoolOperationReceived(
+                                                    MempoolOperationReceived {
+                                                        operation_hash,
+                                                        operation_type,
+                                                        result_callback: None,
+                                                    },
+                                                ),
                                                 None,
                                             ) {
-                                                warn!(ctx.system.log(), "(Chain manager) Reset mempool error, mempool_prevalidator does not support message `MempoolOperationReceived`!");
+                                                warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `MempoolOperationReceived`!"; "caller" => "chain_manager");
                                             }
                                         }
                                     }
@@ -947,7 +949,7 @@ impl ChainManager {
     fn process_injected_block(
         &mut self,
         injected_block: InjectBlock,
-        result_callback: Option<CondvarResult<(), failure::Error>>,
+        result_callback: Option<InjectBlockOneshotResultCallback>,
         ctx: &Context<ChainManagerMsg>,
     ) -> Result<(), Error> {
         let InjectBlock {
@@ -968,18 +970,16 @@ impl ChainManager {
         {
             Ok(data) => data,
             Err(e) => {
-                if let Err(e) = dispatch_condvar_result(
-                    result_callback,
-                    || {
-                        Err(format_err!(
+                if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                    Err(StateError::ProcessingError {
+                        reason: format!(
                             "Failed to store injected block, block_hash: {}, reason: {}",
                             block_header_with_hash.hash.to_base58_check(),
                             e
-                        ))
-                    },
-                    true,
-                ) {
-                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        ),
+                    })
+                }) {
+                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                 }
                 return Err(e.into());
             }
@@ -1011,17 +1011,15 @@ impl ChainManager {
                 let operations = match operations {
                     Some(operations) => operations,
                     None => {
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!(
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {
+                                reason: format!(
                                     "Missing operations in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
-                                ))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                ),
+                            })
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                         return Err(format_err!(
                             "Missing operations in request, block_hash: {}",
@@ -1032,17 +1030,15 @@ impl ChainManager {
                 let op_paths = match operation_paths {
                     Some(op_paths) => op_paths,
                     None => {
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!(
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {
+                                reason: format!(
                                     "Missing operation paths in request, block_hash: {}",
                                     block_header_with_hash.hash.to_base58_check()
-                                ))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                ),
+                            })
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                         return Err(format_err!(
                             "Missing operation paths in request, block_hash: {}",
@@ -1061,14 +1057,10 @@ impl ChainManager {
                     let operation_hashes_path = match op_paths.get(idx) {
                         Some(path) => path.to_owned(),
                         None => {
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check()))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Missing operation paths in request for index: {}, block_hash: {}", idx, block_header_with_hash.hash.to_base58_check())})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                             return Err(format_err!(
                                 "Missing operation paths in request for index: {}, block_hash: {}",
@@ -1106,14 +1098,10 @@ impl ChainManager {
                             }
                         }
                         Err(e) => {
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Failed to store injected block operations, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                             return Err(e.into());
                         }
@@ -1127,30 +1115,24 @@ impl ChainManager {
                 block_header_with_hash.hash.clone(),
                 result_callback.clone(),
             ) {
-                if let Err(e) = dispatch_condvar_result(
-                    result_callback,
-                    || {
-                        Err(format_err!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e))
-                    },
-                    true,
-                ) {
-                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                    Err(StateError::ProcessingError {reason: format!("Failed to detect if injected block can be applied, block_hash: {}, reason: {}", block_header_with_hash.hash.to_base58_check(), e)})
+                }) {
+                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                 }
                 return Err(e.into());
             };
         } else {
             warn!(log, "Injected duplicated block - will be ignored!");
-            if let Err(e) = dispatch_condvar_result(
-                result_callback,
-                || {
-                    Err(format_err!(
+            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                Err(StateError::ProcessingError {
+                    reason: format!(
                         "Injected duplicated block - will be ignored!, block_hash: {}",
                         block_header_with_hash.hash.to_base58_check()
-                    ))
-                },
-                true,
-            ) {
-                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                    ),
+                })
+            }) {
+                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
             }
         }
 
@@ -1258,12 +1240,12 @@ impl ChainManager {
                 // ping mempool to reset head
                 if let Some(mempool_prevalidator) = self.mempool_prevalidator.as_ref() {
                     if let Err(_) = mempool_prevalidator.try_tell(
-                        ResetMempool {
+                        MempoolPrevalidatorMsg::ResetMempool(ResetMempool {
                             block: block.clone(),
-                        },
+                        }),
                         None,
                     ) {
-                        warn!(ctx.system.log(), "(Chain manager) Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!");
+                        warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_manager");
                     }
                 }
             }

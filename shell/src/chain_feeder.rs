@@ -39,11 +39,11 @@ use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValid
 use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use crate::state::ApplyBlockBatch;
+use crate::shell_channel::{InjectBlockOneshotResultCallback, ShellChannelMsg, ShellChannelRef};
+use crate::state::{ApplyBlockBatch, StateError};
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::utils::dispatch_oneshot_result;
 use std::collections::VecDeque;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -65,7 +65,7 @@ pub struct ApplyBlock {
     chain_id: Arc<ChainId>,
     bootstrapper: Option<PeerBranchBootstrapperRef>,
     /// Callback can be used to wait for apply block result
-    result_callback: Option<CondvarResult<(), failure::Error>>,
+    result_callback: Option<InjectBlockOneshotResultCallback>,
 
     /// Simple lock guard, for easy synchronization
     permit: Option<Arc<ApplyBlockPermit>>,
@@ -75,7 +75,7 @@ impl ApplyBlock {
     pub fn new(
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
-        result_callback: Option<CondvarResult<(), failure::Error>>,
+        result_callback: Option<InjectBlockOneshotResultCallback>,
         bootstrapper: Option<PeerBranchBootstrapperRef>,
         permit: Option<ApplyBlockPermit>,
     ) -> Self {
@@ -224,8 +224,12 @@ impl ChainFeeder {
         let result_callback = msg.result_callback.clone();
         if let Err(e) = self.send_to_queue(Event::ApplyBlock(msg, chain_feeder.clone())) {
             warn!(log, "Failed to send `apply block request` to queue"; "reason" => format!("{}", e));
-            if let Err(e) = dispatch_condvar_result(result_callback, || Err(e), true) {
-                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+            if let Err(de) = dispatch_oneshot_result(result_callback, || {
+                Err(StateError::ProcessingError {
+                    reason: format!("{}", e),
+                })
+            }) {
+                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", de));
             }
 
             // just ping chain_feeder
@@ -657,7 +661,7 @@ fn feed_chain_to_protocol(
 
                     let mut last_applied: Option<Arc<BlockHash>> = None;
                     let mut batch_stats = Some(ApplyBlockStats::default());
-                    let mut condvar_result: Option<Result<(), failure::Error>> = None;
+                    let mut oneshot_result: Option<Result<(), StateError>> = None;
                     let mut previous_block_data_cache: Option<(
                         Arc<BlockHeaderWithHash>,
                         BlockAdditionalData,
@@ -712,7 +716,7 @@ fn feed_chain_to_protocol(
                                     )) => {
                                         last_applied = Some(block_to_apply);
                                         if result_callback.is_some() {
-                                            condvar_result = Some(Ok(()));
+                                            oneshot_result = Some(Ok(()));
                                         }
                                         previous_block_data_cache = Some((
                                             validated_block.block.clone(),
@@ -735,9 +739,12 @@ fn feed_chain_to_protocol(
                                     None => {
                                         last_applied = Some(block_to_apply);
                                         if result_callback.is_some() {
-                                            condvar_result = Some(Err(format_err!(
-                                                "Block/batch is already applied"
-                                            )));
+                                            oneshot_result =
+                                                Some(Err(StateError::ProcessingError {
+                                                    reason: format!(
+                                                        "Block/batch is already applied"
+                                                    ),
+                                                }));
                                         }
                                         previous_block_data_cache = None;
                                     }
@@ -747,16 +754,18 @@ fn feed_chain_to_protocol(
                                 warn!(log, "Block apply processing failed"; "block" => block_to_apply.to_base58_check(), "reason" => format!("{}", e));
 
                                 // handle condvar immediately
-                                if let Err(e) = dispatch_condvar_result(
-                                    result_callback.clone(),
-                                    || Err(format_err!("{}", e)),
-                                    true,
-                                ) {
-                                    warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                                if let Err(e) =
+                                    dispatch_oneshot_result(result_callback.clone(), || {
+                                        Err(StateError::ProcessingError {
+                                            reason: format!("{}", e),
+                                        })
+                                    })
+                                {
+                                    warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                                 }
                                 if result_callback.is_some() {
                                     // dont process next time
-                                    condvar_result = None;
+                                    oneshot_result = None;
                                 }
 
                                 // notify bootstrapper with failed + last_applied
@@ -796,12 +805,11 @@ fn feed_chain_to_protocol(
                     }
 
                     // notify condvar
-                    if let Some(condvar_result) = condvar_result {
+                    if let Some(oneshot_result) = oneshot_result {
                         // notify condvar
-                        if let Err(e) =
-                            dispatch_condvar_result(result_callback, || condvar_result, true)
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || oneshot_result)
                         {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                     }
 

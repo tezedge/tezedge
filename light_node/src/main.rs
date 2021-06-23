@@ -352,7 +352,6 @@ fn block_on_actors(
         tezos_env.clone(),
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
-        is_sandbox,
     )
     .expect("Failed to create RPC server");
 
