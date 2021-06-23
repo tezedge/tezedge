@@ -5126,3 +5126,235 @@ steps:
     commands:
       - echo "============== indexing time ============="
       - cat /cache/time
+
+---
+##############################################################################################################
+# This pipeline runs tezedge and ocaml nodes in isolation, bootsrapped to 20000
+# and performs `wrk` and `wrk2` tests over them to compute throughput and latency
+##############################################################################################################
+kind: pipeline
+name: performance/wrk-tests-009-florence
+# default build goes with: --network "florencenet"
+# integration test is using env variables:
+# - BLOCK_HEAD - top block level used by bootstrap
+# - OCAML_NODE_RPC_CONTEXT_ROOT_1: running ocaml node, e.g.: http://ocaml-node:8732
+# - TEZEDGE_NODE_RPC_CONTEXT_ROOT: running tezedge node, e.g.: http://tezedge-updated-run:18732
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  BLOCK_HEAD: 20000 # top block to bootstrap to
+  WRK_TEST_DURATION: 10  # in seconds
+  WRK2_TEST_DURATION: 20  # in seconds
+  WRK2_REQ_RATE: 100  # in seconds
+  SODIUM_USE_PKG_CONFIG: 1
+  MAX_LATENCY_THRESHOLD: 10 # in %
+  THROUGHPUTL_THRESHOLD: 10 # in %
+  OCAML_NODE_RPC_CONTEXT_ROOT_1: http://ocaml-node:8732
+  OCAML_NODE_P2P_PEERS: ocaml-node:9734
+  TEZEDGE_NODE_RPC_CONTEXT_ROOT: http://tezedge-updated-run:18732
+  TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT: http://tezedge-old-run:18732
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  TEST_ARTIFACTS_PATH: /tests/build_${DRONE_BUILD_NUMBER}
+  CACHE_DATA_PATH: /data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+
+steps:
+- name: prepare-data
+  image: alpine/git
+  user: root
+  volumes:
+    - name: cache
+      path: /data/cache
+  commands:
+    - rm -rf $${CACHE_DATA_PATH}
+    - mkdir -p $${CACHE_DATA_PATH}
+
+# just run ocaml 3 snapshoted nodes
+- name: ocaml-node
+  user: root
+  image: tezos/tezos:v9-release
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: data
+      path: /home/tezos/data
+    - name: cache
+      path: /data/cache
+  commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4 ":9734"}' > $${CACHE_DATA_PATH}/ocaml_ip.txt
+    - rm -f /home/tezos/data/lock
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_1.json /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1/identity.json
+    - tezos-node config reset --data-dir /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1 --network $${NETWORK} --no-bootstrap-peers
+    - tezos-node run --data-dir /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1 --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
+
+- name: wait-for-ocaml-snapshoted-nodes
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCAML_NODE_RPC_CONTEXT_ROOT_1} $${OCAML_NODE_RPC_CONTEXT_ROOT_2} $${OCAML_NODE_RPC_CONTEXT_ROOT_3}
+
+- name: tezedge-updated-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /data/cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
+    - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
+    - echo "peers - $PEERS"
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
+    - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+
+# if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
+- name: tezedge-old-run
+  image: simplestakingcom/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  detach: true
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: cache
+      path: /data/cache
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+  commands:
+    - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
+    - echo "peers - $PEERS"
+    - mkdir -p /tmp/tezedge-target-branch
+    - cd /tmp/tezedge-target-branch
+    - rm -rf tezedge
+    - target_branch=$${DRONE_TARGET_BRANCH}
+    - echo "...checkouting target branch - $target_branch"
+    - git clone https://github.com/tezedge/tezedge.git && cd tezedge && git checkout $target_branch
+    - cd /tmp/tezedge-target-branch/tezedge
+    - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
+    - cargo build --release --package light-node --package protocol-runner
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+  when:
+    ref:
+      - refs/pull/*/head
+
+- name: bootstrapping-tezedge
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+
+# now we have prepared ocaml and tezedge node, that can run wrk tests
+
+# compare several rpc's performances between defined nodes (with two nodes (current branch and ocaml))
+# not triggered on pull request, because on pull request is triggered more complex wrk test
+# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
+- name: wrk-performance-test-tezedge-new-vs-ocaml
+  image: akoptelov/tezos-node-bootstrap:latest
+  pull: always
+  user: root
+  volumes:
+    - name: perf
+      path: /perf
+  commands:
+    - tezos-node-bootstrap performance-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --url-file=/perf/wrk-rpc-list.txt
+  when:
+    ref:
+      exclude:
+      - refs/pull/*/head
+
+# compare several rpc's performances between defined nodes (with two nodes (current branch and ocaml))
+# not triggered on pull request, because on pull request is triggered more complex wrk test
+# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
+- name: wrk2-performance-test-tezedge-new-vs-ocaml
+  image: akoptelov/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: perf
+      path: /perf
+  commands:
+    - tezos-node-bootstrap latency-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK2_TEST_DURATION} --wrk-request-rate=$${WRK2_REQ_RATE} --url-file=/perf/wrk2-rpc-list.txt
+  when:
+    ref:
+      exclude:
+      - refs/pull/*/head
+
+# this is triggerd just on pull request to target branch
+- name: bootstrapping-tezedge-target-branch
+  image: simplestakingcom/tezos-node-bootstrap:latest
+  commands:
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
+  when:
+    ref:
+    - refs/pull/*/head
+
+#  compare several rpc's performances between defined nodes (with tree nodes (target_branch, current branch and ocaml))
+# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
+- name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
+  image: akoptelov/tezos-node-bootstrap:latest
+  pull: always
+  user: root
+  volumes:
+    - name: perf
+      path: /perf
+  commands:
+    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --latency-no-fail --throughput-no-fail --url-file=/perf/wrk-rpc-list.txt
+  when:
+    ref:
+    - refs/pull/*/head
+
+#  compare several rpc's performances between defined nodes (with tree nodes (target_branch, current branch and ocaml))
+# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
+- name: wrk2-latency-test-tezedge-new-vs-ocaml-vs-tezedge-old
+  image: akoptelov/tezos-node-bootstrap:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: perf
+      path: /perf
+  commands:
+    - tezos-node-bootstrap latency-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK2_TEST_DURATION} --wrk-request-rate=$${WRK2_REQ_RATE} --url-file=/perf/wrk2-rpc-list.txt
+  when:
+    ref:
+    - refs/pull/*/head
+
+node:
+  tag: real-time-linux-runner
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests
+  - name: data
+    host:
+      path: /usr/local/etc/tezedge-ci/data
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on:
+  - verify-real-time-environment
