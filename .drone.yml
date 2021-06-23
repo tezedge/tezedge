@@ -5,10 +5,7 @@ name: test
 steps:
 
 - name: test
-  image: akoptelov/test-plugin
-  settings:
-    var: val
-    var-with-dash: other val
+  image: akoptelov/wrk-plugin
 
 trigger:
   branch:
