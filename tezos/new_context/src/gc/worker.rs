@@ -12,7 +12,7 @@ use crate::{kv_store::HashId, working_tree::Entry};
 
 use tezos_spsc::Producer;
 
-pub(crate) const PRESERVE_CYCLE_COUNT: usize = 7;
+pub(crate) const PRESERVE_CYCLE_COUNT: usize = 70;
 
 pub(crate) struct GCThread {
     pub(crate) cycles: Cycles,
