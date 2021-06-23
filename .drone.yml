@@ -3468,41 +3468,41 @@ steps:
   # now we have prepared ocaml and tezedge node, that can run tests - rpc, wrk, indexer-test
 
   # run both indexers on background to fill data
-  - name: tz-indexer-florencenet-tezedge
-    image: blockwatch/tzindex:latest
-    pull: if-not-exists
-    user: root
-    detach: true
-    volumes:
-      - name: indexer-tezedge-data
-        path: /data
-    environment:
-      TZ_RPC_HOST: tezedge-updated-node-florencenet-run
-      TZ_RPC_PORT: 18732
-      TZ_SERVER_ADDR: 0.0.0.0
-      TZ_SERVER_PORT: 8002
-      TZ_SERVER_CORS_ENABLE: true
-      TZ_DATABASE_PATH: /data/index
-      TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=601"]
-
-  - name: tz-indexer-florencenet-ocaml
-    image: blockwatch/tzindex:latest
-    pull: if-not-exists
-    user: root
-    detach: true
-    volumes:
-      - name: indexer-ocaml-data
-        path: /data
-    environment:
-      TZ_RPC_HOST: ocaml-node-florencenet-run-1
-      TZ_RPC_PORT: 8732
-      TZ_SERVER_ADDR: 0.0.0.0
-      TZ_SERVER_PORT: 8002
-      TZ_SERVER_CORS_ENABLE: true
-      TZ_DATABASE_PATH: /data/index
-      TZ_SNAPSHOT_PATH: /data/snapshots
-    command: ["tzindex", "run", "--stop=601"]
+#  - name: tz-indexer-florencenet-tezedge
+#    image: blockwatch/tzindex:latest
+#    pull: if-not-exists
+#    user: root
+#    detach: true
+#    volumes:
+#      - name: indexer-tezedge-data
+#        path: /data
+#    environment:
+#      TZ_RPC_HOST: tezedge-updated-node-florencenet-run
+#      TZ_RPC_PORT: 18732
+#      TZ_SERVER_ADDR: 0.0.0.0
+#      TZ_SERVER_PORT: 8002
+#      TZ_SERVER_CORS_ENABLE: true
+#      TZ_DATABASE_PATH: /data/index
+#      TZ_SNAPSHOT_PATH: /data/snapshots
+#    command: ["tzindex", "run", "--stop=601"]
+#
+#  - name: tz-indexer-florencenet-ocaml
+#    image: blockwatch/tzindex:latest
+#    pull: if-not-exists
+#    user: root
+#    detach: true
+#    volumes:
+#      - name: indexer-ocaml-data
+#        path: /data
+#    environment:
+#      TZ_RPC_HOST: ocaml-node-florencenet-run-1
+#      TZ_RPC_PORT: 8732
+#      TZ_SERVER_ADDR: 0.0.0.0
+#      TZ_SERVER_PORT: 8002
+#      TZ_SERVER_CORS_ENABLE: true
+#      TZ_DATABASE_PATH: /data/index
+#      TZ_SNAPSHOT_PATH: /data/snapshots
+#    command: ["tzindex", "run", "--stop=601"]
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
@@ -3521,10 +3521,10 @@ steps:
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
-  - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+#  - name: indexer-test
+#    image: simplestakingcom/tezos-node-bootstrap:latest
+#    commands:
+#      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
 
 image_pull_secrets:
   - docker_pull_secret
@@ -3965,10 +3965,10 @@ steps:
       - $${TEST_ARTIFACTS_PATH}/tests/rpc_integration_test --nocapture --ignored test_rpc_compare
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
-  - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
-    commands:
-      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
+#  - name: indexer-test
+#    image: simplestakingcom/tezos-node-bootstrap:latest
+#    commands:
+#      - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
 
 image_pull_secrets:
   - docker_pull_secret
