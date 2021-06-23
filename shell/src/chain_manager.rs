@@ -776,7 +776,7 @@ impl ChainManager {
                                         if let Some(mempool_prevalidator) =
                                             mempool_prevalidator.as_ref()
                                         {
-                                            if let Err(_) = mempool_prevalidator.try_tell(
+                                            if mempool_prevalidator.try_tell(
                                                 MempoolPrevalidatorMsg::MempoolOperationReceived(
                                                     MempoolOperationReceived {
                                                         operation_hash,
@@ -785,7 +785,7 @@ impl ChainManager {
                                                     },
                                                 ),
                                                 None,
-                                            ) {
+                                            ).is_err() {
                                                 warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `MempoolOperationReceived`!"; "caller" => "chain_manager");
                                             }
                                         }
@@ -1204,7 +1204,6 @@ impl ChainManager {
                 if let Some(current_head) = self.current_head.local.read()?.as_ref() {
                     // get current header
                     if let Some(header) = self.block_storage.get(current_head.block_hash())? {
-                        drop(current_head);
                         advertise_current_head = Some(Arc::new(header));
 
                         // notify mempool if enabled
@@ -1239,12 +1238,15 @@ impl ChainManager {
 
                 // ping mempool to reset head
                 if let Some(mempool_prevalidator) = self.mempool_prevalidator.as_ref() {
-                    if let Err(_) = mempool_prevalidator.try_tell(
-                        MempoolPrevalidatorMsg::ResetMempool(ResetMempool {
-                            block: block.clone(),
-                        }),
-                        None,
-                    ) {
+                    if mempool_prevalidator
+                        .try_tell(
+                            MempoolPrevalidatorMsg::ResetMempool(ResetMempool {
+                                block: block.clone(),
+                            }),
+                            None,
+                        )
+                        .is_err()
+                    {
                         warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_manager");
                     }
                 }

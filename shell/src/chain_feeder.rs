@@ -741,9 +741,8 @@ fn feed_chain_to_protocol(
                                         if result_callback.is_some() {
                                             oneshot_result =
                                                 Some(Err(StateError::ProcessingError {
-                                                    reason: format!(
-                                                        "Block/batch is already applied"
-                                                    ),
+                                                    reason: "Block/batch is already applied"
+                                                        .to_string(),
                                                 }));
                                         }
                                         previous_block_data_cache = None;

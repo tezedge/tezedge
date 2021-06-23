@@ -252,14 +252,17 @@ pub async fn inject_operation(
     let start_async = Instant::now();
 
     // ping mempool with new operation for mempool validation
-    if let Err(_) = mempool_prevalidator.try_tell(
-        MempoolPrevalidatorMsg::MempoolOperationReceived(MempoolOperationReceived {
-            operation_hash,
-            operation_type: MempoolOperationType::Pending,
-            result_callback: result_callback_sender,
-        }),
-        None,
-    ) {
+    if mempool_prevalidator
+        .try_tell(
+            MempoolPrevalidatorMsg::MempoolOperationReceived(MempoolOperationReceived {
+                operation_hash,
+                operation_type: MempoolOperationType::Pending,
+                result_callback: result_callback_sender,
+            }),
+            None,
+        )
+        .is_err()
+    {
         return Err(format_err!(
                     "Operation injection - error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
                     &operation_hash_b58check_string,

@@ -171,10 +171,13 @@ impl ChainCurrentHeadManager {
                     match self.mempool_if_allowed(&chain_id, &ctx.system, &ctx.system.log()) {
                         Ok(Some(mempool_prevalidator)) => {
                             // ping mempool to reset head
-                            if let Err(_) = mempool_prevalidator.try_tell(
-                                MempoolPrevalidatorMsg::ResetMempool(ResetMempool { block }),
-                                None,
-                            ) {
+                            if mempool_prevalidator
+                                .try_tell(
+                                    MempoolPrevalidatorMsg::ResetMempool(ResetMempool { block }),
+                                    None,
+                                )
+                                .is_err()
+                            {
                                 warn!(ctx.system.log(), "Reset mempool error, mempool_prevalidator does not support message `ResetMempool`!"; "caller" => "chain_current_head_manager");
                             }
                         }
