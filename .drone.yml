@@ -4682,3 +4682,447 @@ trigger:
   branch:
     - master
     - develop
+
+---
+#########################################################
+# This pipeline runs Conseil indexer against Tezos node
+#########################################################
+kind: pipeline
+name: correctness/conseil-indexer-tezos-009-florencenet
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+
+volumes:
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+  - name: conseil-sql
+    temp: {}
+
+trigger:
+  branch:
+    - develop
+
+depends_on:
+  - build
+
+steps:
+
+  - name: conseil-postgres
+    image: postgres:11.9
+    detach: true
+    environment:
+      POSTGRES_USER: conseiluser
+      POSTGRES_PASSWORD: p@ssw0rd
+      POSTGRES_DB: conseil-local
+      POSTGRES_INITDB_ARGS: "--lc-collate=en_US.UTF-8 -E UTF8"
+    volumes:
+      - name: conseil-sql
+        path: /docker-entrypoint-initdb.d/
+
+  - name: tezos-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: tezos-data
+        path: /home/tezos/data
+      - name: cache
+        path: /cache
+    commands:
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --network $${NETWORK} --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+  - name: conseil-api
+    image: cryptonomictech/conseil:latest
+    detach: true
+    environment:
+      CONSEIL_XTZ_ENABLED: true
+      CONSEIL_XTZ_NETWORK: florencenet
+      CONSEIL_XTZ_NODE_PROTOCOL: http
+      CONSEIL_XTZ_NODE_HOSTNAME: tezos-node
+      CONSEIL_XTZ_NODE_PORT: 8732
+      CONSEIL_XTZ_NODE_PATH_PREFIX: /
+      CONSEIL_API_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
+      CONSEIL_API_DB_USER: conseiluser
+      CONSEIL_API_DB_PASSWORD: p@ssw0rd
+      CONSEIL_API_PORT: 80
+      CONSEIL_API_KEY: conseil
+      JVM_XMX: 4G
+    commands:
+      - sleep 10
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- /root/entrypoint.sh conseil-api
+    volumes:
+      - name: conseil-sql
+        path: /root/sql
+      - name: cache
+        path: /cache
+
+  - name: conseil-lorre
+    image: cryptonomictech/conseil:latest
+    volumes:
+      - name: cache
+        path: /cache
+      - name: tools
+        path: /tools
+    environment:
+      CONSEIL_LORRE_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
+      CONSEIL_LORRE_DB_USER: conseiluser
+      CONSEIL_LORRE_DB_PASSWORD: p@ssw0rd
+
+      CONSEIL_XTZ_ENABLED: true
+      CONSEIL_XTZ_NETWORK: florencenet
+      CONSEIL_XTZ_NODE_PROTOCOL: http
+      CONSEIL_XTZ_NODE_HOSTNAME: tezos-node
+      CONSEIL_XTZ_NODE_PORT: 8732
+      CONSEIL_XTZ_NODE_PATH_PREFIX: /
+
+      LORRE_RUNNER_PLATFORM: tezos
+      LORRE_RUNNER_NETWORK: florencenet
+
+      CONSEIL_LORRE_BLOCK_RIGHTS_FETCHING_ENABLED: true
+
+      JVM_XMX: 4G
+    commands:
+      - sleep 15
+      - export CONSEIL_XTZ_NODE_PATH_PREFIX=""
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%E" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
+      - echo "============== indexing time ============="
+      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - echo "============== indexing time ============="
+      - cat /cache/time
+
+---
+#########################################################
+# This pipeline runs Conseil indexer against Tezedge node
+#########################################################
+kind: pipeline
+name: correctness/conseil-indexer-tezedge-009-florencenet
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+  - name: conseil-sql
+    temp: {}
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+
+depends_on:
+  - build
+
+trigger:
+  branch:
+    - develop
+
+steps:
+
+  - name: conseil-postgres
+    image: postgres:11.9
+    detach: true
+    environment:
+      POSTGRES_USER: conseiluser
+      POSTGRES_PASSWORD: p@ssw0rd
+      POSTGRES_DB: conseil-local
+      POSTGRES_INITDB_ARGS: "--lc-collate=en_US.UTF-8 -E UTF8"
+    volumes:
+      - name: conseil-sql
+        path: /docker-entrypoint-initdb.d/
+
+  - name: tezedge-node
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /cache
+      - name: tezos-data
+        path: /home/tezos/data
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+
+  - name: conseil-api
+    image: cryptonomictech/conseil:latest
+    detach: true
+    environment:
+      CONSEIL_XTZ_ENABLED: true
+      CONSEIL_XTZ_NETWORK: florencenet
+      CONSEIL_XTZ_NODE_PROTOCOL: http
+      CONSEIL_XTZ_NODE_HOSTNAME: tezedge-node
+      CONSEIL_XTZ_NODE_PORT: 18732
+      CONSEIL_XTZ_NODE_PATH_PREFIX: ""
+      CONSEIL_API_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
+      CONSEIL_API_DB_USER: conseiluser
+      CONSEIL_API_DB_PASSWORD: p@ssw0rd
+      CONSEIL_API_PORT: 80
+      CONSEIL_API_KEY: conseil
+      JVM_XMX: 4G
+    commands:
+      - sleep 10
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- /root/entrypoint.sh conseil-api
+    volumes:
+      - name: conseil-sql
+        path: /root/sql
+      - name: cache
+        path: /cache
+
+  - name: conseil-lorre
+    image: cryptonomictech/conseil:latest
+    volumes:
+      - name: tools
+        path: /tools
+      - name: cache
+        path: /cache
+    environment:
+      CONSEIL_LORRE_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
+      CONSEIL_LORRE_DB_USER: conseiluser
+      CONSEIL_LORRE_DB_PASSWORD: p@ssw0rd
+
+      CONSEIL_XTZ_ENABLED: true
+      CONSEIL_XTZ_NETWORK: florencenet
+      CONSEIL_XTZ_NODE_PROTOCOL: http
+      CONSEIL_XTZ_NODE_HOSTNAME: tezedge-node
+      CONSEIL_XTZ_NODE_PORT: 18732
+      CONSEIL_XTZ_NODE_PATH_PREFIX: ""
+
+      LORRE_RUNNER_PLATFORM: tezos
+      LORRE_RUNNER_NETWORK: florencenet
+
+      CONSEIL_LORRE_BLOCK_RIGHTS_FETCHING_ENABLED: true
+
+      JVM_XMX: 4G
+    commands:
+      - sleep 15
+      - export CONSEIL_XTZ_NODE_PATH_PREFIX=""
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%E" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
+      - echo "============== indexing time ============="
+      - cat /cache/time
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - echo "============== indexing time ============="
+      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+
+---
+#########################################################
+# This pipeline runs tzkt indexer against Tezos node
+#########################################################
+kind: pipeline
+name: correctness/tzkt-indexer-tezos-009-florencenet
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+
+volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+  - name: conseil-sql
+    temp: {}
+
+trigger:
+  branch:
+    - develop
+
+depends_on:
+  - build
+
+steps:
+
+  - name: tezos-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: tezos-data
+        path: /home/tezos/data
+      - name: cache
+        path: /cache
+    commands:
+      - tezos-node run --data-dir /home/tezos/data --history-mode archive --network $${NETWORK} --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+  - name: tzkt-postgres
+    image: postgres:13
+    detach: true
+    environment:
+      POSTGRES_USER: tzkt
+      POSTGRES_PASSWORD: qwerty
+      POSTGRES_DB: tzkt_db
+    volumes:
+      - name: postgres
+        path: /var/lib/postgresql/data
+
+  - name: tzkt-sync
+    image: bakingbad/tzkt-sync:latest
+    volumes:
+      - name: tools
+        path: /tools
+      - name: cache
+        path: /cache
+    environment:
+      TZKT_ConnectionStrings__DefaultConnection: "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"
+      TZKT_TezosNode__ChainId: NetXxkAx4woPLyu
+      TZKT_TezosNode__Endpoint: http://tezos-node:8732/
+      TZKT_TezosNode_Timeout: 60
+    commands:
+      - apt-get update && apt-get install time
+      - sleep 5
+      - cd /app
+      - mkfifo /tmp/tzkt
+      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - echo "============== indexing time ============="
+      - cat /cache/time
+
+---
+#########################################################
+# This pipeline runs tzkt indexer against Tezedge node
+#########################################################
+kind: pipeline
+name: correctness/tzkt-indexer-tezedge-009-florencenet
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+  - name: conseil-sql
+    temp: {}
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+
+depends_on:
+  - build
+
+trigger:
+  branch:
+    - develop
+
+steps:
+
+  - name: tezedge-node
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /cache
+      - name: tezos-data
+        path: /home/tezos/data
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+
+  - name: tzkt-postgres
+    image: postgres:13
+    detach: true
+    environment:
+      POSTGRES_USER: tzkt
+      POSTGRES_PASSWORD: qwerty
+      POSTGRES_DB: tzkt_db
+    volumes:
+      - name: postgres
+        path: /var/lib/postgresql/data
+
+  - name: tzkt-sync
+    image: bakingbad/tzkt-sync:latest
+    volumes:
+      - name: tools
+        path: /tools
+      - name: cache
+        path: /cache
+    environment:
+      TZKT_ConnectionStrings__DefaultConnection: "server=tzkt-postgres;port=5432;database=tzkt_db;username=tzkt;password=qwerty;"
+      TZKT_TezosNode__ChainId: NetXxkAx4woPLyu
+      TZKT_TezosNode__Endpoint: http://tezedge-node:18732/
+      TZKT_TezosNode_Timeout: 60
+    commands:
+      - apt-get update && apt-get install time
+      - sleep 5
+      - cd /app
+      - mkfifo /tmp/tzkt
+      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - echo "============== indexing time ============="
+      - cat /cache/time
