@@ -13,13 +13,14 @@ use std::iter::FromIterator;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use lazy_static::lazy_static;
 use serial_test::serial;
 
 use crypto::hash::OperationHash;
 use networking::ShellCompatibilityVersion;
+use shell::mempool::find_mempool_prevalidator;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::context::actions::action_file_storage::ActionFileStorage;
@@ -173,7 +174,8 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         .expect("no environment configuration");
 
     // we need here test also bootstrap status
-    let p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 1, 2, 1);
+    let mut p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 1, 2, 1);
+    p2p_cfg.0.disable_mempool = false;
 
     // start node
     let node = crate::common::infra::NodeInfrastructure::start(
@@ -204,6 +206,11 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         .read()
         .expect("Failed to get lock")
         .is_bootstrapped());
+
+    // check mempool is not running
+    assert!(
+        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_none()
+    );
 
     // connect mocked node peer with test data set
     let clocks = Instant::now();
@@ -258,12 +265,22 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
     )?;
     println!("\nProcessed current_branch[7] in {:?}!\n", clocks.elapsed());
 
-    // check not bootstrapped
+    // check is bootstrapped
     assert!(node
         .bootstrap_state
         .read()
         .expect("Failed to get lock")
         .is_bootstrapped());
+
+    // check mempool is running
+    assert!(
+        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_some()
+    );
+    node.wait_for_mempool_on_head(
+        "mempool_head_7",
+        db.block_hash(7)?,
+        (Duration::from_secs(30), Duration::from_millis(250)),
+    )?;
 
     // stop nodes
     drop(mocked_peer_node);
@@ -721,6 +738,10 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         )) as Box<dyn ActionRecorder + Send>,
     ];
 
+    // start mempool on the beginning
+    let mut p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 0, 10, 0);
+    p2p_cfg.0.disable_mempool = false;
+
     // start node
     let node = common::infra::NodeInfrastructure::start(
         storage,
@@ -728,7 +749,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         name,
         &tezos_env,
         None,
-        Some(NODE_P2P_CFG.clone()),
+        Some(p2p_cfg),
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
@@ -740,6 +761,15 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     // wait for storage initialization to genesis
     node.wait_for_new_current_head(
         "genesis",
+        node.tezos_env.genesis_header_hash()?,
+        (Duration::from_secs(5), Duration::from_millis(250)),
+    )?;
+    // check mempool is running
+    assert!(
+        find_mempool_prevalidator(&node.actor_system, &node.tezos_env.main_chain_id()?).is_some()
+    );
+    node.wait_for_mempool_on_head(
+        "mempool_head_genesis",
         node.tezos_env.genesis_header_hash()?,
         (Duration::from_secs(5), Duration::from_millis(250)),
     )?;
@@ -762,7 +792,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
 
     // wait for current head on level 1324
     node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
-    let current_head_reached = SystemTime::now();
+    let current_head_reached = Instant::now();
     println!(
         "\nProcessed current_branch[1324] in {:?}!\n",
         clocks.elapsed()
@@ -994,7 +1024,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     // wait for current head on level 1324
     let current_head_wait_timeout = (Duration::from_secs(120), Duration::from_millis(500));
     node.wait_for_new_current_head("1324", db.block_hash(1324)?, current_head_wait_timeout)?;
-    let current_head_reached = SystemTime::now();
+    let current_head_reached = Instant::now();
     println!(
         "\nProcessed current_branch[1324] in {:?}!\n",
         clocks.elapsed()

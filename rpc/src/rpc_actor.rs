@@ -10,7 +10,6 @@ use slog::{error, info, warn, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::ChainId;
-use shell::mempool::mempool_channel::MempoolChannelRef;
 use shell::mempool::CurrentMempoolStateStorageRef;
 use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use shell::subscription::subscribe_to_shell_new_current_head;
@@ -34,8 +33,6 @@ pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
 pub struct RpcCollectedState {
     #[get = "pub(crate)"]
     current_head: Option<Arc<BlockHeaderWithHash>>,
-    #[get_copy = "pub(crate)"]
-    is_sandbox: bool,
 }
 
 /// Actor responsible for managing HTTP REST API and server, and to share parts of inner actor
@@ -54,7 +51,6 @@ impl RpcServer {
     pub fn actor(
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
-        mempool_channel: MempoolChannelRef,
         rpc_listen_address: SocketAddr,
         tokio_executor: &Handle,
         persistent_storage: &PersistentStorage,
@@ -66,7 +62,6 @@ impl RpcServer {
         tezos_env: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         init_storage_data: &StorageInitInfo,
-        is_sandbox: bool,
     ) -> Result<RpcServerRef, CreateError> {
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(
@@ -74,7 +69,6 @@ impl RpcServer {
                 &init_storage_data.chain_id,
                 &sys.log(),
             ),
-            is_sandbox,
         }));
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
@@ -87,7 +81,6 @@ impl RpcServer {
                 sys.clone(),
                 actor_ref.clone(),
                 shell_channel,
-                mempool_channel,
                 tezos_env,
                 network_version,
                 persistent_storage,

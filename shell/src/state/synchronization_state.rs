@@ -5,7 +5,6 @@
 // TODO: TE-244 - reimplement
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 
 use crypto::hash::CryptoboxPublicKeyHash;
@@ -14,7 +13,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 
 /// Type hold information if node is bootstrapped shareable between threads/actors
 /// Indicates that node/shell is bootstrapped, which means, that can broadcast stuff (new branch, new head) to the network
-type BootstrappedStatusRef = Arc<AtomicBool>;
+type BootstrappedStatusRef = bool;
 
 /// Trait for struct witch has updatable flag [`is_bootstrapped`]
 pub trait UpdateIsBootstrapped {
@@ -50,7 +49,7 @@ pub fn init_synchronization_bootstrap_state_storage(
 ) -> SynchronizationBootstrapStateRef {
     Arc::new(RwLock::new(SynchronizationBootstrapState::new(
         num_of_peers_for_bootstrap_threshold,
-        BootstrappedStatusRef::new(AtomicBool::new(false)),
+        false,
     )))
 }
 
@@ -69,15 +68,15 @@ pub struct SynchronizationBootstrapState {
 impl SynchronizationBootstrapState {
     /// This constant is used for solving, if something is bootstrapped
     /// This means, that the compared level, should be on at least 96%
-    const HIGH_LEVEL_MARGIN_PERCENTAGE: i32 = 98;
+    const HIGH_LEVEL_MARGIN_PERCENTAGE: i32 = 99;
 
     pub fn new(
         num_of_peers_for_bootstrap_threshold: usize,
-        current_bootstrapped_status: BootstrappedStatusRef,
+        mut current_bootstrapped_status: BootstrappedStatusRef,
     ) -> Self {
         // if no limit, just mark as bootstrapped
         if num_of_peers_for_bootstrap_threshold == 0 {
-            current_bootstrapped_status.store(true, Ordering::Release);
+            current_bootstrapped_status = true;
         }
 
         Self {
@@ -88,7 +87,7 @@ impl SynchronizationBootstrapState {
     }
 
     pub fn is_bootstrapped(&self) -> bool {
-        self.current_bootstrapped_status.load(Ordering::Acquire)
+        self.current_bootstrapped_status
     }
 
     fn consider_as_bootstrapped(
@@ -171,8 +170,7 @@ impl SynchronizationBootstrapState {
                 remote_best_known_level,
                 Self::HIGH_LEVEL_MARGIN_PERCENTAGE,
             ) {
-                self.current_bootstrapped_status
-                    .store(true, Ordering::Release);
+                self.current_bootstrapped_status = true;
                 self.state.clear();
             }
         }
@@ -200,7 +198,6 @@ impl SynchronizationBootstrapState {
 
 #[cfg(test)]
 pub mod tests {
-    use std::sync::atomic::AtomicBool;
     use std::time::Duration;
 
     use slog::Level;
@@ -217,7 +214,7 @@ pub mod tests {
     #[test]
     fn test_resolve_is_bootstrapped_no_threshold() {
         // prepare empty states
-        let bootstrap_status = BootstrappedStatusRef::new(AtomicBool::new(false));
+        let bootstrap_status = false;
         let bootstrap_state = SynchronizationBootstrapState::new(0, bootstrap_status);
 
         // check
@@ -240,7 +237,7 @@ pub mod tests {
         };
 
         // prepare empty states with threshold = 2
-        let bootstrap_status = BootstrappedStatusRef::new(AtomicBool::new(false));
+        let bootstrap_status = false;
         let mut bootstrap_state = SynchronizationBootstrapState::new(2, bootstrap_status);
 
         // check
@@ -267,7 +264,7 @@ pub mod tests {
 
         // update with one with higher level
         bootstrap_state.update_by_peer_state(
-            &done_peer(98, &peer_state1),
+            &done_peer(99, &peer_state1),
             &mut peer_state1,
             100,
             0,
@@ -309,7 +306,7 @@ pub mod tests {
             97,
         );
         bootstrap_state.update_by_peer_state(
-            &done_peer(98, &peer_state2),
+            &done_peer(99, &peer_state2),
             &mut peer_state2,
             100,
             97,
@@ -326,7 +323,7 @@ pub mod tests {
         assert!(peer_state2.is_bootstrapped());
         assert!(!bootstrap_state.is_bootstrapped());
 
-        assert!(bootstrap_state.update_by_new_local_head(100, 98));
+        assert!(bootstrap_state.update_by_new_local_head(100, 99));
         assert_eq!(0, bootstrap_state.num_of_bootstrapped_peers(100));
         assert!(peer_state1.is_bootstrapped());
         assert!(peer_state2.is_bootstrapped());

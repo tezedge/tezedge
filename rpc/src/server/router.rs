@@ -23,7 +23,7 @@ macro_rules! hash_set {
     };
 }
 
-pub(crate) fn create_routes(_is_sandbox: bool, one_context: bool) -> PathTree<MethodHandler> {
+pub(crate) fn create_routes(one_context: bool) -> PathTree<MethodHandler> {
     let mut routes = PathTree::<MethodHandler>::new();
 
     // Shell rpc - implemented

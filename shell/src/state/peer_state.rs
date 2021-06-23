@@ -4,7 +4,7 @@
 use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use riker::actors::*;
 
@@ -23,9 +23,7 @@ use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
 
 /// Limit to how many mempool operations to request in a batch
-const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = 20;
-/// Mempool operation time to live
-const MEMPOOL_OPERATION_TTL: Duration = Duration::from_secs(60);
+const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = limits::MEMPOOL_MAX_OPERATIONS;
 
 /// Holds information about a specific peer.
 pub struct PeerState {
@@ -63,8 +61,7 @@ pub struct PeerState {
     pub(crate) missing_mempool_operations: Vec<(OperationHash, MempoolOperationType)>,
     /// Queued mempool operations. This map holds an operation hash and
     /// a tuple of type of a mempool operation with its time to live.
-    pub(crate) queued_mempool_operations:
-        HashMap<OperationHash, (MempoolOperationType, SystemTime)>,
+    pub(crate) queued_mempool_operations: HashMap<OperationHash, MempoolOperationType>,
 
     /// Collected stats about p2p messages
     pub(crate) message_stats: MessageStats,
@@ -137,6 +134,28 @@ impl PeerState {
         self.missing_operations_for_blocks.clear();
     }
 
+    pub fn add_missing_mempool_operations(
+        &mut self,
+        operation_hash: OperationHash,
+        mempool_type: MempoolOperationType,
+    ) {
+        if self
+            .missing_mempool_operations
+            .iter()
+            .any(|(op_hash, _)| op_hash.eq(&operation_hash))
+        {
+            // ignore already scheduled
+            return;
+        }
+        if self.queued_mempool_operations.contains_key(&operation_hash) {
+            // ignore already scheduled
+            return;
+        }
+
+        self.missing_mempool_operations
+            .push((operation_hash, mempool_type));
+    }
+
     pub fn schedule_missing_operations_for_mempool(peers: &mut HashMap<ActorUri, PeerState>) {
         peers
             .values_mut()
@@ -152,13 +171,11 @@ impl PeerState {
                     .drain(0..num_opts_to_get)
                     .collect::<Vec<_>>();
 
-                let ttl = SystemTime::now() + MEMPOOL_OPERATION_TTL;
                 ops_to_enqueue
                     .iter()
                     .cloned()
                     .for_each(|(op_hash, op_type)| {
-                        peer.queued_mempool_operations
-                            .insert(op_hash, (op_type, ttl));
+                        peer.queued_mempool_operations.insert(op_hash, op_type);
                     });
 
                 let ops_to_get: Vec<OperationHash> = ops_to_enqueue

@@ -525,6 +525,9 @@ steps:
       # message_benchmark
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - cargo bench --bench message_benchmark -- --noplot
+      # decoders_benchmark
+      - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
+      - cargo bench --bench decoders_benchmark -- --noplot
       # stream_benchmark
       - echo "" && echo "" && echo "...stream_benchmark..." && echo "" && echo ""
       - cargo bench --bench stream_benchmark -- --noplot
@@ -561,6 +564,9 @@ steps:
       # message_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
       - cargo bench --bench message_benchmark --no-run
+      # decoders_benchmark
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
       # stream_benchmark
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -590,7 +596,7 @@ steps:
       RUST_BACKTRACE: 1
     commands:
       # we should have here precompiled target branch
-      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 240
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 600
       - branch=$(git status | grep "On branch")
       - echo "...running bench for git - $branch"
       # message_benchmark - target
@@ -598,6 +604,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_target_branch_result
       - critcmp --export message_benchmark_target_branch_result > $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json
+      # decoders_benchmark - target
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
+      - cargo bench --bench decoders_benchmark -- --noplot --save-baseline decoders_benchmark_target_branch_result
+      - critcmp --export decoders_benchmark_target_branch_result > $${CACHE_DATA_PATH}/decoders_benchmark_target_branch_result.json
       # stream_benchmark - target
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -623,6 +634,11 @@ steps:
       - cargo bench --bench message_benchmark --no-run
       - cargo bench --bench message_benchmark -- --noplot --save-baseline message_benchmark_current_branch_result
       - critcmp --export message_benchmark_current_branch_result > $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json
+      # decoders_benchmark - current
+      - cd $${CACHE_DATA_PATH}/tezedge/tezos/messages
+      - cargo bench --bench decoders_benchmark --no-run
+      - cargo bench --bench decoders_benchmark -- --noplot --save-baseline decoders_benchmark_current_branch_result
+      - critcmp --export decoders_benchmark_current_branch_result > $${CACHE_DATA_PATH}/decoders_benchmark_current_branch_result.json
       # stream_benchmark - current
       - cd $${CACHE_DATA_PATH}/tezedge/networking
       - cargo bench --bench stream_benchmark --no-run
@@ -641,16 +657,37 @@ steps:
       # compare results
       - echo "" && echo "" && echo "...message_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/message_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/message_benchmark_current_branch_result.json --list
+      - echo "" && echo "" && echo "...decoders_benchmark..." && echo "" && echo ""
+      - critcmp $${CACHE_DATA_PATH}/decoders_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/decoders_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...interop_benchmark..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/interop_benchmark_target_branch_result.json $${CACHE_DATA_PATH}/interop_benchmark_current_branch_result.json --list
       - echo "" && echo "" && echo "...predecessor_benchmarks..." && echo "" && echo ""
       - critcmp $${CACHE_DATA_PATH}/predecessor_benchmarks_target_branch_result.json $${CACHE_DATA_PATH}/predecessor_benchmarks_current_branch_result.json --list
+      - cp /dev/null "$${CACHE_DATA_PATH}/bench.done"
     when:
       ref:
         - refs/pull/*/head
     # TODO: needs rework and speedup with new CI
     detach: true
 
+  - name: wait-for-completion
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /data/cache
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+      RUST_BACKTRACE: 1
+    commands:
+      # we should have here precompiled target branch
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/build.done" 600
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh "$${CACHE_DATA_PATH}/bench.done" 1800
+
+  
 depends_on:
   - prepare-and-cleanup
 
@@ -737,7 +774,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
@@ -753,7 +790,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
@@ -769,7 +806,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
@@ -785,7 +822,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
@@ -801,7 +838,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
@@ -817,7 +854,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
@@ -833,7 +870,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
@@ -849,7 +886,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
@@ -865,7 +902,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
@@ -881,7 +918,7 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -903,7 +940,8 @@ steps:
   commands:
     - cd $${TEZOS_SRC_PATH}/tezos/tests_python
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+    -
+    - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -989,7 +1027,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
@@ -1005,7 +1043,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
@@ -1021,7 +1059,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
@@ -1037,7 +1075,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
@@ -1053,7 +1091,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
@@ -1069,7 +1107,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
@@ -1085,7 +1123,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
@@ -1101,7 +1139,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
@@ -1117,7 +1155,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
@@ -1133,7 +1171,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1155,7 +1193,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -1241,7 +1279,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
@@ -1257,7 +1295,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
@@ -1273,7 +1311,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
@@ -1289,7 +1327,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
@@ -1305,7 +1343,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
@@ -1321,7 +1359,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
@@ -1337,7 +1375,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
@@ -1353,7 +1391,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
@@ -1369,7 +1407,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
@@ -1385,7 +1423,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1407,7 +1445,7 @@ steps:
     commands:
       - cd $${TEZOS_SRC_PATH}/tezos/tests_python
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
-      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_SYSTEM_HOST} - $log_dir"
+      - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_basic.py
 
 image_pull_secrets:
@@ -3931,8 +3969,6 @@ steps:
     image: simplestakingcom/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCAML_NODE_INDEXER_ROOT}
-    # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
-    detach: true
 
 image_pull_secrets:
   - docker_pull_secret
@@ -4222,7 +4258,7 @@ steps:
     dockerfile: docker/distroless/Dockerfile
     build_args:
       - SOURCE_BRANCH=develop
-      - BASE_IMAGE=simplestakingcom/glibc:latest-frame-pointers-enabled
+      - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
       - RUSTFLAGS=-Cforce-frame-pointers=yes
     username:
       from_secret: docker_hub_username
@@ -4304,7 +4340,7 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
-        - BASE_IMAGE=simplestakingcom/glibc:latest-frame-pointers-enabled
+        - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
         - RUSTFLAGS=-Cforce-frame-pointers=yes
       username:
         from_secret: docker_hub_username
@@ -4352,3 +4388,48 @@ depends_on:
   - mainnet-offline-tests
   - florencenet-offline-tests
   - granadanet-offline-tests
+
+---
+##############################################################################################################
+# This pipeline runs valgrind dhat against `decode_stream` test on current and target branches
+# comparing total dynamic memory allocation amount and failing if the current is increased more than 10%
+##############################################################################################################
+kind: pipeline
+name: dhat-decoding
+
+workspace:
+  path: /drone/src
+
+environment:
+  TARGET_BRANCH: ${DRONE_TARGET_BRANCH}
+  SOURCE_BRANCH: ${DRONE_SOURCE_BRANCH}
+
+steps:
+
+- name: run-dhat
+  image: simplestakingcom/tezedge-ci-builder:latest
+  user: root
+  commands:
+    - git remote add -f upstream https://github.com/tezedge/tezedge.git
+    - apt update && apt install -y valgrind
+    - cd tezos/messages
+    - cargo build --message-format json --test decode_stream |  jq --raw-output '.executable // empty' > source.cmd
+    - valgrind --tool=exp-dhat --show-top-n=1 $(cat source.cmd) 2>&1 | tee dhat-source.out | sed '/======== ORDERED BY/Q'
+    - git checkout -B target-branch upstream/$TARGET_BRANCH
+    - cargo clean && cargo build --message-format json --test decode_stream |  jq --raw-output '.executable // empty' > target.cmd
+    - valgrind --tool=exp-dhat --show-top-n=1 $(cat target.cmd) 2>&1 | tee dhat-target.out | sed '/======== ORDERED BY/Q'
+    - 'source_total=$(grep "tot_alloc" < dhat-source.out | sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\\\\1/" -e "s/,//g")'
+    - 'target_total=$(grep "tot_alloc" < dhat-target.out | sed -E -e "s/.*tot_alloc: *([0-9,]*).*/\\\\1/" -e "s/,//g")'
+    - delta=$((source_total - target_total))
+    - echo Memory allocation delta $delta
+    - test $delta -le 0 && echo 'Decreased or unchanged' && exit 0
+    - test $((delta * 20)) -le $target_total && echo 'Increase within 5%' && exit 0
+    - echo 'Increase is more than 5%' && exit 1
+
+image_pull_secrets:
+  - docker_pull_secret
+
+trigger:
+  branch:
+    - master
+    - develop

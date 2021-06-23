@@ -24,11 +24,11 @@ use tezos_messages::p2p::encoding::prelude::{
 
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::shell_channel::InjectBlockOneshotResultCallback;
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
 use crate::state::{ApplyBlockBatch, StateError};
-use crate::utils::CondvarResult;
 use crate::validation;
 use crate::validation::CanApplyStatus;
 
@@ -346,7 +346,7 @@ impl DataRequester {
         &self,
         chain_id: Arc<ChainId>,
         block_hash: BlockHash,
-        result_callback: Option<CondvarResult<(), failure::Error>>,
+        result_callback: Option<InjectBlockOneshotResultCallback>,
     ) -> Result<(), StateError> {
         self.call_apply_block(chain_id, ApplyBlockBatch::one(block_hash), result_callback)
     }
@@ -355,7 +355,7 @@ impl DataRequester {
         &self,
         chain_id: Arc<ChainId>,
         batch: ApplyBlockBatch,
-        result_callback: Option<CondvarResult<(), failure::Error>>,
+        result_callback: Option<InjectBlockOneshotResultCallback>,
     ) -> Result<(), StateError> {
         // check batch, if the start block is ok and can be applied
         // if start is already applied, we fold the bath to next block (if any)

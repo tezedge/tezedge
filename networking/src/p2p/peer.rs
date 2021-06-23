@@ -484,7 +484,11 @@ pub async fn bootstrap(
 
     // receive metadata
     let metadata_received = timeout(IO_TIMEOUT, msg_rx.read_message::<MetadataMessage>()).await??;
-    debug!(log, "Received remote peer metadata"; "disable_mempool" => metadata_received.disable_mempool(), "private_node" => metadata_received.private_node());
+    debug!(log, "Received remote peer metadata";
+                "disable_mempool" => metadata_received.disable_mempool(),
+                "private_node" => metadata_received.private_node(),
+                "port" => connection_message.port(),
+    );
 
     let peer_version = connection_message.version();
 

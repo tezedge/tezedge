@@ -151,6 +151,10 @@ If you want to build from source code, you need to install this before:
     rustup default nightly-2020-12-31
     ```
 4. Install **required OS libs**
+    - OpenSSL
+    ```
+    sudo apt install openssl libssl-dev
+    ```
     - Sodiumoxide package:
     ```
     sudo apt install pkg-config libsodium-dev
@@ -208,13 +212,15 @@ If you want to build from source code, you need to install this before:
 To run the node manually, you need to first build it from the source code. The path to the Tezos lib must be provided as an environment variable `LD_LIBRARY_PATH`. It is required
 by the `protocol-runner`. When put together, the node can be run, for example, like this:
 ```
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --network=mainnet
+cargo build --release
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 
 All parameters can also be provided as command line arguments in the same format as in the config file, in which case
 they have a higher priority than the ones in the config file. For example, we can use the default config and change the log file path:
 ```
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --network=mainnet
+cargo build --release
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
 
@@ -225,23 +231,30 @@ All arguments can be provided to the `run.sh` script in the same manner as descr
 
 To run the node in release mode, execute the following:
 
+_KEEP_DATA - this flag controls, if all the target directories should be cleaned on the startup, 1 means do not clean_
+
 ```
-./run.sh release --network=mainnet
+KEEP_DATA=1 ./run.sh release --network=mainnet
 ```
 
 The following command will execute the node in debug node:
 
 ```
-./run.sh node --network=mainnet
+KEEP_DATA=1 ./run.sh node --network=mainnet
 ```
 
 To run the node in debug mode with an address sanitizer, execute the following:
 
 ```
-./run.sh node-saddr --network=mainnet
+KEEP_DATA=1 ./run.sh node-saddr --network=mainnet
 ```
 
-If you are running OSX, you can use the docker version:
+You can use the docker version to build and run node from the actual source code.
+- you can experiment and change source code without installing all requirements, just docker.
+- you can build/run node on Windows/OSX
+- this is just for development, because docker is based on full Linux (pre-build docker images are Distroless)
+
+_If you do not need to build from souce code, just use our pre-build [docker images](#running-node-from-docker-images)_
 
 ```
 ./run.sh docker --network=mainnet
@@ -250,10 +263,35 @@ If you are running OSX, you can use the docker version:
 Listening for updates. Node emits statistics on the websocket server, which can be changed by `--websocket-address` argument, for example:
 
 ```
-./run.sh node --network=mainnet --websocket-address 0.0.0.0:12345
+KEEP_DATA=1  ./run.sh node --network=mainnet --websocket-address 0.0.0.0:12345
 ```
 
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
+
+### Running node from `binaries`
+
+_Note: This cmd runs from the main git sources directory_
+```
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
+    --network "mainnet" \
+    --identity-file "/tmp/data-dir-mainnet/identity.json" \
+    --identity-expected-pow 26.0 \
+    --tezos-data-dir "/tmp/data-dir-mainnet/context_data" \
+    --bootstrap-db-path "/tmp/data-dir-mainnet/tezedge_data" \
+    --peer-thresh-low 30 --peer-thresh-high 45 \
+    --protocol-runner "./target/release/protocol-runner" \
+    --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
+    --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
+    --p2p-port 12534 --rpc-port 12535 \
+    --websocket-address 0.0.0.0:12536 \
+    --tokio-threads 0 \
+    --ocaml-log-enabled false \
+    --one-context \
+    --actions-store-backend none \
+    --log terminal \
+    --log-level info \
+    --log-format simple
+```
 
 ### Running node from docker images
 

@@ -35,22 +35,31 @@ use tezos_wrapper::service::{
 };
 use tezos_wrapper::TezosApiConnectionPool;
 
-use crate::mempool::mempool_channel::{
-    subscribe_to_mempool_channel, MempoolChannelMsg, MempoolChannelRef, MempoolOperationReceived,
-};
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
 use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::state::StateError;
 use crate::subscription::subscribe_to_shell_shutdown;
-use crate::utils::{dispatch_condvar_result, CondvarResult};
+use crate::utils::{dispatch_oneshot_result, OneshotResultCallback};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
 
+#[derive(Clone, Debug)]
+pub struct MempoolOperationReceived {
+    pub operation_hash: OperationHash,
+    pub operation_type: MempoolOperationType,
+    pub result_callback: Option<OneshotResultCallback<Result<(), StateError>>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ResetMempool {
+    pub block: Arc<BlockHeaderWithHash>,
+}
+
 /// Feeds blocks and operations to the tezos protocol (ocaml code).
-#[actor(ShellChannelMsg, MempoolChannelMsg)]
+#[actor(ShellChannelMsg, ResetMempool, MempoolOperationReceived)]
 pub struct MempoolPrevalidator {
     shell_channel: ShellChannelRef,
-    mempool_channel: MempoolChannelRef,
 
     validator_event_sender: Arc<Mutex<QueueSender<Event>>>,
     validator_run: Arc<AtomicBool>,
@@ -62,20 +71,19 @@ enum Event {
     ValidateOperation(
         OperationHash,
         MempoolOperationType,
-        Option<CondvarResult<(), failure::Error>>,
+        Option<OneshotResultCallback<Result<(), StateError>>>,
     ),
     ShuttingDown,
 }
 
-/// Reference to [chain feeder](ChainFeeder) actor
 pub type MempoolPrevalidatorRef = ActorRef<MempoolPrevalidatorMsg>;
+pub type MempoolPrevalidatorBasicRef = BasicActorRef;
 
 impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
-        mempool_channel: MempoolChannelRef,
-        persistent_storage: &PersistentStorage,
+        persistent_storage: PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
@@ -85,9 +93,9 @@ impl MempoolPrevalidator {
         let (validator_event_sender, mut validator_event_receiver) = channel();
         let validator_run = Arc::new(AtomicBool::new(true));
         let validator_thread = {
-            let persistent_storage = persistent_storage.clone();
             let shell_channel = shell_channel.clone();
             let validator_run = validator_run.clone();
+            let chain_id = chain_id.clone();
 
             thread::spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
@@ -132,10 +140,9 @@ impl MempoolPrevalidator {
 
         // create actor
         let myself = sys.actor_of_props::<MempoolPrevalidator>(
-            MempoolPrevalidator::name(),
+            &MempoolPrevalidator::name(&chain_id),
             Props::new_args((
                 shell_channel,
-                mempool_channel,
                 validator_run,
                 Arc::new(Mutex::new(Some(validator_thread))),
                 Arc::new(Mutex::new(validator_event_sender)),
@@ -143,12 +150,6 @@ impl MempoolPrevalidator {
         )?;
 
         Ok(myself)
-    }
-
-    /// The `MempoolPrevalidator` is intended to serve as a singleton actor so that's why
-    /// we won't support multiple names per instance.
-    pub fn name() -> &'static str {
-        "mempool-prevalidator"
     }
 
     fn process_shell_channel_message(
@@ -165,53 +166,77 @@ impl MempoolPrevalidator {
         Ok(())
     }
 
-    fn process_mempool_channel_message(
+    fn process_reset_mempool_message(
         &mut self,
         _: &Context<MempoolPrevalidatorMsg>,
-        msg: MempoolChannelMsg,
+        msg: ResetMempool,
     ) -> Result<(), Error> {
-        match msg {
-            MempoolChannelMsg::ResetMempool(block) => {
-                // add NewHead to queue
-                self.validator_event_sender
-                    .lock()
-                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-                    .send(Event::NewHead(block))?;
-            }
-            MempoolChannelMsg::ValidateOperation(MempoolOperationReceived {
+        let ResetMempool { block } = msg;
+        // add NewHead to queue
+        self.validator_event_sender
+            .lock()
+            .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
+            .send(Event::NewHead(block))?;
+        Ok(())
+    }
+
+    fn process_mempool_operation_received_message(
+        &mut self,
+        _: &Context<MempoolPrevalidatorMsg>,
+        msg: MempoolOperationReceived,
+    ) -> Result<(), Error> {
+        let MempoolOperationReceived {
+            operation_hash,
+            operation_type,
+            result_callback,
+        } = msg;
+        // add operation to queue for validation
+        self.validator_event_sender
+            .lock()
+            .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
+            .send(Event::ValidateOperation(
                 operation_hash,
                 operation_type,
                 result_callback,
-            }) => {
-                // add operation to queue for validation
-                self.validator_event_sender
-                    .lock()
-                    .map_err(|e| format_err!("Failed to obtain the lock: {:?}", e))?
-                    .send(Event::ValidateOperation(
-                        operation_hash,
-                        operation_type,
-                        result_callback,
-                    ))?;
-            }
-        }
-
+            ))?;
         Ok(())
+    }
+
+    const PREFIX_NAME: &'static str = "mempool-prevalidator-";
+
+    /// The `MempoolPrevalidator` is intended to serve as a singleton actor so that's why
+    /// we won't support multiple names per instance.
+    ///
+    /// e.g.: mempool-prevalidator-NetXdQprcVkpaWU
+    pub fn name(chain_id: &ChainId) -> String {
+        format!("{}{}", Self::PREFIX_NAME, chain_id.to_base58_check())
+    }
+
+    pub fn is_mempool_prevalidator_actor_name(actor_name: &str) -> bool {
+        actor_name.starts_with(Self::PREFIX_NAME)
+    }
+
+    /// Returns chain_id in base58_chech format
+    pub fn resolve_chain_id_from_mempool_prevalidator_actor_name(actor_name: &str) -> Option<&str> {
+        if let Some(rest) = actor_name.strip_prefix(Self::PREFIX_NAME) {
+            Some(rest)
+        } else {
+            None
+        }
     }
 }
 
 impl
     ActorFactoryArgs<(
         ShellChannelRef,
-        MempoolChannelRef,
         Arc<AtomicBool>,
         SharedJoinHandle,
         Arc<Mutex<QueueSender<Event>>>,
     )> for MempoolPrevalidator
 {
     fn create_args(
-        (shell_channel, mempool_channel, validator_run, validator_thread, validator_event_sender): (
+        (shell_channel, validator_run, validator_thread, validator_event_sender): (
             ShellChannelRef,
-            MempoolChannelRef,
             Arc<AtomicBool>,
             SharedJoinHandle,
             Arc<Mutex<QueueSender<Event>>>,
@@ -219,7 +244,6 @@ impl
     ) -> Self {
         MempoolPrevalidator {
             shell_channel,
-            mempool_channel,
             validator_run,
             validator_thread,
             validator_event_sender,
@@ -232,7 +256,6 @@ impl Actor for MempoolPrevalidator {
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
         subscribe_to_shell_shutdown(&self.shell_channel, ctx.myself());
-        subscribe_to_mempool_channel(&self.mempool_channel, ctx.myself());
     }
 
     fn post_stop(&mut self) {
@@ -268,14 +291,27 @@ impl Receive<ShellChannelMsg> for MempoolPrevalidator {
     }
 }
 
-impl Receive<MempoolChannelMsg> for MempoolPrevalidator {
+impl Receive<MempoolOperationReceived> for MempoolPrevalidator {
     type Msg = MempoolPrevalidatorMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: MempoolChannelMsg, _: Sender) {
-        match self.process_mempool_channel_message(ctx, msg) {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: MempoolOperationReceived, _: Sender) {
+        match self.process_mempool_operation_received_message(ctx, msg) {
             Ok(_) => (),
             Err(e) => {
-                warn!(ctx.system.log(), "Mempool - failed to process mempool channel message"; "reason" => format!("{:?}", e))
+                warn!(ctx.system.log(), "Mempool - failed to process `MempoolOperationReceived` message"; "reason" => format!("{:?}", e))
+            }
+        }
+    }
+}
+
+impl Receive<ResetMempool> for MempoolPrevalidator {
+    type Msg = MempoolPrevalidatorMsg;
+
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: ResetMempool, _: Sender) {
+        match self.process_reset_mempool_message(ctx, msg) {
+            Ok(_) => (),
+            Err(e) => {
+                warn!(ctx.system.log(), "Mempool - failed to process `ResetMempool` message"; "reason" => format!("{:?}", e))
             }
         }
     }
@@ -392,33 +428,23 @@ fn process_prevalidation(
                             .write()?
                             .add_to_pending(&oph, operation.into());
                         if !was_added_to_pending {
-                            trace!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
-                            if let Err(e) = dispatch_condvar_result(
-                                result_callback,
-                                || {
-                                    Err(format_err!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check()))
-                                },
-                                true,
-                            ) {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            debug!(log, "Mempool - received validate operation event - operation already validated"; "hash" => oph.to_base58_check());
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                                Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operation already validated, hash: {}", oph.to_base58_check())})
+                            }) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                         } else {
-                            if let Err(e) =
-                                dispatch_condvar_result(result_callback, || Ok(()), true)
-                            {
-                                warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                            if let Err(e) = dispatch_oneshot_result(result_callback, || Ok(())) {
+                                warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                             }
                         }
                     } else {
                         debug!(log, "Mempool - received validate operation event - operations was previously validated and removed from mempool storage"; "hash" => oph.to_base58_check());
-                        if let Err(e) = dispatch_condvar_result(
-                            result_callback,
-                            || {
-                                Err(format_err!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check()))
-                            },
-                            true,
-                        ) {
-                            warn!(log, "Failed to dispatch result to condvar"; "reason" => format!("{}", e));
+                        if let Err(e) = dispatch_oneshot_result(result_callback, || {
+                            Err(StateError::ProcessingError {reason: format!("Mempool - received validate operation event - operations was previously validated and removed from mempool storage, hash: {}", oph.to_base58_check())})
+                        }) {
+                            warn!(log, "Failed to dispatch result"; "reason" => format!("{}", e));
                         }
                     }
                 }
@@ -475,6 +501,11 @@ fn hydrate_state(
     for (oph, op) in pending {
         let _ = state.add_to_pending(&oph, op.into());
     }
+    // ste started date
+    if state.prevalidator_started().is_none() {
+        state.set_prevalidator_started();
+    }
+
     // drop write lock
     drop(state);
 

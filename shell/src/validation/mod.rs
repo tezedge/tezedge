@@ -118,7 +118,7 @@ pub fn can_accept_operation_from_p2p(
         return true;
     }
 
-    // true, if contained in branch_refused
+    // true, if contained in branch_delayed
     if result
         .branch_delayed
         .iter()
@@ -194,12 +194,25 @@ pub enum PrevalidateOperationError {
     #[fail(display = "Storage read error, reason: {:?}", error)]
     StorageError { error: StorageError },
     #[fail(
-        display = "Failed to validate operation: {}, reason: {:?}",
+        display = "Failed to prevalidate operation: {}, reason: {:?}",
         operation_hash, reason
     )]
     ValidationError {
         operation_hash: String,
         reason: ProtocolServiceError,
+    },
+    #[fail(
+        display = "Operation ({}) is already in mempool, cannot inject the operation.",
+        operation_hash
+    )]
+    AlreadyInMempool { operation_hash: String },
+    #[fail(
+        display = "Failed to prevalidate operation ({}), cannot inject the operation, reason: {}",
+        operation_hash, reason
+    )]
+    UnexpectedError {
+        operation_hash: String,
+        reason: String,
     },
 }
 
@@ -215,7 +228,7 @@ pub fn prevalidate_operation(
     chain_id: &ChainId,
     operation_hash: &OperationHash,
     operation: &Operation,
-    current_mempool_state: CurrentMempoolStateStorageRef,
+    current_mempool_state: &CurrentMempoolStateStorageRef,
     api: &ProtocolController,
     block_storage: &Box<dyn BlockStorageReader>,
     block_meta_storage: &Box<dyn BlockMetaStorageReader>,
@@ -239,7 +252,21 @@ pub fn prevalidate_operation(
     }
 
     // get actual known state of mempool, we need the same head as used actualy be mempool
-    let mempool_state = current_mempool_state.read().unwrap();
+    let mempool_state =
+        current_mempool_state
+            .read()
+            .map_err(|e| PrevalidateOperationError::UnexpectedError {
+                operation_hash: operation_hash.to_base58_check(),
+                reason: format!("Failed to obtain mempool lock, reason: {}", e),
+            })?;
+
+    // check if operations is already in mempool
+    if mempool_state.is_already_in_mempool(operation_hash) {
+        return Err(PrevalidateOperationError::AlreadyInMempool {
+            operation_hash: operation_hash.to_base58_check(),
+        });
+    }
+
     let mempool_head = match mempool_state.head().as_ref() {
         Some(head) => match block_storage.get(head)? {
             Some(head) => head,

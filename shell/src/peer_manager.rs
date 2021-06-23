@@ -818,7 +818,7 @@ impl Receive<ConnectToPeer> for PeerManager {
                             }
                         }
                         Err(err) => {
-                            warn!(log, "(Outgoing) Connection to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
+                            warn!(log, "(Outgoing) Connection handshake to peer failed"; "incoming" => false, "reason" => format!("{}", &err), "ip" => &msg.address);
                             failed_bootstrap_peer(err, msg.address, network_channel);
                         }
                     }

@@ -8,7 +8,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant};
 
 use riker::actors::*;
 use riker::system::SystemBuilder;
@@ -23,9 +23,9 @@ use shell::chain_current_head_manager::ChainCurrentHeadManager;
 use shell::chain_feeder::{ChainFeeder, ChainFeederRef};
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::context_listener::ContextListener;
-use shell::mempool::mempool_channel::MempoolChannel;
-use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
-use shell::mempool::{init_mempool_state_storage, CurrentMempoolStateStorageRef};
+use shell::mempool::{
+    init_mempool_state_storage, CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory,
+};
 use shell::peer_manager::{P2p, PeerManager, PeerManagerRef, WhitelistAllIpAddresses};
 use shell::shell_channel::{ShellChannel, ShellChannelRef, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
@@ -82,9 +82,9 @@ impl NodeInfrastructure {
 
         // environement
         let is_sandbox = false;
-        let p2p_threshold = match p2p.as_ref() {
-            Some((p2p, _)) => p2p.peer_threshold.clone(),
-            None => PeerConnectionThreshold::try_new(1, 1, Some(0))?,
+        let (p2p_threshold, p2p_disable_mempool) = match p2p.as_ref() {
+            Some((p2p, _)) => (p2p.peer_threshold.clone(), p2p.disable_mempool),
+            None => (PeerConnectionThreshold::try_new(1, 1, Some(0))?, false),
         };
         let identity = Arc::new(identity);
 
@@ -108,7 +108,7 @@ impl NodeInfrastructure {
         .expect("Failed to resolve init storage chain data");
 
         // create pool for ffi protocol runner connections (used just for readonly context)
-        let tezos_readonly_api = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
+        let tezos_readonly_api_pool = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
             String::from(&format!("{}_readonly_runner_pool", name)),
             TezosApiConnectionPoolConfiguration {
                 min_connections: 0,
@@ -182,8 +182,13 @@ impl NodeInfrastructure {
             ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
-        let mempool_channel =
-            MempoolChannel::actor(&actor_system).expect("Failed to create mempool channel");
+        let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+            shell_channel.clone(),
+            persistent_storage.clone(),
+            current_mempool_state_storage.clone(),
+            tezos_readonly_api_pool.clone(),
+            p2p_disable_mempool,
+        ));
 
         if !one_context {
             let _ = ContextListener::actor(
@@ -199,14 +204,13 @@ impl NodeInfrastructure {
         let chain_current_head_manager = ChainCurrentHeadManager::actor(
             &actor_system,
             shell_channel.clone(),
-            mempool_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.clone(),
             local_current_head_state.clone(),
             remote_current_head_state.clone(),
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
-            false,
+            mempool_prevalidator_factory.clone(),
         )
         .expect("Failed to create chain current head manager");
         let block_applier = ChainFeeder::actor(
@@ -225,30 +229,18 @@ impl NodeInfrastructure {
             block_applier.clone(),
             network_channel.clone(),
             shell_channel.clone(),
-            mempool_channel.clone(),
             persistent_storage.clone(),
-            tezos_readonly_api.clone(),
+            tezos_readonly_api_pool.clone(),
             init_storage_data.clone(),
             is_sandbox,
             local_current_head_state,
             remote_current_head_state,
             current_mempool_state_storage.clone(),
             bootstrap_state.clone(),
-            false,
+            mempool_prevalidator_factory,
             identity.clone(),
         )
         .expect("Failed to create chain manager");
-        let _ = MempoolPrevalidator::actor(
-            &actor_system,
-            shell_channel.clone(),
-            mempool_channel,
-            &persistent_storage,
-            current_mempool_state_storage.clone(),
-            init_storage_data.chain_id,
-            tezos_readonly_api,
-            log.clone(),
-        )
-        .expect("Failed to create chain feeder");
 
         // and than open p2p and others - if configured
         let peer_manager = if let Some((p2p_config, shell_compatibility_version)) = p2p {
@@ -319,7 +311,7 @@ impl NodeInfrastructure {
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
         let chain_meta_data = ChainMetaStorage::new(self.tmp_storage.storage());
@@ -334,7 +326,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_new_current_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
@@ -355,7 +347,7 @@ impl NodeInfrastructure {
             return Ok(());
         }
 
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         let context = TezedgeContext::new(
             Some(BlockStorage::new(self.tmp_storage.storage())),
@@ -371,7 +363,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_context({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", context_hash.to_base58_check(), timeout, delay, marker));
@@ -387,7 +379,7 @@ impl NodeInfrastructure {
         tested_head: BlockHash,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
         let tested_head = Some(tested_head).map(|th| th.to_base58_check());
 
         let result = loop {
@@ -403,7 +395,7 @@ impl NodeInfrastructure {
             }
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_mempool_on_head({:?}) - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", tested_head, timeout, delay, marker));
@@ -419,7 +411,7 @@ impl NodeInfrastructure {
         expected_operations: &HashSet<OperationHash>,
         (timeout, delay): (Duration, Duration),
     ) -> Result<(), failure::Error> {
-        let start = SystemTime::now();
+        let start = Instant::now();
 
         let result = loop {
             let mempool_state = self
@@ -433,7 +425,7 @@ impl NodeInfrastructure {
             drop(mempool_state);
 
             // kind of simple retry policy
-            if start.elapsed()?.le(&timeout) {
+            if start.elapsed().le(&timeout) {
                 thread::sleep(delay);
             } else {
                 break Err(failure::format_err!("wait_for_mempool_contains_operations() - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
@@ -466,7 +458,7 @@ fn create_tokio_runtime() -> tokio::runtime::Runtime {
 pub mod test_actor {
     use std::collections::HashMap;
     use std::sync::{Arc, RwLock};
-    use std::time::{Duration, SystemTime};
+    use std::time::{Duration, Instant};
 
     use riker::actors::*;
 
@@ -606,7 +598,7 @@ pub mod test_actor {
             peers_mirror: Arc<RwLock<HashMap<CryptoboxPublicKeyHash, PeerConnectionStatus>>>,
             (timeout, delay): (Duration, Duration),
         ) -> Result<(), failure::Error> {
-            let start = SystemTime::now();
+            let start = Instant::now();
             let peer_public_key_hash = &peer.identity.public_key.public_key_hash()?;
 
             let result = loop {
@@ -618,7 +610,7 @@ pub mod test_actor {
                 }
 
                 // kind of simple retry policy
-                if start.elapsed()?.le(&timeout) {
+                if start.elapsed().le(&timeout) {
                     std::thread::sleep(delay);
                 } else {
                     break Err(
