@@ -1,18 +1,11 @@
-use crate::block_storage::{BlockByContextHashIndex, BlockByLevelIndex, BlockPrimaryIndex};
 use crate::database::backend::{BackendIteratorMode, TezedgeDatabaseBackendStore};
 use crate::database::error::Error;
 use crate::database::rockdb_backend::RocksDBBackend;
 use crate::database::sled_backend::SledDBBackend;
-use crate::persistent::sequence::Sequences;
 use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
-use crate::{
-    BlockMetaStorage, ChainMetaStorage, IteratorMode, OperationsMetaStorage, OperationsStorage,
-    PredecessorStorage, SystemStorage,
-};
-use im::HashMap;
+use crate::IteratorMode;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
@@ -144,151 +137,8 @@ pub trait TezedgeDatabaseWithIterator<S: KVStoreKeyValueSchema>:
 
 impl<S: KVStoreKeyValueSchema> TezedgeDatabaseWithIterator<S> for TezedgeDatabase {}
 
-#[derive(Serialize, Deserialize)]
-pub struct RWStat {
-    pub total: RW,
-    pub columns: HashMap<String, RW>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct RW {
-    pub reads: u64,
-    pub writes: u64,
-    pub ratio: f64,
-}
-
-pub struct AtomicRW {
-    pub reads: AtomicU64,
-    pub writes: AtomicU64,
-}
-
-impl Default for AtomicRW {
-    fn default() -> Self {
-        Self {
-            reads: AtomicU64::new(0),
-            writes: AtomicU64::new(0),
-        }
-    }
-}
-
-impl AtomicRW {
-    pub fn incr_read(&self) {
-        self.reads.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn incr_write(&self) {
-        self.writes.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn to_rw(&self) -> RW {
-        let reads = self.reads.load(Ordering::Relaxed);
-        let writes = self.writes.load(Ordering::Relaxed);
-        RW {
-            reads,
-            writes,
-            ratio: reads as f64 / writes as f64,
-        }
-    }
-}
-
-pub struct DatabaseStats {
-    pub total: Arc<AtomicRW>,
-    pub columns: Arc<HashMap<String, Arc<AtomicRW>>>,
-}
-
-impl DatabaseStats {
-    pub fn incr_read(&self, column: &'static str) {
-        self.total.incr_read();
-        let columns = self.columns.clone();
-        match columns.get(&column.to_string()) {
-            None => {}
-            Some(rw) => rw.incr_read(),
-        };
-    }
-
-    pub fn incr_write(&self, column: &'static str) {
-        self.total.incr_write();
-        let columns = self.columns.clone();
-        match columns.get(&column.to_string()) {
-            None => {}
-            Some(rw) => {
-                rw.incr_write();
-            }
-        };
-    }
-    pub fn rw_stats(&self) -> RWStat {
-        let columns: HashMap<_, _> = self
-            .columns
-            .iter()
-            .map(|(column, rw)| (column.clone(), rw.to_rw()))
-            .collect();
-
-        let rw = self.total.to_rw();
-        RWStat {
-            total: RW {
-                reads: rw.reads,
-                writes: rw.writes,
-                ratio: rw.reads as f64 / rw.writes as f64,
-            },
-            columns,
-        }
-    }
-}
-
-impl Default for DatabaseStats {
-    fn default() -> Self {
-        let mut columns = HashMap::new();
-        columns.insert(
-            OperationsStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            OperationsMetaStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            BlockPrimaryIndex::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            BlockByLevelIndex::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            BlockByContextHashIndex::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            BlockMetaStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            SystemStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            PredecessorStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            ChainMetaStorage::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-        columns.insert(
-            Sequences::column_name().to_string(),
-            Arc::new(AtomicRW::default()),
-        );
-
-        Self {
-            total: Arc::new(AtomicRW::default()),
-            columns: Arc::new(columns),
-        }
-    }
-}
-
 pub struct TezedgeDatabase {
     backend: Arc<TezedgeDatabaseBackend>,
-    stats: Arc<DatabaseStats>,
 }
 
 impl TezedgeDatabase {
@@ -296,17 +146,11 @@ impl TezedgeDatabase {
         match backend_option {
             TezedgeDatabaseBackendOptions::SledDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
-                stats: Arc::new(DatabaseStats::default()),
             },
             TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase {
                 backend: Arc::new(backend),
-                stats: Arc::new(Default::default()),
             },
         }
-    }
-
-    pub fn get_rw_stats(&self) -> RWStat {
-        self.stats.rw_stats()
     }
 
     pub fn flush(&self) -> Result<usize, Error> {
@@ -359,7 +203,6 @@ impl<S: KVStoreKeyValueSchema> KVStore<S> for TezedgeDatabase {
         }
 
         self.backend.write_batch(S::column_name(), generic_batch)?;
-        self.stats.incr_write(S::column_name());
         Ok(())
     }
 }
