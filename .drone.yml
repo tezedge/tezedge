@@ -4011,7 +4011,7 @@ depends_on:
 # This pipeline runs Conseil indexer against Tezos node
 #########################################################
 kind: pipeline
-name: correctness/conseil-indexer-tezos-009-florencenet
+name: correctness/indexer-conseil-tezos-009-florence
 
 clone:
   disable: true
@@ -4129,14 +4129,14 @@ steps:
         path: /cache
     commands:
       - echo "============== indexing time ============="
-      - cat /cache/time
+      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
 
 ---
 #########################################################
 # This pipeline runs Conseil indexer against Tezedge node
 #########################################################
 kind: pipeline
-name: correctness/conseil-indexer-tezedge-009-florencenet
+name: correctness/indexer-conseil-tezedge-009-florence
 
 clone:
   disable: true
@@ -4256,7 +4256,7 @@ steps:
       - export CONSEIL_XTZ_NODE_PATH_PREFIX=""
       - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%E" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
       - echo "============== indexing time ============="
-      - cat /cache/time
+      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
 
   - name: report-time
     image: busybox
@@ -4272,7 +4272,7 @@ steps:
 # This pipeline runs tzkt indexer against Tezos node
 #########################################################
 kind: pipeline
-name: correctness/tzkt-indexer-tezos-009-florencenet
+name: correctness/indexer-tzkt-tezos-009-florence
 
 clone:
   disable: true
@@ -4358,7 +4358,7 @@ steps:
 # This pipeline runs tzkt indexer against Tezedge node
 #########################################################
 kind: pipeline
-name: correctness/tzkt-indexer-tezedge-009-florencenet
+name: correctness/indexer-tzkt-tezedge-009-florence
 
 clone:
   disable: true
@@ -4688,7 +4688,7 @@ trigger:
 # comparing total dynamic memory allocation amount and failing if the current is increased more than 10%
 ##############################################################################################################
 kind: pipeline
-name: performance/dhat-decoding
+name: performance/dynamic-memory-allocation-decoding
 
 workspace:
   path: /drone/src
@@ -5275,10 +5275,10 @@ depends_on:
   - correctness/rpcs-indexers-009-florencenet
   - correctness/rpcs-indexers-010-granadanet
   - correctness/rpcs-indexers-mainnet
-  - correctness/conseil-indexer-tezos-009-florencenet
-  - correctness/conseil-indexer-tezedge-009-florencenet
-  - correctness/tzkt-indexer-tezos-009-florencenet
-  - correctness/tzkt-indexer-tezedge-009-florencenet
+  - correctness/indexer-conseil-tezos-009-florence
+  - correctness/indexer-conseil-tezedge-009-florence
+  - correctness/indexer-tzkt-tezos-009-florence
+  - correctness/indexer-tzkt-tezedge-009-florence
   - performance/wrk-tests-009-florence
 
 ##############################################################################################################
@@ -5364,8 +5364,8 @@ depends_on:
   - correctness/rpcs-indexers-009-florencenet
   - correctness/rpcs-indexers-010-granadanet
   - correctness/rpcs-indexers-mainnet
-  - correctness/conseil-indexer-tezos-009-florencenet
-  - correctness/conseil-indexer-tezedge-009-florencenet
-  - correctness/tzkt-indexer-tezos-009-florencenet
-  - correctness/tzkt-indexer-tezedge-009-florencenet
+  - correctness/indexer-conseil-tezos-009-florence
+  - correctness/indexer-conseil-tezedge-009-florence
+  - correctness/indexer-tzkt-tezos-009-florence
+  - correctness/indexer-tzkt-tezedge-009-florence
   - performance/wrk-tests-009-florence
