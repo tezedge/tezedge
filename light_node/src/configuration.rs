@@ -1117,9 +1117,9 @@ impl Environment {
                 };
                 let maindb_backend: TezedgeDatabaseBackendConfiguration = args
                     .value_of("maindb-backend")
-                    .unwrap_or("rocksdb")
+                    .unwrap_or("sled")
                     .parse::<TezedgeDatabaseBackendConfiguration>()
-                    .unwrap_or(TezedgeDatabaseBackendConfiguration::RocksDB);
+                    .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)

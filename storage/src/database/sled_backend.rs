@@ -160,8 +160,6 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
 
 impl TezdegeDatabaseBackendKV for SledDBBackend {}
 
-//sled iterator
-
 #[derive(Clone)]
 pub enum SledDBIteratorMode {
     Start,
@@ -214,7 +212,6 @@ fn convert_next(
     }
 }
 
-// implementing BackendIterator
 impl Iterator for SledDBIterator {
     type Item = Result<(Vec<u8>, Vec<u8>), Error>;
 
@@ -222,10 +219,8 @@ impl Iterator for SledDBIterator {
         match &self.mode {
             SledDBIteratorMode::Start => convert_next(self.iter.next()),
             SledDBIteratorMode::End => convert_next(self.iter.next_back()),
-            SledDBIteratorMode::From(_, direction) => match direction {
-                Direction::Forward => convert_next(self.iter.next()),
-                Direction::Reverse => convert_next(self.iter.next_back()),
-            },
+            SledDBIteratorMode::From(_,Direction::Forward) =>  convert_next(self.iter.next()),
+            SledDBIteratorMode::From(_,Direction::Reverse) => convert_next(self.iter.next_back()),
             SledDBIteratorMode::Prefix(_) => convert_next(self.iter.next()),
         }
     }

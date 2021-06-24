@@ -94,7 +94,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             if let Some(db) = rocks_db {
                 TezedgeDatabaseBackendOptions::RocksDB(RocksDBBackend::from_db(db)?)
             } else {
-                panic!("RockDB not initialized")
+                return Err(DatabaseError::FailedToOpenDatabase)
             }
         }
     };

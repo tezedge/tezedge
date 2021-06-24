@@ -20,6 +20,8 @@ pub enum Error {
     SchemaError { error: SchemaError },
     #[fail(display = "Column name required")]
     ColumnRequired,
+    #[fail(display = "Database failed to open")]
+    FailedToOpenDatabase,
     #[fail(display = "Hash encode error : {}", error)]
     HashEncodeError { error: FromBytesError },
     #[fail(display = "Database incompatibility {}", name)]

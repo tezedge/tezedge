@@ -503,17 +503,15 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let items = self.kv.find(
+        let results : Result<Vec<_>,_> = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
             Box::new(|(_, _)| Ok(true)),
-        )?;
-        let mut results = vec![];
-        for (_, v) in items.iter() {
-            let value = <Self as KeyValueSchema>::Value::decode(v)?;
-            results.push(value)
-        }
-        Ok(results)
+        )?.iter().map(|(_,v)| {
+            <Self as KeyValueSchema>::Value::decode(v)
+        }).collect();
+
+        Ok(results?)
     }
 
     fn get_blocks_directed(
@@ -522,17 +520,14 @@ impl BlockByLevelIndex {
         limit: usize,
         direction: Direction,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let items = self.kv.find(
+        let results : Result<Vec<_>,_>  = self.kv.find(
             IteratorMode::From(&from_level, direction),
             Some(limit),
             Box::new(|(_, _)| Ok(true)),
-        )?;
-        let mut results = vec![];
-        for (_, v) in items.iter() {
-            let value = <Self as KeyValueSchema>::Value::decode(v)?;
-            results.push(value)
-        }
-        Ok(results)
+        )?.iter().map(|(_,v)| {
+            <Self as KeyValueSchema>::Value::decode(v)
+        }).collect();
+        Ok(results?)
     }
 
     fn get_blocks_by_nth_level(
@@ -541,7 +536,7 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let items = self.kv.find(
+        let results : Result<Vec<_>,_> = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
             Box::new(move |(_, v)| {
@@ -549,13 +544,10 @@ impl BlockByLevelIndex {
                 let level = <Self as KeyValueSchema>::Key::decode(v)?;
                 Ok(level % every_nth == 0)
             }),
-        )?;
-        let mut results = vec![];
-        for (_, v) in items.iter() {
-            let value = <Self as KeyValueSchema>::Value::decode(v)?;
-            results.push(value)
-        }
-        Ok(results)
+        )?.iter().map(|(_,v)| {
+            <Self as KeyValueSchema>::Value::decode(v)
+        }).collect();
+        Ok(results?)
     }
 }
 
