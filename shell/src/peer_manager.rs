@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use dns_lookup::LookupError;
 use rand::seq::SliceRandom;
 use riker::actors::*;
-use slog::{crit, debug, info, trace, warn, Logger};
+use slog::{crit, debug, info, trace, warn, error, Logger};
 use thiserror::Error;
 
 use tokio::net::{TcpListener, TcpStream};
@@ -286,10 +286,10 @@ impl Actor for PeerManager {
                 periodic_react_interval: Duration::from_millis(250),
                 peer_blacklist_duration: Duration::from_secs(8 * 60),
                 peer_timeout: Duration::from_secs(8),
+                pow_target: self.local_node_info.pow_target(),
             },
             (*self.local_node_info.identity()).clone(),
-            // TODO: maybe use ShellCompatibilityVersion in TezedgeState instead of NetworkVersion.
-            self.local_node_info.version().to_network_version(),
+            (*self.local_node_info.version()).clone(),
             Instant::now(),
         );
 
@@ -436,7 +436,7 @@ fn run(
                             if let Ok(msg) = message.as_bytes() {
                                 proposer.send_message_to_peer_or_queue(peer_id.address, &msg);
                             } else {
-                                trace!(log, "failed to encode PeerMessageResponse"; "message" => format!("{:?}", message));
+                                error!(log, "failed to encode PeerMessageResponse"; "message" => format!("{:?}", message));
                             }
                         }
                         _ => (),
