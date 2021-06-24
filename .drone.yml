@@ -3452,6 +3452,7 @@ steps:
         path: /data/cache
     environment:
       SODIUM_USE_PKG_CONFIG: 1
+      DISABLE_INMEM_CONTEXT_GC: true
     commands:
       - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
       - echo "peers - $PEERS"
@@ -4132,7 +4133,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
 
   # run indexer
   - name: indexer
@@ -4333,7 +4334,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
 
   - name: conseil-lorre
     image: cryptonomictech/conseil:latest
@@ -4524,7 +4525,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
 
   - name: tzkt-postgres
     image: postgres:13
@@ -4968,6 +4969,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
@@ -4990,6 +4992,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
     - echo "peers - $PEERS"
@@ -5163,6 +5166,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
@@ -5185,6 +5189,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
     - echo "peers - $PEERS"
