@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::not_found;
+use crate::{not_found, result_option_to_json_response};
 use hyper::{Body, Request};
 use slog::warn;
 
@@ -25,7 +25,7 @@ pub async fn context_constants(
 
     // fallback, if protocol is not supported, we trigger rpc protocol router
     if let Err(ContextParamsError::UnsupportedProtocolError { .. }) = result {
-        result_to_json_response(
+        result_option_to_json_response(
             services::protocol::call_protocol_rpc(
                 chain_id_param,
                 chain_id,
@@ -69,7 +69,7 @@ pub async fn baking_rights(
         Err(e) => {
             // fallback, if protocol is not supported, we trigger rpc protocol router
             if let RightsError::UnsupportedProtocolError { .. } = e {
-                result_to_json_response(
+                result_option_to_json_response(
                     services::protocol::call_protocol_rpc(
                         chain_id_param,
                         chain_id,
@@ -122,7 +122,7 @@ pub async fn endorsing_rights(
         Err(e) => {
             // fallback, if protocol is not supported, we trigger rpc protocol router
             if let RightsError::UnsupportedProtocolError { .. } = e {
-                result_to_json_response(
+                result_option_to_json_response(
                     services::protocol::call_protocol_rpc(
                         chain_id_param,
                         chain_id,
@@ -171,7 +171,7 @@ pub async fn votes_listings(
 
     // fallback, if protocol is not supported, we trigger rpc protocol router
     if let Err(VotesError::UnsupportedProtocolError { .. }) = result {
-        result_to_json_response(
+        result_option_to_json_response(
             services::protocol::call_protocol_rpc(
                 chain_id_param,
                 chain_id,
@@ -198,7 +198,7 @@ pub async fn call_protocol_rpc(
 
     let json_request = create_rpc_request(req).await?;
 
-    result_to_json_response(
+    result_option_to_json_response(
         services::protocol::call_protocol_rpc(
             chain_id_param,
             chain_id,

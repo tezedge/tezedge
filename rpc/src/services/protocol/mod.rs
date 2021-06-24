@@ -452,9 +452,11 @@ pub(crate) fn get_context_constants_just_for_rpc(
 fn handle_rpc_response(
     response: &ProtocolRpcResponse,
     context_path: String,
-) -> Result<serde_json::value::Value, failure::Error> {
+) -> Result<Option<serde_json::value::Value>, failure::Error> {
     match response {
-        ProtocolRpcResponse::RPCOk(body) => Ok(serde_json::from_str(&body)?),
+        ProtocolRpcResponse::RPCOk(body) => Ok(Some(serde_json::from_str(&body)?)),
+        // TODO: we get some info from this RPCNotFound about the reason, log it?
+        ProtocolRpcResponse::RPCNotFound(_) => Ok(None),
         other => Err(failure::err_msg(format!(
             "Got non-OK response from protocol-RPC service '{}', reason: {:?}",
             context_path, other
@@ -468,7 +470,7 @@ pub(crate) fn call_protocol_rpc(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<serde_json::value::Value, failure::Error> {
+) -> Result<Option<serde_json::value::Value>, failure::Error> {
     let context_path = rpc_request.context_path.clone();
     let request =
         create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
