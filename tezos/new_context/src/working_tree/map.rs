@@ -154,7 +154,7 @@ where
         if index > 0 {
             new_keys.extend_from_slice(&self.keys[..index]);
         }
-        if index != self.keys.len() {
+        if index + 1 != self.keys.len() {
             new_keys.extend_from_slice(&self.keys[index + 1..]);
         }
 
@@ -253,35 +253,5 @@ where
         let current = self.map.keys.get(self.current);
         self.current += 1;
         current
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_map_working_tree() {
-        let map = Map::new();
-
-        let m1 = map.insert("c", 1);
-        let m2 = m1.insert("a", 2);
-        let m3 = m2.insert("b", 3);
-        let m4 = m3.insert("0", 4);
-        let m5 = m4.insert("aa", 5);
-        let m6 = m5.remove("c");
-
-        assert_eq!(*m5.get(&"b").unwrap(), 3);
-
-        assert_ne!(m1, m2);
-        assert_eq!(m1, m1.clone());
-
-        println!("MAP={:#?}", map);
-        println!("M1={:#?}", m1);
-        println!("M2={:#?}", m2);
-        println!("M3={:#?}", m3);
-        println!("M4={:#?}", m4);
-        println!("M5={:#?}", m5);
-        println!("M6={:#?}", m6);
     }
 }
