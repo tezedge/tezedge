@@ -107,7 +107,7 @@ impl HashValueStore {
 pub struct InMemory {
     current_cycle: BTreeMap<HashId, Option<Arc<[u8]>>>,
     pub hashes: HashValueStore,
-    sender: Sender<Command>,
+    sender: Option<Sender<Command>>,
     pub context_hashes: HashMap<u64, HashId>,
     context_hashes_cycles: VecDeque<Vec<u64>>,
 }
@@ -182,18 +182,30 @@ impl KeyValueStoreBackend for InMemory {
 
 impl InMemory {
     pub fn new() -> Self {
-        let (sender, recv) = crossbeam_channel::unbounded();
-        let (prod, cons) = tezos_spsc::bounded(2_000_000);
+        // TODO - TE-210: Remove once we hace proper support for history modes.
+        let garbage_collector_disabled = std::env::var("DISABLE_INMEM_CONTEXT_GC")
+            .unwrap_or_else(|_| "false".to_string())
+            .parse::<bool>()
+            .expect("Provided `DISABLE_INMEM_CONTEXT_GC` value cannot be converted to bool");
 
-        std::thread::spawn(move || {
-            GCThread {
-                cycles: Cycles::default(),
-                recv,
-                free_ids: prod,
-                pending: Vec::new(),
-            }
-            .run()
-        });
+        let (sender, cons) = if garbage_collector_disabled {
+            (None, None)
+        } else {
+            let (sender, recv) = crossbeam_channel::unbounded();
+            let (prod, cons) = tezos_spsc::bounded(2_000_000);
+
+            std::thread::spawn(move || {
+                GCThread {
+                    cycles: Cycles::default(),
+                    recv,
+                    free_ids: prod,
+                    pending: Vec::new(),
+                }
+                .run()
+            });
+
+            (Some(sender), Some(cons))
+        };
 
         let current_cycle = Default::default();
         let hashes = HashValueStore::new(cons);
@@ -238,27 +250,31 @@ impl InMemory {
     }
 
     pub fn new_cycle_started(&mut self) {
-        let values_in_cycle = std::mem::take(&mut self.current_cycle);
-        let new_ids = self.hashes.take_new_ids();
+        if let Some(sender) = &self.sender {
+            let values_in_cycle = std::mem::take(&mut self.current_cycle);
+            let new_ids = self.hashes.take_new_ids();
 
-        if let Err(e) = self.sender.try_send(Command::StartNewCycle {
-            values_in_cycle,
-            new_ids,
-        }) {
-            eprintln!("Fail to send Command::StartNewCycle to GC worker: {:?}", e);
-        }
-
-        if let Some(unused) = self.context_hashes_cycles.pop_front() {
-            for hash in unused {
-                self.context_hashes.remove(&hash);
+            if let Err(e) = sender.try_send(Command::StartNewCycle {
+                values_in_cycle,
+                new_ids,
+            }) {
+                eprintln!("Fail to send Command::StartNewCycle to GC worker: {:?}", e);
             }
+
+            if let Some(unused) = self.context_hashes_cycles.pop_front() {
+                for hash in unused {
+                    self.context_hashes.remove(&hash);
+                }
+            }
+            self.context_hashes_cycles.push_back(Default::default());
         }
-        self.context_hashes_cycles.push_back(Default::default());
     }
 
     pub fn block_applied(&mut self, reused: Vec<HashId>) {
-        if let Err(e) = self.sender.send(Command::MarkReused { reused }) {
-            eprintln!("Fail to send Command::MarkReused to GC worker: {:?}", e);
+        if let Some(sender) = &self.sender {
+            if let Err(e) = sender.send(Command::MarkReused { reused }) {
+                eprintln!("Fail to send Command::MarkReused to GC worker: {:?}", e);
+            }
         }
     }
 

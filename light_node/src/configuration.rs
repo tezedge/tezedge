@@ -628,7 +628,8 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&SupportedContextKeyValueStore::possible_values())
-            .help("Choose the merkle storege backend - supported backends: 'inmem', 'inmem-gc', 'btree'"))
+            .help("Choose the TezEdge context storage backend - supported backends: 'inmem'"))
+        // TODO - TE-261: right now this is obsolete, either reintegrate with the timings database or remove
         .arg(Arg::with_name("compute-context-action-tree-hashes")
             .long("compute-context-action-tree-hashes")
             .global(true)
