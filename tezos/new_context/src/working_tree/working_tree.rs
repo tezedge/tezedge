@@ -69,7 +69,7 @@ use crate::{
 use crate::{persistent, ContextKeyValueStore};
 use crate::{ContextKey, ContextValue};
 
-use super::KeyFragment;
+use super::{map::ConsumingMapIter, KeyFragment};
 
 // The 'working tree' can be either a Tree or a Value
 #[derive(Clone)]
@@ -122,7 +122,7 @@ struct TreeWalkerLevel {
     root: WorkingTree,
     current_depth: i64,
     yield_self: bool,
-    children_iter: Option<im_rc::ordmap::ConsumingIter<(KeyFragment, Rc<Node>)>>,
+    children_iter: Option<ConsumingMapIter<KeyFragment, Rc<Node>>>,
 }
 
 impl TreeWalkerLevel {
@@ -819,9 +819,9 @@ impl WorkingTree {
 
         let path = &key[..key.len() - 1];
         let root = self.get_working_tree_root_ref();
-        let mut tree = self.find_raw_tree(root.as_ref(), path)?;
+        let tree = self.find_raw_tree(root.as_ref(), path)?;
 
-        match new_node {
+        let tree = match new_node {
             None => tree.remove(last),
             Some(new_node) => {
                 let last = self.index.get_str(last);

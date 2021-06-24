@@ -25,6 +25,7 @@ use tezos_spsc::Consumer;
 use super::{entries::Entries, HashIdError};
 use super::{HashId, VacantEntryHash};
 
+#[allow(dead_code)]
 pub struct StorageMemoryUsage {
     /// Number of bytes for all values Arc<[u8]>
     values_bytes: usize,

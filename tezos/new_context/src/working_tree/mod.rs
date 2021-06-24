@@ -13,8 +13,9 @@ use crate::hash::{hash_entry, EntryHash, HashingError};
 use crate::ContextValue;
 use crate::{kv_store::HashId, ContextKeyValueStore};
 
-use self::working_tree::MerkleError;
+use self::{map::Map, working_tree::MerkleError};
 
+pub mod map;
 pub mod working_tree;
 pub mod working_tree_stats; // TODO - TE-261 remove or reimplement
 
@@ -50,7 +51,7 @@ impl From<Rc<str>> for KeyFragment {
 // Tree must be an ordered structure for consistent hash in hash_tree.
 // The entry names *must* be in lexicographical order, as required by the hashing algorithm.
 // Currently immutable OrdMap is used to allow cloning trees without too much overhead.
-pub type Tree = im_rc::OrdMap<KeyFragment, Rc<Node>>;
+pub type Tree = Map<KeyFragment, Rc<Node>>;
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum NodeKind {

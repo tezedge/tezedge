@@ -34,6 +34,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 pub use hash::EntryHash;
+use tezedge_context::ContextMemoryUsage;
 pub use tezedge_context::PatchContextFunction;
 pub use tezedge_context::TezedgeContext;
 pub use tezedge_context::TezedgeIndex;
@@ -164,7 +165,7 @@ where
     // get stats from merkle storage
     fn get_merkle_stats(&self) -> Result<MerkleStoragePerfReport, ContextError>;
 
-    fn get_memory_usage(&self) -> Result<usize, ContextError>;
+    fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError>;
 }
 /// Possible errors for context
 #[derive(Debug, Fail)]

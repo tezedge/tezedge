@@ -15,7 +15,7 @@ use ocaml_interop::BoxRoot;
 
 use crate::{
     hash::EntryHash,
-    kv_store::HashId,
+    kv_store::{in_memory::StorageMemoryUsage, HashId},
     persistent::DBError,
     working_tree::{
         working_tree::MerkleError, working_tree_stats::MerkleStoragePerfReport, Commit, Entry,
@@ -65,6 +65,11 @@ impl TezedgeIndex {
     pub fn get_str(&self, s: &str) -> Rc<str> {
         let mut strings = self.strings.borrow_mut();
         strings.get_str(s)
+    }
+
+    pub fn get_keys_memory_usage(&self) -> StringMemoryUsage {
+        let strings = (&*self.strings).borrow();
+        strings.memory_usage()
     }
 
     pub fn find_entry_bytes(&self, hash: HashId) -> Result<Option<Vec<u8>>, DBError> {
@@ -558,8 +563,7 @@ impl IndexApi<TezedgeContext> for TezedgeIndex {
 #[derive(Default)]
 pub struct StringInterner {
     strings: HashSet<Rc<str>>,
-    nbytes: usize,
-    nstrings: usize,
+    mem_usage: StringMemoryUsage,
 }
 
 impl StringInterner {
@@ -578,11 +582,27 @@ impl StringInterner {
             .clone();
 
         if new_str {
-            self.nbytes = self.nbytes.saturating_add(s.len());
-            self.nstrings = self.nstrings.saturating_add(1);
+            self.mem_usage.add_string(s);
         }
 
         string
+    }
+
+    fn memory_usage(&self) -> StringMemoryUsage {
+        self.mem_usage.clone()
+    }
+}
+
+#[derive(Default, Copy, Clone)]
+pub struct StringMemoryUsage {
+    nbytes: usize,
+    nstrings: usize,
+}
+
+impl StringMemoryUsage {
+    fn add_string(&mut self, string: &str) {
+        self.nbytes = self.nbytes.saturating_add(string.len());
+        self.nstrings = self.nstrings.saturating_add(1);
     }
 }
 
@@ -733,10 +753,21 @@ impl ShellContextApi for TezedgeContext {
         Ok(MerkleStoragePerfReport::default())
     }
 
-    fn get_memory_usage(&self) -> Result<usize, ContextError> {
-        // TODO: Implement this
-        Ok(0)
+    fn get_memory_usage(&self) -> Result<ContextMemoryUsage, ContextError> {
+        let repository = self.index.repository.read()?;
+        let strings = (&*self.index.strings).borrow();
+
+        Ok(ContextMemoryUsage {
+            storage: repository.memory_usage(),
+            strings: strings.memory_usage(),
+        })
     }
+}
+
+#[allow(dead_code)]
+pub struct ContextMemoryUsage {
+    storage: StorageMemoryUsage,
+    strings: StringMemoryUsage,
 }
 
 /// Generator of Tree IDs which are used to simulate pointers when they are not available.
