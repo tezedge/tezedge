@@ -388,6 +388,36 @@ impl NodeInfrastructure {
         result
     }
 
+    // TODO: refactor with async/condvar, not to block main thread
+    pub fn wait_for_bootstrapped(
+        &self,
+        marker: &str,
+        (timeout, delay): (Duration, Duration),
+    ) -> Result<(), failure::Error> {
+        let start = Instant::now();
+
+        let result = loop {
+            let is_bootstrapped = self
+                .bootstrap_state
+                .read()
+                .expect("Failed to get lock")
+                .is_bootstrapped();
+
+            if is_bootstrapped {
+                info!(self.log, "[NODE] Expected node is bootstrapped"; "marker" => marker);
+                break Ok(());
+            }
+
+            // kind of simple retry policy
+            if start.elapsed().le(&timeout) {
+                thread::sleep(delay);
+            } else {
+                break Err(failure::format_err!("wait_for_bootstrapped - timeout (timeout: {:?}, delay: {:?}) exceeded! marker: {}", timeout, delay, marker));
+            }
+        };
+        result
+    }
+
     pub fn whitelist_all(&self) {
         if let Some(peer_manager) = &self.peer_manager {
             peer_manager.tell(WhitelistAllIpAddresses, None);

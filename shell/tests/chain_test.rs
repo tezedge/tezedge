@@ -233,11 +233,10 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
     println!("\nProcessed current_branch[7] in {:?}!\n", clocks.elapsed());
 
     // check is bootstrapped
-    assert!(node
-        .bootstrap_state
-        .read()
-        .expect("Failed to get lock")
-        .is_bootstrapped());
+    node.wait_for_bootstrapped(
+        "bootstrapped",
+        (Duration::from_secs(5), Duration::from_millis(100)),
+    )?;
 
     // check mempool is running
     assert!(
