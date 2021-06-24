@@ -1696,21 +1696,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "im"
-version = "15.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "111c1983f3c5bb72732df25cddacee9b546d08325fb584b5ebd38148be7b0246"
-dependencies = [
- "bitmaps",
- "rand_core 0.5.1",
- "rand_xoshiro",
- "serde 1.0.123",
- "sized-chunks",
- "typenum",
- "version_check",
-]
-
-[[package]]
 name = "im-rc"
 version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3133,7 +3118,6 @@ dependencies = [
  "lazy_static",
  "path-tree",
  "rand 0.7.3",
- "rayon",
  "riker",
  "rusqlite",
  "serde 1.0.123",
@@ -3698,12 +3682,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
-name = "snap"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc725476a1398f0480d56cd0ad381f6f32acf2642704456f8f59a35df464b59a"
-
-[[package]]
 name = "socket2"
 version = "0.3.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3735,9 +3713,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "storage"
 version = "1.6.0"
 dependencies = [
- "assert-json-diff 2.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode",
- "blake2",
  "bytes 1.0.1",
  "clap",
  "commitlog",
@@ -3745,13 +3721,10 @@ dependencies = [
  "crypto",
  "derive_builder",
  "failure",
- "flate2",
  "getset",
  "hex",
- "im",
  "itertools 0.10.0",
  "lazy_static",
- "leb128",
  "num_cpus",
  "rand 0.7.3",
  "rocksdb",
@@ -3761,7 +3734,6 @@ dependencies = [
  "slog",
  "slog-async",
  "slog-term",
- "snap",
  "strum",
  "strum_macros",
  "tezos_api",
@@ -3970,7 +3942,6 @@ dependencies = [
  "bit-vec",
  "byteorder",
  "bytes 1.0.1",
- "chrono",
  "crypto",
  "failure",
  "hex",
@@ -4050,7 +4021,6 @@ dependencies = [
  "tezos_encoding",
  "tezos_encoding_derive",
  "tezos_identity",
- "tyname",
 ]
 
 [[package]]
@@ -4060,7 +4030,6 @@ dependencies = [
  "bincode",
  "blake2",
  "bytes 1.0.1",
- "clap",
  "commitlog",
  "crossbeam-channel",
  "crypto",
@@ -4078,9 +4047,6 @@ dependencies = [
  "serde 1.0.123",
  "serde_json",
  "slog",
- "slog-async",
- "slog-term",
- "snap",
  "storage",
  "strum",
  "strum_macros",
@@ -4102,7 +4068,6 @@ dependencies = [
 name = "tezos_timing"
 version = "1.6.0"
 dependencies = [
- "crossbeam-channel",
  "crypto",
  "once_cell",
  "rusqlite",
@@ -4393,12 +4358,6 @@ checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "tyname"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14ff19d643600fb1f110e0f3ef088ad2b0efa15af4e3ce2dd2af9c1a19376778"
 
 [[package]]
 name = "typenum"

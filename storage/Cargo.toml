@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 bincode = "1.3"
-blake2 = "0.9"
 bytes = "1.0.1"
 commitlog = "0.1"
 derive_builder = "0.9"
@@ -14,14 +13,11 @@ failure = "0.1"
 getset = "0.1"
 hex = "0.4"
 itertools = "0.10"
-im = { version = "15.0.0", features = ["serde"] }
-leb128 = "0.2"
 num_cpus = "1.13"
 rocksdb = {version = "0.15", features = ["snappy", "lz4", "zstd", "zlib"], default-features = false }
 serde = { version = "1.0", features = ["derive", "rc"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 sled = "0.34.6"
-snap = "1.0.4"
 strum = "0.20"
 strum_macros = "0.20"
 # local dependencies
@@ -39,10 +35,8 @@ name = "predecessor_benchmarks"
 harness = false
 
 [dev-dependencies]
-assert-json-diff = "2"
 hex = "0.4"
 lazy_static = "1.4"
 rand = "0.7.3"
 serde_json = "1.0"
 criterion = "0.3"
-flate2 = "1.0"
