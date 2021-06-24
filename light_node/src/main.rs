@@ -622,11 +622,6 @@ fn main() {
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
 
-    /* let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
-        .expect("Failed to create/initialize RocksDB database (db)");
-    caches.push(kv_cache);*/
-    //Todo For testing only, change this
-
     let maindb = match env.storage.main_db {
         TezedgeDatabaseBackendConfiguration::Sled => initialize_maindb(
             &log,

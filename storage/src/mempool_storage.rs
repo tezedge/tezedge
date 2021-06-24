@@ -149,7 +149,6 @@ impl MempoolStorage {
 
     #[inline]
     pub fn iter(&self) -> Result<Vec<(OperationHash, OperationMessage)>, StorageError> {
-
         let items = self
             .kv
             .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;

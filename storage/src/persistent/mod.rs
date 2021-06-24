@@ -85,7 +85,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
     config: &RocksDbConfig<C>,
     backend_config: TezedgeDatabaseBackendConfiguration,
 ) -> Result<TezedgeDatabase, DatabaseError> {
-    //Todo Change this
+    // TODO - TE-498: Todo Change this
     let backend = match backend_config {
         TezedgeDatabaseBackendConfiguration::Sled => {
             TezedgeDatabaseBackendOptions::SledDB(SledDBBackend::new(config.db_path.as_path())?)
@@ -94,7 +94,7 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             if let Some(db) = rocks_db {
                 TezedgeDatabaseBackendOptions::RocksDB(RocksDBBackend::from_db(db)?)
             } else {
-                return Err(DatabaseError::FailedToOpenDatabase)
+                return Err(DatabaseError::FailedToOpenDatabase);
             }
         }
     };

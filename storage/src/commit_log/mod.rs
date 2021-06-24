@@ -326,13 +326,11 @@ impl Location {
 #[cfg(test)]
 mod tests {
     use crate::commit_log::fold_consecutive_locations;
-    use commitlog::message::MessageSet;
     use commitlog::{CommitLog as OldCommitLog, LogOptions};
-    use rand::{thread_rng, Rng};
+    use rand::Rng;
     use std::time::Instant;
 
     use super::*;
-    use rand::prelude::SliceRandom;
 
     #[test]
     fn test_fold_consecutive_locations_empty() {

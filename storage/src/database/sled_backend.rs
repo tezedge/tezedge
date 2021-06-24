@@ -26,9 +26,11 @@ impl SledDBBackend {
     pub fn get_tree(&self, name: &'static str) -> Result<Tree, Error> {
         let tree = self.db.open_tree(name).map_err(Error::from)?;
 
+        // TODO - TE-498: refactor - SledBackend should be universal, this should be pass here by "some cfg"
         if name == OperationsMetaStorage::column_name() {
             tree.set_merge_operator(operations_meta_storage::merge_meta_value_sled)
         }
+        // TODO - TE-498: refactor - SledBackend should be universal, this should be pass here by "some cfg"
         if name == BlockMetaStorage::column_name() {
             tree.set_merge_operator(block_meta_storage::merge_meta_value_sled)
         }
@@ -219,8 +221,8 @@ impl Iterator for SledDBIterator {
         match &self.mode {
             SledDBIteratorMode::Start => convert_next(self.iter.next()),
             SledDBIteratorMode::End => convert_next(self.iter.next_back()),
-            SledDBIteratorMode::From(_,Direction::Forward) =>  convert_next(self.iter.next()),
-            SledDBIteratorMode::From(_,Direction::Reverse) => convert_next(self.iter.next_back()),
+            SledDBIteratorMode::From(_, Direction::Forward) => convert_next(self.iter.next()),
+            SledDBIteratorMode::From(_, Direction::Reverse) => convert_next(self.iter.next_back()),
             SledDBIteratorMode::Prefix(_) => convert_next(self.iter.next()),
         }
     }

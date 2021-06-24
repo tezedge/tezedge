@@ -71,7 +71,7 @@ pub trait KVStoreWithSchemaIterator<S: KeyValueSchema> {
     ) -> Result<Vec<(Box<[u8]>, Box<[u8]>)>, Error>;
 }
 
-//Todo Change name
+// TODO - TE-498: Todo Change name
 pub type List<S> = Vec<(
     Result<<S as KeyValueSchema>::Key, SchemaError>,
     Result<<S as KeyValueSchema>::Value, SchemaError>,

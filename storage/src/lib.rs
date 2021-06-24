@@ -488,9 +488,12 @@ pub mod initializer {
     }
 
     pub fn initialize_rocksdb<Factory: RocksDbColumnFactory>(
+        // TODO - TE-498 - remove _log
         _log: &Logger,
+        // TODO - TE-498 - remove cache
         cache: &Cache,
         config: &RocksDbConfig<Factory>,
+        // TODO - TE-498 - remove _expected_main_chain
         _expected_main_chain: &MainChain,
     ) -> Result<Arc<DB>, DBError> {
         let db = open_kv(
