@@ -219,8 +219,8 @@ impl BlockStorage {
         &self,
         locations: I,
     ) -> Result<Vec<(BlockHeaderWithHash, BlockJsonData)>, StorageError>
-    where
-        I: IntoIterator<Item = BlockStorageColumnsLocation>,
+        where
+            I: IntoIterator<Item=BlockStorageColumnsLocation>,
     {
         locations
             .into_iter()
@@ -445,18 +445,14 @@ impl BlockPrimaryIndex {
 
     #[inline]
     fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
-        let items = self
+        use crate::persistent::codec::Decoder;
+        let results : Result<Vec<_>, _> = self
             .kv
-            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;
-        let mut results = vec![];
-        for (k, _) in items.iter() {
-            let key = {
-                use crate::persistent::codec::Decoder;
-                <Self as KeyValueSchema>::Key::decode(k)
-            }?;
-            results.push(key)
-        }
-        Ok(results)
+            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?
+            .iter().map(|(k, _)| {
+            <Self as KeyValueSchema>::Key::decode(k)
+        }).collect();
+        Ok(results?)
     }
 }
 
@@ -471,11 +467,13 @@ impl RocksDbKeyValueSchema for BlockPrimaryIndex {
         "block_storage"
     }
 }
+
 impl KVStoreKeyValueSchema for BlockPrimaryIndex {
     fn column_name() -> &'static str {
         Self::name()
     }
 }
+
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByLevelIndex {
@@ -503,11 +501,11 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results : Result<Vec<_>,_> = self.kv.find(
+        let results: Result<Vec<_>, _> = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
             Box::new(|(_, _)| Ok(true)),
-        )?.iter().map(|(_,v)| {
+        )?.iter().map(|(_, v)| {
             <Self as KeyValueSchema>::Value::decode(v)
         }).collect();
 
@@ -520,11 +518,11 @@ impl BlockByLevelIndex {
         limit: usize,
         direction: Direction,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results : Result<Vec<_>,_>  = self.kv.find(
+        let results: Result<Vec<_>, _> = self.kv.find(
             IteratorMode::From(&from_level, direction),
             Some(limit),
             Box::new(|(_, _)| Ok(true)),
-        )?.iter().map(|(_,v)| {
+        )?.iter().map(|(_, v)| {
             <Self as KeyValueSchema>::Value::decode(v)
         }).collect();
         Ok(results?)
@@ -536,7 +534,7 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        let results : Result<Vec<_>,_> = self.kv.find(
+        let results: Result<Vec<_>, _> = self.kv.find(
             IteratorMode::From(&from_level, Direction::Reverse),
             Some(limit),
             Box::new(move |(_, v)| {
@@ -544,7 +542,7 @@ impl BlockByLevelIndex {
                 let level = <Self as KeyValueSchema>::Key::decode(v)?;
                 Ok(level % every_nth == 0)
             }),
-        )?.iter().map(|(_,v)| {
+        )?.iter().map(|(_, v)| {
             <Self as KeyValueSchema>::Value::decode(v)
         }).collect();
         Ok(results?)
@@ -576,7 +574,7 @@ pub struct BlockByContextHashIndex {
 }
 
 pub type BlockByContextHashIndexKV =
-    dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
+dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -653,7 +651,7 @@ mod tests {
                 vec![BlockByLevelIndex::descriptor(&cache)],
                 &DbConfiguration::default(),
             )
-            .unwrap();
+                .unwrap();
             let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
             let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
             let index = BlockByLevelIndex::new(Arc::new(maindb));
