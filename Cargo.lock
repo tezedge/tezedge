@@ -3721,6 +3721,7 @@ dependencies = [
  "crypto",
  "derive_builder",
  "failure",
+ "fs_extra",
  "getset",
  "hex",
  "itertools 0.10.0",
@@ -3738,6 +3739,7 @@ dependencies = [
  "strum_macros",
  "tezos_api",
  "tezos_messages",
+ "zstd",
 ]
 
 [[package]]
@@ -4030,7 +4032,6 @@ dependencies = [
  "bincode",
  "blake2",
  "bytes 1.0.1",
- "commitlog",
  "crossbeam-channel",
  "crypto",
  "derive_builder",
@@ -4735,6 +4736,37 @@ dependencies = [
  "flate2",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "zstd"
+version = "0.5.4+zstd.1.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69996ebdb1ba8b1517f61387a883857818a66c8a295f487b1ffd8fd9d2c82910"
+dependencies = [
+ "zstd-safe",
+]
+
+[[package]]
+name = "zstd-safe"
+version = "2.0.6+zstd.1.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "98aa931fb69ecee256d44589d19754e61851ae4769bf963b385119b1cc37a49e"
+dependencies = [
+ "libc",
+ "zstd-sys",
+]
+
+[[package]]
+name = "zstd-sys"
+version = "1.4.18+zstd.1.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1e6e8778706838f43f771d80d37787cb2fe06dafe89dd3aebaf6721b9eaec81"
+dependencies = [
+ "cc",
+ "glob",
+ "itertools 0.9.0",
+ "libc",
 ]
 
 [[patch.unused]]

@@ -9,13 +9,12 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, SliceTransform};
 use crypto::hash::{BlockHash, HashType};
 use tezos_messages::p2p::encoding::prelude::*;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{PersistentStorage, StorageError};
 
-pub type OperationsStorageKV = dyn KeyValueStoreWithSchema<OperationsStorage> + Sync + Send;
+pub type OperationsStorageKV = dyn TezedgeDatabaseWithIterator<OperationsStorage> + Sync + Send;
 
 pub trait OperationsStorageReader: Sync + Send {
     fn get(&self, key: &OperationKey) -> Result<Option<OperationsForBlocksMessage>, StorageError>;
@@ -34,7 +33,7 @@ pub struct OperationsStorage {
 impl OperationsStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -73,13 +72,15 @@ impl OperationsStorageReader for OperationsStorage {
             validation_pass: 0,
         };
 
-        let mut operations = vec![];
-        for (_key, value) in self.kv.prefix_iterator(&key)? {
-            operations.push(value?);
+        let mut operations: Vec<OperationsForBlocksMessage> = vec![];
+        for (_key, value) in self.kv.find_by_prefix(
+            &key,
+            HashType::BlockHash.size(),
+            Box::new(|(_, _)| Ok(true)),
+        )? {
+            operations.push(BincodeEncoded::decode(value.as_ref())?);
         }
-
         operations.sort_by_key(|v| v.operations_for_block().validation_pass());
-
         Ok(operations)
     }
 }
@@ -102,6 +103,11 @@ impl RocksDbKeyValueSchema for OperationsStorage {
     #[inline]
     fn name() -> &'static str {
         "operations_storage"
+    }
+}
+impl KVStoreKeyValueSchema for OperationsStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 

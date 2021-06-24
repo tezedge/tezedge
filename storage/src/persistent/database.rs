@@ -36,7 +36,7 @@ where
 
 /// Create default database configuration options,
 /// based on recommended setting: https://github.com/facebook/rocksdb/wiki/Setup-Options-and-Basic-Tuning#other-general-options
-fn default_kv_options(cfg: &DbConfiguration) -> Options {
+pub(crate) fn default_kv_options(cfg: &DbConfiguration) -> Options {
     // default db options
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
@@ -369,6 +369,7 @@ impl<'a, S: KeyValueSchema> Iterator for IteratorWithSchema<'a, S> {
 }
 
 /// Database iterator direction
+#[derive(Clone)]
 pub enum Direction {
     Forward,
     Reverse,

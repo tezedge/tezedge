@@ -8,6 +8,8 @@ use std::sync::Arc;
 use failure::Error;
 use rocksdb::Cache;
 
+use storage::database;
+use storage::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
 use storage::persistent::database::{open_kv, RocksDbKeyValueSchema};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::DbConfiguration;
@@ -29,7 +31,12 @@ fn generator_test_multiple_gen() -> Result<(), Error> {
             &DbConfiguration::default(),
         )
         .unwrap();
-        let sequences = Sequences::new(Arc::new(db), 1);
+        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
+        let maindb = Arc::new(TezedgeDatabase::new(
+            TezedgeDatabaseBackendOptions::RocksDB(backend),
+        ));
+
+        let sequences = Sequences::new(maindb, 1);
         let gen_1 = sequences.generator("gen_1");
         let gen_2 = sequences.generator("gen_2");
         assert_eq!(0, gen_1.next()?);
@@ -60,7 +67,11 @@ fn generator_test_cloned_gen() -> Result<(), Error> {
             &DbConfiguration::default(),
         )
         .unwrap();
-        let sequences = Sequences::new(Arc::new(db), 3);
+        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
+        let maindb = Arc::new(TezedgeDatabase::new(
+            TezedgeDatabaseBackendOptions::RocksDB(backend),
+        ));
+        let sequences = Sequences::new(maindb, 3);
         let gen_a = sequences.generator("gen");
         let gen_b = sequences.generator("gen");
         assert_eq!(0, gen_a.next()?);
@@ -92,7 +103,11 @@ fn generator_test_batch() -> Result<(), Error> {
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )?;
-        let sequences = Sequences::new(Arc::new(db), 100);
+        let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db))?;
+        let maindb = Arc::new(TezedgeDatabase::new(
+            TezedgeDatabaseBackendOptions::RocksDB(backend),
+        ));
+        let sequences = Sequences::new(maindb, 100);
         let gen = sequences.generator("gen");
         for i in 0..1_000_000 {
             assert_eq!(i, gen.next()?);
@@ -118,10 +133,14 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
             vec![Sequences::descriptor(&cache)],
             &DbConfiguration::default(),
         )?);
+        let backend = database::rockdb_backend::RocksDBBackend::from_db(db)?;
+        let maindb = Arc::new(TezedgeDatabase::new(
+            TezedgeDatabaseBackendOptions::RocksDB(backend),
+        ));
 
         // First run
         {
-            let sequences = Sequences::new(db.clone(), 10);
+            let sequences = Sequences::new(maindb.clone(), 10);
             let gen = sequences.generator("gen");
             for i in 0..7 {
                 assert_eq!(i, gen.next()?, "First run failed");
@@ -130,7 +149,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
 
         // Second run should continue from the number stored in a database, in this case 10
         {
-            let sequences = Sequences::new(db.clone(), 10);
+            let sequences = Sequences::new(maindb.clone(), 10);
             let gen = sequences.generator("gen");
             for i in 0..=50 {
                 assert_eq!(10 + i, gen.next()?, "Second run failed");
@@ -142,7 +161,7 @@ fn generator_test_continuation_after_persist() -> Result<(), Error> {
         // another 10 sequence numbers, so 60 + 10 = 70. but none of those pre-allocated numbers
         // were used in the second run.
         {
-            let sequences = Sequences::new(db, 10);
+            let sequences = Sequences::new(maindb, 10);
             let gen = sequences.generator("gen");
             for i in 0..5 {
                 assert_eq!(70 + i, gen.next()?, "Third run failed");

@@ -12,14 +12,13 @@ use crypto::hash::{HashType, OperationHash};
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::operation::OperationMessage;
 
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
-};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::{num_from_slice, IteratorMode, PersistentStorage, StorageError};
 
 /// Convenience type for operation meta storage database
-pub type MempoolStorageKV = dyn KeyValueStoreWithSchema<MempoolStorage> + Sync + Send;
+pub type MempoolStorageKV = dyn TezedgeDatabaseWithIterator<MempoolStorage> + Sync + Send;
 
 /// TODO: do we need this?
 /// Distinct
@@ -64,7 +63,7 @@ pub struct MempoolStorage {
 impl MempoolStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -150,9 +149,13 @@ impl MempoolStorage {
 
     #[inline]
     pub fn iter(&self) -> Result<Vec<(OperationHash, OperationMessage)>, StorageError> {
-        let mut operations = Vec::new();
-        for (key, value) in self.kv.iterator(IteratorMode::Start)? {
-            let (key, value) = (key?, value?);
+        let items = self
+            .kv
+            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;
+        let mut operations = Vec::with_capacity(items.len());
+        for (k, v) in items.iter() {
+            let value: MempoolValue = BincodeEncoded::decode(v)?;
+            let key: MempoolKey = <Self as KeyValueSchema>::Key::decode(k)?;
             operations.push((key.operation_hash, value.operation));
         }
         Ok(operations)
@@ -168,6 +171,12 @@ impl RocksDbKeyValueSchema for MempoolStorage {
     #[inline]
     fn name() -> &'static str {
         "mempool_storage"
+    }
+}
+
+impl KVStoreKeyValueSchema for MempoolStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }
 
