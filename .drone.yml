@@ -4006,6 +4006,161 @@ trigger:
 depends_on:
   - build-tezedge-binaries
 
+
+---
+#########################################################
+# This pipeline runs TZ indexer against Tezos node
+#########################################################
+kind: pipeline
+name: correctness/indexer-tz-tezos-009-florence
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+
+volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+
+trigger:
+  branch:
+    - develop
+    - master
+
+steps:
+
+  - name: octez-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: tezos-data
+        path: /data
+      - name: cache
+        path: /cache
+    commands:
+      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
+
+  # run indexer
+  - name: indexer
+    image: blockwatch/tzindex:latest
+    pull: always
+    user: root
+    volumes:
+      - name: cache
+        path: /cache
+      - name: tools
+        path: /tools
+    environment:
+      TZ_RPC_HOST: octez-node
+      TZ_RPC_PORT: 8732
+    commands:
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000
+      - echo "Done in $(cat /cache/time) seconds"
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
+
+---
+#########################################################
+# This pipeline runs TZ indexer against Tezedge node
+#########################################################
+kind: pipeline
+name: correctness/indexer-tz-tezedge-009-florence
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+volumes:
+  - name: tools
+    host:
+      path: /usr/local/etc/tezedge-ci/tools
+  - name: cache
+    host:
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: tezos-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build
+
+depends_on:
+  - build-tezedge-binaries
+
+trigger:
+  branch:
+    - master
+    - develop
+
+steps:
+
+  - name: tezedge-node
+    image: simplestakingcom/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /artifacts
+      - name: cache
+        path: /cache
+      - name: tezos-data
+        path: /data
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
+      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
+
+  # run indexer
+  - name: indexer
+    image: blockwatch/tzindex:latest
+    pull: always
+    user: root
+    volumes:
+      - name: cache
+        path: /cache
+      - name: tools
+        path: /tools
+    environment:
+      TZ_RPC_HOST: tezedge-node
+      TZ_RPC_PORT: 18732
+    commands:
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Stopping blockchain sync" -- tzindex run --stop=20000
+      - echo "Done in $(cat /cache/time) seconds"
+
+  - name: report-time
+    image: busybox
+    volumes:
+      - name: cache
+        path: /cache
+    commands:
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
+
 ---
 #########################################################
 # This pipeline runs Conseil indexer against Tezos node
@@ -4034,6 +4189,7 @@ volumes:
 
 trigger:
   branch:
+    - master
     - develop
 
 depends_on:
@@ -4065,31 +4221,6 @@ steps:
     commands:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --network $${NETWORK} --no-bootstrap-peers --rpc-addr 0.0.0.0:8732
 
-  - name: conseil-api
-    image: cryptonomictech/conseil:latest
-    detach: true
-    environment:
-      CONSEIL_XTZ_ENABLED: true
-      CONSEIL_XTZ_NETWORK: florencenet
-      CONSEIL_XTZ_NODE_PROTOCOL: http
-      CONSEIL_XTZ_NODE_HOSTNAME: tezos-node
-      CONSEIL_XTZ_NODE_PORT: 8732
-      CONSEIL_XTZ_NODE_PATH_PREFIX: /
-      CONSEIL_API_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
-      CONSEIL_API_DB_USER: conseiluser
-      CONSEIL_API_DB_PASSWORD: p@ssw0rd
-      CONSEIL_API_PORT: 80
-      CONSEIL_API_KEY: conseil
-      JVM_XMX: 4G
-    commands:
-      - sleep 10
-      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- /root/entrypoint.sh conseil-api
-    volumes:
-      - name: conseil-sql
-        path: /root/sql
-      - name: cache
-        path: /cache
-
   - name: conseil-lorre
     image: cryptonomictech/conseil:latest
     volumes:
@@ -4097,6 +4228,8 @@ steps:
         path: /cache
       - name: tools
         path: /tools
+      - name: conseil-sql
+        path: /root/sql
     environment:
       CONSEIL_LORRE_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
       CONSEIL_LORRE_DB_USER: conseiluser
@@ -4118,9 +4251,8 @@ steps:
     commands:
       - sleep 15
       - export CONSEIL_XTZ_NODE_PATH_PREFIX=""
-      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%E" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
-      - echo "============== indexing time ============="
-      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%e" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
+      - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
     image: busybox
@@ -4128,8 +4260,9 @@ steps:
       - name: cache
         path: /cache
     commands:
-      - echo "============== indexing time ============="
-      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
 
 ---
 #########################################################
@@ -4166,6 +4299,7 @@ depends_on:
 
 trigger:
   branch:
+    - master
     - develop
 
 steps:
@@ -4201,31 +4335,6 @@ steps:
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner
 
-  - name: conseil-api
-    image: cryptonomictech/conseil:latest
-    detach: true
-    environment:
-      CONSEIL_XTZ_ENABLED: true
-      CONSEIL_XTZ_NETWORK: florencenet
-      CONSEIL_XTZ_NODE_PROTOCOL: http
-      CONSEIL_XTZ_NODE_HOSTNAME: tezedge-node
-      CONSEIL_XTZ_NODE_PORT: 18732
-      CONSEIL_XTZ_NODE_PATH_PREFIX: ""
-      CONSEIL_API_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
-      CONSEIL_API_DB_USER: conseiluser
-      CONSEIL_API_DB_PASSWORD: p@ssw0rd
-      CONSEIL_API_PORT: 80
-      CONSEIL_API_KEY: conseil
-      JVM_XMX: 4G
-    commands:
-      - sleep 10
-      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- /root/entrypoint.sh conseil-api
-    volumes:
-      - name: conseil-sql
-        path: /root/sql
-      - name: cache
-        path: /cache
-
   - name: conseil-lorre
     image: cryptonomictech/conseil:latest
     volumes:
@@ -4233,6 +4342,8 @@ steps:
         path: /tools
       - name: cache
         path: /cache
+      - name: conseil-sql
+        path: /root/sql
     environment:
       CONSEIL_LORRE_DB_URL: jdbc:postgresql://conseil-postgres:5432/conseil-local
       CONSEIL_LORRE_DB_USER: conseiluser
@@ -4254,9 +4365,8 @@ steps:
     commands:
       - sleep 15
       - export CONSEIL_XTZ_NODE_PATH_PREFIX=""
-      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%E" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
-      - echo "============== indexing time ============="
-      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+      - /root/wait-for.sh conseil-postgres:5432 -t 120 -- time -f "%e" -o /cache/time /tools/output-filter --kill="No new blocks" -- /root/entrypoint.sh conseil-lorre
+      - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
     image: busybox
@@ -4264,8 +4374,9 @@ steps:
       - name: cache
         path: /cache
     commands:
-      - echo "============== indexing time ============="
-      - cat /cache/time | sed -e "s/m /:/" -e 's/s$//'
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
 
 ---
 #########################################################
@@ -4295,6 +4406,7 @@ volumes:
 
 trigger:
   branch:
+    - master
     - develop
 
 depends_on:
@@ -4342,7 +4454,8 @@ steps:
       - sleep 5
       - cd /app
       - mkfifo /tmp/tzkt
-      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+      - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
     image: busybox
@@ -4350,8 +4463,9 @@ steps:
       - name: cache
         path: /cache
     commands:
-      - echo "============== indexing time ============="
-      - cat /cache/time
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
 
 ---
 #########################################################
@@ -4388,6 +4502,7 @@ depends_on:
 
 trigger:
   branch:
+    - master
     - develop
 
 steps:
@@ -4439,7 +4554,8 @@ steps:
       - sleep 5
       - cd /app
       - mkfifo /tmp/tzkt
-      - time -f "%E" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+      - time -f "%e" -o /cache/time /tools/output-filter --kill="Applied 20000 of" -- dotnet Tzkt.Sync.dll
+      - echo "Done in $(cat /cache/time) seconds"
 
   - name: report-time
     image: busybox
@@ -4447,8 +4563,9 @@ steps:
       - name: cache
         path: /cache
     commands:
-      - echo "============== indexing time ============="
-      - cat /cache/time
+      - |
+        secs=$(sed "s/\..*$//" /cache/time)
+        printf "Indexing time (mm:ss): %.2d:%.2d\n" $((secs / 60)) $((secs % 60))
 
 ---
 ##############################################################################################################
@@ -5275,6 +5392,8 @@ depends_on:
   - correctness/rpcs-indexers-009-florencenet
   - correctness/rpcs-indexers-010-granadanet
   - correctness/rpcs-indexers-mainnet
+  - correctness/indexer-tz-tezos-009-florence
+  - correctness/indexer-tz-tezedge-009-florence
   - correctness/indexer-conseil-tezos-009-florence
   - correctness/indexer-conseil-tezedge-009-florence
   - correctness/indexer-tzkt-tezos-009-florence
@@ -5364,6 +5483,8 @@ depends_on:
   - correctness/rpcs-indexers-009-florencenet
   - correctness/rpcs-indexers-010-granadanet
   - correctness/rpcs-indexers-mainnet
+  - correctness/indexer-tz-tezos-009-florence
+  - correctness/indexer-tz-tezedge-009-florence
   - correctness/indexer-conseil-tezos-009-florence
   - correctness/indexer-conseil-tezedge-009-florence
   - correctness/indexer-tzkt-tezos-009-florence
