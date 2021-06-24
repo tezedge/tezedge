@@ -149,10 +149,11 @@ impl MempoolStorage {
 
     #[inline]
     pub fn iter(&self) -> Result<Vec<(OperationHash, OperationMessage)>, StorageError> {
-        let mut operations = Vec::new();
+
         let items = self
             .kv
             .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?;
+        let mut operations = Vec::with_capacity(items.len());
         for (k, v) in items.iter() {
             let value: MempoolValue = BincodeEncoded::decode(v)?;
             let key: MempoolKey = <Self as KeyValueSchema>::Key::decode(k)?;
