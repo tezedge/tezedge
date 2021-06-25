@@ -4969,7 +4969,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
@@ -4977,7 +4976,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
@@ -4992,7 +4991,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
     - echo "peers - $PEERS"
@@ -5005,7 +5003,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -5166,7 +5164,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
@@ -5174,7 +5171,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
@@ -5189,7 +5186,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
     - echo "peers - $PEERS"
@@ -5202,7 +5198,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
