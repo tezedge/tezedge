@@ -4101,7 +4101,7 @@ volumes:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
   - name: tezos-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
   - name: build
     host:
       path: /usr/local/etc/tezedge-ci/build
@@ -4133,7 +4133,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin --maindb-backend sled
 
   # run indexer
   - name: indexer
@@ -4288,7 +4288,7 @@ volumes:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
   - name: tezos-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
   - name: conseil-sql
     temp: {}
   - name: build
@@ -4334,7 +4334,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin --maindb-backend sled
 
   - name: conseil-lorre
     image: cryptonomictech/conseil:latest
@@ -4491,7 +4491,7 @@ volumes:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
   - name: tezos-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-florencenet-snapshot-data-identity-2
+      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
   - name: conseil-sql
     temp: {}
   - name: build
@@ -4525,7 +4525,7 @@ steps:
     commands:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
       - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
+      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin --maindb-backend sled
 
   - name: tzkt-postgres
     image: postgres:13
