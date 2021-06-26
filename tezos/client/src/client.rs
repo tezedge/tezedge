@@ -6,12 +6,13 @@ use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
     BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
     BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-    ComputePathResponse, ContextDataError, FfiJsonEncoderError, GetDataError,
-    HelpersPreapplyBlockRequest, HelpersPreapplyError, HelpersPreapplyResponse,
-    InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError,
-    ProtocolRpcRequest, ProtocolRpcResponse, RustBytes, TezosContextConfiguration,
-    TezosRuntimeConfiguration, TezosRuntimeConfigurationError, TezosStorageInitError,
-    ValidateOperationError, ValidateOperationRequest, ValidateOperationResponse,
+    ComputePathResponse, ContextDataError, FfiGetKeyFromHistoryError, FfiGetKeyValuesByPrefixError,
+    FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest, HelpersPreapplyError,
+    HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError,
+    ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+    TezosContextConfiguration, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+    TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+    ValidateOperationResponse,
 };
 use tezos_interop::ffi;
 use tezos_messages::p2p::encoding::operation::Operation;
@@ -185,6 +186,25 @@ pub fn apply_block_operations_metadata(
         protocol_hash,
         next_protocol_hash,
     )
+}
+
+// TODO - TE-563: using aliases for ContextKeyOwned and ContextValue
+
+/// Get key from history through OCaml
+pub fn get_key_from_history(
+    context_hash: ContextHash,
+    key: Vec<String>, // TODO: should be ContextKeyOwned
+) -> Result<Option<Vec<u8>>, FfiGetKeyFromHistoryError> {
+    // TODO: result should be Option<ContextValue>
+    ffi::get_key_from_history(context_hash, key)
+}
+
+/// Get keys and values from history by prefix through OCaml
+pub fn get_key_values_by_prefix(
+    context_hash: ContextHash,
+    prefix: Vec<String>, // TODO: should be ContextKeyOwned
+) -> Result<Vec<(Vec<String>, Vec<u8>)>, FfiGetKeyValuesByPrefixError> {
+    ffi::get_key_values_by_prefix(context_hash, prefix)
 }
 
 /// Shutdown the OCaml runtime

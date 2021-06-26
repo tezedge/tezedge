@@ -918,6 +918,36 @@ impl From<CallError> for ComputePathError {
     }
 }
 
+// TODO - TE-563: these errors could be improved
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum FfiGetKeyFromHistoryError {
+    #[fail(display = "Failure when getting key from history: {}!", message)]
+    Error { message: String },
+}
+
+impl From<TezosErrorTrace> for FfiGetKeyFromHistoryError {
+    fn from(error: TezosErrorTrace) -> Self {
+        FfiGetKeyFromHistoryError::Error {
+            message: error.trace_json,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Fail)]
+pub enum FfiGetKeyValuesByPrefixError {
+    #[fail(display = "Failure when getting key+values by prefix: {}!", message)]
+    Error { message: String },
+}
+
+impl From<TezosErrorTrace> for FfiGetKeyValuesByPrefixError {
+    fn from(error: TezosErrorTrace) -> Self {
+        FfiGetKeyValuesByPrefixError::Error {
+            message: error.trace_json,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::TryInto;

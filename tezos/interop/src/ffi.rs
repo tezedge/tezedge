@@ -12,6 +12,7 @@ use tezos_api::ffi::*;
 use tezos_api::ocaml_conv::FfiOperation;
 use tezos_api::ocaml_conv::FfiPath;
 use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_new_context::{ContextKeyOwned, ContextValue};
 
 use crate::runtime;
 
@@ -94,6 +95,14 @@ mod tezos_ffi {
             protocol_hash: OCamlBytes,
             next_protocol_hash: OCamlBytes,
         ) -> TzResult<OCamlBytes>;
+        pub fn get_key_from_history(
+            context_hash: OCamlBytes,
+            key: OCamlList<OCamlBytes>,
+        ) -> TzResult<Option<OCamlBytes>>;
+        pub fn get_key_values_by_prefix(
+            context_hash: OCamlBytes,
+            prefix: OCamlList<OCamlBytes>,
+        ) -> TzResult<OCamlList<(OCamlList<OCamlBytes>, OCamlBytes)>>;
     }
 }
 
@@ -452,6 +461,56 @@ pub fn apply_block_operations_metadata(
     })
     .unwrap_or_else(|p| {
         Err(FfiJsonEncoderError::EncodeError {
+            message: p.to_string(),
+        })
+    })
+}
+
+pub fn get_key_from_history(
+    context_hash: ContextHash,
+    key: ContextKeyOwned,
+) -> Result<Option<ContextValue>, FfiGetKeyFromHistoryError> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let context_hash = context_hash.as_ref().to_boxroot(rt);
+        let key_list = key.to_boxroot(rt);
+
+        let result = tezos_ffi::get_key_from_history(rt, &context_hash, &key_list);
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(s) => Ok(s.to_rust()),
+            Err(e) => Err(FfiGetKeyFromHistoryError::from(
+                e.to_rust::<TezosErrorTrace>(),
+            )),
+        }
+    })
+    .unwrap_or_else(|p| {
+        Err(FfiGetKeyFromHistoryError::Error {
+            message: p.to_string(),
+        })
+    })
+}
+
+pub fn get_key_values_by_prefix(
+    context_hash: ContextHash,
+    prefix: ContextKeyOwned,
+) -> Result<Vec<(ContextKeyOwned, ContextValue)>, FfiGetKeyValuesByPrefixError> {
+    runtime::execute(move |rt: &mut OCamlRuntime| {
+        let context_hash = context_hash.as_ref().to_boxroot(rt);
+        let prefix_list = prefix.to_boxroot(rt);
+
+        let result = tezos_ffi::get_key_values_by_prefix(rt, &context_hash, &prefix_list);
+        let result = rt.get(&result).to_result();
+
+        match result {
+            Ok(s) => Ok(s.to_rust()),
+            Err(e) => Err(FfiGetKeyValuesByPrefixError::from(
+                e.to_rust::<TezosErrorTrace>(),
+            )),
+        }
+    })
+    .unwrap_or_else(|p| {
+        Err(FfiGetKeyValuesByPrefixError::Error {
             message: p.to_string(),
         })
     })

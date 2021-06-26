@@ -118,12 +118,13 @@ mod tezos {
         ApplyBlockError, ApplyBlockRequest, ApplyBlockResponse, BeginApplicationError,
         BeginApplicationRequest, BeginApplicationResponse, BeginConstructionError,
         BeginConstructionRequest, CommitGenesisResult, ComputePathError, ComputePathRequest,
-        ComputePathResponse, FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest,
-        HelpersPreapplyError, HelpersPreapplyResponse, InitProtocolContextResult,
-        PrevalidatorWrapper, ProtocolDataError, ProtocolRpcError, ProtocolRpcRequest,
-        ProtocolRpcResponse, RustBytes, TezosContextConfiguration, TezosRuntimeConfiguration,
-        TezosRuntimeConfigurationError, TezosStorageInitError, ValidateOperationError,
-        ValidateOperationRequest, ValidateOperationResponse,
+        ComputePathResponse, FfiGetKeyFromHistoryError, FfiGetKeyValuesByPrefixError,
+        FfiJsonEncoderError, GetDataError, HelpersPreapplyBlockRequest, HelpersPreapplyError,
+        HelpersPreapplyResponse, InitProtocolContextResult, PrevalidatorWrapper, ProtocolDataError,
+        ProtocolRpcError, ProtocolRpcRequest, ProtocolRpcResponse, RustBytes,
+        TezosContextConfiguration, TezosRuntimeConfiguration, TezosRuntimeConfigurationError,
+        TezosStorageInitError, ValidateOperationError, ValidateOperationRequest,
+        ValidateOperationResponse,
     };
     use tezos_client::client::*;
     use tezos_messages::p2p::encoding::operation::Operation;
@@ -241,6 +242,20 @@ mod tezos {
                 protocol_hash,
                 next_protocol_hash,
             )
+        }
+
+        fn get_key_from_history(
+            context_hash: ContextHash,
+            key: Vec<String>,
+        ) -> Result<Option<Vec<u8>>, FfiGetKeyFromHistoryError> {
+            get_key_from_history(context_hash, key)
+        }
+
+        fn get_key_values_by_prefix(
+            context_hash: ContextHash,
+            prefix: Vec<String>,
+        ) -> Result<Vec<(Vec<String>, Vec<u8>)>, FfiGetKeyValuesByPrefixError> {
+            get_key_values_by_prefix(context_hash, prefix)
         }
     }
 }

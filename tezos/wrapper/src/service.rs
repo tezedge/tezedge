@@ -286,9 +286,12 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     reason: format!("{:?}", e),
                 }
             })? {
-                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
-                    "Context index unavailable".to_owned(),
-                )))?,
+                None => {
+                    // TODO - TE-563: use actual error instead of a string
+                    let res = Proto::get_key_from_history(context_hash, key)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(res))?;
+                }
                 Some(index) => {
                     let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
                     let result = index
@@ -305,9 +308,14 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     reason: format!("{:?}", e),
                 }
             })? {
-                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
-                    "Context index unavailable".to_owned(),
-                )))?,
+                None => {
+                    // TODO - TE-563: use actual error instead of a string
+                    // TODO - TE-563: there is a mismatch between what is expected here (Option<_>) and the FFI function, fix that
+                    let res = Proto::get_key_values_by_prefix(context_hash, prefix)
+                        .map_err(|err| format!("{:?}", err))
+                        .map(Some);
+                    tx.send(&NodeMessage::ContextGetKeyValuesByPrefixResult(res))?;
+                }
                 Some(index) => {
                     let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
                     let result = index
@@ -325,12 +333,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                     reason: format!("{:?}", e),
                 }
             })? {
-                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                None => tx.send(&NodeMessage::ContextGetTreeByPrefixResult(Err(
                     "Context index unavailable".to_owned(),
                 )))?,
                 Some(index) => {
                     let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
-                    // TODO: remove unwraps
                     let result = index
                         .get_context_tree_by_prefix(&context_hash, &prefix_borrowed, depth)
                         .map_err(|err| format!("{:?}", err));
