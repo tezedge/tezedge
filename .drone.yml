@@ -5019,11 +5019,14 @@ steps:
 # compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and ocaml))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
 - name: wrk-performance-test-tezedge-new-vs-ocaml
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: akoptelov/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --latency-no-fail --throughput-no-fail --url-file=/perf/wrk-rpc-list.txt
   when:
     ref:
       exclude:
@@ -5040,11 +5043,14 @@ steps:
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
 - name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: akoptelov/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --latency-no-fail --throughput-no-fail --url-file=/perf/wrk-rpc-list.txt
   when:
     ref:
     - refs/pull/*/head
@@ -5074,6 +5080,9 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
 
 trigger:
   branch:
