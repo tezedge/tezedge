@@ -1,0 +1,25 @@
+- hosts: "drone_server"
+  become: yes
+  vars_files:
+    - ../vars/variables.yml
+  tasks:
+  
+  - name: Pull drone server image
+    docker_image:
+      name: "drone/drone:2"
+      source: pull
+
+  - name: Deploy environment file
+    template:
+      src: ../templates/ci.env.j2
+      dest: /home/dev/ci.env
+
+  - name: Deploy starting script
+    template:
+      src: ../templates/drone_server.sh.j2
+      dest: /home/dev/drone_server.sh
+      mode  : 0755
+
+  - name: Start the drone server
+    command:
+      cmd: '/bin/bash /home/dev/drone_server.sh'

@@ -1,10 +1,33 @@
 - hosts: "drone_runners"
-  become: yes
+  # become: yes
   vars_files:
-    - ../vars/infrastructure_vars.yml
+    - ../vars/variables.yml
   tasks:
   
   - name: Pull drone runner image
     docker_image:
       name: "drone/drone-runner-docker:1"
       source: pull
+
+  - name: Deploy environment file
+    template:
+      src: ../templates/ci.env.j2
+      dest: "/home/{{ target_hosts_user }}/ci.env"
+
+  - name: Deploy starting script
+    template:
+      src: ../templates/drone_runner.sh.j2
+      dest: /home/{{ target_hosts_user }}/drone_runner.sh
+      mode  : 0755
+
+  # - name: Download data
+  #   shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge-ci/ -P {{ ci_data_path }}"
+
+  - name: Move data to the desired location
+    become: yes
+    command: mv {{ ci_data_path }}/tezedge-ci /usr/local/etc/tezedge-ci
+
+  # - name: Start the drone runner
+  #   command:
+  #     cmd: '/bin/bash /home/{{ target_hosts_user }}/drone_runner.sh'
+
