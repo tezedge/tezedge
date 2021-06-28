@@ -1,0 +1,10 @@
+- hosts: "drone_runners"
+  become: yes
+  vars_files:
+    - ../vars/infrastructure_vars.yml
+  tasks:
+  
+  - name: Pull drone runner image
+    docker_image:
+      name: "drone/drone-runner-docker:1"
+      source: pull
