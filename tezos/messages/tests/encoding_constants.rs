@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use crypto::hash::ProtocolHash;
 use tezos_messages::base::rpc_support::{ToRpcJsonMap, UniversalValue};
 use tezos_messages::protocol::{
-    get_constants_for_rpc, proto_005_2, proto_006, proto_007, proto_008, proto_008_2,
+    get_constants_for_rpc, proto_005_2, proto_006, proto_007, proto_008, proto_008_2, proto_009,
     SupportedProtocol,
 };
 
@@ -103,6 +103,26 @@ fn can_deserialize_constants_008_2() -> Result<(), Error> {
         &just_dynamic_constants_bytes,
     )
 }
+
+// #[test]
+// fn can_deserialize_constants_009() -> Result<(), Error> {
+//     // 009 data
+//     // This, can be done: /chains/main/blocks/2/context/raw/bytes/v1/constants
+//     // TODO - TE-563: couldn't get this one, I get a service not found error, needs to be done with the OCaml node? (Bruno)
+//     let just_dynamic_constants_bytes = hex::decode("030000080000000010000000800000080000000010000000000000001e0000000000000014002080fa7e80c4f50900003fffffffffff80a0d9e61d03e8c8d00700000101808092f40180a0c21e00000006d0a54cecb80b00000006d0a54cb5ee32fa01a0a907000000000000f000000007d000001b58000001f400180000000000000004")?;
+//     // This, can be done: /chains/main/blocks/2/context/constants + removed fixed
+//     let expected_dynamic_constants_json = json!({"endorsement_security_deposit":"64000000","time_between_blocks":["30","20"],"hard_gas_limit_per_operation":"1040000","baking_reward_per_endorsement":["1250000","187500"],"hard_gas_limit_per_block":"10400000","tokens_per_roll":"8000000000","hard_storage_limit_per_operation":"60000","proof_of_work_threshold":"70368744177663","origination_size":257,"test_chain_duration":"0","blocks_per_roll_snapshot":128,"blocks_per_commitment":16,"blocks_per_voting_period":1024,"blocks_per_cycle":2048,"endorsement_reward":["1250000","833333"],"delay_per_missing_endorsement":"4","preserved_cycles":3,"michelson_maximum_type_size":1000,"seed_nonce_revelation_tip":"125000","min_proposal_quorum":500,"endorsers_per_block":32,"quorum_min":2000,"quorum_max":7000,"block_security_deposit":"512000000","initial_endorsers":24,"cost_per_byte":"250"});
+//     let protocol_hash = ProtocolHash::try_from(proto_009::PROTOCOL_HASH)?;
+//     let expected_fixed_constants = proto_009::constants::FIXED.as_map();
+//
+//     assert_constants_eq(
+//         ProtocolHash::try_from("PsFLorenaUUuikDWvMDr6fGBRG8kt3e3D3fHoXK1j1BFRxeSH4i")?,
+//         expected_dynamic_constants_json,
+//         expected_fixed_constants,
+//         protocol_hash,
+//         &just_dynamic_constants_bytes,
+//     )
+// }
 
 fn assert_constants_eq(
     expected_protocol_hash: ProtocolHash,

@@ -39,6 +39,7 @@ mod proto_006;
 mod proto_007;
 mod proto_008;
 mod proto_008_2;
+mod proto_009;
 
 #[derive(Debug, Fail)]
 pub enum RightsError {
@@ -188,6 +189,16 @@ pub(crate) fn check_and_get_baking_rights(
             env.tezedge_context(),
         )
         .map_err(RightsError::from),
+        SupportedProtocol::Proto009 => proto_009::rights_service::check_and_get_baking_rights(
+            context_proto_params,
+            level,
+            delegate,
+            cycle,
+            max_priority,
+            has_all,
+            env.tezedge_context(),
+        )
+        .map_err(RightsError::from),
     }
 }
 
@@ -296,6 +307,17 @@ pub(crate) fn check_and_get_endorsing_rights(
         .map_err(RightsError::from),
         SupportedProtocol::Proto008_2 => {
             proto_008_2::rights_service::check_and_get_endorsing_rights(
+                context_proto_params,
+                level,
+                delegate,
+                cycle,
+                has_all,
+                env.tezedge_context(),
+            )
+            .map_err(RightsError::from)
+        }
+        SupportedProtocol::Proto009 => {
+            proto_009::rights_service::check_and_get_endorsing_rights(
                 context_proto_params,
                 level,
                 delegate,
@@ -423,6 +445,9 @@ pub(crate) fn get_votes_listings(
         }
         SupportedProtocol::Proto008_2 => {
             proto_008_2::votes_service::get_votes_listings(env, &context_hash)
+        }
+        SupportedProtocol::Proto009 => {
+            proto_009::votes_service::get_votes_listings(env, &context_hash)
         }
     }
 }

@@ -84,4 +84,16 @@ pub trait ProtocolApi {
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
     ) -> Result<String, FfiJsonEncoderError>;
+
+    /// Get key from history
+    fn get_key_from_history(
+        context_hash: ContextHash,
+        key: Vec<String>,
+    ) -> Result<Option<Vec<u8>>, FfiGetKeyFromHistoryError>;
+
+    /// Get keys and values from history by prefix
+    fn get_key_values_by_prefix(
+        context_hash: ContextHash,
+        prefix: Vec<String>,
+    ) -> Result<Vec<(Vec<String>, Vec<u8>)>, FfiGetKeyValuesByPrefixError>;
 }

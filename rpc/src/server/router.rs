@@ -221,31 +221,26 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
 
     // Protocol rpcs - implemented
 
-    // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
-    // context is available. Once these handlers have been tested better and revised, enable again.
-    if tezedge_is_enabled && false {
-        // These only work if the TezEdge context is available
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/context/constants",
-            protocol_handler::context_constants,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
-            protocol_handler::baking_rights,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
-            protocol_handler::endorsing_rights,
-        );
-        routes.handle(
-            hash_set![Method::GET],
-            "/chains/:chain_id/blocks/:block_id/votes/listings",
-            protocol_handler::votes_listings,
-        );
-    }
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/context/constants",
+        protocol_handler::context_constants,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/baking_rights",
+        protocol_handler::baking_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/helpers/endorsing_rights",
+        protocol_handler::endorsing_rights,
+    );
+    routes.handle(
+        hash_set![Method::GET],
+        "/chains/:chain_id/blocks/:block_id/votes/listings",
+        protocol_handler::votes_listings,
+    );
 
     // Other Protocol rpcs - routed through ffi calls
     routes.handle(

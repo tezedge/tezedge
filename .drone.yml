@@ -359,8 +359,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -390,8 +390,8 @@ image_pull_secrets:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 ---
 ##############################################################################################################
@@ -680,8 +680,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 #############################################################################################################
 # This pipeline runs the python test framwork tests from the tezos repository aginst tezedge nodes - tests_008
@@ -932,8 +932,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1186,8 +1186,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1440,8 +1440,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1681,8 +1681,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -1868,8 +1868,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -2055,8 +2055,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -2330,8 +2330,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -2605,8 +2605,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -2880,8 +2880,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -3118,8 +3118,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -3337,8 +3337,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -3557,8 +3557,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -3779,8 +3779,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -4001,8 +4001,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -4034,8 +4034,8 @@ volumes:
 
 trigger:
   branch:
-    - develop
-    - master
+    - xdevelop
+    - xmaster
 
 steps:
 
@@ -4111,8 +4111,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -4190,8 +4190,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -4300,8 +4300,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -4407,8 +4407,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - build-tezedge-binaries
@@ -4503,8 +4503,8 @@ depends_on:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 steps:
 
@@ -4797,8 +4797,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 ---
 ##############################################################################################################
@@ -4842,8 +4842,8 @@ image_pull_secrets:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 ##############################################################################################################
 # This pipeline runs tezedge node and ocaml node,
@@ -4969,7 +4969,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
@@ -4977,7 +4976,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
@@ -4992,7 +4991,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/ocaml_ip3.txt)
     - echo "peers - $PEERS"
@@ -5005,7 +5003,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -5021,11 +5019,14 @@ steps:
 # compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and ocaml))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
 - name: wrk-performance-test-tezedge-new-vs-ocaml
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: akoptelov/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --latency-no-fail --throughput-no-fail --url-file=/perf/wrk-rpc-list.txt
   when:
     ref:
       exclude:
@@ -5042,11 +5043,14 @@ steps:
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and ocaml))
 - name: wrk-performance-test-tezedge-new-vs-ocaml-vs-tezedge-old
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: akoptelov/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=$${MAX_LATENCY_THRESHOLD} --throughput-threshold=$${THROUGHPUTL_THRESHOLD} --latency-no-fail --throughput-no-fail --url-file=/perf/wrk-rpc-list.txt
   when:
     ref:
     - refs/pull/*/head
@@ -5076,6 +5080,9 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
 
 trigger:
   branch:
@@ -5166,7 +5173,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
@@ -5174,7 +5180,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
@@ -5189,7 +5195,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/ocaml_ip.txt)
     - echo "peers - $PEERS"
@@ -5202,7 +5207,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
