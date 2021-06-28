@@ -4,7 +4,6 @@ docker run -d \
   -e DRONE_RUNNER_ENV_FILE=/etc/ci.env \
   -e DRONE_RPC_PROTO=http \
   -e DRONE_RPC_HOST={{ drone_server }} \
-  -e DRONE_RUNNER_LABELS=tag:${HOSTNAME} \
   -e DRONE_RPC_SECRET={{ rpc_secret }} \
   -e DRONE_RUNNER_CAPACITY=1 \
   -e DRONE_RUNNER_NAME=${HOSTNAME} \

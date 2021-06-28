@@ -20,14 +20,13 @@
       dest: /home/{{ target_hosts_user }}/drone_runner.sh
       mode  : 0755
 
-  # - name: Download data
-  #   shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge-ci/ -P {{ ci_data_path }}"
+  - name: Download data
+    shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge-ci/ -P {{ ci_data_path }}"
 
   - name: Move data to the desired location
     become: yes
     command: mv {{ ci_data_path }}/tezedge-ci /usr/local/etc/tezedge-ci
 
-  # - name: Start the drone runner
-  #   command:
-  #     cmd: '/bin/bash /home/{{ target_hosts_user }}/drone_runner.sh'
-
+  - name: Start the drone runner
+    command:
+      cmd: '/bin/bash /home/{{ target_hosts_user }}/drone_runner.sh'

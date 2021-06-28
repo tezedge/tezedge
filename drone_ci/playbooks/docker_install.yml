@@ -28,6 +28,9 @@
       pip:
         name: docker
 
+    - name: Add user to docker group
+      command: "usermod -aG docker {{ target_hosts_user }}"
+
     - name: Pull drone runner image
       docker_image:
         name: "drone/drone-runner-docker:1"
