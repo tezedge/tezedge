@@ -10,12 +10,13 @@ use crate::result_option_to_json_response;
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::{context, dev_services};
 use crate::{empty, make_json_response, required_param, result_to_json_response, ServiceResult};
+use std::sync::Arc;
 
 pub async fn dev_blocks(
     _: Request<Body>,
     _: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = MAIN_CHAIN_ID;
@@ -54,7 +55,7 @@ pub async fn dev_block_actions(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     // TODO: TE-221 - add optional chain_id to params mapping
     let chain_id_param = MAIN_CHAIN_ID;
@@ -71,7 +72,7 @@ pub async fn dev_contract_actions(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let contract_id = required_param!(params, "contract_address")?;
     let from_id = query.get_u64("from_id");
@@ -86,7 +87,7 @@ pub async fn dev_action_cursor(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let cursor_id = query.get_u64("cursor_id");
     let limit = query.get_u64("limit").map(|limit| limit as usize);
@@ -127,7 +128,7 @@ pub async fn block_action_details(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = MAIN_CHAIN_ID;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -143,7 +144,7 @@ pub async fn dev_stats_storage(
     _: Request<Body>,
     _: Params,
     _: Query,
-    _env: RpcServiceEnvironment,
+    _env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     // TODO - TE-261: disabled for now because we don't have the context actions database
     // result_to_json_response(
@@ -161,7 +162,7 @@ pub async fn dev_stats_memory(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     match dev_services::get_stats_memory() {
         Ok(resp) => make_json_response(&resp),
@@ -176,7 +177,7 @@ pub async fn dev_stats_memory_protocol_runners(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     match dev_services::get_stats_memory_protocol_runners() {
         Ok(resp) => make_json_response(&resp),
@@ -191,7 +192,7 @@ pub async fn context_stats(
     _: Request<Body>,
     _: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let context_name = query.get_str("context_name").unwrap_or("tezedge");
     let db_path = env.context_stats_db_path.as_ref();
@@ -206,7 +207,7 @@ pub async fn block_actions(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -220,7 +221,7 @@ pub async fn dev_version(
     _: Request<Body>,
     _: Params,
     _: Query,
-    _: RpcServiceEnvironment,
+    _: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     make_json_response(&dev_services::get_dev_version())
 }

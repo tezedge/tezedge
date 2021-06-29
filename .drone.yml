@@ -170,8 +170,8 @@ trigger:
 ##############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
 # real time. It also generated artificial load to make the test more accurate.
-# 
-# GIVEN we are inside a real time environment WHEN we run cyclictest then the latencies should be in the 
+#
+# GIVEN we are inside a real time environment WHEN we run cyclictest then the latencies should be in the
 # defined threshold
 ##############################################################################################################
 ---
@@ -239,8 +239,8 @@ volumes:
 
 ##############################################################################################################
 # This pipeline runs tezedge node with mainnet configuration against octez node with different network cfg
-# to verify that the tezedge node accidentally won't kill the octez node 
-# 
+# to verify that the tezedge node accidentally won't kill the octez node
+#
 # GIVEN we are running one octez node and one tezedge node on different networks WHEN we connect them together
 # THEN the octez node does not crash
 ##############################################################################################################
@@ -447,8 +447,8 @@ steps:
     - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
     - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
 
-# GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each 
-# scenario accordingly 
+# GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
+# scenario accordingly
 - name: protocol-runner-acquisition-from-pool
   image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -622,7 +622,7 @@ steps:
     - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_peer_threshold
 
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
-# the connection should succeed 
+# the connection should succeed
 - name: p2p-pow-success
   image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -644,7 +644,7 @@ steps:
     - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_ok
 
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
-# the connection should fail 
+# the connection should fail
 - name: p2p-pow-fail
   image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
@@ -750,7 +750,7 @@ trigger:
     - develop
 
 #############################################################################################################
- # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes 
+ # This pipeline runs the python test framework tests from the tezos repository against tezedge nodes
 # version from protocol 008-edo
 #
 # GIVEN tezedge is compatible with the octez node and protocol 008-edo WHEN we run the octez python tests with tezedge THEN all the
@@ -1527,11 +1527,11 @@ depends_on:
   - corr/octez-python-tests-applied-to-tezedge-009-florence
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 006 Carthage protocol 
+# This pipeline runs tezedge node with sandbox configuration with 006 Carthage protocol
 # and does transfer with tezos_client from the octez implementation
 #
 # GIVEN we run tezedge in sandbox mode with activated 007-carthage protocol WHEN we make a transfer and bake
-# a block THEN the transfer operation shows up in the connected octez node and the all the rpcs yield the 
+# a block THEN the transfer operation shows up in the connected octez node and the all the rpcs yield the
 # same result for both nodes
 ##############################################################################################################
 ---
@@ -2151,10 +2151,10 @@ depends_on:
   - build-tezedge-binaries
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer 
+# This pipeline runs tezedge node with sandbox configuration with 008 EDO protocol and does transfer
 # and integrates with baker/endorser
-# 
-# GIVEN that we run tezedge in sandbox mode with 008-edo protocol WHEN we run the octez baker and endorser 
+#
+# GIVEN that we run tezedge in sandbox mode with 008-edo protocol WHEN we run the octez baker and endorser
 # binaries THEN the tezedge node handles all the request from the baker and endorser
 ##############################################################################################################
 ---
@@ -2432,8 +2432,8 @@ depends_on:
 ##############################################################################################################
 # This pipeline runs tezedge node with sandbox configuration with 009 Florence protocol and does transfer
 # and integrates with baker/endorser
-# 
-# GIVEN that we run tezedge in sandbox mode with 009-florence protocol WHEN we run the octez baker and endorser 
+#
+# GIVEN that we run tezedge in sandbox mode with 009-florence protocol WHEN we run the octez baker and endorser
 # binaries THEN the tezedge node handles all the request from the baker and endorser
 ##############################################################################################################
 ---
@@ -2709,10 +2709,10 @@ depends_on:
   - build-tezedge-binaries
 
 ##############################################################################################################
-# This pipeline runs tezedge node with sandbox configuration with 010 Granada protocol and does transfer 
+# This pipeline runs tezedge node with sandbox configuration with 010 Granada protocol and does transfer
 # and integrates with baker/endorser
-# 
-# GIVEN that we run tezedge in sandbox mode with 010-granada protocol WHEN we run the octez baker and endorser 
+#
+# GIVEN that we run tezedge in sandbox mode with 010-granada protocol WHEN we run the octez baker and endorser
 # binaries THEN the tezedge node handles all the request from the baker and endorser
 ##############################################################################################################
 ---
@@ -2994,7 +2994,7 @@ depends_on:
 # It also runs two tz-index indexers, one indexer is indexing from octez, one from tezedge, the indexed data is
 # then compared
 #
-# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and 
+# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
@@ -3238,7 +3238,7 @@ depends_on:
 # It also runs two tz-index indexers, one indexer is indexing from octez, one from tezedge, the indexed data is
 # then compared
 #
-# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and 
+# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
@@ -3464,7 +3464,7 @@ depends_on:
 # It also runs two tz-index indexers, one indexer is indexing from octez, one from tezedge, the indexed data is
 # then compared
 #
-# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and 
+# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
@@ -3691,7 +3691,7 @@ depends_on:
 # It also runs two tz-index indexers, one indexer is indexing from octez, one from tezedge, the indexed data is
 # then compared
 #
-# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and 
+# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
@@ -3920,7 +3920,7 @@ depends_on:
 # It also runs two tz-index indexers, one indexer is indexing from octez, one from tezedge, the indexed data is
 # then compared
 #
-# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and 
+# GIVEN that we sync up a tezedge node from 3 ocaml nodes WHEN we execute the same rpcs on both nodes and
 # and index a tz-index indexer for both of them THEN both nodes yields for the same rpc calls and the indexers
 # yields the same results as well (indexer to be separated)
 ##############################################################################################################
