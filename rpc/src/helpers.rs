@@ -53,7 +53,7 @@ pub type BlockOperations = Vec<BlockValidationPass>;
 pub type BlockValidationPass = Vec<BlockOperation>;
 pub type BlockOperation = HashMap<String, Value>;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct BlockInfo {
     protocol: String,
     chain_id: String,

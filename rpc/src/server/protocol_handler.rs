@@ -9,12 +9,13 @@ use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
 use crate::services::protocol::{ContextParamsError, RightsError, VotesError};
 use crate::{required_param, result_to_json_response, services, ServiceResult};
+use std::sync::Arc;
 
 pub async fn context_constants(
     req: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -44,7 +45,7 @@ pub async fn baking_rights(
     req: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -98,7 +99,7 @@ pub async fn endorsing_rights(
     req: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -151,7 +152,7 @@ pub async fn votes_listings(
     req: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -185,12 +186,11 @@ pub async fn votes_listings(
         result_to_json_response(result.map_err(|e| e.into()), env.log())
     }
 }
-
 pub async fn call_protocol_rpc(
     req: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;

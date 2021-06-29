@@ -19,6 +19,7 @@ use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
 };
+use url::Url;
 
 use crate::ocaml_conv::ffi_error_ids;
 
@@ -742,13 +743,65 @@ impl From<TezosErrorTrace> for FfiJsonEncoderError {
 
 pub type Json = String;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
     pub meth: RpcMethod,
     pub content_type: Option<String>,
     pub accept: Option<String>,
+}
+
+fn ffi_routed_subpath(path: &str) -> String {
+    let base = Url::parse("http://tezedge.com")
+        .expect("[Unexpected] cannot parse a well formed example URL");
+    let parsed = Url::options().base_url(Some(&base)).parse(path).unwrap();
+    let normalized_path = match parsed.query() {
+        Some(query) => format!("{}?{}", parsed.path().trim_end_matches('/'), query),
+        None => parsed.path().trim_end_matches('/').to_string(),
+    };
+    let mut segments = match parsed.path_segments() {
+        Some(segments) => segments,
+        // Not the subpath we expect, bail-out
+        None => return normalized_path,
+    };
+
+    // /chain/:chain_id/blocks/:block_id
+    let (chain, _, blocks, _) = (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    );
+
+    match (chain, blocks) {
+        (Some("chain"), Some("blocks")) => (),
+        // Not the subpath we expect, bail-out
+        _ => return normalized_path,
+    }
+
+    let remaining: Vec<_> = segments.filter(|s| !s.is_empty()).collect();
+    let subpath = remaining.join("/");
+
+    // We only care about subpaths, bail-out
+    if subpath.is_empty() {
+        return normalized_path;
+    }
+
+    if let Some(query) = parsed.query() {
+        format!("/{}?{}", subpath, query)
+    } else {
+        format!("/{}", subpath)
+    }
+}
+
+impl RpcRequest {
+    /// Returns the part of the URL that the OCaml RPC router will interpret.
+    ///
+    /// The "/chain/:chan_id/blocks/:block_id" prefix is discarded if present.
+    pub fn ffi_routed_subpath(&self) -> String {
+        ffi_routed_subpath(&self.context_path)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -776,7 +829,7 @@ pub enum ProtocolRpcResponse {
     RPCUnauthorized,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RpcMethod {
     DELETE,
     GET,
@@ -1157,5 +1210,69 @@ mod tests {
             )?
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_rpc_ffi_routed_subpath() {
+        let with_prefix_to_remove = "/chain/main/blocks/head/some/subpath/url";
+        assert_eq!(
+            "/some/subpath/url".to_string(),
+            ffi_routed_subpath(with_prefix_to_remove)
+        );
+
+        let without_prefix_to_remove = "/chain/main/something/else/some/subpath/url";
+        assert_eq!(
+            without_prefix_to_remove.to_string(),
+            ffi_routed_subpath(without_prefix_to_remove)
+        );
+
+        let without_suffix = "/chain/main/blocks/head/";
+        assert_eq!(
+            "/chain/main/blocks/head".to_string(),
+            ffi_routed_subpath(without_suffix)
+        );
+
+        let without_prefix_to_remove_short = "/chain/main/";
+        assert_eq!(
+            "/chain/main".to_string(),
+            ffi_routed_subpath(without_prefix_to_remove_short)
+        );
+
+        let with_prefix_to_remove_and_query =
+            "/chain/main/blocks/head/some/subpath/url?query=args&with-slash=/slash";
+        assert_eq!(
+            "/some/subpath/url?query=args&with-slash=/slash".to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_and_query)
+        );
+
+        let without_suffix_and_query = "/chain/main/blocks/head/?query=1";
+        assert_eq!(
+            "/chain/main/blocks/head?query=1".to_string(),
+            ffi_routed_subpath(without_suffix_and_query)
+        );
+
+        let without_suffix_and_slashes = "/chain/main/blocks/head//";
+        assert_eq!(
+            "/chain/main/blocks/head".to_string(),
+            ffi_routed_subpath(without_suffix_and_slashes)
+        );
+
+        let without_suffix_and_sharp = "/chain/main/blocks/head/#";
+        assert_eq!(
+            "/chain/main/blocks/head".to_string(),
+            ffi_routed_subpath(without_suffix_and_sharp)
+        );
+
+        let with_prefix_to_remove_with_question_mark = "/chain/main?/blocks/head/some/subpath/url";
+        assert_eq!(
+            with_prefix_to_remove_with_question_mark.to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_with_question_mark)
+        );
+
+        let with_prefix_to_remove_with_sharp = "/chain/main#/blocks/head/some/subpath/url";
+        assert_eq!(
+            "/chain/main".to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_with_sharp)
+        );
     }
 }

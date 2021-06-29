@@ -14,7 +14,7 @@ mod server;
 mod services;
 
 /// Crate level custom result
-pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
 /// Generate options response with supported methods, headers
 pub(crate) fn options() -> ServiceResult {
@@ -31,7 +31,7 @@ pub(crate) fn options() -> ServiceResult {
 }
 
 /// Function to generate JSON response from serializable object
-pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
+pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/json")
         // TODO: add to config
