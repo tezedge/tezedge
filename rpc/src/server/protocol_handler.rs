@@ -185,7 +185,6 @@ pub async fn votes_listings(
         result_to_json_response(result.map_err(|e| e.into()), env.log())
     }
 }
-
 pub async fn call_protocol_rpc(
     req: Request<Body>,
     params: Params,

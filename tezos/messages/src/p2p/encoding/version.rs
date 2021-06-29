@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tezos_encoding::{encoding::HasEncoding, nom::NomReader};
 
 use super::limits::CHAIN_NAME_MAX_LENGTH;
+use std::hash::{Hash, Hasher};
 
 /// Holds informations about chain compatibility, features compatibility...
 #[derive(Serialize, Deserialize, Getters, Clone, HasEncoding, NomReader)]
@@ -52,5 +53,13 @@ impl PartialEq for NetworkVersion {
         self.chain_name == other.chain_name
             && self.distributed_db_version == other.distributed_db_version
             && self.p2p_version == other.p2p_version
+    }
+}
+
+impl Hash for NetworkVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(self.chain_name.as_bytes());
+        state.write_u16(self.distributed_db_version);
+        state.write_u16(self.p2p_version);
     }
 }
