@@ -5079,8 +5079,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
 
 depends_on:
   - verification/verify-real-time-environment
