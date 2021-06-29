@@ -40,6 +40,6 @@ Used in `./run.sh docker`, when you want to build and run light-node from actual
 e.g. for sandbox develop branch:
 ```
 docker login docker.io
-docker build -t simplestakingcom/tezedge:sandbox-latest --target sandbox --build-arg SOURCE_BRANCH=develop -f distroless/Dockerfile .
-docker push simplestakingcom/tezedge:sandbox-latest
+docker build -t tezedge/tezedge:sandbox-latest --target sandbox --build-arg SOURCE_BRANCH=develop -f distroless/Dockerfile .
+docker push tezedge/tezedge:sandbox-latest
 ```

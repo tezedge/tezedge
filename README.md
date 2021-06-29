@@ -135,7 +135,7 @@ for most of the more popular Linux distributions:
 | CentOS |  8 |
 | MacOS |  *experimental* - newer or equal to 10.13 should work |
 
-If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
+If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/tezedge/tezos-opam-builder) project.
 
 ### Prerequisites installation
 If you want to build from source code, you need to install this before:
@@ -298,17 +298,17 @@ We provide automatically built images that can be downloaded from our [Docker hu
 For instance, this can be useful when you want to run the TezEdge node in your test CI pipelines.
 
 #### Images (distroless)
-- `simplestakingcom/tezedge:latest-release` - last stable released version
-- `simplestakingcom/tezedge:latest` - actual stable development version
-- `simplestakingcom/tezedge:sandbox-latest-release` - last stable released version for sandbox launcher
-- `simplestakingcom/tezedge:sandbox-latest` - last stable released version for sandbox launcher
+- `tezedge/tezedge:latest-release` - last stable released version
+- `tezedge/tezedge:latest` - actual stable development version
+- `tezedge/tezedge:sandbox-latest-release` - last stable released version for sandbox launcher
+- `tezedge/tezedge:sandbox-latest` - last stable released version for sandbox launcher
 
 _More about building TezEdge docker images see [here](docker/README.md)._
 
 #### Run image
 
 ```
-docker run -i -t simplestakingcom/tezedge:latest --network=mainnet --p2p-port=9732
+docker run -i -t tezedge/tezedge:latest --network=mainnet --p2p-port=9732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 

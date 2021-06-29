@@ -1,6 +1,6 @@
-ARG BASE_IMAGE=simplestakingcom/tezedge-libs:latest
+ARG BASE_IMAGE=tezedge/tezedge-libs:latest
 
-FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
+FROM tezedge/tezos-opam-builder:debian10 as build-env
 
 USER root
 RUN apt-get update && apt-get install -y libssl-dev
