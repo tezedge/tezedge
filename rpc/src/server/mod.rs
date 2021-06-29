@@ -4,7 +4,7 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -26,7 +26,7 @@ use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
-use crate::{error_with_message, not_found, options};
+use crate::{error_with_message, not_found, options, CacheBody};
 
 mod dev_handler;
 mod protocol_handler;
@@ -71,6 +71,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     context_stats_db_path: Option<PathBuf>,
     pub tezedge_is_enabled: bool,
+    cache: Arc<RwLock<HashMap<String, Option<String>>>>,
 }
 
 impl RpcServiceEnvironment {
@@ -111,6 +112,7 @@ impl RpcServiceEnvironment {
             tezos_without_context_api,
             context_stats_db_path,
             tezedge_is_enabled,
+            cache: Default::default(),
         }
     }
 }
@@ -119,7 +121,7 @@ pub type Params = Vec<(String, String)>;
 
 pub type Query = HashMap<String, Vec<String>>;
 
-pub type HResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub type HResult = Result<Response<CacheBody<Body>>, Box<dyn std::error::Error + Sync + Send>>;
 
 pub type Handler = Arc<
     dyn Fn(
@@ -181,13 +183,26 @@ pub fn spawn_server(
                                 }
                                 _ => {
                                     if allowed_methods.contains(request_method) {
+                                        let uri_string = req.uri().to_string();
+                                        let cache = env.cache.clone();
+                                        if let Some(cached_response) = cache.read().unwrap().get(&uri_string).cloned() {
+                                            return Ok(Response::new(CacheBody::Ready(cached_response)));
+                                        }
                                         let params: Params = params.into_iter().map(|(param, value)| (param.to_string(), value.to_string())).collect();
                                         let query: Query = req.uri().query().map(parse_query_string).unwrap_or_else(HashMap::new);
 
                                         let handler = handler.clone();
                                         let fut = handler(req, params, query, env);
                                         match Pin::from(fut).await {
-                                            Ok(response) => Ok(response),
+                                            Ok(response) => {
+                                                // TODO: more conditions for cache
+                                                if response.status().is_success() {
+                                                    if let &CacheBody::Ready(ref s) = response.body() {
+                                                        cache.write().unwrap().insert(uri_string, s.clone());
+                                                    }
+                                                }
+                                                Ok(response)
+                                            },
                                             Err(e) => {
                                                 error!(log, "Failed to execute RPC function - unhandled error"; "reason" => format!("{:?}", &e));
                                                 error_with_message(format!("{:?}", e))
