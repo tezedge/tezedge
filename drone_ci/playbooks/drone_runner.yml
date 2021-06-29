@@ -20,12 +20,37 @@
       dest: /home/{{ target_hosts_user }}/drone_runner.sh
       mode  : 0755
 
+  # TODO: Add -nc
   - name: Download data
     shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge-ci/ -P {{ ci_data_path }}"
 
   - name: Move data to the desired location
     become: yes
     command: mv {{ ci_data_path }}/tezedge-ci /usr/local/etc/tezedge-ci
+
+  - name: SSH KeyGen command
+    shell: > 
+      ssh-keygen -q -b 2048 -t rsa -N "" -C "creating SSH" -f ~/.ssh/id_rsa
+      creates="~/.ssh/id_rsa"
+
+  - name: Fetch the keyfile from the node to master
+    fetch: 
+      src: "~/.ssh/id_rsa.pub"
+      dest: "buffer/{{ inventory_hostname }}-id_rsa.pub"
+      flat: yes
+
+  - name: Copy the key add to authorized_keys using Ansible module
+    become: yes
+    authorized_key:
+      user: "{{ target_hosts_user }}"
+      state: present
+      key: "{{ lookup('file','buffer/{{item}}-id_rsa.pub')}}"
+    when: "{{ item != inventory_hostname }}"
+    with_items: 
+      - "{{ groups['drone_runners'] }}"
+
+  - name: Copy id to tezedge-ci dir
+    command: cp ~/.ssh/id_rsa /usr/local/etc/tezedge-ci/id/id_rsa
 
   - name: Start the drone runner
     command:
