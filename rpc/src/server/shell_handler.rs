@@ -255,7 +255,10 @@ pub async fn context_raw_bytes(
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
-    let prefix = params.get_str("any");
+    let prefix = match params.get_str("any") {
+        Some(s) => Some(s.to_owned()),
+        None => None
+    };
     let depth = query.get_usize("depth");
 
     result_to_json_response(

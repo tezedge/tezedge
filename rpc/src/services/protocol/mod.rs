@@ -40,6 +40,10 @@ mod proto_007;
 mod proto_008;
 mod proto_008_2;
 
+use cached::proc_macro::cached;
+use cached::TimedCache;
+use cached::TimedSizedCache;
+use cached::SizedCache;
 #[derive(Debug, Fail)]
 pub enum RightsError {
     #[fail(display = "Rights error, reason: {}", reason)]
@@ -461,7 +465,11 @@ fn handle_rpc_response(
         ))),
     }
 }
-
+#[cached( name="CALL_PROTOCOL_RPC_CACHE",
+type = "TimedSizedCache<(String,ChainId,BlockHash,Vec<u8>), serde_json::value::Value>",
+create = "{TimedSizedCache::with_size_and_lifespan(10,20)}",
+convert = "{(chain_param.to_owned(),chain_id.clone(),block_hash.clone(),serde_json::to_vec(&rpc_request).unwrap())}",
+result = true)]
 pub(crate) fn call_protocol_rpc(
     chain_param: &str,
     chain_id: ChainId,
