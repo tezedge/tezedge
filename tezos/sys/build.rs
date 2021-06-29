@@ -48,6 +48,7 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
             "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
             "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so"),
+            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
