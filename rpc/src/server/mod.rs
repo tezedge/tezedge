@@ -39,8 +39,6 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     sys: ActorSystem,
     #[get = "pub(crate)"]
-    actor: RpcServerRef,
-    #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
@@ -76,7 +74,6 @@ pub struct RpcServiceEnvironment {
 impl RpcServiceEnvironment {
     pub fn new(
         sys: ActorSystem,
-        actor: RpcServerRef,
         shell_channel: ShellChannelRef,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -95,7 +92,6 @@ impl RpcServiceEnvironment {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
-            actor,
             shell_channel,
             tezos_environment,
             network_version,
@@ -126,7 +122,7 @@ pub type Handler = Arc<
         Request<Body>,
         Params,
         Query,
-        RpcServiceEnvironment,
+        Arc<RpcServiceEnvironment>,
     ) -> Box<dyn Future<Output = HResult> + Send>
         + Send
         + Sync,
@@ -149,7 +145,7 @@ impl MethodHandler {
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(
     bind_address: &SocketAddr,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> impl Future<Output = Result<(), hyper::Error>> {
     let routes = Arc::new(router::create_routes(env.tezedge_is_enabled));
 
