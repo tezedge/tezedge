@@ -5,8 +5,10 @@
 use hyper::{Body, Response, StatusCode};
 use slog::{error, Logger};
 
+pub use self::cache_body::CacheBody;
 pub use services::mempool_services::MempoolOperations;
 
+mod cache_body;
 pub mod encoding;
 mod helpers;
 pub mod rpc_actor;
@@ -14,7 +16,8 @@ mod server;
 mod services;
 
 /// Crate level custom result
-pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub(crate) type ServiceResult =
+    Result<Response<CacheBody<Body>>, Box<dyn std::error::Error + Sync + Send>>;
 
 /// Generate options response with supported methods, headers
 pub(crate) fn options() -> ServiceResult {
@@ -27,7 +30,7 @@ pub(crate) fn options() -> ServiceResult {
             hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
             "GET, POST, OPTIONS, PUT",
         )
-        .body(Body::empty())?)
+        .body(CacheBody::Ready(None))?)
 }
 
 /// Function to generate JSON response from serializable object
@@ -42,7 +45,7 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
             hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
             "GET, POST, OPTIONS, PUT",
         )
-        .body(Body::from(serde_json::to_string(content)?))?)
+        .body(CacheBody::Ready(Some(serde_json::to_string(content)?)))?)
 }
 
 /// Function to generate JSON response from a stream
@@ -60,7 +63,7 @@ pub(crate) fn make_json_stream_response<
             hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
             "GET, POST, OPTIONS, PUT",
         )
-        .body(Body::wrap_stream(content))?)
+        .body(CacheBody::Inner(Body::wrap_stream(content)))?)
 }
 
 /// Returns result as a JSON response.
@@ -118,7 +121,7 @@ pub(crate) fn empty() -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .body(Body::empty())?)
+        .body(CacheBody::Ready(None))?)
 }
 
 /// Generate 404 response
@@ -129,7 +132,7 @@ pub(crate) fn not_found() -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
-        .body(Body::from("not found"))?)
+        .body(CacheBody::Ready(Some("not found".to_string())))?)
 }
 
 /// Generate 500 error
@@ -146,5 +149,5 @@ pub(crate) fn error_with_message(error_msg: String) -> ServiceResult {
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
         .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .header(hyper::header::TRANSFER_ENCODING, "chunked")
-        .body(Body::from(error_msg))?)
+        .body(CacheBody::Ready(Some(error_msg)))?)
 }
