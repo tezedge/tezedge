@@ -28,8 +28,10 @@ use cached::TimedCache;
 use cached::TimedSizedCache;
 use cached::SizedCache;
 
+pub const TIMED_SIZED_CACHE_SIZE : usize = 10;
+pub const TIMED_SIZED_CACHE_TTL_IN_SECS : u64 = 20;
 /// Retrieve blocks from database.
-#[cached( name="BLOCK_HASH_CACHE",type = "TimedCache<(ChainId,BlockHash), Vec<BlockHash>>", create = "{TimedCache::with_lifespan(20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_HASH_CACHE",type = "TimedCache<(ChainId,BlockHash), Vec<BlockHash>>", create = "{TimedCache::with_lifespan(TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_block_hashes(
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -49,7 +51,7 @@ pub(crate) fn get_block_hashes(
 }
 
 /// Get block metadata
-#[cached( name="BLOCK_METADATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockMetadata>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_METADATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockMetadata>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_metadata(
     chain_id: &ChainId,
     block_hash: &BlockHash,
@@ -113,7 +115,7 @@ fn convert_block_metadata(
 }
 
 /// Get information about block header
-#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_header(
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -154,7 +156,7 @@ pub(crate) async fn get_block_header(
 }
 
 /// Get information about block shell header
-#[cached( name="BLOCK_SHELL_HEADER_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Option<BlockHeaderShellInfo>>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_SHELL_HEADER_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Option<BlockHeaderShellInfo>>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_block_shell_header(
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -165,7 +167,7 @@ pub(crate) fn get_block_shell_header(
         .map(|header| BlockHeaderShellInfo::new(&header)))
 }
 
-#[cached( name="LIVE_BLOCKS_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Vec<String>>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="LIVE_BLOCKS_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Vec<String>>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn live_blocks(
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -194,7 +196,7 @@ pub(crate) fn live_blocks(
     Ok(live_blocks)
 }
 
-#[cached( name="CONTEXT_RAW_BYTES_CACHE",type = "TimedSizedCache<(BlockHash,Option<String>,Option<usize>), StringTreeEntry>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(block_hash.clone(),prefix.clone(),depth.clone())}", result = true)]
+#[cached( name="CONTEXT_RAW_BYTES_CACHE",type = "TimedSizedCache<(BlockHash,Option<String>,Option<usize>), StringTreeEntry>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(block_hash.clone(),prefix.clone(),depth.clone())}", result = true)]
 pub(crate) fn get_context_raw_bytes(
     block_hash: &BlockHash,
     prefix: Option<String>,
@@ -217,7 +219,7 @@ pub(crate) fn get_context_raw_bytes(
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
-#[cached( name="BLOCK_PROTOCOLS_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Protocols>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_PROTOCOLS_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Protocols>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_block_protocols(
     chain_id: &ChainId,
     block_hash: &BlockHash,
@@ -239,7 +241,7 @@ pub(crate) fn get_block_protocols(
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
-#[cached( name="BLOCK_ADDITIONAL_DATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Option<BlockAdditionalData>>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_ADDITIONAL_DATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Option<BlockAdditionalData>>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_additional_data(
     chain_id: &ChainId,
     block_hash: &BlockHash,
@@ -251,7 +253,7 @@ pub(crate) fn get_additional_data(
 }
 
 /// Returns the hashes of all the operations included in the block.
-#[cached( name="BLOCK_OPERATION_HASHES_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Vec<BlockOperationsHashes>>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_OPERATION_HASHES_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Vec<BlockOperationsHashes>>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operation_hashes(
     chain_id: ChainId,
     block_hash: &BlockHash,
@@ -271,7 +273,7 @@ pub(crate) async fn get_block_operation_hashes(
 }
 
 /// Extract all the operations included in the block.
-#[cached( name="BLOCK_OPERATION_METADATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperations>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_OPERATION_METADATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperations>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operations_metadata(
     chain_id: ChainId,
     block_hash: &BlockHash,
@@ -344,7 +346,7 @@ fn convert_block_operations_metadata(
 }
 
 /// Extract all the operations included in the provided validation pass.
-#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operations_validation_pass(
     chain_id: ChainId,
     block_hash: &BlockHash,
@@ -364,7 +366,7 @@ pub(crate) async fn get_block_operations_validation_pass(
 }
 
 /// Extract a specific operation included in one of the block's validation pass.
-#[cached( name="BLOCK_OPERATION_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperation>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_OPERATION_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperation>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operation(
     chain_id: ChainId,
     block_hash: &BlockHash,
@@ -399,7 +401,7 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion 
 
 /// This is heavy operations, collects all various block data.
 /// Dont use it, it is dedicated just for one RPC
-#[cached( name="BLOCK_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockInfo>", create = "{TimedSizedCache::with_size_and_lifespan(10,20)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block(
     chain_id: &ChainId,
     block_hash: &BlockHash,
