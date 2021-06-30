@@ -32,6 +32,16 @@
       path: /usr/local/etc/tezedge-ci/tools/output-filter
       mode: "0775"
 
+  - name: Copy the key add to authorized_keys using Ansible module
+    become: yes
+    authorized_key:
+      user: "{{ target_hosts_user }}"
+      state: present
+      key: "{{ lookup('file','buffer/{{item}}-id_rsa.pub')}}"
+    when: "{{ item != inventory_hostname }}"
+    with_items: 
+      - "{{ groups['drone_runners'] }}"
+
   - name: Start the drone runner
     command:
       cmd: '/bin/bash /home/{{ target_hosts_user }}/drone_runner.sh'
