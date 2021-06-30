@@ -450,7 +450,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each 
 # scenario accordingly 
 - name: protocol-runner-acquisition-from-pool
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -5163,8 +5163,11 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10 --url-file=/perf/wrk-rpc-list-delphi.txt
   when:
     ref:
       exclude:
@@ -5215,6 +5218,9 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
 
 trigger:
   branch:
