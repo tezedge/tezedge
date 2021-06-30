@@ -220,8 +220,8 @@ node:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 volumes:
   - name: build
