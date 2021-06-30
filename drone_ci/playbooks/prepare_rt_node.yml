@@ -1,0 +1,19 @@
+
+- hosts: "real_time_runners"
+  become: yes
+  vars_files:
+    - ../vars/variables.yml
+  tasks:
+
+  # Swap out for the real time kernel
+  - name: Download new kernel files
+    shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/rt-kernel/ -P /home/{{ target_hosts_user }}"
+
+  - name: Install kernel
+    shell:
+      chdir: "/home/{{ target_hosts_user }}/rt-kernel"
+      cmd: dpkg -i linux-*.deb
+
+  - name: Reboot machine
+    reboot:
+      reboot_timeout: 300
