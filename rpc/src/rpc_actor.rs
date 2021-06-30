@@ -22,6 +22,8 @@ use tezos_wrapper::TezosApiConnectionPool;
 use crate::server::{spawn_server, RpcServiceEnvironment};
 use crate::helpers::{MAIN_CHAIN_ID, parse_chain_id};
 
+
+
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
 /// Thread safe reference to a shared RPC state
@@ -145,6 +147,10 @@ impl Receive<ShellChannelMsg> for RpcServer {
             let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
             // warm-up - calls where chain_id + block_hash
             let _ = crate::services::base_services::get_block_metadata(&chain_id, &block.hash,&self.env);
+            //let _ = crate::services::base_services::get_additional_data(&chain_id, &block.hash,&self.);
+           //let _ = crate::services::base_services::get_block(&chain_id, &block.hash,&self.env);
+            //let _ = crate::services::base_services::get_block_operation(chain_id.clone(), &block.hash,&self.env);
+
 
             let current_head_ref = &mut *self.state.write().unwrap();
             current_head_ref.current_head = Some(block);
