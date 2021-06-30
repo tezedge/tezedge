@@ -38,7 +38,7 @@ pub async fn bootstrapped(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> HResult {
     let state_read = env.state().read().unwrap();
 
@@ -61,7 +61,7 @@ pub async fn commit_hash(
     _: Request<Body>,
     _: Params,
     _: Query,
-    _: RpcServiceEnvironment,
+    _: Arc<RpcServiceEnvironment>,
 ) -> HResult {
     let resp = &UniString::from(env!("GIT_HASH"));
     make_json_response(&resp)
@@ -71,12 +71,12 @@ pub async fn active_chains(
     _: Request<Body>,
     _: Params,
     _: Query,
-    _: RpcServiceEnvironment,
+    _: Arc<RpcServiceEnvironment>,
 ) -> HResult {
     empty()
 }
 
-pub async fn protocols(_: Request<Body>, _: Params, _: Query, _: RpcServiceEnvironment) -> HResult {
+pub async fn protocols(_: Request<Body>, _: Params, _: Query, _: Arc<RpcServiceEnvironment>) -> HResult {
     empty()
 }
 
@@ -84,7 +84,7 @@ pub async fn valid_blocks(
     _: Request<Body>,
     _: Params,
     _: Query,
-    _: RpcServiceEnvironment,
+    _: Arc<RpcServiceEnvironment>,
 ) -> HResult {
     empty()
 }
@@ -93,7 +93,7 @@ pub async fn head_chain(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let _chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let protocol = if let Some(protocol) = query.get_str("next_protocol") {
@@ -102,16 +102,10 @@ pub async fn head_chain(
         None
     };
 
-    let RpcServiceEnvironment {
-        state,
-        persistent_storage,
-        ..
-    } = env;
-
     make_json_stream_response(stream_services::HeadMonitorStream::new(
-        state,
+        env.state.clone(),
         protocol,
-        &persistent_storage,
+        &env.persistent_storage,
     ))
 }
 
@@ -119,7 +113,7 @@ pub async fn mempool_monitor_operations(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
@@ -135,13 +129,10 @@ pub async fn mempool_monitor_operations(
         refused: refused == Some("yes"),
     };
 
-    let RpcServiceEnvironment {
-        state,
-        log,
-        current_mempool_state_storage,
-        ..
-    } = env;
 
+    let  state = env.state.clone();
+    let  log = env.log.clone();
+    let  current_mempool_state_storage = env.current_mempool_state_storage.clone();
     let last_checked_head = state
         .read()
         .unwrap()
@@ -164,7 +155,7 @@ pub async fn blocks(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let length = query.get_str("length").unwrap_or("0");
@@ -191,7 +182,7 @@ pub async fn chains_block_id(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -206,7 +197,7 @@ pub async fn chains_block_id_header(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -221,7 +212,7 @@ pub async fn chains_block_id_header_shell(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -236,7 +227,7 @@ pub async fn chains_block_id_metadata(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -251,7 +242,7 @@ pub async fn context_raw_bytes(
     _: Request<Body>,
     params: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -271,14 +262,11 @@ pub async fn mempool_pending_operations(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let RpcServiceEnvironment {
-        current_mempool_state_storage,
-        log,
-        ..
-    } = env;
+    let  log = env.log.clone();
+    let  current_mempool_state_storage = env.current_mempool_state_storage.clone();
     let (pending_operations, _) = services::mempool_services::get_pending_operations(
         &chain_id,
         current_mempool_state_storage,
@@ -290,7 +278,7 @@ pub async fn inject_operation(
     req: Request<Body>,
     _: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let operation_data_raw = hyper::body::aggregate(req).await?;
     let operation_data: String = serde_json::from_reader(&mut operation_data_raw.reader())?;
@@ -310,7 +298,7 @@ pub async fn inject_block(
     req: Request<Body>,
     _: Params,
     query: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
@@ -332,7 +320,7 @@ pub async fn mempool_request_operations(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_empty_json_response(
         services::mempool_services::request_operations(env.shell_channel.clone()),
@@ -344,7 +332,7 @@ pub async fn get_block_protocols(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -359,7 +347,7 @@ pub async fn get_block_hash(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -371,7 +359,7 @@ pub async fn get_chain_id(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
 
@@ -382,7 +370,7 @@ pub async fn get_metadata_hash(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -400,7 +388,7 @@ pub async fn get_operations_metadata_hash(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -418,7 +406,7 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -446,7 +434,7 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -475,7 +463,7 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -505,7 +493,7 @@ pub async fn get_block_operation_hashes(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -520,7 +508,7 @@ pub async fn get_block_operations(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -535,7 +523,7 @@ pub async fn get_block_operations_validation_pass(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -558,7 +546,7 @@ pub async fn get_block_operation(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -583,7 +571,7 @@ pub async fn live_blocks(
     _: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
@@ -598,7 +586,7 @@ pub async fn preapply_operations(
     req: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -622,7 +610,7 @@ pub async fn preapply_block(
     req: Request<Body>,
     params: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id_param = required_param!(params, "chain_id")?;
     let chain_id = parse_chain_id(chain_id_param, &env)?;
@@ -662,7 +650,7 @@ pub async fn node_version(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_json_response(
         Ok(base_services::get_node_version(env.network_version())),
@@ -674,7 +662,7 @@ pub async fn config_user_activated_upgrades(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_json_response(
         Ok(env
@@ -689,7 +677,7 @@ pub async fn config_user_activated_protocol_overrides(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_json_response(
         Ok(env
@@ -707,7 +695,7 @@ pub async fn describe(
     req: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let path: Vec<String> = req
         .uri()
@@ -789,7 +777,7 @@ pub async fn worker_prevalidators(
     _: Request<Body>,
     _: Params,
     _: Query,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_json_response(helpers::get_prevalidators(&env), env.log())
 }

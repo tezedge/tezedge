@@ -465,6 +465,13 @@ fn handle_rpc_response(
         ))),
     }
 }
+/*
+#[cached( name="CALL_PROTOCOL_RPC_CACHE",
+type = "TimedSizedCache<Vec<u8>, serde_json::value::Value>",
+create = "{TimedSizedCache::with_size_and_lifespan(250,20)}",
+convert = "{bincode::serialize(&(chain_param,&chain_id,&block_hash,&rpc_request)).unwrap()}",
+result = true)]
+ */
 #[cached( name="CALL_PROTOCOL_RPC_CACHE",
 type = "TimedSizedCache<(String,ChainId,BlockHash,Vec<u8>), serde_json::value::Value>",
 create = "{TimedSizedCache::with_size_and_lifespan(10,20)}",
