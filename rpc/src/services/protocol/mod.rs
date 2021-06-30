@@ -471,9 +471,9 @@ convert = "{bincode::serialize(&(chain_param,&chain_id,&block_hash,&rpc_request)
 result = true)]
  */
 #[cached( name="CALL_PROTOCOL_RPC_CACHE",
-type = "TimedSizedCache<(String,ChainId,BlockHash,Vec<u8>), serde_json::value::Value>",
+type = "TimedSizedCache<(String,ChainId,BlockHash,RpcRequest), serde_json::value::Value>",
 create = "{TimedSizedCache::with_size_and_lifespan(10,20)}",
-convert = "{(chain_param.to_owned(),chain_id.clone(),block_hash.clone(),serde_json::to_vec(&rpc_request).unwrap())}",
+convert = "{(chain_param.to_owned(),chain_id.clone(),block_hash.clone(),rpc_request.clone())}",
 result = true)]
 pub(crate) fn call_protocol_rpc_with_cache(
     chain_param: &str,
@@ -507,7 +507,7 @@ pub(crate) fn call_protocol_rpc(
 
     match rpc_request.meth {
         RpcMethod::GET => {
-            //uses cache if the request it is GET request
+            //uses cache if the request is GET request
             call_protocol_rpc_with_cache(chain_param,chain_id,block_hash,rpc_request,env)
         }
         _ =>{

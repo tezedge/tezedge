@@ -742,7 +742,7 @@ impl From<TezosErrorTrace> for FfiJsonEncoderError {
 
 pub type Json = String;
 
-#[derive(Serialize, Deserialize, Debug,Clone)]
+#[derive(Serialize, Deserialize, Debug,Clone,Hash, PartialEq,Eq)]
 pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
@@ -776,7 +776,7 @@ pub enum ProtocolRpcResponse {
     RPCUnauthorized,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone,Hash,PartialEq, Eq)]
 pub enum RpcMethod {
     DELETE,
     GET,
