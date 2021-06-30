@@ -18,9 +18,7 @@ use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
 };
-use tezos_api::ffi::{
-    HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest,
-};
+use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcRequest, RpcMethod};
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
@@ -477,7 +475,7 @@ type = "TimedSizedCache<(String,ChainId,BlockHash,Vec<u8>), serde_json::value::V
 create = "{TimedSizedCache::with_size_and_lifespan(10,20)}",
 convert = "{(chain_param.to_owned(),chain_id.clone(),block_hash.clone(),serde_json::to_vec(&rpc_request).unwrap())}",
 result = true)]
-pub(crate) fn call_protocol_rpc(
+pub(crate) fn call_protocol_rpc_with_cache(
     chain_param: &str,
     chain_id: ChainId,
     block_hash: BlockHash,
@@ -498,6 +496,39 @@ pub(crate) fn call_protocol_rpc(
 
     handle_rpc_response(&response, context_path)
 }
+
+pub(crate) fn call_protocol_rpc(
+    chain_param: &str,
+    chain_id: ChainId,
+    block_hash: BlockHash,
+    rpc_request: RpcRequest,
+    env: &RpcServiceEnvironment,
+) -> Result<serde_json::value::Value, failure::Error> {
+
+    match rpc_request.meth {
+        RpcMethod::GET => {
+            //uses cache if the request it is GET request
+            call_protocol_rpc_with_cache(chain_param,chain_id,block_hash,rpc_request,env)
+        }
+        _ =>{
+            let context_path = rpc_request.context_path.clone();
+            let request =
+                create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
+
+            // TODO: retry?
+            let response = env
+                .tezos_readonly_api()
+                .pool
+                .get()?
+                .api
+                .call_protocol_rpc(request)?;
+
+            handle_rpc_response(&response, context_path)
+        }
+    }
+
+}
+
 
 pub(crate) fn preapply_operations(
     chain_param: &str,
