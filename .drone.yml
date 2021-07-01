@@ -1,8 +1,4 @@
 ##############################################################################################################
-# Octez stuff is based on image tezos/tezos:v8 (if released new one, fell free to upgrade it here)
-##############################################################################################################
-
-##############################################################################################################
 # The pipelines are divided  into two categories:
 #   corr - implying that the pipeline is testing the correctness of the node
 #   perf - implying that the pipeline is testing the performance of the node
