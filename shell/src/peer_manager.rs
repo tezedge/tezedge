@@ -268,11 +268,15 @@ impl PeerManager {
     }
 
     fn calculate_count_of_required_peers(&mut self) -> Result<usize, PeerManagerError> {
-        Ok(cmp::max(
-            (self.threshold.high + 3 * self.threshold.low) / 4
-                - self.peers.connected_peers.read()?.len(),
-            self.threshold.low,
-        ))
+        // aiming at 1/4 between low and high
+        let thresh = (self.threshold.high + 3 * self.threshold.low) / 4;
+        let connected = self.peers.connected_peers.read()?.len();
+        let required = if connected > thresh {
+            0
+        } else {
+            thresh - connected
+        };
+        Ok(required)
     }
 
     /// Create new peer actor
