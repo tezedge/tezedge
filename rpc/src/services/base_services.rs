@@ -285,8 +285,18 @@ pub(crate) async fn get_block_operation_hashes(
     Ok(operations)
 }
 
+#[cached( name="BLOCK_OPERATION_METADATA_CACHE",type = "TimedSizedCache<String, BlockOperations>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{_url.clone()}", result = true)]
+pub(crate) async fn get_block_operations_metadata_cache(
+    _url: String,
+    params: Params,
+    env: Arc<RpcServiceEnvironment>,
+) -> Result<BlockOperations, failure::Error> {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    get_block_operations_metadata(chain_id, &block_hash, &env).await
+}
+
 /// Extract all the operations included in the block.
-#[cached( name="BLOCK_OPERATION_METADATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperations>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operations_metadata(
     chain_id: ChainId,
     block_hash: &BlockHash,
