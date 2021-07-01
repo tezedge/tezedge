@@ -130,7 +130,7 @@ Example of a fully edit host file:
 
 ```
 
-You can add as many *drone_runners* or *real_time_runners* as you wish. Please be aware of the *real_time_runners* hardware prerequisites talked about earlier in this readme. Note that the `drone_server` can also run a 
+You can add as many *drone_runners* or *real_time_runners* as you wish. Please be aware of the *real_time_runners* hardware prerequisites talked about earlier in this readme. Note that the `drone_server` can also run a drone_runner
 
 ### 6. Run the ansible playbooks
 
@@ -179,5 +179,36 @@ $ ansible-playbook ./playbooks/docker_setup.yml --user dev --ask-become-pass -i 
 
 After you ran all the playbooks above you can navigate to the `drone_server` url to enable the repository
 
+Follow this gif to set up the CI:
+
 ![alt text](../docs/images/drone_ui_config.gif)
 
+With these few steps we enable the repository to send webhooks to our `drone_server`. We also enable the `Trusted` setting and set the pipeline timeouts to 4 hours. 
+
+### 8. Add the drone runner ips/hosts to the synchronize_ci.sh script
+
+This script handles the distribution of the build data across all the runners and can be found in the root of the repository [here](../synchronize_ci.sh) . We need to edit the `CI_HOSTS` array in the script to have all the `drone_runners` and `real_time_runners` included. 
+
+## Run a build 
+
+Done! We now have a fully configured drone CI with all the data required to run the test pipelines.
+
+To run a build:
+
+- Create a custom branch
+```
+$ git checkout -b ci/testing
+```
+
+- Commit all of the changes
+```
+$ git commit -m "Our new CI setup"
+```
+
+- Push the changes to the remote github repository
+
+```
+$ git push origin ci/testing
+```
+
+Now all we have to do is to create a pull request to the develop branch. After the pull request creation, we will notice a new build in our `drone_server` webpage. 
