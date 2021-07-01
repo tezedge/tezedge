@@ -199,9 +199,7 @@ pub async fn chains_block_id_header(
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
-    let res = base_services::get_block_header(req.uri().to_string(), chain_id, block_hash, env.persistent_storage()).await;
+    let res = base_services::get_block_header_cached(req.uri().to_string(), params, env.clone()).await;
     /// For debugging only, TODO : Remove
     {
         use cached::Cached; // must be in scope to access cache
