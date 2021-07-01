@@ -17,7 +17,7 @@ Our CI of choice was [drone](https://www.drone.io/). The following readme was de
     - `Homepage URL`: The url of the `drone_server` with an empty path component (E.g.: http://ci.tezedgem.com)
     - `Authorization callback URL`: The url of the `drone_server` with a `login` path component (E.g.: http://ci.tezedgem.com/login)
 
-- After you have created the OAuth app, you will be redirected to the configuration page. 
+- After we have created the OAuth app, we will be redirected to the configuration page. 
 
 - Create a client secret and copy it. Be careful! You can only see the secret once. 
 
@@ -29,7 +29,7 @@ The whole process is captured on the following gif:
 
 ### 2. Create a shared secret
 
-The shared secret is used to authenticate communication between runners and your `drone_server`.
+The shared secret is used to authenticate communication between runners and our `drone_server`.
 
 - To create a shared secret, run the following command in a terminal
 ```
@@ -50,7 +50,7 @@ $ sudo apt install ansible
 
 ### 4. Fork and clone the forked tezedge repository.
 
-Fork is important if you want to run your own CI environment as the drone CI runs builds via github webhooks.
+Fork is important if we want to run our own CI environment as the drone CI runs builds via github webhooks.
 
 ```
 $ git clone https://github.com/tezedgeUser/tezedge.git
@@ -59,17 +59,17 @@ TODO: use this command until not merged into master
 $ git clone https://github.com/tezedgeUser/tezedge.git --branch ci/ansible
 ```
 
-Please replace `tezedgeUser` in the link with your own github username. 
+Note: Please replace `tezedgeUser` in the link with your own github username. 
 
 ### 5. Edit variables and hosts 
     
-Before we run the playbooks, we need to set a few variables that are used in the configuration. In the vars directory, you need to 
+Before we run the playbooks, we need to set a few variables that are used in the configuration. In the vars directory, we need to 
 edit the [variables.yml](vars/variables.yml)
 
-There are 6 variables you need to set before continuing
+There are 6 variables we need to set before continuing
 
 ```
-drone_server: The ip/hostname of the machine you wish to set as a server
+drone_server: The ip/hostname of the machine we wish to set as a server
 
 # User with the ssh connects to the target machines
 target_hosts_user: The username with sudo permissions on the target hosts
@@ -114,7 +114,7 @@ ssh_config_file: "/home/{{ target_hosts_user }}/.ssh/config"
 
 ```
 
-The next file you should edit is the [hosts](inventory/hosts) file. This file is in ini format and contains all the hosts you wish to connect to.
+The next file we should edit is the [hosts](inventory/hosts) file. This file is in ini format and contains all the hosts we wish to connect to.
 
 Example of a fully edit host file:
 ```
@@ -130,15 +130,15 @@ Example of a fully edit host file:
 
 ```
 
-You can add as many *drone_runners* or *real_time_runners* as you wish. Please be aware of the *real_time_runners* hardware prerequisites talked about earlier in this readme. Note that the `drone_server` can also run a drone_runner
+You can add as many *drone_runners* or *real_time_runners* as we wish. Please be aware of the *real_time_runners* hardware prerequisites talked about earlier in this readme. Note that the `drone_server` can also run a drone_runner
 
 ### 6. Run the ansible playbooks
 
-**Please keep in mind that you have to run these playbooks in this exact order**
+**Please keep in mind that we have to run these playbooks in this exact order**
 
-Once all the variables and hosts are set you can proceed to execute the ansible playbooks. Please double check that you can connect to the target hosts with public key authentication. 
+Once all the variables and hosts are set we can proceed to execute the ansible playbooks. Please double check that we can connect to the target hosts with public key authentication. 
 
-We use the `ansible-playbook` command to execute the playbooks. Here we provide a description for an example `ansible-playbook` command. Use the same user as the `target_hosts_user` you set in the variables.yml. 
+We use the `ansible-playbook` command to execute the playbooks. Here we provide a description for an example `ansible-playbook` command. Use the same user as the `target_hosts_user` we set in the variables.yml. 
 ```
 $ ansible-playbook ./playbooks/docker_setup.yml --user dev --ask-become-pass -i ./inventory/hosts
                      |                              |          |                |
@@ -148,6 +148,8 @@ $ ansible-playbook ./playbooks/docker_setup.yml --user dev --ask-become-pass -i 
                      -------> the specific playbook we are running
 
 ```
+
+After the we run the command, ansible will ask for the `BECOME` password. You must enter the user's password, so ansible can execute sudo commands on the host.
 
 - The first one we run is [docker_setup](playbooks/docker_setup.yml). This playbook prepares the hosts for the docker containers that drone runs in. It installs all the prerequisite packages for docker and docker itself.
 
@@ -177,7 +179,7 @@ $ ansible-playbook ./playbooks/docker_setup.yml --user dev --ask-become-pass -i 
     Please note that both playbooks will stay on `Download data` task quite a long time as they are downloading approximately 29 GB of data for each host.
 ### 7. Enable and setup the tezedge repository 
 
-After you ran all the playbooks above you can navigate to the `drone_server` url to enable the repository
+After we ran all the playbooks above we can navigate to the `drone_server` url to enable the repository
 
 Follow this gif to set up the CI:
 
@@ -202,7 +204,7 @@ $ git checkout -b ci/testing
 
 - Commit all of the changes
 ```
-$ git commit -m "Our new CI setup"
+$ git add . && git commit -m "Our new CI setup"
 ```
 
 - Push the changes to the remote github repository
