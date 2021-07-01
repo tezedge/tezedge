@@ -39,6 +39,7 @@ hex = "0.4"
 lazy_static = "1.4"
 rand = "0.7.3"
 serde_json = "1.0"
+criterion = "0.3"
 fs_extra = "1.2.0"
 # TODO - TE-498 - remove dependency to OLD commit log
 commitlog = "0.1"
