@@ -12,24 +12,27 @@ use storage::{
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_new_context::{context_key_owned, StringTreeEntry};
 
-use crate::helpers::{
-    get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata,
-    BlockOperation, BlockOperations, BlockValidationPass, InnerBlockHeader, NodeVersion, Protocols,
-};
-use crate::server::RpcServiceEnvironment;
+use crate::helpers::{get_context_hash, BlockHeaderInfo, BlockHeaderShellInfo, BlockInfo, BlockMetadata, BlockOperation, BlockOperations, BlockValidationPass, InnerBlockHeader, NodeVersion, Protocols, parse_chain_id, parse_block_hash};
+use crate::server::{RpcServiceEnvironment, Params};
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlocksMessage;
 use tezos_messages::ts_to_rfc3339;
-
+use crate::required_param;
 pub type BlockOperationsHashes = Vec<String>;
 
 use cached::proc_macro::cached;
 use cached::TimedCache;
 use cached::TimedSizedCache;
 use cached::SizedCache;
+use std::sync::Arc;
+use crate::{ServiceResult, result_to_json_response};
+use crate::server::HasSingleValue;
 
 pub const TIMED_SIZED_CACHE_SIZE : usize = 10;
 pub const TIMED_SIZED_CACHE_TTL_IN_SECS : u64 = 20;
+
+use hyper::{Body, Response};
+
 /// Retrieve blocks from database.
 #[cached( name="BLOCK_HASH_CACHE",type = "TimedCache<(ChainId,BlockHash), Vec<BlockHash>>", create = "{TimedCache::with_lifespan(TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_block_hashes(
@@ -113,11 +116,20 @@ fn convert_block_metadata(
 
     serde_json::from_str::<BlockMetadata>(&response).map_err(|e| e.into())
 }
+//TODO: Maybe moved to another module to avoid confusion
+#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<String, BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{_url.clone()}", result = true)]
+pub(crate) async fn get_block_header_cached(
+    _url : String,
+    params: Params,
+    env : Arc<RpcServiceEnvironment>
+) -> Result<BlockHeaderInfo, failure::Error> {
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+    get_block_header(chain_id,block_hash,env.persistent_storage()).await
+}
 
 /// Get information about block header
-#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<String, BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{url.clone()}", result = true)]
 pub(crate) async fn get_block_header(
-    url : String,
     chain_id: ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
