@@ -194,22 +194,22 @@ pub async fn chains_block_id(
 }
 
 pub async fn chains_block_id_header(
-    _: Request<Body>,
+    req: Request<Body>,
     params: Params,
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
-    let res = base_services::get_block_header(chain_id, block_hash, env.persistent_storage()).await;
+    let res = base_services::get_block_header(req.uri().to_string(), chain_id, block_hash, env.persistent_storage()).await;
     /// For debugging only, TODO : Remove
     {
         use cached::Cached; // must be in scope to access cache
 
         println!(" ** Cache info **");
         let cache = base_services::BLOCK_HEADER_CACHE.lock().await;
-        println!("hits -> {:?}", cache.cache_hits());
-        println!("misses -> {:?}", cache.cache_misses());
+        println!("hits -> {:?}", cache.cache_hits().unwrap_or_default());
+        println!("misses -> {:?}", cache.cache_misses().unwrap_or_default());
         // make sure the cache-lock is dropped
     }
 
