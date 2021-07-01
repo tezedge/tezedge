@@ -142,11 +142,11 @@ impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+            if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
             // prepare main chain_id
-            let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
+            //let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
             // warm-up - calls where chain_id + block_hash
-            let _ = crate::services::base_services::get_block_metadata(&chain_id, &block.hash,&self.env);
+            //let _ = crate::services::base_services::get_block_metadata(&chain_id, &block.hash,&self.env);
             //let _ = crate::services::base_services::get_additional_data(&chain_id, &block.hash,&self.);
            //let _ = crate::services::base_services::get_block(&chain_id, &block.hash,&self.env);
             //let _ = crate::services::base_services::get_block_operation(chain_id.clone(), &block.hash,&self.env);
