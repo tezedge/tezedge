@@ -3144,7 +3144,6 @@ dependencies = [
  "bincode",
  "cached",
  "chrono",
- "criterion",
  "crypto",
  "failure",
  "futures",
