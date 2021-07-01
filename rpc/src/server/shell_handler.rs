@@ -514,16 +514,14 @@ pub async fn get_block_operation_hashes(
 }
 
 pub async fn get_block_operations(
-    _: Request<Body>,
+    req: Request<Body>,
     params: Params,
     _: Query,
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
-    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
-    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        base_services::get_block_operations_metadata(chain_id, &block_hash, &env).await,
+        base_services::get_block_operations_metadata_cache(req.uri().to_string(), params, env.clone()).await,
         env.log(),
     )
 }
