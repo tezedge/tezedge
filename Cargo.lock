@@ -3753,6 +3753,7 @@ dependencies = [
  "bytes 1.0.1",
  "clap",
  "commitlog",
+ "criterion",
  "crypto",
  "derive_builder",
  "failure",
