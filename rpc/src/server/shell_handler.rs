@@ -538,15 +538,25 @@ pub async fn get_block_operations_validation_pass(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
+    let res = base_services::get_block_operations_validation_pass(
+        chain_id,
+        &block_hash,
+        &env,
+        validation_pass,
+    )
+        .await;
+    /// For debugging only, TODO : Remove
+    {
+        use cached::Cached; // must be in scope to access cache
 
+        println!(" ** Cache info BLOCK_OPERATION_VP_CACHE **");
+        let cache = base_services::BLOCK_OPERATION_VP_CACHE.lock().await;
+        println!("hits -> {:?}", cache.cache_hits().unwrap_or_default());
+        println!("misses -> {:?}", cache.cache_misses().unwrap_or_default());
+        // make sure the cache-lock is dropped
+    }
     result_to_json_response(
-        base_services::get_block_operations_validation_pass(
-            chain_id,
-            &block_hash,
-            &env,
-            validation_pass,
-        )
-        .await,
+        res,
         env.log(),
     )
 }
