@@ -131,6 +131,7 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
     // get file: $ curl <remote_url> --output <dest_path>
     Command::new("curl")
         .args(&[
+            "-L",
             remote_file.file_url.as_str(),
             "--output",
             dest_path.as_os_str().to_str().unwrap(),
@@ -146,7 +147,7 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
 
     // get sha256 checksum file: $ curl <remote_url>
     let remote_file_sha256: Output = Command::new("curl")
-        .args(&[remote_file.sha256_checksum_url.as_str()])
+        .args(&["-L", remote_file.sha256_checksum_url.as_str()])
         .output()
         .unwrap_or_else(|_| {
             panic!(

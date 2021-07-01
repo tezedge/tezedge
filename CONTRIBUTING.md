@@ -31,5 +31,5 @@ For more informations see [Contribution]
 
 [Contribution]: https://docs.tezedge.com/tezedge/contribution
 [code of conduct]: https://thoughtbot.com/open-source-code-of-conduct
-[pr]: https://github.com/simplestaking/tezedge/compare/
+[pr]: https://github.com/tezedge/tezedge/compare/
 [gitflow workflow]: https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow

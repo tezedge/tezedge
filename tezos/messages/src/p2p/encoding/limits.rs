@@ -7,7 +7,7 @@ use crypto::hash::HashType;
 ///
 /// OCaml refs:
 ///
-/// [lib_p2p/p2p_message.ml:37](https://gitlab.com/simplestaking/tezos/-/blob/9aac95765dc8290ce2f722b7bd71042ff9609f46/src/lib_p2p/p2p_message.ml#L37)
+/// [lib_p2p/p2p_message.ml:37](https://gitlab.com/tezedge/tezos/-/blob/9aac95765dc8290ce2f722b7bd71042ff9609f46/src/lib_p2p/p2p_message.ml#L37)
 /// ```ocaml
 /// let encoding msg_encoding =
 ///  let open Data_encoding in
@@ -35,7 +35,7 @@ pub const MESSAGE_MAX_SIZE: usize = 4 +         // dynamic block size
 /// tezos/src/lib_p2p/p2p_message.ml:64 (comment)
 ///
 /// lib_base/p2p_point.ml:127
-/// [lib_base/p2p_point.ml#L127](https://gitlab.com/simplestaking/tezos/-/blob/736f733f661877b5868f96d5c878f3f4a0486cb6/src/lib_base/p2p_point.ml#L127)
+/// [lib_base/p2p_point.ml#L127](https://gitlab.com/tezedge/tezos/-/blob/736f733f661877b5868f96d5c878f3f4a0486cb6/src/lib_base/p2p_point.ml#L127)
 /// ```ocaml
 ///   let encoding =
 ///   let open Data_encoding in
@@ -57,7 +57,7 @@ pub const P2P_POINT_MAX_LENGTH: usize = P2P_POINT_MAX_SIZE - 4; // 47
 /// NACK's `potential_peers_to_connect` maximal length
 ///
 /// OCaml refs:
-/// [lib_p2p/p2p_socket.ml:252](https://gitlab.com/simplestaking/tezos/-/blob/8166ed7ad215544be69241df99af95deebeaeee3/src/lib_p2p/p2p_socket.ml#L252)
+/// [lib_p2p/p2p_socket.ml:252](https://gitlab.com/tezedge/tezos/-/blob/8166ed7ad215544be69241df99af95deebeaeee3/src/lib_p2p/p2p_socket.ml#L252)
 /// ```ocaml
 ///     let nack_encoding =
 ///      obj2
@@ -99,7 +99,7 @@ pub const ADVERTISE_ID_LIST_MAX_LENGTH_FOR_SEND: usize = 50;
 /// OCaml refs:
 ///
 /// `block_locator_max_length` in
-/// [lib_shell/distributed_db_message.ml:32](https://gitlab.com/simplestaking/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L32)
+/// [lib_shell/distributed_db_message.ml:32](https://gitlab.com/tezedge/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L32)
 ///
 /// ```ocaml
 ///   let block_locator_max_length = ref 1000
@@ -122,7 +122,7 @@ pub const HISTORY_MAX_SIZE: u8 = 200;
 /// Block header max size
 ///
 /// OCaml refs:
-/// [lib_shell/distributed_db_message.ml:30](https://gitlab.com/simplestaking/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L30)
+/// [lib_shell/distributed_db_message.ml:30](https://gitlab.com/tezedge/tezos/-/blob/922212530bf3442ab5535072ee95c406a0203816/src/lib_shell/distributed_db_message.ml#L30)
 /// `block_header_max_size`
 ///
 /// ```ocaml
@@ -155,7 +155,7 @@ pub const PROTOCOL_MAX_SIZE: usize = 2 * 1024 * 1024;
 /// OCaml refs:
 ///
 /// `mempool_max_operations` in
-/// [lib_shell/distributed_db_message.ml:142](https://gitlab.com/simplestaking/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_shell/distributed_db_message.ml#L142)
+/// [lib_shell/distributed_db_message.ml:142](https://gitlab.com/tezedge/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_shell/distributed_db_message.ml#L142)
 /// ```ocaml
 ///   let mempool_max_operations = ref (Some 4000)
 /// ```
@@ -165,7 +165,7 @@ pub const MEMPOOL_MAX_OPERATIONS: usize = 4000;
 ///
 /// OCaml refs:
 ///
-/// [lib_base/mempool.ml:44](https://gitlab.com/simplestaking/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_base/mempool.ml#L44)
+/// [lib_base/mempool.ml:44](https://gitlab.com/tezedge/tezos/-/blob/3c6f7c0126472693cd2cd5208e5301aae9283dde/src/lib_base/mempool.ml#L44)
 /// ```ocaml
 /// let bounded_encoding ?max_operations () =
 ///  match max_operations with

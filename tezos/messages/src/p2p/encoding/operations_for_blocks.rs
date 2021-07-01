@@ -33,7 +33,7 @@ use super::limits::{GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH, OPERATION_LIST_MAX_SIZ
 ///
 /// `let operation_max_pass = ref (Some 8) (* FIXME: arbitrary *)`
 ///
-/// See https://gitlab.com/simplestaking/tezos/-/blob/master/src/lib_shell/distributed_db_message.ml#L65
+/// See https://gitlab.com/tezedge/tezos/-/blob/master/src/lib_shell/distributed_db_message.ml#L65
 ///
 /// A  Merkle tree for that list of lenght 8 will be 3 (log_2(8)) levels at most,
 /// thus any path should be 3 steps at most.
