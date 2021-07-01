@@ -5187,8 +5187,11 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-old-node=$${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10 --url-file=/perf/wrk-rpc-list-delphi.txt
   when:
     ref:
     - refs/pull/*/head
