@@ -3548,7 +3548,7 @@ dependencies = [
 [[package]]
 name = "shiplift"
 version = "0.7.0"
-source = "git+https://github.com/simplestaking/shiplift.git?branch=master#f5017f603afab9821966032ea652cb3161051f17"
+source = "git+https://github.com/tezedge/shiplift.git?branch=master#f5017f603afab9821966032ea652cb3161051f17"
 dependencies = [
  "base64",
  "byteorder",

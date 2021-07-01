@@ -7,7 +7,7 @@ You can setup how the code in this package is built and linked by setting corres
 
 By default, precompiled `libtezos-ffi` binaries will be downloaded when building this library:
 
-* For list of supported platform visit [releases](https://gitlab.com/simplestaking/tezos/-/releases) page.
+* For list of supported platform visit [releases](https://gitlab.com/tezedge/tezos/-/releases) page.
 * Last supported release with distribuitions are configured in `build.rs` as `GIT_RELEASE_DISTRIBUTIONS_URL` which points to `libtezos-ffi-distribution-summary.json`
 * The build script automatically detects the host operating system and downloads the correct pre-built `tezos-ffi` library.
 

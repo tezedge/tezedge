@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::env;
@@ -42,6 +42,7 @@ fn get_remote_libs() -> Vec<RemoteLib> {
             "18.04" | "18.10" => Some("ubuntu18"),
             "19.04" | "19.10" => Some("ubuntu19"),
             "20.04" | "20.10" => Some("ubuntu20"),
+            "21.04" | "21.10" => Some("ubuntu21"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
@@ -107,14 +108,14 @@ fn get_remote_libs() -> Vec<RemoteLib> {
                             "cargo:warning=No precompiled library found for '{:?}'.",
                             platform
                         );
-                        println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+                        println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
                         panic!("No precompiled library");
                     }
                 }
             }
             None => {
                 println!("cargo:warning=Not yet supported platform: '{:?}', requested artifact_for_platform: {:?}!", platform, required_artifact);
-                println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+                println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
                 panic!("Not yet supported platform!");
             }
         }
@@ -150,6 +151,7 @@ fn run_builder(build_chain: &str) {
                 let lib_path = Path::new("artifacts").join(&remote_lib.name);
                 Command::new("curl")
                     .args(&[
+                        "-L",
                         remote_lib.lib_url.as_str(),
                         "--output",
                         lib_path.as_os_str().to_str().unwrap(),
@@ -159,7 +161,7 @@ fn run_builder(build_chain: &str) {
 
                 // get sha256 checksum file: $ curl <remote_url>
                 let remote_lib_sha256: Output = Command::new("curl")
-                    .args(&[remote_lib.sha256_checksum_url.as_str()])
+                    .args(&["-L", remote_lib.sha256_checksum_url.as_str()])
                     .output()
                     .unwrap_or_else(|_| {
                         panic!(

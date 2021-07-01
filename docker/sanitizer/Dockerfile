@@ -1,9 +1,9 @@
-FROM simplestakingcom/tezos-opam-builder:debian10 as build-env
+FROM tezedge/tezos-opam-builder:debian10 as build-env
 
 # Checkout and compile tezedge source code
 USER root
 
-ARG tezedge_git="https://github.com/simplestaking/tezedge.git"
+ARG tezedge_git="https://github.com/tezedge/tezedge.git"
 ARG rust_toolchain="nightly-2020-12-31"
 ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo

@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::env;
@@ -48,6 +48,7 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
             "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
             "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so"),
+            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
@@ -89,14 +90,14 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
                         "cargo:warning=No precompiled library found for '{:?}'.",
                         platform
                     );
-                    println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+                    println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
                     panic!("No precompiled library");
                 }
             }
         }
         None => {
             println!("cargo:warning=Not yet supported platform: '{:?}', requested artifact_for_platform: {:?}!", platform, artifact_for_platform);
-            println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+            println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
             panic!("Not yet supported platform!");
         }
     }
@@ -130,6 +131,7 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
     // get file: $ curl <remote_url> --output <dest_path>
     Command::new("curl")
         .args(&[
+            "-L",
             remote_file.file_url.as_str(),
             "--output",
             dest_path.as_os_str().to_str().unwrap(),
@@ -145,7 +147,7 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
 
     // get sha256 checksum file: $ curl <remote_url>
     let remote_file_sha256: Output = Command::new("curl")
-        .args(&[remote_file.sha256_checksum_url.as_str()])
+        .args(&["-L", remote_file.sha256_checksum_url.as_str()])
         .output()
         .unwrap_or_else(|_| {
             panic!(

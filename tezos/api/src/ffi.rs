@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
@@ -742,13 +742,47 @@ impl From<TezosErrorTrace> for FfiJsonEncoderError {
 
 pub type Json = String;
 
-#[derive(Serialize, Deserialize, Debug,Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
     pub meth: RpcMethod,
     pub content_type: Option<String>,
     pub accept: Option<String>,
+}
+
+fn ffi_routed_subpath(path: &str) -> String {
+    let fragments: Vec<&str> = path.splitn(6, '/').collect();
+
+    // Uncomment this to aid debugging is something fails
+    // println!("Fragments: {:?}", fragments);
+
+    if fragments.len() == 6
+        && fragments[0] == ""
+        && fragments[1] == "chain"
+        && fragments[3] == "blocks"
+        && fragments[5].len() > 0
+        && !fragments[2].contains('?')
+        && !fragments[2].contains('#')
+        && !fragments[4].contains('?')
+        && !fragments[4].contains('#')
+        && !fragments[5].starts_with('?')
+        && !fragments[5].starts_with('/')
+        && !fragments[5].starts_with('#')
+    {
+        format!("/{}", fragments[5])
+    } else {
+        path.to_string()
+    }
+}
+
+impl RpcRequest {
+    /// Returns the part of the URL that the OCaml RPC router will interpret.
+    ///
+    /// The "/chain/:chan_id/blocks/:block_id" prefix is discarded if present.
+    pub fn ffi_routed_subpath(&self) -> String {
+        ffi_routed_subpath(&self.context_path)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -1157,5 +1191,69 @@ mod tests {
             )?
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_rpc_ffi_routed_subpath() {
+        let with_prefix_to_remove = "/chain/main/blocks/head/some/subpath/url";
+        assert_eq!(
+            "/some/subpath/url".to_string(),
+            ffi_routed_subpath(with_prefix_to_remove)
+        );
+
+        let without_prefix_to_remove = "/chain/main/something/else/some/subpath/url";
+        assert_eq!(
+            without_prefix_to_remove.to_string(),
+            ffi_routed_subpath(without_prefix_to_remove)
+        );
+
+        let without_suffix = "/chain/main/blocks/head/";
+        assert_eq!(
+            without_suffix.to_string(),
+            ffi_routed_subpath(without_suffix)
+        );
+
+        let without_prefix_to_remove_short = "/chain/main/";
+        assert_eq!(
+            without_prefix_to_remove_short.to_string(),
+            ffi_routed_subpath(without_prefix_to_remove_short)
+        );
+
+        let with_prefix_to_remove_and_query =
+            "/chain/main/blocks/head/some/subpath/url?query=args&with-slash=/slash";
+        assert_eq!(
+            "/some/subpath/url?query=args&with-slash=/slash".to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_and_query)
+        );
+
+        let without_suffix_and_query = "/chain/main/blocks/head/?query=1";
+        assert_eq!(
+            without_suffix_and_query.to_string(),
+            ffi_routed_subpath(without_suffix_and_query)
+        );
+
+        let without_suffix_and_slashes = "/chain/main/blocks/head//";
+        assert_eq!(
+            without_suffix_and_slashes.to_string(),
+            ffi_routed_subpath(without_suffix_and_slashes)
+        );
+
+        let without_suffix_and_sharp = "/chain/main/blocks/head/#";
+        assert_eq!(
+            without_suffix_and_sharp.to_string(),
+            ffi_routed_subpath(without_suffix_and_sharp)
+        );
+
+        let with_prefix_to_remove_with_question_mark = "/chain/main?/blocks/head/some/subpath/url";
+        assert_eq!(
+            with_prefix_to_remove_with_question_mark.to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_with_question_mark)
+        );
+
+        let with_prefix_to_remove_with_sharp = "/chain/main#/blocks/head/some/subpath/url";
+        assert_eq!(
+            with_prefix_to_remove_with_sharp.to_string(),
+            ffi_routed_subpath(with_prefix_to_remove_with_sharp)
+        );
     }
 }

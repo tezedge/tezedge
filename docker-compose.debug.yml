@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-debugger:
-    image: simplestakingcom/tezedge-debugger:latest-release
+    image: tezedge/tezedge-debugger:latest-release
     privileged: true
     environment:
       - RUST_BACKTRACE=1
@@ -18,7 +18,7 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: simplestakingcom/tezedge:latest-release
+    image: tezedge/tezedge:latest-release
     command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}"]
     logging:
       # Produce syslogs instead of terminal logs
@@ -36,7 +36,7 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: simplestakingcom/tezedge-explorer:latest-release
+    image: tezedge/tezedge-explorer:latest-release
     environment:
       - DEBUGGER=http://localhost:17732
       # need a better way to provide such information
