@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! Test node peer, which simulates p2p remote peer, communicates through real p2p socket

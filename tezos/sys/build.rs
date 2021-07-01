@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::env;
@@ -48,6 +48,7 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
             "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
             "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
             "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so"),
+            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
@@ -89,14 +90,14 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
                         "cargo:warning=No precompiled library found for '{:?}'.",
                         platform
                     );
-                    println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+                    println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
                     panic!("No precompiled library");
                 }
             }
         }
         None => {
             println!("cargo:warning=Not yet supported platform: '{:?}', requested artifact_for_platform: {:?}!", platform, artifact_for_platform);
-            println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/simplestaking/tezos-opam-builder".bright_white());
+            println!("{}", "To add support for your platform create a PR or open a new issue at https://github.com/tezedge/tezos-opam-builder".bright_white());
             panic!("Not yet supported platform!");
         }
     }

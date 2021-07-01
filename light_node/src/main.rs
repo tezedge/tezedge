@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 // NOTE: unsafe cannot be forbidden right now because of code in systems.rs
 // #![forbid(unsafe_code)]

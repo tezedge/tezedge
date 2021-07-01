@@ -59,7 +59,7 @@ environment:
 steps:
 
 - name: build-artifacts
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: always
   user: root
   volumes:
@@ -187,7 +187,7 @@ environment:
 steps:
 
 - name: generate-artificial-load
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   privileged: true
   detach: true
   user: root
@@ -208,7 +208,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   privileged: true
   user: root
   volumes:
@@ -275,7 +275,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   - name: tezedge-updated-node-run-mainnet
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -295,7 +295,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --network $${TEZEDGE_NETWORK} --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_6.json" --protocol-runner $${CACHE_DATA_PATH}/protocol-runner --tezos-data-dir $${CACHE_DATA_PATH}/tezos-node-data --bootstrap-db-path $${CACHE_DATA_PATH}/light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RUN_MAINNET_RPC_CONTEXT_ROOT}
@@ -319,7 +319,7 @@ steps:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${OCTEZ_NETWORK} --no-bootstrap-peers
 
   - name: wait-octez-node-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -350,7 +350,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$error" "no common network protocol"
 
   - name: check-octez-still-running
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -390,7 +390,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   environment:
@@ -426,10 +426,10 @@ environment:
 
 steps:
 
-# GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and 
+# GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and
 # all of then should initialize the context
 - name: protocol-runner-writable-and-readonly-context
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -450,7 +450,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each 
 # scenario accordingly 
 - name: protocol-runner-acquisition-from-pool
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -468,10 +468,10 @@ steps:
     - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
     - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_readonly_protocol_runner_connection_pool
 
-# GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to 
+# GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to
 # the new head
 - name: shell-current-head
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -493,7 +493,7 @@ steps:
 # GIVEN we have one node with genesis and one node with level 3 WHEN we connect them a current branch is sent to the node with genesis
 # and THEN it bootstraps to level 3 then a new current_head is sent and applied by both nodes
 - name: shell-current-branch-then-current-head
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -514,7 +514,7 @@ steps:
 
 # GIVEN we run two nodes(1,2) with different branches WHEN we connect the two nodes THEN both branches are present in node 1
 - name: shell-simple-reorg
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -536,7 +536,7 @@ steps:
 # GIVEN we run two connected tezedge nodes WHEN one node sends CurrentHead with hacked protocol data THEN the node should blacklist
 # the node sending the hacked data
 - name: shell-multipass-blacklisting
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -558,7 +558,7 @@ steps:
 # GIVEN a mocke node on level 3 (level 7 is the current chain head) WHEN the node receives all CurrentHeadMessages THEN
 # the node is considered bootstrapped and mempool is activated
 - name: shell-bootstrapping-current-branch/heads
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -577,10 +577,10 @@ steps:
     - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
     - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrapping_current_branch_on_level3_then_current_heads
 
-# GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis 
+# GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis
 # bootstraps to level 1324 and has its memool functional
 - name: shell-bootstrap-and-mempool
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -602,7 +602,7 @@ steps:
 # GIVEN we are running tezedge node WHEN accept connections from the network THEN we are not passing a the defined threshold with the
 # number of connected peers
 - name: p2p-comply-with-max-threshold
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -624,7 +624,7 @@ steps:
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
 # the connection should succeed 
 - name: p2p-pow-success
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -646,7 +646,7 @@ steps:
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
 # the connection should fail 
 - name: p2p-pow-fail
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -666,7 +666,7 @@ steps:
     - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_fail
 
 - name: replay-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   user: root
   pull: if-not-exists
   volumes:
@@ -686,7 +686,7 @@ steps:
 
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: simplestakingcom/tezedge-ci-builder:latest
+#   image: tezedge/tezedge-ci-builder:latest
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -773,7 +773,7 @@ environment:
 steps:
 
 - name: prepare-python-tests
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -803,7 +803,7 @@ steps:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
 - name: baker-endorser-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -821,7 +821,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -837,7 +837,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -853,7 +853,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -869,7 +869,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
 - name: fork-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -886,7 +886,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
 - name: double-endorsement-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -903,7 +903,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
 - name: test-programs
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -919,7 +919,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
 - name: test-many-bakers
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -935,7 +935,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
 - name: test-contract-baker-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -951,7 +951,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
 - name: test-contract-annotations-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   user: root
   volumes:
@@ -970,7 +970,7 @@ steps:
   failure: ignore
 
 - name: basic-test
-  image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+  image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
   pull: if-not-exists
   # TODO: TE-275 remove failure: ignore
   # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1032,7 +1032,7 @@ environment:
 steps:
 
   - name: prepare-python-tests
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1062,7 +1062,7 @@ steps:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
   - name: baker-endorser-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1080,7 +1080,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1096,7 +1096,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1112,7 +1112,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1128,7 +1128,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1145,7 +1145,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1162,7 +1162,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1178,7 +1178,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1194,7 +1194,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1210,7 +1210,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1229,7 +1229,7 @@ steps:
     failure: ignore
 
   - name: basic-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1290,7 +1290,7 @@ environment:
 steps:
 
   - name: prepare-python-tests
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1320,7 +1320,7 @@ steps:
       - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
   - name: baker-endorser-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1338,7 +1338,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
   - name: test-many-nodes
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1354,7 +1354,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
   - name: test-multinode
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1370,7 +1370,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
   - name: mempool-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1386,7 +1386,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_mempool.py
 
   - name: fork-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1403,7 +1403,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_fork.py
 
   - name: double-endorsement-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1420,7 +1420,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_double_endorsement.py
 
   - name: test-programs
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1436,7 +1436,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_programs.py
 
   - name: test-many-bakers
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1452,7 +1452,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_bakers.py
 
   - name: test-contract-baker-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1468,7 +1468,7 @@ steps:
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_baker.py
 
   - name: test-contract-annotations-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     user: root
     volumes:
@@ -1487,7 +1487,7 @@ steps:
     failure: ignore
 
   - name: basic-test
-    image: simplestakingcom/tezedge-ci-builder:v9.2-tezos-compatible
+    image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
     pull: if-not-exists
     # TODO: TE-275 remove failure: ignore
     # TODO - TE-220 - stop ignoring after resolving the rpc error handling
@@ -1578,7 +1578,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -1598,7 +1598,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 - name: wait-for-tezedge-to-start
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -1619,7 +1619,7 @@ steps:
     - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
 
 - name: wait-for-octez-to-start
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -1652,7 +1652,7 @@ steps:
 
 # test checks if this block is synchronized to tezedge node through p2p
 - name: wait-for-sync-on-level-1
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -1725,14 +1725,14 @@ steps:
 
 # test checks if this block is synchronized to tezedge node through p2p
 - name: wait-for-sync-on-level-2
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -1794,7 +1794,7 @@ environment:
 
 steps:
 - name: tezedge-sandbox-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -1839,7 +1839,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "18732"
 
 - name: wait-sandbox-node-start
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: always
   commands:
     - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -1881,7 +1881,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected B"
 
 - name: wait-sandbox-node-start-level-1
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -1912,7 +1912,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
 
 - name: wait-sandbox-node-start-level-2
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -1984,7 +1984,7 @@ environment:
 
 steps:
   - name: tezedge-sandbox-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -2029,7 +2029,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "18732"
 
   - name: wait-sandbox-node-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: always
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2071,7 +2071,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected B"
 
   - name: wait-sandbox-node-start-level-1
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=1 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2102,7 +2102,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_contains.sh "$resp" "Injected block B"
 
   - name: wait-sandbox-node-start-level-2
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=2 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2203,7 +2203,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-edo2-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -2223,7 +2223,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2244,7 +2244,7 @@ steps:
       - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
 
   - name: wait-for-octez-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -2277,7 +2277,7 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-1
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2384,14 +2384,14 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-2
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -2482,7 +2482,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-florence-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -2502,7 +2502,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2523,7 +2523,7 @@ steps:
       - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
 
   - name: wait-for-octez-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -2556,7 +2556,7 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-1
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2663,14 +2663,14 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-2
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -2761,7 +2761,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-granada-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -2781,7 +2781,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file $${SANDBOX_DATA_PATH}/tezedge_drone_sandbox.config --identity-expected-pow 0.0 --identity-file $${SANDBOX_DATA_PATH}/tezedge/identity.json --tezos-data-dir $${SANDBOX_DATA_PATH}/tezedge/tezos-node --bootstrap-db-path $${SANDBOX_DATA_PATH}/tezedge/light-node --network sandbox --protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner --disable-bootstrap-lookup --peer-thresh-high 1 --peer-thresh-low 1 --synchronization-thresh 0 --sandbox-patch-context-json-file $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --log-level trace --ocaml-log-enabled true --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: wait-for-tezedge-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2802,7 +2802,7 @@ steps:
       - tezos-node run --network sandbox --data-dir /home/tezos/data/ --sandbox $${SANDBOX_DATA_PATH}/sandbox-patch-context.json --no-bootstrap-peers --singleprocess --synchronisation-threshold 0 -vv
 
   - name: wait-for-octez-to-start
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=0 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT}
@@ -2835,7 +2835,7 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-1
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=1 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -2942,14 +2942,14 @@ steps:
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-2
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     pull: if-not-exists
     commands:
       - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -3103,13 +3103,13 @@ steps:
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
 - name: wait-for-octez-snapshoted-nodes
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -3130,7 +3130,7 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
 - name: bootstrapping-tezedge
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -3176,7 +3176,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -3192,7 +3192,7 @@ steps:
 
 # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: indexer-test
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
@@ -3332,12 +3332,12 @@ steps:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
   - name: wait-for-octez-snapshoted-nodes
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-edo2net-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -3358,7 +3358,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -3403,7 +3403,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -3419,7 +3419,7 @@ steps:
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
 
@@ -3558,12 +3558,12 @@ steps:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
   - name: wait-for-octez-snapshoted-nodes
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-florencenet-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -3585,7 +3585,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -3630,7 +3630,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -3646,7 +3646,7 @@ steps:
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
 
@@ -3785,12 +3785,12 @@ steps:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
   - name: wait-for-octez-snapshoted-nodes
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-granadanet-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -3811,7 +3811,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -3856,7 +3856,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -3873,7 +3873,7 @@ steps:
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
     # TODO: remove once indexer is released: https://github.com/blockwatch-cc/tzindex/issues/35
@@ -4015,12 +4015,12 @@ steps:
       - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
   - name: wait-for-octez-snapshoted-nodes
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-mainnet-run
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -4041,7 +4041,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
 
   - name: bootstrapping-tezedge
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
@@ -4086,7 +4086,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -4104,7 +4104,7 @@ steps:
 
   # compare indexing from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: indexer-test
-    image: simplestakingcom/tezos-node-bootstrap:latest
+    image: tezedge/tezos-node-bootstrap:latest
     commands:
       - tezos-node-bootstrap indexer-test --level=$${TO_BLOCK_HEADER} --tezedge-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --tezedge-indexer=$${TEZEDGE_NODE_INDEXER_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --ocaml-indexer=$${OCTEZ_NODE_INDEXER_ROOT}
 
@@ -4253,7 +4253,7 @@ trigger:
 steps:
 
   - name: tezedge-node
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -4454,7 +4454,7 @@ steps:
         path: /docker-entrypoint-initdb.d/
 
   - name: tezedge-node
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -4645,7 +4645,7 @@ trigger:
 steps:
 
   - name: tezedge-node
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -4721,7 +4721,7 @@ environment:
 steps:
 
   - name: run-benchmarks
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     environment:
@@ -4738,7 +4738,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     environment:
@@ -4767,7 +4767,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     detach: true
@@ -4806,7 +4806,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -4894,7 +4894,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: simplestakingcom/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
     user: root
     volumes:
@@ -4956,7 +4956,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -5091,13 +5091,13 @@ steps:
     - tezos-node run --data-dir /home/tezos/data --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
 - name: wait-for-octez-snapshoted-nodes
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -5120,7 +5120,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -5150,7 +5150,7 @@ steps:
       - refs/pull/*/head
 
 - name: bootstrapping-tezedge
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -5160,11 +5160,14 @@ steps:
 # compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with two nodes (current branch and octez))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
 - name: wrk-performance-test-tezedge-new-vs-octez
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
+  volumes:
+    - name: perf
+      path: /perf
   commands:
-    - tezos-node-bootstrap performance-test --level=$${WRK_TEST_BLOCK_HEADER} --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10
+    - tezos-node-bootstrap performance-test --tezedge-new-node=$${TEZEDGE_NODE_RPC_CONTEXT_ROOT} --ocaml-node=$${OCAML_NODE_RPC_CONTEXT_ROOT_1} --wrk-test-duration=$${WRK_TEST_DURATION} --max-latency-threshold=100 --throughput-threshold=10 --url-file=/perf/wrk-rpc-list-delphi.txt
   when:
     ref:
       exclude:
@@ -5172,7 +5175,7 @@ steps:
 
 # this is triggerd just on pull request to target branch
 - name: bootstrapping-tezedge-target-branch
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
@@ -5181,7 +5184,7 @@ steps:
 
 #  compare several rpc's performances from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes (with tree nodes (target_branch, current branch and octez))
 - name: wrk-performance-test-tezedge-new-vs-octez-vs-tezedge-old
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
   commands:
@@ -5215,6 +5218,9 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache
+  - name: perf
+    host:
+      path: /usr/local/etc/tezedge-ci/perf
 
 trigger:
   branch:
@@ -5288,13 +5294,13 @@ steps:
     - tezos-node run --data-dir /home/tezos/data/ocaml-node-$${NETWORK}-snapshot-data-1 --history-mode archive --rpc-addr 0.0.0.0:8732 --net-addr 0.0.0.0:9734 --network $${NETWORK} --no-bootstrap-peers
 
 - name: wait-for-octez-snapshoted-nodes
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -5317,7 +5323,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: simplestakingcom/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:latest
   pull: if-not-exists
   user: root
   detach: true
@@ -5347,7 +5353,7 @@ steps:
       - refs/pull/*/head
 
 - name: bootstrapping-tezedge
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
@@ -5356,9 +5362,8 @@ steps:
 
 # compare several rpc's performances between defined nodes (with two nodes (current branch and octez))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
-# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
 - name: wrk-performance-test-tezedge-new-vs-octez
-  image: akoptelov/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: always
   user: root
   volumes:
@@ -5373,9 +5378,8 @@ steps:
 
 # compare several rpc's performances between defined nodes (with two nodes (current branch and octez))
 # not triggered on pull request, because on pull request is triggered more complex wrk test
-# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
 - name: wrk2-performance-test-tezedge-new-vs-octez
-  image: akoptelov/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -5390,7 +5394,7 @@ steps:
 
 # this is triggerd just on pull request to target branch
 - name: bootstrapping-tezedge-target-branch
-  image: simplestakingcom/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   commands:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
@@ -5398,9 +5402,8 @@ steps:
     - refs/pull/*/head
 
 #  compare several rpc's performances between defined nodes (with tree nodes (target_branch, current branch and octez))
-# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
 - name: wrk-performance-test-tezedge-new-vs-octez-vs-tezedge-old
-  image: akoptelov/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: always
   user: root
   volumes:
@@ -5413,9 +5416,8 @@ steps:
     - refs/pull/*/head
 
 #  compare several rpc's performances between defined nodes (with tree nodes (target_branch, current branch and octez))
-# TODO merge changes to simplestakingcom/tezos-node-bootstrap:latest
 - name: wrk2-latency-test-tezedge-new-vs-octez-vs-tezedge-old
-  image: akoptelov/tezos-node-bootstrap:latest
+  image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   user: root
   volumes:
@@ -5470,7 +5472,7 @@ steps:
 - name: build-light-node-image
   image: plugins/docker
   settings:
-    repo: simplestakingcom/tezedge
+    repo: tezedge/tezedge
     target: light-node
     tag: latest
     dockerfile: docker/distroless/Dockerfile
@@ -5484,13 +5486,13 @@ steps:
 - name: build-light-node-debug-image
   image: plugins/docker
   settings:
-    repo: simplestakingcom/tezedge
+    repo: tezedge/tezedge
     target: light-node
     tag: latest-frame-pointers-enabled
     dockerfile: docker/distroless/Dockerfile
     build_args:
       - SOURCE_BRANCH=develop
-      - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
+      - BASE_IMAGE=tezedge/tezedge-libs:latest-profile
       - RUSTFLAGS=-Cforce-frame-pointers=yes
     username:
       from_secret: docker_hub_username
@@ -5500,7 +5502,7 @@ steps:
 - name: build-sandbox-image
   image: plugins/docker
   settings:
-    repo: simplestakingcom/tezedge
+    repo: tezedge/tezedge
     target: sandbox
     tag: sandbox-latest
     dockerfile: docker/distroless/Dockerfile
@@ -5553,7 +5555,7 @@ steps:
   - name: build-light-node-image
     image: plugins/docker
     settings:
-      repo: simplestakingcom/tezedge
+      repo: tezedge/tezedge
       target: light-node
       tags:
         - ${DRONE_TAG}
@@ -5569,7 +5571,7 @@ steps:
   - name: build-light-node-debug-image
     image: plugins/docker
     settings:
-      repo: simplestakingcom/tezedge
+      repo: tezedge/tezedge
       target: light-node
       tags:
         - ${DRONE_TAG}
@@ -5577,7 +5579,7 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
-        - BASE_IMAGE=simplestakingcom/tezedge-libs:latest-profile
+        - BASE_IMAGE=tezedge/tezedge-libs:latest-profile
         - RUSTFLAGS=-Cforce-frame-pointers=yes
       username:
         from_secret: docker_hub_username
@@ -5587,7 +5589,7 @@ steps:
   - name: build-sandbox-image
     image: plugins/docker
     settings:
-      repo: simplestakingcom/tezedge
+      repo: tezedge/tezedge
       target: sandbox
       tags:
         - sandbox-${DRONE_TAG}
