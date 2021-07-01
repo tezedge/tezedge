@@ -1,9 +1,8 @@
 [drone_server]
-65.21.165.82
+<edit>
 
 [drone_runners]
-65.21.165.82
-65.21.165.83
+<edit>
 
 [real_time_runners]
-65.21.165.84
+<edit>

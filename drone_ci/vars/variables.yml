@@ -1,18 +1,18 @@
 ---
 
 # The drone server
-drone_server: 65.21.165.82
+drone_server: <edit>
 
 # User with the ssh connects to the target machines
-target_hosts_user: dev
+target_hosts_user: <edit>
 
 # The github username you wish to add as an admin for the drone CI
-admin_user: adonagy
+admin_user: <edit>
 
 # Variables for drone server configuration
-github_client_id: 0d86896a607c329257ff
-github_client_secret: c64f6ff8b279e1eadd4bbce788ac3b7754933d42 
-rpc_secret: 314bbb637fdc4175c3902a0d589e77c9
+github_client_id: <edit>
+github_client_secret: <edit> 
+rpc_secret: <edit>
 
 # ** DO NOT EDIT THESE **
 
