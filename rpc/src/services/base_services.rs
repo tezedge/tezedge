@@ -115,8 +115,9 @@ fn convert_block_metadata(
 }
 
 /// Get information about block header
-#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<String, BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{url.clone()}", result = true)]
 pub(crate) async fn get_block_header(
+    url : String,
     chain_id: ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
