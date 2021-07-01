@@ -257,7 +257,6 @@ pub(crate) fn get_block_protocols(
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
-#[cached( name="BLOCK_ADDITIONAL_DATA_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), Option<BlockAdditionalData>>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) fn get_additional_data(
     chain_id: &ChainId,
     block_hash: &BlockHash,
