@@ -23,7 +23,6 @@ use crate::server::{spawn_server, RpcServiceEnvironment};
 use crate::helpers::{MAIN_CHAIN_ID, parse_chain_id};
 
 
-
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
 
 /// Thread safe reference to a shared RPC state
@@ -66,8 +65,6 @@ impl RpcServer {
         init_storage_data: &StorageInitInfo,
         tezedge_is_enabled: bool,
     ) -> Result<RpcServerRef, CreateError> {
-
-
         let shared_state = Arc::new(RwLock::new(RpcCollectedState {
             current_head: load_current_head(
                 persistent_storage,
@@ -96,12 +93,11 @@ impl RpcServer {
 
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
-            Props::new_args((shell_channel, shared_state,env.clone())),
+            Props::new_args((shell_channel, shared_state, env.clone())),
         )?;
 
         // spawn RPC JSON server
         {
-
             let inner_log = sys.log();
 
             tokio_executor.spawn(async move {
@@ -121,7 +117,7 @@ impl ActorFactoryArgs<(ShellChannelRef, RpcCollectedStateRef, Arc<RpcServiceEnvi
         Self {
             shell_channel,
             state,
-            env
+            env,
         }
     }
 }
@@ -142,16 +138,19 @@ impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-            if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
             // prepare main chain_id
-            //let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
+            let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
             // warm-up - calls where chain_id + block_hash
-            //let _ = crate::services::base_services::get_block_metadata(&chain_id, &block.hash,&self.env);
-            //let _ = crate::services::base_services::get_additional_data(&chain_id, &block.hash,&self.);
-           //let _ = crate::services::base_services::get_block(&chain_id, &block.hash,&self.env);
-            //let _ = crate::services::base_services::get_block_operation(chain_id.clone(), &block.hash,&self.env);
-
-
+            let _ = crate::services::base_services::get_block_metadata(&chain_id, &block.hash, &self.env);
+            let _ = crate::services::base_services::get_additional_data(&chain_id, &block.hash, &self.env.persistent_storage());
+            let _ = crate::services::base_services::get_block(&chain_id, &block.hash, &self.env);
+            let _ = crate::services::base_services::get_block_operations_metadata(chain_id.clone(), &block.hash, &self.env);
+            let _ = crate::services::base_services::get_block_operation_hashes(chain_id.clone(), &block.hash, &self.env);
+            let _ = crate::services::base_services::get_block_protocols(&chain_id, &block.hash, &self.env.persistent_storage());
+            let _ = crate::services::base_services::live_blocks(chain_id.clone(), block.hash.clone(), &self.env);
+            let _ = crate::services::base_services::get_block_shell_header(chain_id.clone(), block.hash.clone(), &self.env.persistent_storage());
+            let _ = crate::services::base_services::get_block_header(chain_id.clone(), block.hash.clone(), &self.env.persistent_storage());
             let current_head_ref = &mut *self.state.write().unwrap();
             current_head_ref.current_head = Some(block);
         }
