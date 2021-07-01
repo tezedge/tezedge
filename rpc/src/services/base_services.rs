@@ -371,13 +371,14 @@ fn convert_block_operations_metadata(
     serde_json::from_str::<BlockOperations>(&response).map_err(|e| e.into())
 }
 
-#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<String, BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{_url.clone()}", result = true)]
+#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<String, BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{url.clone()}", result = true)]
 pub(crate) async fn get_block_operations_validation_pass_cache(
-    _url: String,
+    url: String,
     params: Params,
     env: Arc<RpcServiceEnvironment>,
 ) -> Result<BlockValidationPass, failure::Error> {
-
+    //Test only
+    println!("URL {}", url);
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
