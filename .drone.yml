@@ -229,8 +229,8 @@ node:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 volumes:
   - name: build
@@ -4935,8 +4935,8 @@ volumes:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 ---
 ##############################################################################################################
@@ -5224,8 +5224,8 @@ volumes:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 depends_on:
   - corr/real-time-environment-cyclictest-latencies
@@ -5454,8 +5454,8 @@ volumes:
 
 trigger:
   branch:
-    - xmaster
-    - xdevelop
+    - master
+    - develop
 
 depends_on:
   - corr/real-time-environment-cyclictest-latencies
