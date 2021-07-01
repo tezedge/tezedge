@@ -121,6 +121,7 @@ fn convert_block_metadata(
 }
 //TODO: Maybe moved to another module to avoid confusion
 #[cached( name="BLOCK_HEADER_CACHE",type = "TimedSizedCache<String, BlockHeaderInfo>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{_url.clone()}", result = true)]
+//chains/main/block/head
 pub(crate) async fn get_block_header_cached(
     _url : String,
     params: Params,
@@ -410,7 +411,7 @@ pub(crate) async fn get_block_operations_validation_pass(
 }
 
 /// Extract a specific operation included in one of the block's validation pass.
-#[cached( name="BLOCK_OPERATION_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockOperation>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
+#[cached( name="BLOCK_OPERATION_CACHE",type = "TimedSizedCache<(ChainId,BlockHash,usize,usize), BlockOperation>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone(),validation_pass,operation_index)}", result = true)]
 pub(crate) async fn get_block_operation(
     chain_id: ChainId,
     block_hash: &BlockHash,
