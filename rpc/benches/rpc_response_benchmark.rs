@@ -3,7 +3,7 @@ use serde_json::Value;
 use cached::proc_macro::cached;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
-#[cached(result = true)]
+//#[cached(result = true)]
 pub fn cached_data_response_wrapped() -> ServiceResult {
     make_json_response(&data())
 }
