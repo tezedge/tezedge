@@ -50,7 +50,7 @@ $ sudo apt install ansible
 
 ### 4. Fork and clone the forked tezedge repository.
 
-Fork is important if you want to run your own CI environment as the dronce CI runs builds via github webhooks.
+Fork is important if you want to run your own CI environment as the drone CI runs builds via github webhooks.
 
 ```
 $ git clone https://github.com/tezedgeUser/tezedge.git
@@ -102,9 +102,9 @@ github_client_id: a3e1b143f5cf193c3ef2
 github_client_secret: a4421f712e07eca2ea0fd3f78934a5a5351f3a5e
 rpc_secret: 96cac97a56ebe9419709cbffc0849292
 
-# ** DO NOT EDIT THESE **
+# ** DO NOT EDIT THE VARIABLES BELOW THIS LINE **
 
-# Path to the tezedge-ci data that needs to be aquired before running the ci
+# Path to the tezedge-ci data that needs to be acquired before running the ci
 ci_data_path: "/home/{{ target_hosts_user }}"
 
 # SSH configuration
@@ -136,7 +136,7 @@ You can add as many *drone_runners* or *real_time_runners* as you wish. Please b
 
 **Please keep in mind that you have to run these playbooks in this exact order**
 
-Once all the variables and hosts are set you can proceed to execute the ansible playbooks. Please double check that you can connect to the target hosts with public key authentification. 
+Once all the variables and hosts are set you can proceed to execute the ansible playbooks. Please double check that you can connect to the target hosts with public key authentication. 
 
 We use the `ansible-playbook` command to execute the playbooks. Here we provide a description for an example `ansible-playbook` command. Use the same user as the `target_hosts_user` you set in the variables.yml. 
 ```
@@ -174,7 +174,7 @@ $ ansible-playbook ./playbooks/docker_setup.yml --user dev --ask-become-pass -i 
     $ ansible-playbook ./playbooks/normal_drone_runner_setup.yml --user dev --ask-become-pass -i ./inventory/hosts
     $ ansible-playbook ./playbooks/real_time_drone_runner_setup.yml --user dev --ask-become-pass -i ./inventory/hosts
     ```
-    Please note that both playbooks will stay on `Download data` task quite a long time as they are downloading approximatelly 29GB of data for each host.
+    Please note that both playbooks will stay on `Download data` task quite a long time as they are downloading approximately 29 GB of data for each host.
 ### 7. Enable and setup the tezedge repository 
 
 After you ran all the playbooks above you can navigate to the `drone_server` url to enable the repository
