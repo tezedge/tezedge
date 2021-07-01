@@ -20,7 +20,6 @@
       dest: /home/{{ target_hosts_user }}/drone_runner.sh
       mode  : 0755
 
-  # TODO: Add -nc
   - name: Download data
     shell: "wget -q -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge-ci/ -P {{ ci_data_path }}"
 

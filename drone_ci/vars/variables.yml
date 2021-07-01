@@ -14,7 +14,7 @@ github_client_id: <edit>
 github_client_secret: <edit> 
 rpc_secret: <edit>
 
-# ** DO NOT EDIT THESE **
+# ** DO NOT EDIT THE VARIABLES BELLOW THIS LINE **
 
 # Path to the tezedge-ci data that needs to be aquired before running the ci
 ci_data_path: "/home/{{ target_hosts_user }}"
