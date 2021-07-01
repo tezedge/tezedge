@@ -1,17 +1,12 @@
 ---
 
-maintainer:       Adrian Nagy
-maintainer_email: adrian.nagy@viablesystems.io
-
-# ssh_key: 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCtx3KUFl+aDQf7Z/Bvvc8FhKUYJfgwI+QyZdE82SSdqGqoZjqZ2vRFYufFaJ5pyZqlnCznxjD5CIVhBixp/CwcUcxMnbvGeG7m97wvKLDalK07aozoaQ8nnmXyksZKdTywHKvvVWVzXvbN6PerzMxFtOhqY/pXnRkXxLm/+JD3ZfO1RS7vZmeKSX42MI2tWISQrTbV5QUbd6R6HrnCMGBs67iFeWFhN0UyUfoBGwzDhc7cI85IfeSK3dkAz7ch163k7509JN2Z3K5FHfyI/UPbzhicLqOU61PSwbEjVc7IiflAIsxFrqVvx9R0ETOn4q099zwUI0HVw8p4YS7036s4H9N5O7xdHiX+trvl8SqWdhBLAW6OvegJKgPFn4Pcq2fahj3a+IQVAQuBmzzK41w8sNuXCNfs3MpNQfreOZupnaHYtMPM+vrw+kEnK8WMww+FMa2kOPzUGeiE0U+ZfB3qR/kCNW5iH7uSpFYh20RbmvaAQgwY3WL6/7EA8kXINivM8QECy6MDyYkt4IdD4+Tq6nF2DUqVxlQ1OMJ3qkkb8AZPLZPxFLimItHXCEZsCG8XJl+p79HogH4im7nYwdlJg+0dnLw3gQwrance/d9w7J/ZQ/Jk1mlw60wzM/tNOFJ+YUP8JZkT8PMEpMDGUwyLRZFEv3Sz8BXwcKa6lyKcmQ=='
-ssh_strict_host_keys: 'no'
-ssh_config_file: "/home/{{ target_hosts_user }}/.ssh/config"
-
+# The drone server
 drone_server: 65.21.165.82
 
 # User with the ssh connects to the target machines
 target_hosts_user: dev
 
+# The github username you wish to add as an admin for the drone CI
 admin_user: adonagy
 
 # Variables for drone server configuration
@@ -19,7 +14,12 @@ github_client_id: 0d86896a607c329257ff
 github_client_secret: c64f6ff8b279e1eadd4bbce788ac3b7754933d42 
 rpc_secret: 314bbb637fdc4175c3902a0d589e77c9
 
+# ** DO NOT EDIT THESE **
+
 # Path to the tezedge-ci data that needs to be aquired before running the ci
 ci_data_path: "/home/{{ target_hosts_user }}"
 
+# SSH configuration
+ssh_strict_host_keys: 'no'
+ssh_config_file: "/home/{{ target_hosts_user }}/.ssh/config"
 ...
