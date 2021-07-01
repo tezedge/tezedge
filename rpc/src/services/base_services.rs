@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::bail;
+use failure::{bail, Error};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
 use storage::{BlockAdditionalData, PersistentStorage};
@@ -32,6 +32,9 @@ pub const TIMED_SIZED_CACHE_SIZE : usize = 10;
 pub const TIMED_SIZED_CACHE_TTL_IN_SECS : u64 = 20;
 
 use hyper::{Body, Response};
+use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
+use serde_json::Value;
 
 /// Retrieve blocks from database.
 #[cached( name="BLOCK_HASH_CACHE",type = "TimedCache<(ChainId,BlockHash), Vec<BlockHash>>", create = "{TimedCache::with_lifespan(TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
@@ -368,8 +371,27 @@ fn convert_block_operations_metadata(
     serde_json::from_str::<BlockOperations>(&response).map_err(|e| e.into())
 }
 
+#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<String, BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{_url.clone()}", result = true)]
+pub(crate) async fn get_block_operations_validation_pass_cache(
+    _url: String,
+    params: Params,
+    env: Arc<RpcServiceEnvironment>,
+) -> Result<BlockValidationPass, failure::Error> {
+
+    let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
+    let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
+
+    let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
+    get_block_operations_validation_pass(
+        chain_id,
+        &block_hash,
+        &env,
+        validation_pass,
+    )
+        .await
+}
+
 /// Extract all the operations included in the provided validation pass.
-#[cached( name="BLOCK_OPERATION_VP_CACHE",type = "TimedSizedCache<(ChainId,BlockHash), BlockValidationPass>", create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE,TIMED_SIZED_CACHE_TTL_IN_SECS)}", convert = "{(chain_id.clone(),block_hash.clone())}", result = true)]
 pub(crate) async fn get_block_operations_validation_pass(
     chain_id: ChainId,
     block_hash: &BlockHash,
