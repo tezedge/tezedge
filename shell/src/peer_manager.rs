@@ -290,6 +290,7 @@ impl Actor for PeerManager {
             },
             (*self.local_node_info.identity()).clone(),
             (*self.local_node_info.version()).clone(),
+            Default::default(),
             Instant::now(),
         );
 
