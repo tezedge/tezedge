@@ -19,7 +19,7 @@ use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 
 use crate::shell_channel::ShellChannelRef;
-use crate::state::bootstrap_state::{BootstrapState, InnerBlockState};
+use crate::state::bootstrap_state::{AddBranchState, BootstrapState, InnerBlockState};
 use crate::state::data_requester::DataRequesterRef;
 use crate::state::peer_state::DataQueues;
 use crate::subscription::subscribe_to_actor_terminated;
@@ -458,7 +458,7 @@ impl Receive<StartBranchBootstraping> for PeerBranchBootstrapper {
         // process
         self.process_bootstrap_pipelines(msg.peer_id.clone(), ctx, &log);
 
-        if let Some(was_merged) = result {
+        if let AddBranchState::Added(was_merged) = result {
             info!(log, "Branch bootstrapping process started";
                        "started_in" => format!("{:?}", timer.elapsed()),
                        "to_level" => msg.to_level,
