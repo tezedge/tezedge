@@ -1168,6 +1168,7 @@ impl P2pPeers {
 
 /// Calculates the number of required peers to reach `low + (high - low)/4`.
 fn count_of_required_peers(connected: usize, low: usize, high: usize) -> usize {
+    debug_assert!(low <= high);
     (high / 4).checked_sub(low / 4).and_then(|v| v.checked_add(low)).and_then(|v| v.checked_sub(connected)).unwrap_or(0)
 }
 
@@ -1313,10 +1314,11 @@ pub mod tests {
     }
 
     fn check_count_of_required_peers(current: usize, low: usize, high: usize) {
-        let required = super::count_of_required_peers(current, low, high);
         if low > high {
-            // just don't panic
-        } else if current <= high {
+            return
+        }
+        let required = super::count_of_required_peers(current, low, high);
+        if current <= high {
             assert!((low..=high).contains(&(current + required)));
         } else {
             assert_eq!(required, 0);
