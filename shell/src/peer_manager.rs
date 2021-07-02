@@ -268,15 +268,7 @@ impl PeerManager {
     }
 
     fn calculate_count_of_required_peers(&mut self) -> Result<usize, PeerManagerError> {
-        // aiming at 1/4 between low and high
-        let thresh = (self.threshold.high + 3 * self.threshold.low) / 4;
-        let connected = self.peers.connected_peers.read()?.len();
-        let required = if connected > thresh {
-            0
-        } else {
-            thresh - connected
-        };
-        Ok(required)
+        Ok(count_of_required_peers(self.peers.connected_peers.read()?.len(), self.threshold.low, self.threshold.high))
     }
 
     /// Create new peer actor
@@ -1174,6 +1166,12 @@ impl P2pPeers {
     }
 }
 
+/// Calculates the number of required peers to reach `low + (high - low)/4`.
+fn count_of_required_peers(connected: usize, low: usize, high: usize) -> usize {
+    (high / 4).checked_sub(low / 4).and_then(|v| v.checked_add(low)).and_then(|v| v.checked_sub(connected)).unwrap_or(0)
+}
+
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -1312,5 +1310,51 @@ pub mod tests {
             .try_acquire_incoming_connection_permit()
             .unwrap()
             .is_some());
+    }
+
+    fn check_count_of_required_peers(current: usize, low: usize, high: usize) {
+        let required = super::count_of_required_peers(current, low, high);
+        if low > high {
+            // just don't panic
+        } else if current <= high {
+            assert!((low..=high).contains(&(current + required)));
+        } else {
+            assert_eq!(required, 0);
+        }
+    }
+
+    #[test]
+    fn test_count_of_required_peers() {
+        let thresh: &[(usize, usize)] = &[
+            (0, 0),
+            (0, 1),
+            (1, 1),
+            (10, 10),
+            (10, 15),
+            (60, 80),
+            (100, 150)
+        ];
+        for i in thresh.into_iter() {
+            let (low, high) = i;
+            for current in 0..high*2 {
+                check_count_of_required_peers(current, *low, *high);
+            }
+        }
+    }
+
+    // tests for overflow with extreme values
+    #[test]
+    fn test_count_of_required_peers_extreme() {
+        let m = usize::max_value();
+        let m2 = m/2;
+        let vals = &[0, 1, m2-1, m2, m2+1, m-1, m];
+
+        for curr in vals {
+            for low in vals {
+                for high in vals {
+                    check_count_of_required_peers(*curr, *low, *high);
+                }
+            }
+        }
     }
 }
