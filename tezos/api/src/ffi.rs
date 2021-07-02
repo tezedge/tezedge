@@ -752,55 +752,58 @@ pub struct RpcRequest {
     pub accept: Option<String>,
 }
 
-fn ffi_routed_subpath(path: &str) -> String {
-    let base = Url::parse("http://tezedge.com")
-        .expect("[Unexpected] cannot parse a well formed example URL");
-    let parsed = Url::options().base_url(Some(&base)).parse(path).unwrap();
-    let normalized_path = match parsed.query() {
-        Some(query) => format!("{}?{}", parsed.path().trim_end_matches('/'), query),
-        None => parsed.path().trim_end_matches('/').to_string(),
-    };
-    let mut segments = match parsed.path_segments() {
-        Some(segments) => segments,
-        // Not the subpath we expect, bail-out
-        None => return normalized_path,
-    };
-
-    // /chain/:chain_id/blocks/:block_id
-    let (chain, _, blocks, _) = (
-        segments.next(),
-        segments.next(),
-        segments.next(),
-        segments.next(),
-    );
-
-    match (chain, blocks) {
-        (Some("chain"), Some("blocks")) => (),
-        // Not the subpath we expect, bail-out
-        _ => return normalized_path,
-    }
-
-    let remaining: Vec<_> = segments.filter(|s| !s.is_empty()).collect();
-    let subpath = remaining.join("/");
-
-    // We only care about subpaths, bail-out
-    if subpath.is_empty() {
-        return normalized_path;
-    }
-
-    if let Some(query) = parsed.query() {
-        format!("/{}?{}", subpath, query)
-    } else {
-        format!("/{}", subpath)
-    }
-}
-
 impl RpcRequest {
-    /// Returns the part of the URL that the OCaml RPC router will interpret.
+    /// Produces a key for the routed requests cache.
     ///
-    /// The "/chain/:chan_id/blocks/:block_id" prefix is discarded if present.
-    pub fn ffi_routed_subpath(&self) -> String {
-        ffi_routed_subpath(&self.context_path)
+    /// The cache key is just the original path+query, with a bit of normalization
+    /// and the "/chains/:chan_id/blocks/:block_id" prefix removed if present.
+    pub fn ffi_rpc_router_cache_key(&self) -> String {
+        Self::ffi_rpc_router_cache_key_helper(&self.context_path)
+    }
+
+    fn ffi_rpc_router_cache_key_helper(path: &str) -> String {
+        let base = match Url::parse("http://tezedge.com") {
+            Ok(base) => base,
+            Err(_) => return path.to_string(),
+        };
+        let parsed = Url::options().base_url(Some(&base)).parse(path).unwrap();
+        let normalized_path = match parsed.query() {
+            Some(query) => format!("{}?{}", parsed.path().trim_end_matches('/'), query),
+            None => parsed.path().trim_end_matches('/').to_string(),
+        };
+        let mut segments = match parsed.path_segments() {
+            Some(segments) => segments,
+            // Not the subpath we expect, bail-out
+            None => return normalized_path,
+        };
+
+        // /chains/:chain_id/blocks/:block_id
+        let (chains, _, blocks, _) = (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next(),
+        );
+
+        match (chains, blocks) {
+            (Some("chains"), Some("blocks")) => (),
+            // Not the subpath we expect, bail-out
+            _ => return normalized_path,
+        }
+
+        let remaining: Vec<_> = segments.filter(|s| !s.is_empty()).collect();
+        let subpath = remaining.join("/");
+
+        // We only care about subpaths, bail-out
+        if subpath.is_empty() {
+            return normalized_path;
+        }
+
+        if let Some(query) = parsed.query() {
+            format!("/{}?{}", subpath, query)
+        } else {
+            format!("/{}", subpath)
+        }
     }
 }
 
@@ -1213,66 +1216,66 @@ mod tests {
     }
 
     #[test]
-    fn test_rpc_ffi_routed_subpath() {
-        let with_prefix_to_remove = "/chain/main/blocks/head/some/subpath/url";
+    fn test_rpc_ffi_rpc_router_cache_key_helper() {
+        let with_prefix_to_remove = "/chains/main/blocks/head/some/subpath/url";
         assert_eq!(
             "/some/subpath/url".to_string(),
-            ffi_routed_subpath(with_prefix_to_remove)
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove)
         );
 
-        let without_prefix_to_remove = "/chain/main/something/else/some/subpath/url";
+        let without_prefix_to_remove = "/chains/main/something/else/some/subpath/url";
         assert_eq!(
             without_prefix_to_remove.to_string(),
-            ffi_routed_subpath(without_prefix_to_remove)
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_prefix_to_remove)
         );
 
-        let without_suffix = "/chain/main/blocks/head/";
+        let without_suffix = "/chains/main/blocks/head/";
         assert_eq!(
-            "/chain/main/blocks/head".to_string(),
-            ffi_routed_subpath(without_suffix)
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix)
         );
 
-        let without_prefix_to_remove_short = "/chain/main/";
+        let without_prefix_to_remove_short = "/chains/main/";
         assert_eq!(
-            "/chain/main".to_string(),
-            ffi_routed_subpath(without_prefix_to_remove_short)
+            "/chains/main".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_prefix_to_remove_short)
         );
 
         let with_prefix_to_remove_and_query =
-            "/chain/main/blocks/head/some/subpath/url?query=args&with-slash=/slash";
+            "/chains/main/blocks/head/some/subpath/url?query=args&with-slash=/slash";
         assert_eq!(
             "/some/subpath/url?query=args&with-slash=/slash".to_string(),
-            ffi_routed_subpath(with_prefix_to_remove_and_query)
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_and_query)
         );
 
-        let without_suffix_and_query = "/chain/main/blocks/head/?query=1";
+        let without_suffix_and_query = "/chains/main/blocks/head/?query=1";
         assert_eq!(
-            "/chain/main/blocks/head?query=1".to_string(),
-            ffi_routed_subpath(without_suffix_and_query)
+            "/chains/main/blocks/head?query=1".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_query)
         );
 
-        let without_suffix_and_slashes = "/chain/main/blocks/head//";
+        let without_suffix_and_slashes = "/chains/main/blocks/head//";
         assert_eq!(
-            "/chain/main/blocks/head".to_string(),
-            ffi_routed_subpath(without_suffix_and_slashes)
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_slashes)
         );
 
-        let without_suffix_and_sharp = "/chain/main/blocks/head/#";
+        let without_suffix_and_sharp = "/chains/main/blocks/head/#";
         assert_eq!(
-            "/chain/main/blocks/head".to_string(),
-            ffi_routed_subpath(without_suffix_and_sharp)
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_sharp)
         );
 
-        let with_prefix_to_remove_with_question_mark = "/chain/main?/blocks/head/some/subpath/url";
+        let with_prefix_to_remove_with_question_mark = "/chains/main?/blocks/head/some/subpath/url";
         assert_eq!(
             with_prefix_to_remove_with_question_mark.to_string(),
-            ffi_routed_subpath(with_prefix_to_remove_with_question_mark)
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_with_question_mark)
         );
 
-        let with_prefix_to_remove_with_sharp = "/chain/main#/blocks/head/some/subpath/url";
+        let with_prefix_to_remove_with_sharp = "/chains/main#/blocks/head/some/subpath/url";
         assert_eq!(
-            "/chain/main".to_string(),
-            ffi_routed_subpath(with_prefix_to_remove_with_sharp)
+            "/chains/main".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_with_sharp)
         );
     }
 }

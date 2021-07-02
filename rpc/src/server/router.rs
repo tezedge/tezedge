@@ -326,9 +326,7 @@ where
             path,
             MethodHandler::new(
                 allowed_methods.clone(),
-                Arc::new(move |req, params, query, env| {
-                    Box::new(f(req, params, query, env.clone()))
-                }),
+                Arc::new(move |req, params, query, env| Box::new(f(req, params, query, env))),
             ),
         );
         self.insert(
