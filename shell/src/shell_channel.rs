@@ -52,7 +52,11 @@ pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), Sta
 pub enum ShellChannelMsg {
     /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(Head, Arc<BlockHeaderWithHash>),
+    NewCurrentHead(
+        Head,
+        Arc<BlockHeaderWithHash>,
+        bool, /* is_bootstrapped */
+    ),
     BlockReceived(BlockReceived),
     BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),

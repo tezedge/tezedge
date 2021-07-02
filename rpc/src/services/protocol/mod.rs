@@ -472,7 +472,7 @@ pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 20;
     name = "CALL_PROTOCOL_RPC_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash, String), serde_json::value::Value>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(chain_id.clone(), block_hash.clone(), rpc_request.ffi_routed_subpath())}",
+    convert = "{(chain_id.clone(), block_hash.clone(), rpc_request.ffi_rpc_router_cache_key())}",
     result = true
 )]
 pub(crate) fn call_protocol_rpc_with_cache(

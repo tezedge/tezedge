@@ -62,11 +62,11 @@ pub(crate) fn get_block_hashes(
     name = "BLOCK_METADATA_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash), BlockMetadata>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(_chain_id.clone(), block_hash.clone())}",
+    convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
 )]
 pub(crate) async fn get_block_metadata(
-    _chain_id: &ChainId,
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<BlockMetadata, failure::Error> {
@@ -83,7 +83,11 @@ pub(crate) async fn get_block_metadata(
 
     // additional data
     let block_additional_data = async {
-        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+        match crate::services::base_services::get_additional_data(
+            chain_id,
+            block_hash,
+            env.persistent_storage(),
+        )? {
             Some(data) => Ok(data),
             None => bail!(
                 "No block additional data found for block_hash: {}",
@@ -153,7 +157,11 @@ pub(crate) async fn get_block_header(
 
     // additional data
     let block_additional_data = async {
-        match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash)? {
+        match crate::services::base_services::get_additional_data(
+            &chain_id,
+            &block_hash,
+            persistent_storage,
+        )? {
             Some(data) => Ok(data),
             None => bail!(
                 "No block additional data found for block_hash: {}",
@@ -196,26 +204,30 @@ pub(crate) fn get_block_shell_header(
     name = "LIVE_BLOCKS_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash), Vec<String>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(_chain_id.clone(), block_hash.clone())}",
+    convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
 )]
 pub(crate) fn live_blocks(
-    _chain_id: ChainId,
+    chain_id: ChainId,
     block_hash: BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<String>, failure::Error> {
     let persistent_storage = env.persistent_storage();
 
-    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
-
     // get max_ttl for requested block
-    let max_ttl: usize = match block_meta_storage.get_additional_data(&block_hash)? {
+    let max_ttl: usize = match crate::services::base_services::get_additional_data(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    )? {
         Some(additional_data) => additional_data.max_operations_ttl().into(),
         None => bail!(
             "Max_ttl not found for block id: {}",
             block_hash.to_base58_check()
         ),
     };
+
+    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
 
     // get live blocks
     let live_blocks = block_meta_storage
@@ -260,17 +272,19 @@ pub(crate) fn get_context_raw_bytes(
     name = "BLOCK_PROTOCOLS_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash), Protocols>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(_chain_id.clone(), block_hash.clone())}",
+    convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
 )]
 pub(crate) fn get_block_protocols(
-    _chain_id: &ChainId,
+    chain_id: &ChainId,
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Protocols, failure::Error> {
-    if let Some(block_additional_data) =
-        BlockMetaStorage::new(persistent_storage).get_additional_data(block_hash)?
-    {
+    if let Some(block_additional_data) = crate::services::base_services::get_additional_data(
+        chain_id,
+        block_hash,
+        persistent_storage,
+    )? {
         Ok(Protocols::new(
             block_additional_data.protocol_hash().to_base58_check(),
             block_additional_data.next_protocol_hash().to_base58_check(),
@@ -353,7 +367,11 @@ pub(crate) async fn get_block_operations_metadata(
 
     // additional data
     let block_additional_data = async {
-        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+        match crate::services::base_services::get_additional_data(
+            &chain_id,
+            block_hash,
+            env.persistent_storage(),
+        )? {
             Some(data) => Ok(data),
             None => bail!(
                 "No block additional data found for block_hash: {}",
@@ -505,7 +523,11 @@ pub(crate) async fn get_block(
 
     // additional data
     let block_additional_data = async {
-        match BlockMetaStorage::new(env.persistent_storage()).get_additional_data(block_hash)? {
+        match crate::services::base_services::get_additional_data(
+            chain_id,
+            block_hash,
+            env.persistent_storage(),
+        )? {
             Some(data) => Ok(data),
             None => bail!(
                 "No block additional data found for block_hash: {}",

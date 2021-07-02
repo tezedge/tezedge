@@ -3,6 +3,7 @@
 
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
@@ -42,6 +43,7 @@ pub struct RpcServer {
     shell_channel: ShellChannelRef,
     state: RpcCollectedStateRef,
     env: Arc<RpcServiceEnvironment>,
+    tokio_executor: Handle,
 }
 
 impl RpcServer {
@@ -92,7 +94,12 @@ impl RpcServer {
 
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
-            Props::new_args((shell_channel, shared_state, env.clone())),
+            Props::new_args((
+                shell_channel,
+                shared_state,
+                env.clone(),
+                tokio_executor.clone(),
+            )),
         )?;
 
         // spawn RPC JSON server
@@ -116,19 +123,22 @@ impl
         ShellChannelRef,
         RpcCollectedStateRef,
         Arc<RpcServiceEnvironment>,
+        Handle,
     )> for RpcServer
 {
     fn create_args(
-        (shell_channel, state, env): (
+        (shell_channel, state, env, tokio_executor): (
             ShellChannelRef,
             RpcCollectedStateRef,
             Arc<RpcServiceEnvironment>,
+            Handle,
         ),
     ) -> Self {
         Self {
             shell_channel,
             state,
             env,
+            tokio_executor,
         }
     }
 }
@@ -145,55 +155,91 @@ impl Actor for RpcServer {
     }
 }
 
+async fn warm_up_rpc_cache(
+    chain_id: ChainId,
+    block: Arc<BlockHeaderWithHash>,
+    env: Arc<RpcServiceEnvironment>,
+) {
+    // Sync call: goes first because other calls re-use the cached result
+    let _ = crate::services::base_services::get_additional_data(
+        &chain_id,
+        &block.hash,
+        env.persistent_storage(),
+    );
+
+    // Async calls
+    let get_block_metadata =
+        crate::services::base_services::get_block_metadata(&chain_id, &block.hash, &env);
+    let get_block = crate::services::base_services::get_block(&chain_id, &block.hash, &env);
+    let get_block_operations_metadata =
+        crate::services::base_services::get_block_operations_metadata(
+            chain_id.clone(),
+            &block.hash,
+            &env,
+        );
+    let get_block_operation_hashes = crate::services::base_services::get_block_operation_hashes(
+        chain_id.clone(),
+        &block.hash,
+        &env,
+    );
+    let get_block_header = crate::services::base_services::get_block_header(
+        chain_id.clone(),
+        block.hash.clone(),
+        &env.persistent_storage(),
+    );
+    let _ = tokio::join!(
+        get_block_metadata,
+        get_block,
+        get_block_operations_metadata,
+        get_block_operation_hashes,
+        get_block_header,
+    );
+
+    // Sync calls
+    let _ = crate::services::base_services::get_block_protocols(
+        &chain_id,
+        &block.hash,
+        &env.persistent_storage(),
+    );
+    let _ = crate::services::base_services::live_blocks(chain_id.clone(), block.hash.clone(), &env);
+    let _ = crate::services::base_services::get_block_shell_header(
+        chain_id.clone(),
+        block.hash.clone(),
+        &env.persistent_storage(),
+    );
+}
+
+/// Timeout for RPCs warmup block time
+const RPC_WARMUP_TIMEOUT: Duration = Duration::from_secs(3);
+
 impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+        if let ShellChannelMsg::NewCurrentHead(_, block, is_bootstrapped) = msg {
             // prepare main chain_id
             let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
+
             // warm-up - calls where chain_id + block_hash
-            let _ = crate::services::base_services::get_block_metadata(
-                &chain_id,
-                &block.hash,
-                &self.env,
-            );
-            let _ = crate::services::base_services::get_additional_data(
-                &chain_id,
-                &block.hash,
-                &self.env.persistent_storage(),
-            );
-            let _ = crate::services::base_services::get_block(&chain_id, &block.hash, &self.env);
-            let _ = crate::services::base_services::get_block_operations_metadata(
-                chain_id.clone(),
-                &block.hash,
-                &self.env,
-            );
-            let _ = crate::services::base_services::get_block_operation_hashes(
-                chain_id.clone(),
-                &block.hash,
-                &self.env,
-            );
-            let _ = crate::services::base_services::get_block_protocols(
-                &chain_id,
-                &block.hash,
-                &self.env.persistent_storage(),
-            );
-            let _ = crate::services::base_services::live_blocks(
-                chain_id.clone(),
-                block.hash.clone(),
-                &self.env,
-            );
-            let _ = crate::services::base_services::get_block_shell_header(
-                chain_id.clone(),
-                block.hash.clone(),
-                &self.env.persistent_storage(),
-            );
-            let _ = crate::services::base_services::get_block_header(
-                chain_id.clone(),
-                block.hash.clone(),
-                &self.env.persistent_storage(),
-            );
+            if is_bootstrapped {
+                let env = self.env.clone();
+                let block = block.clone();
+                let log = env.log().clone();
+                self.tokio_executor.spawn(async move {
+                    if let Err(err) = tokio::time::timeout(
+                        RPC_WARMUP_TIMEOUT,
+                        warm_up_rpc_cache(chain_id, block, env),
+                    )
+                    .await
+                    {
+                        warn!(
+                            log,
+                            "RPC warmup timeout after {:?}: {:?}", RPC_WARMUP_TIMEOUT, err
+                        );
+                    }
+                });
+            }
+
             let current_head_ref = &mut *self.state.write().unwrap();
             current_head_ref.current_head = Some(block);
         }
