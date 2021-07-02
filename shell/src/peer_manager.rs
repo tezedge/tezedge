@@ -4,6 +4,8 @@
 //! Manages connected peers.
 
 use std::cmp;
+use std::collections::hash_map::Values;
+use std::collections::hash_map::ValuesMut;
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
@@ -113,6 +115,8 @@ impl P2p {
 pub enum PeerManagerError {
     #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
     LockError { reason: String },
+    #[fail(display = "Peer with address {} is already connected", peer_address)]
+    AlreadyConnected { peer_address: SocketAddr }
 }
 
 impl<T> From<PoisonError<T>> for PeerManagerError {
@@ -689,7 +693,7 @@ impl Receive<LogPeerStats> for PeerManager {
     type Msg = PeerManagerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, _: LogPeerStats, _: Sender) {
-        // TODO: TE-490 - check actors vs peers and vice versa - kil//stop/remove
+        // TODO: TE-490 - check actors vs peers and vice versa - kill/stop/remove
         let connected_peers_count = match self.peers.connected_peers.read() {
             Ok(connected_peers) => connected_peers.len().to_string(),
             Err(_) => "-failed-to-collect-".to_string(),
@@ -1059,6 +1063,69 @@ fn resolve_dns_name_to_peer_address(
     Ok(addrs)
 }
 
+struct P2pPeersMap {
+    peers: HashMap<ActorUri, P2pPeerState>,
+    addr_set: HashSet<SocketAddr>,
+}
+
+impl P2pPeersMap {
+    fn new() -> Self {
+        Self {
+            peers: HashMap::new(),
+            addr_set: HashSet::new(),
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        debug_assert!(self.peers.is_empty() == self.addr_set.is_empty());
+        self.peers.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        debug_assert!(self.peers.len() == self.addr_set.len());
+        self.peers.len()
+    }
+
+    fn try_insert(
+        &mut self,
+        peer_ref: PeerRef,
+        peer_address: SocketAddr,
+        bootstrap_requested_last: Option<Instant>,
+    ) -> Result<(), PeerManagerError> {
+        if self.addr_set.contains(&peer_address) {
+            Err(PeerManagerError::AlreadyConnected { peer_address })
+        } else {
+            self.addr_set.insert(peer_address.clone());
+            self.peers.insert(
+                peer_ref.uri().clone(),
+                P2pPeerState {
+                    peer_ref,
+                    peer_address,
+                    bootstrap_requested_last,
+                },
+            );
+            Ok(())
+        }
+    }
+
+    fn remove(&mut self, peer_uri: &ActorUri) -> Option<P2pPeerState> {
+        let res = self.peers.remove(peer_uri);
+        if let Some(ref state) = res {
+            let removed = self.addr_set.remove(&state.peer_address);
+            debug_assert!(removed);
+        }
+        res
+    }
+
+    fn values(&self) -> Values<ActorUri, P2pPeerState> {
+        self.peers.values()
+    }
+
+    fn values_mut(&mut self) -> ValuesMut<ActorUri, P2pPeerState> {
+        self.peers.values_mut()
+    }
+}
+
 /// Holds information about a specific peer.
 #[derive(Clone)]
 struct P2pPeerState {
@@ -1073,7 +1140,7 @@ pub(crate) struct P2pPeers {
     peers_threshold: Arc<PeerConnectionThreshold>,
 
     /// Map of all connected peers (incoming + outgoing)
-    connected_peers: Arc<RwLock<HashMap<ActorUri, P2pPeerState>>>,
+    connected_peers: Arc<RwLock<P2pPeersMap>>,
 
     /// Semaphore for limiting incoming connections
     incoming_connection_tickets: Arc<Semaphore>,
@@ -1097,7 +1164,7 @@ impl P2pPeers {
         Self {
             potential_peers: Arc::new(RwLock::new(HashSet::new())),
             incoming_connection_tickets: Arc::new(Semaphore::new(max_incoming_connection_tickets)),
-            connected_peers: Arc::new(RwLock::new(HashMap::new())),
+            connected_peers: Arc::new(RwLock::new(P2pPeersMap::new())),
             peers_threshold,
         }
     }
@@ -1107,16 +1174,8 @@ impl P2pPeers {
         peer_ref: PeerRef,
         peer_address: SocketAddr,
     ) -> Result<(), PeerManagerError> {
-        // TODO: TE-490 - handle AlreadyConnected
-        let _ = self.connected_peers.write()?.insert(
-            peer_ref.uri().clone(),
-            P2pPeerState {
-                peer_ref,
-                peer_address,
-                bootstrap_requested_last: None,
-            },
-        );
-        Ok(())
+        let mut connected_peers = self.connected_peers.write()?;
+        connected_peers.try_insert(peer_ref, peer_address, None)
     }
 
     fn add_incoming_peer(
@@ -1124,16 +1183,8 @@ impl P2pPeers {
         peer_ref: PeerRef,
         peer_address: SocketAddr,
     ) -> Result<(), PeerManagerError> {
-        // TODO: TE-490 - handle AlreadyConnected
-        let _ = self.connected_peers.write()?.insert(
-            peer_ref.uri().clone(),
-            P2pPeerState {
-                peer_ref,
-                peer_address,
-                bootstrap_requested_last: None,
-            },
-        );
-        Ok(())
+        let mut connected_peers = self.connected_peers.write()?;
+        connected_peers.try_insert(peer_ref, peer_address, None)
     }
 
     /// Tries to remove peer_actor_uri from state.
@@ -1242,7 +1293,7 @@ pub mod tests {
         let p2p_peers = P2pPeers {
             potential_peers: Arc::new(RwLock::new(HashSet::new())),
             incoming_connection_tickets: Arc::new(Semaphore::new(incoming_threshold_high)),
-            connected_peers: Arc::new(RwLock::new(HashMap::new())),
+            connected_peers: Arc::new(RwLock::new(P2pPeersMap::new())),
             peers_threshold: Arc::new(
                 PeerConnectionThreshold::try_new(0, threshold_high, None).expect("Incorrect range"),
             ),
@@ -1337,6 +1388,85 @@ pub mod tests {
             .try_acquire_incoming_connection_permit()
             .unwrap()
             .is_some());
+    }
+
+    #[test]
+    fn test_p2p_peers_already_connected_management() {
+        // prerequisities
+        let log = create_logger(Level::Debug);
+        let tokio_runtime = create_test_tokio_runtime();
+        let actor_system = create_test_actor_system(log.clone());
+        let network_channel =
+            NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+
+        // cfg
+        let threshold_high = 3;
+        let incoming_threshold_high = 2;
+
+        let p2p_peers = P2pPeers {
+            potential_peers: Arc::new(RwLock::new(HashSet::new())),
+            incoming_connection_tickets: Arc::new(Semaphore::new(incoming_threshold_high)),
+            connected_peers: Arc::new(RwLock::new(P2pPeersMap::new())),
+            peers_threshold: Arc::new(
+                PeerConnectionThreshold::try_new(0, threshold_high, None).expect("Incorrect range"),
+            ),
+        };
+
+        // test
+        assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+
+        let PeerState { peer_id, .. } =
+            test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
+        // add peer 1 as incoming
+        {
+            // try permit for incoming
+            assert_eq!(2, p2p_peers.incoming_connection_tickets.available_permits());
+            let permit = p2p_peers.try_acquire_incoming_connection_permit().unwrap();
+            assert!(permit.is_some());
+            assert_eq!(1, p2p_peers.incoming_connection_tickets.available_permits());
+
+            // register as incoming
+            p2p_peers
+                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .unwrap();
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
+
+        // add peer 1 as incoming again
+        {
+            // try permit for incoming
+            assert_eq!(2, p2p_peers.incoming_connection_tickets.available_permits());
+            let permit = p2p_peers.try_acquire_incoming_connection_permit().unwrap();
+            assert!(permit.is_some());
+            assert_eq!(1, p2p_peers.incoming_connection_tickets.available_permits());
+
+            // register as incoming
+            let err = p2p_peers
+                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .unwrap_err();
+            assert!(matches!(err, PeerManagerError::AlreadyConnected { .. }));
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
+
+        // add peer 1 as outgoing again
+        {
+            // register as outgoing
+            let err = p2p_peers
+                .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .unwrap_err();
+            assert!(matches!(err, PeerManagerError::AlreadyConnected { .. }));
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
+
     }
 
     fn check_count_of_required_peers(current: usize, low: usize, high: usize) {
