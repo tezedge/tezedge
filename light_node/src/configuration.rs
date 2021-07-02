@@ -978,7 +978,7 @@ impl Environment {
                     .parse::<SocketAddr>()
                     .expect("Failed to parse listener address"),
                 disable_bootstrap_lookup: args.is_present("disable-bootstrap-lookup"),
-                disable_blacklist: args.is_present("disable-blacklist"),
+                disable_blacklist: args.is_present("disable-peer-blacklist"),
                 bootstrap_lookup_addresses: args
                     .value_of("bootstrap-lookup-address")
                     .map(|addresses_str| {
