@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
-use slog::{info, warn, Logger};
+use slog::{debug, info, warn, Logger};
 
 use crypto::hash::ChainId;
 use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
@@ -106,7 +106,7 @@ impl Monitor {
             };
             monitor.incoming_bytes(size);
         } else {
-            warn!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
+            debug!(log, "Missing monitor for peer"; "peer" => msg.peer.name());
         }
     }
 
