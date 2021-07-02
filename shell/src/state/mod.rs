@@ -267,7 +267,10 @@ pub mod tests {
 
     pub(crate) mod prerequisites {
         use std::net::SocketAddr;
-        use std::sync::Arc;
+        use std::sync::atomic::AtomicBool;
+        use std::sync::mpsc::{channel, Receiver};
+        use std::sync::{Arc, Mutex};
+        use std::thread;
 
         use futures::lock::Mutex as TokioMutex;
         use riker::actors::*;
@@ -280,6 +283,8 @@ pub mod tests {
         use tezos_identity::Identity;
         use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
+        use crate::chain_feeder;
+        use crate::shell_channel::ShellChannelRef;
         use crate::state::peer_state::{DataQueuesLimits, PeerState};
 
         pub(crate) fn test_peer(
@@ -357,6 +362,30 @@ pub mod tests {
             .fuse();
 
             Logger::root(drain, slog::o!())
+        }
+
+        pub(crate) fn chain_feeder_mock(
+            actor_system: &ActorSystem,
+            actor_name: &str,
+            shell_channel: ShellChannelRef,
+        ) -> Result<(chain_feeder::ChainFeederRef, Receiver<chain_feeder::Event>), failure::Error>
+        {
+            let (block_applier_event_sender, block_applier_event_receiver) = channel();
+            let block_applier_run = Arc::new(AtomicBool::new(true));
+
+            actor_system
+                .actor_of_props::<chain_feeder::ChainFeeder>(
+                    actor_name,
+                    Props::new_args((
+                        shell_channel,
+                        Arc::new(Mutex::new(block_applier_event_sender)),
+                        block_applier_run,
+                        Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
+                        2,
+                    )),
+                )
+                .map(|feeder| (feeder, block_applier_event_receiver))
+                .map_err(|e| e.into())
         }
     }
 }
