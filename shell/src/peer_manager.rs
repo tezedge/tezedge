@@ -89,6 +89,7 @@ pub struct P2p {
     pub listener_address: SocketAddr,
 
     pub disable_mempool: bool,
+    pub disable_blacklist: bool,
     pub private_node: bool,
 
     pub peer_threshold: PeerConnectionThreshold,
@@ -156,6 +157,10 @@ pub struct PeerManager {
 
     /// Indicates that mempool should be disabled
     disable_mempool: bool,
+
+    /// Indicates that blacklist should be disabled
+    disable_blacklist: bool,
+
     /// Indicates that p2p is working in private mode
     private_node: bool,
 
@@ -297,6 +302,10 @@ impl PeerManager {
     }
 
     fn blacklist_address(&mut self, address: SocketAddr, reason: String, log: &Logger) {
+        if self.disable_blacklist {
+            return;
+        }
+
         info!(log, "Blacklisting IP";
                    "ip" => format!("{}", address.ip()),
                    "reason" => reason,
@@ -307,6 +316,10 @@ impl PeerManager {
     }
 
     fn blacklist_peer(&mut self, peer_id: Arc<PeerId>, reason: String, actor_system: &ActorSystem) {
+        if self.disable_blacklist {
+            return;
+        }
+       
         let log = actor_system.log();
         warn!(log, "Blacklisting peer";
                    "peer_uri" => peer_id.peer_ref.uri().to_string(),
@@ -545,6 +558,7 @@ impl
             )),
             listener_address: p2p_config.listener_address,
             disable_mempool: p2p_config.disable_mempool,
+            disable_blacklist: p2p_config.disable_blacklist,
             private_node: p2p_config.private_node,
             rx_run: Arc::new(AtomicBool::new(true)),
             peers: Arc::new(P2pPeers::new(peers_threshold)),
