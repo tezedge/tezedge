@@ -1417,6 +1417,7 @@ pub mod tests {
 
         let PeerState { peer_id, .. } =
             test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
+
         // add peer 1 as incoming
         {
             // try permit for incoming
@@ -1467,6 +1468,20 @@ pub mod tests {
             assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
         }
 
+        p2p_peers
+            .try_remove_peer_actor(peer_id.peer_ref.uri()).expect("Cannot remove a peer");
+
+        // add peer 1 as outgoint again
+        {
+            // register as ougoing
+            p2p_peers
+                .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .unwrap();
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
     }
 
     fn check_count_of_required_peers(current: usize, low: usize, high: usize) {
