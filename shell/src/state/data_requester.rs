@@ -491,12 +491,8 @@ fn tell_peer(msg: Arc<PeerMessageResponse>, peer: &PeerId) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-    use std::sync::atomic::AtomicBool;
-    use std::sync::mpsc::{channel, Receiver};
-    use std::sync::{Arc, Mutex};
-    use std::thread;
+    use std::sync::Arc;
 
-    use riker::actors::*;
     use serial_test::serial;
     use slog::Level;
 
@@ -507,12 +503,11 @@ mod tests {
     };
     use tezos_messages::p2p::encoding::prelude::OperationsForBlock;
 
-    use crate::chain_feeder;
-    use crate::chain_feeder::{ChainFeeder, ChainFeederRef};
     use crate::shell_channel::ShellChannel;
     use crate::state::data_requester::DataRequester;
     use crate::state::tests::prerequisites::{
-        create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
+        chain_feeder_mock, create_logger, create_test_actor_system, create_test_tokio_runtime,
+        test_peer,
     };
     use crate::state::tests::{block, block_ref};
     use crate::state::ApplyBlockBatch;
@@ -575,9 +570,12 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+        let shell_channel =
+            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
-        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
+        let (chain_feeder_mock, _) =
+            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -645,10 +643,13 @@ mod tests {
         let actor_system = create_test_actor_system(log.clone());
         let network_channel =
             NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+        let shell_channel =
+            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage =
             TmpStorage::create_to_out_dir("__test_requester_fetch_and_receive_block_operations")?;
         let mut peer1 = test_peer(&actor_system, network_channel, &tokio_runtime, 7777);
-        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
+        let (chain_feeder_mock, _) =
+            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -780,9 +781,12 @@ mod tests {
         // prerequizities
         let log = create_logger(Level::Debug);
         let actor_system = create_test_actor_system(log.clone());
+        let shell_channel =
+            ShellChannel::actor(&actor_system).expect("Failed to create network channel");
         let storage = TmpStorage::create_to_out_dir("__test_try_schedule_apply_block_one")?;
         let block_meta_storage = BlockMetaStorage::new(storage.storage());
-        let (chain_feeder_mock, _) = chain_feeder_mock(&actor_system)?;
+        let (chain_feeder_mock, _) =
+            chain_feeder_mock(&actor_system, "mocked_chain_feeder", shell_channel)?;
 
         // requester instance
         let data_requester = DataRequester::new(
@@ -858,30 +862,5 @@ mod tests {
         ));
 
         Ok(())
-    }
-
-    fn chain_feeder_mock(
-        actor_system: &ActorSystem,
-    ) -> Result<(ChainFeederRef, Receiver<chain_feeder::Event>), failure::Error> {
-        // run actor's
-        let shell_channel =
-            ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
-
-        let (block_applier_event_sender, block_applier_event_receiver) = channel();
-        let block_applier_run = Arc::new(AtomicBool::new(true));
-
-        actor_system
-            .actor_of_props::<ChainFeeder>(
-                "mocked_chain_feeder",
-                Props::new_args((
-                    shell_channel,
-                    Arc::new(Mutex::new(block_applier_event_sender)),
-                    block_applier_run,
-                    Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
-                    2,
-                )),
-            )
-            .map(|feeder| (feeder, block_applier_event_receiver))
-            .map_err(|e| e.into())
     }
 }
