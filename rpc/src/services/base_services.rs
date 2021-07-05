@@ -307,7 +307,7 @@ pub(crate) async fn get_block_operation_hashes(
         .iter()
         .map(|op_group| {
             op_group
-                .into_iter()
+                .iter()
                 .map(|op| op["hash"].to_string().replace("\"", ""))
                 .collect()
         })

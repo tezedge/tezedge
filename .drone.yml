@@ -965,9 +965,6 @@ steps:
     - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
     - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
-  # TODO: TE-275 remove failure: ignore
-  # TODO - TE-220 - stop ignoring after resolving the rpc error handling
-  failure: ignore
 
 - name: basic-test
   image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
@@ -1224,9 +1221,6 @@ steps:
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
-    # TODO: TE-275 remove failure: ignore
-    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
-    failure: ignore
 
   - name: basic-test
     image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
@@ -1482,9 +1476,6 @@ steps:
       - log_dir=$${TEZOS_SRC_PATH}/$${DRONE_STEP_NAME}_logs
       - mkdir -p $log_dir && echo "Logs are place on $${DRONE_RUNNER_IP_ADDRESS} - $log_dir"
       - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_contract_annotations.py
-    # TODO: TE-275 remove failure: ignore
-    # TODO - TE-220 - stop ignoring after resolving the rpc error handling
-    failure: ignore
 
   - name: basic-test
     image: tezedge/tezedge-ci-builder:v9.3-tezos-compatible
