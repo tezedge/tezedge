@@ -38,7 +38,7 @@ pub mod cache_warm_up {
             )
         };
 
-        let _ = tokio::join!(get_additional_data, get_block_with_json_data,);
+        let _ = tokio::join!(get_additional_data, get_block_with_json_data);
 
         // Async calls
         let get_block_metadata =
@@ -60,25 +60,33 @@ pub mod cache_warm_up {
             block.hash.clone(),
             &env.persistent_storage(),
         );
+        let get_block_protocols = async {
+            crate::services::base_services::get_block_protocols(
+                &chain_id,
+                &block.hash,
+                &env.persistent_storage(),
+            )
+        };
+        let live_blocks = async {
+            crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), &env)
+        };
+        let get_block_shell_header = async {
+            crate::services::base_services::get_block_shell_header(
+                &chain_id,
+                block.hash.clone(),
+                &env.persistent_storage(),
+            )
+        };
+
         let _ = tokio::join!(
             get_block_metadata,
             get_block,
             get_block_operations_metadata,
             get_block_operation_hashes,
             get_block_header,
-        );
-
-        // Sync calls
-        let _ = crate::services::base_services::get_block_protocols(
-            &chain_id,
-            &block.hash,
-            &env.persistent_storage(),
-        );
-        let _ = crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), &env);
-        let _ = crate::services::base_services::get_block_shell_header(
-            &chain_id,
-            block.hash.clone(),
-            &env.persistent_storage(),
+            get_block_protocols,
+            live_blocks,
+            get_block_shell_header,
         );
     }
 }

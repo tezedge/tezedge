@@ -288,7 +288,7 @@ pub(crate) async fn get_block_operation_hashes(
 ) -> Result<Vec<BlockOperationsHashes>, failure::Error> {
     let block_operations = get_block_operations_metadata(chain_id, block_hash, env).await?;
     let operations = block_operations
-        .into_iter()
+        .iter()
         .map(|op_group| {
             op_group
                 .into_iter()
