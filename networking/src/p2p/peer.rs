@@ -14,6 +14,7 @@ use slog::{debug, info, o, trace, warn, Logger};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 use tokio::runtime::Handle;
+use tokio::sync::Notify;
 use tokio::time::timeout;
 
 use crypto::{
@@ -35,7 +36,10 @@ use tezos_messages::p2p::encoding::ack::{NackInfo, NackMotive};
 use tezos_messages::p2p::encoding::prelude::*;
 
 use crate::p2p::network_channel::NetworkChannelMsg;
+use crate::p2p::peer::quota::get_reset_period;
 use crate::{LocalPeerInfo, PeerId};
+
+use self::quota::ThrottleQuota;
 
 use super::network_channel::{NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived};
 use super::stream::{EncryptedMessageReader, EncryptedMessageWriter, MessageStream, StreamError};
@@ -206,6 +210,8 @@ struct Network {
     socket_address: SocketAddr,
 }
 
+mod quota;
+
 pub type PeerRef = ActorRef<PeerMsg>;
 
 /// Represents a single p2p peer.
@@ -222,6 +228,8 @@ pub struct Peer {
     peer_id_marker: String,
     peer_metadata: MetadataMessage,
     peer_compatible_network_version: NetworkVersion,
+    throttle_quota: Arc<std::sync::Mutex<quota::ThrottleQuota>>,
+    quota_update_stop: Arc<Notify>,
 }
 
 impl Peer {
@@ -232,17 +240,28 @@ impl Peer {
         network_channel: NetworkChannelRef,
         tokio_executor: Handle,
         info: BootstrapOutput,
+        log: &Logger,
     ) -> Result<PeerRef, CreateError> {
         sys.actor_of_props(
             peer_actor_name,
-            Props::new_args::<Peer, _>((network_channel, tokio_executor, info)),
+            Props::new_args::<Peer, _>((
+                network_channel,
+                tokio_executor,
+                info,
+                log.new(o!("peer_uri" => peer_actor_name.to_string())),
+            )),
         )
     }
 }
 
-impl ActorFactoryArgs<(NetworkChannelRef, Handle, BootstrapOutput)> for Peer {
+impl ActorFactoryArgs<(NetworkChannelRef, Handle, BootstrapOutput, Logger)> for Peer {
     fn create_args(
-        (event_channel, tokio_executor, info): (NetworkChannelRef, Handle, BootstrapOutput),
+        (event_channel, tokio_executor, info, log): (
+            NetworkChannelRef,
+            Handle,
+            BootstrapOutput,
+            Logger,
+        ),
     ) -> Self {
         Peer {
             network_channel: event_channel,
@@ -257,6 +276,8 @@ impl ActorFactoryArgs<(NetworkChannelRef, Handle, BootstrapOutput)> for Peer {
             peer_id_marker: info.3,
             peer_metadata: info.4,
             peer_compatible_network_version: info.5,
+            throttle_quota: Arc::new(std::sync::Mutex::new(ThrottleQuota::new(log))),
+            quota_update_stop: Arc::new(Notify::new()),
         }
     }
 }
@@ -266,9 +287,31 @@ impl Actor for Peer {
 
     fn post_stop(&mut self) {
         self.net.rx_run.store(false, Ordering::Release);
+        self.quota_update_stop.notify_one();
     }
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
+        // quota replenish task
+
+        let throttle_quota = self.throttle_quota.clone();
+        let log = ctx.system.log().clone();
+        let stop = self.quota_update_stop.clone();
+        self.tokio_executor.spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(get_reset_period())) => {
+                        match throttle_quota.lock() {
+                            Ok(ref mut quota) => quota.reset_all(),
+                            Err(e) => warn!(log, "Failed to obtain a lock on throttling quota"; "reason" => format!("{:?}", e)),
+                        }
+                    }
+                    _ = stop.notified() => {
+                        return;
+                    }
+                }
+            }
+        });
+
         let myself = ctx.myself();
         let system = ctx.system.clone();
         let net = self.net.clone();
@@ -277,6 +320,7 @@ impl Actor for Peer {
         let peer_id_marker = self.peer_id_marker.clone();
         let peer_metadata = self.peer_metadata.clone();
         let peer_compatible_network_version = self.peer_compatible_network_version.clone();
+        let throttle_quota = self.throttle_quota.clone();
 
         self.tokio_executor.spawn(async move {
             // prepare PeerId
@@ -298,7 +342,7 @@ impl Actor for Peer {
             }, None);
 
             // begin to process incoming messages in a loop
-            begin_process_incoming(net, myself.clone(), network_channel, log).await;
+            begin_process_incoming(net, myself.clone(), network_channel, throttle_quota, log.clone()).await;
 
             // connection to peer was closed, stop this actor
             system.stop(myself);
@@ -315,6 +359,19 @@ impl Receive<SendMessage> for Peer {
     type Msg = PeerMsg;
 
     fn receive(&mut self, ctx: &Context<Self::Msg>, msg: SendMessage, _sender: Sender) {
+        match self.throttle_quota.lock() {
+            Ok(ref mut quota) => {
+                if !quota.can_send(msg.message.as_ref()) {
+                    return;
+                }
+            }
+            Err(e) => warn!(
+                ctx.system.log(),
+                "Failed to obtain a lock on throttling quota";
+                "reason" => format!("{:?}", e)
+            ),
+        }
+
         let system = ctx.system.clone();
         let myself = ctx.myself();
         let tx = self.net.tx.clone();
@@ -571,6 +628,7 @@ async fn begin_process_incoming(
     net: Network,
     myself: PeerRef,
     event_channel: NetworkChannelRef,
+    throttle_quota: Arc<std::sync::Mutex<ThrottleQuota>>,
     log: Logger,
 ) {
     info!(log, "Starting to accept messages");
@@ -582,23 +640,30 @@ async fn begin_process_incoming(
     while net.rx_run.load(Ordering::Acquire) {
         match timeout(READ_TIMEOUT_LONG, rx.read_message::<PeerMessageResponse>()).await {
             Ok(res) => match res {
-                Ok(msg) => {
-                    let should_broadcast_message = net.rx_run.load(Ordering::Acquire);
-                    if should_broadcast_message {
-                        trace!(log, "Message parsed successfully"; "msg" => format!("{:?}", &msg));
-                        event_channel.tell(
-                            Publish {
-                                msg: PeerMessageReceived {
-                                    peer: myself.clone(),
-                                    message: Arc::new(msg),
-                                }
-                                .into(),
-                                topic: NetworkChannelTopic::NetworkEvents.into(),
-                            },
-                            None,
-                        );
+                Ok(msg) => match throttle_quota.lock() {
+                    Ok(ref mut quota) => {
+                        if quota.can_receive(&msg) {
+                            let should_broadcast_message = net.rx_run.load(Ordering::Acquire);
+                            if should_broadcast_message {
+                                trace!(log, "Message parsed successfully"; "msg" => format!("{:?}", &msg));
+                                event_channel.tell(
+                                    Publish {
+                                        msg: PeerMessageReceived {
+                                            peer: myself.clone(),
+                                            message: Arc::new(msg),
+                                        }
+                                        .into(),
+                                        topic: NetworkChannelTopic::NetworkEvents.into(),
+                                    },
+                                    None,
+                                );
+                            }
+                        }
                     }
-                }
+                    Err(e) => {
+                        warn!(log, "Failed to obtain a lock for throttle quota"; "reason" => format!("{:?}", e))
+                    }
+                },
                 Err(StreamError::DeserializationError { error }) => match error {
                     BinaryReaderError::UnknownTag(tag) => {
                         warn!(log, "Messages with unsupported tags are ignored"; "tag" => tag);
@@ -635,4 +700,214 @@ async fn begin_process_incoming(
     }
 
     info!(log, "Stopped to accept messages");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        cell::RefCell,
+        sync::{
+            atomic::{AtomicIsize, AtomicUsize, Ordering},
+            Arc,
+        },
+        time::Duration,
+    };
+
+    use crypto::hash::CryptoboxPublicKeyHash;
+    use futures::lock::Mutex;
+    use riker::{
+        actor::ActorRefFactory,
+        actors::{ActorSystem, SystemBuilder, Tell},
+    };
+    use slog::{Drain, Level, Logger, KV};
+    use tezos_identity::Identity;
+    use tezos_messages::p2p::encoding::{
+        metadata::MetadataMessage,
+        peer::{PeerMessage, PeerMessageResponse},
+        prelude::AdvertiseMessage,
+        version::NetworkVersion,
+    };
+    use tokio::runtime::Handle;
+
+    use crate::p2p::{
+        network_channel::{NetworkChannel, NetworkChannelRef},
+        peer::ThrottleQuota,
+    };
+
+    use super::{BootstrapOutput, Peer, PeerRef, SendMessage};
+
+    fn create_logger(warns: Arc<AtomicUsize>, exceeded: Arc<AtomicIsize>, level: Level) -> Logger {
+        let drain = slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+            .build()
+            .fuse();
+
+        struct MySer(Arc<AtomicIsize>);
+
+        impl slog::Serializer for MySer {
+            fn emit_arguments(
+                &mut self,
+                key: slog::Key,
+                val: &core::fmt::Arguments,
+            ) -> slog::Result {
+                if key == "amount" {
+                    self.0
+                        .store(val.to_string().parse().unwrap(), Ordering::Relaxed);
+                }
+                Ok(())
+            }
+        }
+
+        struct MyDrain {
+            warns: Arc<AtomicUsize>,
+            ser: RefCell<MySer>,
+        }
+
+        impl Drain for MyDrain {
+            type Ok = ();
+            type Err = slog::Never;
+
+            fn log(
+                &self,
+                record: &slog::Record,
+                _values: &slog::OwnedKVList,
+            ) -> std::result::Result<Self::Ok, Self::Err> {
+                if record.level() == Level::Warning {
+                    let msg = record.msg().to_string();
+                    if msg == "Cannot send message because its send quota is exceeded" {
+                        self.warns.fetch_add(1, Ordering::Relaxed);
+                    } else if msg == String::from("Tx quota is exceeded") {
+                        record
+                            .kv()
+                            .serialize(record, &mut *self.ser.borrow_mut())
+                            .unwrap();
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        let drain = slog_async::Async::new(
+            slog::Duplicate::new(
+                MyDrain {
+                    warns,
+                    ser: RefCell::new(MySer(exceeded)),
+                },
+                drain,
+            )
+            .fuse(),
+        )
+        .build()
+        .filter_level(level)
+        .fuse();
+
+        Logger::root(drain, slog::o!())
+    }
+
+    fn create_test_actor_system(log: Logger) -> ActorSystem {
+        SystemBuilder::new()
+            .name("create_actor_system")
+            .log(log)
+            .create()
+            .expect("Failed to create test actor system")
+    }
+
+    fn create_test_tokio_runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .expect("Failed to create test tokio runtime")
+    }
+
+    fn create_test_peer(
+        sys: &impl ActorRefFactory,
+        network_channel: NetworkChannelRef,
+        tokio_executor: Handle,
+        log: Logger,
+    ) -> PeerRef {
+        let node_identity = Arc::new(Identity::generate(0f64).unwrap());
+        let peer_public_key_hash: CryptoboxPublicKeyHash =
+            node_identity.public_key.public_key_hash().unwrap();
+        let peer_id_marker = peer_public_key_hash.to_base58_check();
+
+        Peer::actor(
+            "test-peer",
+            sys,
+            network_channel,
+            tokio_executor,
+            BootstrapOutput(
+                Arc::new(Mutex::new(None)),
+                Arc::new(Mutex::new(None)),
+                peer_public_key_hash,
+                peer_id_marker,
+                MetadataMessage::new(false, false).clone(),
+                NetworkVersion::new("".to_owned(), 0, 0),
+                "127.0.0.1:9732".parse().unwrap(),
+            ),
+            &log,
+        )
+        .expect("Cannot create a test actor")
+    }
+
+    fn create_test_mgs() -> PeerMessageResponse {
+        PeerMessage::Advertise(AdvertiseMessage::new(&[])).into()
+    }
+
+    #[test]
+    #[ignore]
+    fn test_quota_exceeded() {
+        let received_messages = Arc::new(AtomicUsize::new(0));
+        let quota_exceeded = Arc::new(AtomicIsize::new(0));
+        let log = create_logger(
+            received_messages.clone(),
+            quota_exceeded.clone(),
+            Level::Debug,
+        );
+        let actor_system = create_test_actor_system(log.clone());
+        let runtime = create_test_tokio_runtime();
+        let network_channel =
+            NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
+        let peer = create_test_peer(
+            &actor_system,
+            network_channel.clone(),
+            runtime.handle().clone(),
+            log.clone(),
+        );
+        let msg = create_test_mgs();
+        let idx = ThrottleQuota::msg_index(&msg);
+        (0..super::quota::THROTTLING_QUOTA_MAX[idx].0 + 11).for_each(|_| {
+            peer.tell(SendMessage::new(Arc::new(msg.clone())), None);
+        });
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Only a single warning on dropped messages
+        assert_eq!(received_messages.load(Ordering::Relaxed), 1);
+
+        std::thread::sleep(Duration::from_millis(
+            *super::quota::THROTTLING_QUOTA_RESET_MS,
+        ));
+
+        // Quota is exceeded by 11
+        assert_eq!(
+            quota_exceeded.load(Ordering::Relaxed) - super::quota::THROTTLING_QUOTA_MAX[idx].0,
+            11
+        );
+
+        for _ in 0..super::quota::THROTTLING_QUOTA_MAX[idx].0 + 10 {
+            peer.tell(SendMessage::new(Arc::new(msg.clone())), None);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+
+        // One more warning on dropped messages
+        assert_eq!(received_messages.load(Ordering::Relaxed), 2);
+
+        std::thread::sleep(Duration::from_millis(
+            *super::quota::THROTTLING_QUOTA_RESET_MS,
+        ));
+
+        // Quota is exceeded by 11
+        assert_eq!(
+            quota_exceeded.load(Ordering::Relaxed) - super::quota::THROTTLING_QUOTA_MAX[idx].0,
+            10
+        );
+    }
 }
