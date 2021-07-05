@@ -95,12 +95,15 @@ pub(crate) async fn get_block_metadata(
     };
 
     // 1. wait for data to collect
-    let ((block_header, block_json_data), block_additional_data) =
+    let (block_header_with_json_data, block_additional_data) =
         tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
+
+    let block_header = &block_header_with_json_data.0;
+    let block_json_data = &block_header_with_json_data.1;
 
     convert_block_metadata(
         block_header.header.context().clone(),
-        block_json_data.block_header_proto_metadata_bytes,
+        block_json_data.block_header_proto_metadata_bytes.clone(),
         &block_additional_data,
         env,
     )
@@ -157,8 +160,11 @@ pub(crate) async fn get_block_header(
     };
 
     // 1. wait for data to collect
-    let ((block_header, block_json_data), block_additional_data) =
+    let (block_header_with_json_data, block_additional_data) =
         tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
+
+    let block_header = &block_header_with_json_data.0;
+    let block_json_data = &block_header_with_json_data.1;
 
     Ok(Arc::new(BlockHeaderInfo::new(
         &block_header,
@@ -487,13 +493,17 @@ pub(crate) async fn get_block(
     };
 
     // 1. wait for data to collect
-    let ((block_header, block_json_data), block_additional_data, operations) = tokio::try_join!(
+    let (block_header_with_json_data, block_additional_data, operations) = tokio::try_join!(
         block_header_with_json_data,
         block_additional_data,
         operations
     )?;
 
+    let block_json_data = &block_header_with_json_data.1;
+    let block_header = &block_header_with_json_data.0;
+
     // 2. convert all data
+
     let BlockJsonData {
         block_header_proto_json,
         block_header_proto_metadata_bytes,
@@ -520,13 +530,13 @@ pub(crate) async fn get_block(
     // TODO: TE-521 - rewrite encoding part to rust - this two calls could be parallelized (once we have our encodings in rust)
     let metadata = convert_block_metadata(
         block_header.header.context().clone(),
-        block_header_proto_metadata_bytes,
+        block_header_proto_metadata_bytes.clone(),
         &block_additional_data,
         env,
     )?;
     let block_operations = convert_block_operations_metadata(
         chain_id.clone(),
-        operations_proto_metadata_bytes,
+        operations_proto_metadata_bytes.clone(),
         &block_additional_data,
         operations,
         env,
@@ -535,7 +545,7 @@ pub(crate) async fn get_block(
     Ok(Arc::new(BlockInfo::new(
         chain_id,
         block_hash,
-        block_additional_data.protocol_hash,
+        block_additional_data.protocol_hash.clone(),
         header,
         metadata,
         block_operations,
