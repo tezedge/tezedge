@@ -29,7 +29,7 @@ use cached::TimedCache;
 use cached::TimedSizedCache;
 
 pub const TIMED_SIZED_CACHE_SIZE: usize = 10;
-pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 20;
+pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 
 /// Retrieve blocks from database.
 #[cached(

@@ -75,7 +75,7 @@ impl RpcServer {
         let env = Arc::new(RpcServiceEnvironment::new(
             sys.clone(),
             Arc::new(tokio_executor),
-            shell_channel.clone(),
+            shell_channel,
             tezos_env,
             network_version,
             persistent_storage,
@@ -131,60 +131,6 @@ impl Actor for RpcServer {
     }
 }
 
-async fn warm_up_rpc_cache(
-    chain_id: ChainId,
-    block: Arc<BlockHeaderWithHash>,
-    env: Arc<RpcServiceEnvironment>,
-) {
-    // Sync call: goes first because other calls re-use the cached result
-    let _ = crate::services::base_services::get_additional_data(
-        &chain_id,
-        &block.hash,
-        env.persistent_storage(),
-    );
-
-    // Async calls
-    let get_block_metadata =
-        crate::services::base_services::get_block_metadata(&chain_id, &block.hash, &env);
-    let get_block = crate::services::base_services::get_block(&chain_id, &block.hash, &env);
-    let get_block_operations_metadata =
-        crate::services::base_services::get_block_operations_metadata(
-            chain_id.clone(),
-            &block.hash,
-            &env,
-        );
-    let get_block_operation_hashes = crate::services::base_services::get_block_operation_hashes(
-        chain_id.clone(),
-        &block.hash,
-        &env,
-    );
-    let get_block_header = crate::services::base_services::get_block_header(
-        chain_id.clone(),
-        block.hash.clone(),
-        &env.persistent_storage(),
-    );
-    let _ = tokio::join!(
-        get_block_metadata,
-        get_block,
-        get_block_operations_metadata,
-        get_block_operation_hashes,
-        get_block_header,
-    );
-
-    // Sync calls
-    let _ = crate::services::base_services::get_block_protocols(
-        &chain_id,
-        &block.hash,
-        &env.persistent_storage(),
-    );
-    let _ = crate::services::base_services::live_blocks(chain_id.clone(), block.hash.clone(), &env);
-    let _ = crate::services::base_services::get_block_shell_header(
-        chain_id.clone(),
-        block.hash.clone(),
-        &env.persistent_storage(),
-    );
-}
-
 /// Timeout for RPCs warmup block time
 const RPC_WARMUP_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -204,7 +150,7 @@ impl Receive<ShellChannelMsg> for RpcServer {
                 self.env.tokio_executor().spawn(async move {
                     if let Err(err) = tokio::time::timeout(
                         RPC_WARMUP_TIMEOUT,
-                        warm_up_rpc_cache(chain_id, block, env),
+                        crate::services::cache_warm_up::warm_up_rpc_cache(chain_id, block, env),
                     )
                     .await
                     {
