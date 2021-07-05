@@ -319,7 +319,7 @@ impl PeerManager {
         if self.disable_blacklist {
             return;
         }
-       
+
         let log = actor_system.log();
         warn!(log, "Blacklisting peer";
                    "peer_uri" => peer_id.peer_ref.uri().to_string(),
