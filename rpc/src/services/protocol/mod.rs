@@ -452,8 +452,6 @@ pub(crate) fn get_context_constants_just_for_rpc(
     )?)
 }
 
-
-
 // TODO: TE-220, be more explicit about the kind of response from the RPC service
 //fn handle_rpc_response(
 //    response: &ProtocolRpcResponse,
