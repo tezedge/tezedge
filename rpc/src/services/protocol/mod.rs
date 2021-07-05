@@ -19,9 +19,7 @@ use crypto::hash::{BlockHash, ChainId, FromBytesError, ProtocolHash};
 use storage::{
     BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
 };
-use tezos_api::ffi::{
-    HelpersPreapplyBlockRequest, ProtocolRpcRequest, ProtocolRpcResponse, RpcMethod, RpcRequest,
-};
+use tezos_api::ffi::{HelpersPreapplyBlockRequest, ProtocolRpcRequest, RpcMethod, RpcRequest};
 use tezos_messages::base::rpc_support::RpcJsonMap;
 use tezos_messages::base::signature_public_key_hash::ConversionError;
 use tezos_messages::protocol::{SupportedProtocol, UnsupportedProtocolError};
@@ -452,26 +450,12 @@ pub(crate) fn get_context_constants_just_for_rpc(
     )?)
 }
 
-// TODO: TE-220, be more explicit about the kind of response from the RPC service
-fn handle_rpc_response(
-    response: &ProtocolRpcResponse,
-    context_path: String,
-) -> Result<serde_json::value::Value, failure::Error> {
-    match response {
-        ProtocolRpcResponse::RPCOk(body) => Ok(serde_json::from_str(&body)?),
-        other => Err(failure::err_msg(format!(
-            "Got non-OK response from protocol-RPC service '{}', reason: {:?}",
-            context_path, other
-        ))),
-    }
-}
-
 // NB: handles multiple paths for RPC calls
 pub const TIMED_SIZED_CACHE_SIZE: usize = 500;
 pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 #[cached(
     name = "CALL_PROTOCOL_RPC_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, String), Arc<serde_json::value::Value>>",
+    type = "TimedSizedCache<(ChainId, BlockHash, String), Arc<(u16, String)>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone(), rpc_request.ffi_rpc_router_cache_key())}",
     result = true
@@ -482,8 +466,7 @@ pub(crate) fn call_protocol_rpc_with_cache(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<Arc<serde_json::value::Value>, failure::Error> {
-    let context_path = rpc_request.context_path.clone();
+) -> Result<Arc<(u16, String)>, failure::Error> {
     let request =
         create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
@@ -495,7 +478,10 @@ pub(crate) fn call_protocol_rpc_with_cache(
         .api
         .call_protocol_rpc(request)?;
 
-    handle_rpc_response(&response, context_path).map(Arc::new)
+    Ok(Arc::new((
+        response.status_code(),
+        response.body_json_string_or_empty(),
+    )))
 }
 
 pub(crate) fn call_protocol_rpc(
@@ -504,14 +490,13 @@ pub(crate) fn call_protocol_rpc(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<Arc<serde_json::value::Value>, failure::Error> {
+) -> Result<Arc<(u16, String)>, failure::Error> {
     match rpc_request.meth {
         RpcMethod::GET => {
             //uses cache if the request is GET request
             call_protocol_rpc_with_cache(chain_param, chain_id, block_hash, rpc_request, env)
         }
         _ => {
-            let context_path = rpc_request.context_path.clone();
             let request =
                 create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
@@ -523,7 +508,10 @@ pub(crate) fn call_protocol_rpc(
                 .api
                 .call_protocol_rpc(request)?;
 
-            handle_rpc_response(&response, context_path).map(Arc::new)
+            Ok(Arc::new((
+                response.status_code(),
+                response.body_json_string_or_empty(),
+            )))
         }
     }
 }

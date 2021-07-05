@@ -673,7 +673,18 @@ async fn get_rpc_as_json(
         Err(e) => return Err(format_err!("Request url: {:?} for getting data failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
-    Ok((serde_json::from_reader(&mut body.reader())?, response_time))
+    let mut buf = body.reader();
+    let mut dst = vec![];
+    std::io::copy(&mut buf, &mut dst).unwrap();
+
+    match serde_json::from_slice(&dst) {
+        Ok(result) => Ok((result, response_time)),
+        Err(err) => Err(format_err!(
+            "Error {:?} when parsing value as JSON: {:?}",
+            err,
+            String::from_utf8_lossy(&dst)
+        )),
+    }
 }
 
 fn cycle_from_metadata(block_metadata_json: &Value) -> Result<i64, failure::Error> {

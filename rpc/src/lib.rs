@@ -45,6 +45,22 @@ pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
         .body(Body::from(serde_json::to_string(content)?))?)
 }
 
+/// Produces a JSON response from an FFI RPC response
+pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -> ServiceResult {
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        // TODO: add to config
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .status(status_code)
+        .body(Body::from(body.to_owned()))?)
+}
+
 /// Function to generate JSON response from a stream
 pub(crate) fn make_json_stream_response<
     T: futures::Stream<Item = Result<String, failure::Error>> + Send + 'static,
