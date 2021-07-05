@@ -96,6 +96,17 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
         .await
         .expect("test failed");
 
+    // Compare with double and trailing slashes
+    test_rpc_compare_json("chains/main//blocks/genesis")
+        .await
+        .expect("test failed");
+    test_rpc_compare_json("chains/main/blocks/genesis/")
+        .await
+        .expect("test failed");
+    test_rpc_compare_json("chains/main/blocks/genesis//")
+        .await
+        .expect("test failed");
+
     // lets run rpsc, which doeas not depend on block/level
     test_rpc_compare_json("config/network/user_activated_upgrades")
         .await
