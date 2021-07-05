@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
+use std::sync::Arc;
+
 use hyper::{Body, Response, StatusCode};
 use slog::{error, Logger};
 
 pub use services::mempool_services::MempoolOperations;
+use tezos_api::ffi::ProtocolRpcResponse;
 
 pub mod encoding;
 mod helpers;
@@ -58,6 +61,48 @@ pub fn make_raw_json_response(content: String) -> ServiceResult {
             "GET, POST, OPTIONS, PUT",
         )
         .body(Body::from(content))?)
+}
+
+fn body_or_empty(body: &Option<String>) -> String {
+    match body {
+        Some(body) => body.clone(),
+        None => "".to_string(),
+    }
+}
+
+/// Produces a JSON response from an FFI RPC response
+pub fn ffi_rpc_response_to_json_response(
+    response: Arc<ProtocolRpcResponse>,
+    _log: &Logger,
+) -> ServiceResult {
+    let response: &ProtocolRpcResponse = &response;
+    // These HTTP codes are maped form what the `resto` OCaml library defines
+    let (status, body): (u16, String) = match &response {
+        ProtocolRpcResponse::RPCConflict(body) => (409, body_or_empty(body)),
+        ProtocolRpcResponse::RPCCreated(body) => (201, body_or_empty(body)),
+        ProtocolRpcResponse::RPCError(body) => (500, body_or_empty(body)),
+        ProtocolRpcResponse::RPCForbidden(body) => (403, body_or_empty(body)),
+        ProtocolRpcResponse::RPCGone(body) => (410, body_or_empty(body)),
+        ProtocolRpcResponse::RPCNoContent => (204, body_or_empty(&None)),
+        ProtocolRpcResponse::RPCNotFound(body) => (404, body_or_empty(body)),
+        ProtocolRpcResponse::RPCOk(body) => (200, body.clone()),
+        ProtocolRpcResponse::RPCUnauthorized => (401, body_or_empty(&None)),
+    };
+
+    // TODO - TE-220: log non-OK responses
+
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        // TODO: add to config
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .status(status)
+        .body(Body::from(body))?)
 }
 
 /// Function to generate JSON response from a stream

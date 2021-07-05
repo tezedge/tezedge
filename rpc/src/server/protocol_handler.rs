@@ -1,10 +1,9 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::{make_raw_json_response, not_found};
+use crate::{ffi_rpc_response_to_json_response, not_found};
 use hyper::{Body, Request};
 use slog::warn;
-use tezos_api::ffi::ProtocolRpcError;
 
 use crate::helpers::{create_rpc_request, parse_block_hash, parse_chain_id};
 use crate::server::{HasSingleValue, Params, Query, RpcServiceEnvironment};
@@ -207,15 +206,7 @@ pub async fn call_protocol_rpc(
     );
 
     match result {
-        Ok(result) => result_to_json_response(Ok(result), env.log()),
-        Err(err) => {
-            if let Some(ProtocolRpcError::FailedToCallProtocolRpc(json_string)) =
-                err.as_fail().downcast_ref::<ProtocolRpcError>()
-            {
-                make_raw_json_response(json_string.clone())
-            } else {
-                result_to_json_response::<Arc<serde_json::Value>>(Err(err), env.log())
-            }
-        }
+        Ok(result) => ffi_rpc_response_to_json_response(result, env.log()),
+        Err(err) => result_to_json_response::<Arc<serde_json::Value>>(Err(err), env.log()),
     }
 }
