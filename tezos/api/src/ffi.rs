@@ -832,6 +832,44 @@ pub enum ProtocolRpcResponse {
     RPCUnauthorized,
 }
 
+fn body_or_empty(body: &Option<String>) -> String {
+    match body {
+        Some(body) => body.clone(),
+        None => "".to_string(),
+    }
+}
+
+impl ProtocolRpcResponse {
+    pub fn status_code(&self) -> u16 {
+        // These HTTP codes are mapped form what the `resto` OCaml library defines
+        match self {
+            ProtocolRpcResponse::RPCConflict(_) => 409,
+            ProtocolRpcResponse::RPCCreated(_) => 201,
+            ProtocolRpcResponse::RPCError(_) => 500,
+            ProtocolRpcResponse::RPCForbidden(_) => 403,
+            ProtocolRpcResponse::RPCGone(_) => 410,
+            ProtocolRpcResponse::RPCNoContent => 204,
+            ProtocolRpcResponse::RPCNotFound(_) => 404,
+            ProtocolRpcResponse::RPCOk(_) => 200,
+            ProtocolRpcResponse::RPCUnauthorized => 401,
+        }
+    }
+
+    pub fn body_json_string_or_empty(&self) -> String {
+        match self {
+            ProtocolRpcResponse::RPCConflict(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCCreated(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCError(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCForbidden(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCGone(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCNoContent => "".to_string(),
+            ProtocolRpcResponse::RPCNotFound(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCOk(body) => body.clone(),
+            ProtocolRpcResponse::RPCUnauthorized => "".to_string(),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RpcMethod {
     DELETE,

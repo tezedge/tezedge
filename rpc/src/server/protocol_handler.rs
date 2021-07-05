@@ -1,7 +1,7 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use crate::not_found;
+use crate::{make_response_with_status_and_json_string, not_found};
 use hyper::{Body, Request};
 use slog::warn;
 
@@ -197,15 +197,30 @@ pub async fn call_protocol_rpc(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     let json_request = create_rpc_request(req).await?;
+    let context_path = json_request.context_path.clone();
+    let result = services::protocol::call_protocol_rpc(
+        chain_id_param,
+        chain_id,
+        block_hash,
+        json_request,
+        &env,
+    );
 
-    result_to_json_response(
-        services::protocol::call_protocol_rpc(
-            chain_id_param,
-            chain_id,
-            block_hash,
-            json_request,
-            &env,
-        ),
-        env.log(),
-    )
+    match result {
+        Ok(result) => {
+            let status_code = result.0;
+            let body = &result.1;
+            if status_code >= 400 {
+                warn!(
+                    env.log(),
+                    "Got non-OK ({}) response from protocol-RPC service '{}', body: {:?}",
+                    status_code,
+                    context_path,
+                    body
+                );
+            }
+            make_response_with_status_and_json_string(status_code, body)
+        }
+        Err(err) => result_to_json_response::<Arc<serde_json::Value>>(Err(err), env.log()),
+    }
 }
