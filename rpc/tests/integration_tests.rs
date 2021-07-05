@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 
 use failure::format_err;
 use hyper::body::Buf;
-use hyper::Client;
+use hyper::{Client, StatusCode};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::prelude::SliceRandom;
@@ -594,19 +594,35 @@ async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
     };
 
     // Wait on both them at the same time:
-    let ((node1_json, node1_response_time), (node2_json, node2_response_time)) =
-        futures::try_join!(node1_response, node2_response)?;
+    let (
+        (node1_status_code, node1_json, node1_response_time),
+        (node2_status_code, node2_json, node2_response_time),
+    ) = futures::try_join!(node1_response, node2_response)?;
 
+    // check jsons
     if let Err(error) =
         json_compare::assert_json_eq_no_panic(&node2_json, &node1_json, &IGNORE_JSON_PROPERTIES)
     {
         panic!(
-            "\n\nError: \n{}\n\nnode2_json: ({})\n{}\n\nnode1_json: ({})\n{}",
+            "\n\nError: \n{}\n\nnode2_json: ({}, status_code: {})\n{}\n\nnode1_json: ({}, status_code: {})\n{}",
             error,
             node_rpc_url(NodeType::Node2, rpc_path),
+            node2_status_code,
             node2_json,
             node_rpc_url(NodeType::Node1, rpc_path),
+            node1_status_code,
             node1_json,
+        );
+    }
+
+    // check status codes
+    if node2_status_code.ne(&node1_status_code) {
+        panic!(
+            "\n\nStatusCodes mismatch: \n({}, status_code: {})\n({}, status_code: {})",
+            node_rpc_url(NodeType::Node2, rpc_path),
+            node2_status_code,
+            node_rpc_url(NodeType::Node1, rpc_path),
+            node1_status_code,
         );
     }
 
@@ -629,7 +645,7 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
 
     for node in nodes {
         match get_rpc_as_json(node, rpc_path).await {
-            Ok((data, _)) => return Ok(data),
+            Ok((_, data, _)) => return Ok(data),
             Err(e) => {
                 println!(
                     "WARN: failed for (node: {:?}) to get data for rpc '{}'. Reason: {}",
@@ -650,7 +666,7 @@ async fn try_get_data_as_json(rpc_path: &str) -> Result<serde_json::value::Value
 async fn get_rpc_as_json(
     node: NodeType,
     rpc_path: &str,
-) -> Result<(serde_json::value::Value, Duration), failure::Error> {
+) -> Result<(StatusCode, serde_json::value::Value, Duration), failure::Error> {
     let url_as_string = node_rpc_url(node, rpc_path);
     let url = url_as_string
         .parse()
@@ -662,10 +678,11 @@ async fn get_rpc_as_json(
     // see below [test_chunked_call]
     let client = client();
     let start = Instant::now();
-    let (body, response_time) = match client.get(url).await {
+    let (status_code, body, response_time) = match client.get(url).await {
         Ok(res) => {
             let finished = start.elapsed();
             (
+                res.status(),
                 hyper::body::aggregate(res.into_body()).await.expect("Failed to read response body"),
                 finished,
             )
@@ -678,7 +695,7 @@ async fn get_rpc_as_json(
     std::io::copy(&mut buf, &mut dst).unwrap();
 
     match serde_json::from_slice(&dst) {
-        Ok(result) => Ok((result, response_time)),
+        Ok(result) => Ok((status_code, result, response_time)),
         Err(err) => Err(format_err!(
             "Error {:?} when parsing value as JSON: {:?}",
             err,
