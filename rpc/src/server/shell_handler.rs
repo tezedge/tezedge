@@ -22,7 +22,7 @@ use crate::services::{base_services, stream_services};
 use crate::{
     empty,
     encoding::{base_types::*, monitor::BootstrapInfo},
-    helpers, make_json_response, make_json_stream_response, not_found, required_param,
+    error, helpers, make_json_response, make_json_stream_response, not_found, required_param,
     result_option_to_json_response, result_to_empty_json_response, result_to_json_response,
     services, ServiceResult,
 };
@@ -222,7 +222,7 @@ pub async fn chains_block_id_header_shell(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_option_to_json_response(
-        base_services::get_block_shell_header(chain_id, block_hash, env.persistent_storage()),
+        base_services::get_block_shell_header(&chain_id, block_hash, env.persistent_storage()),
         env.log(),
     )
 }
@@ -379,12 +379,19 @@ pub async fn get_metadata_hash(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
-        Some(data) => match data.block_metadata_hash() {
+    match base_services::get_additional_data_or_fail(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    ) {
+        Ok(data) => match data.block_metadata_hash() {
             Some(hash) => result_to_json_response(Ok(hash.to_base58_check()), env.log()),
             None => not_found(),
         },
-        None => not_found(),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
+        },
     }
 }
 
@@ -397,12 +404,16 @@ pub async fn get_operations_metadata_hash(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
-        Some(data) => match data.ops_metadata_hash() {
-            Some(hash) => result_to_json_response(Ok(hash.to_base58_check()), env.log()),
-            None => not_found(),
+    match base_services::get_additional_data_or_fail(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    ) {
+        Ok(data) => result_to_json_response(Ok(data.ops_metadata_hash()), env.log()),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
         },
-        None => not_found(),
     }
 }
 
@@ -415,8 +426,12 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
-        Some(data) => match data.ops_metadata_hashes() {
+    match base_services::get_additional_data_or_fail(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    ) {
+        Ok(data) => match data.ops_metadata_hashes() {
             Some(hashes) => {
                 let hashes = hashes
                     .iter()
@@ -430,7 +445,10 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes(
             }
             None => not_found(),
         },
-        None => not_found(),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
+        },
     }
 }
 
@@ -444,8 +462,12 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
     let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
 
-    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
-        Some(data) => match data.ops_metadata_hashes() {
+    match base_services::get_additional_data_or_fail(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    ) {
+        Ok(data) => match data.ops_metadata_hashes() {
             Some(hashes) => {
                 if let Some(validation_passes) = hashes.get(validation_pass) {
                     let validation_passes = validation_passes
@@ -459,7 +481,10 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
             }
             None => not_found(),
         },
-        None => not_found(),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
+        },
     }
 }
 
@@ -474,8 +499,12 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
     let validation_pass: usize = required_param!(params, "validation_pass_index")?.parse()?;
     let operation_index: usize = required_param!(params, "operation_index")?.parse()?;
 
-    match base_services::get_additional_data(&chain_id, &block_hash, env.persistent_storage())? {
-        Some(data) => match data.ops_metadata_hashes() {
+    match base_services::get_additional_data_or_fail(
+        &chain_id,
+        &block_hash,
+        env.persistent_storage(),
+    ) {
+        Ok(data) => match data.ops_metadata_hashes() {
             Some(hashes) => {
                 if let Some(validation_passes) = hashes.get(validation_pass) {
                     if let Some(validation_pass) = validation_passes.get(operation_index) {
@@ -489,7 +518,10 @@ pub async fn get_operations_metadata_hash_operation_metadata_hashes_by_validatio
             }
             None => not_found(),
         },
-        None => not_found(),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
+        },
     }
 }
 
@@ -578,7 +610,7 @@ pub async fn live_blocks(
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
     result_to_json_response(
-        services::base_services::live_blocks(chain_id, block_hash, &env),
+        services::base_services::live_blocks(&chain_id, block_hash, &env),
         env.log(),
     )
 }

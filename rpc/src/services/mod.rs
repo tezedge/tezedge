@@ -22,11 +22,25 @@ pub mod cache_warm_up {
         block: Arc<BlockHeaderWithHash>,
         env: Arc<RpcServiceEnvironment>,
     ) {
-        // Sync call: goes first because other calls re-use the cached result
-        let _ = crate::services::base_services::get_additional_data(
-            &chain_id,
-            &block.hash,
-            env.persistent_storage(),
+        // async -> sync calls: goes first because other calls re-use the cached result
+        let get_additional_data = async {
+            crate::services::base_services::get_additional_data_or_fail(
+                &chain_id,
+                &block.hash,
+                env.persistent_storage(),
+            )
+        };
+        let get_block_with_json_data = async {
+            crate::services::base_services::get_block_with_json_data(
+                &chain_id,
+                &block.hash,
+                env.persistent_storage(),
+            )
+        };
+
+        let _ = tokio::join!(
+            get_additional_data,
+            get_block_with_json_data,
         );
 
         // Async calls
@@ -63,10 +77,9 @@ pub mod cache_warm_up {
             &block.hash,
             &env.persistent_storage(),
         );
-        let _ =
-            crate::services::base_services::live_blocks(chain_id.clone(), block.hash.clone(), &env);
+        let _ = crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), &env);
         let _ = crate::services::base_services::get_block_shell_header(
-            chain_id.clone(),
+            &chain_id,
             block.hash.clone(),
             &env.persistent_storage(),
         );
@@ -81,7 +94,7 @@ mod tests {
     use storage::{BlockAdditionalData, BlockMetaStorage, BlockMetaStorageReader};
 
     #[test]
-    fn do_not_cache_optional() {
+    fn test_do_not_cache_error() {
         // prepare storage
         let tmp_storage = TmpStorage::create_to_out_dir("__do_not_cache_optional_storage")
             .expect("failed to create storage");
@@ -109,22 +122,18 @@ mod tests {
         ));
 
         // check rpc call
-        assert!(matches!(
-            super::base_services::get_additional_data(
-                &chain_id,
-                &block_hash,
-                tmp_storage.storage()
-            ),
-            Ok(None)
-        ));
-        assert!(matches!(
-            super::base_services::get_additional_data(
-                &chain_id,
-                &block_hash,
-                tmp_storage.storage()
-            ),
-            Ok(None)
-        ));
+        assert!(super::base_services::get_additional_data_or_fail(
+            &chain_id,
+            &block_hash,
+            tmp_storage.storage()
+        )
+        .is_err());
+        assert!(super::base_services::get_additional_data_or_fail(
+            &chain_id,
+            &block_hash,
+            tmp_storage.storage()
+        )
+        .is_err());
 
         // store metadata
         block_meta_storage
@@ -138,13 +147,12 @@ mod tests {
         assert!(stored.is_some());
 
         // check rpc once more
-        let rpc_result = super::base_services::get_additional_data(
+        let rpc_result = super::base_services::get_additional_data_or_fail(
             &chain_id,
             &block_hash,
             tmp_storage.storage(),
-        )
-        .expect("failed to get metadata from rpc");
-        assert!(rpc_result.is_some());
+        );
+        assert!(rpc_result.is_ok());
 
         // check the same result
         let stored = stored.unwrap();
