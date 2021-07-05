@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::Arc;
+
 use failure::{bail, Fail};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
@@ -69,7 +71,7 @@ pub(crate) fn get_block_hashes(
 /// Get block metadata
 #[cached(
     name = "BLOCK_METADATA_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), BlockMetadata>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockMetadata>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
@@ -78,7 +80,7 @@ pub(crate) async fn get_block_metadata(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<BlockMetadata, failure::Error> {
+) -> Result<Arc<BlockMetadata>, failure::Error> {
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
@@ -102,6 +104,7 @@ pub(crate) async fn get_block_metadata(
         &block_additional_data,
         env,
     )
+    .map(Arc::new)
 }
 
 fn convert_block_metadata(
@@ -130,7 +133,7 @@ fn convert_block_metadata(
 /// Get information about block header
 #[cached(
     name = "BLOCK_HEADER_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), BlockHeaderInfo>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockHeaderInfo>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
@@ -139,7 +142,7 @@ pub(crate) async fn get_block_header(
     chain_id: ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<BlockHeaderInfo, failure::Error> {
+) -> Result<Arc<BlockHeaderInfo>, failure::Error> {
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(&chain_id, &block_hash, persistent_storage) };
@@ -157,12 +160,12 @@ pub(crate) async fn get_block_header(
     let ((block_header, block_json_data), block_additional_data) =
         tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
 
-    Ok(BlockHeaderInfo::new(
+    Ok(Arc::new(BlockHeaderInfo::new(
         &block_header,
         &block_json_data,
         &block_additional_data,
         &chain_id,
-    ))
+    )))
 }
 
 /// Get information about block shell header
@@ -220,7 +223,7 @@ pub(crate) fn live_blocks(
 
 #[cached(
     name = "CONTEXT_RAW_BYTES_CACHE",
-    type = "TimedSizedCache<(BlockHash, Option<String>, Option<usize>), StringTreeEntry>",
+    type = "TimedSizedCache<(BlockHash, Option<String>, Option<usize>), Arc<StringTreeEntry>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(block_hash.clone(), prefix.clone(), depth.clone())}",
     result = true
@@ -230,7 +233,7 @@ pub(crate) fn get_context_raw_bytes(
     prefix: Option<String>,
     depth: Option<usize>,
     env: &RpcServiceEnvironment,
-) -> Result<StringTreeEntry, failure::Error> {
+) -> Result<Arc<StringTreeEntry>, failure::Error> {
     // we assume that root is at "/data"
     let mut key_prefix = context_key_owned!("data");
 
@@ -241,9 +244,9 @@ pub(crate) fn get_context_raw_bytes(
     };
 
     let ctx_hash = get_context_hash(block_hash, env)?;
-    Ok(env
-        .tezedge_context()
-        .get_context_tree_by_prefix(&ctx_hash, key_prefix, depth)?)
+    Ok(Arc::new(env.tezedge_context().get_context_tree_by_prefix(
+        &ctx_hash, key_prefix, depth,
+    )?))
 }
 
 /// Extract the current_protocol and the next_protocol from the block metadata
@@ -299,7 +302,7 @@ pub(crate) async fn get_block_operation_hashes(
 /// Extract all the operations included in the block.
 #[cached(
     name = "BLOCK_OPERATION_METADATA_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), BlockOperations>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockOperations>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
@@ -308,7 +311,7 @@ pub(crate) async fn get_block_operations_metadata(
     chain_id: ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<BlockOperations, failure::Error> {
+) -> Result<Arc<BlockOperations>, failure::Error> {
     // header + jsons
     let block_json_data = async {
         match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash) {
@@ -350,6 +353,7 @@ pub(crate) async fn get_block_operations_metadata(
         operations,
         env,
     )
+    .map(Arc::new)
 }
 
 fn convert_block_operations_metadata(
@@ -379,7 +383,7 @@ fn convert_block_operations_metadata(
 /// Extract all the operations included in the provided validation pass.
 #[cached(
     name = "BLOCK_OPERATION_VP_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, usize), BlockValidationPass>",
+    type = "TimedSizedCache<(ChainId, BlockHash, usize), Arc<BlockValidationPass>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone(), validation_pass)}",
     result = true
@@ -389,10 +393,10 @@ pub(crate) async fn get_block_operations_validation_pass(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
     validation_pass: usize,
-) -> Result<BlockValidationPass, failure::Error> {
+) -> Result<Arc<BlockValidationPass>, failure::Error> {
     let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
-        Ok(block_validation_pass.clone())
+        Ok(Arc::new(block_validation_pass.clone()))
     } else {
         bail!(
             "Cannot retrieve validation pass {} from block {}",
@@ -405,7 +409,7 @@ pub(crate) async fn get_block_operations_validation_pass(
 /// Extract a specific operation included in one of the block's validation pass.
 #[cached(
     name = "BLOCK_OPERATION_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash, usize, usize), BlockOperation>",
+    type = "TimedSizedCache<(ChainId, BlockHash, usize, usize), Arc<BlockOperation>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone(), validation_pass, operation_index)}",
     result = true
@@ -416,11 +420,11 @@ pub(crate) async fn get_block_operation(
     env: &RpcServiceEnvironment,
     validation_pass: usize,
     operation_index: usize,
-) -> Result<BlockOperation, failure::Error> {
+) -> Result<Arc<BlockOperation>, failure::Error> {
     let block_operations = get_block_operations_metadata(chain_id, &block_hash, env).await?;
     if let Some(block_validation_pass) = block_operations.get(validation_pass) {
         if let Some(operation) = block_validation_pass.get(operation_index) {
-            Ok(operation.clone())
+            Ok(Arc::new(operation.clone()))
         } else {
             bail!(
                 "Cannot retrieve operation {} from validation pass {} from block {}",
@@ -452,7 +456,7 @@ pub(crate) fn get_node_version(network_version: &NetworkVersion) -> NodeVersion 
 /// Dont use it, it is dedicated just for one RPC
 #[cached(
     name = "BLOCK_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), BlockInfo>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockInfo>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(chain_id.clone(), block_hash.clone())}",
     result = true
@@ -461,7 +465,7 @@ pub(crate) async fn get_block(
     chain_id: &ChainId,
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
-) -> Result<BlockInfo, failure::Error> {
+) -> Result<Arc<BlockInfo>, failure::Error> {
     // header + jsons
     let block_header_with_json_data =
         async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
@@ -528,20 +532,20 @@ pub(crate) async fn get_block(
         env,
     )?;
 
-    Ok(BlockInfo::new(
+    Ok(Arc::new(BlockInfo::new(
         chain_id,
         block_hash,
         block_additional_data.protocol_hash,
         header,
         metadata,
         block_operations,
-    ))
+    )))
 }
 
 /// Cached database call for additional block data
 #[cached(
     name = "BLOCK_ADDITIONAL_DATA_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), BlockAdditionalData>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockAdditionalData>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(_chain_id.clone(), block_hash.clone())}",
     result = true
@@ -550,9 +554,9 @@ pub(crate) fn get_additional_data_or_fail(
     _chain_id: &ChainId,
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<BlockAdditionalData, RpcServiceError> {
+) -> Result<Arc<BlockAdditionalData>, RpcServiceError> {
     match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash) {
-        Ok(Some(data)) => Ok(data),
+        Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
                 "No block additional data found for block_hash: {}",
@@ -566,7 +570,7 @@ pub(crate) fn get_additional_data_or_fail(
 /// Cached database call for block header + jsons
 #[cached(
     name = "BLOCK_WITH_JSON_DATA_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), (BlockHeaderWithHash, BlockJsonData)>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<(BlockHeaderWithHash, BlockJsonData)>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(_chain_id.clone(), block_hash.clone())}",
     result = true
@@ -575,9 +579,9 @@ pub(crate) fn get_block_with_json_data(
     _chain_id: &ChainId,
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<(BlockHeaderWithHash, BlockJsonData), RpcServiceError> {
+) -> Result<Arc<(BlockHeaderWithHash, BlockJsonData)>, RpcServiceError> {
     match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash) {
-        Ok(Some(data)) => Ok(data),
+        Ok(Some(data)) => Ok(Arc::new(data)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
                 "No block header/json data found for block_hash: {}",
