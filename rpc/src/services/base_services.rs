@@ -94,7 +94,7 @@ pub(crate) async fn get_block_metadata(
 
     // 1. wait for data to collect
     let ((block_header, block_json_data), block_additional_data) =
-        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
 
     convert_block_metadata(
         block_header.header.context().clone(),
@@ -155,7 +155,7 @@ pub(crate) async fn get_block_header(
 
     // 1. wait for data to collect
     let ((block_header, block_json_data), block_additional_data) =
-        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
 
     Ok(BlockHeaderInfo::new(
         &block_header,
@@ -341,7 +341,7 @@ pub(crate) async fn get_block_operations_metadata(
 
     // 1. wait for data to collect
     let (block_json_data, block_additional_data, operations) =
-        futures::try_join!(block_json_data, block_additional_data, operations)?;
+        tokio::try_join!(block_json_data, block_additional_data, operations)?;
 
     convert_block_operations_metadata(
         chain_id,
@@ -483,7 +483,7 @@ pub(crate) async fn get_block(
     };
 
     // 1. wait for data to collect
-    let ((block_header, block_json_data), block_additional_data, operations) = futures::try_join!(
+    let ((block_header, block_json_data), block_additional_data, operations) = tokio::try_join!(
         block_header_with_json_data,
         block_additional_data,
         operations

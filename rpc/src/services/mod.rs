@@ -38,10 +38,7 @@ pub mod cache_warm_up {
             )
         };
 
-        let _ = tokio::join!(
-            get_additional_data,
-            get_block_with_json_data,
-        );
+        let _ = tokio::join!(get_additional_data, get_block_with_json_data,);
 
         // Async calls
         let get_block_metadata =
