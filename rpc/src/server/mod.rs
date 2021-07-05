@@ -25,6 +25,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
+use url::Url;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
@@ -166,7 +167,10 @@ pub fn spawn_server(
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches('/')) {
+                        let original_path = req.uri().path();
+                        let normalized_path = normalize_path(req.uri().path()).unwrap_or_else(|| original_path.to_owned());
+
+                        if let Some((method_and_handler, params)) = routes.find(&normalized_path.trim_end_matches('/')) {
                             let MethodHandler {
                                 allowed_methods,
                                 handler,
@@ -208,6 +212,19 @@ pub fn spawn_server(
                 }))
             }
         }))
+}
+
+/// Normalizes the request path
+fn normalize_path(original_path: &str) -> Option<String> {
+    let base = Url::parse("http://tezedge.com").ok()?;
+    let parsed = Url::options()
+        .base_url(Some(&base))
+        .parse(original_path)
+        .ok()?;
+    let non_empty_segments: Vec<_> = parsed.path_segments()?.filter(|s| !s.is_empty()).collect();
+    let reconstructed = non_empty_segments.join("/");
+
+    Some(format!("/{}", reconstructed))
 }
 
 /// Helper for parsing URI queries.
