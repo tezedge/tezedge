@@ -1,10 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use failure::bail;
+use failure::{bail, Fail};
 
 use crypto::hash::{BlockHash, ChainId, ContextHash};
-use storage::{BlockAdditionalData, PersistentStorage};
+use storage::{BlockAdditionalData, BlockHeaderWithHash, PersistentStorage, StorageError};
 use storage::{
     BlockJsonData, BlockMetaStorage, BlockMetaStorageReader, BlockStorage, BlockStorageReader,
     OperationsStorage, OperationsStorageReader,
@@ -25,20 +25,29 @@ pub type BlockOperationsHashes = Vec<String>;
 
 use cached::proc_macro::cached;
 use cached::SizedCache;
-use cached::TimedCache;
 use cached::TimedSizedCache;
 
 pub const TIMED_SIZED_CACHE_SIZE: usize = 10;
-pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 20;
+pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
+
+/// Possible errors for state processing
+#[derive(Debug, Fail)]
+pub enum RpcServiceError {
+    #[fail(display = "Storage read error, reason: {:?}", error)]
+    StorageError { error: StorageError },
+    #[fail(display = "No data found error, reason: {:?}", reason)]
+    NoDataFoundError { reason: String },
+}
 
 /// Retrieve blocks from database.
-#[cached(
-    name = "BLOCK_HASH_CACHE",
-    type = "TimedCache<(ChainId, BlockHash, Option<i32>, usize), Vec<BlockHash>>",
-    create = "{TimedCache::with_lifespan(TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(_chain_id.clone(), block_hash.clone(), every_nth_level, limit)}",
-    result = true
-)]
+// TODO: TE-572 - rework cache queries + add test to `src\services\mod -> mod tests`
+// #[cached(
+//     name = "BLOCK_HASH_CACHE",
+//     type = "TimedCache<(ChainId, BlockHash, Option<i32>, usize), Vec<BlockHash>>",
+//     create = "{TimedCache::with_lifespan(TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+//     convert = "{(_chain_id.clone(), block_hash.clone(), every_nth_level, limit)}",
+//     result = true
+// )]
 pub(crate) fn get_block_hashes(
     _chain_id: ChainId,
     block_hash: BlockHash,
@@ -71,34 +80,21 @@ pub(crate) async fn get_block_metadata(
     env: &RpcServiceEnvironment,
 ) -> Result<BlockMetadata, failure::Error> {
     // header + jsons
-    let block_header_with_json_data = async {
-        match BlockStorage::new(env.persistent_storage()).get_with_json_data(block_hash)? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block header data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
-    };
+    let block_header_with_json_data =
+        async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
 
     // additional data
     let block_additional_data = async {
-        match crate::services::base_services::get_additional_data(
+        crate::services::base_services::get_additional_data_or_fail(
             chain_id,
             block_hash,
             env.persistent_storage(),
-        )? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
+        )
     };
 
     // 1. wait for data to collect
     let ((block_header, block_json_data), block_additional_data) =
-        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
 
     convert_block_metadata(
         block_header.header.context().clone(),
@@ -145,34 +141,21 @@ pub(crate) async fn get_block_header(
     persistent_storage: &PersistentStorage,
 ) -> Result<BlockHeaderInfo, failure::Error> {
     // header + jsons
-    let block_header_with_json_data = async {
-        match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash)? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block header data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
-    };
+    let block_header_with_json_data =
+        async { get_block_with_json_data(&chain_id, &block_hash, persistent_storage) };
 
     // additional data
     let block_additional_data = async {
-        match crate::services::base_services::get_additional_data(
+        crate::services::base_services::get_additional_data_or_fail(
             &chain_id,
             &block_hash,
             persistent_storage,
-        )? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
+        )
     };
 
     // 1. wait for data to collect
     let ((block_header, block_json_data), block_additional_data) =
-        futures::try_join!(block_header_with_json_data, block_additional_data,)?;
+        tokio::try_join!(block_header_with_json_data, block_additional_data,)?;
 
     Ok(BlockHeaderInfo::new(
         &block_header,
@@ -191,7 +174,7 @@ pub(crate) async fn get_block_header(
     result = true
 )]
 pub(crate) fn get_block_shell_header(
-    _chain_id: ChainId,
+    _chain_id: &ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
@@ -208,24 +191,20 @@ pub(crate) fn get_block_shell_header(
     result = true
 )]
 pub(crate) fn live_blocks(
-    chain_id: ChainId,
+    chain_id: &ChainId,
     block_hash: BlockHash,
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<String>, failure::Error> {
     let persistent_storage = env.persistent_storage();
 
     // get max_ttl for requested block
-    let max_ttl: usize = match crate::services::base_services::get_additional_data(
+    let max_ttl: usize = crate::services::base_services::get_additional_data_or_fail(
         &chain_id,
         &block_hash,
         env.persistent_storage(),
-    )? {
-        Some(additional_data) => additional_data.max_operations_ttl().into(),
-        None => bail!(
-            "Max_ttl not found for block id: {}",
-            block_hash.to_base58_check()
-        ),
-    };
+    )?
+    .max_operations_ttl()
+    .into();
 
     let block_meta_storage = BlockMetaStorage::new(persistent_storage);
 
@@ -280,39 +259,15 @@ pub(crate) fn get_block_protocols(
     block_hash: &BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Protocols, failure::Error> {
-    if let Some(block_additional_data) = crate::services::base_services::get_additional_data(
+    let block_additional_data = crate::services::base_services::get_additional_data_or_fail(
         chain_id,
         block_hash,
         persistent_storage,
-    )? {
-        Ok(Protocols::new(
-            block_additional_data.protocol_hash().to_base58_check(),
-            block_additional_data.next_protocol_hash().to_base58_check(),
-        ))
-    } else {
-        bail!(
-            "Cannot retrieve protocols, block_hash {} not found!",
-            block_hash.to_base58_check()
-        )
-    }
-}
-
-/// Extract the current_protocol and the next_protocol from the block metadata
-#[cached(
-    name = "BLOCK_ADDITIONAL_DATA_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), Option<BlockAdditionalData>>",
-    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
-    convert = "{(_chain_id.clone(), block_hash.clone())}",
-    result = true
-)]
-pub(crate) fn get_additional_data(
-    _chain_id: &ChainId,
-    block_hash: &BlockHash,
-    persistent_storage: &PersistentStorage,
-) -> Result<Option<BlockAdditionalData>, failure::Error> {
-    BlockMetaStorage::new(persistent_storage)
-        .get_additional_data(&block_hash)
-        .map_err(|e| e.into())
+    )?;
+    Ok(Protocols::new(
+        block_additional_data.protocol_hash().to_base58_check(),
+        block_additional_data.next_protocol_hash().to_base58_check(),
+    ))
 }
 
 /// Returns the hashes of all the operations included in the block.
@@ -356,40 +311,37 @@ pub(crate) async fn get_block_operations_metadata(
 ) -> Result<BlockOperations, failure::Error> {
     // header + jsons
     let block_json_data = async {
-        match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash)? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block header data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
+        match BlockStorage::new(env.persistent_storage()).get_json_data(block_hash) {
+            Ok(Some(data)) => Ok(data),
+            Ok(None) => Err(RpcServiceError::NoDataFoundError {
+                reason: format!(
+                    "No block header data found for block_hash: {}",
+                    block_hash.to_base58_check()
+                ),
+            }),
+            Err(e) => Err(RpcServiceError::StorageError { error: e }),
         }
     };
 
     // additional data
     let block_additional_data = async {
-        match crate::services::base_services::get_additional_data(
+        crate::services::base_services::get_additional_data_or_fail(
             &chain_id,
             block_hash,
             env.persistent_storage(),
-        )? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
+        )
     };
 
     // operations
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(failure::Error::from)
+            .map_err(|error| RpcServiceError::StorageError { error })
     };
 
     // 1. wait for data to collect
     let (block_json_data, block_additional_data, operations) =
-        futures::try_join!(block_json_data, block_additional_data, operations)?;
+        tokio::try_join!(block_json_data, block_additional_data, operations)?;
 
     convert_block_operations_metadata(
         chain_id,
@@ -511,40 +463,27 @@ pub(crate) async fn get_block(
     env: &RpcServiceEnvironment,
 ) -> Result<BlockInfo, failure::Error> {
     // header + jsons
-    let block_header_with_json_data = async {
-        match BlockStorage::new(env.persistent_storage()).get_with_json_data(block_hash)? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block header data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
-    };
+    let block_header_with_json_data =
+        async { get_block_with_json_data(chain_id, block_hash, env.persistent_storage()) };
 
     // additional data
     let block_additional_data = async {
-        match crate::services::base_services::get_additional_data(
+        crate::services::base_services::get_additional_data_or_fail(
             chain_id,
             block_hash,
             env.persistent_storage(),
-        )? {
-            Some(data) => Ok(data),
-            None => bail!(
-                "No block additional data found for block_hash: {}",
-                block_hash.to_base58_check()
-            ),
-        }
+        )
     };
 
     // operations
     let operations = async {
         OperationsStorage::new(env.persistent_storage())
             .get_operations(block_hash)
-            .map_err(failure::Error::from)
+            .map_err(|error| RpcServiceError::StorageError { error })
     };
 
     // 1. wait for data to collect
-    let ((block_header, block_json_data), block_additional_data, operations) = futures::try_join!(
+    let ((block_header, block_json_data), block_additional_data, operations) = tokio::try_join!(
         block_header_with_json_data,
         block_additional_data,
         operations
@@ -597,4 +536,54 @@ pub(crate) async fn get_block(
         metadata,
         block_operations,
     ))
+}
+
+/// Cached database call for additional block data
+#[cached(
+    name = "BLOCK_ADDITIONAL_DATA_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash), BlockAdditionalData>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(_chain_id.clone(), block_hash.clone())}",
+    result = true
+)]
+pub(crate) fn get_additional_data_or_fail(
+    _chain_id: &ChainId,
+    block_hash: &BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<BlockAdditionalData, RpcServiceError> {
+    match BlockMetaStorage::new(persistent_storage).get_additional_data(&block_hash) {
+        Ok(Some(data)) => Ok(data),
+        Ok(None) => Err(RpcServiceError::NoDataFoundError {
+            reason: format!(
+                "No block additional data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }),
+        Err(se) => Err(RpcServiceError::StorageError { error: se }),
+    }
+}
+
+/// Cached database call for block header + jsons
+#[cached(
+    name = "BLOCK_WITH_JSON_DATA_CACHE",
+    type = "TimedSizedCache<(ChainId, BlockHash), (BlockHeaderWithHash, BlockJsonData)>",
+    create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
+    convert = "{(_chain_id.clone(), block_hash.clone())}",
+    result = true
+)]
+pub(crate) fn get_block_with_json_data(
+    _chain_id: &ChainId,
+    block_hash: &BlockHash,
+    persistent_storage: &PersistentStorage,
+) -> Result<(BlockHeaderWithHash, BlockJsonData), RpcServiceError> {
+    match BlockStorage::new(persistent_storage).get_with_json_data(&block_hash) {
+        Ok(Some(data)) => Ok(data),
+        Ok(None) => Err(RpcServiceError::NoDataFoundError {
+            reason: format!(
+                "No block header/json data found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }),
+        Err(se) => Err(RpcServiceError::StorageError { error: se }),
+    }
 }

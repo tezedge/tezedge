@@ -467,7 +467,7 @@ fn handle_rpc_response(
 
 // NB: handles multiple paths for RPC calls
 pub const TIMED_SIZED_CACHE_SIZE: usize = 500;
-pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 20;
+pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
 #[cached(
     name = "CALL_PROTOCOL_RPC_CACHE",
     type = "TimedSizedCache<(ChainId, BlockHash, String), serde_json::value::Value>",

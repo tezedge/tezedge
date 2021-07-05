@@ -15,6 +15,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use riker::actors::ActorSystem;
 use slog::{error, Logger};
+use tokio::runtime::Handle;
 
 use crypto::hash::{BlockHash, ChainId};
 use shell::mempool::CurrentMempoolStateStorageRef;
@@ -52,6 +53,8 @@ pub struct RpcServiceEnvironment {
     network_version: Arc<NetworkVersion>,
     #[get = "pub(crate)"]
     log: Logger,
+    #[get = "pub(crate)"]
+    tokio_executor: Arc<Handle>,
 
     #[get = "pub(crate)"]
     main_chain_genesis_hash: BlockHash,
@@ -74,6 +77,7 @@ pub struct RpcServiceEnvironment {
 impl RpcServiceEnvironment {
     pub fn new(
         sys: ActorSystem,
+        tokio_executor: Arc<Handle>,
         shell_channel: ShellChannelRef,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -92,6 +96,7 @@ impl RpcServiceEnvironment {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
+            tokio_executor,
             shell_channel,
             tezos_environment,
             network_version,
