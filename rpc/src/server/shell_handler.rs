@@ -409,7 +409,10 @@ pub async fn get_operations_metadata_hash(
         &block_hash,
         env.persistent_storage(),
     ) {
-        Ok(data) => result_to_json_response(Ok(data.ops_metadata_hash().to_base58_check()), env.log()),
+        Ok(data) => match data.ops_metadata_hash() {
+            Some(hash) => result_to_json_response(Ok(hash.to_base58_check()), env.log()),
+            None => not_found(),
+        },
         Err(e) => match e {
             base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
             e => error(e.into()),
