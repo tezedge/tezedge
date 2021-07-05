@@ -71,7 +71,7 @@ pub mod cache_warm_up {
             crate::services::base_services::live_blocks(&chain_id, block.hash.clone(), &env)
         };
         let get_block_shell_header = async {
-            crate::services::base_services::get_block_shell_header(
+            crate::services::base_services::get_block_shell_header_or_fail(
                 &chain_id,
                 block.hash.clone(),
                 &env.persistent_storage(),

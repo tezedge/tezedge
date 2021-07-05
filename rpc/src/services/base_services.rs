@@ -177,19 +177,29 @@ pub(crate) async fn get_block_header(
 /// Get information about block shell header
 #[cached(
     name = "BLOCK_SHELL_HEADER_CACHE",
-    type = "TimedSizedCache<(ChainId, BlockHash), Option<BlockHeaderShellInfo>>",
+    type = "TimedSizedCache<(ChainId, BlockHash), Arc<BlockHeaderShellInfo>>",
     create = "{TimedSizedCache::with_size_and_lifespan(TIMED_SIZED_CACHE_SIZE, TIMED_SIZED_CACHE_TTL_IN_SECS)}",
     convert = "{(_chain_id.clone(), block_hash.clone())}",
     result = true
 )]
-pub(crate) fn get_block_shell_header(
+pub(crate) fn get_block_shell_header_or_fail(
     _chain_id: &ChainId,
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<Option<BlockHeaderShellInfo>, failure::Error> {
-    Ok(BlockStorage::new(persistent_storage)
-        .get(&block_hash)?
-        .map(|header| BlockHeaderShellInfo::new(&header)))
+) -> Result<Arc<BlockHeaderShellInfo>, RpcServiceError> {
+    match BlockStorage::new(persistent_storage)
+        .get(&block_hash)
+        .map(|result| result.map(|header| BlockHeaderShellInfo::new(&header)))
+    {
+        Ok(Some(data)) => Ok(Arc::new(data)),
+        Ok(None) => Err(RpcServiceError::NoDataFoundError {
+            reason: format!(
+                "No block shell header found for block_hash: {}",
+                block_hash.to_base58_check()
+            ),
+        }),
+        Err(se) => Err(RpcServiceError::StorageError { error: se }),
+    }
 }
 
 #[cached(

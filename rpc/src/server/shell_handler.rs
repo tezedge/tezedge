@@ -23,8 +23,7 @@ use crate::{
     empty,
     encoding::{base_types::*, monitor::BootstrapInfo},
     error, helpers, make_json_response, make_json_stream_response, not_found, required_param,
-    result_option_to_json_response, result_to_empty_json_response, result_to_json_response,
-    services, ServiceResult,
+    result_to_empty_json_response, result_to_json_response, services, ServiceResult,
 };
 use storage::BlockHeaderWithHash;
 
@@ -221,10 +220,19 @@ pub async fn chains_block_id_header_shell(
     let chain_id = parse_chain_id(required_param!(params, "chain_id")?, &env)?;
     let block_hash = parse_block_hash(&chain_id, required_param!(params, "block_id")?, &env)?;
 
-    result_option_to_json_response(
-        base_services::get_block_shell_header(&chain_id, block_hash, env.persistent_storage()),
-        env.log(),
-    )
+    let result = base_services::get_block_shell_header_or_fail(
+        &chain_id,
+        block_hash,
+        env.persistent_storage(),
+    );
+
+    match result {
+        Ok(result) => result_to_json_response(Ok(result), env.log()),
+        Err(e) => match e {
+            base_services::RpcServiceError::NoDataFoundError { .. } => not_found(),
+            e => error(e.into()),
+        },
+    }
 }
 
 pub async fn chains_block_id_metadata(
