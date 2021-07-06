@@ -5574,7 +5574,7 @@ steps:
       repo: tezedge/tezedge
       target: light-node
       tags:
-        - ${DRONE_TAG}
+        - ${DRONE_TAG}-frame-pointers-enabled
         - latest-frame-pointers-enabled-release
       dockerfile: docker/distroless/Dockerfile
       build_args:
