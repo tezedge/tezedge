@@ -13,6 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::{Duration, Instant};
 
+use crypto::hash::CryptoboxPublicKeyHash;
 use dns_lookup::LookupError;
 use failure::Fail;
 use futures::lock::Mutex;
@@ -115,8 +116,14 @@ impl P2p {
 pub enum PeerManagerError {
     #[fail(display = "Mutex/lock error, reason: {:?}", reason)]
     LockError { reason: String },
-    #[fail(display = "Peer with address {} is already connected", peer_address)]
-    AlreadyConnected { peer_address: SocketAddr }
+    #[fail(
+        display = "Peer with publick key {} and address {} is already connected",
+        peer_pub_key_hash, peer_address
+    )]
+    AlreadyConnected {
+        peer_pub_key_hash: String,
+        peer_address: SocketAddr,
+    },
 }
 
 impl<T> From<PoisonError<T>> for PeerManagerError {
@@ -825,9 +832,10 @@ impl Receive<ConnectToPeer> for PeerManager {
                     debug!(log, "(Outgoing) Connection to peer successful, so start bootstrapping"; "incoming" => false, "ip" => msg.address);
                     match bootstrap(Bootstrap::outgoing(stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &log).await {
                         Ok(bootstrap_output) => {
+                            let peer_pub_key = bootstrap_output.2.clone();
                             match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output) {
                                 Ok(peer) => {
-                                    if let Err(e) = peers.add_outgoing_peer(peer.clone(), msg.address) {
+                                    if let Err(e) = peers.add_outgoing_peer(peer.clone(), peer_pub_key, msg.address) {
                                         warn!(log, "Failed to add outgoing peer to state - stopping peer actor"; "reason" => format!("{:?}", e));
                                         system.stop(peer);
                                     }
@@ -882,9 +890,10 @@ impl Receive<AcceptPeer> for PeerManager {
                     debug!(log, "Bootstrapping"; "incoming" => true, "ip" => &msg.address);
                     match bootstrap(Bootstrap::incoming(msg.stream, msg.address.clone(), disable_mempool, private_node), local_node_info, &log).await {
                         Ok(bootstrap_output) => {
+                            let peer_pub_key = bootstrap_output.2.clone();
                             match Self::create_peer(&system, network_channel.clone(), tokio_executor, bootstrap_output) {
                                 Ok(peer) => {
-                                    if let Err(e) = peers.add_incoming_peer(peer.clone(), msg.address) {
+                                    if let Err(e) = peers.add_incoming_peer(peer.clone(), peer_pub_key, msg.address) {
                                         warn!(log, "Failed to add incoming peer to state - stopping peer actor"; "reason" => format!("{:?}", e));
                                         system.stop(peer);
                                     }
@@ -1065,41 +1074,46 @@ fn resolve_dns_name_to_peer_address(
 
 struct P2pPeersMap {
     peers: HashMap<ActorUri, P2pPeerState>,
-    addr_set: HashSet<SocketAddr>,
+    pub_keys: HashSet<CryptoboxPublicKeyHash>,
 }
 
 impl P2pPeersMap {
     fn new() -> Self {
         Self {
             peers: HashMap::new(),
-            addr_set: HashSet::new(),
+            pub_keys: HashSet::new(),
         }
     }
 
     fn is_empty(&self) -> bool {
-        debug_assert!(self.peers.is_empty() == self.addr_set.is_empty());
+        debug_assert!(self.peers.is_empty() == self.pub_keys.is_empty());
         self.peers.is_empty()
     }
 
     fn len(&self) -> usize {
-        debug_assert!(self.peers.len() == self.addr_set.len());
+        debug_assert!(self.peers.len() == self.pub_keys.len());
         self.peers.len()
     }
 
     fn try_insert(
         &mut self,
         peer_ref: PeerRef,
+        peer_pub_key: CryptoboxPublicKeyHash,
         peer_address: SocketAddr,
         bootstrap_requested_last: Option<Instant>,
     ) -> Result<(), PeerManagerError> {
-        if self.addr_set.contains(&peer_address) {
-            Err(PeerManagerError::AlreadyConnected { peer_address })
+        if self.pub_keys.contains(&peer_pub_key) {
+            Err(PeerManagerError::AlreadyConnected {
+                peer_pub_key_hash: peer_pub_key.to_base58_check(),
+                peer_address,
+            })
         } else {
-            self.addr_set.insert(peer_address.clone());
+            self.pub_keys.insert(peer_pub_key.clone());
             self.peers.insert(
                 peer_ref.uri().clone(),
                 P2pPeerState {
                     peer_ref,
+                    peer_pub_key,
                     peer_address,
                     bootstrap_requested_last,
                 },
@@ -1111,7 +1125,7 @@ impl P2pPeersMap {
     fn remove(&mut self, peer_uri: &ActorUri) -> Option<P2pPeerState> {
         let res = self.peers.remove(peer_uri);
         if let Some(ref state) = res {
-            let removed = self.addr_set.remove(&state.peer_address);
+            let removed = self.pub_keys.remove(&state.peer_pub_key);
             debug_assert!(removed);
         }
         res
@@ -1130,6 +1144,7 @@ impl P2pPeersMap {
 #[derive(Clone)]
 struct P2pPeerState {
     peer_ref: PeerRef,
+    peer_pub_key: CryptoboxPublicKeyHash,
     peer_address: SocketAddr,
     bootstrap_requested_last: Option<Instant>,
 }
@@ -1172,19 +1187,21 @@ impl P2pPeers {
     fn add_outgoing_peer(
         &self,
         peer_ref: PeerRef,
+        peer_pub_key: CryptoboxPublicKeyHash,
         peer_address: SocketAddr,
     ) -> Result<(), PeerManagerError> {
         let mut connected_peers = self.connected_peers.write()?;
-        connected_peers.try_insert(peer_ref, peer_address, None)
+        connected_peers.try_insert(peer_ref, peer_pub_key, peer_address, None)
     }
 
     fn add_incoming_peer(
         &self,
         peer_ref: PeerRef,
+        peer_pub_key: CryptoboxPublicKeyHash,
         peer_address: SocketAddr,
     ) -> Result<(), PeerManagerError> {
         let mut connected_peers = self.connected_peers.write()?;
-        connected_peers.try_insert(peer_ref, peer_address, None)
+        connected_peers.try_insert(peer_ref, peer_pub_key, peer_address, None)
     }
 
     /// Tries to remove peer_actor_uri from state.
@@ -1257,6 +1274,7 @@ pub mod tests {
     use crate::state::peer_state::PeerState;
     use crate::state::tests::prerequisites::{
         create_logger, create_test_actor_system, create_test_tokio_runtime, test_peer,
+        test_peer_with_identity,
     };
     use networking::p2p::network_channel::NetworkChannel;
     use slog::Level;
@@ -1326,7 +1344,11 @@ pub mod tests {
             let PeerState { peer_id, .. } =
                 test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
             p2p_peers
-                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address)
+                .add_incoming_peer(
+                    peer_id.peer_ref.clone(),
+                    peer_id.peer_public_key_hash.clone(),
+                    peer_id.peer_address,
+                )
                 .unwrap();
 
             // we have more left
@@ -1346,7 +1368,11 @@ pub mod tests {
             let PeerState { peer_id, .. } =
                 test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7778);
             p2p_peers
-                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address)
+                .add_incoming_peer(
+                    peer_id.peer_ref.clone(),
+                    peer_id.peer_public_key_hash.clone(),
+                    peer_id.peer_address,
+                )
                 .unwrap();
 
             // we have more left
@@ -1361,7 +1387,11 @@ pub mod tests {
         let PeerState { peer_id, .. } =
             test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7779);
         p2p_peers
-            .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address)
+            .add_outgoing_peer(
+                peer_id.peer_ref.clone(),
+                peer_id.peer_public_key_hash.clone(),
+                peer_id.peer_address,
+            )
             .unwrap();
 
         // exceeded yet
@@ -1415,8 +1445,25 @@ pub mod tests {
         // test
         assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
 
-        let PeerState { peer_id, .. } =
-            test_peer(&actor_system, network_channel.clone(), &tokio_runtime, 7777);
+        let identity = Identity::generate(0_f64).unwrap();
+        let PeerState {
+            peer_id: peer_id1, ..
+        } = test_peer_with_identity(
+            &actor_system,
+            network_channel.clone(),
+            &tokio_runtime,
+            identity.clone(),
+            7777,
+        );
+        let PeerState {
+            peer_id: peer_id2, ..
+        } = test_peer_with_identity(
+            &actor_system,
+            network_channel.clone(),
+            &tokio_runtime,
+            identity,
+            7778,
+        );
 
         // add peer 1 as incoming
         {
@@ -1428,7 +1475,11 @@ pub mod tests {
 
             // register as incoming
             p2p_peers
-                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .add_incoming_peer(
+                    peer_id1.peer_ref.clone(),
+                    peer_id1.peer_public_key_hash.clone(),
+                    peer_id1.peer_address.clone(),
+                )
                 .unwrap();
 
             // we have more left
@@ -1446,7 +1497,11 @@ pub mod tests {
 
             // register as incoming
             let err = p2p_peers
-                .add_incoming_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .add_incoming_peer(
+                    peer_id1.peer_ref.clone(),
+                    peer_id1.peer_public_key_hash.clone(),
+                    peer_id1.peer_address.clone(),
+                )
                 .unwrap_err();
             assert!(matches!(err, PeerManagerError::AlreadyConnected { .. }));
 
@@ -1459,7 +1514,28 @@ pub mod tests {
         {
             // register as outgoing
             let err = p2p_peers
-                .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .add_outgoing_peer(
+                    peer_id1.peer_ref.clone(),
+                    peer_id1.peer_public_key_hash.clone(),
+                    peer_id1.peer_address.clone(),
+                )
+                .unwrap_err();
+            assert!(matches!(err, PeerManagerError::AlreadyConnected { .. }));
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
+
+        // add peer 2 as outgoing again
+        {
+            // register as outgoing
+            let err = p2p_peers
+                .add_outgoing_peer(
+                    peer_id2.peer_ref.clone(),
+                    peer_id2.peer_public_key_hash.clone(),
+                    peer_id2.peer_address.clone(),
+                )
                 .unwrap_err();
             assert!(matches!(err, PeerManagerError::AlreadyConnected { .. }));
 
@@ -1469,13 +1545,38 @@ pub mod tests {
         }
 
         p2p_peers
-            .try_remove_peer_actor(peer_id.peer_ref.uri()).expect("Cannot remove a peer");
+            .try_remove_peer_actor(peer_id1.peer_ref.uri())
+            .expect("Cannot remove a peer");
 
         // add peer 1 as outgoint again
         {
             // register as ougoing
             p2p_peers
-                .add_outgoing_peer(peer_id.peer_ref.clone(), peer_id.peer_address.clone())
+                .add_outgoing_peer(
+                    peer_id1.peer_ref.clone(),
+                    peer_id1.peer_public_key_hash.clone(),
+                    peer_id1.peer_address.clone(),
+                )
+                .unwrap();
+
+            // we have more left
+            assert!(!p2p_peers.is_max_connections_exceeded().unwrap());
+            assert_eq!(1, p2p_peers.connected_peers.read().unwrap().len());
+        }
+
+        p2p_peers
+            .try_remove_peer_actor(peer_id1.peer_ref.uri())
+            .expect("Cannot remove a peer");
+
+        // add peer 2 as outgoint again
+        {
+            // register as ougoing
+            p2p_peers
+                .add_outgoing_peer(
+                    peer_id2.peer_ref.clone(),
+                    peer_id2.peer_public_key_hash.clone(),
+                    peer_id2.peer_address.clone(),
+                )
                 .unwrap();
 
             // we have more left
