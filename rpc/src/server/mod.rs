@@ -15,6 +15,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
 use riker::actors::ActorSystem;
 use slog::{error, Logger};
+use tokio::runtime::Handle;
 
 use crypto::hash::{BlockHash, ChainId};
 use shell::mempool::CurrentMempoolStateStorageRef;
@@ -24,8 +25,9 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
+use url::Url;
 
-use crate::rpc_actor::{RpcCollectedStateRef, RpcServerRef};
+use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
@@ -38,8 +40,6 @@ mod shell_handler;
 pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     sys: ActorSystem,
-    #[get = "pub(crate)"]
-    actor: RpcServerRef,
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
@@ -54,6 +54,8 @@ pub struct RpcServiceEnvironment {
     network_version: Arc<NetworkVersion>,
     #[get = "pub(crate)"]
     log: Logger,
+    #[get = "pub(crate)"]
+    tokio_executor: Arc<Handle>,
 
     #[get = "pub(crate)"]
     main_chain_genesis_hash: BlockHash,
@@ -76,7 +78,7 @@ pub struct RpcServiceEnvironment {
 impl RpcServiceEnvironment {
     pub fn new(
         sys: ActorSystem,
-        actor: RpcServerRef,
+        tokio_executor: Arc<Handle>,
         shell_channel: ShellChannelRef,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
@@ -95,7 +97,7 @@ impl RpcServiceEnvironment {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
             sys,
-            actor,
+            tokio_executor,
             shell_channel,
             tezos_environment,
             network_version,
@@ -126,7 +128,7 @@ pub type Handler = Arc<
         Request<Body>,
         Params,
         Query,
-        RpcServiceEnvironment,
+        Arc<RpcServiceEnvironment>,
     ) -> Box<dyn Future<Output = HResult> + Send>
         + Send
         + Sync,
@@ -149,7 +151,7 @@ impl MethodHandler {
 /// Spawn new HTTP server on given address interacting with specific actor system
 pub fn spawn_server(
     bind_address: &SocketAddr,
-    env: RpcServiceEnvironment,
+    env: Arc<RpcServiceEnvironment>,
 ) -> impl Future<Output = Result<(), hyper::Error>> {
     let routes = Arc::new(router::create_routes(env.tezedge_is_enabled));
 
@@ -165,7 +167,10 @@ pub fn spawn_server(
                     let env = env.clone();
                     let routes = routes.clone();
                     async move {
-                        if let Some((method_and_handler, params)) = routes.find(req.uri().path().to_string().trim_end_matches('/')) {
+                        let original_path = req.uri().path();
+                        let normalized_path = normalize_path(req.uri().path()).unwrap_or_else(|| original_path.to_owned());
+
+                        if let Some((method_and_handler, params)) = routes.find(&normalized_path.trim_end_matches('/')) {
                             let MethodHandler {
                                 allowed_methods,
                                 handler,
@@ -207,6 +212,19 @@ pub fn spawn_server(
                 }))
             }
         }))
+}
+
+/// Normalizes the request path
+fn normalize_path(original_path: &str) -> Option<String> {
+    let base = Url::parse("http://tezedge.com").ok()?;
+    let parsed = Url::options()
+        .base_url(Some(&base))
+        .parse(original_path)
+        .ok()?;
+    let non_empty_segments: Vec<_> = parsed.path_segments()?.filter(|s| !s.is_empty()).collect();
+    let reconstructed = non_empty_segments.join("/");
+
+    Some(format!("/{}", reconstructed))
 }
 
 /// Helper for parsing URI queries.

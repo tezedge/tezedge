@@ -317,7 +317,7 @@ trait Routes<Fut> {
 
 impl<T, F> Routes<T> for PathTree<MethodHandler>
 where
-    T: Fn(Request<Body>, Params, Query, RpcServiceEnvironment) -> F + Send + Sync + 'static,
+    T: Fn(Request<Body>, Params, Query, Arc<RpcServiceEnvironment>) -> F + Send + Sync + 'static,
     F: Future<Output = HResult> + Send + 'static,
 {
     fn handle(&mut self, allowed_methods: HashSet<Method>, path: &str, f: T) {

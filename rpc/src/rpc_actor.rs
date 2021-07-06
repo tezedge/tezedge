@@ -3,6 +3,7 @@
 
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use getset::{CopyGetters, Getters, Setters};
 use riker::actors::*;
@@ -19,6 +20,7 @@ use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezosApiConnectionPool;
 
+use crate::helpers::{parse_chain_id, MAIN_CHAIN_ID};
 use crate::server::{spawn_server, RpcServiceEnvironment};
 
 pub type RpcServerRef = ActorRef<RpcServerMsg>;
@@ -38,8 +40,8 @@ pub struct RpcCollectedState {
 /// system with the server.
 #[actor(ShellChannelMsg)]
 pub struct RpcServer {
-    shell_channel: ShellChannelRef,
     state: RpcCollectedStateRef,
+    env: Arc<RpcServiceEnvironment>,
 }
 
 impl RpcServer {
@@ -51,7 +53,7 @@ impl RpcServer {
         sys: &ActorSystem,
         shell_channel: ShellChannelRef,
         rpc_listen_address: SocketAddr,
-        tokio_executor: &Handle,
+        tokio_executor: Handle,
         persistent_storage: &PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         tezos_readonly_api: Arc<TezosApiConnectionPool>,
@@ -69,36 +71,39 @@ impl RpcServer {
                 &sys.log(),
             ),
         }));
+
+        let env = Arc::new(RpcServiceEnvironment::new(
+            sys.clone(),
+            Arc::new(tokio_executor),
+            shell_channel,
+            tezos_env,
+            network_version,
+            persistent_storage,
+            current_mempool_state_storage,
+            tezos_readonly_api,
+            tezos_readonly_prevalidation_api,
+            tezos_without_context_api,
+            init_storage_data.chain_id.clone(),
+            init_storage_data.genesis_block_header_hash.clone(),
+            shared_state.clone(),
+            init_storage_data.context_stats_db_path.clone(),
+            tezedge_is_enabled,
+            &sys.log(),
+        ));
+
         let actor_ref = sys.actor_of_props::<RpcServer>(
             Self::name(),
-            Props::new_args((shell_channel.clone(), shared_state.clone())),
+            Props::new_args((shared_state, env.clone())),
         )?;
 
         // spawn RPC JSON server
         {
-            let env = RpcServiceEnvironment::new(
-                sys.clone(),
-                actor_ref.clone(),
-                shell_channel,
-                tezos_env,
-                network_version,
-                persistent_storage,
-                current_mempool_state_storage,
-                tezos_readonly_api,
-                tezos_readonly_prevalidation_api,
-                tezos_without_context_api,
-                init_storage_data.chain_id.clone(),
-                init_storage_data.genesis_block_header_hash.clone(),
-                shared_state,
-                init_storage_data.context_stats_db_path.clone(),
-                tezedge_is_enabled,
-                &sys.log(),
-            );
             let inner_log = sys.log();
+            let env_for_server = env.clone();
 
-            tokio_executor.spawn(async move {
+            env.tokio_executor().spawn(async move {
                 info!(inner_log, "Starting RPC server"; "address" => format!("{}", &rpc_listen_address));
-                if let Err(e) = spawn_server(&rpc_listen_address, env).await {
+                if let Err(e) = spawn_server(&rpc_listen_address, env_for_server).await {
                     error!(inner_log, "HTTP Server encountered failure"; "error" => format!("{}", e));
                 }
             });
@@ -108,12 +113,9 @@ impl RpcServer {
     }
 }
 
-impl ActorFactoryArgs<(ShellChannelRef, RpcCollectedStateRef)> for RpcServer {
-    fn create_args((shell_channel, state): (ShellChannelRef, RpcCollectedStateRef)) -> Self {
-        Self {
-            shell_channel,
-            state,
-        }
+impl ActorFactoryArgs<(RpcCollectedStateRef, Arc<RpcServiceEnvironment>)> for RpcServer {
+    fn create_args((state, env): (RpcCollectedStateRef, Arc<RpcServiceEnvironment>)) -> Self {
+        Self { state, env }
     }
 }
 
@@ -121,7 +123,7 @@ impl Actor for RpcServer {
     type Msg = RpcServerMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
+        subscribe_to_shell_new_current_head(&self.env.shell_channel(), ctx.myself());
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -129,11 +131,37 @@ impl Actor for RpcServer {
     }
 }
 
+/// Timeout for RPCs warmup block time
+const RPC_WARMUP_TIMEOUT: Duration = Duration::from_secs(3);
+
 impl Receive<ShellChannelMsg> for RpcServer {
     type Msg = RpcServerMsg;
 
     fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        if let ShellChannelMsg::NewCurrentHead(_, block) = msg {
+        if let ShellChannelMsg::NewCurrentHead(_, block, is_bootstrapped) = msg {
+            // prepare main chain_id
+            let chain_id = parse_chain_id(MAIN_CHAIN_ID, &self.env).unwrap();
+
+            // warm-up - calls where chain_id + block_hash
+            if is_bootstrapped {
+                let env = self.env.clone();
+                let block = block.clone();
+                let log = env.log().clone();
+                self.env.tokio_executor().spawn(async move {
+                    if let Err(err) = tokio::time::timeout(
+                        RPC_WARMUP_TIMEOUT,
+                        crate::services::cache_warm_up::warm_up_rpc_cache(chain_id, block, env),
+                    )
+                    .await
+                    {
+                        warn!(
+                            log,
+                            "RPC warmup timeout after {:?}: {:?}", RPC_WARMUP_TIMEOUT, err
+                        );
+                    }
+                });
+            }
+
             let current_head_ref = &mut *self.state.write().unwrap();
             current_head_ref.current_head = Some(block);
         }

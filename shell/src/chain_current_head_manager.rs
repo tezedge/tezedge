@@ -124,16 +124,20 @@ impl ChainCurrentHeadManager {
                                      "result" => format!("{}", new_head_result)
             );
 
+            let mut is_bootstrapped = self.current_bootstrap_state.read()?.is_bootstrapped();
+
             // notify other actors that new current head was changed
             self.shell_channel.tell(
                 Publish {
-                    msg: ShellChannelMsg::NewCurrentHead(new_head.clone(), block.clone()),
+                    msg: ShellChannelMsg::NewCurrentHead(
+                        new_head.clone(),
+                        block.clone(),
+                        is_bootstrapped,
+                    ),
                     topic: ShellChannelTopic::ShellNewCurrentHead.into(),
                 },
                 None,
             );
-
-            let mut is_bootstrapped = self.current_bootstrap_state.read()?.is_bootstrapped();
 
             if !is_bootstrapped {
                 let chain_manager_current_level = new_head.level();
