@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! Shell channel is used to transmit high level shell messages.
@@ -52,7 +52,11 @@ pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), Sta
 pub enum ShellChannelMsg {
     /// Events
     /// If chain_manager resolved new current head for chain
-    NewCurrentHead(Head, Arc<BlockHeaderWithHash>),
+    NewCurrentHead(
+        Head,
+        Arc<BlockHeaderWithHash>,
+        bool, /* is_bootstrapped */
+    ),
     BlockReceived(BlockReceived),
     BlockApplied(Arc<BlockHash>),
     AllBlockOperationsReceived(AllBlockOperationsReceived),

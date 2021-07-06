@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "1.5.0"
+version = "1.6.0"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "deploy-monitoring"
@@ -20,7 +20,7 @@ percentage = "0.1"
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-shiplift = { git = "https://github.com/simplestaking/shiplift.git", branch = "master" }
+shiplift = { git = "https://github.com/tezedge/shiplift.git", branch = "master" }
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.6"

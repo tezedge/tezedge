@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![feature(test)]
 extern crate test;
@@ -37,6 +37,7 @@ lazy_static! {
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
+            disable_blacklist: false,
             private_node: false,
             bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::try_new(0, 2, Some(0)).expect("Invalid range"),
@@ -95,9 +96,7 @@ fn test_proof_of_work(
         node_identity,
         node_pow_target,
         (node_log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -166,9 +165,7 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         tezos_identity::Identity::generate(TRIVIAL_POW_TARGET)?,
         TRIVIAL_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // register network channel listener

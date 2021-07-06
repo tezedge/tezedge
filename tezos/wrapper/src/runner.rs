@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::io;
@@ -45,7 +45,6 @@ impl slog::Value for ProtocolRunnerError {
 #[derive(Clone)]
 pub struct ExecutableProtocolRunner {
     sock_cmd_path: PathBuf,
-    sock_evt_path: Option<PathBuf>,
     executable_path: PathBuf,
     endpoint_name: String,
     log_level: Level,
@@ -83,14 +82,12 @@ impl ProtocolRunner for ExecutableProtocolRunner {
         endpoint_name: String,
     ) -> Self {
         let ProtocolEndpointConfiguration {
-            event_server_path,
             executable_path,
             log_level,
             ..
         } = configuration;
         ExecutableProtocolRunner {
             sock_cmd_path: sock_cmd_path.to_path_buf(),
-            sock_evt_path: event_server_path,
             executable_path,
             endpoint_name,
             log_level,
@@ -98,28 +95,15 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     }
 
     fn spawn(&self) -> Result<Self::Subprocess, ProtocolRunnerError> {
-        let process = match &self.sock_evt_path {
-            Some(sep) => Command::new(&self.executable_path)
-                .arg("--sock-cmd")
-                .arg(&self.sock_cmd_path)
-                .arg("--sock-evt")
-                .arg(&sep)
-                .arg("--endpoint")
-                .arg(&self.endpoint_name)
-                .arg("--log-level")
-                .arg(&self.log_level.as_str().to_lowercase())
-                .spawn()
-                .map_err(|err| ProtocolRunnerError::SpawnError { reason: err })?,
-            None => Command::new(&self.executable_path)
-                .arg("--sock-cmd")
-                .arg(&self.sock_cmd_path)
-                .arg("--endpoint")
-                .arg(&self.endpoint_name)
-                .arg("--log-level")
-                .arg(&self.log_level.as_str().to_lowercase())
-                .spawn()
-                .map_err(|err| ProtocolRunnerError::SpawnError { reason: err })?,
-        };
+        let process = Command::new(&self.executable_path)
+            .arg("--sock-cmd")
+            .arg(&self.sock_cmd_path)
+            .arg("--endpoint")
+            .arg(&self.endpoint_name)
+            .arg("--log-level")
+            .arg(&self.log_level.as_str().to_lowercase())
+            .spawn()
+            .map_err(|err| ProtocolRunnerError::SpawnError { reason: err })?;
         Ok(process)
     }
 

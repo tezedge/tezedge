@@ -30,8 +30,6 @@
     "ffi_twcap_pool_connection_timeout_in_secs": 60,
     "ffi_twcap_pool_max_lifetime_in_secs": 21600,
     "ffi_twcap_pool_idle_timeout_in_secs": 1800,
-    "one_context" : "",
-    "actions_store_backend" : "none",
     "tokio_threads": 0,
     "enable_testchain": false
   }

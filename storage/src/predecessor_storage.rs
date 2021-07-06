@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::sync::Arc;
@@ -9,13 +9,13 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::BlockHash;
 
 use crate::block_meta_storage::Meta;
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
-};
-use crate::persistent::{BincodeEncoded, KeyValueSchema, KeyValueStoreWithSchema};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::{BincodeEncoded, KeyValueSchema};
 use crate::{PersistentStorage, StorageError};
 
-pub type PredecessorsIndexStorageKV = dyn KeyValueStoreWithSchema<PredecessorStorage> + Sync + Send;
+pub type PredecessorsIndexStorageKV =
+    dyn TezedgeDatabaseWithIterator<PredecessorStorage> + Sync + Send;
 
 #[derive(Serialize, Deserialize)]
 pub struct PredecessorKey {
@@ -40,7 +40,7 @@ pub struct PredecessorStorage {
 impl PredecessorStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -96,11 +96,6 @@ impl PredecessorStorage {
     pub fn get(&self, key: &PredecessorKey) -> Result<Option<BlockHash>, StorageError> {
         self.kv.get(key).map_err(StorageError::from)
     }
-
-    #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
-    }
 }
 
 impl BincodeEncoded for PredecessorKey {}
@@ -119,5 +114,10 @@ impl RocksDbKeyValueSchema for PredecessorStorage {
     #[inline]
     fn name() -> &'static str {
         "predecessor_storage"
+    }
+}
+impl KVStoreKeyValueSchema for PredecessorStorage {
+    fn column_name() -> &'static str {
+        Self::name()
     }
 }

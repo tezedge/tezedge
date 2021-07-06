@@ -1,6 +1,6 @@
 [package]
 name = "tezos_messages"
-version = "1.5.0"
+version = "1.6.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -37,4 +37,3 @@ criterion = { version = "0.3", features = ["html_reports"]}
 csv = "1.1"
 serde_json = "1.0"
 tezos_identity = { path = "../identity" }
-tyname = "0.1"

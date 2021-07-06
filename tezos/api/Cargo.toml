@@ -1,6 +1,6 @@
 [package]
 name = "tezos_api"
-version = "1.5.0"
+version = "1.6.0"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -16,6 +16,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debu
 strum = "0.20"
 strum_macros = "0.20"
 nom = "6.1"
+url = "2.2"
 # local dependencies
 crypto = { path = "../../crypto" }
 tezos-sys = { path = "../sys" }

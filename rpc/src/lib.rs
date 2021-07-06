@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![forbid(unsafe_code)]
 
@@ -14,7 +14,7 @@ mod server;
 mod services;
 
 /// Crate level custom result
-pub(crate) type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
+pub type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;
 
 /// Generate options response with supported methods, headers
 pub(crate) fn options() -> ServiceResult {
@@ -31,7 +31,7 @@ pub(crate) fn options() -> ServiceResult {
 }
 
 /// Function to generate JSON response from serializable object
-pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
+pub fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceResult {
     Ok(Response::builder()
         .header(hyper::header::CONTENT_TYPE, "application/json")
         // TODO: add to config
@@ -43,6 +43,22 @@ pub(crate) fn make_json_response<T: serde::Serialize>(content: &T) -> ServiceRes
             "GET, POST, OPTIONS, PUT",
         )
         .body(Body::from(serde_json::to_string(content)?))?)
+}
+
+/// Produces a JSON response from an FFI RPC response
+pub fn make_response_with_status_and_json_string(status_code: u16, body: &str) -> ServiceResult {
+    Ok(Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/json")
+        // TODO: add to config
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .header(
+            hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
+            "GET, POST, OPTIONS, PUT",
+        )
+        .status(status_code)
+        .body(Body::from(body.to_owned()))?)
 }
 
 /// Function to generate JSON response from a stream
@@ -115,6 +131,9 @@ pub(crate) fn result_to_empty_json_response(
 pub(crate) fn empty() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(204)?)
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
         .body(Body::empty())?)
 }
 
@@ -122,7 +141,11 @@ pub(crate) fn empty() -> ServiceResult {
 pub(crate) fn not_found() -> ServiceResult {
     Ok(Response::builder()
         .status(StatusCode::from_u16(404)?)
-        .body(Body::from("not found"))?)
+        .header(hyper::header::CONTENT_TYPE, "text/plain")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "content-type")
+        .body(Body::empty())?)
 }
 
 /// Generate 500 error

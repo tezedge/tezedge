@@ -1,44 +1,46 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+// NOTE: unsafe cannot be forbidden right now because of code in systems.rs
 // #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use riker::actors::*;
 use slog::{debug, error, info, warn, Logger};
 
+use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
 use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
-use shell::chain_current_head_manager::ChainCurrentHeadManager;
-use shell::chain_feeder::ChainFeeder;
-use shell::chain_manager::ChainManager;
-use shell::context_listener::ContextListener;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::peer_manager::PeerManager;
+use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
-use storage::context::TezedgeContext;
-use storage::initializer::{
-    initialize_merkle, initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache,
-};
+use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
+use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
+use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
+use storage::{
+    initializer::{initialize_rocksdb, GlobalRocksDbCacheHolder, MainChain, RocksDbCache},
+    BlockMetaStorage, Replay,
+};
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
-use tezos_wrapper::service::IpcEvtServer;
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::TezosApiConnectionPoolError;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
 use crate::configuration::Environment;
+use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
+use storage::initializer::initialize_maindb;
 
 mod configuration;
 mod identity;
@@ -83,10 +85,9 @@ fn create_tezos_readonly_api_pool(
             },
             tezos_env,
             env.enable_testchain,
-            &env.storage.tezos_data_dir,
+            env.storage.context_storage_configuration.readonly(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            None,
         ),
         log,
     )
@@ -112,10 +113,9 @@ fn create_tezos_without_context_api_pool(
             },
             tezos_env,
             env.enable_testchain,
-            &env.storage.tezos_data_dir,
+            env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            None,
         ),
         log,
     )
@@ -124,7 +124,6 @@ fn create_tezos_without_context_api_pool(
 /// Create pool for ffi protocol runner connection (used for write to context)
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 fn create_tezos_writeable_api_pool(
-    event_server_path: Option<PathBuf>,
     env: &crate::configuration::Environment,
     tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
@@ -143,16 +142,14 @@ fn create_tezos_writeable_api_pool(
         ProtocolEndpointConfiguration::new(
             TezosRuntimeConfiguration {
                 log_enabled: env.logging.ocaml_log_enabled,
-                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes
-                    && !env.storage.context_action_recorders.is_empty(),
-                debug_mode: !env.storage.context_action_recorders.is_empty(),
+                compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
+                debug_mode: false,
             },
             tezos_env,
             env.enable_testchain,
-            &env.storage.tezos_data_dir,
+            env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
             env.logging.level,
-            event_server_path,
         ),
         log,
     )
@@ -164,7 +161,7 @@ fn block_on_actors(
     init_storage_data: StorageInitInfo,
     identity: Arc<Identity>,
     persistent_storage: PersistentStorage,
-    tezedge_context: TezedgeContext,
+    mut blocks_replay: Option<Vec<Arc<BlockHash>>>,
     log: Logger,
 ) {
     // if feeding is started, than run chain manager
@@ -176,11 +173,13 @@ fn block_on_actors(
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
 
-    let context_action_recorders = env
-        .build_recorders(&persistent_storage)
-        .expect("Failed to configure context action recorders");
-
     info!(log, "Initializing protocol runners... (4/5)");
+
+    // pool and event server dedicated for applying blocks to chain
+    let tezos_writeable_api_pool = Arc::new(
+        create_tezos_writeable_api_pool(&env, tezos_env.clone(), log.clone())
+            .expect("Failed to initialize writable API pool"),
+    );
 
     // create pool for ffi protocol runner connections (used just for readonly context)
     let tezos_readonly_api_pool = Arc::new(
@@ -214,24 +213,6 @@ fn block_on_actors(
         .expect("Failed to initialize API pool without context"),
     );
 
-    // pool and event server dedicated for applying blocks to chain
-    let context_actions_event_server =
-        IpcEvtServer::try_bind_new().expect("Failed to bind context event server");
-    let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(
-            // TODO: ignore context_recorders and wait for new_context
-            // if context_action_recorders.is_empty() && env.storage.one_context {
-            if env.storage.one_context {
-                None
-            } else {
-                Some(context_actions_event_server.server_path())
-            },
-            &env,
-            tezos_env.clone(),
-            log.clone(),
-        )
-        .expect("Failed to initialize writable API pool"),
-    );
     info!(log, "Protocol runners initialized");
 
     info!(log, "Initializing actors... (5/5)");
@@ -267,20 +248,6 @@ fn block_on_actors(
         env.p2p.disable_mempool,
     ));
 
-    // it's important to start ContextListener before ChainFeeder, because chain_feeder can trigger init_genesis which sends ContextActionMessage, and we need to process this action first
-    if env.storage.one_context {
-        ()
-    } else {
-        let _ = ContextListener::actor(
-            &actor_system,
-            shell_channel.clone(),
-            &persistent_storage,
-            context_action_recorders,
-            context_actions_event_server,
-            log.clone(),
-        )
-        .expect("Failed to create context event listener");
-    }
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
         shell_channel.clone(),
@@ -306,7 +273,7 @@ fn block_on_actors(
     .expect("Failed to create chain feeder");
     let _ = ChainManager::actor(
         &actor_system,
-        block_applier,
+        block_applier.clone(),
         network_channel.clone(),
         shell_channel.clone(),
         persistent_storage.clone(),
@@ -342,34 +309,46 @@ fn block_on_actors(
         &actor_system,
         shell_channel.clone(),
         ([0, 0, 0, 0], env.rpc.listener_port).into(),
-        &tokio_runtime.handle(),
+        tokio_runtime.handle().clone(),
         &persistent_storage,
         current_mempool_state_storage,
-        &tezedge_context,
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
         tezos_env.clone(),
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
+        env.storage
+            .context_storage_configuration
+            .tezedge_is_enabled(),
     )
     .expect("Failed to create RPC server");
 
-    // TODO: TE-386 - controlled startup
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    if let Some(blocks) = blocks_replay.take() {
+        return schedule_replay_blocks(
+            blocks,
+            &init_storage_data,
+            block_applier,
+            shell_channel.clone(),
+            log.clone(),
+        );
+    } else {
+        // TODO: TE-386 - controlled startup
+        std::thread::sleep(std::time::Duration::from_secs(2));
 
-    // and than open p2p and others
-    let _ = PeerManager::actor(
-        &actor_system,
-        network_channel,
-        shell_channel.clone(),
-        tokio_runtime.handle().clone(),
-        identity,
-        shell_compatibility_version,
-        env.p2p,
-        env.identity.expected_pow,
-    )
-    .expect("Failed to create peer manager");
+        // and than open p2p and others
+        let _ = PeerManager::actor(
+            &actor_system,
+            network_channel,
+            shell_channel.clone(),
+            tokio_runtime.handle().clone(),
+            identity,
+            shell_compatibility_version,
+            env.p2p,
+            env.identity.expected_pow,
+        )
+        .expect("Failed to create peer manager");
+    }
 
     info!(log, "Actors initialized");
 
@@ -419,6 +398,145 @@ fn check_deprecated_network(env: &Environment, log: &Logger) {
     if let Some(deprecation_notice) = env.tezos_network.check_deprecated_network() {
         warn!(log, "Deprecated network: {}", deprecation_notice);
     }
+}
+
+fn schedule_replay_blocks(
+    blocks: Vec<Arc<BlockHash>>,
+    init_storage_data: &StorageInitInfo,
+    block_applier: ChainFeederRef,
+    shell_channel: ShellChannelRef,
+    log: Logger,
+) {
+    let chain_id = Arc::new(init_storage_data.chain_id.clone());
+    let (result_callback_sender, result_callback_receiver) = {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        (Arc::new(sender), receiver)
+    };
+    let fail_above = init_storage_data.replay.as_ref().unwrap().fail_above;
+    let nblocks = blocks.len();
+    let now = std::time::Instant::now();
+
+    for (index, block) in blocks.into_iter().enumerate() {
+        let batch = ApplyBlockBatch::one((&*block).clone());
+        let result_callback = Some(result_callback_sender.clone());
+
+        let now = std::time::Instant::now();
+        block_applier.tell(
+            ApplyBlock::new(Arc::clone(&chain_id), batch, result_callback, None, None),
+            None,
+        );
+
+        let result = result_callback_receiver
+            .recv()
+            .expect("Failed to wait for block aplication");
+        let time = now.elapsed();
+
+        let hash = block.to_base58_check();
+        let percent = (index as f64 / nblocks as f64) * 100.0;
+
+        if let Err(_) = result.as_ref() {
+            replay_shutdown(shell_channel);
+            panic!(
+                "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
+                index, percent, hash, time, result
+            );
+        } else if time > fail_above && index > 0 {
+            replay_shutdown(shell_channel);
+            panic!(
+                "{:08} {:.5}% Block {} processed in {:?} (more than {:?}). Result={:?}",
+                index, percent, hash, time, fail_above, result
+            );
+        } else {
+            info!(
+                log,
+                "{:08} {:.5}% Block {} applied in {:?}. Result={:?}",
+                index,
+                percent,
+                hash,
+                time,
+                result
+            );
+        }
+    }
+
+    info!(
+        log,
+        "Replayer successfully applied {} blocks in {:?}",
+        nblocks,
+        now.elapsed()
+    );
+
+    replay_shutdown(shell_channel);
+}
+
+fn replay_shutdown(shell_channel: ShellChannelRef) {
+    shell_channel.tell(
+        Publish {
+            msg: ShuttingDown.into(),
+            topic: ShellChannelTopic::ShellShutdown.into(),
+        },
+        None,
+    );
+
+    // give actors some time to shut down
+    std::thread::sleep(Duration::from_secs(2));
+}
+
+fn collect_replayed_blocks(
+    persistent_storage: &PersistentStorage,
+    replay: &Replay,
+    log: &Logger,
+) -> Vec<Arc<BlockHash>> {
+    let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let from_block = replay.from_block.as_ref();
+    let mut block_hash = replay.to_block.clone();
+    let mut blocks = Vec::new();
+    let mut first_block_reached = false;
+
+    info!(log, "Replayer is collecting blocks");
+
+    if block_meta_storage
+        .get(&block_hash)
+        .map(|h| h.is_none())
+        .unwrap_or(true)
+    {
+        panic!("Unable to find block {:?}", block_hash.to_base58_check());
+    }
+
+    while let Ok(Some(block_meta)) = block_meta_storage.get(&block_hash) {
+        blocks.push(Arc::new(block_hash.clone()));
+
+        first_block_reached = block_meta.level() == 1;
+        if from_block == Some(&block_hash) || first_block_reached {
+            break;
+        }
+
+        block_hash = match block_meta.predecessor() {
+            Some(block) => block.clone(),
+            None => {
+                panic!(
+                    "Unable to find predecessor of level={:?} block_hash={:?}",
+                    block_meta.level(),
+                    block_hash.to_base58_check()
+                );
+            }
+        }
+    }
+
+    blocks.reverse();
+    match (from_block, blocks.get(0)) {
+        (Some(block), first) if blocks.is_empty() || block != &**first.unwrap() => {
+            panic!("Unable to find block {:?}", block);
+        }
+        (None, _) if !first_block_reached => {
+            panic!("Unable to find first block");
+        }
+        _ => {}
+    }
+
+    info!(log, "Replayer will apply {} blocks", blocks.len());
+
+    blocks
 }
 
 fn main() {
@@ -503,69 +621,57 @@ fn main() {
     // initialize dbs
     let kv_cache = RocksDbCache::new_lru_cache(env.storage.db.cache_size)
         .expect("Failed to initialize RocksDB cache (db)");
-    let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
-        .expect("Failed to create/initialize RocksDB database (db)");
-    caches.push(kv_cache);
+
+    let maindb = match env.storage.main_db {
+        TezedgeDatabaseBackendConfiguration::Sled => initialize_maindb(
+            &log,
+            None,
+            &env.storage.db,
+            env.storage.db.expected_db_version,
+            &main_chain,
+            env.storage.main_db,
+        )
+        .expect("Failed to create/initialize MainDB database (db)"),
+        TezedgeDatabaseBackendConfiguration::RocksDB => {
+            let kv = initialize_rocksdb(&log, &kv_cache, &env.storage.db, &main_chain)
+                .expect("Failed to create/initialize RocksDB database (db)");
+            caches.push(kv_cache);
+            initialize_maindb(
+                &log,
+                Some(kv),
+                &env.storage.db,
+                env.storage.db.expected_db_version,
+                &main_chain,
+                env.storage.main_db,
+            )
+            .expect("Failed to create/initialize MainDB database (db)")
+        }
+    };
 
     let commit_logs = Arc::new(
         open_cl(&env.storage.db_path, vec![BlockStorage::descriptor()])
             .expect("Failed to open plain block_header storage"),
     );
-    let sequences = Arc::new(Sequences::new(kv.clone(), 1000));
-
-    // initialize merkle context
-    let merkle = Arc::new(Mutex::new(
-        initialize_merkle(
-            &env.storage.context_kv_store,
-            &main_chain,
-            &log,
-            &mut caches,
-        )
-        .expect("Failed to initialize merkle storage"),
-    ));
-
-    // context actions persistent db (optional)
-    let merkle_context_actions_store = match env.storage.merkle_context_actions_store.as_ref() {
-        Some(merkle_context_actions_store) => {
-            let kv_actions_cache =
-                RocksDbCache::new_lru_cache(merkle_context_actions_store.cache_size)
-                    .expect("Failed to initialize RocksDB cache (db_context_actions)");
-            let kv_actions = initialize_rocksdb(
-                &log,
-                &kv_actions_cache,
-                &merkle_context_actions_store,
-                &main_chain,
-            )
-            .expect("Failed to create/initialize RocksDB database (db_context_actions)");
-            caches.push(kv_actions_cache);
-            Some(kv_actions)
-        }
-        None => None,
-    };
+    let sequences = Arc::new(Sequences::new(maindb.clone(), 1000));
 
     {
-        let persistent_storage = PersistentStorage::new(
-            kv,
-            commit_logs,
-            sequences,
-            merkle,
-            merkle_context_actions_store,
-        );
-
-        let tezedge_context = TezedgeContext::new(
-            Some(BlockStorage::new(&persistent_storage)),
-            persistent_storage.merkle(),
-        );
+        let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
 
         match resolve_storage_init_chain_data(
             &tezos_env,
             &env.storage.db_path,
-            &env.storage.tezos_data_dir,
+            &env.storage.context_storage_configuration,
             &env.storage.patch_context,
-            env.storage.one_context,
+            &env.storage.context_stats_db_path,
+            &env.replay,
             &log,
         ) {
             Ok(init_data) => {
+                let blocks_replay = env
+                    .replay
+                    .as_ref()
+                    .map(|replay| collect_replayed_blocks(&persistent_storage, replay, &log));
+
                 info!(log, "Databases loaded successfully");
                 block_on_actors(
                     env,
@@ -573,7 +679,7 @@ fn main() {
                     init_data,
                     Arc::new(tezos_identity),
                     persistent_storage,
-                    tezedge_context,
+                    blocks_replay,
                     log,
                 )
             }

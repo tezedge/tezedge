@@ -1,5 +1,7 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
+
+// TODO - TE-261: reimplement using the timings database or remove
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -12,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crypto::hash::BlockHash;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader};
-use tezos_context::channel::ContextAction;
+//use tezos_context::channel::ContextAction;
 
 use crate::rpc_actor::RpcCollectedStateRef;
 use crate::services::dev_services::{ensure_context_action_storage, get_block_actions_by_hash};

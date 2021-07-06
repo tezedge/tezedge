@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::cell::RefCell;
@@ -10,15 +10,16 @@ use std::time::Duration;
 use failure::Fail;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use slog::{debug, warn, Logger};
+use slog::{debug, info, warn, Logger};
 use strum_macros::IntoStaticStr;
 
 use crypto::hash::{ChainId, ContextHash, ProtocolHash};
 use ipc::*;
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::*;
-use tezos_context::channel::{context_receive, context_send, ContextAction};
 use tezos_messages::p2p::encoding::operation::Operation;
+use tezos_new_context::IndexApi;
+use tezos_new_context::{ContextKeyOwned, ContextValue, StringTreeEntry};
 
 use crate::protocol::*;
 use crate::runner::{ProtocolRunner, ProtocolRunnerError};
@@ -52,6 +53,7 @@ enum ProtocolMessage {
     ComputePathCall(ComputePathRequest),
     ChangeRuntimeConfigurationCall(TezosRuntimeConfiguration),
     InitProtocolContextCall(InitProtocolContextParams),
+    InitProtocolContextIpcServer(TezosContextStorageConfiguration),
     GenesisResultDataCall(GenesisResultDataParams),
     JsonEncodeApplyBlockResultMetadata {
         context_hash: ContextHash,
@@ -67,12 +69,34 @@ enum ProtocolMessage {
         protocol_hash: ProtocolHash,
         next_protocol_hash: ProtocolHash,
     },
+    ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest),
+    ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest),
+    ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest),
     ShutdownCall,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct ContextGetKeyFromHistoryRequest {
+    context_hash: ContextHash,
+    key: ContextKeyOwned,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ContextGetKeyValuesByPrefixRequest {
+    context_hash: ContextHash,
+    prefix: ContextKeyOwned,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ContextGetTreeByPrefixRequest {
+    context_hash: ContextHash,
+    prefix: ContextKeyOwned,
+    depth: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct InitProtocolContextParams {
-    storage_data_dir: String,
+    storage: TezosContextStorageConfiguration,
     genesis: GenesisChain,
     genesis_max_operations_ttl: u16,
     protocol_overrides: ProtocolOverrides,
@@ -81,6 +105,7 @@ struct InitProtocolContextParams {
     readonly: bool,
     turn_off_context_raw_inspector: bool,
     patch_context: Option<PatchContext>,
+    context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -103,29 +128,21 @@ enum NodeMessage {
     HelpersPreapplyResponse(Result<HelpersPreapplyResponse, HelpersPreapplyError>),
     ChangeRuntimeConfigurationResult(Result<(), TezosRuntimeConfigurationError>),
     InitProtocolContextResult(Result<InitProtocolContextResult, TezosStorageInitError>),
+    InitProtocolContextIpcServerResult(Result<(), String>), // TODO - TE-261: use actual error result
     CommitGenesisResultData(Result<CommitGenesisResult, GetDataError>),
     ComputePathResponse(Result<ComputePathResponse, ComputePathError>),
     JsonEncodeApplyBlockResultMetadataResponse(Result<String, FfiJsonEncoderError>),
     JsonEncodeApplyBlockOperationsMetadata(Result<String, FfiJsonEncoderError>),
+    ContextGetKeyFromHistoryResult(Result<Option<ContextValue>, String>),
+    ContextGetKeyValuesByPrefixResult(Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, String>),
+    ContextGetTreeByPrefixResult(Result<StringTreeEntry, String>),
+
     ShutdownResult,
 }
 
 /// Empty message
 #[derive(Serialize, Deserialize, Debug)]
 struct NoopMessage;
-
-pub fn process_protocol_events<P: AsRef<Path>>(socket_path: P) -> Result<(), IpcError> {
-    let ipc_client: IpcClient<NoopMessage, ContextAction> = IpcClient::new(socket_path);
-    let (_, mut tx) = ipc_client.connect()?;
-    while let Ok(action) = context_receive() {
-        tx.send(&action)?;
-        if let ContextAction::Shutdown = action {
-            break;
-        }
-    }
-
-    Ok(())
-}
 
 /// Establish connection to existing IPC endpoint (which was created by tezedge node).
 /// Begin receiving commands from the tezedge node until `ShutdownCall` command is received.
@@ -179,17 +196,44 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 tx.send(&NodeMessage::ChangeRuntimeConfigurationResult(res))?;
             }
             ProtocolMessage::InitProtocolContextCall(params) => {
-                let res = Proto::init_protocol_context(
-                    params.storage_data_dir,
-                    params.genesis,
-                    params.protocol_overrides,
-                    params.commit_genesis,
-                    params.enable_testchain,
-                    params.readonly,
-                    params.turn_off_context_raw_inspector,
-                    params.patch_context,
-                );
+                let context_config = TezosContextConfiguration {
+                    storage: params.storage,
+                    genesis: params.genesis,
+                    protocol_overrides: params.protocol_overrides,
+                    commit_genesis: params.commit_genesis,
+                    enable_testchain: params.enable_testchain,
+                    readonly: params.readonly,
+                    sandbox_json_patch_context: params.patch_context,
+                    context_stats_db_path: params.context_stats_db_path,
+                };
+                // TODO - TE-261: what to do with init protocol result on readonly? init context anyway to get it?
+                let res = Proto::init_protocol_context(context_config);
                 tx.send(&NodeMessage::InitProtocolContextResult(res))?;
+            }
+            ProtocolMessage::InitProtocolContextIpcServer(storage_cfg) => {
+                // TODO - TE-261: needs better error handling
+                match storage_cfg.get_ipc_socket_path() {
+                    None => tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?,
+                    Some(socket_path) => {
+                        match tezos_new_context::kv_store::readonly_ipc::IpcContextListener::try_new(
+                            socket_path.clone(),
+                        ) {
+                            Ok(mut listener) => {
+                                info!(&log, "Listening to context IPC request at {}", socket_path);
+                                let log = log.clone();
+                                std::thread::spawn(move || {
+                                    listener.handle_incoming_connections(&log);
+                                });
+                                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
+                            }
+                            Err(err) => {
+                                tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Err(
+                                    format!("Failed to initialize context IPC server: {:?}", err),
+                                )))?;
+                            }
+                        }
+                    }
+                }
             }
             ProtocolMessage::GenesisResultDataCall(params) => {
                 let res = Proto::genesis_result_data(
@@ -234,12 +278,66 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 );
                 tx.send(&NodeMessage::JsonEncodeApplyBlockOperationsMetadata(res))?;
             }
-            ProtocolMessage::ShutdownCall => {
-                // send shutdown event to context listener, that we dont need it anymore
-                if let Err(e) = context_send(ContextAction::Shutdown) {
-                    warn!(log, "Failed to send shutdown command to context channel"; "reason" => format!("{}", e));
+            ProtocolMessage::ContextGetKeyFromHistory(ContextGetKeyFromHistoryRequest {
+                context_hash,
+                key,
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
                 }
-
+            })? {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let key_borrowed: Vec<&str> = key.iter().map(|s| s.as_str()).collect();
+                    let result = index
+                        .get_key_from_history(&context_hash, &key_borrowed)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(result))?;
+                }
+            },
+            ProtocolMessage::ContextGetKeyValuesByPrefix(ContextGetKeyValuesByPrefixRequest {
+                context_hash,
+                prefix,
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
+                    let result = index
+                        .get_key_values_by_prefix(&context_hash, &prefix_borrowed)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetKeyValuesByPrefixResult(result))?;
+                }
+            },
+            ProtocolMessage::ContextGetTreeByPrefix(ContextGetTreeByPrefixRequest {
+                context_hash,
+                prefix,
+                depth,
+            }) => match tezos_new_context::ffi::get_context_index().map_err(|e| {
+                IpcError::OtherError {
+                    reason: format!("{:?}", e),
+                }
+            })? {
+                None => tx.send(&NodeMessage::ContextGetKeyFromHistoryResult(Err(
+                    "Context index unavailable".to_owned(),
+                )))?,
+                Some(index) => {
+                    let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
+                    // TODO: remove unwraps
+                    let result = index
+                        .get_context_tree_by_prefix(&context_hash, &prefix_borrowed, depth)
+                        .map_err(|err| format!("{:?}", err));
+                    tx.send(&NodeMessage::ContextGetTreeByPrefixResult(result))?;
+                }
+            },
+            ProtocolMessage::ShutdownCall => {
                 // we trigger shutdown callback before, returning response
                 shutdown_callback(log);
 
@@ -274,7 +372,10 @@ pub enum ProtocolError {
     #[fail(display = "Validate operation error: {}", reason)]
     ValidateOperationError { reason: ValidateOperationError },
     #[fail(display = "Protocol rpc call error: {}", reason)]
-    ProtocolRpcError { reason: ProtocolRpcError },
+    ProtocolRpcError {
+        reason: ProtocolRpcError,
+        request_path: String,
+    },
     #[fail(display = "Helper Preapply call error: {}", reason)]
     HelpersPreapplyError { reason: HelpersPreapplyError },
     #[fail(display = "Compute path call error: {}", reason)]
@@ -290,8 +391,19 @@ pub enum ProtocolError {
     /// OCaml part failed to get genesis data.
     #[fail(display = "Failed to get genesis data: {}", reason)]
     GenesisResultDataError { reason: GetDataError },
-    #[fail(display = "Failed to decode binary data to json: {}", reason)]
-    FfiJsonEncoderError { reason: FfiJsonEncoderError },
+    #[fail(
+        display = "Failed to decode binary data to json ({}): {}",
+        caller, reason
+    )]
+    FfiJsonEncoderError {
+        caller: String,
+        reason: FfiJsonEncoderError,
+    },
+
+    #[fail(display = "Failed to get key from history: {}", reason)]
+    ContextGetKeyFromHistoryError { reason: String },
+    #[fail(display = "Failed to get values by prefix: {}", reason)]
+    ContextGetKeyValuesByPrefixError { reason: String },
 }
 
 /// Errors generated by `protocol_runner`.
@@ -312,6 +424,9 @@ pub enum ProtocolServiceError {
     /// Lock error
     #[fail(display = "Lock error: {:?}", message)]
     LockPoisonError { message: String },
+    /// Context IPC server error
+    #[fail(display = "Context IPC server error: {:?}", message)]
+    ContextIpcServerError { message: String },
 }
 
 impl<T> From<std::sync::PoisonError<T>> for ProtocolServiceError {
@@ -373,6 +488,8 @@ pub struct IpcCmdServer(
 /// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
 impl IpcCmdServer {
     const IO_TIMEOUT: Duration = Duration::from_secs(10);
+    /// Long timeout for slow calls
+    const IO_TIMEOUT_LONG: Duration = Duration::from_secs(300);
 
     /// Create new IPC endpoint
     pub fn try_new(configuration: ProtocolEndpointConfiguration) -> Result<Self, IpcError> {
@@ -398,32 +515,6 @@ impl IpcCmdServer {
             configuration: self.1.clone(),
             shutting_down: false,
         })
-    }
-}
-
-/// IPC event server is listening for incoming IPC connections.
-pub struct IpcEvtServer(IpcServer<ContextAction, NoopMessage>);
-
-/// Difference between `IpcCmdServer` and `IpcEvtServer` is:
-/// * `IpcCmdServer` is used to create IPC channel over which commands from node are transferred to the protocol runner.
-/// * `IpcEvtServer` is used to create IPC channel over which events are transmitted from protocol runner to the tezedge node.
-impl IpcEvtServer {
-    pub fn try_bind_new() -> Result<Self, IpcError> {
-        Ok(IpcEvtServer(IpcServer::bind_path(&temp_sock())?))
-    }
-
-    /// Synchronously wait for new incoming IPC connection.
-    pub fn try_accept(
-        &mut self,
-        timeout: Duration,
-    ) -> Result<IpcReceiver<ContextAction>, IpcError> {
-        let (rx, _) = self.0.try_accept(timeout)?;
-        Ok(rx)
-    }
-
-    /// Returns socket path
-    pub fn server_path(&self) -> PathBuf {
-        self.0.path.clone()
     }
 }
 
@@ -618,7 +709,13 @@ impl ProtocolController {
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
             NodeMessage::JsonEncodeApplyBlockResultMetadataResponse(result) => {
-                result.map_err(|err| ProtocolError::FfiJsonEncoderError { reason: err }.into())
+                result.map_err(|err| {
+                    ProtocolError::FfiJsonEncoderError {
+                        caller: "apply_block_result_metadata".to_owned(),
+                        reason: err,
+                    }
+                    .into()
+                })
             }
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
@@ -649,9 +746,13 @@ impl ProtocolController {
             Some(Self::JSON_ENCODE_DATA_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
-            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result) => {
-                result.map_err(|err| ProtocolError::FfiJsonEncoderError { reason: err }.into())
-            }
+            NodeMessage::JsonEncodeApplyBlockOperationsMetadata(result) => result.map_err(|err| {
+                ProtocolError::FfiJsonEncoderError {
+                    caller: "apply_block_operations_metadata".to_owned(),
+                    reason: err,
+                }
+                .into()
+            }),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
             }),
@@ -661,6 +762,7 @@ impl ProtocolController {
     /// Call protocol  rpc - internal
     fn call_protocol_rpc_internal(
         &self,
+        request_path: String,
         msg: ProtocolMessage,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
         let mut io = self.io.borrow_mut();
@@ -671,9 +773,13 @@ impl ProtocolController {
             Some(Self::CALL_PROTOCOL_RPC_TIMEOUT),
             Some(IpcCmdServer::IO_TIMEOUT),
         )? {
-            NodeMessage::RpcResponse(result) => {
-                result.map_err(|err| ProtocolError::ProtocolRpcError { reason: err }.into())
-            }
+            NodeMessage::RpcResponse(result) => result.map_err(|err| {
+                ProtocolError::ProtocolRpcError {
+                    reason: err,
+                    request_path,
+                }
+                .into()
+            }),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
             }),
@@ -685,7 +791,10 @@ impl ProtocolController {
         &self,
         request: ProtocolRpcRequest,
     ) -> Result<ProtocolRpcResponse, ProtocolServiceError> {
-        self.call_protocol_rpc_internal(ProtocolMessage::ProtocolRpcCall(request))
+        self.call_protocol_rpc_internal(
+            request.request.context_path.clone(),
+            ProtocolMessage::ProtocolRpcCall(request),
+        )
     }
 
     /// Call helpers_preapply_* shell service - internal
@@ -752,12 +861,13 @@ impl ProtocolController {
     /// CommitGenesisResult is returned only if commit_genesis is set to true
     fn init_protocol_context(
         &self,
-        storage_data_dir: String,
+        storage: TezosContextStorageConfiguration,
         tezos_environment: &TezosEnvironmentConfiguration,
         commit_genesis: bool,
         enable_testchain: bool,
         readonly: bool,
         patch_context: Option<PatchContext>,
+        context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
         // try to check if was at least one write success, other words, if context was already created on file system
         {
@@ -781,7 +891,7 @@ impl ProtocolController {
         let mut io = self.io.borrow_mut();
         io.tx.send(&ProtocolMessage::InitProtocolContextCall(
             InitProtocolContextParams {
-                storage_data_dir,
+                storage,
                 genesis: tezos_environment.genesis.clone(),
                 genesis_max_operations_ttl: tezos_environment
                     .genesis_additional_data()
@@ -793,8 +903,9 @@ impl ProtocolController {
                 commit_genesis,
                 enable_testchain,
                 readonly,
-                turn_off_context_raw_inspector: self.configuration.event_server_path.is_none(),
+                turn_off_context_raw_inspector: true, // TODO - TE-261: remove later, new context doesn't use it
                 patch_context,
+                context_stats_db_path,
             },
         ))?;
 
@@ -859,21 +970,17 @@ impl ProtocolController {
         &self,
         commit_genesis: bool,
         patch_context: &Option<PatchContext>,
+        context_stats_db_path: Option<PathBuf>,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
-            self.configuration
-                .data_dir()
-                .to_str()
-                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
-                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
-                })?
-                .to_string(),
-            self.configuration.environment(),
+            self.configuration.storage.clone(),
+            &self.configuration.environment,
             commit_genesis,
-            self.configuration.enable_testchain(),
+            self.configuration.enable_testchain,
             false,
             patch_context.clone(),
+            context_stats_db_path,
         )
     }
 
@@ -881,21 +988,47 @@ impl ProtocolController {
     pub fn init_protocol_for_read(
         &self,
     ) -> Result<InitProtocolContextResult, ProtocolServiceError> {
-        self.change_runtime_configuration(self.configuration.runtime_configuration().clone())?;
+        // TODO - TE-261: should use a different message exchange for readonly contexts?
+        self.change_runtime_configuration(self.configuration.runtime_configuration.clone())?;
         self.init_protocol_context(
-            self.configuration
-                .data_dir()
-                .to_str()
-                .ok_or_else(|| ProtocolServiceError::InvalidDataError {
-                    message: format!("Invalid data dir: {:?}", self.configuration.data_dir()),
-                })?
-                .to_string(),
-            self.configuration.environment(),
+            self.configuration.storage.clone(),
+            &self.configuration.environment,
             false,
-            self.configuration.enable_testchain(),
+            self.configuration.enable_testchain,
             true,
             None,
+            None,
         )
+    }
+
+    // TODO - TE-261: this requires more descriptive errors.
+
+    /// Initializes server to listen for readonly context clients through IPC.
+    ///
+    /// Must be called after the writable context has been initialized.
+    pub fn init_context_ipc_server(&self) -> Result<(), ProtocolServiceError> {
+        if let Some(_) = self.configuration.storage.get_ipc_socket_path() {
+            let mut io = self.io.borrow_mut();
+            io.tx.send(&ProtocolMessage::InitProtocolContextIpcServer(
+                self.configuration.storage.clone(),
+            ))?;
+
+            match io.rx.try_receive(
+                Some(IpcCmdServer::IO_TIMEOUT),
+                Some(IpcCmdServer::IO_TIMEOUT),
+            )? {
+                NodeMessage::InitProtocolContextIpcServerResult(result) => {
+                    result.map_err(|_err| ProtocolServiceError::ContextIpcServerError {
+                        message: "Failure when starting context IPC server".to_owned(),
+                    })
+                }
+                message => Err(ProtocolServiceError::UnexpectedMessage {
+                    message: message.into(),
+                }),
+            }
+        } else {
+            Ok(())
+        }
     }
 
     /// Gets data for genesis.
@@ -903,7 +1036,7 @@ impl ProtocolController {
         &self,
         genesis_context_hash: &ContextHash,
     ) -> Result<CommitGenesisResult, ProtocolServiceError> {
-        let tezos_environment = self.configuration.environment();
+        let tezos_environment = self.configuration.environment.clone();
         let main_chain_id = tezos_environment.main_chain_id().map_err(|e| {
             ProtocolServiceError::InvalidDataError {
                 message: format!("{:?}", e),
@@ -937,6 +1070,85 @@ impl ProtocolController {
             NodeMessage::CommitGenesisResultData(result) => {
                 result.map_err(|err| ProtocolError::GenesisResultDataError { reason: err }.into())
             }
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    pub fn get_context_key_from_history(
+        &self,
+        context_hash: &ContextHash,
+        key: ContextKeyOwned,
+    ) -> Result<Option<ContextValue>, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::ContextGetKeyFromHistory(
+            ContextGetKeyFromHistoryRequest {
+                context_hash: context_hash.clone(),
+                key,
+            },
+        ))?;
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
+            NodeMessage::ContextGetKeyFromHistoryResult(result) => result
+                .map_err(|err| ProtocolError::ContextGetKeyFromHistoryError { reason: err }.into()),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    pub fn get_context_key_values_by_prefix(
+        &self,
+        context_hash: &ContextHash,
+        prefix: ContextKeyOwned,
+    ) -> Result<Option<Vec<(ContextKeyOwned, ContextValue)>>, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::ContextGetKeyValuesByPrefix(
+            ContextGetKeyValuesByPrefixRequest {
+                context_hash: context_hash.clone(),
+                prefix,
+            },
+        ))?;
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
+            NodeMessage::ContextGetKeyValuesByPrefixResult(result) => result.map_err(|err| {
+                ProtocolError::ContextGetKeyValuesByPrefixError { reason: err }.into()
+            }),
+            message => Err(ProtocolServiceError::UnexpectedMessage {
+                message: message.into(),
+            }),
+        }
+    }
+
+    pub fn get_context_tree_by_prefix(
+        &self,
+        context_hash: &ContextHash,
+        prefix: ContextKeyOwned,
+        depth: Option<usize>,
+    ) -> Result<StringTreeEntry, ProtocolServiceError> {
+        let mut io = self.io.borrow_mut();
+        io.tx.send(&ProtocolMessage::ContextGetTreeByPrefix(
+            ContextGetTreeByPrefixRequest {
+                context_hash: context_hash.clone(),
+                prefix,
+                depth,
+            },
+        ))?;
+
+        match io.rx.try_receive(
+            Some(IpcCmdServer::IO_TIMEOUT_LONG),
+            Some(IpcCmdServer::IO_TIMEOUT),
+        )? {
+            NodeMessage::ContextGetTreeByPrefixResult(result) => result.map_err(|err| {
+                ProtocolError::ContextGetKeyValuesByPrefixError { reason: err }.into()
+            }),
             message => Err(ProtocolServiceError::UnexpectedMessage {
                 message: message.into(),
             }),

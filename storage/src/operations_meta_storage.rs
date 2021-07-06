@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashSet;
@@ -9,15 +9,15 @@ use rocksdb::{Cache, ColumnFamilyDescriptor, MergeOperands};
 use crypto::hash::BlockHash;
 use tezos_messages::p2p::encoding::prelude::*;
 
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
-};
-use crate::persistent::{Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::{Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::PersistentStorage;
 use crate::{BlockHeaderWithHash, StorageError};
 
 /// Convenience type for operation meta storage database
-pub type OperationsMetaStorageKV = dyn KeyValueStoreWithSchema<OperationsMetaStorage> + Sync + Send;
+pub type OperationsMetaStorageKV =
+    dyn TezedgeDatabaseWithIterator<OperationsMetaStorage> + Sync + Send;
 
 /// Operation metadata storage
 #[derive(Clone)]
@@ -28,7 +28,7 @@ pub struct OperationsMetaStorage {
 impl OperationsMetaStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
         }
     }
 
@@ -102,11 +102,6 @@ impl OperationsMetaStorage {
     pub fn contains(&self, block_hash: &BlockHash) -> Result<bool, StorageError> {
         self.kv.contains(block_hash).map_err(StorageError::from)
     }
-
-    #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
-    }
 }
 
 impl KeyValueSchema for OperationsMetaStorage {
@@ -131,7 +126,13 @@ impl RocksDbKeyValueSchema for OperationsMetaStorage {
     }
 }
 
-fn merge_meta_value(
+impl KVStoreKeyValueSchema for OperationsMetaStorage {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
+pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
     operands: &mut MergeOperands,
@@ -165,6 +166,46 @@ fn merge_meta_value(
                 val[is_complete_idx] |= op[is_complete_idx];
             }
             None => result = Some(op.to_vec()),
+        }
+    }
+
+    result
+}
+
+pub fn merge_meta_value_sled(
+    _new_key: &[u8],
+    existing_val: Option<&[u8]>,
+    merged_bytes: &[u8],
+) -> Option<Vec<u8>> {
+    let mut result = existing_val.map(|v| v.to_vec());
+    match result {
+        None => return Some(merged_bytes.to_vec()),
+        Some(ref mut val) => {
+            debug_assert_eq!(
+                val.len(),
+                merged_bytes.len(),
+                "Value length is fixed. expected={}, found={}",
+                val.len(),
+                merged_bytes.len()
+            );
+            debug_assert_ne!(0, val.len(), "Value cannot have zero size");
+            debug_assert_eq!(
+                val[0], merged_bytes[0],
+                "Value of validation passes cannot change"
+            );
+            // in case of inconsistency, return `None`
+            if val.is_empty() || val.len() != merged_bytes.len() || val[0] != merged_bytes[0] {
+                return None;
+            }
+
+            let validation_passes = val[0] as usize;
+            // merge `is_validation_pass_present`
+            for i in 1..=validation_passes {
+                val[i] |= merged_bytes[i]
+            }
+            // merge `is_complete`
+            let is_complete_idx = validation_passes + 1;
+            val[is_complete_idx] |= merged_bytes[is_complete_idx];
         }
     }
 
@@ -288,6 +329,8 @@ mod tests {
     use crate::tests_common::TmpStorage;
 
     use super::*;
+    use crate::database;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
     use crate::persistent::database::open_kv;
     use crypto::hash::HashType;
 
@@ -387,25 +430,27 @@ mod tests {
                 vec![OperationsMetaStorage::descriptor(&cache)],
                 &DbConfiguration::default(),
             )?;
+            let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
             };
-            let p = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let p = OperationsMetaStorageKV::merge(&maindb, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_validation_pass_present[2] = t;
-            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
             v.is_validation_pass_present[2] = f;
             v.is_validation_pass_present[3] = t;
-            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
             v.is_validation_pass_present[3] = f;
             v.is_complete = true;
-            let _ = OperationsMetaStorageKV::merge(&db, &k, &v);
-            let m = OperationsMetaStorageKV::merge(&db, &k, &v);
+            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
+            let m = OperationsMetaStorageKV::merge(&maindb, &k, &v);
             assert!(m.is_ok());
-            match OperationsMetaStorageKV::get(&db, &k) {
+            match OperationsMetaStorageKV::get(&maindb, &k) {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);

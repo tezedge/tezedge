@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 // TODO: (anagy) - check TODO's
@@ -16,11 +16,11 @@ use std::convert::TryInto;
 use failure::format_err;
 use itertools::Itertools;
 
-use storage::context::actions::context_action_storage::contract_id_to_contract_address_for_index;
-use storage::context::TezedgeContext;
+use crate::services::dev_services::contract_id_to_contract_address_for_index;
 use tezos_messages::base::rpc_support::{RpcJsonMap, ToRpcJsonMap};
 use tezos_messages::base::signature_public_key_hash::SignaturePublicKeyHash;
 use tezos_messages::protocol::proto_003::rights::{BakingRights, EndorsingRight};
+use tezos_wrapper::TezedgeContextClient;
 
 use crate::services::protocol::proto_003::helpers::{
     get_prng_number, init_prng, EndorserSlots, RightsConstants, RightsContextData, RightsParams,
@@ -49,7 +49,7 @@ pub(crate) fn check_and_get_baking_rights(
     cycle: Option<&str>,
     max_priority: Option<&str>,
     has_all: bool,
-    context: &TezedgeContext,
+    context: &TezedgeContextClient,
 ) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;
@@ -262,7 +262,7 @@ pub(crate) fn check_and_get_endorsing_rights(
     delegate: Option<&str>,
     cycle: Option<&str>,
     has_all: bool,
-    context: &TezedgeContext,
+    context: &TezedgeContextClient,
 ) -> Result<Option<Vec<RpcJsonMap>>, failure::Error> {
     let constants: RightsConstants =
         RightsConstants::parse_rights_constants(&context_proto_params)?;

@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
@@ -95,6 +95,14 @@ macro_rules! define_hash {
                     .unwrap_or_else(|_| {
                         unreachable!("Typed hash should always be representable in base58")
                     })
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = FromBase58CheckError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Self::from_base58_check(s)
             }
         }
 

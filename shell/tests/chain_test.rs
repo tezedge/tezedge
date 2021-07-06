@@ -1,7 +1,9 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![feature(test)]
 extern crate test;
+
+// TODO - TE-281: some tests here use wait_for_context, fix that once not required anymore
 
 /// Simple integration test for chain actors
 ///
@@ -23,9 +25,6 @@ use networking::ShellCompatibilityVersion;
 use shell::mempool::find_mempool_prevalidator;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
-use storage::context::actions::action_file_storage::ActionFileStorage;
-use storage::context::actions::context_action_storage::ContextActionStorage;
-use storage::context::ActionRecorder;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
 use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
@@ -48,6 +47,7 @@ lazy_static! {
             bootstrap_lookup_addresses: vec![],
             disable_bootstrap_lookup: true,
             disable_mempool: false,
+            disable_blacklist: false,
             private_node: false,
             bootstrap_peers: vec![],
             peer_threshold: PeerConnectionThreshold::try_new(0, 10, Some(0)).expect("Invalid range"),
@@ -82,9 +82,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -130,28 +128,6 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     )?;
     println!("\nProcessed current_head[4] in {:?}!\n", clocks.elapsed());
 
-    // check context stored for all blocks
-    node.wait_for_context(
-        "ctx_1",
-        db.context_hash(1)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "ctx_2",
-        db.context_hash(2)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "ctx_3",
-        db.context_hash(3)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "ctx_4",
-        db.context_hash(4)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
@@ -188,9 +164,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -257,20 +231,13 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
         (Duration::from_secs(60), Duration::from_millis(750)),
     )?;
 
-    // check context stored for all blocks
-    node.wait_for_context(
-        "ctx_7",
-        db.context_hash(7)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
     println!("\nProcessed current_branch[7] in {:?}!\n", clocks.elapsed());
 
     // check is bootstrapped
-    assert!(node
-        .bootstrap_state
-        .read()
-        .expect("Failed to get lock")
-        .is_bootstrapped());
+    node.wait_for_bootstrapped(
+        "bootstrapped",
+        (Duration::from_secs(5), Duration::from_millis(100)),
+    )?;
 
     // check mempool is running
     assert!(
@@ -317,9 +284,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -372,45 +337,6 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         (Duration::from_secs(30), Duration::from_millis(750)),
     )?;
     println!("\nProcessed [branch2-4] in {:?}!\n", clocks.elapsed());
-
-    ////////////////////////////////////////////
-    // 1. CONTEXT - check context stored for all branches
-    node.wait_for_context(
-        "db_branch_1_ctx_1",
-        db_branch_1.context_hash(1)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "db_branch_1_ctx_2",
-        db_branch_1.context_hash(2)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "db_branch_1_ctx_3",
-        db_branch_1.context_hash(3)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-
-    node.wait_for_context(
-        "db_branch_2_ctx_1",
-        db_branch_2.context_hash(1)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "db_branch_2_ctx_2",
-        db_branch_2.context_hash(2)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "db_branch_2_ctx_3",
-        db_branch_2.context_hash(3)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "db_branch_2_ctx_4",
-        db_branch_2.context_hash(4)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
 
     ////////////////////////////////////////////
     // 2. HISTORY of blocks - check live_blocks for both branches (kind of check by chain traversal throught predecessors)
@@ -466,9 +392,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -529,23 +453,6 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
         (Duration::from_secs(30), Duration::from_millis(750)),
     )?;
 
-    // check context stored for all blocks
-    node.wait_for_context(
-        "ctx_1",
-        db.context_hash(1)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "ctx_2",
-        db.context_hash(2)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-    node.wait_for_context(
-        "ctx_3",
-        db.context_hash(3)?,
-        (Duration::from_secs(5), Duration::from_millis(150)),
-    )?;
-
     // stop nodes
     drop(mocked_peer_node);
     drop(node);
@@ -578,9 +485,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        vec![],
         (false, false),
-        true,
     )?;
 
     // register network channel listener
@@ -726,18 +631,6 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     // storage for test
     let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
 
-    // context action recorders
-    let context_action_recorders = vec![
-        // rocksdb recorder
-        Box::new(ContextActionStorage::new(
-            storage
-                .storage()
-                .merkle_context_actions()
-                .expect("Expecting configured merkle context actions rocksdb"),
-            storage.storage().seq(),
-        )) as Box<dyn ActionRecorder + Send>,
-    ];
-
     // start mempool on the beginning
     let mut p2p_cfg = common::p2p_cfg_with_threshold(NODE_P2P_CFG.clone(), 0, 10, 0);
     p2p_cfg.0.disable_mempool = false;
@@ -753,9 +646,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        context_action_recorders,
         (true, false),
-        true,
     )?;
 
     // wait for storage initialization to genesis
@@ -798,12 +689,6 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
         clocks.elapsed()
     );
 
-    // check context stored for all blocks
-    node.wait_for_context(
-        "ctx_1324",
-        db.context_hash(1324)?,
-        (Duration::from_secs(30), Duration::from_millis(150)),
-    )?;
     println!(
         "\nApplied current_head[1324] vs finished context[1324] diff {:?}!\n",
         current_head_reached.elapsed()
@@ -976,13 +861,6 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     // storage for test
     let storage = TmpStorage::create(&root_dir_temp_storage_path)?;
 
-    // context action recorders
-    let context_action_recorders = vec![
-        // action file recorder
-        Box::new(ActionFileStorage::new(target_action_file.clone()))
-            as Box<dyn ActionRecorder + Send>,
-    ];
-
     // start node
     let node = common::infra::NodeInfrastructure::start(
         storage,
@@ -994,9 +872,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
         NODE_IDENTITY.clone(),
         SIMPLE_POW_TARGET,
         (log, log_level),
-        context_action_recorders,
         (true, true),
-        false,
     )?;
 
     // wait for storage initialization to genesis
@@ -1030,12 +906,6 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
         clocks.elapsed()
     );
 
-    // check context stored for all blocks
-    node.wait_for_context(
-        "ctx_1324",
-        db.context_hash(1324)?,
-        (Duration::from_secs(30), Duration::from_millis(150)),
-    )?;
     println!(
         "\nApplied current_head[1324] vs finished context[1324] diff {:?}!\n",
         current_head_reached.elapsed()
@@ -1108,41 +978,42 @@ mod stats {
         return format!("{:.1} {}B", bytes as f64 / 1000.0, ci.next().unwrap());
     }
 
+    // TODO - TE-261: revise this, can it be restored?
     pub fn generate_merkle_context_stats(
-        persistent_storage: &PersistentStorage,
+        _persistent_storage: &PersistentStorage,
     ) -> Result<Vec<String>, failure::Error> {
-        let mut log_for_stats = Vec::new();
+        //let mut log_for_stats = Vec::new();
 
-        // generate stats
-        let m = persistent_storage.merkle();
-        let merkle = m
-            .lock()
-            .map_err(|e| failure::format_err!("Lock error: {:?}", e))?;
-        let stats = merkle.get_merkle_stats()?;
+        //// generate stats
+        //let m = persistent_storage.merkle();
+        //let merkle = m
+        //    .lock()
+        //    .map_err(|e| failure::format_err!("Lock error: {:?}", e))?;
+        //let stats = merkle.get_merkle_stats()?;
 
-        log_for_stats.push(String::from(""));
-        log_for_stats.push("Context storage global latency statistics:".to_string());
-        log_for_stats.push(String::from("------------"));
-        for (op, v) in stats.perf_stats.global.iter() {
-            log_for_stats.push(format!("{}:", op));
-            log_for_stats.push(format!(
-                "\tavg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
-                v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
-            ));
-        }
-        log_for_stats.push(String::from(""));
-        log_for_stats.push("Context storage per-path latency statistics:".to_string());
-        log_for_stats.push(String::from("------------"));
-        for (node, v) in stats.perf_stats.perpath.iter() {
-            log_for_stats.push(format!("{}:", node));
-            for (op, v) in v.iter() {
-                log_for_stats.push(format!(
-                    "\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
-                    op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
-                ));
-            }
-        }
+        //log_for_stats.push(String::from(""));
+        //log_for_stats.push("Context storage global latency statistics:".to_string());
+        //log_for_stats.push(String::from("------------"));
+        //for (op, v) in stats.perf_stats.global.iter() {
+        //    log_for_stats.push(format!("{}:", op));
+        //    log_for_stats.push(format!(
+        //        "\tavg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+        //        v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+        //    ));
+        //}
+        //log_for_stats.push(String::from(""));
+        //log_for_stats.push("Context storage per-path latency statistics:".to_string());
+        //log_for_stats.push(String::from("------------"));
+        //for (node, v) in stats.perf_stats.perpath.iter() {
+        //    log_for_stats.push(format!("{}:", node));
+        //    for (op, v) in v.iter() {
+        //        log_for_stats.push(format!(
+        //            "\t{}: avg: {:.0}ns, min: {:.0}ns, max: {:.0}ns, times: {}",
+        //            op, v.avg_exec_time, v.op_exec_time_min, v.op_exec_time_max, v.op_exec_times
+        //        ));
+        //    }
+        //}
 
-        Ok(log_for_stats)
+        Ok(vec![])
     }
 }

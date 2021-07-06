@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-debugger:
-    image: simplestakingcom/tezedge-debugger:latest-release
+    image: tezedge/tezedge-debugger:v1.6.0
     privileged: true
     environment:
       - RUST_BACKTRACE=1
@@ -18,8 +18,8 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: simplestakingcom/tezedge:latest-release
-    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45"]
+    image: tezedge/tezedge:v1.6.0
+    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -36,11 +36,10 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: simplestakingcom/tezedge-explorer:latest-release
+    image: tezedge/tezedge-explorer:v1.6.0
     environment:
-      - DEBUGGER=http://localhost:17732
       # need a better way to provide such information
-      - API=[{"id":"tezedge","name":"tezedge","http":"http://localhost:18732","debugger":"http://localhost:17732","ws":"ws://localhost:4927","monitoring":"","p2p_port":9732,"features":["MONITORING","STORAGE_BLOCK", "MEMPOOL_ACTION","NETWORK_ACTION","LOGS_ACTION"]}]
+      - API=[{"id":"tezedge","name":"tezedge","http":"http://localhost:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://localhost:4927"},{"name":"debugger","url":"http://localhost:17732"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
       - "8080:80"

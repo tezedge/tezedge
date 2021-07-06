@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
@@ -15,19 +15,16 @@ use crypto::hash::{
 };
 use tezos_messages::p2p::encoding::block_header::Level;
 
-use crate::persistent::database::{
-    default_table_options, IteratorMode, IteratorWithSchema, RocksDbKeyValueSchema,
-};
-use crate::persistent::{
-    BincodeEncoded, Decoder, Encoder, KeyValueSchema, KeyValueStoreWithSchema, SchemaError,
-};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
+use crate::persistent::database::{default_table_options, RocksDbKeyValueSchema};
+use crate::persistent::{BincodeEncoded, Decoder, Encoder, KeyValueSchema, SchemaError};
 use crate::predecessor_storage::{PredecessorKey, PredecessorStorage};
 use crate::{num_from_slice, PersistentStorage};
 use crate::{BlockHeaderWithHash, StorageError};
 
-pub type BlockMetaStorageKV = dyn KeyValueStoreWithSchema<BlockMetaStorage> + Sync + Send;
+pub type BlockMetaStorageKV = dyn TezedgeDatabaseWithIterator<BlockMetaStorage> + Sync + Send;
 pub type BlockAdditionalDataStorageKV =
-    dyn KeyValueStoreWithSchema<BlockAdditionalData> + Sync + Send;
+    dyn TezedgeDatabaseWithIterator<BlockAdditionalData> + Sync + Send;
 
 pub trait BlockMetaStorageReader: Sync + Send {
     fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError>;
@@ -68,9 +65,9 @@ impl BlockMetaStorage {
 
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         BlockMetaStorage {
-            kv: persistent_storage.db(),
+            kv: persistent_storage.main_db(),
             predecessors_index: PredecessorStorage::new(persistent_storage),
-            additional_data_index: persistent_storage.db(),
+            additional_data_index: persistent_storage.main_db(),
         }
     }
 
@@ -205,11 +202,6 @@ impl BlockMetaStorage {
     #[inline]
     pub fn get(&self, block_hash: &BlockHash) -> Result<Option<Meta>, StorageError> {
         self.kv.get(block_hash).map_err(StorageError::from)
-    }
-
-    #[inline]
-    pub fn iter(&self, mode: IteratorMode<Self>) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv.iterator(mode).map_err(StorageError::from)
     }
 }
 
@@ -564,7 +556,19 @@ impl RocksDbKeyValueSchema for BlockMetaStorage {
     }
 }
 
-fn merge_meta_value(
+impl KVStoreKeyValueSchema for BlockMetaStorage {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
+impl KVStoreKeyValueSchema for BlockAdditionalData {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
+pub fn merge_meta_value(
     _new_key: &[u8],
     existing_val: Option<&[u8]>,
     operands: &mut MergeOperands,
@@ -618,6 +622,66 @@ fn merge_meta_value(
         }
     }
 
+    result
+}
+
+pub fn merge_meta_value_sled(
+    _new_key: &[u8],
+    existing_val: Option<&[u8]>,
+    merge_val: &[u8],
+) -> Option<Vec<u8>> {
+    if let Some(val) = existing_val {
+        if val.len() < LEN_FIXED_META {
+            return None;
+        }
+    }
+
+    let mut result = existing_val.map(|v| v.to_vec());
+
+    match result {
+        Some(ref mut val) => {
+            if merge_val.len() < LEN_FIXED_META {
+                return None;
+            }
+
+            let mask_val = val[IDX_MASK];
+            let mask_op = merge_val[IDX_MASK];
+
+            // merge `mask(1)`
+            val[IDX_MASK] = mask_val | mask_op;
+
+            // if op has predecessor and val has not, copy it from op to val
+            if has_predecessor!(mask_op) && !has_predecessor!(mask_val) {
+                val.splice(
+                    IDX_PREDECESSOR..IDX_LEVEL,
+                    merge_val[IDX_PREDECESSOR..IDX_LEVEL].iter().cloned(),
+                );
+            }
+
+            // replace op (successors count + successors) to val
+            let val_successors_count = successors_count!(val);
+            let op_successors_count = successors_count!(merge_val);
+            if (has_successor!(mask_op) && !has_successor!(mask_val))
+                || (val_successors_count != op_successors_count)
+            {
+                val.truncate(LEN_FIXED_META);
+                val.splice(
+                    IDX_SUCCESSOR_COUNT..,
+                    merge_val[IDX_SUCCESSOR_COUNT..].iter().cloned(),
+                );
+            }
+
+            let total_len = total_len(op_successors_count);
+            debug_assert_eq!(
+                total_len,
+                val.len(),
+                "Invalid length after merge operator was applied. Was expecting {} but found {}.",
+                total_len,
+                val.len()
+            );
+        }
+        None => result = Some(merge_val.to_vec()),
+    }
     result
 }
 
@@ -733,6 +797,8 @@ mod tests {
     use crate::tests_common::TmpStorage;
 
     use super::*;
+    use crate::database;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
 
     #[test]
     fn block_meta_encoded_equals_decoded() -> Result<(), Error> {
@@ -873,6 +939,8 @@ mod tests {
                 &DbConfiguration::default(),
             )
             .unwrap();
+            let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
             let k: BlockHash = vec![44; 32].try_into().unwrap();
             let mut v = Meta {
                 is_applied: false,
@@ -881,22 +949,22 @@ mod tests {
                 level: 2,
                 chain_id: vec![44; 4].try_into().unwrap(),
             };
-            let p = BlockMetaStorageKV::merge(&db, &k, &v);
+            let p = BlockMetaStorageKV::merge(&maindb, &k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_applied = true;
             v.successors = vec![vec![21; 32].try_into().unwrap()];
-            let _ = BlockMetaStorageKV::merge(&db, &k, &v);
+            let _ = BlockMetaStorageKV::merge(&maindb, &k, &v);
 
             v.is_applied = false;
             v.predecessor = Some(vec![98; 32].try_into().unwrap());
             v.successors = vec![];
-            let _ = BlockMetaStorageKV::merge(&db, &k, &v);
+            let _ = BlockMetaStorageKV::merge(&maindb, &k, &v);
 
             v.predecessor = None;
-            let m = BlockMetaStorageKV::merge(&db, &k, &v);
+            let m = BlockMetaStorageKV::merge(&maindb, &k, &v);
             assert!(m.is_ok());
 
-            match BlockMetaStorageKV::get(&db, &k) {
+            match BlockMetaStorageKV::get(&maindb, &k) {
                 Ok(Some(value)) => {
                     let expected = Meta {
                         is_applied: true,

@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-node:
-    image: simplestakingcom/tezedge:latest-release
+    image: tezedge/tezedge:v1.6.0
     command: [
         "--network=granadanet",
         "--p2p-port=12534",
@@ -11,7 +11,6 @@ services:
         "--websocket-address=0.0.0.0:12536",
         "--peer-thresh-low", "30", "--peer-thresh-high", "45",
         "--log", "terminal", "file", "--log-file", "/context-data/tezedge.log",
-        "--one-context", "--actions-store-backend", "none",
         "--identity-file=/data/data/identity.json",
         "--bootstrap-db-path=/data/data/tezedge-data",
         "--tezos-data-dir=/data/data/node/data",
@@ -27,7 +26,7 @@ services:
       - default
 
   tezedge-explorer:
-    image: simplestakingcom/tezedge-explorer:latest-release
+    image: tezedge/tezedge-explorer:v1.6.0
     depends_on:
       - tezedge-node
     hostname: tezedge-explorer

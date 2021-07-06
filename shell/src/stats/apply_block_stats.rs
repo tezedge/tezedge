@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::ops::AddAssign;
@@ -61,12 +61,26 @@ impl ApplyBlockStats {
         };
 
         format!(
-            "validation {} -> load_metadata {} + protocol_call {} + context_check {} + store_result {}",
-            div(self.applied_block_lasts_sum_validation_timer.validated_at, self.applied_block_lasts_count),
-            div(self.applied_block_lasts_sum_validation_timer.load_metadata_elapsed, self.applied_block_lasts_count),
-            div(self.applied_block_lasts_sum_validation_timer.protocol_call_elapsed, self.applied_block_lasts_count),
-            div(self.applied_block_lasts_sum_validation_timer.context_wait_elapsed, self.applied_block_lasts_count),
-            div(self.applied_block_lasts_sum_validation_timer.store_result_elapsed, self.applied_block_lasts_count),
+            "validation {} -> load_metadata {} + protocol_call {} + store_result {}",
+            div(
+                self.applied_block_lasts_sum_validation_timer.validated_at,
+                self.applied_block_lasts_count
+            ),
+            div(
+                self.applied_block_lasts_sum_validation_timer
+                    .load_metadata_elapsed,
+                self.applied_block_lasts_count
+            ),
+            div(
+                self.applied_block_lasts_sum_validation_timer
+                    .protocol_call_elapsed,
+                self.applied_block_lasts_count
+            ),
+            div(
+                self.applied_block_lasts_sum_validation_timer
+                    .store_result_elapsed,
+                self.applied_block_lasts_count
+            ),
         )
     }
 
@@ -89,7 +103,6 @@ pub struct BlockValidationTimer {
     validated_at: Duration,
     load_metadata_elapsed: Duration,
     protocol_call_elapsed: Duration,
-    context_wait_elapsed: Duration,
     store_result_elapsed: Duration,
 }
 
@@ -98,14 +111,12 @@ impl BlockValidationTimer {
         validated_at: Duration,
         load_metadata_elapsed: Duration,
         protocol_call_elapsed: Duration,
-        context_wait_elapsed: Duration,
         store_result_elapsed: Duration,
     ) -> Self {
         Self {
             validated_at,
             load_metadata_elapsed,
             protocol_call_elapsed,
-            context_wait_elapsed,
             store_result_elapsed,
         }
     }
@@ -131,13 +142,6 @@ impl AddAssign<&BlockValidationTimer> for BlockValidationTimer {
             Some(result) => result,
             None => self.protocol_call_elapsed,
         };
-        self.context_wait_elapsed = match self
-            .context_wait_elapsed
-            .checked_add(rhs.context_wait_elapsed)
-        {
-            Some(result) => result,
-            None => self.context_wait_elapsed,
-        };
         self.store_result_elapsed = match self
             .store_result_elapsed
             .checked_add(rhs.store_result_elapsed)
@@ -151,7 +155,6 @@ impl AddAssign<&BlockValidationTimer> for BlockValidationTimer {
 impl Default for BlockValidationTimer {
     fn default() -> Self {
         Self::new(
-            Duration::new(0, 0),
             Duration::new(0, 0),
             Duration::new(0, 0),
             Duration::new(0, 0),

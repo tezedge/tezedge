@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 #![feature(test)]
 extern crate test;
@@ -10,7 +10,11 @@ use crypto::hash::ChainId;
 use tezos_api::environment::{
     get_empty_operation_list_list_hash, TezosEnvironmentConfiguration, TEZOS_ENV,
 };
-use tezos_api::ffi::{ApplyBlockRequest, InitProtocolContextResult, TezosRuntimeConfiguration};
+use tezos_api::ffi::{
+    ApplyBlockRequest, InitProtocolContextResult, TezosContextConfiguration,
+    TezosContextIrminStorageConfiguration, TezosContextStorageConfiguration,
+    TezosContextTezEdgeStorageConfiguration, TezosRuntimeConfiguration,
+};
 use tezos_client::client;
 use tezos_interop::ffi;
 use tezos_messages::p2p::binary_message::BinaryRead;
@@ -138,17 +142,26 @@ fn init_test_protocol_context(dir_name: &str) -> (ChainId, BlockHeader, InitProt
         .get(&test_data::TEZOS_NETWORK)
         .expect("no tezos environment configured");
 
-    let result = client::init_protocol_context(
-        common::prepare_empty_dir(dir_name),
-        tezos_env.genesis.clone(),
-        tezos_env.protocol_overrides.clone(),
-        true,
-        false,
-        false,
-        false,
-        None,
-    )
-    .unwrap();
+    let data_dir = common::prepare_empty_dir(dir_name);
+    let storage = TezosContextStorageConfiguration::Both(
+        TezosContextIrminStorageConfiguration { data_dir },
+        TezosContextTezEdgeStorageConfiguration {
+            backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+            ipc_socket_path: None,
+        },
+    );
+    let context_config = TezosContextConfiguration {
+        storage,
+        genesis: tezos_env.genesis.clone(),
+        protocol_overrides: tezos_env.protocol_overrides.clone(),
+        commit_genesis: true,
+        enable_testchain: false,
+        readonly: false,
+        sandbox_json_patch_context: None,
+        context_stats_db_path: None,
+    };
+
+    let result = client::init_protocol_context(context_config).unwrap();
 
     let genesis_commit_hash = match result.genesis_commit_hash.as_ref() {
         None => panic!("we needed commit_genesis and here should be result of it"),

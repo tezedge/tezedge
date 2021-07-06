@@ -1,9 +1,9 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::fmt::Debug;
 /// Rust implementation of messages required for Rust <-> OCaml FFI communication.
 use std::{convert::TryFrom, fmt};
+use std::{fmt::Debug, path::PathBuf};
 
 use derive_builder::Builder;
 use failure::Fail;
@@ -19,6 +19,7 @@ use tezos_messages::p2p::encoding::block_header::{display_fitness, Fitness};
 use tezos_messages::p2p::encoding::prelude::{
     BlockHeader, Operation, OperationsForBlocksMessage, Path,
 };
+use url::Url;
 
 use crate::ocaml_conv::ffi_error_ids;
 
@@ -101,6 +102,99 @@ pub struct TezosRuntimeConfiguration {
     pub log_enabled: bool,
     pub debug_mode: bool,
     pub compute_context_action_tree_hashes: bool,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextIrminStorageConfiguration {
+    pub data_dir: String,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum ContextKvStoreConfiguration {
+    ReadOnlyIpc,
+    InMem,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub struct TezosContextTezEdgeStorageConfiguration {
+    pub backend: ContextKvStoreConfiguration,
+    pub ipc_socket_path: Option<String>,
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum TezosContextStorageConfiguration {
+    IrminOnly(TezosContextIrminStorageConfiguration),
+    TezEdgeOnly(TezosContextTezEdgeStorageConfiguration),
+    Both(
+        TezosContextIrminStorageConfiguration,
+        TezosContextTezEdgeStorageConfiguration,
+    ),
+}
+
+impl TezosContextStorageConfiguration {
+    /// Used to produce a configuration for the readonly protocol runners from the configuration used in the main protocol runner.
+    ///
+    /// If only Irmin is enabled, the resulting configuration is the same.
+    /// If only TezEdge is enabled, the resulting configuration switches the backend to the readonly IPC implementation.
+    /// If both Irmin and TezEdge are enabled, an only-Irmin configuration is enabled.
+    pub fn readonly(&self) -> Self {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => self.clone(),
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                TezosContextStorageConfiguration::TezEdgeOnly(
+                    TezosContextTezEdgeStorageConfiguration {
+                        backend: ContextKvStoreConfiguration::ReadOnlyIpc,
+                        ..tezedge.clone()
+                    },
+                )
+            }
+        }
+    }
+
+    pub fn get_ipc_socket_path(&self) -> Option<String> {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => None,
+            TezosContextStorageConfiguration::TezEdgeOnly(tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+            TezosContextStorageConfiguration::Both(_irmin, tezedge) => {
+                tezedge.ipc_socket_path.clone()
+            }
+        }
+    }
+
+    pub fn tezedge_is_enabled(&self) -> bool {
+        match self {
+            TezosContextStorageConfiguration::IrminOnly(_) => false,
+            TezosContextStorageConfiguration::TezEdgeOnly(_) => true,
+            TezosContextStorageConfiguration::Both(_, _) => true,
+        }
+    }
+}
+
+// Must be in sync with ffi_config.ml
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TezosContextConfiguration {
+    pub storage: TezosContextStorageConfiguration,
+    pub genesis: GenesisChain,
+    pub protocol_overrides: ProtocolOverrides,
+    pub commit_genesis: bool,
+    pub enable_testchain: bool,
+    pub readonly: bool,
+    pub sandbox_json_patch_context: Option<PatchContext>,
+    pub context_stats_db_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Builder)]
@@ -649,13 +743,68 @@ impl From<TezosErrorTrace> for FfiJsonEncoderError {
 
 pub type Json = String;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RpcRequest {
     pub body: Json,
     pub context_path: String,
     pub meth: RpcMethod,
     pub content_type: Option<String>,
     pub accept: Option<String>,
+}
+
+impl RpcRequest {
+    /// Produces a key for the routed requests cache.
+    ///
+    /// The cache key is just the original path+query, with a bit of normalization
+    /// and the "/chains/:chan_id/blocks/:block_id" prefix removed if present.
+    pub fn ffi_rpc_router_cache_key(&self) -> String {
+        Self::ffi_rpc_router_cache_key_helper(&self.context_path)
+    }
+
+    fn ffi_rpc_router_cache_key_helper(path: &str) -> String {
+        let base = match Url::parse("http://tezedge.com") {
+            Ok(base) => base,
+            Err(_) => return path.to_string(),
+        };
+        let parsed = Url::options().base_url(Some(&base)).parse(path).unwrap();
+        let normalized_path = match parsed.query() {
+            Some(query) => format!("{}?{}", parsed.path().trim_end_matches('/'), query),
+            None => parsed.path().trim_end_matches('/').to_string(),
+        };
+        let mut segments = match parsed.path_segments() {
+            Some(segments) => segments,
+            // Not the subpath we expect, bail-out
+            None => return normalized_path,
+        };
+
+        // /chains/:chain_id/blocks/:block_id
+        let (chains, _, blocks, _) = (
+            segments.next(),
+            segments.next(),
+            segments.next(),
+            segments.next(),
+        );
+
+        match (chains, blocks) {
+            (Some("chains"), Some("blocks")) => (),
+            // Not the subpath we expect, bail-out
+            _ => return normalized_path,
+        }
+
+        let remaining: Vec<_> = segments.filter(|s| !s.is_empty()).collect();
+        let subpath = remaining.join("/");
+
+        // We only care about subpaths, bail-out
+        if subpath.is_empty() {
+            return normalized_path;
+        }
+
+        if let Some(query) = parsed.query() {
+            format!("/{}?{}", subpath, query)
+        } else {
+            format!("/{}", subpath)
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -683,7 +832,45 @@ pub enum ProtocolRpcResponse {
     RPCUnauthorized,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+fn body_or_empty(body: &Option<String>) -> String {
+    match body {
+        Some(body) => body.clone(),
+        None => "".to_string(),
+    }
+}
+
+impl ProtocolRpcResponse {
+    pub fn status_code(&self) -> u16 {
+        // These HTTP codes are mapped form what the `resto` OCaml library defines
+        match self {
+            ProtocolRpcResponse::RPCConflict(_) => 409,
+            ProtocolRpcResponse::RPCCreated(_) => 201,
+            ProtocolRpcResponse::RPCError(_) => 500,
+            ProtocolRpcResponse::RPCForbidden(_) => 403,
+            ProtocolRpcResponse::RPCGone(_) => 410,
+            ProtocolRpcResponse::RPCNoContent => 204,
+            ProtocolRpcResponse::RPCNotFound(_) => 404,
+            ProtocolRpcResponse::RPCOk(_) => 200,
+            ProtocolRpcResponse::RPCUnauthorized => 401,
+        }
+    }
+
+    pub fn body_json_string_or_empty(&self) -> String {
+        match self {
+            ProtocolRpcResponse::RPCConflict(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCCreated(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCError(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCForbidden(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCGone(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCNoContent => "".to_string(),
+            ProtocolRpcResponse::RPCNotFound(body) => body_or_empty(body),
+            ProtocolRpcResponse::RPCOk(body) => body.clone(),
+            ProtocolRpcResponse::RPCUnauthorized => "".to_string(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum RpcMethod {
     DELETE,
     GET,
@@ -1064,5 +1251,69 @@ mod tests {
             )?
         );
         Ok(())
+    }
+
+    #[test]
+    fn test_rpc_ffi_rpc_router_cache_key_helper() {
+        let with_prefix_to_remove = "/chains/main/blocks/head/some/subpath/url";
+        assert_eq!(
+            "/some/subpath/url".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove)
+        );
+
+        let without_prefix_to_remove = "/chains/main/something/else/some/subpath/url";
+        assert_eq!(
+            without_prefix_to_remove.to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_prefix_to_remove)
+        );
+
+        let without_suffix = "/chains/main/blocks/head/";
+        assert_eq!(
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix)
+        );
+
+        let without_prefix_to_remove_short = "/chains/main/";
+        assert_eq!(
+            "/chains/main".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_prefix_to_remove_short)
+        );
+
+        let with_prefix_to_remove_and_query =
+            "/chains/main/blocks/head/some/subpath/url?query=args&with-slash=/slash";
+        assert_eq!(
+            "/some/subpath/url?query=args&with-slash=/slash".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_and_query)
+        );
+
+        let without_suffix_and_query = "/chains/main/blocks/head/?query=1";
+        assert_eq!(
+            "/chains/main/blocks/head?query=1".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_query)
+        );
+
+        let without_suffix_and_slashes = "/chains/main/blocks/head//";
+        assert_eq!(
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_slashes)
+        );
+
+        let without_suffix_and_sharp = "/chains/main/blocks/head/#";
+        assert_eq!(
+            "/chains/main/blocks/head".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(without_suffix_and_sharp)
+        );
+
+        let with_prefix_to_remove_with_question_mark = "/chains/main?/blocks/head/some/subpath/url";
+        assert_eq!(
+            with_prefix_to_remove_with_question_mark.to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_with_question_mark)
+        );
+
+        let with_prefix_to_remove_with_sharp = "/chains/main#/blocks/head/some/subpath/url";
+        assert_eq!(
+            "/chains/main".to_string(),
+            RpcRequest::ffi_rpc_router_cache_key_helper(with_prefix_to_remove_with_sharp)
+        );
     }
 }

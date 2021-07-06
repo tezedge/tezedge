@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::sync::Arc;
@@ -8,12 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use crypto::hash::{BlockHash, ContextHash};
 
-use crate::persistent::database::IteratorWithSchema;
+use crate::commit_log::{CommitLogWithSchema, Location};
+use crate::database::tezedge_database::{KVStoreKeyValueSchema, TezedgeDatabaseWithIterator};
 use crate::persistent::database::RocksDbKeyValueSchema;
-use crate::persistent::{
-    BincodeEncoded, CommitLogSchema, CommitLogWithSchema, KeyValueSchema, KeyValueStoreWithSchema,
-    Location,
-};
+use crate::persistent::{BincodeEncoded, CommitLogSchema, KeyValueSchema};
 use crate::{BlockHeaderWithHash, Direction, IteratorMode, PersistentStorage, StorageError};
 
 /// Store block header data in a key-value store and into commit log.
@@ -103,15 +101,15 @@ pub trait BlockStorageReader: Sync + Send {
 
     fn contains_context_hash(&self, context_hash: &ContextHash) -> Result<bool, StorageError>;
 
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError>;
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError>;
 }
 
 impl BlockStorage {
     pub fn new(persistent_storage: &PersistentStorage) -> Self {
         Self {
-            primary_index: BlockPrimaryIndex::new(persistent_storage.db()),
-            by_level_index: BlockByLevelIndex::new(persistent_storage.db()),
-            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.db()),
+            primary_index: BlockPrimaryIndex::new(persistent_storage.main_db()),
+            by_level_index: BlockByLevelIndex::new(persistent_storage.main_db()),
+            by_context_hash_index: BlockByContextHashIndex::new(persistent_storage.main_db()),
             clog: persistent_storage.clog(),
         }
     }
@@ -376,7 +374,7 @@ impl BlockStorageReader for BlockStorage {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<BlockPrimaryIndex>, StorageError> {
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
         self.primary_index.iterator()
     }
 }
@@ -414,7 +412,7 @@ pub struct BlockPrimaryIndex {
     kv: Arc<BlockPrimaryIndexKV>,
 }
 
-pub type BlockPrimaryIndexKV = dyn KeyValueStoreWithSchema<BlockPrimaryIndex> + Sync + Send;
+pub type BlockPrimaryIndexKV = dyn TezedgeDatabaseWithIterator<BlockPrimaryIndex> + Sync + Send;
 
 impl BlockPrimaryIndex {
     fn new(kv: Arc<BlockPrimaryIndexKV>) -> Self {
@@ -446,10 +444,15 @@ impl BlockPrimaryIndex {
     }
 
     #[inline]
-    fn iterator(&self) -> Result<IteratorWithSchema<Self>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::Start)
-            .map_err(StorageError::from)
+    fn iterator(&self) -> Result<Vec<BlockHash>, StorageError> {
+        use crate::persistent::codec::Decoder;
+        let results: Result<Vec<_>, _> = self
+            .kv
+            .find(IteratorMode::Start, None, Box::new(|(_, _)| Ok(true)))?
+            .iter()
+            .map(|(k, _)| <Self as KeyValueSchema>::Key::decode(k))
+            .collect();
+        Ok(results?)
     }
 }
 
@@ -465,13 +468,19 @@ impl RocksDbKeyValueSchema for BlockPrimaryIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockPrimaryIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByLevelIndex {
     kv: Arc<BlockByLevelIndexKV>,
 }
 
-pub type BlockByLevelIndexKV = dyn KeyValueStoreWithSchema<BlockByLevelIndex> + Sync + Send;
+pub type BlockByLevelIndexKV = dyn TezedgeDatabaseWithIterator<BlockByLevelIndex> + Sync + Send;
 pub type BlockLevel = i32;
 
 impl BlockByLevelIndex {
@@ -492,11 +501,18 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, Direction::Reverse))?
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let results: Result<Vec<_>, _> = self
+            .kv
+            .find(
+                IteratorMode::From(&from_level, Direction::Reverse),
+                Some(limit),
+                Box::new(|(_, _)| Ok(true)),
+            )?
+            .iter()
+            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
+            .collect();
+
+        Ok(results?)
     }
 
     fn get_blocks_directed(
@@ -505,11 +521,17 @@ impl BlockByLevelIndex {
         limit: usize,
         direction: Direction,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, direction))?
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let results: Result<Vec<_>, _> = self
+            .kv
+            .find(
+                IteratorMode::From(&from_level, direction),
+                Some(limit),
+                Box::new(|(_, _)| Ok(true)),
+            )?
+            .iter()
+            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
+            .collect();
+        Ok(results?)
     }
 
     fn get_blocks_by_nth_level(
@@ -518,12 +540,21 @@ impl BlockByLevelIndex {
         from_level: BlockLevel,
         limit: usize,
     ) -> Result<Vec<BlockStorageColumnsLocation>, StorageError> {
-        self.kv
-            .iterator(IteratorMode::From(&from_level, Direction::Reverse))?
-            .filter(|(level, _)| *level.as_ref().unwrap() % every_nth == 0)
-            .take(limit)
-            .map(|(_, location)| location.map_err(StorageError::from))
-            .collect()
+        let results: Result<Vec<_>, _> = self
+            .kv
+            .find(
+                IteratorMode::From(&from_level, Direction::Reverse),
+                Some(limit),
+                Box::new(move |(_, v)| {
+                    use crate::persistent::codec::Decoder;
+                    let level = <Self as KeyValueSchema>::Key::decode(v)?;
+                    Ok(level % every_nth == 0)
+                }),
+            )?
+            .iter()
+            .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
+            .collect();
+        Ok(results?)
     }
 }
 
@@ -539,6 +570,12 @@ impl RocksDbKeyValueSchema for BlockByLevelIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockByLevelIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 /// Index block data as `level -> location`.
 #[derive(Clone)]
 pub struct BlockByContextHashIndex {
@@ -546,7 +583,7 @@ pub struct BlockByContextHashIndex {
 }
 
 pub type BlockByContextHashIndexKV =
-    dyn KeyValueStoreWithSchema<BlockByContextHashIndex> + Sync + Send;
+    dyn TezedgeDatabaseWithIterator<BlockByContextHashIndex> + Sync + Send;
 
 impl BlockByContextHashIndex {
     fn new(kv: Arc<BlockByContextHashIndexKV>) -> Self {
@@ -587,6 +624,12 @@ impl RocksDbKeyValueSchema for BlockByContextHashIndex {
     }
 }
 
+impl KVStoreKeyValueSchema for BlockByContextHashIndex {
+    fn column_name() -> &'static str {
+        Self::name()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -597,6 +640,8 @@ mod tests {
     use crate::persistent::DbConfiguration;
 
     use super::*;
+    use crate::database;
+    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
 
     #[test]
     fn block_storage_level_index_order() -> Result<(), Error> {
@@ -616,7 +661,9 @@ mod tests {
                 &DbConfiguration::default(),
             )
             .unwrap();
-            let index = BlockByLevelIndex::new(Arc::new(db));
+            let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
+            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+            let index = BlockByLevelIndex::new(Arc::new(maindb));
 
             for i in [1161, 66441, 905, 66185, 649, 65929, 393, 65673].iter() {
                 index.put(

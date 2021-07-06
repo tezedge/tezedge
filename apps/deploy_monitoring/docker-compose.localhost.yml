@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-memprof:
-    image: simplestakingcom/tezedge-memprof:latest
+    image: tezedge/tezedge-memprof:latest
     privileged: true
     environment:
       - TEZEDGE_NODE_NAME=deploy-monitoring-tezedge-node
@@ -14,7 +14,7 @@ services:
       - "17832:17832"
 
   tezedge-debugger:
-    image: simplestakingcom/tezedge-debugger:latest
+    image: tezedge/tezedge-debugger:latest
     privileged: true
     environment:
       - RUST_BACKTRACE=1
@@ -31,8 +31,8 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: simplestakingcom/tezedge:latest-frame-pointers-enabled
-    command: ["--network", "${TEZOS_NETWORK}", "--actions-store-backend", "rocksdb", "file", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log"]
+    image: tezedge/tezedge:latest-frame-pointers-enabled
+    command: ["--network", "${TEZOS_NETWORK}", "file", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -50,7 +50,7 @@ services:
       - "3030:3030"       # sandbox launcher port
 
   tezedge-sandbox:
-    image: simplestakingcom/tezedge:sandbox-latest
+    image: tezedge/tezedge:sandbox-latest
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -87,12 +87,10 @@ services:
       - "18733:18733"     # node RPC port
 
   explorer:
-    image: simplestakingcom/tezedge-explorer:latest
+    image: tezedge/tezedge-explorer:latest
     environment:
-      - SANDBOX=http://localhost:3030
-      - DEBUGGER=http://localhost:17732
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.localhost","http":"http://localhost:18732","ws":"ws://localhost:4927","monitoring":"http://localhost:38732/resources/tezedge","p2p_port":9732,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","STORAGE_BLOCK","NETWORK_ACTION","LOGS_ACTION"]},{"id":"ocaml","name":"ocaml.localhost","http":"http://localhost:18733","ws":false,"monitoring":"http://localhost:38732/resources/ocaml","p2p_port":9733,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","NETWORK_ACTION","LOGS_ACTION"]}]
+      - API=[{"id":"rust","name":"rust.localhost","http":"http://localhost:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://localhost:4927"},{"name":"debugger","url":"http://localhost:17732"},{"name":"sandbox","url":"http://localhost:3030"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://localhost:38732/resources/tezedge"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","name":"ocaml.localhost","http":"http://localhost:18733","monitoring":"http://localhost:38732/resources/ocaml","p2p_port":9733,"features":[{"name":"debugger","url":"http://localhost:17732"},{"name":"sandbox","url":"http://localhost:3030"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://localhost:38732/resources/ocaml"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
 volumes:

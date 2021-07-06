@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 //! PeerBranchBootstrapper is actor, which is responsible to download branches from peers
@@ -490,7 +490,7 @@ impl Receive<UpdateBranchBootstraping> for PeerBranchBootstrapper {
                        "peer_id" => msg.peer_id.peer_id_marker.clone(), "peer_ip" => msg.peer_id.peer_address.to_string(), "peer" => msg.peer_id.peer_ref.name(), "peer_uri" => msg.peer_id.peer_ref.uri().to_string(),
             );
             // process
-            self.process_bootstrap_pipelines(msg.peer_id.clone(), ctx, &log);
+            self.process_bootstrap_pipelines(msg.peer_id, ctx, &log);
         }
     }
 }

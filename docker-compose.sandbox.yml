@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-sandbox-launcher:
-    image: simplestakingcom/tezedge:sandbox-latest-release
+    image: tezedge/tezedge:sandbox-v1.6.0
     command: ["--sandbox-rpc-port=3030"]
     volumes:
       - "tezedge-shared-data:/tmp/tezedge"
@@ -17,7 +17,7 @@ services:
     tty: true
 
   tezedge-explorer:
-    image: simplestakingcom/tezedge-explorer:latest-release
+    image: tezedge/tezedge-explorer:v1.6.0
     environment:
       - SANDBOX=http://localhost:3030
       - API=[{"id":"sandbox","name":"sandbox","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927", "features":["MONITORING","MEMPOOL_ACTION","STORAGE_BLOCK"]}]

@@ -1,4 +1,4 @@
-// Copyright (c) SimpleStaking and Tezedge Contributors
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
 use std::{collections::HashMap, convert::TryFrom};
@@ -53,7 +53,7 @@ pub type BlockOperations = Vec<BlockValidationPass>;
 pub type BlockValidationPass = Vec<BlockOperation>;
 pub type BlockOperation = HashMap<String, Value>;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct BlockInfo {
     protocol: String,
     chain_id: String,

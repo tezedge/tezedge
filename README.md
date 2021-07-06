@@ -135,7 +135,7 @@ for most of the more popular Linux distributions:
 | CentOS |  8 |
 | MacOS |  *experimental* - newer or equal to 10.13 should work |
 
-If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/simplestaking/tezos-opam-builder) project.
+If you are missing support for your favorite Linux distribution, please submit a request with the [tezos-opam-builder](https://github.com/tezedge/tezos-opam-builder) project.
 
 ### Prerequisites installation
 If you want to build from source code, you need to install this before:
@@ -287,7 +287,6 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --one-context \
-    --actions-store-backend none \
     --log terminal \
     --log-level info \
     --log-format simple
@@ -299,17 +298,19 @@ We provide automatically built images that can be downloaded from our [Docker hu
 For instance, this can be useful when you want to run the TezEdge node in your test CI pipelines.
 
 #### Images (distroless)
-- `simplestakingcom/tezedge:latest-release` - last stable released version
-- `simplestakingcom/tezedge:latest` - actual stable development version
-- `simplestakingcom/tezedge:sandbox-latest-release` - last stable released version for sandbox launcher
-- `simplestakingcom/tezedge:sandbox-latest` - last stable released version for sandbox launcher
+- `tezedge/tezedge:vX.Y.Z` - last versioned stable released version
+- `tezedge/tezedge:latest-release` - last stable released version
+- `tezedge/tezedge:latest` - actual stable development version
+- `tezedge/tezedge:sandbox-vX.Y.Z` - last versioned stable released version for sandbox launcher
+- `tezedge/tezedge:sandbox-latest-release` - last stable released version for sandbox launcher
+- `tezedge/tezedge:sandbox-latest` - last stable released version for sandbox launcher
 
 _More about building TezEdge docker images see [here](docker/README.md)._
 
 #### Run image
 
 ```
-docker run -i -t simplestakingcom/tezedge:latest --network=mainnet --p2p-port=9732
+docker run -i -t tezedge/tezedge:latest --network=mainnet --p2p-port=9732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
@@ -360,18 +361,29 @@ docker-compose -f docker-compose.debug.yml pull
 docker-compose -f docker-compose.debug.yml up
 ```
 
-#### Sandbox - sandbox launcher + light-node + tezedge-explorer
-_See more info about sandbox [here](sandbox/README.MD)_
-**Last released version:**
-```
-docker-compose -f docker-compose.sandbox.yml pull
-docker-compose -f docker-compose.sandbox.yml up
-```
-**Actual development version:**
-```
-docker-compose -f docker-compose.sandbox.latest.yml pull
-docker-compose -f docker-compose.sandbox.latest.yml up
-```
+[comment]: <> (#### Sandbox - sandbox launcher + light-node + tezedge-explorer)
+
+[comment]: <> (_See more info about sandbox [here]&#40;sandbox/README.MD&#41;_)
+
+[comment]: <> (**Last released version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml up)
+
+[comment]: <> (```)
+
+[comment]: <> (**Actual development version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml up)
+
+[comment]: <> (```)
 
 [comment]: <> (#### Sandbox node launcher + tezedge-explorer + tezedge-debugger)
 
