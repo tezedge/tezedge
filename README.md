@@ -298,8 +298,10 @@ We provide automatically built images that can be downloaded from our [Docker hu
 For instance, this can be useful when you want to run the TezEdge node in your test CI pipelines.
 
 #### Images (distroless)
+- `tezedge/tezedge:vX.Y.Z` - last versioned stable released version
 - `tezedge/tezedge:latest-release` - last stable released version
 - `tezedge/tezedge:latest` - actual stable development version
+- `tezedge/tezedge:sandbox-vX.Y.Z` - last versioned stable released version for sandbox launcher
 - `tezedge/tezedge:sandbox-latest-release` - last stable released version for sandbox launcher
 - `tezedge/tezedge:sandbox-latest` - last stable released version for sandbox launcher
 
@@ -359,18 +361,29 @@ docker-compose -f docker-compose.debug.yml pull
 docker-compose -f docker-compose.debug.yml up
 ```
 
-#### Sandbox - sandbox launcher + light-node + tezedge-explorer
-_See more info about sandbox [here](sandbox/README.MD)_
-**Last released version:**
-```
-docker-compose -f docker-compose.sandbox.yml pull
-docker-compose -f docker-compose.sandbox.yml up
-```
-**Actual development version:**
-```
-docker-compose -f docker-compose.sandbox.latest.yml pull
-docker-compose -f docker-compose.sandbox.latest.yml up
-```
+[comment]: <> (#### Sandbox - sandbox launcher + light-node + tezedge-explorer)
+
+[comment]: <> (_See more info about sandbox [here]&#40;sandbox/README.MD&#41;_)
+
+[comment]: <> (**Last released version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.yml up)
+
+[comment]: <> (```)
+
+[comment]: <> (**Actual development version:**)
+
+[comment]: <> (```)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml pull)
+
+[comment]: <> (docker-compose -f docker-compose.sandbox.latest.yml up)
+
+[comment]: <> (```)
 
 [comment]: <> (#### Sandbox node launcher + tezedge-explorer + tezedge-debugger)
 

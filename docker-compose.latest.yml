@@ -18,7 +18,7 @@ services:
     image: tezedge/tezedge-explorer:latest
     hostname: explorer
     environment:
-      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732", "monitoring":"", "debugger":"", "ws":"ws://localhost:4927", "features":["MONITORING","MEMPOOL_ACTION","STORAGE_BLOCK","RESOURCES"],"resources":["storage"]}]'
+      API: '[{"id":"localhost","name":"rust.dev.mainnet.localhost","http":"http://localhost:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://localhost:4927"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"mempool"},{"name":"storage"}]}]'
     ports:
       - "80:80"
       - "8080:80"
