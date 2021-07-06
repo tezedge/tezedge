@@ -293,14 +293,32 @@ pub mod tests {
             tokio_runtime: &tokio::runtime::Runtime,
             port: u16,
         ) -> PeerState {
+            test_peer_with_identity(
+                sys,
+                network_channel,
+                tokio_runtime,
+                Identity::generate(0f64).unwrap(),
+                port,
+            )
+        }
+
+        pub(crate) fn test_peer_with_identity(
+            sys: &impl ActorRefFactory,
+            network_channel: NetworkChannelRef,
+            tokio_runtime: &tokio::runtime::Runtime,
+            identity: Identity,
+            port: u16,
+        ) -> PeerState {
             let socket_address: SocketAddr = format!("127.0.0.1:{}", port)
                 .parse()
                 .expect("Expected valid ip:port address");
 
-            let node_identity = Arc::new(Identity::generate(0f64).unwrap());
+            let node_identity = Arc::new(identity);
             let peer_public_key_hash: CryptoboxPublicKeyHash =
                 node_identity.public_key.public_key_hash().unwrap();
-            let peer_id_marker = peer_public_key_hash.to_base58_check();
+            let peer_id_marker = peer_public_key_hash.to_base58_check()
+                + "-"
+                + &socket_address.to_string().replace(&['.', ':'][..], "");
 
             let metadata = MetadataMessage::new(false, false);
             let version = NetworkVersion::new("".to_owned(), 0, 0);
