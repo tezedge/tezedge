@@ -220,7 +220,7 @@ All parameters can also be provided as command line arguments in the same format
 they have a higher priority than the ones in the config file. For example, we can use the default config and change the log file path:
 ```
 cargo build --release
-LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
+LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts cargo run --release --bin light-node -- --config-file ./light_node/etc/tezedge/tezedge.config --log-file /tmp/logs/tezdge.log --protocol-runner=./target/release/protocol-runner --network=mainnet
 ```
 _Full description of all arguments is in the light_node [README](light_node/README.md) file._
 
@@ -344,11 +344,19 @@ For a more detailed description of the RPCs, see the [shell](https://docs.tezedg
 ```
 docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up
+
+
+# explorer accesses node on 'localhost' by default, you can change it like,
+NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.yml up
 ```
 **Actual development version:**
 ```
 docker-compose -f docker-compose.latest.yml pull
 docker-compose -f docker-compose.latest.yml up
+
+
+# explorer accesses node on 'localhost' by default, you can change it like,
+NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.latest.yml up
 ```
 
 #### Mainnet - light-node + tezedge-explorer + tezedge debugger
@@ -359,6 +367,10 @@ _This requires Linux kernel at least 5.11_
 ```
 docker-compose -f docker-compose.debug.yml pull
 docker-compose -f docker-compose.debug.yml up
+
+
+# explorer accesses node/debugger on 'localhost' by default, you can change it like,
+NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.debug.yml up
 ```
 
 [comment]: <> (#### Sandbox - sandbox launcher + light-node + tezedge-explorer)
