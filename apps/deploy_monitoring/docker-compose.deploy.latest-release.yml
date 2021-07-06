@@ -89,10 +89,8 @@ services:
   explorer:
     image: tezedge/tezedge-explorer:latest-release
     environment:
-      - SANDBOX=http://${HOSTNAME}.dev.tezedge.com:3030
-      - DEBUGGER=http://${HOSTNAME}.dev.tezedge.com:17732
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","ws":"ws://${HOSTNAME}.dev.tezedge.com:4927","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge","p2p_port":9732,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","STORAGE_BLOCK","NETWORK_ACTION","LOGS_ACTION"]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","ws":false,"monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":["MONITORING","RESOURCES","MEMPOOL_ACTION","NETWORK_ACTION","LOGS_ACTION"]}]
+      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":[{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
 volumes:
