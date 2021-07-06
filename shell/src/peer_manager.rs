@@ -51,6 +51,8 @@ const CHECK_PEER_COUNT_LIMIT: Duration = Duration::from_secs(5);
 static ACTOR_ID_GENERATOR: AtomicU64 = AtomicU64::new(0);
 /// How often to print stats in logs
 const LOG_INTERVAL: Duration = Duration::from_secs(60);
+/// Limit how often we can ask peer for Bootstrap
+const BOOTSTRAP_MESSAGE_REQUEST_PER_PEER_LIMIT: Duration = Duration::from_secs(60 * 5);
 
 /// Message commands [`PeerManager`] to log its internal stats.
 #[derive(Clone, Debug)]
@@ -235,12 +237,21 @@ impl PeerManager {
             let msg: Arc<PeerMessageResponse> = Arc::new(PeerMessage::Bootstrap.into());
             self.peers
                 .connected_peers
-                .read()?
-                .values()
+                .write()?
+                .values_mut()
+                .filter(|peer_state| match peer_state.bootstrap_requested_last {
+                    None => true,
+                    Some(bootstrap_requested_last) => {
+                        bootstrap_requested_last.elapsed()
+                            > BOOTSTRAP_MESSAGE_REQUEST_PER_PEER_LIMIT
+                    }
+                })
                 .for_each(|peer_state| {
+                    info!(log, "Asking peer for new peers with bootstrap message"; "peer" => peer_state.peer_ref.name());
                     peer_state
                         .peer_ref
-                        .tell(SendMessage::new(msg.clone()), None)
+                        .tell(SendMessage::new(msg.clone()), None);
+                    peer_state.bootstrap_requested_last = Some(Instant::now());
                 });
         }
 
@@ -255,6 +266,9 @@ impl PeerManager {
 
         // write lock for potential peers
         let mut potential_peers = self.peers.potential_peers.write()?;
+        if potential_peers.is_empty() {
+            return Ok(());
+        }
 
         // randomize potential peers as a security measurement
         let mut addresses_to_connect = potential_peers.iter().cloned().collect::<Vec<SocketAddr>>();
@@ -273,10 +287,10 @@ impl PeerManager {
     }
 
     fn calculate_count_of_required_peers(&mut self) -> Result<usize, PeerManagerError> {
-        Ok(cmp::max(
-            (self.threshold.high + 3 * self.threshold.low) / 4
-                - self.peers.connected_peers.read()?.len(),
+        Ok(count_of_required_peers(
+            self.peers.connected_peers.read()?.len(),
             self.threshold.low,
+            self.threshold.high,
         ))
     }
 
@@ -398,10 +412,12 @@ impl PeerManager {
         let connected_peers_count = self.peers.connected_peers.read()?.len();
 
         if connected_peers_count < self.threshold.low {
+            let potential_peers_count = self.peers.potential_peers.read()?.len();
+
             // peer count is too low, try to connect to more peers
             let log = ctx.system.log();
-            warn!(log, "Peer count is too low"; "actual" => connected_peers_count, "required" => self.threshold.low);
-            if self.peers.potential_peers.read()?.len() < self.threshold.low {
+            warn!(log, "Peer count is too low"; "actual" => connected_peers_count, "required" => self.threshold.low, "potential_peers_count" => potential_peers_count);
+            if potential_peers_count < self.threshold.low {
                 if let Err(e) = self.discover_peers(&log) {
                     warn!(log, "Failed to discovery peers"; "reason" => format!("{:?}", e));
                 }
@@ -1062,6 +1078,7 @@ fn resolve_dns_name_to_peer_address(
 struct P2pPeerState {
     peer_ref: PeerRef,
     peer_address: SocketAddr,
+    bootstrap_requested_last: Option<Instant>,
 }
 
 /// Represents inner state of PeerManager about p2p peers sharable between threads
@@ -1110,6 +1127,7 @@ impl P2pPeers {
             P2pPeerState {
                 peer_ref,
                 peer_address,
+                bootstrap_requested_last: None,
             },
         );
         Ok(())
@@ -1126,6 +1144,7 @@ impl P2pPeers {
             P2pPeerState {
                 peer_ref,
                 peer_address,
+                bootstrap_requested_last: None,
             },
         );
         Ok(())
@@ -1182,6 +1201,16 @@ impl P2pPeers {
             false
         }
     }
+}
+
+/// Calculates the number of required peers to reach `low + (high - low)/4`.
+fn count_of_required_peers(connected: usize, low: usize, high: usize) -> usize {
+    debug_assert!(low <= high);
+    (high / 4)
+        .checked_sub(low / 4)
+        .and_then(|v| v.checked_add(low))
+        .and_then(|v| v.checked_sub(connected))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -1322,5 +1351,52 @@ pub mod tests {
             .try_acquire_incoming_connection_permit()
             .unwrap()
             .is_some());
+    }
+
+    fn check_count_of_required_peers(current: usize, low: usize, high: usize) {
+        if low > high {
+            return;
+        }
+        let required = super::count_of_required_peers(current, low, high);
+        if current <= high {
+            assert!((low..=high).contains(&(current + required)));
+        } else {
+            assert_eq!(required, 0);
+        }
+    }
+
+    #[test]
+    fn test_count_of_required_peers() {
+        let thresh: &[(usize, usize)] = &[
+            (0, 0),
+            (0, 1),
+            (1, 1),
+            (10, 10),
+            (10, 15),
+            (60, 80),
+            (100, 150),
+        ];
+        for i in thresh.into_iter() {
+            let (low, high) = i;
+            for current in 0..high * 2 {
+                check_count_of_required_peers(current, *low, *high);
+            }
+        }
+    }
+
+    // tests for overflow with extreme values
+    #[test]
+    fn test_count_of_required_peers_extreme() {
+        let m = usize::max_value();
+        let m2 = m / 2;
+        let vals = &[0, 1, m2 - 1, m2, m2 + 1, m - 1, m];
+
+        for curr in vals {
+            for low in vals {
+                for high in vals {
+                    check_count_of_required_peers(*curr, *low, *high);
+                }
+            }
+        }
     }
 }
