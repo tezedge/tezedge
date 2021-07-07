@@ -514,7 +514,7 @@ impl BlockByLevelIndex {
 
         let results = results?;
         println!("RESULTS {}", results.len());
-        Ok(results?)
+        Ok(results)
     }
 
     fn get_blocks_directed(
