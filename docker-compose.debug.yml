@@ -9,7 +9,7 @@ services:
       - RUST_BACKTRACE=1
     volumes:
       - "tezedge-shared-data:/tmp/volume/tezedge:ro"
-      - "./docker-compose.debug.debugger-config.toml:/home/appuser/config.toml:ro"
+      - "./docker/debug.debugger-config.toml:/home/appuser/config.toml:ro"
       - "/sys/kernel/debug:/sys/kernel/debug:rw"
       - "/tmp/report:/tmp/report:rw"
       - "debugger-data:/tmp/debugger_database"
@@ -18,8 +18,8 @@ services:
       - "10001:10001/udp"  # debugger syslog port for tezedge node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.6.0
-    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}"]
+    image: tezedge/tezedge:v1.6.1
+    command: ["--network", "${TEZOS_NETWORK-mainnet}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=${TEZOS_CONTEXT_STORAGE:-irmin}", "--context-stats-db-path", "context-stats-db"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -36,10 +36,10 @@ services:
       - "18732:18732"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.0
+    image: tezedge/tezedge-explorer:v1.6.1
     environment:
       # need a better way to provide such information
-      - API=[{"id":"tezedge","name":"tezedge","http":"http://localhost:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://localhost:4927"},{"name":"debugger","url":"http://localhost:17732"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
+      - API=[{"id":"${NODE_HOSTNAME_OR_IP:-localhost}","name":"tezedge","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4927"},{"name":"debugger","url":"http://${NODE_HOSTNAME_OR_IP:-localhost}:17732"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
       - "8080:80"
