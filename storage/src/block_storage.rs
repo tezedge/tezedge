@@ -545,9 +545,9 @@ impl BlockByLevelIndex {
             .find(
                 IteratorMode::From(&from_level, Direction::Reverse),
                 Some(limit),
-                Box::new(move |(_, v)| {
+                Box::new(move |(k, _)| {
                     use crate::persistent::codec::Decoder;
-                    let level = <Self as KeyValueSchema>::Key::decode(v)?;
+                    let level = <Self as KeyValueSchema>::Key::decode(k)?;
                     Ok(level % every_nth == 0)
                 }),
             )?
