@@ -195,337 +195,337 @@ impl From<&MissingOperations> for Vec<OperationsForBlock> {
     }
 }
 
-#[cfg(test)]
-pub mod tests {
-    use std::convert::TryInto;
-    use std::sync::Arc;
+// #[cfg(test)]
+// pub mod tests {
+//     use std::convert::TryInto;
+//     use std::sync::Arc;
 
-    use super::*;
+//     use super::*;
 
-    #[test]
-    fn test_batch() {
-        // create batch
-        let mut batch = ApplyBlockBatch::batch(block_ref(1), vec![block_ref(2)]);
-        batch.add_successor(block_ref(3));
-        batch.add_successor(block_ref(4));
-        assert_eq!(&block(1), batch.block_to_apply.as_ref());
-        assert_eq!(3, batch.successors_size());
-        assert_eq!(&block(2), batch.successors[0].as_ref());
-        assert_eq!(&block(3), batch.successors[1].as_ref());
-        assert_eq!(&block(4), batch.successors[2].as_ref());
+//     #[test]
+//     fn test_batch() {
+//         // create batch
+//         let mut batch = ApplyBlockBatch::batch(block_ref(1), vec![block_ref(2)]);
+//         batch.add_successor(block_ref(3));
+//         batch.add_successor(block_ref(4));
+//         assert_eq!(&block(1), batch.block_to_apply.as_ref());
+//         assert_eq!(3, batch.successors_size());
+//         assert_eq!(&block(2), batch.successors[0].as_ref());
+//         assert_eq!(&block(3), batch.successors[1].as_ref());
+//         assert_eq!(&block(4), batch.successors[2].as_ref());
 
-        // shift
-        let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(&block(2), batch.block_to_apply.as_ref());
-        assert_eq!(2, batch.successors_size());
-        assert_eq!(&block(3), batch.successors[0].as_ref());
-        assert_eq!(&block(4), batch.successors[1].as_ref());
+//         // shift
+//         let batch = batch.shift().expect("Expected new batch");
+//         assert_eq!(&block(2), batch.block_to_apply.as_ref());
+//         assert_eq!(2, batch.successors_size());
+//         assert_eq!(&block(3), batch.successors[0].as_ref());
+//         assert_eq!(&block(4), batch.successors[1].as_ref());
 
-        // shift
-        let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(&block(3), batch.block_to_apply.as_ref());
-        assert_eq!(1, batch.successors_size());
-        assert_eq!(&block(4), batch.successors[0].as_ref());
+//         // shift
+//         let batch = batch.shift().expect("Expected new batch");
+//         assert_eq!(&block(3), batch.block_to_apply.as_ref());
+//         assert_eq!(1, batch.successors_size());
+//         assert_eq!(&block(4), batch.successors[0].as_ref());
 
-        // shift
-        let batch = batch.shift().expect("Expected new batch");
-        assert_eq!(&block(4), batch.block_to_apply.as_ref());
-        assert_eq!(0, batch.successors_size());
+//         // shift
+//         let batch = batch.shift().expect("Expected new batch");
+//         assert_eq!(&block(4), batch.block_to_apply.as_ref());
+//         assert_eq!(0, batch.successors_size());
 
-        // shift
-        assert!(batch.shift().is_none());
-    }
+//         // shift
+//         assert!(batch.shift().is_none());
+//     }
 
-    pub(crate) fn block(d: u8) -> BlockHash {
-        [d; crypto::hash::HashType::BlockHash.size()]
-            .to_vec()
-            .try_into()
-            .expect("Failed to create BlockHash")
-    }
+//     pub(crate) fn block(d: u8) -> BlockHash {
+//         [d; crypto::hash::HashType::BlockHash.size()]
+//             .to_vec()
+//             .try_into()
+//             .expect("Failed to create BlockHash")
+//     }
 
-    pub(crate) fn block_ref(d: u8) -> Arc<BlockHash> {
-        Arc::new(block(d))
-    }
+//     pub(crate) fn block_ref(d: u8) -> Arc<BlockHash> {
+//         Arc::new(block(d))
+//     }
 
-    #[test]
-    fn test_retry() {
-        let mut data = MissingOperations {
-            history_order_priority: 1,
-            block_hash: block(5),
-            validation_passes: HashSet::new(),
-            retries: 5,
-        };
+//     #[test]
+//     fn test_retry() {
+//         let mut data = MissingOperations {
+//             history_order_priority: 1,
+//             block_hash: block(5),
+//             validation_passes: HashSet::new(),
+//             retries: 5,
+//         };
 
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(data.retry());
-        assert!(!data.retry());
-        assert!(!data.retry());
-    }
+//         assert!(data.retry());
+//         assert!(data.retry());
+//         assert!(data.retry());
+//         assert!(data.retry());
+//         assert!(data.retry());
+//         assert!(!data.retry());
+//         assert!(!data.retry());
+//     }
 
-    pub(crate) mod prerequisites {
-        use std::convert::{TryFrom, TryInto};
-        use std::env;
-        use std::fs;
-        use std::net::SocketAddr;
-        use std::path::{Path, PathBuf};
-        use std::sync::atomic::AtomicBool;
-        use std::sync::mpsc::{channel, Receiver};
-        use std::sync::{Arc, Mutex};
-        use std::thread;
-        use std::time::Duration;
+//     pub(crate) mod prerequisites {
+//         use std::convert::{TryFrom, TryInto};
+//         use std::env;
+//         use std::fs;
+//         use std::net::SocketAddr;
+//         use std::path::{Path, PathBuf};
+//         use std::sync::atomic::AtomicBool;
+//         use std::sync::mpsc::{channel, Receiver};
+//         use std::sync::{Arc, Mutex};
+//         use std::thread;
+//         use std::time::Duration;
 
-        use futures::lock::Mutex as TokioMutex;
-        use riker::actors::*;
-        use slog::{Drain, Level, Logger};
+//         use futures::lock::Mutex as TokioMutex;
+//         use riker::actors::*;
+//         use slog::{Drain, Level, Logger};
 
-        use crypto::hash::{ChainId, CryptoboxPublicKeyHash};
-        use networking::p2p::network_channel::NetworkChannelRef;
-        use networking::p2p::peer::{BootstrapOutput, Peer};
-        use networking::PeerId;
-        use storage::{PersistentStorage, StorageInitInfo};
-        use tezos_api::environment::*;
-        use tezos_api::ffi::{
-            GenesisChain, ProtocolOverrides, TezosContextIrminStorageConfiguration,
-            TezosContextStorageConfiguration, TezosRuntimeConfiguration,
-        };
-        use tezos_identity::Identity;
-        use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
-        use tezos_messages::Head;
-        use tezos_wrapper::*;
+//         use crypto::hash::{ChainId, CryptoboxPublicKeyHash};
+//         use networking::p2p::network_channel::NetworkChannelRef;
+//         use networking::p2p::peer::{BootstrapOutput, Peer};
+//         use networking::PeerId;
+//         use storage::{PersistentStorage, StorageInitInfo};
+//         use tezos_api::environment::*;
+//         use tezos_api::ffi::{
+//             GenesisChain, ProtocolOverrides, TezosContextIrminStorageConfiguration,
+//             TezosContextStorageConfiguration, TezosRuntimeConfiguration,
+//         };
+//         use tezos_identity::Identity;
+//         use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
+//         use tezos_messages::Head;
+//         use tezos_wrapper::*;
 
-        use crate::chain_feeder;
-        use crate::chain_manager::{ChainManager, ChainManagerRef};
-        use crate::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
-        use crate::shell_channel::ShellChannelRef;
-        use crate::state::peer_state::{DataQueuesLimits, PeerState};
+//         use crate::chain_feeder;
+//         use crate::chain_manager::{ChainManager, ChainManagerRef};
+//         use crate::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
+//         use crate::shell_channel::ShellChannelRef;
+//         use crate::state::peer_state::{DataQueuesLimits, PeerState};
 
-        pub(crate) fn test_peer(
-            sys: &impl ActorRefFactory,
-            network_channel: NetworkChannelRef,
-            tokio_runtime: &tokio::runtime::Runtime,
-            port: u16,
-            log: &Logger,
-        ) -> PeerState {
-            let socket_address: SocketAddr = format!("127.0.0.1:{}", port)
-                .parse()
-                .expect("Expected valid ip:port address");
+//         pub(crate) fn test_peer(
+//             sys: &impl ActorRefFactory,
+//             network_channel: NetworkChannelRef,
+//             tokio_runtime: &tokio::runtime::Runtime,
+//             port: u16,
+//             log: &Logger,
+//         ) -> PeerState {
+//             let socket_address: SocketAddr = format!("127.0.0.1:{}", port)
+//                 .parse()
+//                 .expect("Expected valid ip:port address");
 
-            let node_identity = Arc::new(Identity::generate(0f64).unwrap());
-            let public_key_hash: CryptoboxPublicKeyHash =
-                node_identity.public_key.public_key_hash().unwrap();
-            let peer_id_marker = public_key_hash.to_base58_check();
+//             let node_identity = Arc::new(Identity::generate(0f64).unwrap());
+//             let public_key_hash: CryptoboxPublicKeyHash =
+//                 node_identity.public_key.public_key_hash().unwrap();
+//             let peer_id_marker = public_key_hash.to_base58_check();
 
-            let metadata = MetadataMessage::new(false, false);
-            let version = NetworkVersion::new("".to_owned(), 0, 0);
-            let peer_ref = Peer::actor(
-                &peer_id_marker,
-                sys,
-                network_channel,
-                tokio_runtime.handle().clone(),
-                BootstrapOutput(
-                    Arc::new(TokioMutex::new(None)),
-                    Arc::new(TokioMutex::new(None)),
-                    public_key_hash.clone(),
-                    peer_id_marker.clone(),
-                    metadata.clone(),
-                    version,
-                    socket_address,
-                ),
-                log,
-            )
-            .unwrap();
+//             let metadata = MetadataMessage::new(false, false);
+//             let version = NetworkVersion::new("".to_owned(), 0, 0);
+//             let peer_ref = Peer::actor(
+//                 &peer_id_marker,
+//                 sys,
+//                 network_channel,
+//                 tokio_runtime.handle().clone(),
+//                 BootstrapOutput(
+//                     Arc::new(TokioMutex::new(None)),
+//                     Arc::new(TokioMutex::new(None)),
+//                     public_key_hash.clone(),
+//                     peer_id_marker.clone(),
+//                     metadata.clone(),
+//                     version,
+//                     socket_address,
+//                 ),
+//                 log,
+//             )
+//             .unwrap();
 
-            PeerState::new(
-                Arc::new(PeerId::new(
-                    peer_ref,
-                    public_key_hash,
-                    peer_id_marker,
-                    socket_address,
-                )),
-                &metadata,
-                DataQueuesLimits {
-                    max_queued_block_headers_count: 10,
-                    max_queued_block_operations_count: 15,
-                },
-            )
-        }
+//             PeerState::new(
+//                 Arc::new(PeerId::new(
+//                     peer_ref,
+//                     public_key_hash,
+//                     peer_id_marker,
+//                     socket_address,
+//                 )),
+//                 &metadata,
+//                 DataQueuesLimits {
+//                     max_queued_block_headers_count: 10,
+//                     max_queued_block_operations_count: 15,
+//                 },
+//             )
+//         }
 
-        pub(crate) fn create_test_actor_system(log: Logger) -> ActorSystem {
-            SystemBuilder::new()
-                .name("create_actor_system")
-                .log(log)
-                .create()
-                .expect("Failed to create test actor system")
-        }
+//         pub(crate) fn create_test_actor_system(log: Logger) -> ActorSystem {
+//             SystemBuilder::new()
+//                 .name("create_actor_system")
+//                 .log(log)
+//                 .create()
+//                 .expect("Failed to create test actor system")
+//         }
 
-        pub(crate) fn create_test_tokio_runtime() -> tokio::runtime::Runtime {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to create test tokio runtime")
-        }
+//         pub(crate) fn create_test_tokio_runtime() -> tokio::runtime::Runtime {
+//             tokio::runtime::Builder::new_current_thread()
+//                 .enable_all()
+//                 .build()
+//                 .expect("Failed to create test tokio runtime")
+//         }
 
-        pub(crate) fn create_logger(level: Level) -> Logger {
-            let drain = slog_async::Async::new(
-                slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
-                    .build()
-                    .fuse(),
-            )
-            .build()
-            .filter_level(level)
-            .fuse();
+//         pub(crate) fn create_logger(level: Level) -> Logger {
+//             let drain = slog_async::Async::new(
+//                 slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
+//                     .build()
+//                     .fuse(),
+//             )
+//             .build()
+//             .filter_level(level)
+//             .fuse();
 
-            Logger::root(drain, slog::o!())
-        }
+//             Logger::root(drain, slog::o!())
+//         }
 
-        pub(crate) fn chain_feeder_mock(
-            actor_system: &ActorSystem,
-            actor_name: &str,
-            shell_channel: ShellChannelRef,
-        ) -> Result<(chain_feeder::ChainFeederRef, Receiver<chain_feeder::Event>), anyhow::Error>
-        {
-            let (block_applier_event_sender, block_applier_event_receiver) = channel();
-            let block_applier_run = Arc::new(AtomicBool::new(true));
+//         pub(crate) fn chain_feeder_mock(
+//             actor_system: &ActorSystem,
+//             actor_name: &str,
+//             shell_channel: ShellChannelRef,
+//         ) -> Result<(chain_feeder::ChainFeederRef, Receiver<chain_feeder::Event>), anyhow::Error>
+//         {
+//             let (block_applier_event_sender, block_applier_event_receiver) = channel();
+//             let block_applier_run = Arc::new(AtomicBool::new(true));
 
-            actor_system
-                .actor_of_props::<chain_feeder::ChainFeeder>(
-                    actor_name,
-                    Props::new_args((
-                        shell_channel,
-                        Arc::new(Mutex::new(block_applier_event_sender)),
-                        block_applier_run,
-                        Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
-                        2,
-                    )),
-                )
-                .map(|feeder| (feeder, block_applier_event_receiver))
-                .map_err(|e| e.into())
-        }
+//             actor_system
+//                 .actor_of_props::<chain_feeder::ChainFeeder>(
+//                     actor_name,
+//                     Props::new_args((
+//                         shell_channel,
+//                         Arc::new(Mutex::new(block_applier_event_sender)),
+//                         block_applier_run,
+//                         Arc::new(Mutex::new(Some(thread::spawn(|| Ok(()))))),
+//                         2,
+//                     )),
+//                 )
+//                 .map(|feeder| (feeder, block_applier_event_receiver))
+//                 .map_err(|e| e.into())
+//         }
 
-        pub(crate) fn chain_manager_mock(
-            actor_system: Arc<ActorSystem>,
-            log: Logger,
-            shell_channel: ShellChannelRef,
-            network_channel: NetworkChannelRef,
-            block_applier: chain_feeder::ChainFeederRef,
-            persistent_storage: PersistentStorage,
-            tokio_runtime: &tokio::runtime::Runtime,
-        ) -> Result<ChainManagerRef, anyhow::Error> {
-            let init_data = StorageInitInfo {
-                chain_id: ChainId::try_from("NetXgtSLGNJvNye")?,
-                genesis_block_header_hash: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe"
-                    .try_into()?,
-                patch_context: None,
-                replay: None,
-                context_stats_db_path: None,
-            };
+//         pub(crate) fn chain_manager_mock(
+//             actor_system: Arc<ActorSystem>,
+//             log: Logger,
+//             shell_channel: ShellChannelRef,
+//             network_channel: NetworkChannelRef,
+//             block_applier: chain_feeder::ChainFeederRef,
+//             persistent_storage: PersistentStorage,
+//             tokio_runtime: &tokio::runtime::Runtime,
+//         ) -> Result<ChainManagerRef, anyhow::Error> {
+//             let init_data = StorageInitInfo {
+//                 chain_id: ChainId::try_from("NetXgtSLGNJvNye")?,
+//                 genesis_block_header_hash: "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe"
+//                     .try_into()?,
+//                 patch_context: None,
+//                 replay: None,
+//                 context_stats_db_path: None,
+//             };
 
-            let tezos_readonly_api_pool =
-                Arc::new(create_tezos_readonly_api_pool(tokio_runtime, log.clone())?);
+//             let tezos_readonly_api_pool =
+//                 Arc::new(create_tezos_readonly_api_pool(tokio_runtime, log.clone())?);
 
-            let current_mempool_state_storage = init_mempool_state_storage();
-            let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
-                actor_system.clone(),
-                log,
-                shell_channel.clone(),
-                persistent_storage.clone(),
-                current_mempool_state_storage.clone(),
-                tezos_readonly_api_pool.clone(),
-                true,
-            ));
+//             let current_mempool_state_storage = init_mempool_state_storage();
+//             let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+//                 actor_system.clone(),
+//                 log,
+//                 shell_channel.clone(),
+//                 persistent_storage.clone(),
+//                 current_mempool_state_storage.clone(),
+//                 tezos_readonly_api_pool.clone(),
+//                 true,
+//             ));
 
-            ChainManager::actor(
-                &actor_system,
-                block_applier,
-                network_channel,
-                shell_channel,
-                persistent_storage,
-                tezos_readonly_api_pool,
-                init_data,
-                false,
-                Head::new(
-                    "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
-                    1,
-                    vec![],
-                ),
-                current_mempool_state_storage,
-                0,
-                mempool_prevalidator_factory,
-                Arc::new(Identity::generate(0f64)?),
-            )
-            .map_err(|e| e.into())
-        }
+//             ChainManager::actor(
+//                 &actor_system,
+//                 block_applier,
+//                 network_channel,
+//                 shell_channel,
+//                 persistent_storage,
+//                 tezos_readonly_api_pool,
+//                 init_data,
+//                 false,
+//                 Head::new(
+//                     "BLockGenesisGenesisGenesisGenesisGenesisb83baZgbyZe".try_into()?,
+//                     1,
+//                     vec![],
+//                 ),
+//                 current_mempool_state_storage,
+//                 0,
+//                 mempool_prevalidator_factory,
+//                 Arc::new(Identity::generate(0f64)?),
+//             )
+//             .map_err(|e| e.into())
+//         }
 
-        fn create_tezos_readonly_api_pool(
-            tokio_runtime: &tokio::runtime::Runtime,
-            log: Logger,
-        ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
-            TezosApiConnectionPool::new_without_context(
-                String::from("create_tezos_readonly_api_pool_for_test"),
-                TezosApiConnectionPoolConfiguration {
-                    min_connections: 0,
-                    max_connections: 1,
-                    connection_timeout: Duration::from_secs(3),
-                    max_lifetime: Duration::from_secs(60),
-                    idle_timeout: Duration::from_secs(60),
-                },
-                ProtocolEndpointConfiguration::new(
-                    TezosRuntimeConfiguration {
-                        log_enabled: false,
-                        debug_mode: false,
-                        compute_context_action_tree_hashes: false,
-                    },
-                    TezosEnvironmentConfiguration {
-                        genesis: GenesisChain {
-                            time: "2019-08-06T15:18:56Z".to_string(),
-                            block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94"
-                                .to_string(),
-                            protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV"
-                                .to_string(),
-                        },
-                        bootstrap_lookup_addresses: vec![
-                            "bootstrap.zeronet.fun".to_string(),
-                            "bootzero.tzbeta.net".to_string(),
-                        ],
-                        version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
-                        protocol_overrides: ProtocolOverrides {
-                            user_activated_upgrades: vec![],
-                            user_activated_protocol_overrides: vec![],
-                        },
-                        enable_testchain: true,
-                        patch_context_genesis_parameters: None,
-                    },
-                    false,
-                    TezosContextStorageConfiguration::IrminOnly(
-                        TezosContextIrminStorageConfiguration {
-                            data_dir: prepare_empty_dir("create_tezos_readonly_api_pool_for_test"),
-                        },
-                    ),
-                    "we-dont-need-protocol-runner-here",
-                    slog::Level::Debug,
-                ),
-                tokio_runtime.handle().clone(),
-                log.clone(),
-            )
-        }
+//         fn create_tezos_readonly_api_pool(
+//             tokio_runtime: &tokio::runtime::Runtime,
+//             log: Logger,
+//         ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
+//             TezosApiConnectionPool::new_without_context(
+//                 String::from("create_tezos_readonly_api_pool_for_test"),
+//                 TezosApiConnectionPoolConfiguration {
+//                     min_connections: 0,
+//                     max_connections: 1,
+//                     connection_timeout: Duration::from_secs(3),
+//                     max_lifetime: Duration::from_secs(60),
+//                     idle_timeout: Duration::from_secs(60),
+//                 },
+//                 ProtocolEndpointConfiguration::new(
+//                     TezosRuntimeConfiguration {
+//                         log_enabled: false,
+//                         debug_mode: false,
+//                         compute_context_action_tree_hashes: false,
+//                     },
+//                     TezosEnvironmentConfiguration {
+//                         genesis: GenesisChain {
+//                             time: "2019-08-06T15:18:56Z".to_string(),
+//                             block: "BLockGenesisGenesisGenesisGenesisGenesiscde8db4cX94"
+//                                 .to_string(),
+//                             protocol: "PtBMwNZT94N7gXKw4i273CKcSaBrrBnqnt3RATExNKr9KNX2USV"
+//                                 .to_string(),
+//                         },
+//                         bootstrap_lookup_addresses: vec![
+//                             "bootstrap.zeronet.fun".to_string(),
+//                             "bootzero.tzbeta.net".to_string(),
+//                         ],
+//                         version: "TEZOS_ZERONET_2019-08-06T15:18:56Z".to_string(),
+//                         protocol_overrides: ProtocolOverrides {
+//                             user_activated_upgrades: vec![],
+//                             user_activated_protocol_overrides: vec![],
+//                         },
+//                         enable_testchain: true,
+//                         patch_context_genesis_parameters: None,
+//                     },
+//                     false,
+//                     TezosContextStorageConfiguration::IrminOnly(
+//                         TezosContextIrminStorageConfiguration {
+//                             data_dir: prepare_empty_dir("create_tezos_readonly_api_pool_for_test"),
+//                         },
+//                     ),
+//                     "we-dont-need-protocol-runner-here",
+//                     slog::Level::Debug,
+//                 ),
+//                 tokio_runtime.handle().clone(),
+//                 log.clone(),
+//             )
+//         }
 
-        pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
-            let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
-            Path::new(out_dir.as_str()).join(Path::new(dir_name))
-        }
+//         pub fn test_storage_dir_path(dir_name: &str) -> PathBuf {
+//             let out_dir = env::var("OUT_DIR").expect("OUT_DIR is not defined");
+//             Path::new(out_dir.as_str()).join(Path::new(dir_name))
+//         }
 
-        pub fn prepare_empty_dir(dir_name: &str) -> String {
-            let path = test_storage_dir_path(dir_name);
-            if path.exists() {
-                fs::remove_dir_all(&path)
-                    .unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
-            }
-            fs::create_dir_all(&path)
-                .unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
-            String::from(path.to_str().unwrap())
-        }
-    }
-}
+//         pub fn prepare_empty_dir(dir_name: &str) -> String {
+//             let path = test_storage_dir_path(dir_name);
+//             if path.exists() {
+//                 fs::remove_dir_all(&path)
+//                     .unwrap_or_else(|_| panic!("Failed to delete directory: {:?}", &path));
+//             }
+//             fs::create_dir_all(&path)
+//                 .unwrap_or_else(|_| panic!("Failed to create directory: {:?}", &path));
+//             String::from(path.to_str().unwrap())
+//         }
+//     }
+// }

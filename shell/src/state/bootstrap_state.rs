@@ -1523,276 +1523,310 @@ impl BlockStateDb {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use serial_test::serial;
+// #[cfg(test)]
+// mod tests {
+    // use serial_test::serial;
 
-    use networking::p2p::network_channel::NetworkChannel;
+    // use networking::p2p::network_channel::NetworkChannel;
 
-    use crate::shell_channel::ShellChannel;
-    use crate::state::peer_state::DataQueuesLimits;
-    use crate::state::tests::block;
-    use crate::state::tests::prerequisites::{
-        chain_feeder_mock, create_logger, create_test_actor_system, create_test_tokio_runtime,
-        test_peer,
-    };
+    // use crate::shell_channel::ShellChannel;
+    // use crate::state::peer_state::DataQueuesLimits;
+    // use crate::state::tests::block;
+    // use crate::state::tests::prerequisites::{
+    //     chain_feeder_mock, create_logger, create_test_actor_system, create_test_tokio_runtime,
+    //     test_peer,
+    // };
 
-    use super::*;
-    use storage::tests_common::TmpStorage;
-    use storage::{BlockMetaStorage, OperationsMetaStorage};
+    // use super::*;
+    // use storage::tests_common::TmpStorage;
+    // use storage::{BlockMetaStorage, OperationsMetaStorage};
 
-    // macro_rules! hash_set {
-    //     ( $( $x:expr ),* ) => {
-    //         {
-    //             let mut temp_set = HashSet::new();
-    //             $(
-    //                 temp_set.insert($x);
-    //             )*
-    //             temp_set
-    //         }
-    //     };
+    // // macro_rules! hash_set {
+    // //     ( $( $x:expr ),* ) => {
+    // //         {
+    // //             let mut temp_set = HashSet::new();
+    // //             $(
+    // //                 temp_set.insert($x);
+    // //             )*
+    // //             temp_set
+    // //         }
+    // //     };
+    // // }
+
+    // fn assert_interval(
+    //     tested: &BranchInterval,
+    //     (expected_left, expected_right): (BlockHash, BlockHash),
+    // ) {
+    //     assert_eq!(tested.start.as_ref(), &expected_left);
+    //     assert_eq!(tested.seek.as_ref(), &expected_right);
+    //     assert_eq!(tested.end.as_ref(), &expected_right);
     // }
 
-    fn assert_interval(
-        tested: &BranchInterval,
-        (expected_left, expected_right): (BlockHash, BlockHash),
-    ) {
-        assert_eq!(tested.start.as_ref(), &expected_left);
-        assert_eq!(tested.seek.as_ref(), &expected_right);
-        assert_eq!(tested.end.as_ref(), &expected_right);
-    }
+    // #[test]
+    // #[serial]
+    // fn test_bootstrap_state_add_new_branch() {
+    //     // actors stuff
+    //     let log = create_logger(slog::Level::Info);
+    //     let sys = create_test_actor_system(log.clone());
+    //     let runtime = create_test_tokio_runtime();
+    //     let network_channel =
+    //         NetworkChannel::actor(&sys).expect("Failed to create network channel");
+    //     let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
+    //     let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
+    //         .expect("failed to create tmp storage");
+    //     let (chain_feeder_mock, _) = chain_feeder_mock(
+    //         &sys,
+    //         "mocked_chain_feeder_bootstrap_state",
+    //         shell_channel.clone(),
+    //     )
+    //     .expect("failed to create chain_feeder_mock");
+    //     let data_requester = Arc::new(DataRequester::new(
+    //         BlockMetaStorage::new(storage.storage()),
+    //         OperationsMetaStorage::new(storage.storage()),
+    //         chain_feeder_mock,
+    //     ));
 
-    #[test]
-    #[serial]
-    fn test_bootstrap_state_add_new_branch() {
-        // actors stuff
-        let log = create_logger(slog::Level::Info);
-        let sys = create_test_actor_system(log.clone());
-        let runtime = create_test_tokio_runtime();
-        let network_channel =
-            NetworkChannel::actor(&sys).expect("Failed to create network channel");
-        let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
-        let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
-            .expect("failed to create tmp storage");
-        let (chain_feeder_mock, _) =
-            chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state", shell_channel)
-                .expect("failed to create chain_feeder_mock");
-        let data_requester = Arc::new(DataRequester::new(
-            BlockMetaStorage::new(storage.storage()),
-            OperationsMetaStorage::new(storage.storage()),
-            chain_feeder_mock,
-        ));
+    //     // peer1
+    //     let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
+    //     let peer_queues = Arc::new(DataQueues::new(DataQueuesLimits {
+    //         max_queued_block_headers_count: 10,
+    //         max_queued_block_operations_count: 10,
+    //     }));
 
-        let peer_branch_synchronization_done_callback =
-            Box::new(move |_msg: PeerBranchSynchronizationDone| {
-                // doing nothing here
-                // chain_manager.tell(msg, None);
-            });
+    //     // empty state
+    //     let mut state = BootstrapState::new(data_requester, shell_channel);
 
-        // peer1
-        let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
-        let peer_queues = Arc::new(DataQueues::new(DataQueuesLimits {
-            max_queued_block_headers_count: 10,
-            max_queued_block_operations_count: 10,
-        }));
+    // #[test]
+    // #[serial]
+    // fn test_bootstrap_state_add_new_branch() {
+    //     // actors stuff
+    //     let log = create_logger(slog::Level::Info);
+    //     let sys = create_test_actor_system(log.clone());
+    //     let runtime = create_test_tokio_runtime();
+    //     let network_channel =
+    //         NetworkChannel::actor(&sys).expect("Failed to create network channel");
+    //     let shell_channel = ShellChannel::actor(&sys).expect("Failed to create network channel");
+    //     let storage = TmpStorage::create_to_out_dir("__test_bootstrap_state_add_new_branch")
+    //         .expect("failed to create tmp storage");
+    //     let (chain_feeder_mock, _) =
+    //         chain_feeder_mock(&sys, "mocked_chain_feeder_bootstrap_state", shell_channel)
+    //             .expect("failed to create chain_feeder_mock");
+    //     let data_requester = Arc::new(DataRequester::new(
+    //         BlockMetaStorage::new(storage.storage()),
+    //         OperationsMetaStorage::new(storage.storage()),
+    //         chain_feeder_mock,
+    //     ));
 
-        // empty state
-        let mut state =
-            BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
+    //     let peer_branch_synchronization_done_callback =
+    //         Box::new(move |_msg: PeerBranchSynchronizationDone| {
+    //             // doing nothing here
+    //             // chain_manager.tell(msg, None);
+    //         });
 
-        // genesis
-        let last_applied = block(0);
+    //     // peer1
+    //     let peer_id = test_peer(&sys, network_channel, &runtime, 1234, &log).peer_id;
+    //     let peer_queues = Arc::new(DataQueues::new(DataQueuesLimits {
+    //         max_queued_block_headers_count: 10,
+    //         max_queued_block_operations_count: 10,
+    //     }));
 
-        // history blocks
-        let history: Vec<BlockHash> = vec![
-            block(2),
-            block(5),
-            block(8),
-            block(10),
-            block(13),
-            block(15),
-            block(20),
-        ];
+    //     // empty state
+    //     let mut state =
+    //         BootstrapState::new(data_requester, peer_branch_synchronization_done_callback);
 
-        // add new branch to empty state
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues.clone(),
-                last_applied.clone(),
-                history,
-                20,
-                5,
-                &log,
-            ),
-            AddBranchState::Added(false)
-        ));
+    //     // genesis
+    //     let last_applied = block(0);
 
-        // check state
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(1, peer_bootstrap_state.branches.len());
-        let pipeline = &peer_bootstrap_state.branches[0];
-        assert_eq!(pipeline.intervals.len(), 7);
-        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
-        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
-        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
-        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
-        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
-        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
-        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+    //     // history blocks
+    //     let history: Vec<BlockHash> = vec![
+    //         block(2),
+    //         block(5),
+    //         block(8),
+    //         block(10),
+    //         block(13),
+    //         block(15),
+    //         block(20),
+    //     ];
 
-        // try add new branch as the same as before - could happen when we are bootstrapped and receives the same CurrentHead with different operations
-        // history blocks
-        let history: Vec<BlockHash> = vec![
-            block(2),
-            block(5),
-            block(8),
-            block(10),
-            block(13),
-            block(15),
-            block(20),
-        ];
+    //     // add new branch to empty state
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues.clone(),
+    //             last_applied.clone(),
+    //             history,
+    //             20,
+    //             5,
+    //             &log,
+    //         ),
+    //         AddBranchState::Added(false)
+    //     ));
 
-        // add new branch to empty state
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues.clone(),
-                last_applied.clone(),
-                history,
-                20,
-                5,
-                &log,
-            ),
-            AddBranchState::Ignored
-        ));
-        // check state - still 1
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(1, peer_bootstrap_state.branches.len());
+    //     // check state
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(1, peer_bootstrap_state.branches.len());
+    //     let pipeline = &peer_bootstrap_state.branches[0];
+    //     assert_eq!(pipeline.intervals.len(), 7);
+    //     assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+    //     assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+    //     assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+    //     assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+    //     assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+    //     assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+    //     assert_interval(&pipeline.intervals[6], (block(15), block(20)));
 
-        // try add new branch lower as before
-        // history blocks
-        let history: Vec<BlockHash> = vec![block(2), block(5), block(8), block(10)];
+    //     // try add new branch as the same as before - could happen when we are bootstrapped and receives the same CurrentHead with different operations
+    //     // history blocks
+    //     let history: Vec<BlockHash> = vec![
+    //         block(2),
+    //         block(5),
+    //         block(8),
+    //         block(10),
+    //         block(13),
+    //         block(15),
+    //         block(20),
+    //     ];
 
-        // add new branch to empty state
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues.clone(),
-                last_applied.clone(),
-                history,
-                20,
-                5,
-                &log,
-            ),
-            AddBranchState::Ignored
-        ));
-        // check state - still 1
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(1, peer_bootstrap_state.branches.len());
+    //     // add new branch to empty state
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues.clone(),
+    //             last_applied.clone(),
+    //             history,
+    //             20,
+    //             5,
+    //             &log,
+    //         ),
+    //         AddBranchState::Ignored
+    //     ));
+    //     // check state - still 1
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(1, peer_bootstrap_state.branches.len());
 
-        // try add new branch merge new - ok
-        let history_to_merge: Vec<BlockHash> = vec![
-            block(13),
-            block(15),
-            block(20),
-            block(22),
-            block(23),
-            block(25),
-            block(29),
-        ];
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues.clone(),
-                last_applied.clone(),
-                history_to_merge,
-                29,
-                5,
-                &log,
-            ),
-            AddBranchState::Added(true)
-        ));
+    //     // try add new branch lower as before
+    //     // history blocks
+    //     let history: Vec<BlockHash> = vec![block(2), block(5), block(8), block(10)];
 
-        // check state - branch was extended
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(1, peer_bootstrap_state.branches.len());
+    //     // add new branch to empty state
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues.clone(),
+    //             last_applied.clone(),
+    //             history,
+    //             20,
+    //             5,
+    //             &log,
+    //         ),
+    //         AddBranchState::Ignored
+    //     ));
+    //     // check state - still 1
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(1, peer_bootstrap_state.branches.len());
 
-        let pipeline = &peer_bootstrap_state.branches[0];
-        assert_eq!(pipeline.intervals.len(), 11);
-        assert_interval(&pipeline.intervals[0], (block(0), block(2)));
-        assert_interval(&pipeline.intervals[1], (block(2), block(5)));
-        assert_interval(&pipeline.intervals[2], (block(5), block(8)));
-        assert_interval(&pipeline.intervals[3], (block(8), block(10)));
-        assert_interval(&pipeline.intervals[4], (block(10), block(13)));
-        assert_interval(&pipeline.intervals[5], (block(13), block(15)));
-        assert_interval(&pipeline.intervals[6], (block(15), block(20)));
-        assert_interval(&pipeline.intervals[7], (block(20), block(22)));
-        assert_interval(&pipeline.intervals[8], (block(22), block(23)));
-        assert_interval(&pipeline.intervals[9], (block(23), block(25)));
-        assert_interval(&pipeline.intervals[10], (block(25), block(29)));
+    //     // try add new branch merge new - ok
+    //     let history_to_merge: Vec<BlockHash> = vec![
+    //         block(13),
+    //         block(15),
+    //         block(20),
+    //         block(22),
+    //         block(23),
+    //         block(25),
+    //         block(29),
+    //     ];
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues.clone(),
+    //             last_applied.clone(),
+    //             history_to_merge,
+    //             29,
+    //             5,
+    //             &log,
+    //         ),
+    //         AddBranchState::Added(true)
+    //     ));
 
-        // add next branch
-        let history_to_merge: Vec<BlockHash> = vec![
-            block(113),
-            block(115),
-            block(120),
-            block(122),
-            block(123),
-            block(125),
-            block(129),
-        ];
+    //     // check state - branch was extended
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(1, peer_bootstrap_state.branches.len());
 
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues.clone(),
-                last_applied.clone(),
-                history_to_merge,
-                129,
-                5,
-                &log,
-            ),
-            AddBranchState::Added(false)
-        ));
+    //     let pipeline = &peer_bootstrap_state.branches[0];
+    //     assert_eq!(pipeline.intervals.len(), 11);
+    //     assert_interval(&pipeline.intervals[0], (block(0), block(2)));
+    //     assert_interval(&pipeline.intervals[1], (block(2), block(5)));
+    //     assert_interval(&pipeline.intervals[2], (block(5), block(8)));
+    //     assert_interval(&pipeline.intervals[3], (block(8), block(10)));
+    //     assert_interval(&pipeline.intervals[4], (block(10), block(13)));
+    //     assert_interval(&pipeline.intervals[5], (block(13), block(15)));
+    //     assert_interval(&pipeline.intervals[6], (block(15), block(20)));
+    //     assert_interval(&pipeline.intervals[7], (block(20), block(22)));
+    //     assert_interval(&pipeline.intervals[8], (block(22), block(23)));
+    //     assert_interval(&pipeline.intervals[9], (block(23), block(25)));
+    //     assert_interval(&pipeline.intervals[10], (block(25), block(29)));
 
-        // check state - branch was extended
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(2, peer_bootstrap_state.branches.len());
+    //     // add next branch
+    //     let history_to_merge: Vec<BlockHash> = vec![
+    //         block(113),
+    //         block(115),
+    //         block(120),
+    //         block(122),
+    //         block(123),
+    //         block(125),
+    //         block(129),
+    //     ];
 
-        // try add next branch - max branches 2 - no added
-        let history_to_merge: Vec<BlockHash> = vec![
-            block(213),
-            block(215),
-            block(220),
-            block(222),
-            block(223),
-            block(225),
-            block(229),
-        ];
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues.clone(),
+    //             last_applied.clone(),
+    //             history_to_merge,
+    //             129,
+    //             5,
+    //             &log,
+    //         ),
+    //         AddBranchState::Added(false)
+    //     ));
 
-        assert!(matches!(
-            state.add_new_branch(
-                peer_id.clone(),
-                peer_queues,
-                last_applied,
-                history_to_merge,
-                229,
-                2,
-                &log,
-            ),
-            AddBranchState::Ignored
-        ));
-        // check state - branch was extended - no
-        let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
-        assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
-        assert_eq!(2, peer_bootstrap_state.branches.len());
-    }
+    //     // check state - branch was extended
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(2, peer_bootstrap_state.branches.len());
+
+    //     // try add next branch - max branches 2 - no added
+    //     let history_to_merge: Vec<BlockHash> = vec![
+    //         block(213),
+    //         block(215),
+    //         block(220),
+    //         block(222),
+    //         block(223),
+    //         block(225),
+    //         block(229),
+    //     ];
+
+    //     assert!(matches!(
+    //         state.add_new_branch(
+    //             peer_id.clone(),
+    //             peer_queues,
+    //             last_applied,
+    //             history_to_merge,
+    //             229,
+    //             2,
+    //             &log,
+    //         ),
+    //         AddBranchState::Ignored
+    //     ));
+    //     // check state - branch was extended - no
+    //     let peer_bootstrap_state = state.peers.get_mut(peer_id.peer_ref.uri()).unwrap();
+    //     assert!(peer_bootstrap_state.empty_bootstrap_state.is_none());
+    //     assert_eq!(2, peer_bootstrap_state.branches.len());
+    // }
     //
     // #[test]
     // fn test_bootstrap_state_split_to_intervals() {
