@@ -112,7 +112,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
         let mut results = Vec::new();
         if let Some(limit) = limit {
             let mut found = 0;
-            for result in iter.iter {
+            for result in iter {
                 let (key, value) = result.map_err(Error::from)?;
                 if filter((key.as_ref(), value.as_ref()))? && found < limit {
                     results.push((
@@ -123,7 +123,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
                 }
             }
         } else {
-            for result in iter.iter {
+            for result in iter {
                 let (key, value) = result.map_err(Error::from)?;
                 if filter((key.as_ref(), value.as_ref()))? {
                     results.push((
@@ -147,7 +147,7 @@ impl TezedgeDatabaseBackendStore for SledDBBackend {
         let prefix_key = key[..max_key_len].to_vec();
         let iter = SledDBIterator::new(SledDBIteratorMode::Prefix(IVec::from(prefix_key)), tree);
         let mut results = Vec::new();
-        for result in iter.iter {
+        for result in iter {
             let (key, value) = result.map_err(Error::from)?;
             if filter((key.as_ref(), value.as_ref()))? {
                 results.push((
