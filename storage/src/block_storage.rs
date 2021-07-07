@@ -512,9 +512,7 @@ impl BlockByLevelIndex {
             .map(|(_, v)| <Self as KeyValueSchema>::Value::decode(v))
             .collect();
 
-        let results = results?;
-        println!("RESULTS {}", results.len());
-        Ok(results)
+        Ok(results?)
     }
 
     fn get_blocks_directed(
