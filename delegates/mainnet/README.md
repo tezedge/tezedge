@@ -30,21 +30,21 @@
    a) **http download**
    ```
    cd $HOME/data-mainnet
-   wget -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge_data_from_block_0_1516280 -P $HOME/data-mainnet
+   wget -m -np -nH -R 'index.html*' http://65.21.165.81:8080/tezedge_1127007 -P $HOME/data-mainnet
    ```
 
    b) **scp download**
    _For user/password please contact [jurajselep@viablesystems.io](jurajselep@viablesystems.io)_
    ```
    cd $HOME/data-mainnet
-   scp -r <user>@65.21.165.81:/home/dev/tezedge-data/tezedge_data_from_block_0_1516280 $HOME/data-mainnet
+   scp -r <user>@65.21.165.81:/home/dev/tezedge-data/tezedge_1127007 $HOME/data-mainnet
    passwd: <password>
    ```
 
    _Once downloaded, run this command:_
    ```
    cd $HOME/data-mainnet
-   cp -R ./tezedge_data_from_block_0_1516280/_data/* $HOME/data-mainnet
+   cp -R ./tezedge_1127007/_data/* $HOME/data-mainnet
    ```
 
 3. #### **Identity json file**

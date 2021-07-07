@@ -25,7 +25,9 @@ In addition to implementing a new node, the project seeks to maintain and improv
     * [Prearranged-docker-compose-files](#prearranged-docker-compose-files)
         * [Mainnet - node + explorer](#mainnet---light-node--tezedge-explorer)
         * [Mainnet - node + explorer + debugger (eBPF)](#mainnet---light-node--tezedge-explorer--tezedge-debugger)
-        * [Sandbox - node launcher + explorer + debugger](#sandbox---sandbox-launcher--light-node--tezedge-explorer)
+        * [Mainnet - nodes with irmin vs memory storage + explorer](#mainnet---light-node-with-irmin-context--light-node-with-memory-context--tezedge-explorer)
+
+[comment]: <> (        * [Sandbox - node launcher + explorer + debugger]&#40;#sandbox---sandbox-launcher--light-node--tezedge-explorer&#41;)
 
 ## Build status
 
@@ -282,11 +284,11 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --protocol-runner "./target/release/protocol-runner" \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
-    --p2p-port 12534 --rpc-port 12535 \
-    --websocket-address 0.0.0.0:12536 \
+    --p2p-port 9732 --rpc-port 18732 \
+    --websocket-address 0.0.0.0:4927 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
-    --one-context \
+    --tezos-context-storage=irmin \
     --log terminal \
     --log-level info \
     --log-format simple
@@ -310,7 +312,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -t tezedge/tezedge:latest --network=mainnet --p2p-port=9732
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.6.1 --network=mainnet --p2p-port 9732 --rpc-port 18732 --websocket-address 0.0.0.0:4927
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 
@@ -339,27 +341,28 @@ For a more detailed description of the RPCs, see the [shell](https://docs.tezedg
 
 ### Prearranged docker-compose files
 
-#### Mainnet - light-node + tezedge-explorer
+#### Mainnet - light-node + tezedge explorer
+
 **Last released version:**
 ```
 docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml up
-
-
-# explorer accesses node on 'localhost' by default, you can change it like,
-NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.yml up
-```
-**Actual development version:**
-```
-docker-compose -f docker-compose.latest.yml pull
-docker-compose -f docker-compose.latest.yml up
-
-
-# explorer accesses node on 'localhost' by default, you can change it like,
-NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.latest.yml up
 ```
 
-#### Mainnet - light-node + tezedge-explorer + tezedge debugger
+*(optional) Environment configuration:*
+
+```
+# (default: irmin) - choose context implementation, possible values: [irmin, tezedge, both]
+TEZOS_CONTEXT_STORAGE=<possible-value>
+
+# explorer accesses node/debugger on 'localhost' by default, you can change it like,
+NODE_HOSTNAME_OR_IP=<hostname-or-ip>
+
+e.g.:
+TEZOS_CONTEXT_STORAGE=irmin NODE_HOSTNAME_OR_IP=123.123.123.123 docker-compose -f docker-compose.yml up
+```
+
+#### Mainnet - light-node + tezedge explorer + tezedge debugger
 
 **Last released version with TezEdge Debugger with integrated eBPF**
 
@@ -367,10 +370,40 @@ _This requires Linux kernel at least 5.11_
 ```
 docker-compose -f docker-compose.debug.yml pull
 docker-compose -f docker-compose.debug.yml up
+```
 
+*(optional) Environment configuration:*
+
+```
+# (default: irmin) - choose context implementation, possible values: [irmin, tezedge, both]
+TEZOS_CONTEXT_STORAGE=<possible-value>
 
 # explorer accesses node/debugger on 'localhost' by default, you can change it like,
-NODE_HOSTNAME_OR_IP=<hostname-or-ip> docker-compose -f docker-compose.debug.yml up
+NODE_HOSTNAME_OR_IP=<hostname-or-ip>
+
+e.g.:
+TEZOS_CONTEXT_STORAGE=irmin NODE_HOSTNAME_OR_IP=123.123.123.123 docker-compose -f docker-compose.debug.yml up
+```
+
+#### Mainnet - light-node with irmin context + light-node with memory context + tezedge-explorer
+
+This runs two explorers:
+- http://localhost:8181 - with Irmin storage
+- http://localhost:8282 - with Memory storage
+
+```
+docker-compose -f docker-compose.storage.irmin.yml pull
+docker-compose -f docker-compose.storage.irmin.yml up
+
+docker-compose -f docker-compose.storage.memory.yml pull
+docker-compose -f docker-compose.storage.memory.yml up
+```
+
+*(optional) Environment configuration:*
+
+```
+# explorer accesses node on 'localhost' by default, you can change it like,
+NODE_HOSTNAME_OR_IP=<hostname-or-ip>
 ```
 
 [comment]: <> (#### Sandbox - sandbox launcher + light-node + tezedge-explorer)

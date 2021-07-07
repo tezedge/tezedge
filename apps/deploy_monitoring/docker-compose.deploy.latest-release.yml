@@ -31,7 +31,7 @@ services:
       - "11001:11001/udp"  # debugger syslog port for tezos node
 
   tezedge-node:
-    image: tezedge/tezedge:v1.6.0-frame-pointers-enabled
+    image: tezedge/tezedge:v1.6.1-frame-pointers-enabled
     command: ["--network", "${TEZOS_NETWORK}", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
     logging:
       # Produce syslogs instead of terminal logs
@@ -50,7 +50,7 @@ services:
       - "3030:3030"       # sandbox launcher port
 
   tezedge-sandbox:
-    image: tezedge/tezedge:sanbox-v1.6.0
+    image: tezedge/tezedge:sanbox-v1.6.1
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -87,10 +87,10 @@ services:
       - "18733:18733"     # node RPC port
 
   explorer:
-    image: tezedge/tezedge-explorer:v1.6.0
+    image: tezedge/tezedge-explorer:v1.6.1
     environment:
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"commit","id":""},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":[{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
+      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":[{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
 volumes:

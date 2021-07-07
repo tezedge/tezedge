@@ -168,7 +168,7 @@ run_docker() {
   # build docker
   docker build -t tezedge-run -f ./docker/run/Dockerfile .
   # run docker
-  docker run -i -t tezedge-run "$@"
+  docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge-run "$@"
 }
 
 run_sandbox() {
