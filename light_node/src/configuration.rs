@@ -21,7 +21,7 @@ use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::Replay;
-use tezos_api::environment;
+use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
@@ -342,6 +342,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .possible_values(&TezosEnvironment::possible_values())
             .help("Choose the Tezos environment")
+        )
+        .arg(Arg::with_name("custom-network-file")
+            .long("custom-network-file")
+            .global(true)
+            .takes_value(true)
+            .required_if("network", "custom")
+            .value_name("PATH")
+            .help("Path to a JSON file defining a custom network using the same format used by Octez")
         )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
@@ -790,6 +798,16 @@ impl Environment {
 
         // Validates required flags of args
         validate_required_args(&args);
+
+        // If a custom network file has been provided, parse it and set the custom network
+        if let Some(custom_network_file) = args.value_of("custom-network-file") {
+            let custom =
+                TezosEnvironmentConfiguration::try_from_config_file(custom_network_file).unwrap();
+            let mut custom_handle = environment::CUSTOM_NETWORK_CONFIGURATION
+                .write()
+                .expect("Couldn't obtain custom network handle");
+            *custom_handle = Some(custom);
+        }
 
         let tezos_network: TezosEnvironment = args
             .value_of("network")

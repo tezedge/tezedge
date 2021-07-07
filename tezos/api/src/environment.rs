@@ -1,8 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::RwLock;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -27,9 +29,12 @@ use crypto::{base58::FromBase58CheckError, blake2b::Blake2bError};
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
 use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
+use crate::octez_config::OctezConfig;
 
 lazy_static! {
     pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
+    pub static ref CUSTOM_NETWORK_CONFIGURATION: RwLock<Option<TezosEnvironmentConfiguration>> =
+        RwLock::new(None);
 }
 
 pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &str =
@@ -43,6 +48,7 @@ pub fn get_empty_operation_list_list_hash() -> Result<OperationListListHash, Fro
 /// Enum representing different Tezos environment.
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezosEnvironment {
+    Custom,
     Mainnet,
     Sandbox,
     Zeronet,
@@ -67,6 +73,7 @@ impl TezosEnvironment {
 
     pub fn supported_values(&self) -> Vec<&'static str> {
         match self {
+            TezosEnvironment::Custom => vec!["custom"],
             TezosEnvironment::Mainnet => vec!["mainnet"],
             TezosEnvironment::Sandbox => vec!["sandbox"],
             TezosEnvironment::Zeronet => vec!["zeronet"],
@@ -83,6 +90,7 @@ impl TezosEnvironment {
 
     pub fn check_deprecated_network(&self) -> Option<String> {
         match self {
+            TezosEnvironment::Custom => None,
             TezosEnvironment::Mainnet => None,
             TezosEnvironment::Sandbox => None,
             TezosEnvironment::Zeronet => Some(Self::deprecated_testnet_notice(
@@ -205,6 +213,15 @@ impl FromStr for TezosEnvironment {
 /// Initializes hard-code configuration according to different Tezos git branches (genesis_chain.ml, node_config_file.ml)
 fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     let mut env: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = HashMap::new();
+
+    // Set the custom network settings if available
+    for custom in CUSTOM_NETWORK_CONFIGURATION
+        .read()
+        .expect("Couldn't lock the custom network handle for reading")
+        .iter()
+    {
+        env.insert(TezosEnvironment::Custom, custom.clone());
+    }
 
     env.insert(
         TezosEnvironment::Mainnet,
@@ -533,7 +550,7 @@ pub struct GenesisAdditionalData {
 }
 
 /// Structure holding all environment specific crucial information - according to different Tezos Gitlab branches
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct TezosEnvironmentConfiguration {
     /// Genesis information - see genesis_chain.ml
     pub genesis: GenesisChain,
@@ -550,7 +567,41 @@ pub struct TezosEnvironmentConfiguration {
     pub patch_context_genesis_parameters: Option<PatchContext>,
 }
 
+#[derive(Fail, Debug)]
+pub enum TezosNetworkConfigurationError {
+    #[fail(display = "I/O error: {}", reason)]
+    IoError { reason: io::Error },
+
+    #[fail(display = "JSON config parsing error: {}", reason)]
+    ParseError { reason: serde_json::Error },
+}
+
+impl From<io::Error> for TezosNetworkConfigurationError {
+    fn from(reason: io::Error) -> Self {
+        Self::IoError { reason }
+    }
+}
+
+impl From<serde_json::Error> for TezosNetworkConfigurationError {
+    fn from(reason: serde_json::Error) -> Self {
+        Self::ParseError { reason }
+    }
+}
+
 impl TezosEnvironmentConfiguration {
+    /// Loads a custom network configuration from an octez-formatted configuration file
+    pub fn try_from_config_file<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<Self, TezosNetworkConfigurationError> {
+        let contents = fs::read_to_string(path)?;
+        Self::try_from_json(&contents)
+    }
+
+    fn try_from_json(json: &str) -> Result<Self, TezosNetworkConfigurationError> {
+        let octez_config: OctezConfig = serde_json::from_str(json)?;
+        Ok(octez_config.get_custom_network())
+    }
+
     /// Resolves genesis hash from configuration of GenesisChain.block
     pub fn genesis_header_hash(&self) -> Result<BlockHash, TezosEnvironmentError> {
         BlockHash::from_base58_check(&self.genesis.block).map_err(|e| {
@@ -904,31 +955,80 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_addr_port_for_all_environment() {
-        TezosEnvironment::iter().for_each(|net| {
-            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
-                .get(&net)
-                .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
+        TezosEnvironment::iter()
+            .filter(|te| *te != TezosEnvironment::Custom)
+            .for_each(|net| {
+                let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                    .get(&net)
+                    .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
-            tezos_env
-                .bootstrap_lookup_addresses
-                .iter()
-                .for_each(|addr| assert!(parse_bootstrap_addr_port(addr, 1111).is_ok()));
-        });
+                tezos_env
+                    .bootstrap_lookup_addresses
+                    .iter()
+                    .for_each(|addr| assert!(parse_bootstrap_addr_port(addr, 1111).is_ok()));
+            });
     }
 
     #[test]
     fn test_network_version_length() {
-        TezosEnvironment::iter().for_each(|net| {
-            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
-                .get(&net)
-                .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
+        TezosEnvironment::iter()
+            .filter(|te| *te != TezosEnvironment::Custom)
+            .for_each(|net| {
+                let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                    .get(&net)
+                    .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
-            assert!(
-                tezos_env.version.len() <= CHAIN_NAME_MAX_LENGTH,
-                "The chain version {} does not fit into the CHAIN_NAME_MAX_LENGTH value {}",
-                tezos_env.version.len(),
-                CHAIN_NAME_MAX_LENGTH
-            );
-        });
+                assert!(
+                    tezos_env.version.len() <= CHAIN_NAME_MAX_LENGTH,
+                    "The chain version {} does not fit into the CHAIN_NAME_MAX_LENGTH value {}",
+                    tezos_env.version.len(),
+                    CHAIN_NAME_MAX_LENGTH
+                );
+            });
+    }
+
+    #[test]
+    fn test_tezos_environment_configuration_from_custom_network_json() {
+        let json = r#"{
+            "network": {
+                "chain_name": "SANDBOXED_TEZOS",
+                "genesis": {
+                  "block": "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2",
+                  "protocol": "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex",
+                  "timestamp": "2018-06-30T16:07:32Z"
+                },
+                "sandboxed_chain_name": "SANDBOXED_TEZOS",
+                "default_bootstrap_peers": [],
+                "genesis_parameters": {
+                  "values": {
+                    "genesis_pubkey": "edpkuJQjuxBndWiwNRFGndPaJATFVXsiDDyAfE4oHvUtu138w5LYRs"
+                  }
+                }
+            }
+        }"#;
+
+        let tezos_env = TezosEnvironmentConfiguration::try_from_json(json).unwrap();
+        let expected = TezosEnvironmentConfiguration {
+            genesis: GenesisChain {
+                time: "2018-06-30T16:07:32Z".into(),
+                block: "BLockGenesisGenesisGenesisGenesisGenesisf79b5d1CoW2".into(),
+                protocol: "PtYuensgYBb3G3x1hLLbCmcav8ue8Kyd2khADcL5LsT5R1hcXex".into(),
+            },
+            bootstrap_lookup_addresses: vec![],
+            version: "SANDBOXED_TEZOS".into(),
+            protocol_overrides: ProtocolOverrides {
+                user_activated_upgrades: vec![],
+                user_activated_protocol_overrides: vec![],
+            },
+            enable_testchain: false,
+            patch_context_genesis_parameters: Some(PatchContext {
+                key: "sandbox_parameter".into(),
+                json:
+                    r#"{"genesis_pubkey":"edpkuJQjuxBndWiwNRFGndPaJATFVXsiDDyAfE4oHvUtu138w5LYRs"}"#
+                        .into(),
+            }),
+        };
+
+        assert_eq!(tezos_env, expected);
     }
 }

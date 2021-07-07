@@ -26,7 +26,7 @@ use crate::ocaml_conv::ffi_error_ids;
 pub type RustBytes = Vec<u8>;
 
 /// Genesis block information structure
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct GenesisChain {
     pub time: String,
     pub block: String,
@@ -34,7 +34,7 @@ pub struct GenesisChain {
 }
 
 /// Voted protocol overrides
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct ProtocolOverrides {
     pub user_activated_upgrades: Vec<(i32, String)>,
     pub user_activated_protocol_overrides: Vec<(String, String)>,
@@ -76,7 +76,7 @@ impl ProtocolOverrides {
 }
 
 /// Patch_context key json
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 pub struct PatchContext {
     pub key: String,
     pub json: String,

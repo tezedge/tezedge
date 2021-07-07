@@ -34,51 +34,53 @@ fn test_init_empty_context_for_all_enviroment_nets() {
 
     // run init storage for all nets
     let mut environment_counter = 0;
-    TezosEnvironment::iter().for_each(|net| {
-        environment_counter += 1;
+    TezosEnvironment::iter()
+        .filter(|te| *te != TezosEnvironment::Custom)
+        .for_each(|net| {
+            environment_counter += 1;
 
-        let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
-            .get(&net)
-            .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
+            let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                .get(&net)
+                .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
-        let storage = TezosContextStorageConfiguration::Both(
-            TezosContextIrminStorageConfiguration {
-                data_dir: common::prepare_empty_dir(storage_data_dir),
-            },
-            TezosContextTezEdgeStorageConfiguration {
-                backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
-                ipc_socket_path: None,
-            },
-        );
-        let context_config = TezosContextConfiguration {
-            storage,
-            genesis: tezos_env.genesis.clone(),
-            protocol_overrides: tezos_env.protocol_overrides.clone(),
-            commit_genesis: true,
-            enable_testchain: false,
-            readonly: false,
-            sandbox_json_patch_context: None,
-            context_stats_db_path: None,
-        };
+            let storage = TezosContextStorageConfiguration::Both(
+                TezosContextIrminStorageConfiguration {
+                    data_dir: common::prepare_empty_dir(storage_data_dir),
+                },
+                TezosContextTezEdgeStorageConfiguration {
+                    backend: tezos_api::ffi::ContextKvStoreConfiguration::InMem,
+                    ipc_socket_path: None,
+                },
+            );
+            let context_config = TezosContextConfiguration {
+                storage,
+                genesis: tezos_env.genesis.clone(),
+                protocol_overrides: tezos_env.protocol_overrides.clone(),
+                commit_genesis: true,
+                enable_testchain: false,
+                readonly: false,
+                sandbox_json_patch_context: None,
+                context_stats_db_path: None,
+            };
 
-        match client::init_protocol_context(context_config) {
-            Err(e) => panic!(
-                "Failed to initialize storage for: {:?}, Reason: {:?}",
-                net, e
-            ),
-            Ok(init_info) => {
-                if let Some(commit_hash) = &init_info.genesis_commit_hash {
-                    genesis_commit_hashes.push(commit_hash.clone());
+            match client::init_protocol_context(context_config) {
+                Err(e) => panic!(
+                    "Failed to initialize storage for: {:?}, Reason: {:?}",
+                    net, e
+                ),
+                Ok(init_info) => {
+                    if let Some(commit_hash) = &init_info.genesis_commit_hash {
+                        genesis_commit_hashes.push(commit_hash.clone());
+                    }
+                    init_info
+                        .supported_protocol_hashes
+                        .iter()
+                        .for_each(|protocol_hash| {
+                            protocol_hashes.insert(protocol_hash.clone());
+                        });
                 }
-                init_info
-                    .supported_protocol_hashes
-                    .iter()
-                    .for_each(|protocol_hash| {
-                        protocol_hashes.insert(protocol_hash.clone());
-                    });
             }
-        }
-    });
+        });
 
     // check result - we should have
     assert_eq!(environment_counter, genesis_commit_hashes.len());
