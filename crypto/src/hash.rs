@@ -55,7 +55,6 @@ pub enum FromBytesError {
 macro_rules! define_hash {
     ($name:ident) => {
         #[derive(
-            Debug,
             Clone,
             PartialEq,
             Eq,
@@ -95,6 +94,16 @@ macro_rules! define_hash {
                     .unwrap_or_else(|_| {
                         unreachable!("Typed hash should always be representable in base58")
                     })
+            }
+        }
+
+        impl ::std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                // TODO - TE-373: with b58 this could be done without the need
+                // to perform a heap allocation.
+                f.debug_tuple(stringify!($name))
+                    .field(&self.to_base58_check())
+                    .finish()
             }
         }
 
