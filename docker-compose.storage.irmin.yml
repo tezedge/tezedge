@@ -1,0 +1,26 @@
+version: "3"
+
+services:
+
+  tezedge-with-irmin-storage:
+    image: tezedge/tezedge:v1.6.2
+    command: [ "--network=mainnet", "--p2p-port=4444", "--rpc-port=4445", "--websocket-address=0.0.0.0:4446", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=irmin", "--context-stats-db-path", "context-stats-db" ]
+    hostname: tezedge-with-irmin-storage
+    ports:
+      - "4444:4444"
+      - "4445:4445"
+      - "4446:4446"
+    networks:
+      - default
+    tty: true
+
+  tezedge-explorer-with-irmin-storage:
+    image: tezedge/tezedge-explorer:v1.6.1
+    hostname: tezedge-explorer-with-irmin-storage
+    environment:
+      - API=[{"id":"tezedge-with-irmin-storage","name":"tezedge-with-irmin-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:4445","p2p_port":4444,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:4446"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"}]}]
+    ports:
+      - "8181:80"
+    networks:
+      - default
+    tty: true
