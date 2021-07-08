@@ -42,26 +42,26 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
     let platform = current_platform();
 
     let artifact_for_platform = match platform.os_type {
-        OSType::OSX => Some("libtezos-ffi-macos.dylib"),
+        OSType::OSX => Some("libtezos-ffi-macos.dylib.gz"),
         OSType::Ubuntu => match platform.version.as_str() {
-            "16.04" => Some("libtezos-ffi-ubuntu16.so"),
-            "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so"),
-            "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so"),
-            "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so"),
-            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so"),
+            "16.04" => Some("libtezos-ffi-ubuntu16.so.gz"),
+            "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so.gz"),
+            "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so.gz"),
+            "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so.gz"),
+            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so.gz"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
-            "9" => Some("libtezos-ffi-debian9.so"),
-            v if v.starts_with("9.") => Some("libtezos-ffi-debian9.so"),
-            "10" => Some("libtezos-ffi-debian10.so"),
-            v if v.starts_with("10.") => Some("libtezos-ffi-debian10.so"),
+            "9" => Some("libtezos-ffi-debian9.so.gz"),
+            v if v.starts_with("9.") => Some("libtezos-ffi-debian9.so.gz"),
+            "10" => Some("libtezos-ffi-debian10.so.gz"),
+            v if v.starts_with("10.") => Some("libtezos-ffi-debian10.so.gz"),
             _ => None,
         },
         OSType::OpenSUSE => match platform.version.as_str() {
-            "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.so"),
+            "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.so.gz"),
             v if v.len() == 8 && v.chars().all(char::is_numeric) => {
-                Some("libtezos-ffi-opensuse_tumbleweed.so")
+                Some("libtezos-ffi-opensuse_tumbleweed.so.gz")
             }
             _ => None,
         },
@@ -70,8 +70,8 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
                 println!("cargo:warning=CentOS 6.x is not supported by the OCaml Package Manager");
                 None
             }
-            '7' => Some("libtezos-ffi-centos7.so"),
-            '8' => Some("libtezos-ffi-centos8.so"),
+            '7' => Some("libtezos-ffi-centos7.so.gz"),
+            '8' => Some("libtezos-ffi-centos8.so.gz"),
             _ => None,
         },
         _ => None,
@@ -175,6 +175,18 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
             remote_file.sha256_checksum_url
         );
     }
+}
+
+fn download_remote_file_and_check_sha256_and_uncompress(
+    remote_file: RemoteFile,
+    dest_path: &PathBuf,
+) {
+    let compressed_name = format!("{}.gz", dest_path.to_str().unwrap());
+    download_remote_file_and_check_sha256(remote_file, &PathBuf::from(compressed_name.clone()));
+    Command::new("gunzip")
+        .args(&[&compressed_name])
+        .status()
+        .unwrap_or_else(|_| panic!("Couldn't gunzip '{}'", compressed_name));
 }
 
 fn libtezos_filename() -> &'static str {
@@ -312,7 +324,7 @@ fn run_builder(build_chain: &BuildChain) {
             let artifacts = current_release_distributions_artifacts();
             println!("Resolved known artifacts: {:?}", &artifacts);
 
-            download_remote_file_and_check_sha256(
+            download_remote_file_and_check_sha256_and_uncompress(
                 get_remote_lib(&artifacts),
                 &libtezos_ffi_dst_path,
             );
