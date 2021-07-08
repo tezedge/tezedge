@@ -186,11 +186,13 @@ impl Storage {
     const STORAGES_COUNT: usize = 3;
     const MINIMAL_THREAD_COUNT: usize = 1;
 
-    const DB_STORAGE_VERSION: i64 = 19;
+    const DB_STORAGE_VERSION: i64 = 20;
 
     const LRU_CACHE_SIZE_96MB: usize = 96 * 1024 * 1024;
 
     const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEM;
+
+    const DEFAULT_MAINDB: &'static str = "rocksdb";
 }
 
 #[derive(Debug, Clone)]
@@ -633,7 +635,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("STRING")
             .possible_values(&TezedgeDatabaseBackendConfiguration::possible_values())
-            .default_value("sled")
+            .default_value(Storage::DEFAULT_MAINDB)
             .help("Options fo main database backend"))
         .arg(Arg::with_name("context-kv-store")
             .long("context-kv-store")
@@ -1123,7 +1125,7 @@ impl Environment {
                 };
                 let maindb_backend: TezedgeDatabaseBackendConfiguration = args
                     .value_of("maindb-backend")
-                    .unwrap_or("sled")
+                    .unwrap_or(Storage::DEFAULT_MAINDB)
                     .parse::<TezedgeDatabaseBackendConfiguration>()
                     .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
                 let context_kv_store = args
