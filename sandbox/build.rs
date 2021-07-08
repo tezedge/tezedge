@@ -81,7 +81,7 @@ fn get_remote_libs() -> Vec<RemoteLib> {
             Some(postfix_for_platform) => {
                 // find artifact for platform
                 let artifact_for_platform =
-                    format!("{}-{}", required_artifact, postfix_for_platform);
+                    format!("{}-{}.gz", required_artifact, postfix_for_platform);
                 println!("Artifact to get: {}", artifact_for_platform);
                 match artifacts.iter().find(|a| a.name == artifact_for_platform) {
                     Some(artifact) => {
@@ -148,7 +148,7 @@ fn run_builder(build_chain: &str) {
 
             for remote_lib in remote_libs {
                 // get library: $ curl <remote_url> --output lib_tezos/artifacts/tezos-client-*
-                let lib_path = Path::new("artifacts").join(&remote_lib.name);
+                let lib_path = Path::new("artifacts").join(&format!("{}.gz", remote_lib.name));
                 Command::new("curl")
                     .args(&[
                         "-L",
@@ -191,6 +191,12 @@ fn run_builder(build_chain: &str) {
                     let hash = sha256.finalize();
                     assert_eq!(hash[..], *remote_lib_sha256, "libtezos.so SHA256 mismatch");
                 }
+
+                // Uncompress the artifact
+                Command::new("gunzip")
+                    .args(&[&lib_path])
+                    .status()
+                    .unwrap_or_else(|_| panic!("Couldn't gunzip '{}'", lib_path.to_str().unwrap()));
             }
         }
         _ => {
