@@ -3134,7 +3134,6 @@ name: corr/tezedge-octez-rpcs-and-indexers-compatibility-007-delphinet
 # integration test is using env variables:
 # - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
 # - TO_BLOCK_HEADER - block level (also is used by bootstrap task bootstrap)
-# - WRK_TEST_BLOCK_HEADER - block level for wrk performance test - it checks severel rpc on this block
 # -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_1: running octez node, e.g.: http://octez-node-run-1:8732
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_2: running octez node, e.g.: http://octez-node-run-2:8732
@@ -3148,7 +3147,6 @@ environment:
   NETWORK: delphinet
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
@@ -5122,9 +5120,9 @@ kind: pipeline
 name: perf/wrk-tests-007-delphinet
 # default build goes with: --network "delphinet"
 # integration test is using env variables:
+# - BLOCK_HEAD - top block level used by bootstrap
 # - FROM_BLOCK_HEADER - block level, (watch out, if use change this, then check parameter --stop=)
-# - TO_BLOCK_HEADER - block level (also is used by bootstrap task bootstrap)
-# - WRK_TEST_BLOCK_HEADER - block level for wrk performance test - it checks severel rpc on this block
+# - TO_BLOCK_HEADER - block level
 # -- all headers in interval <FROM_BLOCK_HEADER, TO_BLOCK_HEADER) are checked in test (rpc json compare)
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_1: running octez node, e.g.: http://octez-node-run-1:8732
 # - OCTEZ_NODE_RPC_CONTEXT_ROOT_2: running octez node, e.g.: http://octez-node-run-2:8732
@@ -5136,9 +5134,9 @@ clone:
 
 environment:
   NETWORK: delphinet
+  BLOCK_HEAD: 20000 # top block to bootstrap to
   FROM_BLOCK_HEADER: 0
   TO_BLOCK_HEADER: 520 # also check parameter --stop=
-  WRK_TEST_BLOCK_HEADER: 100
   WRK_TEST_DURATION: 10  # in seconds
   SODIUM_USE_PKG_CONFIG: 1
   MAX_LATENCY_THRESHOLD: 100 # in %
@@ -5223,7 +5221,7 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   pull: always
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
   image: tezedge/tezedge-ci-builder:latest
@@ -5237,7 +5235,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
@@ -5245,7 +5242,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
@@ -5260,7 +5257,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -5273,7 +5269,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=3 --peer-thresh-high=5 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
@@ -5282,7 +5278,7 @@ steps:
   image: tezedge/tezos-node-bootstrap:latest
   pull: if-not-exists
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
 # now we have prepared octez and tezedge node, that can run wrk tests
 
@@ -5306,7 +5302,7 @@ steps:
 - name: bootstrapping-tezedge-target-branch
   image: tezedge/tezos-node-bootstrap:latest
   commands:
-    - tezos-node-bootstrap bootstrap --level=$${WRK_TEST_BLOCK_HEADER} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
+    - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${TEZEDGE_NODE_TARGET_BRANCH_RPC_CONTEXT_ROOT}
   when:
     ref:
     - refs/pull/*/head
@@ -5443,7 +5439,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
@@ -5451,7 +5446,7 @@ steps:
     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
     - echo "LD_LIBRARY_PATH - $LD_LIBRARY_PATH"
-    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params
+    - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --disable-bootstrap-lookup --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_4.json" --network "$${NETWORK}" --protocol-runner "$${CACHE_DATA_PATH}/protocol-runner" --p2p-port 19732 --tezos-data-dir ./tezos-node-data --bootstrap-db-path ./light-node-data --init-sapling-spend-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-spend.params --init-sapling-output-params-file $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params --tezos-context-storage=irmin
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
@@ -5466,7 +5461,6 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
-    DISABLE_INMEM_CONTEXT_GC: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
     - echo "peers - $PEERS"
@@ -5479,7 +5473,7 @@ steps:
     - cd /tmp/tezedge-target-branch/tezedge
     - export LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts:./tezos/interop/lib_tezos/artifacts:./target/release
     - cargo build --release --package light-node --package protocol-runner
-    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params
+    - cargo run --release --bin light-node -- --config-file "./light_node/etc/tezedge/tezedge_drone.config" --protocol-runner ./target/release/protocol-runner --peers $PEERS --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}" --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_5.json" --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params --tezos-context-storage=irmin
   when:
     ref:
       - refs/pull/*/head
