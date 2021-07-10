@@ -267,7 +267,7 @@ impl ChainManager {
 
         // check for missing mempool operations
         PeerState::schedule_missing_operations_for_mempool(
-            network_channel.clone(),
+            &network_channel,
             peers,
         );
     }
@@ -303,7 +303,7 @@ impl ChainManager {
                 // retrieve mutable reference and use it as `tell_peer()` parameter
                 if let Some(peer) = self.peers.get_mut(&peer_id.address) {
                     tell_peer(
-                        network_channel.clone(),
+                        &network_channel,
                         peer,
                         GetCurrentBranchMessage::new(chain_state.get_chain_id().as_ref().clone())
                             .into(),
@@ -373,8 +373,8 @@ impl ChainManager {
                                         let history = chain_state.get_history(
                                             &current_head.hash,
                                             &Seed::new(
-                                                identity_peer_id,
-                                                &peer.peer_id.peer_public_key_hash,
+                                                &identity_peer_id,
+                                                &peer.peer_id.public_key_hash,
                                             ),
                                         )?;
                                         // send message
@@ -386,7 +386,7 @@ impl ChainManager {
                                             ),
                                         );
                                         tell_peer(
-                                            network_channel.clone(),
+                                            &network_channel,
                                             peer,
                                             msg.into(),
                                         );
@@ -427,7 +427,7 @@ impl ChainManager {
                                         let msg: BlockHeaderMessage =
                                             (*block.header).clone().into();
                                         tell_peer(
-                                            network_channel.clone(),
+                                            &network_channel,
                                             peer,
                                             msg.into(),
                                         );
@@ -452,7 +452,7 @@ impl ChainManager {
                                             )?,
                                         );
                                         tell_peer(
-                                            network_channel.clone(),
+                                            &network_channel,
                                             peer,
                                             msg.into(),
                                         );
@@ -514,7 +514,7 @@ impl ChainManager {
                                     let key = get_op.into();
                                     if let Some(op) = operations_storage.get(&key)? {
                                         tell_peer(
-                                            network_channel.clone(),
+                                            &network_channel,
                                             peer,
                                             op.into(),
                                         );
@@ -612,7 +612,7 @@ impl ChainManager {
                                         BlockAcceptanceResult::UnknownBranch => {
                                             // ask current_branch from peer
                                             tell_peer(
-                                                network_channel.clone(),
+                                                &network_channel,
                                                 peer,
                                                 GetCurrentBranchMessage::new(
                                                     message.chain_id().clone(),
@@ -670,7 +670,7 @@ impl ChainManager {
                                             None => {
                                                 // if not started, we need to ask for CurrentBranch of peer
                                                 tell_peer(
-                                                    network_channel.clone(),
+                                                    &network_channel,
                                                     peer,
                                                     GetCurrentBranchMessage::new(
                                                         message.chain_id().clone(),
@@ -690,7 +690,7 @@ impl ChainManager {
                                     // TODO: if not found here, check regular operation storage?
                                     if let Some(found) = mempool_storage.find(&operation_hash)? {
                                         tell_peer(
-                                            network_channel.clone(),
+                                            &network_channel,
                                             peer,
                                             found.into(),
                                         );
@@ -1126,7 +1126,7 @@ impl ChainManager {
 
         for peer in peers.values() {
             tell_peer(
-                network_channel.clone(),
+                &network_channel,
                 peer,
                 CurrentBranchMessage::new(
                     chain_id.clone(),
@@ -1208,7 +1208,7 @@ impl ChainManager {
 
             let can_send_msg = !(ignore_msg_with_empty_mempool && msg_is_mempool_empty);
             if can_send_msg {
-                tell_peer(network_channel.clone(), peer, msg)
+                tell_peer(&network_channel, peer, msg)
             }
         });
     }
@@ -1791,7 +1791,7 @@ impl Receive<AskPeersAboutCurrentHead> for ChainManager {
             if can_request {
                 peer.current_head_request_last = Instant::now();
                 tell_peer(
-                    network_channel.clone(),
+                    &network_channel,
                     peer,
                     p2p_msg.clone(),
                 );

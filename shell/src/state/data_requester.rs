@@ -127,7 +127,7 @@ impl DataRequester {
                 .chunks(limits::GET_BLOCK_HEADERS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        self.network_channel.clone(),
+                        &self.network_channel,
                         peer,
                         GetBlockHeadersMessage::new(
                             blocks_to_download
@@ -140,7 +140,7 @@ impl DataRequester {
                 });
         } else {
             tell_peer(
-                self.network_channel.clone(),
+                &self.network_channel,
                 peer,
                 GetBlockHeadersMessage::new(
                     blocks_to_download
@@ -249,14 +249,14 @@ impl DataRequester {
                 .chunks(limits::GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        self.network_channel.clone(),
+                        &self.network_channel,
                         peer,
                         GetOperationsForBlocksMessage::new(blocks_to_download.into()).into(),
                     );
                 });
         } else {
             tell_peer(
-                self.network_channel.clone(),
+                &self.network_channel,
                 peer,
                 GetOperationsForBlocksMessage::new(
                     blocks_to_download
@@ -503,7 +503,7 @@ impl Drop for RequestedOperationDataLock {
 }
 
 pub fn tell_peer(
-    network_channel: NetworkChannelRef,
+    network_channel: &NetworkChannelRef,
     peer_id: &PeerId,
     msg: Arc<PeerMessageResponse>,
 ) {
