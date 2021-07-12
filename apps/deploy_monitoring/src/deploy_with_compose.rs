@@ -17,14 +17,14 @@ pub async fn launch_stack(compose_file_path: &PathBuf, log: &Logger, tezedge_onl
     wait_for_start(&format!("http://localhost:{}", EXPLORER_PORT)).await;
     info!(log, "Tezedge explorer is running");
 
-    info!(log, "Debugger is starting");
-    start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
-    wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
-    info!(log, "Debugger is running");
+    //info!(log, "Debugger is starting");
+    //start_with_compose(compose_file_path, TezedgeDebugger::NAME, "tezedge-debugger");
+    //wait_for_start(&format!("http://localhost:{}/v2/log", DEBUGGER_PORT)).await;
+    //info!(log, "Debugger is running");
 
-    info!(log, "Memprof is starting");
-    start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
-    info!(log, "Memprof is running");
+    //info!(log, "Memprof is starting");
+    //start_with_compose(compose_file_path, TezedgeMemprof::NAME, "tezedge-memprof");
+    //info!(log, "Memprof is running");
 
     info!(log, "Tezedge node is starting");
     start_with_compose(compose_file_path, TezedgeNode::NAME, "tezedge-node");
