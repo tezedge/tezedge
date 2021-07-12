@@ -6,22 +6,16 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, BufRead};
 use std::net::SocketAddr;
-use std::panic::UnwindSafe;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, collections::HashSet, fmt::Debug};
 
 use clap::{App, Arg};
-use failure::Fail;
-use slog::{Drain, Duplicate, Logger, Never, SendSyncRefUnwindSafeDrain};
-use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
+use slog::Logger;
 
 use crypto::hash::BlockHash;
-use logging::detailed_json;
-use logging::file::FileAppenderBuilder;
+use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
@@ -37,52 +31,6 @@ use tezos_new_context::initializer::ContextKvStoreConfiguration;
 use tezos_new_context::kv_store::SupportedContextKeyValueStore;
 use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 
-macro_rules! create_terminal_logger {
-    ($type:expr) => {{
-        match $type {
-            LogFormat::Simple => slog_async::Async::new(
-                slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
-                    .build()
-                    .fuse(),
-            )
-            .chan_size(32768)
-            .overflow_strategy(slog_async::OverflowStrategy::Block)
-            .build(),
-            LogFormat::Json => {
-                slog_async::Async::new(detailed_json::default(std::io::stdout()).fuse())
-                    .chan_size(32768)
-                    .overflow_strategy(slog_async::OverflowStrategy::Block)
-                    .build()
-            }
-        }
-    }};
-}
-
-macro_rules! create_file_logger {
-    ($type:expr, $path:expr) => {{
-        let appender = FileAppenderBuilder::new($path)
-            .rotate_size(10_485_760 * 10) // 100 MB
-            .rotate_keep(2)
-            .rotate_compress(true)
-            .build();
-
-        match $type {
-            LogFormat::Simple => slog_async::Async::new(
-                slog_term::FullFormat::new(slog_term::PlainDecorator::new(appender))
-                    .build()
-                    .fuse(),
-            )
-            .chan_size(32768)
-            .overflow_strategy(slog_async::OverflowStrategy::Block)
-            .build(),
-            LogFormat::Json => slog_async::Async::new(detailed_json::default(appender).fuse())
-                .chan_size(32768)
-                .overflow_strategy(slog_async::OverflowStrategy::Block)
-                .build(),
-        }
-    }};
-}
-
 #[derive(Debug, Clone)]
 pub struct Rpc {
     pub listener_port: u16,
@@ -91,49 +39,15 @@ pub struct Rpc {
 
 #[derive(Debug, Clone)]
 pub struct Logging {
-    pub log: Vec<LoggerType>,
+    pub slog: SlogConfig,
     pub ocaml_log_enabled: bool,
-    pub level: slog::Level,
-    pub format: LogFormat,
-    pub file: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ParseLoggerTypeError(String);
-
-impl FromStr for LoggerType {
-    type Err = ParseLoggerTypeError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.to_ascii_lowercase();
-        for sp in LoggerType::iter() {
-            if sp.supported_values().contains(&s.as_str()) {
-                return Ok(sp);
-            }
-        }
-
-        Err(ParseLoggerTypeError(format!("Invalid variant name: {}", s)))
-    }
+impl Logging {
+    const DEFAULT_FILE_LOGGER_PATH: &'static str = "./tezedge.log";
+    const DEFAULT_FILE_LOGGER_ROTATE_IF_SIZE_IN_BYTES: u64 = 10_485_760 * 10; // 100 MB
+    const DEFAULT_FILE_LOGGER_KEEP_NUMBER_OF_ROTATED_FILE: u16 = 100; // 100 MB * 100 = 10 GB
 }
-
-#[derive(PartialEq, Debug, Clone, EnumIter)]
-pub enum LoggerType {
-    TerminalLogger,
-    FileLogger,
-}
-
-impl MultipleValueArg for LoggerType {
-    fn supported_values(&self) -> Vec<&'static str> {
-        match self {
-            LoggerType::TerminalLogger => vec!["terminal"],
-            LoggerType::FileLogger => vec!["file"],
-        }
-    }
-}
-
-#[derive(Debug, Fail)]
-#[fail(display = "No logger target was provided")]
-pub struct NoDrainError;
 
 #[derive(Debug, Clone)]
 pub struct ParseTezosContextStorageChoiceError(String);
@@ -158,17 +72,6 @@ impl FromStr for TezosContextStorageChoice {
             ))),
         }
     }
-}
-
-pub trait MultipleValueArg: IntoEnumIterator {
-    fn possible_values() -> Vec<&'static str> {
-        let mut possible_values = Vec::new();
-        for sp in Self::iter() {
-            possible_values.extend(sp.supported_values());
-        }
-        possible_values
-    }
-    fn supported_values(&self) -> Vec<&'static str>;
 }
 
 #[derive(Debug, Clone)]
@@ -219,24 +122,6 @@ impl Ffi {
         "tezos/sys/lib_tezos/artifacts/sapling-spend.params";
     pub const DEFAULT_ZCASH_PARAM_SAPLING_OUTPUT_FILE_PATH: &'static str =
         "tezos/sys/lib_tezos/artifacts/sapling-output.params";
-}
-
-#[derive(Debug, Clone)]
-pub enum LogFormat {
-    Json,
-    Simple,
-}
-
-impl std::str::FromStr for LogFormat {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_str() {
-            "simple" => Ok(LogFormat::Simple),
-            "json" => Ok(LogFormat::Json),
-            _ => Err(format!("Unsupported variant: {}", s)),
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -402,6 +287,20 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("PATH")
             .help("Path to the log file. If provided, logs are displayed the log file, otherwise in terminal.
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
+        .arg(Arg::with_name("log-rotate-if-size-in-bytes")
+            .long("log-rotate-if-size-in-bytes")
+            .global(true)
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Used for log file rotation, if actual log file reaches this size-in-bytes, it will be rotated to '*.0.gz, .1.gz, ...'")
+            .validator(parse_validator_fn!(u64, "Value must be a valid number")))
+        .arg(Arg::with_name("log-rotate-keep-logs-number")
+            .long("log-rotate-keep-logs-number")
+            .global(true)
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Used for log file rotation, how many rotated files do we want to keep '*.0.gz, .1.gz, ...'")
+            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
         .arg(Arg::with_name("log-format")
             .long("log-format")
             .global(true)
@@ -954,16 +853,47 @@ impl Environment {
             None => std::iter::once("terminal".to_string()).collect(),
         };
 
-        let log = log_targets
+        let loggers = log_targets
             .iter()
-            .map(|name| {
-                LoggerType::from_str(name).unwrap_or_else(|_| {
+            .map(|name| match name.as_str() {
+                "terminal" => LoggerType::TerminalLogger,
+                "file" => {
+                    let log_file_path = args
+                        .value_of("log-file")
+                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_PATH);
+                    let log_file_path = log_file_path
+                        .parse::<PathBuf>()
+                        .expect("Provided value cannot be converted to path");
+
+                    let rotate_log_if_size_in_bytes = args
+                        .value_of("log-rotate-if-size-in-bytes")
+                        .map(|v| {
+                            v.parse::<u64>()
+                                .expect("Was expecting value of log-rotate-if-size-in-bytes")
+                        })
+                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_ROTATE_IF_SIZE_IN_BYTES);
+
+                    let keep_number_of_rotated_files = args
+                        .value_of("log-rotate-keep-logs-number")
+                        .map(|v| {
+                            v.parse::<u16>()
+                                .expect("Was expecting value of log-rotate-keep-logs-number")
+                        })
+                        .unwrap_or(Logging::DEFAULT_FILE_LOGGER_KEEP_NUMBER_OF_ROTATED_FILE);
+
+                    LoggerType::FileLogger(FileLoggerConfig::new(
+                        get_final_path(&tezos_data_dir, log_file_path),
+                        rotate_log_if_size_in_bytes,
+                        keep_number_of_rotated_files,
+                    ))
+                }
+                unknown_logger_type => {
                     panic!(
                         "Unknown log target {} - supported are: {:?}",
-                        &name,
+                        unknown_logger_type,
                         LoggerType::possible_values()
                     )
-                })
+                }
             })
             .collect();
 
@@ -1060,34 +990,24 @@ impl Environment {
                     .expect("Provided value cannot be converted into valid uri"),
             },
             logging: crate::configuration::Logging {
-                log,
+                slog: SlogConfig {
+                    level: args
+                        .value_of("log-level")
+                        .unwrap_or("")
+                        .parse::<slog::Level>()
+                        .expect("Was expecting one value from slog::Level"),
+                    format: args
+                        .value_of("log-format")
+                        .unwrap_or("")
+                        .parse::<LogFormat>()
+                        .expect("Was expecting 'simple' or 'json'"),
+                    log: loggers,
+                },
                 ocaml_log_enabled: args
                     .value_of("ocaml-log-enabled")
                     .unwrap_or("")
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
-                level: args
-                    .value_of("log-level")
-                    .unwrap_or("")
-                    .parse::<slog::Level>()
-                    .expect("Was expecting one value from slog::Level"),
-                format: args
-                    .value_of("log-format")
-                    .unwrap_or("")
-                    .parse::<LogFormat>()
-                    .expect("Was expecting 'simple' or 'json'"),
-                file: {
-                    let log_file_path = args.value_of("log-file").map(|v| {
-                        v.parse::<PathBuf>()
-                            .expect("Provided value cannot be converted to path")
-                    });
-
-                    if let Some(path) = log_file_path {
-                        Some(get_final_path(&tezos_data_dir, path))
-                    } else {
-                        log_file_path
-                    }
-                },
             },
             storage: {
                 let path = args
@@ -1300,53 +1220,7 @@ impl Environment {
     }
 
     pub fn create_logger(&self) -> Result<Logger, NoDrainError> {
-        let Environment { logging, .. } = self;
-        let drains: Vec<Arc<slog_async::Async>> = logging
-            .log
-            .iter()
-            .map(|log_target| match log_target {
-                LoggerType::TerminalLogger => Arc::new(create_terminal_logger!(logging.format)),
-                LoggerType::FileLogger => {
-                    let log_file = if let Some(path) = &logging.file {
-                        path.clone()
-                    } else {
-                        PathBuf::from("./tezedge.log")
-                    };
-                    Arc::new(create_file_logger!(logging.format, log_file))
-                }
-            })
-            .collect();
-
-        if drains.is_empty() {
-            Err(NoDrainError)
-        } else if drains.len() == 1 {
-            // if there is only one drain, return the logger
-            Ok(Logger::root(
-                drains[0].clone().filter_level(logging.level).fuse(),
-                slog::o!(),
-            ))
-        } else {
-            // combine 2 or more drains into Duplicates
-
-            // need an initial value for fold, create it from the first two drains in the vector
-            let initial_value =
-                Box::new(Duplicate::new(drains[0].clone(), drains[1].clone()).fuse());
-
-            // collect the leftover drains
-            let leftover_drains: Vec<Arc<slog_async::Async>> = drains.into_iter().skip(2).collect();
-
-            // fold the drains into one Duplicate struct
-            let merged_drains: Box<
-                dyn SendSyncRefUnwindSafeDrain<Ok = (), Err = Never> + UnwindSafe,
-            > = leftover_drains.into_iter().fold(initial_value, |acc, new| {
-                Box::new(Duplicate::new(Arc::new(acc), new).fuse())
-            });
-
-            Ok(Logger::root(
-                merged_drains.filter_level(logging.level).fuse(),
-                slog::o!(),
-            ))
-        }
+        self.logging.slog.create_logger()
     }
 }
 

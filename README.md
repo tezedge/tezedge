@@ -290,6 +290,7 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --ocaml-log-enabled false \
     --tezos-context-storage=irmin \
     --log terminal \
+    --log file \
     --log-level info \
     --log-format simple
 ```

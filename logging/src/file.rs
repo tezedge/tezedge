@@ -53,7 +53,7 @@ impl FileAppenderBuilder {
     /// If the number of rotated log files exceed this value, the oldest log file will be deleted.
     ///
     /// The default value is `8`.
-    pub fn rotate_keep(mut self, count: usize) -> Self {
+    pub fn rotate_keep(mut self, count: u16) -> Self {
         self.appender.rotate_keep = count;
         self
     }
@@ -81,7 +81,7 @@ pub struct FileAppender {
     truncate: bool,
     written_size: u64,
     rotate_size: u64,
-    rotate_keep: usize,
+    rotate_keep: u16,
     rotate_compress: bool,
     wait_compression: Option<mpsc::Receiver<io::Result<()>>>,
     next_reopen_check: Instant,
@@ -112,8 +112,8 @@ impl FileAppender {
             file: None,
             truncate: false,
             written_size: 0,
-            rotate_size: default_rotate_size(),
-            rotate_keep: default_rotate_keep(),
+            rotate_size: u64::MAX,
+            rotate_keep: u16::MAX,
             rotate_compress: false,
             wait_compression: None,
             next_reopen_check: Instant::now(),
@@ -178,8 +178,13 @@ impl FileAppender {
         let _ = self.file.take();
 
         for i in (1..=self.rotate_keep).rev() {
-            let from = self.rotated_path(i)?;
-            let to = self.rotated_path(i + 1)?;
+            let from = self.rotated_path(i.into())?;
+            let to = if i < u16::MAX {
+                self.rotated_path((i + 1).into())?
+            } else {
+                self.rotated_path(i.into())?
+            };
+
             if from.exists() {
                 fs::rename(from, to)?;
             }
@@ -201,7 +206,11 @@ impl FileAppender {
             }
         }
 
-        let delete_path = self.rotated_path(self.rotate_keep + 1)?;
+        let delete_path = if self.rotate_keep < u16::MAX {
+            self.rotated_path((self.rotate_keep + 1).into())?
+        } else {
+            self.rotated_path(self.rotate_keep.into())?
+        };
         if delete_path.exists() {
             fs::remove_file(delete_path)?;
         }
@@ -290,16 +299,6 @@ impl Write for FileAppender {
         }
         Ok(())
     }
-}
-
-fn default_rotate_size() -> u64 {
-    use std::u64;
-
-    u64::MAX
-}
-
-fn default_rotate_keep() -> usize {
-    8
 }
 
 #[cfg(test)]
