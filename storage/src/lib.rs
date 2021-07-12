@@ -550,15 +550,15 @@ pub mod initializer {
         log: &Logger,
     ) -> Result<bool, StorageError> {
         let mut system_info = SystemStorage::new(db);
-        let db_version_ok = match system_info.get_db_version()? {
-            Some(db_version) => db_version == expected_database_version,
+        let (db_version_ok, found_database_version) = match system_info.get_db_version()? {
+            Some(db_version) => (db_version == expected_database_version, db_version),
             None => {
                 system_info.set_db_version(expected_database_version)?;
-                true
+                (true, expected_database_version)
             }
         };
         if !db_version_ok {
-            error!(log, "Incompatible database version found. Please re-sync your node to empty storage - see configuration!");
+            error!(log, "Incompatible database version found (expected {}, found {}). Please re-sync your node to empty storage - see configuration!", expected_database_version, found_database_version);
         }
 
         let tezos_env_main_chain_id = &expected_main_chain.chain_id;
