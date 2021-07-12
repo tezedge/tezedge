@@ -81,7 +81,7 @@ pub async fn shutdown_and_update(
     tezedge_only: bool,
 ) {
     stop_with_compose(compose_file_path);
-    cleanup_docker_system();
+    // cleanup_docker_system();
     update_with_compose(compose_file_path);
     restart_stack(compose_file_path, log, cleanup_data, tezedge_only).await;
 }
@@ -100,7 +100,7 @@ pub async fn shutdown_and_update_sandbox(compose_file_path: &PathBuf, log: &Logg
 }
 
 pub fn cleanup_docker(cleanup_data: bool) {
-    cleanup_docker_system();
+    // cleanup_docker_system();
     if cleanup_data {
         cleanup_volumes();
     }
