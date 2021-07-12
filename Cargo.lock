@@ -2001,12 +2001,8 @@ dependencies = [
  "serde_json",
  "shell",
  "slog",
- "slog-async",
- "slog-json",
- "slog-term",
  "storage",
  "strum",
- "strum_macros",
  "tezos_api",
  "tezos_identity",
  "tezos_messages",
@@ -2068,7 +2064,9 @@ dependencies = [
  "nix 0.19.1",
  "serde 1.0.123",
  "slog",
+ "slog-async",
  "slog-json",
+ "slog-term",
  "tempfile",
 ]
 
