@@ -87,7 +87,7 @@ fn create_tezos_readonly_api_pool(
             env.enable_testchain,
             env.storage.context_storage_configuration.readonly(),
             &env.ffi.protocol_runner,
-            env.logging.level,
+            env.logging.slog.level,
         ),
         log,
     )
@@ -115,7 +115,7 @@ fn create_tezos_without_context_api_pool(
             env.enable_testchain,
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
-            env.logging.level,
+            env.logging.slog.level,
         ),
         log,
     )
@@ -149,7 +149,7 @@ fn create_tezos_writeable_api_pool(
             env.enable_testchain,
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
-            env.logging.level,
+            env.logging.slog.level,
         ),
         log,
     )

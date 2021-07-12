@@ -1,6 +1,6 @@
 [package]
 name = "logging"
-version = "1.6.3"
+version = "1.6.4"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -12,6 +12,8 @@ nix = "0.19"
 serde = { version = "1.0", features = ["derive"] }
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 slog-json = "2.3"
+slog-async = "2.6"
+slog-term = "2.6"
 
 [dev-dependencies]
 tempfile = "3"
