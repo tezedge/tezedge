@@ -4353,7 +4353,7 @@ clone:
 
 environment:
   NETWORK: florencenet
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BLOCK_HEAD: 20000
 
 volumes:
   - name: tools
@@ -4362,12 +4362,12 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
-  - name: tezos-data
+  - name: octez-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
   - name: build
     host:
-      path: /usr/local/etc/tezedge-ci/build
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
 
 depends_on:
   - build-tezedge-binaries
@@ -4379,6 +4379,16 @@ trigger:
 
 steps:
 
+  - name: octez-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: octez-data
+        path: /data
+    commands:
+      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+
   - name: tezedge-node
     image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
@@ -4386,7 +4396,7 @@ steps:
     detach: true
     volumes:
       - name: build
-        path: /artifacts
+        path: /build
       - name: cache
         path: /cache
       - name: tezos-data
@@ -4394,9 +4404,23 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
-      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
-      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+      - >
+        /build/build_files/light-node
+        --config-file=/build/build_files/tezedge/tezedge_drone.config
+        --identity-file=/build/build_files/identities/identity_2.json
+        --protocol-runner=/build/build_files/protocol-runner
+        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+        --rpc-port=18732 --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+
+  # bootstrap tezedge node to the target level
+  - name: bootstrapping-tezedge-target-branch
+    image: tezedge/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes http://tezedge-node:18732
 
   # run indexer
   - name: indexer
@@ -4540,7 +4564,7 @@ clone:
 
 environment:
   NETWORK: florencenet
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BLOCK_HEAD: 20000
 
 volumes:
   - name: tools
@@ -4549,14 +4573,14 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
-  - name: tezos-data
+  - name: octez-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
   - name: conseil-sql
     temp: {}
   - name: build
     host:
-      path: /usr/local/etc/tezedge-ci/build
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
 
 depends_on:
   - build-tezedge-binaries
@@ -4567,6 +4591,49 @@ trigger:
     - develop
 
 steps:
+
+  - name: octez-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: octez-data
+        path: /data
+    commands:
+      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+
+  - name: tezedge-node
+    image: tezedge/tezedge-ci-builder:latest
+    pull: if-not-exists
+    user: root
+    detach: true
+    volumes:
+      - name: build
+        path: /build
+      - name: cache
+        path: /cache
+      - name: tezos-data
+        path: /data
+    environment:
+      SODIUM_USE_PKG_CONFIG: 1
+    commands:
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+      - >
+        /build/build_files/light-node
+        --config-file=/build/build_files/tezedge/tezedge_drone.config
+        --identity-file=/build/build_files/identities/identity_2.json
+        --protocol-runner=/build/build_files/protocol-runner
+        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+        --rpc-port=18732 --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+
+  # bootstrap tezedge node to the target level
+  - name: bootstrapping-tezedge-target-branch
+    image: tezedge/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes http://tezedge-node:18732
 
   - name: conseil-postgres
     image: postgres:11.9
@@ -4579,25 +4646,6 @@ steps:
     volumes:
       - name: conseil-sql
         path: /docker-entrypoint-initdb.d/
-
-  - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
-    pull: if-not-exists
-    user: root
-    detach: true
-    volumes:
-      - name: build
-        path: /artifacts
-      - name: cache
-        path: /cache
-      - name: tezos-data
-        path: /home/tezos/data
-    environment:
-      SODIUM_USE_PKG_CONFIG: 1
-    commands:
-      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
-      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
 
   - name: conseil-lorre
     image: cryptonomictech/conseil:latest
@@ -4743,7 +4791,7 @@ clone:
 
 environment:
   NETWORK: florencenet
-  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+  BLOCK_HEAD: 20000
 
 volumes:
   - name: tools
@@ -4752,14 +4800,14 @@ volumes:
   - name: cache
     host:
       path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
-  - name: tezos-data
+  - name: octez-data
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
   - name: conseil-sql
     temp: {}
   - name: build
     host:
-      path: /usr/local/etc/tezedge-ci/build
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
 
 depends_on:
   - build-tezedge-binaries
@@ -4771,6 +4819,16 @@ trigger:
 
 steps:
 
+  - name: octez-node
+    user: root
+    image: tezos/tezos:v9-release
+    detach: true
+    volumes:
+      - name: octez-data
+        path: /data
+    commands:
+      - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+
   - name: tezedge-node
     image: tezedge/tezedge-ci-builder:latest
     pull: if-not-exists
@@ -4778,17 +4836,32 @@ steps:
     detach: true
     volumes:
       - name: build
-        path: /artifacts
+        path: /build
       - name: cache
         path: /cache
       - name: tezos-data
-        path: /home/tezos/data
+        path: /data
     environment:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
-      - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner /
-      - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$$(rustc --print sysroot)"
-      - $${BUILD_ARTIFACTS_PATH}/build_files/light-node --config-file="$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --rpc-port=18732 --tezos-data-dir /home/tezos/data --bootstrap-db-path bootstrap_db --identity-file identity.json --disable-bootstrap-lookup  --peer-thresh-low=0 --peer-thresh-high=5 --network "$${NETWORK}" --protocol-runner /protocol-runner --tezos-context-storage=irmin
+      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+      - >
+        /build/build_files/light-node
+        --config-file=/build/build_files/tezedge/tezedge_drone.config
+        --identity-file=/build/build_files/identities/identity_2.json
+        --protocol-runner=/build/build_files/protocol-runner
+        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+        --rpc-port=18732 --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732"
+
+  # bootstrap tezedge node to the target level
+  - name: bootstrapping-tezedge-target-branch
+    image: tezedge/tezos-node-bootstrap:latest
+    commands:
+      - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes http://tezedge-node:18732
+
 
   - name: tzkt-postgres
     image: postgres:13
