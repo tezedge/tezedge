@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
-## [1.6.3] - 2021-07-12
+## [1.6.4] - 2021-07-12
 
 ### Changed
 
@@ -442,8 +442,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.3...HEAD
-[1.6.3]: https://github.com/tezedge/tezedge/releases/v1.6.3
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.4...HEAD
+[1.6.4]: https://github.com/tezedge/tezedge/releases/v1.6.4
 [1.6.2]: https://github.com/tezedge/tezedge/releases/v1.6.2
 [1.6.1]: https://github.com/tezedge/tezedge/releases/v1.6.1
 [1.6.0]: https://github.com/tezedge/tezedge/releases/v1.6.0
