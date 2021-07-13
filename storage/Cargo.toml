@@ -1,6 +1,6 @@
 [package]
 name = "storage"
-version = "1.6.4"
+version = "1.6.5"
 authors = ["Tomas Sedlak <tomas.sedlak@simplestaking.com>"]
 edition = "2018"
 
@@ -27,7 +27,7 @@ tezos_messages = { path = "../tezos/messages" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
-slog-term = "2.6"
+slog-term = "2.8"
 slog-async = "2.6"
 
 [[bench]]

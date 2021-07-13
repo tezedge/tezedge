@@ -630,6 +630,10 @@ impl Actor for PeerManager {
     }
 
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        info!(ctx.system.log(), "Peer manager started";
+                                "peers_threshold" => format!("{:?}", &self.threshold),
+                                "num_of_peers_for_bootstrap_threshold" => self.threshold.num_of_peers_for_bootstrap_threshold());
+
         if let Err(e) = self.discover_peers(&ctx.system.log()) {
             warn!(ctx.system.log(), "Failed to discovery peers on startup"; "reason" => format!("{:?}", e));
         }

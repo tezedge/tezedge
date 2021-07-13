@@ -111,7 +111,8 @@ fn prepare_protocol_context(
     tezos_env: &TezosEnvironment,
     commit_genesis: bool,
 ) -> InitProtocolContextResult {
-    let cfg = environment::TEZOS_ENV
+    let default_networks = environment::default_networks();
+    let cfg = default_networks
         .get(tezos_env)
         .expect("no tezos environment configured");
 
