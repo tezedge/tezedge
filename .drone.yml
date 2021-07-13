@@ -478,7 +478,7 @@ steps:
   commands:
     - export LD_LIBRARY_PATH=$${BUILD_ARTIFACTS_PATH}/build_files/ffi && echo $${LD_LIBRARY_PATH}
     - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
-    - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+    - $${TEST_ARTIFACTS_PATH}/tests/protocol_runner_test --nocapture --ignored test_multiple_protocol_runners_with_one_write_multiple_read_init_context
 
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
 # scenario accordingly

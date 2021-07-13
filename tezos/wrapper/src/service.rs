@@ -35,7 +35,7 @@ lazy_static! {
     /// so this lock ensures, that in the whole application at least one 'write init_protocol_context' was successfull, which means,
     /// that FFI context has created required files, so after that we can let continue other threads to initialize readonly context
     ///
-    /// see also: test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+    /// see also: test_multiple_protocol_runners_with_one_write_multiple_read_init_context
     static ref AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
 }
 
@@ -1179,6 +1179,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     pub fn try_new(
         endpoint_name: &str,
         configuration: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
     ) -> Result<ProtocolRunnerEndpoint<Runner>, IpcError> {
         let cmd_server = IpcCmdServer::try_new(configuration.clone())?;
@@ -1188,6 +1189,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
                 configuration,
                 cmd_server.0.client().path(),
                 endpoint_name.to_string(),
+                tokio_runtime,
             ),
             commands: cmd_server,
             log,
@@ -1197,6 +1199,6 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     /// Starts protocol runner sub-process just once and you can take care of it
     pub fn start(&self) -> Result<Runner::Subprocess, ProtocolRunnerError> {
         debug!(self.log, "Starting protocol runner process");
-        self.runner.spawn()
+        self.runner.spawn(self.log.clone())
     }
 }

@@ -4130,7 +4130,7 @@ dependencies = [
  "tezos_api",
  "tezos_messages",
  "tezos_new_context",
- "wait-timeout",
+ "tokio",
 ]
 
 [[package]]
