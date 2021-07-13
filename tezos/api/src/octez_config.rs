@@ -5,8 +5,9 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::environment::TezosEnvironmentConfiguration;
+use crate::environment::{TezosEnvironmentConfiguration, TezosNetworkConfigurationError};
 use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Deserialize, Debug)]
 pub struct OctezConfig {
@@ -14,8 +15,10 @@ pub struct OctezConfig {
 }
 
 impl OctezConfig {
-    pub fn get_custom_network(&self) -> TezosEnvironmentConfiguration {
-        self.network.clone().into()
+    pub fn take_network(
+        self,
+    ) -> Result<TezosEnvironmentConfiguration, TezosNetworkConfigurationError> {
+        self.network.try_into()
     }
 }
 
@@ -45,9 +48,11 @@ struct UserActivatedProtocolUpgrades {
     replacement_protocol: String,
 }
 
-impl From<OctezCustomNetwork> for TezosEnvironmentConfiguration {
-    fn from(octez: OctezCustomNetwork) -> Self {
-        Self {
+impl TryFrom<OctezCustomNetwork> for TezosEnvironmentConfiguration {
+    type Error = TezosNetworkConfigurationError;
+
+    fn try_from(octez: OctezCustomNetwork) -> Result<Self, Self::Error> {
+        Ok(Self {
             genesis: octez.genesis.into(),
             bootstrap_lookup_addresses: octez.default_bootstrap_peers,
             version: octez.chain_name,
@@ -69,8 +74,11 @@ impl From<OctezCustomNetwork> for TezosEnvironmentConfiguration {
                     .collect(),
             },
             enable_testchain: false,
-            patch_context_genesis_parameters: octez.genesis_parameters.map(|gp| gp.into()),
-        }
+            patch_context_genesis_parameters: match octez.genesis_parameters {
+                Some(gp) => Some(gp.try_into()?),
+                None => None,
+            },
+        })
     }
 }
 
@@ -103,11 +111,14 @@ struct OctezGenesisParameters {
     values: HashMap<String, String>,
 }
 
-impl From<OctezGenesisParameters> for PatchContext {
-    fn from(octez: OctezGenesisParameters) -> Self {
-        Self {
+impl TryFrom<OctezGenesisParameters> for PatchContext {
+    type Error = TezosNetworkConfigurationError;
+
+    fn try_from(octez: OctezGenesisParameters) -> Result<Self, Self::Error> {
+        Ok(Self {
             key: octez.context_key,
-            json: serde_json::to_string(&octez.values).unwrap(), // TODO - TE-578: remove unwrap
-        }
+            json: serde_json::to_string(&octez.values)
+                .map_err(|e| TezosNetworkConfigurationError::ParseError { reason: e })?,
+        })
     }
 }

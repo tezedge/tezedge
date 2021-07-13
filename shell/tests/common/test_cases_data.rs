@@ -3,6 +3,7 @@
 
 //! Predefined data sets as callback functions for test node peer
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Once;
 use std::{env, fs};
@@ -10,6 +11,7 @@ use std::{env, fs};
 use lazy_static::lazy_static;
 use slog::{info, Logger};
 
+use tezos_api::environment::{default_networks, TezosEnvironment, TezosEnvironmentConfiguration};
 use tezos_api::ffi::PatchContext;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::{
@@ -24,6 +26,7 @@ lazy_static! {
     pub static ref DB_1326_CARTHAGENET: Db = Db::init_db(
         crate::common::samples::read_data_apply_block_request_until_1326(),
     );
+    pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = default_networks();
 }
 
 fn init_data_db_1326_carthagenet(log: &Logger) -> &'static Db {
@@ -41,9 +44,10 @@ pub mod dont_serve_current_branch_messages {
 
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
+    use crate::common::test_data::Db;
+
     // use catcommon::test_cases_data::{full_data, init_data_db_1326_carthagenet};
     use super::*;
-    use crate::common::test_data::Db;
 
     pub fn init_data(log: &Logger) -> &'static Db {
         init_data_db_1326_carthagenet(log)
@@ -61,8 +65,9 @@ pub mod current_branch_on_level_3 {
 
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
-    use super::*;
     use crate::common::test_data::Db;
+
+    use super::*;
 
     pub fn init_data(log: &Logger) -> &'static Db {
         init_data_db_1326_carthagenet(log)
@@ -80,8 +85,9 @@ pub mod current_branch_on_level_1324 {
 
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
-    use super::*;
     use crate::common::test_data::Db;
+
+    use super::*;
 
     pub fn init_data(log: &Logger) -> &'static Db {
         init_data_db_1326_carthagenet(log)
@@ -177,8 +183,9 @@ pub mod sandbox_branch_2_level4 {
     use tezos_api::ffi::PatchContext;
     use tezos_messages::p2p::encoding::prelude::PeerMessageResponse;
 
-    use super::*;
     use crate::common::test_data::Db;
+
+    use super::*;
 
     lazy_static! {
         pub static ref DB: Db = Db::init_db(crate::common::samples::read_data_zip(

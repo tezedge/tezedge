@@ -27,7 +27,7 @@ tezos_messages = { path = "../tezos/messages" }
 
 # Context actions replayer binary and his dependencies
 clap = "2.33"
-slog-term = "2.6"
+slog-term = "2.8"
 slog-async = "2.6"
 
 [[bench]]

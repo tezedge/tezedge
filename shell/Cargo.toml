@@ -37,7 +37,7 @@ tezos_wrapper = { path = "../tezos/wrapper" }
 r2d2 = "0.8.9"
 serial_test = "0.5"
 slog-async = "2.6"
-slog-term = "2.6"
+slog-term = "2.8"
 fs_extra = "1.2.0"
 zip = "0.5.5"
 tokio = { version = "1.2", features = ["sync"] }

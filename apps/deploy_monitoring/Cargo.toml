@@ -23,7 +23,7 @@ serde_json = "1.0"
 shiplift = { git = "https://github.com/tezedge/shiplift.git", branch = "master" }
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
-slog-term = "2.6"
+slog-term = "2.8"
 sysinfo = "0.16"
 tokio = { version = "1.2", features = ["full"] }
 wait-timeout = "0.2"

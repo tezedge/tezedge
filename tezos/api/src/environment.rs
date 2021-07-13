@@ -4,7 +4,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::RwLock;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -16,7 +15,6 @@ use std::{
 use chrono::prelude::*;
 use chrono::ParseError;
 use failure::Fail;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use slog::{debug, info, Logger};
 use strum::IntoEnumIterator;
@@ -30,12 +28,6 @@ use tezos_messages::p2p::encoding::prelude::{BlockHeader, BlockHeaderBuilder};
 
 use crate::ffi::{GenesisChain, PatchContext, ProtocolOverrides};
 use crate::octez_config::OctezConfig;
-
-lazy_static! {
-    pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = init();
-    pub static ref CUSTOM_NETWORK_CONFIGURATION: RwLock<Option<TezosEnvironmentConfiguration>> =
-        RwLock::new(None);
-}
 
 pub const PROTOCOL_HASH_ZERO_BASE58_CHECK: &str =
     "PrihK96nBAFSxVL1GLJTVhu9YnzkMFiBeuJRPA8NwuZVZCE1L6i";
@@ -210,18 +202,9 @@ impl FromStr for TezosEnvironment {
     }
 }
 
-/// Initializes hard-code configuration according to different Tezos git branches (genesis_chain.ml, node_config_file.ml)
-fn init() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
+/// Initializes hard-code default various configurations according to different Tezos git branches (genesis_chain.ml, node_config_file.ml)
+pub fn default_networks() -> HashMap<TezosEnvironment, TezosEnvironmentConfiguration> {
     let mut env: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> = HashMap::new();
-
-    // Set the custom network settings if available
-    for custom in CUSTOM_NETWORK_CONFIGURATION
-        .read()
-        .expect("Couldn't lock the custom network handle for reading")
-        .iter()
-    {
-        env.insert(TezosEnvironment::Custom, custom.clone());
-    }
 
     env.insert(
         TezosEnvironment::Mainnet,
@@ -597,9 +580,9 @@ impl TezosEnvironmentConfiguration {
         Self::try_from_json(&contents)
     }
 
-    fn try_from_json(json: &str) -> Result<Self, TezosNetworkConfigurationError> {
+    pub fn try_from_json(json: &str) -> Result<Self, TezosNetworkConfigurationError> {
         let octez_config: OctezConfig = serde_json::from_str(json)?;
-        Ok(octez_config.get_custom_network())
+        octez_config.take_network()
     }
 
     /// Resolves genesis hash from configuration of GenesisChain.block
@@ -955,10 +938,12 @@ mod tests {
 
     #[test]
     fn test_parse_bootstrap_addr_port_for_all_environment() {
+        let default_networks = default_networks();
+
         TezosEnvironment::iter()
             .filter(|te| *te != TezosEnvironment::Custom)
             .for_each(|net| {
-                let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                let tezos_env: &TezosEnvironmentConfiguration = default_networks
                     .get(&net)
                     .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 
@@ -971,10 +956,12 @@ mod tests {
 
     #[test]
     fn test_network_version_length() {
+        let default_networks = default_networks();
+
         TezosEnvironment::iter()
             .filter(|te| *te != TezosEnvironment::Custom)
             .for_each(|net| {
-                let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+                let tezos_env: &TezosEnvironmentConfiguration = default_networks
                     .get(&net)
                     .unwrap_or_else(|| panic!("no tezos environment configured for: {:?}", &net));
 

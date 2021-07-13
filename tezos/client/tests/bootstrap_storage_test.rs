@@ -7,8 +7,8 @@ use serial_test::serial;
 
 use crypto::hash::ChainId;
 use tezos_api::environment::{
-    get_empty_operation_list_list_hash, GenesisAdditionalData, TezosEnvironmentConfiguration,
-    TEZOS_ENV,
+    default_networks, get_empty_operation_list_list_hash, GenesisAdditionalData,
+    TezosEnvironmentConfiguration,
 };
 use tezos_api::ffi::{
     ApplyBlockError, ApplyBlockRequest, BeginApplicationRequest, InitProtocolContextResult,
@@ -40,7 +40,8 @@ fn init_test_protocol_context(
     GenesisAdditionalData,
     InitProtocolContextResult,
 ) {
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let default_networks = default_networks();
+    let tezos_env: &TezosEnvironmentConfiguration = default_networks
         .get(&test_data::TEZOS_NETWORK)
         .expect("no tezos environment configured");
 

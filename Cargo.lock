@@ -3942,7 +3942,6 @@ dependencies = [
  "derive_builder",
  "failure",
  "hex",
- "lazy_static",
  "nom 6.1.2",
  "ocaml-interop",
  "serde 1.0.123",
