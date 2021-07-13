@@ -27,7 +27,7 @@ use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
 use storage::{BlockMetaStorage, BlockMetaStorageReader};
-use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::current_head::CurrentHeadMessage;
@@ -67,7 +67,7 @@ fn test_process_current_branch_on_level3_then_current_head_level4() -> Result<()
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_3::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
@@ -145,7 +145,7 @@ fn test_process_bootstrapping_current_branch_on_level3_then_current_heads(
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_3::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
@@ -269,7 +269,7 @@ fn test_process_reorg_with_different_current_branches() -> Result<(), failure::E
         let (db, patch_context) = common::test_cases_data::sandbox_branch_1_level3::init_data(&log);
         (db.tezos_env, patch_context)
     };
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&tezos_env)
         .expect("no environment configuration");
 
@@ -377,7 +377,7 @@ fn test_process_current_heads_to_level3() -> Result<(), failure::Error> {
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::dont_serve_current_branch_messages::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
@@ -470,7 +470,7 @@ fn test_process_current_head_with_malformed_blocks_and_check_blacklist(
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_3::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
@@ -624,7 +624,7 @@ fn process_bootstrap_level1324_and_mempool_for_level1325(
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_1324::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 
@@ -854,7 +854,7 @@ fn test_process_bootstrap_level1324_and_generate_action_file() -> Result<(), fai
     let log = common::create_logger(log_level);
 
     let db = common::test_cases_data::current_branch_on_level_1324::init_data(&log);
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&db.tezos_env)
         .expect("no environment configuration");
 

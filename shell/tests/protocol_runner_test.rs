@@ -12,7 +12,7 @@ use failure::format_err;
 use serial_test::serial;
 use slog::{error, info, o, warn, Level, Logger};
 
-use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
+use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
     InitProtocolContextResult, TezosContextIrminStorageConfiguration,
@@ -119,7 +119,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
     context_db_path: PathBuf,
 ) -> Result<(IpcCmdServer, Runner::Subprocess, String), failure::Error> {
     // environement
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = test_data::TEZOS_ENV
         .get(&test_data::TEZOS_NETWORK)
         .expect("no environment configuration");
 
@@ -183,7 +183,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     let number_of_endpoints = 3;
 
     // environement
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = test_data::TEZOS_ENV
         .get(&test_data::TEZOS_NETWORK)
         .expect("no environment configuration");
 
@@ -371,13 +371,22 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
 }
 
 mod test_data {
+    use std::collections::HashMap;
     use std::collections::VecDeque;
 
+    use lazy_static::lazy_static;
     use rand::Rng;
 
-    use tezos_api::environment::TezosEnvironment;
+    use tezos_api::environment::{
+        default_networks, TezosEnvironment, TezosEnvironmentConfiguration,
+    };
 
     pub const TEZOS_NETWORK: TezosEnvironment = TezosEnvironment::Carthagenet;
+
+    lazy_static! {
+        pub static ref TEZOS_ENV: HashMap<TezosEnvironment, TezosEnvironmentConfiguration> =
+            default_networks();
+    }
 
     /// Initialize all to readonly true and one set randomly to as 'write/false'
     pub fn init_flags_readonly(count: i32) -> VecDeque<bool> {

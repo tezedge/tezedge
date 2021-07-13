@@ -30,6 +30,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.6.5] - 2021-07-13
+
+### Added
+
+- Add support for custom networks specified by a config file
+- Log configuration on startup
+
+### Fixed
+
+- Storage db compatibility for 19 vs 20 for snapshots
+
 ## [1.6.4] - 2021-07-12
 
 ### Changed
@@ -442,7 +453,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.4...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.5...HEAD
+[1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.5
 [1.6.4]: https://github.com/tezedge/tezedge/releases/v1.6.4
 [1.6.2]: https://github.com/tezedge/tezedge/releases/v1.6.2
 [1.6.1]: https://github.com/tezedge/tezedge/releases/v1.6.1

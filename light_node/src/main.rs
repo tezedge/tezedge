@@ -31,7 +31,6 @@ use storage::{
 };
 use storage::{resolve_storage_init_chain_data, BlockStorage, PersistentStorage, StorageInitInfo};
 use tezos_api::environment;
-use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_api::ffi::TezosRuntimeConfiguration;
 use tezos_identity::Identity;
 use tezos_wrapper::ProtocolEndpointConfiguration;
@@ -71,7 +70,6 @@ fn create_tezos_readonly_api_pool(
     pool_name: &str,
     pool_cfg: TezosApiConnectionPoolConfiguration,
     env: &crate::configuration::Environment,
-    tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_with_readonly_context(
@@ -83,7 +81,7 @@ fn create_tezos_readonly_api_pool(
                 debug_mode: false,
                 compute_context_action_tree_hashes: false,
             },
-            tezos_env,
+            env.tezos_network_config.clone(),
             env.enable_testchain,
             env.storage.context_storage_configuration.readonly(),
             &env.ffi.protocol_runner,
@@ -99,7 +97,6 @@ fn create_tezos_without_context_api_pool(
     pool_name: &str,
     pool_cfg: TezosApiConnectionPoolConfiguration,
     env: &crate::configuration::Environment,
-    tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
@@ -111,7 +108,7 @@ fn create_tezos_without_context_api_pool(
                 debug_mode: false,
                 compute_context_action_tree_hashes: false,
             },
-            tezos_env,
+            env.tezos_network_config.clone(),
             env.enable_testchain,
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
@@ -125,7 +122,6 @@ fn create_tezos_without_context_api_pool(
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 fn create_tezos_writeable_api_pool(
     env: &crate::configuration::Environment,
-    tezos_env: TezosEnvironmentConfiguration,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
@@ -145,7 +141,7 @@ fn create_tezos_writeable_api_pool(
                 compute_context_action_tree_hashes: env.storage.compute_context_action_tree_hashes,
                 debug_mode: false,
             },
-            tezos_env,
+            env.tezos_network_config.clone(),
             env.enable_testchain,
             env.storage.context_storage_configuration.clone(),
             &env.ffi.protocol_runner,
@@ -157,7 +153,6 @@ fn create_tezos_writeable_api_pool(
 
 fn block_on_actors(
     env: crate::configuration::Environment,
-    tezos_env: &TezosEnvironmentConfiguration,
     init_storage_data: StorageInitInfo,
     identity: Arc<Identity>,
     persistent_storage: PersistentStorage,
@@ -168,7 +163,7 @@ fn block_on_actors(
     let is_sandbox = env.tezos_network == environment::TezosEnvironment::Sandbox;
     // version
     let shell_compatibility_version = Arc::new(ShellCompatibilityVersion::new(
-        tezos_env.version.clone(),
+        env.tezos_network_config.version.clone(),
         shell::SUPPORTED_DISTRIBUTED_DB_VERSION.to_vec(),
         shell::SUPPORTED_P2P_VERSION.to_vec(),
     ));
@@ -177,7 +172,7 @@ fn block_on_actors(
 
     // pool and event server dedicated for applying blocks to chain
     let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(&env, tezos_env.clone(), log.clone())
+        create_tezos_writeable_api_pool(&env, log.clone())
             .expect("Failed to initialize writable API pool"),
     );
 
@@ -187,7 +182,6 @@ fn block_on_actors(
             "tezos_readonly_api_pool",
             env.ffi.tezos_readonly_api_pool.clone(),
             &env,
-            tezos_env.clone(),
             log.clone(),
         )
         .expect("Failed to initialize read-only API pool"),
@@ -197,7 +191,6 @@ fn block_on_actors(
             "tezos_readonly_prevalidation_api",
             env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
             &env,
-            tezos_env.clone(),
             log.clone(),
         )
         .expect("Failed to initialize read-only prevalidation API pool"),
@@ -207,7 +200,6 @@ fn block_on_actors(
             "tezos_without_context_api_pool",
             env.ffi.tezos_without_context_api_pool.clone(),
             &env,
-            tezos_env.clone(),
             log.clone(),
         )
         .expect("Failed to initialize API pool without context"),
@@ -215,7 +207,9 @@ fn block_on_actors(
 
     info!(log, "Protocol runners initialized");
 
-    info!(log, "Initializing actors... (5/5)");
+    info!(log, "Initializing actors... (5/5)";
+               "shell_compatibility_version" => format!("{:?}", &shell_compatibility_version),
+               "is_sandbox" => is_sandbox);
 
     // create partial (global) states for sharing between threads/actors
     let local_current_head_state = init_current_head_state();
@@ -267,7 +261,7 @@ fn block_on_actors(
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
-        tezos_env.clone(),
+        env.tezos_network_config.clone(),
         log.clone(),
     )
     .expect("Failed to create chain feeder");
@@ -315,7 +309,7 @@ fn block_on_actors(
         tezos_readonly_api_pool.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
         tezos_without_context_api_pool.clone(),
-        tezos_env.clone(),
+        env.tezos_network_config.clone(),
         Arc::new(shell_compatibility_version.to_network_version()),
         &init_storage_data,
         env.storage
@@ -542,14 +536,6 @@ fn collect_replayed_blocks(
 fn main() {
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
-    let tezos_env = environment::TEZOS_ENV
-        .get(&env.tezos_network)
-        .unwrap_or_else(|| {
-            panic!(
-                "No tezos environment version configured for: {:?}",
-                env.tezos_network
-            )
-        });
 
     // Creates loggers
     let log = match env.create_logger() {
@@ -560,12 +546,22 @@ fn main() {
         ),
     };
 
+    // Enable core dumps and increase open files limit
+    system::init_limits(&log);
+
+    // log configuration
+    info!(
+        log,
+        "Loaded configuration";
+        "cfg" => &env
+    );
+
     // check deprecated networks
     info!(
         log,
         "Configured network {:?} -> {}",
         env.tezos_network.supported_values(),
-        tezos_env.version
+        env.tezos_network_config.version
     );
     check_deprecated_network(&env, &log);
 
@@ -584,7 +580,9 @@ fn main() {
     info!(log, "Loading identity... (2/5)");
     let tezos_identity = match identity::ensure_identity(&env.identity, &log) {
         Ok(identity) => {
-            info!(log, "Identity loaded from file"; "file" => env.identity.identity_json_file_path.as_path().display().to_string());
+            info!(log, "Identity loaded from file";
+                       "file" => env.identity.identity_json_file_path.as_path().display().to_string(),
+                       "peer_id" => identity.peer_id.to_base58_check());
             if env.validate_cfg_identity_and_stop {
                 info!(log, "Configuration and identity is ok!");
                 return;
@@ -604,9 +602,6 @@ fn main() {
         }
     };
 
-    // Enable core dumps and increase open files limit
-    system::init_limits(&log);
-
     // create/initialize databases
     info!(log, "Loading databases... (3/5)");
 
@@ -614,8 +609,10 @@ fn main() {
     // IMPORTANT: Cache object must live at least as long as DB (returned by open_kv)
     let mut caches = GlobalRocksDbCacheHolder::with_capacity(3);
     let main_chain = MainChain::new(
-        tezos_env.main_chain_id().expect("Failed to decode chainId"),
-        tezos_env.version.clone(),
+        env.tezos_network_config
+            .main_chain_id()
+            .expect("Failed to decode chainId"),
+        env.tezos_network_config.version.clone(),
     );
 
     // initialize dbs
@@ -658,7 +655,7 @@ fn main() {
         let persistent_storage = PersistentStorage::new(maindb, commit_logs, sequences);
 
         match resolve_storage_init_chain_data(
-            &tezos_env,
+            &env.tezos_network_config,
             &env.storage.db_path,
             &env.storage.context_storage_configuration,
             &env.storage.patch_context,
@@ -675,7 +672,6 @@ fn main() {
                 info!(log, "Databases loaded successfully");
                 block_on_actors(
                     env,
-                    tezos_env,
                     init_data,
                     Arc::new(tezos_identity),
                     persistent_storage,

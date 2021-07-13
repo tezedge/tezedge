@@ -21,7 +21,7 @@ use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};
 use storage::Replay;
-use tezos_api::environment;
+use tezos_api::environment::{self, TezosEnvironmentConfiguration};
 use tezos_api::environment::{TezosEnvironment, ZcashParams};
 use tezos_api::ffi::TezosContextTezEdgeStorageConfiguration;
 use tezos_api::ffi::{
@@ -135,12 +135,45 @@ pub struct Environment {
     pub replay: Option<Replay>,
 
     pub tezos_network: TezosEnvironment,
+    pub tezos_network_config: TezosEnvironmentConfiguration,
+
     pub enable_testchain: bool,
     pub tokio_threads: usize,
 
     /// This flag is used, just for to stop node immediatelly after generate identity,
     /// to prevent and initialize actors and create data (except identity)
     pub validate_cfg_identity_and_stop: bool,
+}
+
+impl slog::Value for Environment {
+    fn serialize(
+        &self,
+        _record: &slog::Record,
+        _: slog::Key,
+        serializer: &mut dyn slog::Serializer,
+    ) -> slog::Result {
+        serializer.emit_arguments("p2p", &format_args!("{:?}", self.p2p))?;
+        serializer.emit_arguments("rpc", &format_args!("{:?}", self.rpc))?;
+        serializer.emit_arguments("logging", &format_args!("{:?}", self.logging))?;
+        serializer.emit_arguments("storage", &format_args!("{:?}", self.storage))?;
+        serializer.emit_arguments("identity", &format_args!("{:?}", self.identity))?;
+        serializer.emit_arguments("ffi", &format_args!("{:?}", self.ffi))?;
+        serializer.emit_arguments("replay", &format_args!("{:?}", self.replay))?;
+        serializer.emit_arguments(
+            "enable_testchain",
+            &format_args!("{:?}", self.enable_testchain),
+        )?;
+        serializer.emit_arguments("tokio_threads", &format_args!("{:?}", self.tokio_threads))?;
+        serializer.emit_arguments(
+            "validate_cfg_identity_and_stop",
+            &format_args!("{:?}", self.validate_cfg_identity_and_stop),
+        )?;
+        serializer.emit_arguments(
+            "tezos_network_config",
+            &format_args!("{:?}", self.tezos_network_config),
+        )?;
+        serializer.emit_arguments("tezos_network", &format_args!("{:?}", self.tezos_network))
+    }
 }
 
 macro_rules! parse_validator_fn {
@@ -342,6 +375,14 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .possible_values(&TezosEnvironment::possible_values())
             .help("Choose the Tezos environment")
+        )
+        .arg(Arg::with_name("custom-network-file")
+            .long("custom-network-file")
+            .global(true)
+            .takes_value(true)
+            .required_if("network", "custom")
+            .value_name("PATH")
+            .help("Path to a JSON file defining a custom network using the same format used by Octez")
         )
         .arg(Arg::with_name("p2p-port")
             .long("p2p-port")
@@ -663,6 +704,39 @@ fn pool_cfg(
     }
 }
 
+fn resolve_tezos_network_config(
+    args: &clap::ArgMatches,
+) -> (TezosEnvironment, TezosEnvironmentConfiguration) {
+    let tezos_network: TezosEnvironment = args
+        .value_of("network")
+        .expect("Network is required")
+        .parse::<TezosEnvironment>()
+        .expect("Was expecting one value from TezosEnvironment");
+
+    if matches!(tezos_network, TezosEnvironment::Custom) {
+        // If a custom network file has been provided, parse it and set the custom network
+        if let Some(custom_network_file) = args.value_of("custom-network-file") {
+            (
+                tezos_network,
+                TezosEnvironmentConfiguration::try_from_config_file(custom_network_file)
+                    .expect("Failed to parse tezos network configuration"),
+            )
+        } else {
+            panic!("Missing `--custom-network-file` argument with custom network configuration for selected network `{:?}`", tezos_network)
+        }
+    } else {
+        // check in defaults
+        if let Some(tezos_network_config) = environment::default_networks().get(&tezos_network) {
+            (tezos_network, tezos_network_config.clone())
+        } else {
+            panic!(
+                "Missing default configuration for selected network `{:?}`",
+                tezos_network
+            )
+        }
+    }
+}
+
 // Explicitly validates all required parameters
 // Flag Required=true must be handled separately as we parse args twice,
 // once to see only if config-file arg is present and second time to parse all args
@@ -791,11 +865,10 @@ impl Environment {
         // Validates required flags of args
         validate_required_args(&args);
 
-        let tezos_network: TezosEnvironment = args
-            .value_of("network")
-            .expect("Network is required")
-            .parse::<TezosEnvironment>()
-            .expect("Was expecting one value from TezosEnvironment");
+        let (tezos_network, tezos_network_config): (
+            TezosEnvironment,
+            TezosEnvironmentConfiguration,
+        ) = resolve_tezos_network_config(&args);
 
         let context_storage: TezosContextStorageChoice = args
             .value_of("tezos-context-storage")
@@ -921,13 +994,7 @@ impl Environment {
                     })
                     .unwrap_or_else(|| {
                         if !args.is_present("peers") && !args.is_present("private-node") {
-                            match environment::TEZOS_ENV.get(&tezos_network) {
-                                None => panic!(
-                                    "No tezos environment configured for: {:?}",
-                                    tezos_network
-                                ),
-                                Some(cfg) => cfg.bootstrap_lookup_addresses.clone(),
-                            }
+                            tezos_network_config.bootstrap_lookup_addresses.clone()
                         } else {
                             Vec::with_capacity(0)
                         }
@@ -1145,13 +1212,9 @@ impl Environment {
                             }
                             None => {
                                 // check default configuration, if any
-                                match environment::TEZOS_ENV.get(&tezos_network) {
-                                    None => panic!(
-                                        "No tezos environment configured for: {:?}",
-                                        tezos_network
-                                    ),
-                                    Some(cfg) => cfg.patch_context_genesis_parameters.clone(),
-                                }
+                                tezos_network_config
+                                    .patch_context_genesis_parameters
+                                    .clone()
                             }
                         }
                     },
@@ -1210,6 +1273,7 @@ impl Environment {
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),
             tezos_network,
+            tezos_network_config,
             enable_testchain: args
                 .value_of("enable-testchain")
                 .unwrap_or("false")
@@ -1223,6 +1287,3 @@ impl Environment {
         self.logging.slog.create_logger()
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct InvalidRecorderConfigurationError(String);

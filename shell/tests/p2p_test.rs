@@ -19,7 +19,7 @@ use networking::ShellCompatibilityVersion;
 use shell::peer_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::tests_common::TmpStorage;
-use tezos_api::environment::{TezosEnvironmentConfiguration, TEZOS_ENV};
+use tezos_api::environment::TezosEnvironmentConfiguration;
 
 pub mod common;
 
@@ -78,7 +78,7 @@ fn test_proof_of_work(
             common::test_cases_data::sandbox_branch_1_no_level::init_data(&log);
         (db.tezos_env, patch_context)
     };
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&tezos_env)
         .expect("no environment configuration");
 
@@ -142,7 +142,7 @@ fn test_peer_threshold() -> Result<(), failure::Error> {
         let (db, patch_context) = common::test_cases_data::sandbox_branch_1_level3::init_data(&log);
         (db.tezos_env, patch_context)
     };
-    let tezos_env: &TezosEnvironmentConfiguration = TEZOS_ENV
+    let tezos_env: &TezosEnvironmentConfiguration = common::test_cases_data::TEZOS_ENV
         .get(&tezos_env)
         .expect("no environment configuration");
 
