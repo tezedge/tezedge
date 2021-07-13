@@ -40,12 +40,7 @@ pub struct LogStats;
 
 pub type MonitorRef = ActorRef<MonitorMsg>;
 
-#[actor(
-    BroadcastSignal,
-    NetworkChannelMsg,
-    ShellChannelMsg,
-    LogStats
-)]
+#[actor(BroadcastSignal, NetworkChannelMsg, ShellChannelMsg, LogStats)]
 pub struct Monitor {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
@@ -243,10 +238,7 @@ impl Receive<NetworkChannelMsg> for Monitor {
             NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
                 let previous = self.peer_monitors.insert(
                     peer_id.address.clone(),
-                    PeerMonitor::new(
-                        peer_id.address.into(),
-                        peer_id.public_key_hash.clone(),
-                    ),
+                    PeerMonitor::new(peer_id.address.into(), peer_id.public_key_hash.clone()),
                 );
                 if let Some(previous) = previous {
                     warn!(ctx.system.log(), "Duplicate monitor found for peer"; "key" => peer_id.address.to_string());
@@ -262,7 +254,8 @@ impl Receive<NetworkChannelMsg> for Monitor {
             NetworkChannelMsg::PeerMessageReceived(msg) => {
                 self.process_peer_message(msg, &ctx.system.log())
             }
-            NetworkChannelMsg::PeerDisconnected(peer) | NetworkChannelMsg::PeerBlacklisted(peer) => {
+            NetworkChannelMsg::PeerDisconnected(peer)
+            | NetworkChannelMsg::PeerBlacklisted(peer) => {
                 if let Some(_) = self.peer_monitors.remove(&peer) {
                     ctx.myself.tell(
                         BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(
