@@ -551,7 +551,14 @@ pub mod initializer {
     ) -> Result<bool, StorageError> {
         let mut system_info = SystemStorage::new(db);
         let (db_version_ok, found_database_version) = match system_info.get_db_version()? {
-            Some(db_version) => (db_version == expected_database_version, db_version),
+            Some(db_version) => {
+                // TODO: TE-608 - refactor this 19/20 fix
+                match expected_database_version {
+                    19 => (db_version == 19 || db_version == 20, db_version),
+                    20 => (db_version == 19 || db_version == 20, db_version),
+                    _ => (db_version == expected_database_version, db_version),
+                }
+            }
             None => {
                 system_info.set_db_version(expected_database_version)?;
                 (true, expected_database_version)
