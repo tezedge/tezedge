@@ -112,12 +112,6 @@ pub struct InMemory {
     context_hashes_cycles: VecDeque<Vec<u64>>,
 }
 
-impl Default for InMemory {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl GarbageCollector for InMemory {
     fn new_cycle_started(&mut self) -> Result<(), GarbageCollectionError> {
         self.new_cycle_started();
@@ -181,7 +175,7 @@ impl KeyValueStoreBackend for InMemory {
 }
 
 impl InMemory {
-    pub fn new() -> Self {
+    pub fn try_new() -> Result<Self, std::io::Error> {
         // TODO - TE-210: Remove once we hace proper support for history modes.
         let garbage_collector_disabled = std::env::var("DISABLE_INMEM_CONTEXT_GC")
             .unwrap_or_else(|_| "false".to_string())
@@ -194,15 +188,17 @@ impl InMemory {
             let (sender, recv) = crossbeam_channel::unbounded();
             let (prod, cons) = tezos_spsc::bounded(2_000_000);
 
-            std::thread::Builder::new().name("in_memory_gc_thread".to_string()).spawn(move || {
-                GCThread {
-                    cycles: Cycles::default(),
-                    recv,
-                    free_ids: prod,
-                    pending: Vec::new(),
-                }
-                .run()
-            });
+            std::thread::Builder::new()
+                .name("context-in-memory-gc-thread".to_string())
+                .spawn(move || {
+                    GCThread {
+                        cycles: Cycles::default(),
+                        recv,
+                        free_ids: prod,
+                        pending: Vec::new(),
+                    }
+                    .run()
+                })?;
 
             (Some(sender), Some(cons))
         };
@@ -216,13 +212,13 @@ impl InMemory {
             context_hashes_cycles.push_back(Default::default())
         }
 
-        Self {
+        Ok(Self {
             current_cycle,
             hashes,
             sender,
             context_hashes,
             context_hashes_cycles,
-        }
+        })
     }
 
     pub(crate) fn get_vacant_entry_hash(&mut self) -> Result<VacantEntryHash, DBError> {

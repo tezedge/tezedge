@@ -209,7 +209,9 @@ pub mod test_support {
     impl TestContextKvStoreFactory for InMemoryBackendTestContextKvStoreFactory {
         fn create(&self, _: &str) -> Result<Box<ContextKeyValueStore>, TestKeyValueStoreError> {
             use crate::kv_store::in_memory::InMemory;
-            Ok(Box::new(InMemory::new()))
+            Ok(Box::new(
+                InMemory::try_new().map_err(TestKeyValueStoreError::from)?,
+            ))
         }
     }
 

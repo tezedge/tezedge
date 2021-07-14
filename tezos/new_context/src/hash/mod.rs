@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn test_hash_of_commit() {
-        let mut repo = InMemory::new();
+        let mut repo = InMemory::try_new().expect("failed to create context");
 
         // Calculates hash of commit
         // uses BLAKE2 binary 256 length hash function
@@ -476,7 +476,7 @@ mod tests {
         // where:
         // - CHILD NODE - <NODE TYPE><length of string (1 byte)><string/path bytes><length of hash (8bytes)><hash bytes>
         // - NODE TYPE - leaf node(0xff00000000000000) or internal node (0x0000000000000000)
-        let mut repo = InMemory::new();
+        let mut repo = InMemory::try_new().expect("failed to create context");
         let expected_tree_hash = "d49a53323107f2ae40b01eaa4e9bec4d02801daf60bab82dc2529e40d40fa917";
         let mut dummy_tree = Tree::new();
 
@@ -575,7 +575,7 @@ mod tests {
         let mut json_file = open_hashes_json_gz(json_gz_file_name);
         let mut bytes = Vec::new();
 
-        let mut repo = InMemory::new();
+        let mut repo = InMemory::try_new().expect("failed to create context");
 
         // NOTE: reading from a stream is very slow with serde, thats why
         // the whole file is being read here before parsing.
