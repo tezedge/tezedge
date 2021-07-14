@@ -28,6 +28,7 @@ impl EncryptedMessageWriter {
     fn empty_initial_chunk_writer() -> ChunkWriter {
         ChunkWriter::new(BinaryChunk::from_content(&[]).unwrap())
     }
+
     pub fn try_new<M>(message: &M) -> Result<Self, WriteMessageError>
     where
         M: BinaryWrite,
@@ -55,10 +56,13 @@ impl EncryptedMessageWriter {
         W: Write,
     {
         if self.chunk_writer.is_empty() {
-            self.chunk_writer = ChunkWriter::new(BinaryChunk::from_content(
-                // first chunk can't be empty.
-                &crypto.encrypt(&self.current_chunk().unwrap())?,
-            )?);
+            if let Some(current_chunk) = self.current_chunk() {
+                self.chunk_writer = ChunkWriter::new(BinaryChunk::from_content(
+                    &crypto.encrypt(&current_chunk)?,
+                )?);
+            } else {
+                return Ok(());
+            }
         }
         loop {
             self.chunk_writer.write_to(writer)?;

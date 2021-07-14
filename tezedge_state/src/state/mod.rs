@@ -413,8 +413,6 @@ impl<E: Effects> TezedgeState<E> {
             .pending_peers
             .iter_mut()
             .filter_map(|(_, peer)| {
-                let incoming = peer.incoming;
-
                 match &mut peer.step {
                     // send or receive timed out based on `peer.incoming`
                     Initiated { at }
@@ -438,7 +436,6 @@ impl<E: Effects> TezedgeState<E> {
                             None
                         }
                     }
-                    _ => None,
                 }
             })
             .collect::<Vec<_>>();
@@ -455,7 +452,6 @@ impl<E: Effects> TezedgeState<E> {
 
     pub(crate) fn initiate_handshakes(&mut self, at: Instant) {
         use P2pState::*;
-        let max_pending = self.config.max_pending_peers as usize;
 
         match self.p2p_state {
             ReadyMaxed | ReadyFull | PendingFull => return,
