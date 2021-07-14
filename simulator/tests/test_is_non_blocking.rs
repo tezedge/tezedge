@@ -69,3 +69,32 @@ fn test_no_infinite_loop_when_write_returns_0() {
         panic!("Thread still running. Maybe infinite loop?");
     }
 }
+
+#[test]
+fn test_no_infinite_loop_when_read_returns_0() {
+    let control = Arc::new(());
+    let is_running = Arc::downgrade(&control);
+
+    std::thread::spawn(move || {
+        let mut cluster = default_cluster();
+        let peer_id = cluster.init_new_fake_peer();
+
+        cluster
+            .connect_from_node(peer_id)
+            .make_progress()
+            .add_readable_event(peer_id, Some(0))
+            .add_tick_for_current_time();
+
+        while !cluster.is_done() {
+            cluster.make_progress();
+            cluster.assert_state();
+        }
+
+        black_box(control);
+    });
+
+    std::thread::sleep(Duration::from_millis(500));
+    if is_running.upgrade().is_some() {
+        panic!("Thread still running. Maybe infinite loop?");
+    }
+}
