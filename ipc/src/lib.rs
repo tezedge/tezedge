@@ -29,6 +29,8 @@ use serde::{Deserialize, Serialize};
 pub enum IpcError {
     #[fail(display = "Receive message length error: {}", reason)]
     ReceiveMessageLengthError { reason: io::Error },
+    #[fail(display = "Failed to spawn thread: {}", reason)]
+    ThreadError { reason: io::Error },
     #[fail(display = "Receive message error: {}", reason)]
     ReceiveMessageError { reason: io::Error },
     #[fail(display = "Send error: {}", reason)]

@@ -135,7 +135,7 @@ impl MempoolPrevalidator {
 
                 info!(log, "Mempool prevalidator thread finished");
                 Ok(())
-            })
+            }).map_err(|_|{CreateError::Panicked})?
         };
 
         // create actor

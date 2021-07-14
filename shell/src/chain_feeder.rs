@@ -190,7 +190,7 @@ impl ChainFeeder {
                 tezos_writeable_api,
                 log,
             )
-            .spawn_feeder_thread();
+            .spawn_feeder_thread().map_err( |_| {CreateError::Panicked})?;
 
         sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
@@ -526,11 +526,11 @@ impl BlockApplierThreadSpawner {
     /// Spawns asynchronous thread, which process events from internal queue
     fn spawn_feeder_thread(
         &self,
-    ) -> (
+    ) -> Result<(
         QueueSender<Event>,
         Arc<AtomicBool>,
         JoinHandle<Result<(), Error>>,
-    ) {
+    ), failure::Error > {
         // spawn thread which processes event
         let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
         let block_applier_run = Arc::new(AtomicBool::new(false));
@@ -591,11 +591,11 @@ impl BlockApplierThreadSpawner {
                 Ok(())
             })?
         };
-        (
+        Ok((
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
-        )
+        ))
     }
 }
 

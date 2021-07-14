@@ -405,7 +405,6 @@ pub async fn inject_block(
     // wait for result
     if let Some(receiver) = result_callback_receiver {
         // we spawn as blocking because we are under async/await
-        tokio::runtime::Builder::new_current_thread().thread_name("mempool-service").build()
         let result =
             tokio::task::spawn_blocking(move || receiver.recv_timeout(INJECT_BLOCK_WAIT_TIMEOUT))
                 .await;

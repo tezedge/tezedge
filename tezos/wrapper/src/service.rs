@@ -223,7 +223,11 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                                 let log = log.clone();
                                 std::thread::Builder::new().name("listening_to_ipc".to_string()).spawn(move || {
                                     listener.handle_incoming_connections(&log);
-                                });
+                                }).map_err(|error| {
+                                    IpcError::ThreadError {
+                                        reason : error
+                                    }
+                                })?;
                                 tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
                             }
                             Err(err) => {
