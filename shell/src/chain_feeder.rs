@@ -544,7 +544,7 @@ impl BlockApplierThreadSpawner {
             let log = self.log.clone();
             let block_applier_run = block_applier_run.clone();
 
-            thread::spawn(move || -> Result<(), Error> {
+            thread::Builder::new().name("block_applier_thread".to_string()).spawn(move || -> Result<(), Error> {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
@@ -589,7 +589,7 @@ impl BlockApplierThreadSpawner {
 
                 info!(log, "Chain feeder thread finished");
                 Ok(())
-            })
+            })?
         };
         (
             block_applier_event_sender,

@@ -221,7 +221,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                             Ok(mut listener) => {
                                 info!(&log, "Listening to context IPC request at {}", socket_path);
                                 let log = log.clone();
-                                std::thread::spawn(move || {
+                                std::thread::Builder::new().name("listening_to_ipc".to_string()).spawn(move || {
                                     listener.handle_incoming_connections(&log);
                                 });
                                 tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
