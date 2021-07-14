@@ -445,14 +445,18 @@ impl Read for FakePeerStream {
 
 impl Write for FakePeerStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = match &self.write_limit {
-            Some(limit) => buf.len().min(*limit),
+        let len = match &mut self.write_limit {
+            Some(limit) => {
+                if *limit == 0 {
+                    return Err(io::Error::new(io::ErrorKind::WouldBlock, "limit reached"));
+                }
+                let min = buf.len().min(*limit);
+                *limit -= min;
+                min
+            }
             None => buf.len(),
         };
         // eprintln!("write {}. limit: {:?}", len, &self.write_limit);
-        if len == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "limit reached"));
-        }
 
         self.write_buf.extend(&buf[..len]);
 

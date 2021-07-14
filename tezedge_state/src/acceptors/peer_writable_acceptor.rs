@@ -133,7 +133,7 @@ where
                                 }
                             }
                         }
-                        Err(WriteMessageError::Pending) => {}
+                        Err(WriteMessageError::Pending) => break,
                         Err(err) => {
                             eprintln!(
                                 "error sending handshake message to peer({}): {:?}",
