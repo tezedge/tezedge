@@ -194,7 +194,7 @@ impl InMemory {
             let (sender, recv) = crossbeam_channel::unbounded();
             let (prod, cons) = tezos_spsc::bounded(2_000_000);
 
-            std::thread::spawn(move || {
+            std::thread::Builder::new().name("in_memory_gc_thread".to_string()).spawn(move || {
                 GCThread {
                     cycles: Cycles::default(),
                     recv,

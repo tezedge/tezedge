@@ -392,7 +392,7 @@ impl IpcContextListener {
                 Ok(server) => {
                     info!(&log, "Accepted context IPC connection");
                     let log = log.clone();
-                    std::thread::spawn(move || {
+                    std::thread::Builder::new().name("ipc_connection_thread".to_string()).spawn(move || {
                         if let Err(err) = server.process_context_requests(&log) {
                             error!(
                                 &log,
