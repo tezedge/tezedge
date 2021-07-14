@@ -195,7 +195,7 @@ pub fn read_message_bench(c: &mut Criterion, message: Vec<u8>, chunk_size: Optio
     let receiver_log = root_log.new(o!());
     let message_len = message.len();
 
-    let sender = std::thread::Builder::new().name("tcp_listener".to_string()).spawn(move || {
+    let sender = std::thread::spawn(move || {
         use std::net::TcpListener;
 
         debug!(sender_log, "Starting listening");
@@ -235,7 +235,7 @@ pub fn read_message_bench(c: &mut Criterion, message: Vec<u8>, chunk_size: Optio
             }
             std::thread::sleep(Duration::from_millis(10));
         }
-    })?;
+    });
 
     let rt = Builder::new_multi_thread()
         .enable_io()
