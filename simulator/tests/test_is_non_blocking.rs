@@ -1,9 +1,11 @@
-use std::time::{Duration, Instant};
-use std::sync::Arc;
 use std::sync::mpsc::{self, TryRecvError};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use simulator::one_real_node_cluster::*;
-use tezedge_state::{TezedgeConfig, TezedgeState, proposer::TezedgeProposerConfig, sample_tezedge_state};
+use tezedge_state::{
+    proposer::TezedgeProposerConfig, sample_tezedge_state, TezedgeConfig, TezedgeState,
+};
 
 pub fn black_box<T>(dummy: T) -> T {
     unsafe {
@@ -14,19 +16,22 @@ pub fn black_box<T>(dummy: T) -> T {
 }
 
 fn default_state(initial_time: Instant) -> TezedgeState {
-    sample_tezedge_state::build(initial_time, TezedgeConfig {
-        port: 9732,
-        disable_mempool: false,
-        private_node: false,
-        min_connected_peers: 2,
-        max_connected_peers: 3,
-        max_pending_peers: 3,
-        max_potential_peers: 10,
-        periodic_react_interval: Duration::from_millis(250),
-        peer_blacklist_duration: Duration::from_secs(15 * 60),
-        peer_timeout: Duration::from_secs(8),
-        pow_target: 1.0,
-    })
+    sample_tezedge_state::build(
+        initial_time,
+        TezedgeConfig {
+            port: 9732,
+            disable_mempool: false,
+            private_node: false,
+            min_connected_peers: 2,
+            max_connected_peers: 3,
+            max_pending_peers: 3,
+            max_potential_peers: 10,
+            periodic_react_interval: Duration::from_millis(250),
+            peer_blacklist_duration: Duration::from_secs(15 * 60),
+            peer_timeout: Duration::from_secs(8),
+            pow_target: 1.0,
+        },
+    )
 }
 
 fn default_cluster() -> OneRealNodeCluster {
