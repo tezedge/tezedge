@@ -5734,6 +5734,7 @@ steps:
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file light_node/etc/tezedge/tezedge_drone.config
         --identity-file /identities/identity_2.json --rpc-port 18732
+        --websocket-address 0.0.0.0:4927
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
@@ -5782,6 +5783,7 @@ steps:
         --network florencenet --peers $${OCTEZ_IP}:9732
         --config-file light_node/etc/tezedge/tezedge_drone.config
         --identity-file /identities/identity_2.json --rpc-port 18732
+        --websocket-address 0.0.0.0:4927
         --peer-thresh-low 1 --peer-thresh-high 1 --synchronization-thresh=0
         --init-sapling-spend-params-file ./tezos/sys/lib_tezos/artifacts/sapling-spend.params
         --init-sapling-output-params-file ./tezos/sys/lib_tezos/artifacts/sapling-output.params &
