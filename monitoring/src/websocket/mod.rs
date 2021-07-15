@@ -6,8 +6,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 use warp::ws::Message;
 
-pub(crate) mod handler_messages;
 mod ws_manager;
+pub(crate) mod ws_messages;
 mod ws_server;
 
 pub use ws_manager::{WebsocketHandler, WebsocketHandlerMsg};

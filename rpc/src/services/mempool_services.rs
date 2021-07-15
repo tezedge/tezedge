@@ -95,7 +95,7 @@ fn convert_applied(
     applied: &Vec<Applied>,
     operations: &HashMap<OperationHash, Operation>,
 ) -> Result<Vec<HashMap<String, Value>>, failure::Error> {
-    let mut result: Vec<HashMap<String, Value>> = Vec::new();
+    let mut result: Vec<HashMap<String, Value>> = Vec::with_capacity(applied.len());
     for a in applied {
         let operation_hash = a.hash.to_base58_check();
         let protocol_data: HashMap<String, Value> = serde_json::from_str(&a.protocol_data_json)?;
@@ -127,7 +127,7 @@ fn convert_errored(
     operations: &HashMap<OperationHash, Operation>,
     protocol: &ProtocolHash,
 ) -> Result<Vec<Value>, failure::Error> {
-    let mut result: Vec<Value> = Vec::new();
+    let mut result: Vec<Value> = Vec::with_capacity(errored.len());
     let protocol = protocol.to_base58_check();
 
     for e in errored {

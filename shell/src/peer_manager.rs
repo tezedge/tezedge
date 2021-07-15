@@ -279,8 +279,7 @@ impl PeerManager {
             .drain(0..cmp::min(num_of_required_peers, addresses_to_connect.len()))
             .for_each(|address| {
                 potential_peers.remove(&address);
-                ctx.myself()
-                    .tell(ConnectToPeer { address }, ctx.myself().into())
+                ctx.myself().tell(ConnectToPeer { address }, None)
             });
 
         Ok(())
