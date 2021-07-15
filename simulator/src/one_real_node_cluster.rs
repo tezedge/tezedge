@@ -60,9 +60,9 @@ pub enum FakeNetworkEventType {
     Disconnected,
 
     BytesWritable(Option<usize>),
-    // ByteChunksWritable(Vec<usize>),
     BytesReadable(Option<usize>),
-    // ByteChunksReadable(Vec<usize>),
+    BytesWritableError(io::ErrorKind),
+    BytesReadableError(io::ErrorKind),
 }
 
 #[derive(Debug, Clone)]
@@ -79,14 +79,12 @@ impl NetworkEvent for FakeNetworkEvent {
 
     fn is_readable(&self) -> bool {
         use FakeNetworkEventType::*;
-        matches!(&self.event_type, BytesReadable(_))
-        // matches!(&self.event_type, BytesReadable(_) | ByteChunksReadable(_))
+        matches!(&self.event_type, BytesReadable(_) | BytesReadableError(_))
     }
 
     fn is_writable(&self) -> bool {
         use FakeNetworkEventType::*;
-        matches!(&self.event_type, BytesWritable(_))
-        // matches!(&self.event_type, BytesWritable(_) | ByteChunksWritable(_))
+        matches!(&self.event_type, BytesWritable(_) | BytesWritableError(_))
     }
 
     fn is_read_closed(&self) -> bool {
@@ -249,14 +247,23 @@ impl ConnectedState {
 }
 
 #[derive(Debug, Clone)]
+enum IOCondition {
+    NoLimit,
+    Limit(usize),
+    Error(io::ErrorKind),
+}
+
+#[derive(Debug, Clone)]
 pub struct FakePeerStream {
     conn_state: ConnectedState,
     identity: Identity,
     crypto: Option<PeerCrypto>,
+
     read_buf: VecDeque<u8>,
-    read_limit: Option<usize>,
     write_buf: VecDeque<u8>,
-    write_limit: Option<usize>,
+
+    read_cond: IOCondition,
+    write_cond: IOCondition,
 }
 
 impl FakePeerStream {
@@ -265,10 +272,12 @@ impl FakePeerStream {
             conn_state: ConnectedState::Disconnected,
             identity: Identity::generate(pow_target).unwrap(),
             crypto: None,
+
             read_buf: VecDeque::new(),
-            read_limit: Some(0),
             write_buf: VecDeque::new(),
-            write_limit: Some(0),
+
+            read_cond: IOCondition::Limit(0),
+            write_cond: IOCondition::Limit(0),
         }
     }
 
@@ -288,28 +297,25 @@ impl FakePeerStream {
         self.conn_state.disconnect()
     }
 
-    fn set_read_limit(&mut self, limit: Option<usize>) {
-        self.read_limit = limit;
-    }
-
-    fn set_write_limit(&mut self, limit: Option<usize>) {
-        self.write_limit = limit;
-    }
-
-    fn set_limit_from_event(&mut self, event: &FakeNetworkEvent) {
+    fn set_io_cond_from_event(&mut self, event: &FakeNetworkEvent) {
         match &event.event_type {
             FakeNetworkEventType::BytesReadable(limit) => {
-                if limit.is_none() {
-                    self.read_limit = None;
-                } else {
-                    self.read_limit = self.read_limit.max(limit.clone());
-                }
+                self.read_cond = match limit {
+                    Some(limit) => IOCondition::Limit(*limit),
+                    None => IOCondition::NoLimit,
+                };
             }
             FakeNetworkEventType::BytesWritable(limit) => {
-                if limit.is_none() {
-                    self.write_limit = None;
-                }
-                self.write_limit = self.write_limit.max(limit.clone());
+                self.write_cond = match limit {
+                    Some(limit) => IOCondition::Limit(*limit),
+                    None => IOCondition::NoLimit,
+                };
+            }
+            FakeNetworkEventType::BytesReadableError(err_kind) => {
+                self.read_cond = IOCondition::Error(*err_kind);
+            }
+            FakeNetworkEventType::BytesWritableError(err_kind) => {
+                self.write_cond = IOCondition::Error(*err_kind);
             }
             _ => {}
         }
@@ -430,14 +436,18 @@ impl Read for FakePeerStream {
             0,
             "empty(len = 0) buffer shouldn't be passed to read method"
         );
-        let len = match &self.read_limit {
-            Some(limit) => buf.len().min(*limit),
-            None => buf.len(),
+        let len = match &mut self.read_cond {
+            IOCondition::NoLimit => buf.len(),
+            IOCondition::Limit(limit) => {
+                let min = buf.len().min(*limit);
+                *limit -= min;
+                min
+            }
+            IOCondition::Error(err_kind) => {
+                return Err(io::Error::new(*err_kind, "manual error"));
+            }
         };
         // eprintln!("read {}. limit: {:?}", len, &self.read_limit);
-        if len == 0 {
-            return Err(io::Error::new(io::ErrorKind::WouldBlock, "limit reached"));
-        }
 
         VecDequeReadable::from(&mut self.read_buf).read(&mut buf[..len])
     }
@@ -445,16 +455,16 @@ impl Read for FakePeerStream {
 
 impl Write for FakePeerStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = match &mut self.write_limit {
-            Some(limit) => {
-                if *limit == 0 {
-                    return Err(io::Error::new(io::ErrorKind::WouldBlock, "limit reached"));
-                }
+        let len = match &mut self.write_cond {
+            IOCondition::NoLimit => buf.len(),
+            IOCondition::Limit(limit) => {
                 let min = buf.len().min(*limit);
                 *limit -= min;
                 min
             }
-            None => buf.len(),
+            IOCondition::Error(err_kind) => {
+                return Err(io::Error::new(*err_kind, "manual error"));
+            }
         };
         // eprintln!("write {}. limit: {:?}", len, &self.write_limit);
 
@@ -591,7 +601,9 @@ impl Manager for OneRealNodeManager {
             self.last_event_time = Some(event_time);
             match event {
                 Event::Network(event) => {
-                    self.get_mut(event.from).stream.set_limit_from_event(&event);
+                    self.get_mut(event.from)
+                        .stream
+                        .set_io_cond_from_event(&event);
                 }
                 Event::Tick(_) => {}
             }
@@ -770,6 +782,23 @@ impl OneRealNodeCluster {
         self
     }
 
+    pub fn add_event(
+        &mut self,
+        peer_id: FakePeerId,
+        event_type: FakeNetworkEventType,
+    ) -> &mut Self {
+        self.proposer
+            .manager
+            .events
+            .push_back(Event::Network(FakeNetworkEvent {
+                time: self.time,
+                from: peer_id,
+                event_type,
+            }));
+
+        self
+    }
+
     pub fn add_readable_event(
         &mut self,
         peer_id: FakePeerId,
@@ -806,8 +835,8 @@ impl OneRealNodeCluster {
 
     pub fn do_handshake(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
         let peer = &mut self.get_peer(peer_id);
-        peer.write_limit = None;
-        peer.read_limit = None;
+        peer.write_cond = IOCondition::NoLimit;
+        peer.read_cond = IOCondition::NoLimit;
 
         let incoming = match &peer.conn_state {
             ConnectedState::Incoming(_) => true,
