@@ -12,7 +12,7 @@ use crypto::{
 use hex::FromHex;
 use tezos_identity::Identity;
 
-fn identity(pkh: &[u8], pk: &[u8], sk: &[u8], pow: &[u8]) -> Identity {
+pub fn identity(pkh: &[u8], pk: &[u8], sk: &[u8], pow: &[u8]) -> Identity {
     Identity {
         peer_id: CryptoboxPublicKeyHash::try_from_bytes(pkh).unwrap(),
         public_key: PublicKey::from_bytes(pk).unwrap(),
@@ -21,7 +21,7 @@ fn identity(pkh: &[u8], pk: &[u8], sk: &[u8], pow: &[u8]) -> Identity {
     }
 }
 
-fn identity_1() -> Identity {
+pub fn identity_1() -> Identity {
     identity(
         &[
             86, 205, 231, 178, 152, 146, 2, 157, 213, 131, 90, 117, 83, 132, 177, 84,
@@ -41,7 +41,7 @@ fn identity_1() -> Identity {
     )
 }
 
-fn logger(level: slog::Level) -> slog::Logger {
+pub fn logger(level: slog::Level) -> slog::Logger {
     let drain = Arc::new(
         slog_async::Async::new(
             slog_term::FullFormat::new(slog_term::TermDecorator::new().build())
@@ -56,6 +56,10 @@ fn logger(level: slog::Level) -> slog::Logger {
     slog::Logger::root(drain.filter_level(level).fuse(), slog::o!())
 }
 
+pub fn default_shell_compatibility_version() -> ShellCompatibilityVersion {
+    ShellCompatibilityVersion::new("TEZOS_MAINNET".to_owned(), vec![0], vec![0, 1])
+}
+
 pub fn build(initial_time: Instant, config: TezedgeConfig) -> TezedgeState {
     let node_identity = identity_1();
 
@@ -63,7 +67,7 @@ pub fn build(initial_time: Instant, config: TezedgeConfig) -> TezedgeState {
         logger(slog::Level::Info),
         config,
         node_identity.clone(),
-        ShellCompatibilityVersion::new("TEZOS_MAINNET".to_owned(), vec![0], vec![0, 1]),
+        default_shell_compatibility_version(),
         Default::default(),
         initial_time,
     );
