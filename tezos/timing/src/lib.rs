@@ -8,12 +8,13 @@ use std::{
     path::PathBuf,
     sync::{
         mpsc::{sync_channel, Receiver, SendError, SyncSender},
-        Mutex,
+        Mutex, PoisonError,
     },
     time::{Duration, Instant},
 };
 
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
+use failure::Fail;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
@@ -282,6 +283,36 @@ pub struct Action {
     pub tezedge_time: Option<f64>,
 }
 
+#[derive(Fail, Debug)]
+pub enum BufferedTimingChannelSendError {
+    #[fail(
+        display = "Failure when locking the timings channel buffer: {}",
+        reason
+    )]
+    LockError { reason: String },
+    #[fail(
+        display = "Failure when sending timming messages to channel: {}",
+        reason
+    )]
+    SendError {
+        reason: SendError<Vec<TimingMessage>>,
+    },
+}
+
+impl From<SendError<Vec<TimingMessage>>> for BufferedTimingChannelSendError {
+    fn from(reason: SendError<Vec<TimingMessage>>) -> Self {
+        Self::SendError { reason }
+    }
+}
+
+impl<T> From<PoisonError<T>> for BufferedTimingChannelSendError {
+    fn from(reason: PoisonError<T>) -> Self {
+        Self::LockError {
+            reason: format!("{}", reason),
+        }
+    }
+}
+
 /// Buffered channel for sending timings that delays the sending until
 /// enough messages have been obtained or a commit message is received.
 /// The purpose is to send less messages through the channel to decrease
@@ -314,10 +345,10 @@ impl BufferedTimingChannel {
     ///
     /// Reaching the delayed messages limit or receiving a commit message will trigger the send
     /// to the underlying channel, otherwise the messages will be kept in the buffer.
-    pub fn send(&self, msg: TimingMessage) -> Result<(), SendError<Vec<TimingMessage>>> {
+    pub fn send(&self, msg: TimingMessage) -> Result<(), BufferedTimingChannelSendError> {
         let must_not_delay = self.is_immediate_message(&msg);
         let limit = Self::DELAYED_MESSAGES_LIMIT - 1;
-        let mut buffer = self.buffer.lock().unwrap();
+        let mut buffer = self.buffer.lock()?;
 
         buffer.get_mut().push(msg);
 
@@ -328,7 +359,7 @@ impl BufferedTimingChannel {
 
             let pack = swap_buffer.into_inner();
 
-            self.sender.send(pack)
+            Ok(self.sender.send(pack)?)
         } else {
             Ok(())
         }
@@ -336,7 +367,7 @@ impl BufferedTimingChannel {
 }
 
 pub static TIMING_CHANNEL: Lazy<BufferedTimingChannel> = Lazy::new(|| {
-    let (sender, receiver) = sync_channel(1000);
+    let (sender, receiver) = sync_channel(10_000);
 
     if let Err(e) = std::thread::Builder::new()
         .name("context-timing".to_string())
@@ -356,7 +387,7 @@ fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
     'outer: for msgpack in &recv {
         for msg in msgpack {
             if let TimingMessage::InitTiming { db_path: path } = msg {
-                db_path = path.clone();
+                db_path = path;
                 break 'outer;
             };
         }
@@ -1094,7 +1125,7 @@ mod tests {
 
         assert!(timing.current_block.is_none());
 
-        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
         timing
             .set_current_block(
                 &sql,
@@ -1122,7 +1153,7 @@ mod tests {
         timing
             .set_current_block(
                 &sql,
-                Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()),
+                Some(BlockHash::try_from_bytes(&[2; 32]).unwrap()),
                 None,
                 Instant::now(),
                 &mut transaction,
@@ -1156,8 +1187,8 @@ mod tests {
 
     #[test]
     fn test_actions_db() {
-        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
-        let context_hash = ContextHash::try_from_bytes(&vec![2; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
+        let context_hash = ContextHash::try_from_bytes(&[2; 32]).unwrap();
 
         TIMING_CHANNEL
             .send(TimingMessage::InitTiming { db_path: None })
