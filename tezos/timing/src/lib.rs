@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
+    cell::Cell,
     collections::HashMap,
     convert::TryInto,
     path::PathBuf,
-    sync::mpsc::{sync_channel, Receiver, SyncSender},
+    sync::{
+        mpsc::{sync_channel, Receiver, SendError, SyncSender},
+        Mutex, PoisonError,
+    },
     time::{Duration, Instant},
 };
 
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
+use failure::Fail;
 use once_cell::sync::Lazy;
 use rusqlite::{named_params, Batch, Connection, Error as SQLError, Transaction};
 use serde::Serialize;
@@ -278,7 +283,90 @@ pub struct Action {
     pub tezedge_time: Option<f64>,
 }
 
-pub static TIMING_CHANNEL: Lazy<SyncSender<TimingMessage>> = Lazy::new(|| {
+#[derive(Fail, Debug)]
+pub enum BufferedTimingChannelSendError {
+    #[fail(
+        display = "Failure when locking the timings channel buffer: {}",
+        reason
+    )]
+    LockError { reason: String },
+    #[fail(
+        display = "Failure when sending timming messages to channel: {}",
+        reason
+    )]
+    SendError {
+        reason: SendError<Vec<TimingMessage>>,
+    },
+}
+
+impl From<SendError<Vec<TimingMessage>>> for BufferedTimingChannelSendError {
+    fn from(reason: SendError<Vec<TimingMessage>>) -> Self {
+        Self::SendError { reason }
+    }
+}
+
+impl<T> From<PoisonError<T>> for BufferedTimingChannelSendError {
+    fn from(reason: PoisonError<T>) -> Self {
+        Self::LockError {
+            reason: format!("{}", reason),
+        }
+    }
+}
+
+/// Buffered channel for sending timings that delays the sending until
+/// enough messages have been obtained or a commit message is received.
+/// The purpose is to send less messages through the channel to decrease
+/// the overhead.
+pub struct BufferedTimingChannel {
+    buffer: Mutex<Cell<Vec<TimingMessage>>>,
+    sender: SyncSender<Vec<TimingMessage>>,
+}
+
+impl BufferedTimingChannel {
+    const DELAYED_MESSAGES_LIMIT: usize = 100;
+
+    fn new(sender: SyncSender<Vec<TimingMessage>>) -> Self {
+        Self {
+            buffer: Mutex::new(Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT))),
+            sender,
+        }
+    }
+
+    /// True if the message must be sent immediately, false if it can be buffered.
+    fn is_immediate_message(&self, msg: &TimingMessage) -> bool {
+        match msg {
+            TimingMessage::Commit { .. } => true,
+            TimingMessage::InitTiming { .. } => false,
+            _ => false,
+        }
+    }
+
+    /// Sends messages, delayed and combined into a single bigger message.
+    ///
+    /// Reaching the delayed messages limit or receiving a commit message will trigger the send
+    /// to the underlying channel, otherwise the messages will be kept in the buffer.
+    pub fn send(&self, msg: TimingMessage) -> Result<(), BufferedTimingChannelSendError> {
+        let must_not_delay = self.is_immediate_message(&msg);
+        let limit = Self::DELAYED_MESSAGES_LIMIT - 1;
+        let mut buffer = self.buffer.lock()?;
+
+        buffer.get_mut().push(msg);
+
+        if must_not_delay || buffer.get_mut().len() == limit {
+            let swap_buffer = Cell::new(Vec::with_capacity(Self::DELAYED_MESSAGES_LIMIT));
+
+            buffer.swap(&swap_buffer);
+
+            let pack = swap_buffer.into_inner();
+
+            Ok(self.sender.send(pack)?)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+pub static TIMING_CHANNEL: Lazy<BufferedTimingChannel> = Lazy::new(|| {
     let (sender, receiver) = sync_channel(10_000);
 
     if let Err(e) = std::thread::Builder::new()
@@ -290,17 +378,19 @@ pub static TIMING_CHANNEL: Lazy<SyncSender<TimingMessage>> = Lazy::new(|| {
         eprintln!("Fail to create timing channel: {:?}", e);
     }
 
-    sender
+    BufferedTimingChannel::new(sender)
 });
 
-fn start_timing(recv: Receiver<TimingMessage>) {
+fn start_timing(recv: Receiver<Vec<TimingMessage>>) {
     let mut db_path: Option<PathBuf> = None;
 
-    for msg in &recv {
-        if let TimingMessage::InitTiming { db_path: path } = msg {
-            db_path = path.clone();
-            break;
-        };
+    'outer: for msgpack in &recv {
+        for msg in msgpack {
+            if let TimingMessage::InitTiming { db_path: path } = msg {
+                db_path = path;
+                break 'outer;
+            };
+        }
     }
 
     let sql = match Timing::init_sqlite(db_path) {
@@ -314,9 +404,11 @@ fn start_timing(recv: Receiver<TimingMessage>) {
     let mut timing = Timing::new();
     let mut transaction = None;
 
-    for msg in recv {
-        if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
-            eprintln!("Timing error={:?}", err);
+    for msgpack in recv {
+        for msg in msgpack {
+            if let Err(err) = timing.process_msg(&sql, &mut transaction, msg) {
+                eprintln!("Timing error={:?}", err);
+            }
         }
     }
 }
@@ -1033,7 +1125,7 @@ mod tests {
 
         assert!(timing.current_block.is_none());
 
-        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
         timing
             .set_current_block(
                 &sql,
@@ -1061,7 +1153,7 @@ mod tests {
         timing
             .set_current_block(
                 &sql,
-                Some(BlockHash::try_from_bytes(&vec![2; 32]).unwrap()),
+                Some(BlockHash::try_from_bytes(&[2; 32]).unwrap()),
                 None,
                 Instant::now(),
                 &mut transaction,
@@ -1095,8 +1187,8 @@ mod tests {
 
     #[test]
     fn test_actions_db() {
-        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
-        let context_hash = ContextHash::try_from_bytes(&vec![2; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
+        let context_hash = ContextHash::try_from_bytes(&[2; 32]).unwrap();
 
         TIMING_CHANNEL
             .send(TimingMessage::InitTiming { db_path: None })
