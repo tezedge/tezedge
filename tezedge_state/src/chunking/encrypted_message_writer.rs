@@ -57,9 +57,8 @@ impl EncryptedMessageWriter {
     {
         if self.chunk_writer.is_empty() {
             if let Some(current_chunk) = self.current_chunk() {
-                self.chunk_writer = ChunkWriter::new(BinaryChunk::from_content(
-                    &crypto.encrypt(&current_chunk)?,
-                )?);
+                self.chunk_writer =
+                    ChunkWriter::new(BinaryChunk::from_content(&crypto.encrypt(&current_chunk)?)?);
             } else {
                 return Ok(());
             }
