@@ -1,7 +1,7 @@
 mod peer_address;
 pub use peer_address::{PeerAddress, Port};
 
-mod peer_crypto;
+pub mod peer_crypto;
 pub use peer_crypto::PeerCrypto;
 
 pub mod acceptors;
