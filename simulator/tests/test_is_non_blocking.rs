@@ -1,11 +1,9 @@
-use std::sync::mpsc::{self, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use simulator::one_real_node_cluster::*;
-use tezedge_state::{
-    proposer::TezedgeProposerConfig, sample_tezedge_state, TezedgeConfig, TezedgeState,
-};
+use tezedge_state::proposer::TezedgeProposerConfig;
+use tezedge_state::{sample_tezedge_state, TezedgeConfig, TezedgeState};
 
 pub fn black_box<T>(dummy: T) -> T {
     unsafe {
