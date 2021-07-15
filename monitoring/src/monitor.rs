@@ -183,6 +183,10 @@ impl Actor for Monitor {
         );
     }
 
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        info!(ctx.system.log(), "Monitoring (ws) started");
+    }
+
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
         self.actor_received_messages_count += 1;
         self.receive(ctx, msg, sender);

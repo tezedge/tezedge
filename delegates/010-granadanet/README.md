@@ -54,7 +54,6 @@ accuser.faucet.json
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
     --p2p-port 12534 --rpc-port 12535 \
-    --websocket-address 0.0.0.0:12536 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --one-context \

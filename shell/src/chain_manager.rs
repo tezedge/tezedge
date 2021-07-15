@@ -1566,6 +1566,9 @@ impl Actor for ChainManager {
                 );
             }
         }
+
+        info!(log, "Chain manager started";
+                   "main_chain_id" => self.chain_state.get_chain_id().to_base58_check());
     }
 
     fn sys_recv(

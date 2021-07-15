@@ -162,9 +162,15 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         "/chains/:chain_id/blocks/:block_id/operations/:validation_pass_index/:operation_index",
         shell_handler::get_block_operation,
     );
+
     // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
     // context is available. Once these handlers have been tested better and revised, enable again.
-    if tezedge_is_enabled && false {
+    // TODO - TE-261 - remove this function, it is just to make clippy happy
+    fn enable_tezedge_rpcs_with_context(tezedge_is_enabled: bool, really_allow: bool) -> bool {
+        tezedge_is_enabled && really_allow
+    }
+
+    if enable_tezedge_rpcs_with_context(tezedge_is_enabled, false) {
         routes.handle(
             hash_set![Method::GET],
             "/chains/:chain_id/blocks/:block_id/context/raw/bytes",
@@ -223,7 +229,7 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
 
     // TODO - TE-261: we are routing these to OCaml for now, even when the TezEdge
     // context is available. Once these handlers have been tested better and revised, enable again.
-    if tezedge_is_enabled && false {
+    if enable_tezedge_rpcs_with_context(tezedge_is_enabled, false) {
         // These only work if the TezEdge context is available
         routes.handle(
             hash_set![Method::GET],

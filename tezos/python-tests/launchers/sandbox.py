@@ -53,7 +53,6 @@ class Sandbox:
                  identities: Dict[str, Dict[str, str]],
                  rpc: int = 28730,
                  p2p: int = 29730,
-                 websocket: int = 27730,
                  num_peers: int = 45,
                  log_dir: str = None,
         singleprocess: bool = False,
@@ -85,7 +84,6 @@ class Sandbox:
         self.identities = dict(identities)
         self.rpc = rpc
         self.p2p = p2p
-        self.websocket = websocket
         self.num_peers = num_peers
         self.clients = {}  # type: Dict[int, Client]
         self.nodes = {}  # type: Dict[int, Node]
@@ -133,7 +131,6 @@ class Sandbox:
         assert node_id not in self.nodes, f'Already a node for id={node_id}'
         rpc_node = self.rpc + node_id
         p2p_node = self.p2p + node_id
-        websocket_node = self.websocket + node_id
         assert 0 <= node_id < self.num_peers, f'{node_id} outside bounds'
         if peers is None:
             peers = list(range(self.num_peers))
@@ -162,7 +159,6 @@ class Sandbox:
             node_dir=node_dir,
             p2p_port=p2p_node,
             rpc_port=rpc_node,
-            websocket_port=websocket_node,
             peers=peers_rpc,
             log_file=log_file,
             params=params,

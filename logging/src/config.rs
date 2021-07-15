@@ -228,7 +228,7 @@ mod tests {
         let log_file_path = log_dir_path.join("test.log");
 
         let file_logger_with_strong_rotation = FileLoggerConfig {
-            file: log_file_path.clone(),
+            file: log_file_path,
             keep_number_of_rotated_files: u16::MAX,
             rotate_log_if_size_in_bytes: 512 * 1024, // 0.5 MB
         };
@@ -263,7 +263,7 @@ mod tests {
 
                 use std::io::Write;
                 let mut tmp_file = NamedTempFile::new().expect("failed to create temp file");
-                tmp_file.as_file().write(&buf).expect("failed to write");
+                tmp_file.as_file().write_all(&buf).expect("failed to write");
                 tmp_file.flush().expect("failed to flush");
 
                 // count lines in decoded

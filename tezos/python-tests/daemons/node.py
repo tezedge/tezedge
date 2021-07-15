@@ -74,7 +74,6 @@ class Node:
                  log_file: str = None,
                  p2p_port: int = 9732,
                  rpc_port: int = 8732,
-                 websocket_port: int = 4932,
                  peers: List[int] = None,
                  log_levels: Dict[str, str] = None,
                  singleprocess: bool = False,
@@ -108,7 +107,6 @@ class Node:
         self.node_dir = node_dir
         self.p2p_port = p2p_port
         self.rpc_port = rpc_port
-        self.websocket_port = websocket_port
         self.expected_pow = expected_pow
         self.node = node
         self._params = params
@@ -125,7 +123,6 @@ class Node:
             node_run.extend(params)
 
         tezedge_node_run = [node, '--tezos-data-dir', node_dir, '--disable-bootstrap-lookup',
-                            '--websocket-address', f'0.0.0.0:{websocket_port}',
                             '--identity-expected-pow', '0', '--p2p-port', str(p2p_port),
                             '--rpc-port', str(rpc_port), '--identity-file', node_dir + '/identity.json']
         if params:
