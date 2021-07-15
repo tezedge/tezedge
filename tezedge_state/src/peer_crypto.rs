@@ -1,6 +1,11 @@
-use crypto::crypto_box::PrecomputedKey;
-use crypto::nonce::{Nonce, NoncePair};
+use std::borrow::Cow;
+use std::convert::TryFrom;
+
+use crypto::blake2b::Blake2bError;
+use crypto::crypto_box::{PrecomputedKey, PublicKey, SecretKey};
+use crypto::nonce::{generate_nonces, Nonce, NoncePair};
 use crypto::CryptoError;
+use tezos_messages::p2p::binary_message::BinaryChunk;
 
 #[derive(Debug, Clone)]
 pub struct PeerCrypto {
@@ -18,6 +23,20 @@ impl PeerCrypto {
             precomputed_key,
             nonce_pair,
         }
+    }
+
+    pub fn build(
+        node_secret_key: &SecretKey,
+        peer_public_key: &PublicKey,
+        sent_conn_msg: &BinaryChunk,
+        received_conn_msg: &BinaryChunk,
+        incoming: bool,
+    ) -> Result<Self, Blake2bError> {
+        let nonce_pair = generate_nonces(&sent_conn_msg.raw(), &received_conn_msg.raw(), incoming)?;
+
+        let key = PrecomputedKey::precompute(peer_public_key, node_secret_key);
+
+        Ok(PeerCrypto::new(key, nonce_pair))
     }
 
     #[inline]
