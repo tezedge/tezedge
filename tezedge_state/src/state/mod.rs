@@ -19,7 +19,7 @@ use crate::{
 mod assert_state;
 
 mod requests;
-pub(crate) use requests::*;
+pub use requests::*;
 
 mod pending_peers;
 pub(crate) use pending_peers::*;
@@ -170,6 +170,10 @@ impl<E> TezedgeState<E> {
 
     pub fn is_peer_connected(&self, peer: &PeerAddress) -> bool {
         self.connected_peers.contains_address(peer)
+    }
+
+    pub fn is_address_blacklisted(&self, peer: &PeerAddress) -> bool {
+        self.blacklisted_peers.is_address_blacklisted(peer)
     }
 
     pub(crate) fn check_blacklisted_peers(&mut self, at: Instant) {

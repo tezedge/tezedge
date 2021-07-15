@@ -135,10 +135,6 @@ where
                         }
                         Err(WriteMessageError::Pending) => break,
                         Err(err) => {
-                            eprintln!(
-                                "error sending handshake message to peer({}): {:?}",
-                                proposal.peer, err
-                            );
                             self.blacklist_peer(proposal.at, proposal.peer);
                             break;
                         }
