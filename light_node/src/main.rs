@@ -290,7 +290,8 @@ fn block_on_actors(
             tokio_runtime.handle().clone(),
             websocket_address,
             log.clone(),
-        ).expect("Failed to start websocket actor");
+        )
+        .expect("Failed to start websocket actor");
 
         let _ = Monitor::actor(
             &actor_system,
@@ -299,7 +300,8 @@ fn block_on_actors(
             shell_channel.clone(),
             persistent_storage.clone(),
             init_storage_data.chain_id.clone(),
-        ).expect("Failed to create monitor actor");
+        )
+        .expect("Failed to create monitor actor");
     }
 
     let _ = RpcServer::actor(
@@ -326,7 +328,7 @@ fn block_on_actors(
             blocks,
             &init_storage_data,
             block_applier,
-            shell_channel.clone(),
+            shell_channel,
             log.clone(),
         );
     } else {

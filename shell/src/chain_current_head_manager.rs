@@ -338,6 +338,8 @@ impl Actor for ChainCurrentHeadManager {
     fn post_start(&mut self, ctx: &Context<Self::Msg>) {
         // now we can hydrate state and read current head
         self.hydrate_current_head_state(ctx);
+
+        info!(ctx.system.log(), "Chain current head manager started");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {

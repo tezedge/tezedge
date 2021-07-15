@@ -82,7 +82,6 @@
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
     --p2p-port 19732 --rpc-port 18732 \
-    --websocket-address 0.0.0.0:17732 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --log terminal \
@@ -117,7 +116,6 @@
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
     --p2p-port 19732 --rpc-port 18732 \
-    --websocket-address 0.0.0.0:17732 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --log terminal \
