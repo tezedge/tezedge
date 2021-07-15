@@ -833,16 +833,75 @@ impl OneRealNodeCluster {
         self
     }
 
-    pub fn do_handshake(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
-        let peer = &mut self.get_peer(peer_id);
-        peer.write_cond = IOCondition::NoLimit;
-        peer.read_cond = IOCondition::NoLimit;
+    pub fn set_peer_crypto(
+        &mut self,
+        peer_id: FakePeerId,
+        peer_public_key: &PublicKey,
+        sent_conn_msg: &BinaryChunk,
+        received_conn_msg: &BinaryChunk,
+    ) -> Result<&mut Self, HandshakeError> {
+        let peer = self.get_peer(peer_id);
 
         let incoming = match &peer.conn_state {
             ConnectedState::Incoming(_) => true,
             ConnectedState::Outgoing(_) => false,
             ConnectedState::Disconnected => return Err(HandshakeError::NotConnected),
         };
+
+        peer.crypto = Some(
+            PeerCrypto::build(
+                &peer.identity.secret_key,
+                peer_public_key,
+                sent_conn_msg,
+                received_conn_msg,
+                incoming,
+            )
+            .unwrap(),
+        );
+
+        Ok(self)
+    }
+
+    /// Bytes must be without chunk's length.
+    #[inline]
+    pub fn set_peer_crypto_with_bytes(
+        &mut self,
+        peer_id: FakePeerId,
+        peer_public_key: &[u8],
+        sent_conn_msg: &[u8],
+        received_conn_msg: &[u8],
+    ) -> Result<&mut Self, HandshakeError> {
+        self.set_peer_crypto(
+            peer_id,
+            &PublicKey::from_bytes(peer_public_key).unwrap(),
+            &BinaryChunk::from_content(sent_conn_msg).unwrap(),
+            &BinaryChunk::from_content(received_conn_msg).unwrap(),
+        )
+    }
+
+    #[inline]
+    pub fn set_peer_crypto_with_conn_messages(
+        &mut self,
+        peer_id: FakePeerId,
+        sent_conn_msg: &ConnectionMessage,
+        received_conn_msg: &ConnectionMessage,
+    ) -> Result<&mut Self, HandshakeError> {
+        self.set_peer_crypto_with_bytes(
+            peer_id,
+            received_conn_msg.public_key(),
+            &sent_conn_msg.as_bytes().unwrap(),
+            &received_conn_msg.as_bytes().unwrap(),
+        )
+    }
+
+    /// Exchange connection messages and create crypto to encrypt/decrypt messages.
+    pub fn init_crypto_for_peer(
+        &mut self,
+        peer_id: FakePeerId,
+    ) -> Result<&mut Self, HandshakeError> {
+        let peer = &mut self.get_peer(peer_id);
+        peer.write_cond = IOCondition::NoLimit;
+        peer.read_cond = IOCondition::NoLimit;
 
         let sent_conn_msg = ConnectionMessage::try_new(
             12345,
@@ -857,32 +916,25 @@ impl OneRealNodeCluster {
         self.add_readable_event(peer_id, None)
             .add_writable_event(peer_id, None)
             .make_progress();
-        dbg!(&self.proposer.state);
 
-        let conn_msg = self.get_peer(peer_id).read_conn_msg();
+        let received_conn_msg = self.get_peer(peer_id).read_conn_msg();
 
-        let nonce_pair = generate_nonces(
-            &BinaryChunk::from_content(&sent_conn_msg.as_bytes().unwrap())
-                .unwrap()
-                .raw(),
-            &BinaryChunk::from_content(&conn_msg.as_bytes().unwrap())
-                .unwrap()
-                .raw(),
-            incoming,
-        )
-        .unwrap();
+        self.set_peer_crypto_with_conn_messages(peer_id, &sent_conn_msg, &received_conn_msg)
+    }
 
-        let peer = self.get_peer(peer_id);
+    /// Do Handshake between node and fake peer.
+    ///
+    /// 1. Exchange [ConnectionMessage] unless we already have crypto set.
+    ///    Using that set crypto to encrypt/decrypt further messages.
+    /// 2. Exchange encrypted [MetadataMessage].
+    /// 3. Exchange encrypted [AckMessage].
+    pub fn do_handshake(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
+        if self.get_peer(peer_id).crypto.is_none() {
+            self.init_crypto_for_peer(peer_id)?;
+        }
+        self.get_peer(peer_id)
+            .send_meta_msg(&MetadataMessage::new(false, false));
 
-        let precomputed_key = PrecomputedKey::precompute(
-            &PublicKey::from_bytes(&conn_msg.public_key()).unwrap(),
-            &peer.identity.secret_key,
-        );
-
-        let crypto = PeerCrypto::new(precomputed_key, nonce_pair);
-        peer.crypto = Some(crypto);
-
-        peer.send_meta_msg(&MetadataMessage::new(false, false));
         self.add_readable_event(peer_id, None)
             .add_writable_event(peer_id, None)
             .make_progress();
