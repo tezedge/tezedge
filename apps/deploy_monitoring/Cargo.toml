@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "1.7.0"
+version = "1.6.6"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "deploy-monitoring"
@@ -23,7 +23,7 @@ serde_json = "1.0"
 shiplift = { git = "https://github.com/tezedge/shiplift.git", branch = "master" }
 slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
-slog-term = "2.6"
+slog-term = "2.8"
 sysinfo = "0.16"
 tokio = { version = "1.8", features = ["full"] }
 wait-timeout = "0.2"

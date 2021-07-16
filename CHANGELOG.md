@@ -30,7 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
-## [1.6.5] - 2021-07-13
+## [1.6.6] - 2021-07-16
+
+### Added
+
+- Add massif test for bootstrapping
+
+### Changed
+
+- Upgrade tokio dependency to 1.8
+
+### Fixed
+
+- Cleaning and better error handling
 
 ## [1.6.5] - 2021-07-13
 
