@@ -39,13 +39,21 @@ impl WebsocketHandler {
         sys: &impl ActorRefFactory,
         tokio_executor: Handle,
         address: SocketAddr,
+        max_number_of_websocket_connections: u16,
         log: Logger,
     ) -> Result<WebsocketHandlerRef, CreateError> {
-        info!(log, "Starting monitoring websocket server"; "address" => address);
+        info!(log, "Starting monitoring websocket server";
+                   "address" => address,
+                   "max_number_of_websocket_connections" => max_number_of_websocket_connections);
 
         sys.actor_of_props::<WebsocketHandler>(
             Self::name(),
-            Props::new_args((tokio_executor, address, log)),
+            Props::new_args((
+                tokio_executor,
+                address,
+                max_number_of_websocket_connections,
+                log,
+            )),
         )
     }
 
@@ -54,15 +62,22 @@ impl WebsocketHandler {
     }
 }
 
-impl ActorFactoryArgs<(Handle, SocketAddr, Logger)> for WebsocketHandler {
-    fn create_args((tokio_executor, address, log): (Handle, SocketAddr, Logger)) -> Self {
+impl ActorFactoryArgs<(Handle, SocketAddr, u16, Logger)> for WebsocketHandler {
+    fn create_args(
+        (tokio_executor, address, max_number_of_websocket_connections, log): (
+            Handle,
+            SocketAddr,
+            u16,
+            Logger,
+        ),
+    ) -> Self {
         let clients: Clients = Arc::new(RwLock::new(HashMap::new()));
 
         {
             let clients = clients.clone();
             tokio_executor.spawn(async move {
                 info!(log, "Starting websocket server"; "address" => format!("{}", &address));
-                run_websocket(address, clients, log).await
+                run_websocket(address, max_number_of_websocket_connections, clients, log).await
             });
         }
 
