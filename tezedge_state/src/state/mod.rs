@@ -21,6 +21,9 @@ mod assert_state;
 mod requests;
 pub use requests::*;
 
+mod quotas;
+pub(crate) use quotas::*;
+
 mod pending_peers;
 pub(crate) use pending_peers::*;
 
@@ -43,6 +46,10 @@ pub struct TezedgeConfig {
     pub max_pending_peers: usize,
     pub max_potential_peers: usize,
     pub periodic_react_interval: Duration,
+    pub reset_quotas_interval: Duration,
+    /// Not used at the moment!
+    // TODO: use disable_quotas in ThrottleQuota.
+    pub disable_quotas: bool,
     pub peer_blacklist_duration: Duration,
     pub peer_timeout: Duration,
     pub pow_target: f64,
@@ -281,9 +288,10 @@ impl<E: Effects> TezedgeState<E> {
         let periodic_react_interval = config.periodic_react_interval;
         let max_connected_peers = config.max_connected_peers;
         let max_pending_peers = config.max_pending_peers;
+        let reset_quotas_interval = config.reset_quotas_interval;
 
         let mut this = Self {
-            log,
+            log: log.clone(),
             config,
             identity,
             shell_compatibility_version,
@@ -291,7 +299,7 @@ impl<E: Effects> TezedgeState<E> {
             listening_for_connection_requests: false,
             potential_peers: HashSet::new(),
             pending_peers: PendingPeers::with_capacity(max_pending_peers),
-            connected_peers: ConnectedPeers::with_capacity(max_connected_peers),
+            connected_peers: ConnectedPeers::new(log, Some(max_connected_peers), reset_quotas_interval),
             blacklisted_peers: BlacklistedPeers::new(),
             p2p_state: P2pState::Pending,
             requests: slab::Slab::new(),
@@ -502,6 +510,8 @@ impl<E: Effects> TezedgeState<E> {
             self.check_blacklisted_peers(at);
             self.initiate_handshakes(at);
         }
+
+        self.connected_peers.periodic_react(at);
     }
 }
 
