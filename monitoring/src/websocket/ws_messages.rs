@@ -1,13 +1,10 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
-use std::iter::FromIterator;
-
 use serde::Serialize;
 use slog_derive::SerdeValue;
 
 use crate::monitors::ChainMonitor;
-use crate::monitors::PeerMonitor;
 
 // -------------------------- GENERAL METRICS -------------------------- //
 #[derive(Serialize, Debug, Clone)]
@@ -127,7 +124,7 @@ impl PeerConnectionStatus {
 // -------------------------- MONITOR MESSAGE -------------------------- //
 #[derive(SerdeValue, Serialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum HandlerMessage {
+pub enum WebsocketMessage {
     PeersMetrics { payload: Vec<PeerMetrics> },
     PeerStatus { payload: PeerConnectionStatus },
     IncomingTransfer { payload: IncomingTransferMetrics },
@@ -137,26 +134,26 @@ pub enum HandlerMessage {
     NotImplemented(String),
 }
 
-impl<'a> FromIterator<&'a mut PeerMonitor> for HandlerMessage {
-    fn from_iter<I: IntoIterator<Item = &'a mut PeerMonitor>>(monitors: I) -> Self {
-        let mut payload = Vec::new();
-        for monitor in monitors {
-            payload.push(monitor.snapshot())
-        }
-
-        Self::PeersMetrics { payload }
-    }
-}
-
-impl From<PeerConnectionStatus> for HandlerMessage {
+impl From<PeerConnectionStatus> for WebsocketMessage {
     fn from(payload: PeerConnectionStatus) -> Self {
         Self::PeerStatus { payload }
     }
 }
 
-impl From<IncomingTransferMetrics> for HandlerMessage {
-    fn from(payload: IncomingTransferMetrics) -> Self {
-        Self::IncomingTransfer { payload }
+#[derive(SerdeValue, Serialize, Clone, Debug)]
+pub struct WebsocketMessageWrapper {
+    pub messages: Vec<WebsocketMessage>,
+}
+
+impl WebsocketMessageWrapper {
+    pub fn one(msg: WebsocketMessage) -> Self {
+        WebsocketMessageWrapper {
+            messages: vec![msg],
+        }
+    }
+
+    pub fn multiple(messages: Vec<WebsocketMessage>) -> Self {
+        WebsocketMessageWrapper { messages }
     }
 }
 

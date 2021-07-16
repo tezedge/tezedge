@@ -3,7 +3,7 @@
 
 use std::{net::SocketAddr, time::Instant};
 
-use crate::websocket::handler_messages::PeerMetrics;
+use crate::websocket::ws_messages::PeerMetrics;
 
 /// Peer specific details about transfer *FROM* peer.
 pub(crate) struct PeerMonitor {
