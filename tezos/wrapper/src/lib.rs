@@ -79,12 +79,14 @@ impl TezosApiConnectionPool {
         pool_name: String,
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
     ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         Self::new(
             pool_name,
             pool_cfg,
             endpoint_cfg,
+            tokio_runtime,
             log,
             Box::new(InitReadonlyContextProtocolRunnerConnectionCustomizer),
         )
@@ -96,12 +98,14 @@ impl TezosApiConnectionPool {
         pool_name: String,
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
     ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
         Self::new(
             pool_name,
             pool_cfg,
             endpoint_cfg,
+            tokio_runtime,
             log,
             Box::new(NoopProtocolRunnerConnectionCustomizer),
         )
@@ -111,6 +115,7 @@ impl TezosApiConnectionPool {
         pool_name: String,
         pool_cfg: TezosApiConnectionPoolConfiguration,
         endpoint_cfg: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
         initializer: Box<dyn CustomizeConnection<ProtocolRunnerConnection<RunnerType>, PoolError>>,
     ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
@@ -119,6 +124,7 @@ impl TezosApiConnectionPool {
             pool_name.clone(),
             pool_cfg.connection_timeout,
             endpoint_cfg,
+            tokio_runtime,
             log.clone(),
         );
 
