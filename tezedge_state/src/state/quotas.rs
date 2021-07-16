@@ -131,8 +131,7 @@ impl ThrottleQuota {
         let index = Self::msg_index(msg);
         self.quotas[index].0 -= 1;
         if self.quotas[index].0 >= 0 {
-            self.quotas[index].1 =
-                THROTTLING_QUOTA_MAX[index].1.min(self.quotas[index].1 + 1);
+            self.quotas[index].1 = THROTTLING_QUOTA_MAX[index].1.min(self.quotas[index].1 + 1);
             Ok(self.quotas[index].0)
         } else if self.quota_disabled {
             Ok(self.quotas[index].0)
@@ -145,8 +144,7 @@ impl ThrottleQuota {
         let index = Self::msg_index(msg);
         self.quotas[index].1 -= 1;
         if self.quotas[index].1 >= 0 {
-            self.quotas[index].0 =
-                THROTTLING_QUOTA_MAX[index].0.min(self.quotas[index].0 + 1);
+            self.quotas[index].0 = THROTTLING_QUOTA_MAX[index].0.min(self.quotas[index].0 + 1);
             Ok(self.quotas[index].1)
         } else if self.quota_disabled {
             Ok(self.quotas[index].1)
@@ -179,4 +177,3 @@ impl ThrottleQuota {
         }
     }
 }
-
