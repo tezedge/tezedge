@@ -257,9 +257,10 @@ impl Receive<BroadcastSignal> for Monitor {
                     None,
                 );
             }
-            BroadcastSignal::PeerUpdate(msg) => self
-                .websocket_ref
-                .tell(WebsocketMessageWrapper::one(msg.into()), None),
+            BroadcastSignal::PeerUpdate(msg) => self.websocket_ref.tell(
+                WebsocketMessageWrapper::one(WebsocketMessage::PeerStatus { payload: msg }),
+                None,
+            ),
         }
     }
 }

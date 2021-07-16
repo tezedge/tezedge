@@ -131,13 +131,6 @@ pub enum WebsocketMessage {
     BlockStatus { payload: Vec<BlockMetrics> },
     BlockApplicationStatus { payload: BlockApplicationMessage },
     ChainStatus { payload: ChainMonitor },
-    NotImplemented(String),
-}
-
-impl From<PeerConnectionStatus> for WebsocketMessage {
-    fn from(payload: PeerConnectionStatus) -> Self {
-        Self::PeerStatus { payload }
-    }
 }
 
 #[derive(SerdeValue, Serialize, Clone, Debug)]
