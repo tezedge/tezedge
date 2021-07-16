@@ -13,15 +13,18 @@ enum PeerContainer {
 
 impl fmt::Display for PeerContainer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            Self::Potential => "potential_peers",
-            Self::Pending => "pending_peers",
-            Self::Connected => "connected_peers",
-            Self::Blacklisted => "blacklisted_peers",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Potential => "potential_peers",
+                Self::Pending => "pending_peers",
+                Self::Connected => "connected_peers",
+                Self::Blacklisted => "blacklisted_peers",
+            }
+        )
     }
 }
-
 
 #[inline]
 fn assert_peer_counts<E>(state: &TezedgeState<E>) {
@@ -33,7 +36,10 @@ fn assert_peer_counts<E>(state: &TezedgeState<E>) {
 #[inline]
 fn assert_no_overlapping_peers<E>(state: &TezedgeState<E>) {
     fn panic_overlap<A: Display>(addr: A, first: PeerContainer, second: PeerContainer) {
-        panic!("Found an overlap between peer containers! Address: {}, Containers: ({}, {})", addr, first, second);
+        panic!(
+            "Found an overlap between peer containers! Address: {}, Containers: ({}, {})",
+            addr, first, second
+        );
     }
 
     let mut all_peers = HashMap::new();
