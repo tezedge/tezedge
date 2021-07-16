@@ -284,11 +284,12 @@ fn block_on_actors(
     .expect("Failed to create chain manager");
 
     // Only start Monitoring when websocket is set
-    if let Some(websocket_address) = env.rpc.websocket_address {
+    if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
         let websocket_handler = WebsocketHandler::actor(
             &actor_system,
             tokio_runtime.handle().clone(),
             websocket_address,
+            max_number_of_websocket_connections,
             log.clone(),
         )
         .expect("Failed to start websocket actor");
