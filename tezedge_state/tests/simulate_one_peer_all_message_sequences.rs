@@ -133,26 +133,27 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
     false
 }
 
-fn try_sequence(state: &mut TezedgeState, sequence: &Vec<Messages>, incoming: bool) -> bool {
+fn try_sequence(state: &mut TezedgeState, sequence: &[Messages], incoming: bool) -> bool {
     let peer = PeerAddress::ipv4_from_index(1);
 
-    for msg in sequence.clone() {
+    for msg in sequence {
         match msg {
             Messages::Handshake(msg) => state.accept(PeerHandshakeMessageProposal {
                 at: Instant::now(),
                 peer: peer.clone(),
                 message: msg.clone(),
             }),
-            Messages::Writable(mut writable) => state.accept(PeerWritableProposal {
+            Messages::Writable(writable) => state.accept(PeerWritableProposal {
                 at: Instant::now(),
                 peer: peer.clone(),
-                stream: &mut writable,
+                stream: &mut writable.clone(),
             }),
         };
     }
     state.accept(TickProposal {
         at: Instant::now() + state.config().peer_timeout,
     });
+    state.assert_state();
 
     let is_connected = state.is_peer_connected(&peer);
     assert_ne!(is_connected, state.is_address_blacklisted(&peer), "at the end of trying sequence, peer should either be blacklisted or connected, it wasn't! sequence: {}", sequence_to_str(sequence));
@@ -160,7 +161,7 @@ fn try_sequence(state: &mut TezedgeState, sequence: &Vec<Messages>, incoming: bo
     is_connected
 }
 
-fn sequence_to_str(seq: &Vec<Messages>) -> String {
+fn sequence_to_str(seq: &[Messages]) -> String {
     let seq_str = seq
         .iter()
         .map(|msg| match msg {
@@ -295,7 +296,7 @@ fn simulate_one_peer_all_message_sequences() {
                 sequence_to_str(&seq)
             );
 
-            if try_sequence(&mut state_incoming.clone(), &seq, true) {
+            if result {
                 println!("successful incoming sequence: {}", sequence_to_str(&seq));
                 successful_sequences.push(seq.clone());
             }
