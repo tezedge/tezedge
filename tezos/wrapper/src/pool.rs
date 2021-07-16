@@ -48,6 +48,7 @@ impl fmt::Display for PoolError {
 pub struct ProtocolRunnerConnection<Runner: ProtocolRunner> {
     pub api: ProtocolController,
     subprocess: Runner::Subprocess,
+    tokio_runtime: tokio::runtime::Handle,
     log: Logger,
     pub name: String,
 
@@ -77,8 +78,10 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
 
         // try terminate sub-process (if running)
         if let Err(e) = Runner::wait_and_terminate_ref(
+            self.tokio_runtime.clone(),
             &mut self.subprocess,
             Runner::PROCESS_TERMINATE_WAIT_TIMEOUT,
+            &self.log,
         ) {
             warn!(self.log, "Failed to terminate/kill protocol runner"; "reason" => e);
         }
@@ -98,6 +101,8 @@ pub struct ProtocolRunnerManager<Runner: ProtocolRunner> {
     pool_name_counter: AtomicUsize,
     pool_connection_timeout: Duration,
 
+    tokio_runtime: tokio::runtime::Handle,
+
     pub endpoint_cfg: ProtocolEndpointConfiguration,
     pub log: Logger,
     _phantom: PhantomData<Runner>,
@@ -110,6 +115,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         pool_name: String,
         pool_connection_timeout: Duration,
         endpoint_cfg: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
     ) -> Self {
         Self {
@@ -117,6 +123,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
             pool_name_counter: AtomicUsize::new(1),
             pool_connection_timeout,
             endpoint_cfg,
+            tokio_runtime,
             log,
             _phantom: PhantomData,
         }
@@ -133,6 +140,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         let protocol_endpoint = ProtocolRunnerEndpoint::<Runner>::try_new(
             &endpoint_name,
             self.endpoint_cfg.clone(),
+            self.tokio_runtime.clone(),
             self.log.new(o!("endpoint" => endpoint_name.clone())),
         )
         .map_err(|error| PoolError::IpcError {
@@ -165,8 +173,10 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
                 error!(self.log, "Failed to accept IPC connection on sub-process (so terminate sub-process)"; "endpoint" => endpoint_name, "reason" => format!("{:?}", &e));
                 // try terminate sub-process (if running)
                 if let Err(e) = Runner::wait_and_terminate_ref(
+                    self.tokio_runtime.clone(),
                     &mut subprocess,
                     Runner::PROCESS_TERMINATE_WAIT_TIMEOUT,
+                    &self.log,
                 ) {
                     warn!(self.log, "Failed to terminate/kill protocol runner (create connection)"; "reason" => e);
                 }
@@ -181,6 +191,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerManager<Runner> {
         Ok(ProtocolRunnerConnection {
             api,
             subprocess,
+            tokio_runtime: self.tokio_runtime.clone(),
             log: self.log.new(o!("endpoint" => endpoint_name.clone())),
             name: endpoint_name,
             release_on_return_to_pool: false,

@@ -76,7 +76,9 @@ impl OperationsMetaStorage {
                 self.put(&block_hash, &meta)
                     .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
-            None => Err(StorageError::MissingKey),
+            None => Err(StorageError::MissingKey {
+                when: "put_operations".into(),
+            }),
         }
     }
 
@@ -325,13 +327,9 @@ mod tests {
 
     use failure::Error;
 
-    use crate::persistent::DbConfiguration;
     use crate::tests_common::TmpStorage;
 
     use super::*;
-    use crate::database;
-    use crate::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
-    use crate::persistent::database::open_kv;
     use crypto::hash::HashType;
 
     fn block_hash(bytes: &[u8]) -> BlockHash {
@@ -413,7 +411,7 @@ mod tests {
 
     #[test]
     fn merge_meta_value_test() -> Result<(), Error> {
-        use rocksdb::{Cache, Options, DB};
+        use rocksdb::{Options, DB};
 
         let path = "__opmeta_storage_mergetest";
         if Path::new(path).exists() {
@@ -423,34 +421,29 @@ mod tests {
         {
             let t = true as u8;
             let f = false as u8;
-            let cache = Cache::new_lru_cache(32 * 1024 * 1024).unwrap();
 
-            let db = open_kv(
-                path,
-                vec![OperationsMetaStorage::descriptor(&cache)],
-                &DbConfiguration::default(),
-            )?;
-            let backend = database::rockdb_backend::RocksDBBackend::from_db(Arc::new(db)).unwrap();
-            let maindb = TezedgeDatabase::new(TezedgeDatabaseBackendOptions::RocksDB(backend));
+            let tmp_storage = TmpStorage::create(path)?;
+            let storage = OperationsMetaStorage::new(tmp_storage.storage());
+
             let k = block_hash(&[3, 1, 3, 3, 7]);
             let mut v = Meta {
                 is_complete: false,
                 is_validation_pass_present: vec![f; 5],
                 validation_passes: 5,
             };
-            let p = OperationsMetaStorageKV::merge(&maindb, &k, &v);
+            let p = storage.put(&k, &v);
             assert!(p.is_ok(), "p: {:?}", p.unwrap_err());
             v.is_validation_pass_present[2] = t;
-            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
+            let _ = storage.put(&k, &v);
             v.is_validation_pass_present[2] = f;
             v.is_validation_pass_present[3] = t;
-            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
+            let _ = storage.put(&k, &v);
             v.is_validation_pass_present[3] = f;
             v.is_complete = true;
-            let _ = OperationsMetaStorageKV::merge(&maindb, &k, &v);
-            let m = OperationsMetaStorageKV::merge(&maindb, &k, &v);
+            let _ = storage.put(&k, &v);
+            let m = storage.put(&k, &v);
             assert!(m.is_ok());
-            match OperationsMetaStorageKV::get(&maindb, &k) {
+            match storage.get(&k) {
                 Ok(Some(value)) => {
                     assert_eq!(vec![f, f, t, t, f], value.is_validation_pass_present);
                     assert!(value.is_complete);

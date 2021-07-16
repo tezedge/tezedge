@@ -24,7 +24,6 @@ start_sandbox_node() {
       "ocaml_log_enabled": false,
       "p2p_port": 9732,
       "rpc_port": 18732,
-      "websocket_address": "0.0.0.0:4927",
       "ffi_pool_max_connections": 10,
       "ffi_pool_connection_timeout_in_secs": 60,
       "ffi_pool_max_lifetime_in_secs": 21600,

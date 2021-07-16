@@ -8,7 +8,6 @@ use failure::Fail;
 
 pub mod chain_current_head_manager;
 pub mod chain_feeder;
-pub mod chain_feeder_channel;
 pub mod chain_manager;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;

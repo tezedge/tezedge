@@ -195,10 +195,12 @@ impl FileAppender {
                 let (plain_path, temp_gz_path) = self.rotated_paths_for_compression()?;
                 let (tx, rx) = mpsc::channel();
                 fs::rename(&self.path, &plain_path)?;
-                thread::spawn(move || {
-                    let result = Self::compress(plain_path, temp_gz_path, rotated_path);
-                    let _ = tx.send(result);
-                });
+                thread::Builder::new()
+                    .name("slog-rotate-compress-thread".to_string())
+                    .spawn(move || {
+                        let result = Self::compress(plain_path, temp_gz_path, rotated_path);
+                        let _ = tx.send(result);
+                    })?;
 
                 self.wait_compression = Some(rx);
             } else {

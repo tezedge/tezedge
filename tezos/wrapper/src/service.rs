@@ -35,7 +35,7 @@ lazy_static! {
     /// so this lock ensures, that in the whole application at least one 'write init_protocol_context' was successfull, which means,
     /// that FFI context has created required files, so after that we can let continue other threads to initialize readonly context
     ///
-    /// see also: test_mutliple_protocol_runners_with_one_write_multiple_read_init_context
+    /// see also: test_multiple_protocol_runners_with_one_write_multiple_read_init_context
     static ref AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
 }
 
@@ -221,9 +221,12 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                             Ok(mut listener) => {
                                 info!(&log, "Listening to context IPC request at {}", socket_path);
                                 let log = log.clone();
-                                std::thread::spawn(move || {
-                                    listener.handle_incoming_connections(&log);
-                                });
+                                std::thread::Builder::new()
+                                    .name("ipc-context-listener-thread".to_string())
+                                    .spawn(move || {
+                                        listener.handle_incoming_connections(&log);
+                                    })
+                                    .map_err(|error| IpcError::ThreadError { reason: error })?;
                                 tx.send(&NodeMessage::InitProtocolContextIpcServerResult(Ok(())))?;
                             }
                             Err(err) => {
@@ -330,7 +333,6 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 )))?,
                 Some(index) => {
                     let prefix_borrowed: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
-                    // TODO: remove unwraps
                     let result = index
                         .get_context_tree_by_prefix(&context_hash, &prefix_borrowed, depth)
                         .map_err(|err| format!("{:?}", err));
@@ -1018,8 +1020,8 @@ impl ProtocolController {
                 Some(IpcCmdServer::IO_TIMEOUT),
             )? {
                 NodeMessage::InitProtocolContextIpcServerResult(result) => {
-                    result.map_err(|_err| ProtocolServiceError::ContextIpcServerError {
-                        message: "Failure when starting context IPC server".to_owned(),
+                    result.map_err(|err| ProtocolServiceError::ContextIpcServerError {
+                        message: format!("Failure when starting context IPC server: {}", err),
                     })
                 }
                 message => Err(ProtocolServiceError::UnexpectedMessage {
@@ -1177,6 +1179,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     pub fn try_new(
         endpoint_name: &str,
         configuration: ProtocolEndpointConfiguration,
+        tokio_runtime: tokio::runtime::Handle,
         log: Logger,
     ) -> Result<ProtocolRunnerEndpoint<Runner>, IpcError> {
         let cmd_server = IpcCmdServer::try_new(configuration.clone())?;
@@ -1186,6 +1189,7 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
                 configuration,
                 cmd_server.0.client().path(),
                 endpoint_name.to_string(),
+                tokio_runtime,
             ),
             commands: cmd_server,
             log,
@@ -1195,6 +1199,6 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerEndpoint<Runner> {
     /// Starts protocol runner sub-process just once and you can take care of it
     pub fn start(&self) -> Result<Runner::Subprocess, ProtocolRunnerError> {
         debug!(self.log, "Starting protocol runner process");
-        self.runner.spawn()
+        self.runner.spawn(self.log.clone())
     }
 }

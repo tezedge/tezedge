@@ -182,7 +182,11 @@ fn load_current_head(
         Ok(Some(head)) => {
             let block_applied = BlockStorage::new(persistent_storage)
                 .get(head.block_hash())
-                .and_then(|data| data.ok_or(StorageError::MissingKey));
+                .and_then(|data| {
+                    data.ok_or_else(|| StorageError::MissingKey {
+                        when: "load_current_head".into(),
+                    })
+                });
             match block_applied {
                 Ok(block) => Some(Arc::new(block)),
                 Err(e) => {

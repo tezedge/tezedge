@@ -70,6 +70,7 @@ fn create_tezos_readonly_api_pool(
     pool_name: &str,
     pool_cfg: TezosApiConnectionPoolConfiguration,
     env: &crate::configuration::Environment,
+    tokio_runtime: tokio::runtime::Handle,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_with_readonly_context(
@@ -87,6 +88,7 @@ fn create_tezos_readonly_api_pool(
             &env.ffi.protocol_runner,
             env.logging.slog.level,
         ),
+        tokio_runtime,
         log,
     )
 }
@@ -97,6 +99,7 @@ fn create_tezos_without_context_api_pool(
     pool_name: &str,
     pool_cfg: TezosApiConnectionPoolConfiguration,
     env: &crate::configuration::Environment,
+    tokio_runtime: tokio::runtime::Handle,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
@@ -114,6 +117,7 @@ fn create_tezos_without_context_api_pool(
             &env.ffi.protocol_runner,
             env.logging.slog.level,
         ),
+        tokio_runtime,
         log,
     )
 }
@@ -122,6 +126,7 @@ fn create_tezos_without_context_api_pool(
 /// There is limitation, that only one write connection to context can be open, so we limit this pool to 1.
 fn create_tezos_writeable_api_pool(
     env: &crate::configuration::Environment,
+    tokio_runtime: tokio::runtime::Handle,
     log: Logger,
 ) -> Result<TezosApiConnectionPool, TezosApiConnectionPoolError> {
     TezosApiConnectionPool::new_without_context(
@@ -147,6 +152,7 @@ fn create_tezos_writeable_api_pool(
             &env.ffi.protocol_runner,
             env.logging.slog.level,
         ),
+        tokio_runtime,
         log,
     )
 }
@@ -170,9 +176,12 @@ fn block_on_actors(
 
     info!(log, "Initializing protocol runners... (4/5)");
 
+    // create tokio runtime
+    let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
+
     // pool and event server dedicated for applying blocks to chain
     let tezos_writeable_api_pool = Arc::new(
-        create_tezos_writeable_api_pool(&env, log.clone())
+        create_tezos_writeable_api_pool(&env, tokio_runtime.handle().clone(), log.clone())
             .expect("Failed to initialize writable API pool"),
     );
 
@@ -182,6 +191,7 @@ fn block_on_actors(
             "tezos_readonly_api_pool",
             env.ffi.tezos_readonly_api_pool.clone(),
             &env,
+            tokio_runtime.handle().clone(),
             log.clone(),
         )
         .expect("Failed to initialize read-only API pool"),
@@ -191,6 +201,7 @@ fn block_on_actors(
             "tezos_readonly_prevalidation_api",
             env.ffi.tezos_readonly_prevalidation_api_pool.clone(),
             &env,
+            tokio_runtime.handle().clone(),
             log.clone(),
         )
         .expect("Failed to initialize read-only prevalidation API pool"),
@@ -200,6 +211,7 @@ fn block_on_actors(
             "tezos_without_context_api_pool",
             env.ffi.tezos_without_context_api_pool.clone(),
             &env,
+            tokio_runtime.handle().clone(),
             log.clone(),
         )
         .expect("Failed to initialize API pool without context"),
@@ -220,9 +232,6 @@ fn block_on_actors(
             .peer_threshold
             .num_of_peers_for_bootstrap_threshold(),
     );
-
-    // create tokio runtime
-    let tokio_runtime = create_tokio_runtime(&env).expect("Failed to create tokio runtime");
 
     // create riker's actor system
     let actor_system = SystemBuilder::new()
@@ -283,22 +292,28 @@ fn block_on_actors(
     )
     .expect("Failed to create chain manager");
 
-    let websocket_handler = WebsocketHandler::actor(
-        &actor_system,
-        tokio_runtime.handle().clone(),
-        env.rpc.websocket_address,
-        log.clone(),
-    )
-    .expect("Failed to start websocket actor");
-    let _ = Monitor::actor(
-        &actor_system,
-        network_channel.clone(),
-        websocket_handler,
-        shell_channel.clone(),
-        persistent_storage.clone(),
-        init_storage_data.chain_id.clone(),
-    )
-    .expect("Failed to create monitor actor");
+    // Only start Monitoring when websocket is set
+    if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
+        let websocket_handler = WebsocketHandler::actor(
+            &actor_system,
+            tokio_runtime.handle().clone(),
+            websocket_address,
+            max_number_of_websocket_connections,
+            log.clone(),
+        )
+        .expect("Failed to start websocket actor");
+
+        let _ = Monitor::actor(
+            &actor_system,
+            network_channel.clone(),
+            websocket_handler,
+            shell_channel.clone(),
+            persistent_storage.clone(),
+            init_storage_data.chain_id.clone(),
+        )
+        .expect("Failed to create monitor actor");
+    }
+
     let _ = RpcServer::actor(
         &actor_system,
         shell_channel.clone(),
@@ -323,7 +338,7 @@ fn block_on_actors(
             blocks,
             &init_storage_data,
             block_applier,
-            shell_channel.clone(),
+            shell_channel,
             log.clone(),
         );
     } else {

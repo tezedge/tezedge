@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use crate::websocket::handler_messages::IncomingTransferMetrics;
+use crate::websocket::ws_messages::IncomingTransferMetrics;
 
 /// General statistics about incoming transfer
 pub(crate) struct BootstrapMonitor {

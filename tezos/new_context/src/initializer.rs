@@ -19,11 +19,19 @@ pub enum IndexInitializationError {
     IpcError { reason: IpcError },
     #[fail(display = "Attempted to initialize an IPC context without a socket path")]
     IpcSocketPathMissing,
+    #[fail(display = "Unexpected IO error occurred, {}", reason)]
+    IoError { reason: std::io::Error },
 }
 
 impl From<IpcError> for IndexInitializationError {
     fn from(error: IpcError) -> Self {
         Self::IpcError { reason: error }
+    }
+}
+
+impl From<std::io::Error> for IndexInitializationError {
+    fn from(error: std::io::Error) -> Self {
+        Self::IoError { reason: error }
     }
 }
 
@@ -41,7 +49,7 @@ pub fn initialize_tezedge_index(
                     )),
                 }
             }
-            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::new())),
+            ContextKvStoreConfiguration::InMem => Arc::new(RwLock::new(InMemory::try_new()?)),
         },
         patch_context,
     ))

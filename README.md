@@ -285,7 +285,6 @@ LD_LIBRARY_PATH=./tezos/sys/lib_tezos/artifacts ./target/release/light-node \
     --init-sapling-spend-params-file "./tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "./tezos/sys/lib_tezos/artifacts/sapling-output.params" \
     --p2p-port 9732 --rpc-port 18732 \
-    --websocket-address 0.0.0.0:4927 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --tezos-context-storage=irmin \
@@ -313,7 +312,7 @@ _More about building TezEdge docker images see [here](docker/README.md)._
 #### Run image
 
 ```
-docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.6.5 --network=mainnet --p2p-port 9732 --rpc-port 18732 --websocket-address 0.0.0.0:4927
+docker run -i -p 9732:9732 -p 18732:18732 -p 4927:4927 -t tezedge/tezedge:v1.6.6 --network=mainnet --p2p-port 9732 --rpc-port 18732
 ```
 _A full description of all arguments can be found in the light_node [README](light_node/README.md) file._
 

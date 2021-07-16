@@ -510,7 +510,10 @@ impl ChainManager {
                                         // notify others that new all operations for block were received
                                         let block_meta = block_meta_storage
                                             .get(&block_hash)?
-                                            .ok_or(StorageError::MissingKey)?;
+                                            .ok_or_else(|| StorageError::MissingKey {
+                                                when: "Processing PeerMessage::OperationsForBlocks"
+                                                    .into(),
+                                            })?;
 
                                         // notify others that new all operations for block were received
                                         shell_channel.tell(
@@ -1566,6 +1569,9 @@ impl Actor for ChainManager {
                 );
             }
         }
+
+        info!(log, "Chain manager started";
+                   "main_chain_id" => self.chain_state.get_chain_id().to_base58_check());
     }
 
     fn sys_recv(

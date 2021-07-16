@@ -360,6 +360,9 @@ impl IpcContextListener {
 
     /// Create new IPC endpoint
     pub fn try_new<P: AsRef<Path>>(socket_path: P) -> Result<Self, IpcError> {
+        // Remove file first, otherwise bind will fail.
+        std::fs::remove_file(&socket_path).ok();
+
         Ok(IpcContextListener(IpcServer::bind_path(socket_path)?))
     }
 
@@ -387,19 +390,32 @@ impl IpcContextListener {
         for connection in self.incoming() {
             match connection {
                 Err(err) => {
-                    error!(&log, "Error accepting IPC connection: {:?}", err)
+                    error!(&log, "Error accepting IPC connection"; "reason" => format!("{:?}", err))
                 }
                 Ok(server) => {
-                    info!(&log, "Accepted context IPC connection");
-                    let log = log.clone();
-                    std::thread::spawn(move || {
-                        if let Err(err) = server.process_context_requests(&log) {
-                            error!(
-                                &log,
-                                "Error when processing context IPC requests: {:?}", err
-                            );
-                        }
-                    });
+                    info!(
+                        &log,
+                        "IpcContextServer accepted new IPC connection for context"
+                    );
+                    let log_inner = log.clone();
+                    if let Err(spawn_error) = std::thread::Builder::new()
+                        .name("ipc-context-server-thread".to_string())
+                        .spawn(move || {
+                            if let Err(err) = server.process_context_requests(&log_inner) {
+                                error!(
+                                    &log_inner,
+                                    "Error when processing context IPC requests";
+                                    "reason" => format!("{:?}", err),
+                                );
+                            }
+                        })
+                    {
+                        error!(
+                            &log,
+                            "Failed to spawn thread to IpcContextServer";
+                            "reason" => spawn_error,
+                        );
+                    }
                 }
             }
         }

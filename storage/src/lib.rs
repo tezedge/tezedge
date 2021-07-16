@@ -124,8 +124,8 @@ pub enum StorageError {
     DBError { error: DBError },
     #[fail(display = "Commit log error: {}", error)]
     CommitLogError { error: CommitLogError },
-    #[fail(display = "Key is missing in storage")]
-    MissingKey,
+    #[fail(display = "Key is missing in storage, when: {}", when)]
+    MissingKey { when: String },
     #[fail(display = "Column is not valid")]
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
@@ -368,7 +368,9 @@ pub fn store_commit_genesis_result(
 
             Ok(())
         }
-        None => Err(StorageError::MissingKey),
+        None => Err(StorageError::MissingKey {
+            when: "store_commit_genesis_result".into(),
+        }),
     }
 }
 
@@ -703,30 +705,58 @@ pub mod tests_common {
 
             // create common RocksDB block cache to be shared among column families
             let db_cache = Cache::new_lru_cache(128 * 1024 * 1024)?; // 128 MB
-
+            let backend = if cfg!(feature = "maindb-backend-rocksdb") {
+                let kv = Arc::new(open_kv(
+                    path.join("db"),
+                    vec![
+                        block_storage::BlockPrimaryIndex::descriptor(&db_cache),
+                        block_storage::BlockByLevelIndex::descriptor(&db_cache),
+                        block_storage::BlockByContextHashIndex::descriptor(&db_cache),
+                        BlockMetaStorage::descriptor(&db_cache),
+                        OperationsStorage::descriptor(&db_cache),
+                        OperationsMetaStorage::descriptor(&db_cache),
+                        SystemStorage::descriptor(&db_cache),
+                        Sequences::descriptor(&db_cache),
+                        MempoolStorage::descriptor(&db_cache),
+                        ChainMetaStorage::descriptor(&db_cache),
+                        PredecessorStorage::descriptor(&db_cache),
+                        BlockAdditionalData::descriptor(&db_cache),
+                    ],
+                    &cfg,
+                )?);
+                TezedgeDatabaseBackendOptions::RocksDB(
+                    database::rockdb_backend::RocksDBBackend::from_db(kv)?,
+                )
+            } else if cfg!(feature = "maindb-backend-sled") {
+                TezedgeDatabaseBackendOptions::SledDB(database::sled_backend::SledDBBackend::new(
+                    path.join("db"),
+                )?)
+            } else {
+                let kv = Arc::new(open_kv(
+                    path.join("db"),
+                    vec![
+                        block_storage::BlockPrimaryIndex::descriptor(&db_cache),
+                        block_storage::BlockByLevelIndex::descriptor(&db_cache),
+                        block_storage::BlockByContextHashIndex::descriptor(&db_cache),
+                        BlockMetaStorage::descriptor(&db_cache),
+                        OperationsStorage::descriptor(&db_cache),
+                        OperationsMetaStorage::descriptor(&db_cache),
+                        SystemStorage::descriptor(&db_cache),
+                        Sequences::descriptor(&db_cache),
+                        MempoolStorage::descriptor(&db_cache),
+                        ChainMetaStorage::descriptor(&db_cache),
+                        PredecessorStorage::descriptor(&db_cache),
+                        BlockAdditionalData::descriptor(&db_cache),
+                    ],
+                    &cfg,
+                )?);
+                TezedgeDatabaseBackendOptions::RocksDB(
+                    database::rockdb_backend::RocksDBBackend::from_db(kv)?,
+                )
+            };
             // db storage - is used for db and sequences
-            let kv = Arc::new(open_kv(
-                path.join("db"),
-                vec![
-                    block_storage::BlockPrimaryIndex::descriptor(&db_cache),
-                    block_storage::BlockByLevelIndex::descriptor(&db_cache),
-                    block_storage::BlockByContextHashIndex::descriptor(&db_cache),
-                    BlockMetaStorage::descriptor(&db_cache),
-                    OperationsStorage::descriptor(&db_cache),
-                    OperationsMetaStorage::descriptor(&db_cache),
-                    SystemStorage::descriptor(&db_cache),
-                    Sequences::descriptor(&db_cache),
-                    MempoolStorage::descriptor(&db_cache),
-                    ChainMetaStorage::descriptor(&db_cache),
-                    PredecessorStorage::descriptor(&db_cache),
-                    BlockAdditionalData::descriptor(&db_cache),
-                ],
-                &cfg,
-            )?);
-            let backend = database::rockdb_backend::RocksDBBackend::from_db(kv)?;
-            let maindb = Arc::new(TezedgeDatabase::new(
-                TezedgeDatabaseBackendOptions::RocksDB(backend),
-            ));
+
+            let maindb = Arc::new(TezedgeDatabase::new(backend));
             // commit log storage
             let clog = open_cl(&path, vec![BlockStorage::descriptor()])?;
 

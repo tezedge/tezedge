@@ -117,6 +117,8 @@ impl NodeInfrastructure {
         )
         .expect("Failed to resolve init storage chain data");
 
+        let tokio_runtime = create_tokio_runtime();
+
         // create pool for ffi protocol runner connections (used just for readonly context)
         let tezos_readonly_api_pool = Arc::new(TezosApiConnectionPool::new_with_readonly_context(
             String::from(&format!("{}_readonly_runner_pool", name)),
@@ -139,6 +141,7 @@ impl NodeInfrastructure {
                 &common::protocol_runner_executable_path(),
                 log_level,
             ),
+            tokio_runtime.handle().clone(),
             log.clone(),
         )?);
 
@@ -164,6 +167,7 @@ impl NodeInfrastructure {
                 &common::protocol_runner_executable_path(),
                 log_level,
             ),
+            tokio_runtime.handle().clone(),
             log.clone(),
         )?);
 
@@ -173,7 +177,6 @@ impl NodeInfrastructure {
         let bootstrap_state = init_synchronization_bootstrap_state_storage(
             p2p_threshold.num_of_peers_for_bootstrap_threshold(),
         );
-        let tokio_runtime = create_tokio_runtime();
 
         // run actor's
         let actor_system = SystemBuilder::new()
@@ -432,7 +435,7 @@ impl Drop for NodeInfrastructure {
     }
 }
 
-fn create_tokio_runtime() -> tokio::runtime::Runtime {
+pub fn create_tokio_runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

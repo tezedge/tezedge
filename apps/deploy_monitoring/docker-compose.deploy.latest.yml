@@ -32,7 +32,7 @@ services:
 
   tezedge-node:
     image: tezedge/tezedge:latest-frame-pointers-enabled
-    command: ["--network", "${TEZOS_NETWORK}", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
+    command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "60", "--peer-thresh-high", "80"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -90,7 +90,7 @@ services:
     image: tezedge/tezedge-explorer:latest
     environment:
       # need a better way to provide such information
-      - API=[{"id":"rust","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","monitoring":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml","p2p_port":9733,"features":[{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
+      - API=[{"id":"rust","type":"tezedge","name":"rust.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}.dev.tezedge.com:4927"},{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}.dev.tezedge.com:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"},{"name":"logs"}]},{"id":"ocaml","type":"octez","name":"ocaml.${HOSTNAME}.dev.tezedge.com","http":"http://${HOSTNAME}.dev.tezedge.com:18733","p2p_port":9733,"features":[{"name":"debugger","url":"http://${HOSTNAME}.dev.tezedge.com:17732"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}.dev.tezedge.com:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}.dev.tezedge.com:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"},{"name":"logs"}]}]
     ports:
       - "80:80"
 volumes:

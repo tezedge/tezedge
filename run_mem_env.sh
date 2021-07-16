@@ -67,7 +67,6 @@ start_tezedge_node() {
     --init-sapling-spend-params-file "/home/dev/tezedge/tezos/sys/lib_tezos/artifacts/sapling-spend.params" \
     --init-sapling-output-params-file "/home/dev/tezedge/tezos/sys/lib_tezos/artifacts/sapling-output.params" \
     --p2p-port 9999 --rpc-port 19999 \
-    --websocket-address 0.0.0.0:4927 \
     --tokio-threads 0 \
     --ocaml-log-enabled false \
     --log-level debug \

@@ -19,9 +19,9 @@ use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
 use tezos_messages::p2p::binary_message::BinaryWrite;
 
-use crate::websocket::handler_messages::HandlerMessage;
+use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
-    monitors::*, websocket::handler_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
+    monitors::*, websocket::ws_messages::PeerConnectionStatus, websocket::WebsocketHandlerMsg,
 };
 
 /// How often to print stats in logs
@@ -49,7 +49,7 @@ pub type MonitorRef = ActorRef<MonitorMsg>;
 pub struct Monitor {
     network_channel: NetworkChannelRef,
     shell_channel: ShellChannelRef,
-    msg_channel: ActorRef<WebsocketHandlerMsg>,
+    websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
     peer_monitors: HashMap<ActorUri, PeerMonitor>,
     bootstrap_monitor: BootstrapMonitor,
@@ -69,7 +69,7 @@ impl Monitor {
     pub fn actor(
         sys: &impl ActorRefFactory,
         event_channel: NetworkChannelRef,
-        msg_channel: ActorRef<WebsocketHandlerMsg>,
+        websocket_ref: ActorRef<WebsocketHandlerMsg>,
         shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
         main_chain_id: ChainId,
@@ -78,7 +78,7 @@ impl Monitor {
             Self::name(),
             Props::new_args((
                 event_channel,
-                msg_channel,
+                websocket_ref,
                 shell_channel,
                 persistent_storage,
                 main_chain_id,
@@ -125,7 +125,7 @@ impl
     )> for Monitor
 {
     fn create_args(
-        (event_channel, msg_channel, shell_channel, persistent_storage, main_chain_id): (
+        (event_channel, websocket_ref, shell_channel, persistent_storage, main_chain_id): (
             NetworkChannelRef,
             ActorRef<WebsocketHandlerMsg>,
             ShellChannelRef,
@@ -139,7 +139,7 @@ impl
         Self {
             network_channel: event_channel,
             shell_channel,
-            msg_channel,
+            websocket_ref,
             peer_monitors: HashMap::new(),
             bootstrap_monitor,
             blocks_monitor,
@@ -159,14 +159,6 @@ impl Actor for Monitor {
         subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
         subscribe_to_network_events(&self.network_channel, ctx.myself());
 
-        // Every second, send yourself a message to broadcast the monitoring to all connected clients
-        ctx.schedule(
-            Duration::from_secs(1),
-            Duration::from_secs(1),
-            ctx.myself(),
-            None,
-            BroadcastSignal::PublishPeerStatistics,
-        );
         ctx.schedule::<Self::Msg, _>(
             LOG_INTERVAL / 2,
             LOG_INTERVAL,
@@ -176,11 +168,22 @@ impl Actor for Monitor {
         );
         ctx.schedule(
             Duration::from_secs_f32(1.5),
+            Duration::from_secs_f32(1.5),
+            ctx.myself(),
+            None,
+            BroadcastSignal::PublishPeerStatistics,
+        );
+        ctx.schedule(
+            Duration::from_secs(1),
             Duration::from_secs(1),
             ctx.myself(),
             None,
             BroadcastSignal::PublishBlocksStatistics,
         );
+    }
+
+    fn post_start(&mut self, ctx: &Context<Self::Msg>) {
+        info!(ctx.system.log(), "Monitoring started");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Option<BasicActorRef>) {
@@ -221,34 +224,43 @@ impl Receive<SystemEvent> for Monitor {
 impl Receive<BroadcastSignal> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
+    fn receive(&mut self, _: &Context<Self::Msg>, msg: BroadcastSignal, _sender: Sender) {
         match msg {
             BroadcastSignal::PublishPeerStatistics => {
-                let peer_stats: HandlerMessage = self.peer_monitors.values_mut().collect();
-                self.msg_channel.tell(peer_stats, ctx.myself().into());
+                self.websocket_ref.tell(
+                    WebsocketMessageWrapper::one(WebsocketMessage::PeersMetrics {
+                        payload: self
+                            .peer_monitors
+                            .values_mut()
+                            .map(|monitor| monitor.snapshot())
+                            .collect(),
+                    }),
+                    None,
+                );
             }
             BroadcastSignal::PublishBlocksStatistics => {
-                let bootstrap_stats: HandlerMessage = self.bootstrap_monitor.snapshot().into();
-                self.msg_channel.tell(bootstrap_stats, ctx.myself().into());
-
-                let payload = self.blocks_monitor.snapshot();
-                self.msg_channel
-                    .tell(HandlerMessage::BlockStatus { payload }, ctx.myself().into());
-
-                let payload = self.block_application_monitor.snapshot();
-                self.msg_channel.tell(
-                    HandlerMessage::BlockApplicationStatus { payload },
-                    ctx.myself().into(),
+                self.websocket_ref.tell(
+                    WebsocketMessageWrapper::multiple(vec![
+                        WebsocketMessage::IncomingTransfer {
+                            payload: self.bootstrap_monitor.snapshot(),
+                        },
+                        WebsocketMessage::BlockStatus {
+                            payload: self.blocks_monitor.snapshot(),
+                        },
+                        WebsocketMessage::BlockApplicationStatus {
+                            payload: self.block_application_monitor.snapshot(),
+                        },
+                        WebsocketMessage::ChainStatus {
+                            payload: self.chain_monitor.snapshot(),
+                        },
+                    ]),
+                    None,
                 );
-
-                let payload = self.chain_monitor.snapshot();
-                self.msg_channel
-                    .tell(HandlerMessage::ChainStatus { payload }, ctx.myself().into());
             }
-            BroadcastSignal::PeerUpdate(msg) => {
-                let msg: HandlerMessage = msg.into();
-                self.msg_channel.tell(msg, ctx.myself().into())
-            }
+            BroadcastSignal::PeerUpdate(msg) => self.websocket_ref.tell(
+                WebsocketMessageWrapper::one(WebsocketMessage::PeerStatus { payload: msg }),
+                None,
+            ),
         }
     }
 }

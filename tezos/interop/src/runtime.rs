@@ -183,14 +183,17 @@ fn initialize_environment() -> OCamlEnvironment {
         spawned_tasks: Arc::new(Mutex::new(task_tx)),
     };
 
-    thread::spawn(move || {
-        let ocaml_runtime = ffi::setup();
-        let executor = OCamlThreadExecutor {
-            ready_tasks: task_rx,
-            ocaml_runtime,
-        };
-        executor.run();
-    });
+    thread::Builder::new()
+        .name("ffi-ocaml-executor-thread".to_string())
+        .spawn(move || {
+            let ocaml_runtime = ffi::setup();
+            let executor = OCamlThreadExecutor {
+                ready_tasks: task_rx,
+                ocaml_runtime,
+            };
+            executor.run();
+        })
+        .expect("Failed to spawn thread to initialize OCamlEnvironment");
 
     OCamlEnvironment { spawner }
 }

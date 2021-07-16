@@ -23,12 +23,14 @@ use tezos_wrapper::service::{IpcCmdServer, ProtocolRunnerEndpoint};
 use tezos_wrapper::ProtocolEndpointConfiguration;
 use tezos_wrapper::{TezosApiConnectionPool, TezosApiConnectionPoolConfiguration};
 
+use crate::common::infra::create_tokio_runtime;
+
 pub mod common;
 
 #[ignore]
 #[test]
 #[serial]
-fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
+fn test_multiple_protocol_runners_with_one_write_multiple_read_init_context(
 ) -> Result<(), failure::Error> {
     // logger
     let log_level = common::log_level();
@@ -43,11 +45,14 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
         "__shell_test_mutliple_protocol_runners",
     ));
 
+    let tokio_runtime = create_tokio_runtime();
+
     // spawn thread for init_protocol_context for every endpoint
     let mut handles = Vec::new();
     for i in 0..number_of_endpoints {
         // create endpoint
         let (mut protocol, child, endpoint_name) = create_endpoint::<ExecutableProtocolRunner>(
+            tokio_runtime.handle().clone(),
             log.clone(),
             log_level,
             format!("test_multiple_endpoint_{}", i),
@@ -85,7 +90,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
         match handle.join().unwrap() {
             Ok(result) => {
                 info!(log, "Init protocol context success"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly);
-                match child.kill() {
+                match tokio_runtime.block_on(child.kill()) {
                     Ok(_) => (),
                     Err(e) => {
                         warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
@@ -97,7 +102,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
             }
             Err(e) => {
                 error!(log, "Init protocol context error"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e));
-                match child.kill() {
+                match tokio_runtime.block_on(child.kill()) {
                     Ok(_) => (),
                     Err(e) => {
                         warn!(log, "Failed to kill child process"; "endpoint_name" => endpoint_name.clone(), "flag_readonly" => flag_readonly, "error" => format!("{:?}", &e))
@@ -113,6 +118,7 @@ fn test_mutliple_protocol_runners_with_one_write_multiple_read_init_context(
 }
 
 fn create_endpoint<Runner: ProtocolRunner + 'static>(
+    tokio_runtime: tokio::runtime::Handle,
     log: Logger,
     log_level: Level,
     endpoint_name: String,
@@ -152,6 +158,7 @@ fn create_endpoint<Runner: ProtocolRunner + 'static>(
             &protocol_runner,
             log_level,
         ),
+        tokio_runtime,
         log.new(o!("endpoint" => endpoint_name.clone())),
     )?;
 
@@ -195,9 +202,12 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
     // init protocol runner endpoint
     let protocol_runner = common::protocol_runner_executable_path();
 
+    let tokio_runtime = create_tokio_runtime();
+
     // at first we need to create one writerable context, because of creating new one - see feature AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK
     let (mut write_context_commands, mut subprocess, ..) =
         create_endpoint::<ExecutableProtocolRunner>(
+            tokio_runtime.handle().clone(),
             log.clone(),
             log_level,
             "test_one_writeable_endpoint".to_string(),
@@ -210,8 +220,12 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         .genesis_commit_hash
         .expect("Genesis context_hash should be commited!");
     write_api.shutdown()?;
-    let _ =
-        ExecutableProtocolRunner::wait_and_terminate_ref(&mut subprocess, Duration::from_secs(5));
+    let _ = ExecutableProtocolRunner::wait_and_terminate_ref(
+        tokio_runtime.handle().clone(),
+        &mut subprocess,
+        Duration::from_secs(5),
+        &log,
+    );
 
     // cfg for pool
     let pool_cfg = TezosApiConnectionPoolConfiguration {
@@ -255,6 +269,7 @@ fn test_readonly_protocol_runner_connection_pool() -> Result<(), failure::Error>
         pool_name.to_string(),
         pool_cfg,
         endpoint_cfg,
+        tokio_runtime.handle().clone(),
         log,
     )?);
 

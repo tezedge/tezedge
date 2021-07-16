@@ -1,6 +1,6 @@
 [package]
 name = "deploy-monitoring"
-version = "1.6.5"
+version = "1.6.6"
 authors = ["Adrian Nagy <adrian.nagy@viablesystems.io>"]
 edition = "2018"
 default-run = "deploy-monitoring"
@@ -25,7 +25,7 @@ slog = { version = "2.5", features = ["nested-values"] }
 slog-async = "2.5"
 slog-term = "2.8"
 sysinfo = "0.16"
-tokio = { version = "1.2", features = ["full"] }
+tokio = { version = "1.8", features = ["full"] }
 wait-timeout = "0.2"
 warp = "0.3"
 # TODO: TE-499 remove shell dependency, and move stats/memory somewhere

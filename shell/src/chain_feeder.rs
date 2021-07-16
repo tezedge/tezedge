@@ -190,7 +190,8 @@ impl ChainFeeder {
                 tezos_writeable_api,
                 log,
             )
-            .spawn_feeder_thread();
+            .spawn_feeder_thread(format!("{}-block-applier-thread", ChainFeeder::name()))
+            .map_err(|_| CreateError::Panicked)?;
 
         sys.actor_of_props::<ChainFeeder>(
             ChainFeeder::name(),
@@ -473,7 +474,7 @@ pub enum FeedChainError {
         context_hash: String,
         reason: String,
     },
-    #[fail(display = "Storage read/write error,r eason: {:?}", error)]
+    #[fail(display = "Storage read/write error, reason: {:?}", error)]
     StorageError { error: StorageError },
     #[fail(display = "Protocol service error error, reason: {:?}", error)]
     ProtocolServiceError { error: ProtocolServiceError },
@@ -526,11 +527,15 @@ impl BlockApplierThreadSpawner {
     /// Spawns asynchronous thread, which process events from internal queue
     fn spawn_feeder_thread(
         &self,
-    ) -> (
-        QueueSender<Event>,
-        Arc<AtomicBool>,
-        JoinHandle<Result<(), Error>>,
-    ) {
+        thread_name: String,
+    ) -> Result<
+        (
+            QueueSender<Event>,
+            Arc<AtomicBool>,
+            JoinHandle<Result<(), Error>>,
+        ),
+        failure::Error,
+    > {
         // spawn thread which processes event
         let (block_applier_event_sender, mut block_applier_event_receiver) = channel();
         let block_applier_run = Arc::new(AtomicBool::new(false));
@@ -544,7 +549,7 @@ impl BlockApplierThreadSpawner {
             let log = self.log.clone();
             let block_applier_run = block_applier_run.clone();
 
-            thread::spawn(move || -> Result<(), Error> {
+            thread::Builder::new().name(thread_name).spawn(move || -> Result<(), Error> {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
@@ -589,13 +594,13 @@ impl BlockApplierThreadSpawner {
 
                 info!(log, "Chain feeder thread finished");
                 Ok(())
-            })
+            })?
         };
-        (
+        Ok((
             block_applier_event_sender,
             block_applier_run,
             block_applier_thread,
-        )
+        ))
     }
 }
 
@@ -929,7 +934,9 @@ fn prepare_apply_request(
         Some(block) => Arc::new(block),
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "prepare_apply_request".into(),
+                },
             });
         }
     };
@@ -996,7 +1003,9 @@ fn resolve_block_data(
         Some(header) => Arc::new(header),
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "resolve_block_data (block_storage)".into(),
+                },
             });
         }
     };
@@ -1006,7 +1015,9 @@ fn resolve_block_data(
         Some(additional_data) => additional_data,
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "resolve_block_data (block_meta_storage)".into(),
+                },
             });
         }
     };

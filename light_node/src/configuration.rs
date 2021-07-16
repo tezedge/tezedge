@@ -34,7 +34,14 @@ use tezos_wrapper::TezosApiConnectionPoolConfiguration;
 #[derive(Debug, Clone)]
 pub struct Rpc {
     pub listener_port: u16,
-    pub websocket_address: SocketAddr,
+    /// Tuple of :
+    ///     SocketAddr
+    ///     u16 - max_number_of_websocket_connections
+    pub websocket_cfg: Option<(SocketAddr, u16)>,
+}
+
+impl Rpc {
+    const DEFAULT_WEBSOCKET_MAX_CONNECTIONS: &'static str = "100";
 }
 
 #[derive(Debug, Clone)]
@@ -411,6 +418,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("IP:PORT")
             .help("Websocket address where various node metrics and statistics are available")
             .validator(parse_validator_fn!(SocketAddr, "Value must be a valid IP:PORT")))
+        .arg(Arg::with_name("websocket-max-connections")
+            .long("websocket-max-connections")
+            .global(true)
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Websocket max number of allowed concurrent connection")
+            .validator(parse_validator_fn!(u16, "Value must be a valid number")))
         .arg(Arg::with_name("peers")
             .long("peers")
             .global(true)
@@ -608,7 +622,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                      .display_order(0)
                      .help("Block from which we start the replay")
                      .validator(|value| {
-                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
                      })
                 )
                 .arg(Arg::with_name("to-block")
@@ -619,7 +633,7 @@ pub fn tezos_app() -> App<'static, 'static> {
                      .required(true)
                      .help("Replay until this block")
                      .validator(|value| {
-                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| format!("Block hash not valid"))
+                         value.parse::<BlockHash>().map(|_| ()).map_err(|_| "Block hash not valid".to_string())
                      })
                 )
                 .arg(Arg::with_name("target-path")
@@ -756,7 +770,6 @@ fn validate_required_args(args: &clap::ArgMatches) {
     validate_required_arg(args, "p2p-port", None);
     validate_required_arg(args, "protocol-runner", None);
     validate_required_arg(args, "rpc-port", None);
-    validate_required_arg(args, "websocket-address", None);
     validate_required_arg(args, "peer-thresh-low", None);
     validate_required_arg(args, "peer-thresh-high", None);
     validate_required_arg(args, "tokio-threads", None);
@@ -1050,11 +1063,16 @@ impl Environment {
                     .unwrap_or("")
                     .parse::<u16>()
                     .expect("Was expecting value of rpc-port"),
-                websocket_address: args
-                    .value_of("websocket-address")
-                    .unwrap_or("")
-                    .parse()
-                    .expect("Provided value cannot be converted into valid uri"),
+                websocket_cfg: args.value_of("websocket-address").map_or(None, |address| {
+                    address.parse::<SocketAddr>().map_or(None, |socket_addrs| {
+                        let max_connections = args
+                            .value_of("websocket-max-connections")
+                            .unwrap_or(Rpc::DEFAULT_WEBSOCKET_MAX_CONNECTIONS)
+                            .parse::<u16>()
+                            .expect("Provided value cannot be converted to number");
+                        Some((socket_addrs, max_connections))
+                    })
+                }),
             },
             logging: crate::configuration::Logging {
                 slog: SlogConfig {
