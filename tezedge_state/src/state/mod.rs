@@ -299,7 +299,11 @@ impl<E: Effects> TezedgeState<E> {
             listening_for_connection_requests: false,
             potential_peers: HashSet::new(),
             pending_peers: PendingPeers::with_capacity(max_pending_peers),
-            connected_peers: ConnectedPeers::new(log, Some(max_connected_peers), reset_quotas_interval),
+            connected_peers: ConnectedPeers::new(
+                log,
+                Some(max_connected_peers),
+                reset_quotas_interval,
+            ),
             blacklisted_peers: BlacklistedPeers::new(),
             p2p_state: P2pState::Pending,
             requests: slab::Slab::new(),

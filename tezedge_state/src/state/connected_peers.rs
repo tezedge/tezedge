@@ -104,11 +104,7 @@ pub struct ConnectedPeers {
 
 impl ConnectedPeers {
     #[inline]
-    pub fn new(
-        log: Logger,
-        capacity: Option<usize>,
-        quota_reset_interval: Duration,
-    ) -> Self {
+    pub fn new(log: Logger, capacity: Option<usize>, quota_reset_interval: Duration) -> Self {
         let peers = if let Some(capacity) = capacity {
             HashMap::with_capacity(capacity)
         } else {
