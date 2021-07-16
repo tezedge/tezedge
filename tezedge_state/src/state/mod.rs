@@ -165,8 +165,8 @@ impl<E> TezedgeState<E> {
         self.potential_peers
             .extend(peers.into_iter().take(limit).filter(|addr| {
                 !blacklisted_peers.is_address_blacklisted(&addr.into())
-                && !connected_peers.contains_address(&addr.into())
-                && !pending_peers.contains_address(&addr.into())
+                    && !connected_peers.contains_address(&addr.into())
+                    && !pending_peers.contains_address(&addr.into())
             }));
     }
 
