@@ -160,11 +160,13 @@ impl<E> TezedgeState<E> {
 
         let connected_peers = &self.connected_peers;
         let blacklisted_peers = &self.blacklisted_peers;
+        let pending_peers = &self.pending_peers;
 
         self.potential_peers
             .extend(peers.into_iter().take(limit).filter(|addr| {
-                !connected_peers.contains_address(&addr.into())
-                    && !blacklisted_peers.is_address_blacklisted(&addr.into())
+                !blacklisted_peers.is_address_blacklisted(&addr.into())
+                && !connected_peers.contains_address(&addr.into())
+                && !pending_peers.contains_address(&addr.into())
             }));
     }
 
