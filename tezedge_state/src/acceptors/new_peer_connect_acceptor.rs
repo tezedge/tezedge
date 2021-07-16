@@ -10,17 +10,22 @@ impl<E: Effects> Acceptor<NewPeerConnectProposal> for TezedgeState<E> {
             return;
         }
 
-        match self.p2p_state {
-            P2pState::Pending | P2pState::Ready => {
-                self.pending_peers.insert(PendingPeer::new(
-                    proposal.peer.clone(),
-                    true,
-                    HandshakeStep::Initiated { at: proposal.at },
-                ));
-            }
-            P2pState::PendingFull | P2pState::ReadyFull | P2pState::ReadyMaxed => {
-                slog::warn!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "Max pending/connected peers threshold reached!");
-                self.disconnect_peer(proposal.at, proposal.peer);
+        if self.blacklisted_peers.is_address_blacklisted(&proposal.peer) {
+            slog::debug!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "Peer's IP is blacklisted!");
+            self.disconnect_peer(proposal.at, proposal.peer);
+        } else {
+            match self.p2p_state {
+                P2pState::Pending | P2pState::Ready => {
+                    self.pending_peers.insert(PendingPeer::new(
+                        proposal.peer.clone(),
+                        true,
+                        HandshakeStep::Initiated { at: proposal.at },
+                    ));
+                }
+                P2pState::PendingFull | P2pState::ReadyFull | P2pState::ReadyMaxed => {
+                    slog::debug!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "Max pending/connected peers threshold reached!");
+                    self.disconnect_peer(proposal.at, proposal.peer);
+                }
             }
         }
 
