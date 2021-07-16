@@ -76,7 +76,9 @@ impl OperationsMetaStorage {
                 self.put(&block_hash, &meta)
                     .and(Ok((meta.is_complete, meta.get_missing_validation_passes())))
             }
-            None => Err(StorageError::MissingKey),
+            None => Err(StorageError::MissingKey {
+                when: "put_operations".into(),
+            }),
         }
     }
 

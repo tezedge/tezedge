@@ -694,7 +694,12 @@ pub(crate) fn get_context_protocol_params(
     // get block header
     let block_header = match BlockStorage::new(env.persistent_storage()).get(block_hash)? {
         Some(block) => block,
-        None => return Err(storage::StorageError::MissingKey.into()),
+        None => {
+            return Err(storage::StorageError::MissingKey {
+                when: "get_context_protocol_params".into(),
+            }
+            .into())
+        }
     };
 
     let protocol_hash: ProtocolHash;

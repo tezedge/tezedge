@@ -153,10 +153,12 @@ impl BlockStorage {
             let block_json_data_location = self
                 .clog
                 .append(&BlockStorageColumn::BlockJsonData(json_data))?;
-            let mut column_location = self
-                .primary_index
-                .get(block_hash)?
-                .ok_or(StorageError::MissingKey)?;
+            let mut column_location =
+                self.primary_index
+                    .get(block_hash)?
+                    .ok_or_else(|| StorageError::MissingKey {
+                        when: "put_block_json_data".into(),
+                    })?;
             column_location.block_json_data = Some(block_json_data_location);
             column_location
         };
@@ -177,7 +179,9 @@ impl BlockStorage {
     ) -> Result<(), StorageError> {
         match self.primary_index.get(block_hash)? {
             Some(location) => self.by_context_hash_index.put(context_hash, &location),
-            None => Err(StorageError::MissingKey),
+            None => Err(StorageError::MissingKey {
+                when: "assign_to_context".into(),
+            }),
         }
     }
 

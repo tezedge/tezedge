@@ -124,8 +124,8 @@ pub enum StorageError {
     DBError { error: DBError },
     #[fail(display = "Commit log error: {}", error)]
     CommitLogError { error: CommitLogError },
-    #[fail(display = "Key is missing in storage")]
-    MissingKey,
+    #[fail(display = "Key is missing in storage, when: {}", when)]
+    MissingKey { when: String },
     #[fail(display = "Column is not valid")]
     InvalidColumn,
     #[fail(display = "Sequence generator failed: {}", error)]
@@ -368,7 +368,9 @@ pub fn store_commit_genesis_result(
 
             Ok(())
         }
-        None => Err(StorageError::MissingKey),
+        None => Err(StorageError::MissingKey {
+            when: "store_commit_genesis_result".into(),
+        }),
     }
 }
 

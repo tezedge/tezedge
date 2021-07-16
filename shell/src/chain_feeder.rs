@@ -474,7 +474,7 @@ pub enum FeedChainError {
         context_hash: String,
         reason: String,
     },
-    #[fail(display = "Storage read/write error,r eason: {:?}", error)]
+    #[fail(display = "Storage read/write error, reason: {:?}", error)]
     StorageError { error: StorageError },
     #[fail(display = "Protocol service error error, reason: {:?}", error)]
     ProtocolServiceError { error: ProtocolServiceError },
@@ -934,7 +934,9 @@ fn prepare_apply_request(
         Some(block) => Arc::new(block),
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "prepare_apply_request".into(),
+                },
             });
         }
     };
@@ -1001,7 +1003,9 @@ fn resolve_block_data(
         Some(header) => Arc::new(header),
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "resolve_block_data (block_storage)".into(),
+                },
             });
         }
     };
@@ -1011,7 +1015,9 @@ fn resolve_block_data(
         Some(additional_data) => additional_data,
         None => {
             return Err(FeedChainError::StorageError {
-                error: StorageError::MissingKey,
+                error: StorageError::MissingKey {
+                    when: "resolve_block_data (block_meta_storage)".into(),
+                },
             });
         }
     };
