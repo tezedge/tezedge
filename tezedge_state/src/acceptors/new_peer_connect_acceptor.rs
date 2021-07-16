@@ -10,7 +10,7 @@ impl<E: Effects> Acceptor<NewPeerConnectProposal> for TezedgeState<E> {
             return;
         }
 
-        if self.blacklisted_peers.is_address_blacklisted(&proposal.peer) {
+        if self.is_address_blacklisted(&proposal.peer) {
             slog::debug!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "Peer's IP is blacklisted!");
             self.disconnect_peer(proposal.at, proposal.peer);
         } else {
