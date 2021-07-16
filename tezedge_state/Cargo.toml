@@ -17,6 +17,7 @@ slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debu
 slog-async = "2.6"
 slog-term = "2.6"
 mio = { version = "0.7.11", features = ["os-poll", "net"] }
+lazy_static = "1.4"
 # local dependencies
 tla-sm = { path = "../tla_sm" }
 crypto = { path = "../crypto" }

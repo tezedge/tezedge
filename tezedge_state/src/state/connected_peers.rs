@@ -1,14 +1,16 @@
 use crypto::crypto_box::PublicKey;
 use getset::{CopyGetters, Getters};
+use slog::Logger;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::chunking::{
     EncryptedMessageWriter, MessageReadBuffer, ReadMessageError, WriteMessageError,
 };
 use crate::peer_address::PeerListenerAddress;
 use crate::state::pending_peers::HandshakeResult;
+use crate::state::ThrottleQuota;
 use crate::{PeerAddress, PeerCrypto, Port};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
@@ -43,6 +45,8 @@ pub struct ConnectedPeer {
 
     cur_send_message: Option<EncryptedMessageWriter>,
     send_message_queue: VecDeque<PeerMessage>,
+
+    quota: ThrottleQuota,
 }
 
 impl ConnectedPeer {
@@ -58,12 +62,19 @@ impl ConnectedPeer {
         &mut self,
         reader: &mut R,
     ) -> Result<PeerMessage, ReadMessageError> {
-        self.read_buf.read_from(reader, &mut self.crypto)
+        let msg = self.read_buf.read_from(reader, &mut self.crypto)?;
+        if self.quota.can_receive(&msg).is_ok() {
+            Ok(msg)
+        } else {
+            Err(ReadMessageError::QuotaReached)
+        }
     }
 
     /// Enqueue message to be sent to the peer.
     pub fn enqueue_send_message(&mut self, message: PeerMessage) {
-        self.send_message_queue.push_back(message);
+        if let Ok(_) = self.quota.can_send(&message) {
+            self.send_message_queue.push_back(message);
+        }
     }
 
     /// Write any enqueued messages to the given writer.
@@ -85,16 +96,29 @@ impl ConnectedPeer {
 
 #[derive(Debug, Clone)]
 pub struct ConnectedPeers {
-    // peers: slab::Slab<ConnectedPeer>,
+    log: Logger,
+    last_quota_reset: Option<Instant>,
+    quota_reset_interval: Duration,
     peers: HashMap<PeerAddress, ConnectedPeer>,
 }
 
 impl ConnectedPeers {
     #[inline]
-    pub fn with_capacity(capacity: usize) -> Self {
+    pub fn new(
+        log: Logger,
+        capacity: Option<usize>,
+        quota_reset_interval: Duration,
+    ) -> Self {
+        let peers = if let Some(capacity) = capacity {
+            HashMap::with_capacity(capacity)
+        } else {
+            HashMap::new()
+        };
         Self {
-            // peers: slab::Slab::with_capacity(capacity),
-            peers: HashMap::with_capacity(capacity),
+            log,
+            last_quota_reset: None,
+            quota_reset_interval,
+            peers,
         }
     }
 
@@ -166,6 +190,7 @@ impl ConnectedPeers {
         peer_address: PeerAddress,
         result: HandshakeResult,
     ) -> &mut ConnectedPeer {
+        let log = &self.log;
         // self.peers.vacant_entry().insert(ConnectedPeer {
         self.peers
             .entry(peer_address)
@@ -183,6 +208,17 @@ impl ConnectedPeers {
                 read_buf: MessageReadBuffer::new(),
                 cur_send_message: None,
                 send_message_queue: VecDeque::new(),
+
+                quota: ThrottleQuota::new(log.clone()),
             })
+    }
+
+    pub(crate) fn periodic_react(&mut self, at: Instant) {
+        let last_quota_reset = *self.last_quota_reset.get_or_insert(at);
+        if at.duration_since(last_quota_reset) >= self.quota_reset_interval {
+            for (_, peer) in self.peers.iter_mut() {
+                peer.quota.reset_all();
+            }
+        }
     }
 }

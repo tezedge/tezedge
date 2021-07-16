@@ -21,6 +21,7 @@ pub use encrypted_message_writer::*;
 #[derive(Debug)]
 pub enum ReadMessageError {
     Pending,
+    QuotaReached,
     IO(io::Error),
     Crypto(CryptoError),
     Decode(BinaryReaderError),

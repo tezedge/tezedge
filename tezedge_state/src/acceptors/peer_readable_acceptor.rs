@@ -32,6 +32,7 @@ where
                     self.accept(proposal);
                 }
                 Err(ReadMessageError::Pending) => {}
+                Err(ReadMessageError::QuotaReached) => {}
                 Err(err) => {
                     slog::warn!(&self.log, "Read failed!"; "description" => "error while trying to read from connected peer stream.", "error" => format!("{:?}", err));
                     self.blacklist_peer(proposal.at, proposal.peer);
