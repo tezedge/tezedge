@@ -43,3 +43,7 @@ criterion = "0.3"
 fs_extra = "1.2.0"
 # TODO - TE-498 - remove dependency to OLD commit log
 commitlog = "0.1"
+
+[features]
+maindb-backend-rocksdb = []
+maindb-backend-sled = []

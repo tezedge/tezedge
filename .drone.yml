@@ -399,6 +399,39 @@ steps:
   commands:
     - cargo test --release --workspace
 
+- name: run-unit-tests-multibackend-rockdb
+  image: tezedge/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd storage
+    - cargo test --release --features maindb-backend-rocksdb
+
+- name: run-unit-tests-multibackend-sled
+  image: tezedge/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd storage
+    - cargo test --release --features maindb-backend-sled
+
+- name: run-unit-tests-commit-log
+  image: tezedge/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd storage
+    - cargo test --release --lib commit_log -- --nocapture
+
 image_pull_secrets:
   - docker_pull_secret
 
