@@ -1003,7 +1003,7 @@ mod tests {
                     max_pending_peers: 100,
                     max_potential_peers: 1000,
                     periodic_react_interval: Duration::from_millis(250),
-                    reset_quotas_interval: None,
+                    reset_quotas_interval: Duration::from_secs(5),
                     peer_blacklist_duration: Duration::from_secs(15 * 60),
                     peer_timeout: Duration::from_secs(8),
                     // use high number to speed up identity generation.
@@ -1044,7 +1044,7 @@ mod tests {
                     max_pending_peers: 100,
                     max_potential_peers: 1000,
                     periodic_react_interval: Duration::from_millis(250),
-                    reset_quotas_interval: None,
+                    reset_quotas_interval: Duration::from_secs(5),
                     peer_blacklist_duration: Duration::from_secs(15 * 60),
                     peer_timeout: Duration::from_secs(8),
                     // use high number to speed up identity generation.
