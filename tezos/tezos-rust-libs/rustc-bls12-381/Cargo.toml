@@ -1,0 +1,36 @@
+[package]
+name = "rustc-bls12-381"
+version = "0.8.1"
+authors = ["Danny Willems <be.danny.willems@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "rustc_bls12_381"
+path = "src/lib.rs"
+# Commented out for TezEdge, we don't want a static lib here,
+# just a regular library we can link with the rest.
+# crate-type = ["staticlib", "cdylib", "rlib"]
+
+
+[dependencies]
+ff = "=0.6"
+pairing = "=0.16"
+group = "=0.6.0"
+libc = "=0.2"
+# Looks like it is required by ff and pairing
+rand = { version = "=0.7", features = ["wasm-bindgen"] }
+rand_core = "=0.5.1"
+# 0.2.0 fails to build
+getrandom = { version = "=0.1.15", features = ["wasm-bindgen"] }
+
+console_error_panic_hook = { version = "0.1.6", optional = true }
+
+# What comes next is commented out for TezEdge, not needed, causes conflicts.
+
+# wasm-bindgen = { version = "=0.2.67", optional = true }
+# wee_alloc = {version = "*", optional = true }
+
+# [features]
+#
+# wasm = ["wasm-bindgen", "wee_alloc"]
+# debug = ["console_error_panic_hook"]
