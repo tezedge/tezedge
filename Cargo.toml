@@ -16,6 +16,8 @@ members = [
     "tezos/spsc",
     "tezos/timing",
     "tezos/lib_storage_ffi",
+    "tezos/tezos-rust-libs/librustzcash",
+    "tezos/tezos-rust-libs/rustc-bls12-381",
     "networking",
     "shell",
     "storage",
