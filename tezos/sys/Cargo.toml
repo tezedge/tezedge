@@ -8,7 +8,10 @@ links = "tezos"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-# NOTE: should not have any local dependencies, this crate is just for linking libtezos.so
+# NOTE: should not have any local dependencies other than the tezos-rust-libs listed here
+# This crate is for linking the tezos code.
+rustc-bls12-381 = { path = "../tezos-rust-libs/rustc-bls12-381" }
+librustzcash = { path = "../tezos-rust-libs/librustzcash" }
 
 [build-dependencies]
 colored = "2.0"

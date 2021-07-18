@@ -76,4 +76,7 @@ extern "C" {
 /// It doesn't seem to be required under normal compilation conditions, but when
 /// running the tests with the address sanitizer enabled, linking fails without
 /// this extra step.
-pub fn force_libtezos_linking() {}
+pub fn force_libtezos_linking() {
+    rustzcash::force_librustzcash_linking();
+    rustc_bls12_381::force_rustc_bls12_381_linking();
+}
