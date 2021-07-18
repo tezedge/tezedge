@@ -13,7 +13,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
-const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
+const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.a";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 
 // zcash params files for sapling - these files are fixed and never ever changes
@@ -192,8 +192,8 @@ fn download_remote_file_and_check_sha256_and_uncompress(
 fn libtezos_filename() -> &'static str {
     let platform = current_platform();
     match platform.os_type {
-        OSType::OSX => "libtezos.dylib",
-        _ => "libtezos.so",
+        OSType::OSX => "libtezos.a",
+        _ => "libtezos.a",
     }
 }
 
@@ -361,7 +361,7 @@ fn main() {
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
 
-    let tezos_base_dir = env::var("TEZOS_BASE_DIR").unwrap_or_else(|_| "".to_owned());
+    let tezos_base_dir = env::var("TEZOS_BASE_DIR").unwrap_or_else(|_| "/home/bruno/projects/tezedge/tezos".to_owned());
     let build_chain = if tezos_base_dir.is_empty() {
         BuildChain::Remote
     } else {
@@ -389,6 +389,10 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib=tezos");
+    println!("cargo:rustc-link-lib=static=tezos");
+    println!("cargo:rustc-link-lib=dylib=gmp");
+    println!("cargo:rustc-link-lib=dylib=ffi");
+    println!("cargo:rustc-link-lib=dylib=ev");
+    println!("cargo:rustc-link-lib=dylib=rt");
     println!("cargo:rerun-if-env-changed=TEZOS_BASE_DIR");
 }
