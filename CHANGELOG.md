@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.6.7] - 2021-07-20
+
+### Added
+
+- Quota throttling for p2p messages
+
 ## [1.6.6] - 2021-07-16
 
 ### Added
@@ -467,7 +473,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.6...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.7...HEAD
+[1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.7
 [1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.6
 [1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.5
 [1.6.4]: https://github.com/tezedge/tezedge/releases/v1.6.4
