@@ -184,6 +184,7 @@ fn run_builder(build_chain: &BuildChain) {
             // get library: $ curl <remote_url> --output lib_tezos/artifacts/libtezos.so
             Command::new("curl")
                 .args(&[
+                    "-L",
                     remote_lib.lib_url.as_str(),
                     "--output",
                     libtezos_path.as_os_str().to_str().unwrap(),
@@ -193,7 +194,7 @@ fn run_builder(build_chain: &BuildChain) {
 
             // get sha256 checksum file: $ curl <remote_url>
             let remote_lib_sha256: Output = Command::new("curl")
-                .args(&[remote_lib.sha256_checksum_url.as_str()])
+                .args(&["-L", remote_lib.sha256_checksum_url.as_str()])
                 .output()
                 .unwrap_or_else(|_| {
                     panic!(

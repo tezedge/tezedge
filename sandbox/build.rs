@@ -150,6 +150,7 @@ fn run_builder(build_chain: &str) {
                 let lib_path = Path::new("artifacts").join(&remote_lib.name);
                 Command::new("curl")
                     .args(&[
+                        "-L",
                         remote_lib.lib_url.as_str(),
                         "--output",
                         lib_path.as_os_str().to_str().unwrap(),
@@ -159,7 +160,7 @@ fn run_builder(build_chain: &str) {
 
                 // get sha256 checksum file: $ curl <remote_url>
                 let remote_lib_sha256: Output = Command::new("curl")
-                    .args(&[remote_lib.sha256_checksum_url.as_str()])
+                    .args(&["-L", remote_lib.sha256_checksum_url.as_str()])
                     .output()
                     .unwrap_or_else(|_| {
                         panic!(
