@@ -50,15 +50,15 @@ lazy_static::lazy_static! {
             (10, 10), // SwapRequest
             (10, 10), // SwapAck
             (1, 1), // Bootstrap
-            (10, 10), // GetCurrentBranch
-            (10, 10), // CurrentBranch
+            (10, 500), // GetCurrentBranch
+            (200, 10), // CurrentBranch
             (10, 10), // Deactivate
             (10, 10), // GetCurrentHead
             (500, 500), // CurrentHead
             (5000, 5000), // GetBlockHeaders
             (5000, 5000), // BlockHeader
-            (10, 10), // GetOperations
-            (10, 10), // Operation
+            (500, 5000), // GetOperations
+            (20000, 10000), // Operation
             (10, 10), // GetProtocols
             (10, 10), // Protocol
             (5000, 5000), // GetOperationsForBlocks
