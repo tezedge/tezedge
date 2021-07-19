@@ -698,70 +698,6 @@ steps:
     - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
     - $${TEST_ARTIFACTS_PATH}/tests/p2p_test --nocapture --ignored test_proof_of_work_fail
 
-# TODO - TE-609: this test is not working right now because it using an outdated snapshot.
-#        Needs to be updated to produce a snapshot on-the-fly by bootstraping the node first.
-# - name: replay-test
-#   image: tezedge/tezedge-ci-builder:latest
-#   user: root
-#   pull: if-not-exists
-#   volumes:
-#     - name: build
-#       path: /artifacts
-#     - name: tezedge-data-snapshot
-#       path: /tezedge-data-snapshot
-#   commands:
-#     - cp -R /tezedge-data-snapshot /tmp/tezedge-data
-#     - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
-#     - export LD_LIBRARY_PATH="$${BUILD_ARTIFACTS_PATH}/build_files/ffi:$rust_libs"
-#     # light-node reads the path of `protocol-runner` from the config file, even if provided as argument.
-#     # Copy the `protocol-runner` binary to the path specified in the config file.
-#     - mkdir -p target/release
-#     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner target/release/
-#     - $${BUILD_ARTIFACTS_PATH}/build_files/light-node replay --target-path=/tmp/replay --config-file "$${BUILD_ARTIFACTS_PATH}/build_files/tezedge/tezedge_drone.config" --network=florencenet --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC --tezos-data-dir=/tmp/tezedge-data --identity-file "$${BUILD_ARTIFACTS_PATH}/build_files/identities/identity_6.json" --bootstrap-db-path=bootstrap_db
-
-# TODO - TE-261: we don't have an equivalent of this right now
-# - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:latest
-#   pull: if-not-exists
-#   user: root
-#   volumes:
-#     - name: build
-#       path: /artifacts
-#     - name: tests
-#       path: /tests
-#   environment:
-#     RUST_BACKTRACE: 1
-#     LOG_LEVEL: info
-#     OCAML_LOG_ENABLED: false
-#     OUT_DIR: .
-#   commands:
-#     - export LD_LIBRARY_PATH=$${BUILD_ARTIFACTS_PATH}/build_files/ffi && echo $${LD_LIBRARY_PATH}
-#     - export PROTOCOL_RUNNER=$${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
-#     - export CARGO_MANIFEST_DIR=$${TEST_ARTIFACTS_PATH}/test_data
-#     # cleanup
-#     - rm -rf /tmp/context-replay_output
-#     - mkdir /tmp/context-replay_output
-#     - export TARGET_ACTION_FILE="/tmp/context-replay_output/generated-1324-context-action-file.data"
-#     # generate action file for 1324 blocks
-#     - echo "... generating context action file ... $TARGET_ACTION_FILE"
-#     - $${TEST_ARTIFACTS_PATH}/tests/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
-#     - ls -lrt $${TARGET_ACTION_FILE}
-#     # replay action file with rocksdb
-#     - echo "... replay context action file with rocksdb... $TARGET_ACTION_FILE"
-#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store rocksdb
-#     # replay action file with inmemory
-#     - echo "... replay context action file with in-memory..."
-#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store inmem
-#     # replay action file with btree
-#     - echo "... replay context action file with in-memory..."
-#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store btree
-#     # replay action file with sled
-#     - echo "... replay context action file with sled..."
-#     - $${BUILD_ARTIFACTS_PATH}/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
-#   # TODO: enable with new context
-#   detach: true
-
-
 depends_on:
   - build-tezedge-binaries
 
@@ -775,9 +711,164 @@ volumes:
   - name: tests
     host:
       path: /usr/local/etc/tezedge-ci/tests/
-  - name: tezedge-data-snapshot
+
+trigger:
+  branch:
+    - master
+    - develop
+
+---
+##############################################################################################################
+# This pipeline replays the application of the first 20k blocks from florencenet using the in-memory context
+##############################################################################################################
+kind: pipeline
+name: corr/replay-009-florence
+
+clone:
+  disable: true
+
+environment:
+  NETWORK: florencenet
+
+steps:
+- name: octez-node
+  user: root
+  image: tezos/tezos:v9-release
+  detach: true
+  volumes:
+    - name: octez-data
+      path: /data
+  commands:
+    - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
+
+- name: tezedge-node-bootstrap
+  image: tezedge/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  volumes:
+    - name: build
+      path: /build
+    - name: cache
+      path: /cache
+    - name: tezos-data
+      path: /data
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
+  commands:
+    - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+    - >
+      /build/build_files/light-node
+      --config-file=/build/build_files/tezedge/tezedge_drone.config
+      --identity-file=/build/build_files/identities/identity_2.json
+      --protocol-runner=/build/build_files/protocol-runner
+      --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+      --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+      --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
+      echo $! > /var/run/tezedge.pid
+    # this command waits the node to be on level 20000
+    - |
+      sh -c '
+      block=0
+      while [ $block -lt 20000 ]; do
+        sleep 5
+        b=$(curl -s localhost:18732/chains/main/blocks/head | jq .header.level)
+        block=$${b:-$block}
+        echo "===> Block level $block"
+      done
+      '
+    - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
+    # terminate the node gracefully and wait to allow `valgrind` dump data
+    - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+
+- name: replay-test
+  image: tezedge/tezedge-ci-builder:latest
+  user: root
+  pull: if-not-exists
+  volumes:
+    - name: build
+      path: /build
+    - name: cache
+      path: /cache
+  commands:
+    - rust_libs=$(echo "`rustup show home`/toolchains/`rustup show active-toolchain | tr " " "\n" | head -1`/lib")
+    - export LD_LIBRARY_PATH="/build/build_files/ffi:$rust_libs"
+    - mkdir -p ./target/release && cp /build/build_files/protocol-runner ./target/release
+    - >
+      /build/build_files/light-node replay --target-path=./replay
+      --config-file "/build/build_files/tezedge/tezedge_drone.config"
+      --identity-file "/build/build_files/identities/identity_6.json"
+      --protocol-runner=/build/build_files/protocol-runner
+      --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
+      --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
+      --to-block BLJQc17Wxnhw7Mdd5VzFzmiqYfwYpvYUVnMesFKgGWSartAoQAC
+      --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
+      --tezos-context-storage=tezedge
+      --network=$${NETWORK}
+
+# TODO - TE-261: we don't have an equivalent of this right now
+# - name: record/replay-context-action-file-test
+#   image: tezedge/tezedge-ci-builder:latest
+#   pull: if-not-exists
+#   user: root
+#   volumes:
+#     - name: build
+#       path: /build
+#     - name: tests
+#       path: /tests
+#   environment:
+#     RUST_BACKTRACE: 1
+#     LOG_LEVEL: info
+#     OCAML_LOG_ENABLED: false
+#     OUT_DIR: .
+#   commands:
+#     - export LD_LIBRARY_PATH=/build/build_files/ffi && echo $${LD_LIBRARY_PATH}
+#     - export PROTOCOL_RUNNER=/build/build_files/protocol-runner && echo $${PROTOCOL_RUNNER}
+#     - export CARGO_MANIFEST_DIR=/tests/test_data
+#     # cleanup
+#     - rm -rf /tmp/context-replay_output
+#     - mkdir /tmp/context-replay_output
+#     - export TARGET_ACTION_FILE="/tmp/context-replay_output/generated-1324-context-action-file.data"
+#     # generate action file for 1324 blocks
+#     - echo "... generating context action file ... $TARGET_ACTION_FILE"
+#     - /tests/tests/shell_chain_test --nocapture --ignored test_process_bootstrap_level1324_and_generate_action_file
+#     - ls -lrt $${TARGET_ACTION_FILE}
+#     # replay action file with rocksdb
+#     - echo "... replay context action file with rocksdb... $TARGET_ACTION_FILE"
+#     - /build/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store rocksdb
+#     # replay action file with inmemory
+#     - echo "... replay context action file with in-memory..."
+#     - /build/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store inmem
+#     # replay action file with btree
+#     - echo "... replay context action file with in-memory..."
+#     - /build/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store btree
+#     # replay action file with sled
+#     - echo "... replay context action file with sled..."
+#     - /build/build_files/context-actions-replayer --input $${TARGET_ACTION_FILE} --output /tmp/context-replay_output --context-kv-store sled
+
+
+depends_on:
+  - build-tezedge-binaries
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: cache
     host:
-      path: /usr/local/etc/tezedge-ci/data/tezedge-node-sled-identity2-florencenet-snapshot-data
+      path: /usr/local/etc/tezedge-ci/data/cache/build_${DRONE_BUILD_NUMBER}/${DRONE_STAGE_NAME}
+  - name: octez-data
+    host:
+      path: /usr/local/etc/tezedge-ci/data/ocaml-node-florencenet-snapshot-data-with-identity-1
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER}
 
 trigger:
   branch:
