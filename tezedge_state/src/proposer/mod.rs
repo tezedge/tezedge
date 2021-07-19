@@ -1,4 +1,3 @@
-use bytes::Buf;
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
@@ -12,16 +11,13 @@ use crate::proposals::{
     PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal, PendingRequestMsg,
     PendingRequestProposal, SendPeerMessageProposal, TickProposal,
 };
-use crate::{Effects, PeerAddress, PeerCrypto, TezedgeRequest, TezedgeState, TezedgeStateWrapper};
-use tezos_messages::p2p::binary_message::{
-    BinaryChunk, BinaryChunkError, BinaryMessage, CONTENT_LENGTH_FIELD_BYTES,
-};
+use crate::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
-use tezos_messages::p2p::encoding::prelude::{
-    AckMessage, ConnectionMessage, MetadataMessage, NetworkVersion,
-};
+use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
 
 pub mod mio_manager;
+
+const NOTIFICATIONS_OPTIMAL_CAPACITY: usize = 16;
 
 #[derive(Debug, Clone)]
 pub enum Notification {
@@ -182,7 +178,7 @@ where
         Self {
             config,
             requests: vec![],
-            notifications: vec![],
+            notifications: Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
             state: state.into(),
             events,
             manager,
@@ -404,6 +400,15 @@ where
     where
         for<'a> &'a Es: IntoIterator<Item = EventRef<'a, NetE>>,
     {
+        if self.notifications.capacity() > NOTIFICATIONS_OPTIMAL_CAPACITY
+            && self.notifications.is_empty()
+        {
+            // to preserve memory, shrink to optimal capacity.
+            let _ = std::mem::replace(
+                &mut self.notifications,
+                Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
+            );
+        }
         self.wait_for_events();
 
         for event in self.events.into_iter() {
