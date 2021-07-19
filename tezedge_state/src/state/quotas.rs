@@ -129,7 +129,13 @@ impl ThrottleQuota {
 
     pub fn can_send(&mut self, msg: &PeerMessage) -> Result<isize, isize> {
         let index = Self::msg_index(msg);
-        self.quotas[index].0 -= 1;
+        if THROTTLING_QUOTA_MAX[index].0 <= 0 {
+            return Ok(THROTTLING_QUOTA_MAX[index].0);
+        }
+        self.quotas[index].0 = self.quotas[index]
+            .0
+            .checked_sub(1)
+            .ok_or(self.quotas[index].0)?;
         if self.quotas[index].0 >= 0 {
             self.quotas[index].1 = THROTTLING_QUOTA_MAX[index].1.min(self.quotas[index].1 + 1);
             Ok(self.quotas[index].0)
@@ -142,7 +148,13 @@ impl ThrottleQuota {
 
     pub fn can_receive(&mut self, msg: &PeerMessage) -> Result<isize, isize> {
         let index = Self::msg_index(msg);
-        self.quotas[index].1 -= 1;
+        if THROTTLING_QUOTA_MAX[index].1 <= 0 {
+            return Ok(THROTTLING_QUOTA_MAX[index].1);
+        }
+        self.quotas[index].1 = self.quotas[index]
+            .0
+            .checked_sub(1)
+            .ok_or(self.quotas[index].1)?;
         if self.quotas[index].1 >= 0 {
             self.quotas[index].0 = THROTTLING_QUOTA_MAX[index].0.min(self.quotas[index].0 + 1);
             Ok(self.quotas[index].1)
@@ -157,19 +169,21 @@ impl ThrottleQuota {
         for index in 0..THROTTLING_QUOTA_NUM {
             let (tx_max, rx_max) = THROTTLING_QUOTA_MAX[index];
             if self.quotas[index].0 < 0 {
-                slog::debug!(
+                slog::warn!(
                     self.log,
                     "Tx quota is exceeded";
                     "msg_kind" => Self::index_to_str(index),
-                    "amount" => -self.quotas[index].0,
+                    "quota" => tx_max,
+                    "amount" => -self.quotas[index].0 + tx_max
                 );
             }
             if self.quotas[index].1 < 0 {
-                slog::debug!(
+                slog::warn!(
                     self.log,
                     "Rx quota is exceeded";
                     "msg_kind" => Self::index_to_str(index),
-                    "amount" => -self.quotas[index].1,
+                    "quota" => rx_max,
+                    "amount" => -self.quotas[index].1 + rx_max
                 );
             }
             self.quotas[index].0 = tx_max;
