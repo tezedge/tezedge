@@ -1,7 +1,13 @@
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 
 pub struct ExtendableAsWritable<'a, T: Extend<u8>> {
     extendable: &'a mut T,
+}
+
+impl<'a, T: Extend<u8>> Read for ExtendableAsWritable<'a, T> {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+        Ok(0)
+    }
 }
 
 impl<'a, T: Extend<u8>> Write for ExtendableAsWritable<'a, T> {
