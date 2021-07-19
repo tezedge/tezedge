@@ -2272,6 +2272,7 @@ dependencies = [
  "failure",
  "futures",
  "hex",
+ "lazy_static",
  "riker",
  "slog",
  "slog-async",
