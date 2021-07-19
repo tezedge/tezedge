@@ -31,6 +31,7 @@ use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
+mod openapi_handler;
 mod protocol_handler;
 mod router;
 mod shell_handler;
