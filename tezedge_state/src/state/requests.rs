@@ -92,6 +92,10 @@ impl<E> GetRequests for TezedgeState<E> {
     fn get_requests(&self, buf: &mut Vec<TezedgeRequest>) -> usize {
         let buf_initial_len = buf.len();
 
+        if self.requests.is_empty() {
+            return 0;
+        }
+
         for (req_id, req) in self.requests.iter() {
             if let RequestState::Idle { .. } = req.status {
                 buf.push(match &req.request {
