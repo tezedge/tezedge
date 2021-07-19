@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use crypto::hash::CryptoboxPublicKeyHash;
 use tla_sm::{Acceptor, GetRequests};
 
+use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 use crate::proposals::{
     NewPeerConnectProposal, PeerBlacklistProposal, PeerDisconnectProposal,
     PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal, PendingRequestMsg,
@@ -513,14 +514,13 @@ where
             peer: addr,
             message,
         });
-        let mut send_buf = WriteOnlyBuffer::new();
+        let mut send_buf = vec![];
         self.state.accept(PeerWritableProposal {
             at,
             peer: addr,
-            stream: &mut send_buf,
+            stream: &mut ExtendableAsWritable::from(&mut send_buf),
         });
 
-        let send_buf = send_buf.take();
         let mut buf = &send_buf[..];
 
         while buf.len() > 0 {
@@ -540,43 +540,5 @@ where
 
     pub fn take_notifications<'a>(&'a mut self) -> std::vec::Drain<'a, Notification> {
         self.notifications.drain(..)
-    }
-}
-
-#[cfg(feature = "blocking")]
-struct WriteOnlyBuffer {
-    buf: Vec<u8>,
-}
-
-#[cfg(feature = "blocking")]
-impl WriteOnlyBuffer {
-    fn new() -> Self {
-        Self { buf: vec![] }
-    }
-
-    fn take(self) -> Vec<u8> {
-        self.buf
-    }
-}
-
-#[cfg(feature = "blocking")]
-impl Write for WriteOnlyBuffer {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.buf.extend(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-#[cfg(feature = "blocking")]
-impl Read for WriteOnlyBuffer {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        Err(io::Error::new(
-            io::ErrorKind::WouldBlock,
-            "write only buffer!",
-        ))
     }
 }
