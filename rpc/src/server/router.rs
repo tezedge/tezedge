@@ -8,7 +8,7 @@ use std::sync::Arc;
 use hyper::{Body, Method, Request};
 use path_tree::PathTree;
 
-use crate::server::{dev_handler, protocol_handler, shell_handler};
+use crate::server::{dev_handler, openapi_handler, protocol_handler, shell_handler};
 use crate::server::{HResult, MethodHandler, Params, Query, RpcServiceEnvironment};
 
 macro_rules! hash_set {
@@ -312,6 +312,12 @@ pub(crate) fn create_routes(tezedge_is_enabled: bool) -> PathTree<MethodHandler>
         hash_set![Method::GET],
         "/network/version",
         shell_handler::node_version,
+    );
+
+    routes.handle(
+        hash_set![Method::GET],
+        "/openapi/tezedge-openapi.json",
+        openapi_handler::get_spec_file,
     );
 
     routes
