@@ -468,8 +468,7 @@ pub fn tezos_app() -> App<'static, 'static> {
             .global(true)
             .takes_value(true)
             .value_name("PATH")
-            .help("Path to a tezos protocol runner executable")
-            .validator(|v| if Path::new(&v).exists() { Ok(()) } else { Err(format!("Tezos protocol runner executable not found at '{}'", v)) }))
+            .help("Path to a tezos protocol runner executable"))
         .args(
             &[
                 Arg::with_name("ffi-pool-max-connections")
@@ -989,6 +988,20 @@ impl Environment {
             .parse::<u16>()
             .expect("Was expecting value of p2p-port");
 
+        let protocol_runner = args
+            .value_of("protocol-runner")
+            .unwrap_or("")
+            .parse::<PathBuf>()
+            .expect("Provided value cannot be converted to path");
+
+        // Validate that protocol runner binary is correct before starting
+        if !Path::new(&protocol_runner).exists() {
+            panic!(
+                "Tezos protocol runner executable not found at '{}'",
+                protocol_runner.to_string_lossy(),
+            )
+        }
+
         Environment {
             p2p: crate::configuration::P2p {
                 listener_port,
@@ -1254,11 +1267,7 @@ impl Environment {
                     .expect("Provided value cannot be converted to number"),
             },
             ffi: Ffi {
-                protocol_runner: args
-                    .value_of("protocol-runner")
-                    .unwrap_or("")
-                    .parse::<PathBuf>()
-                    .expect("Provided value cannot be converted to path"),
+                protocol_runner,
                 tezos_readonly_api_pool: pool_cfg(
                     &args,
                     Ffi::TEZOS_READONLY_API_POOL_DISCRIMINATOR,
