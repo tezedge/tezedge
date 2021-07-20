@@ -3,7 +3,7 @@ version: "3"
 services:
   tezedge-node:
     image: tezedge/tezedge:v1.6.6-frame-pointers-enabled
-    command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "100", "--peer-thresh-high", "150"]
+    command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "75", "--peer-thresh-high", "90"]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
