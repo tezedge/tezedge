@@ -9,6 +9,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
+use crate::database::notus_backend::NotusDBBackend;
 
 pub trait KVStoreKeyValueSchema: KeyValueSchema {
     fn column_name() -> &'static str;
@@ -80,12 +81,14 @@ pub type List<S> = Vec<(
 pub enum TezedgeDatabaseBackendOptions {
     SledDB(SledDBBackend),
     RocksDB(RocksDBBackend),
+    Notus(NotusDBBackend),
 }
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter)]
 pub enum TezedgeDatabaseBackendConfiguration {
     Sled,
     RocksDB,
+    Notus,
 }
 
 impl TezedgeDatabaseBackendConfiguration {
@@ -101,6 +104,7 @@ impl TezedgeDatabaseBackendConfiguration {
         match self {
             Self::Sled => vec!["sled"],
             Self::RocksDB => vec!["rocksdb"],
+            Self::Notus => vec!["notus"]
         }
     }
 }
@@ -148,6 +152,9 @@ impl TezedgeDatabase {
                 backend: Arc::new(backend),
             },
             TezedgeDatabaseBackendOptions::RocksDB(backend) => TezedgeDatabase {
+                backend: Arc::new(backend),
+            },
+            TezedgeDatabaseBackendOptions::Notus(backend) =>TezedgeDatabase {
                 backend: Arc::new(backend),
             },
         }
