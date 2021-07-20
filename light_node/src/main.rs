@@ -658,6 +658,15 @@ fn main() {
             )
             .expect("Failed to create/initialize MainDB database (db)")
         }
+        TezedgeDatabaseBackendConfiguration::Notus => initialize_maindb(
+            &log,
+            None,
+            &env.storage.db,
+            env.storage.db.expected_db_version,
+            &main_chain,
+            env.storage.main_db,
+        )
+            .expect("Failed to create/initialize MainDB database (db)"),
     };
 
     let commit_logs = Arc::new(

@@ -102,7 +102,7 @@ impl Storage {
 
     const DEFAULT_CONTEXT_KV_STORE_BACKEND: &'static str = tezos_new_context::kv_store::INMEM;
 
-    const DEFAULT_MAINDB: &'static str = "rocksdb";
+    const DEFAULT_MAINDB: &'static str = "notus";
 }
 
 #[derive(Debug, Clone)]

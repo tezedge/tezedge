@@ -18,6 +18,7 @@ pub use database::{DBError, KeyValueStoreWithSchema, KeyValueStoreWithSchemaIter
 use rocksdb::DB;
 pub use schema::{CommitLogDescriptor, CommitLogSchema};
 use std::sync::Arc;
+use crate::database::notus_backend::NotusDBBackend;
 
 pub mod codec;
 pub mod database;
@@ -96,6 +97,9 @@ pub fn open_main_db<C: RocksDbColumnFactory>(
             } else {
                 return Err(DatabaseError::FailedToOpenDatabase);
             }
+        }
+        TezedgeDatabaseBackendConfiguration::Notus => {
+            TezedgeDatabaseBackendOptions::Notus(NotusDBBackend::new(config.db_path.as_path())?)
         }
     };
     Ok(TezedgeDatabase::new(backend))
