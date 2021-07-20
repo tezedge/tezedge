@@ -78,6 +78,8 @@ pub struct StorageMemoryUsage {
     pub temp_tree_cap: usize,
     pub blobs_len: usize,
     pub blobs_cap: usize,
+    pub inodes_len: usize,
+    pub inodes_cap: usize,
     pub strings: StringsMemoryUsage,
     pub total_bytes: usize,
 }

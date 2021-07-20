@@ -70,7 +70,7 @@ use crate::{ContextKey, ContextValue};
 
 use super::{
     serializer::{deserialize, serialize_entry, DeserializationError, SerializationError},
-    storage::{BlobStorageId, NodeId, Storage, StorageIdError},
+    storage::{BlobStorageId, NodeId, Storage, StorageError},
 };
 
 pub struct PostCommitData {
@@ -148,27 +148,31 @@ impl TreeWalkerLevel {
         let children_iter = if should_continue {
             if let WorkingTreeValue::Tree(tree) = &root.value {
                 let storage = root.index.storage.borrow();
-                let tree = match storage.get_tree(*tree) {
-                    Ok(tree) => tree,
+
+                let tree_len = match storage.tree_len(*tree) {
+                    Ok(tree_len) => tree_len,
                     Err(e) => {
-                        // TODO: Handle this error in a better way
-                        eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
-                        &[]
+                        eprintln!("TreeWalkerLevel tree_len error='{:?}' key='{:?}", e, key);
+                        0
                     }
                 };
 
-                let mut tree_vec = Vec::with_capacity(tree.len());
-                for (key_id, node_id) in tree {
-                    let key = match storage.get_str(*key_id) {
-                        Ok(key) => key.to_string(),
-                        Err(e) => {
-                            // TODO: Handle this error in a better way
-                            eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
-                            continue;
-                        }
-                    };
-                    tree_vec.push((key, *node_id));
-                }
+                let mut tree_vec = Vec::with_capacity(tree_len);
+
+                storage
+                    .tree_iterate_unsorted(*tree, |&(key_id, node_id)| {
+                        let key = match storage.get_str(key_id) {
+                            Ok(key) => key.to_string(),
+                            Err(e) => {
+                                // TODO: Handle this error in a better way
+                                eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
+                                return Ok(());
+                            }
+                        };
+                        tree_vec.push((key, node_id));
+                        Ok(())
+                    })
+                    .ok();
 
                 Some(tree_vec.into_iter())
             } else {
@@ -304,7 +308,7 @@ pub enum MerkleError {
     #[fail(display = "Deserialization error, {:?}", error)]
     DeserializationError { error: DeserializationError },
     #[fail(display = "Storage ID error, {:?}", error)]
-    StorageIdError { error: StorageIdError },
+    StorageIdError { error: StorageError },
 }
 
 impl From<persistent::database::DBError> for MerkleError {
@@ -349,8 +353,8 @@ impl From<FromBytesError> for MerkleError {
     }
 }
 
-impl From<StorageIdError> for MerkleError {
-    fn from(error: StorageIdError) -> Self {
+impl From<StorageError> for MerkleError {
+    fn from(error: StorageError) -> Self {
         Self::StorageIdError { error }
     }
 }
@@ -403,10 +407,15 @@ impl<'a> SerializingData<'a> {
         entry: &Entry,
         storage: &Storage,
     ) -> Result<(), MerkleError> {
-        serialize_entry(entry, &mut self.serialized, storage, &mut self.stats)?;
-
-        self.batch
-            .push((entry_hash, Arc::from(self.serialized.as_slice())));
+        serialize_entry(
+            entry,
+            entry_hash,
+            &mut self.serialized,
+            storage,
+            &mut self.stats,
+            &mut self.batch,
+            &mut self.referenced_older_entries,
+        )?;
         Ok(())
     }
 
@@ -462,7 +471,7 @@ impl WorkingTree {
         let mut storage = self.index.storage.borrow_mut();
 
         if let Ok(tree_id) = self.find_raw_tree(root, path, &mut storage) {
-            if let Some(node_id) = storage.get_tree_node_id(tree_id, *file) {
+            if let Some(node_id) = storage.tree_find_node(tree_id, *file) {
                 match self.index.node_entry(node_id, &mut storage) {
                     Err(MerkleError::EntryNotFound { .. }) => Ok(None),
                     Err(err) => Err(err)?,
@@ -545,11 +554,12 @@ impl WorkingTree {
     ) -> Result<Vec<(String, WorkingTree)>, MerkleError> {
         let root = self.get_working_tree_root_ref();
         let mut storage = self.index.storage.borrow_mut();
-
         let node = self.find_raw_tree(root, key, &mut storage)?;
-        let node = storage.get_tree(node)?.to_vec();
-        let node_length = node.len();
 
+        // It's important to get the tree sorted here
+        let node = storage.tree_to_vec_sorted(node)?;
+
+        let node_length = node.len();
         let length = length.unwrap_or(node_length).min(node_length);
         let offset = offset.unwrap_or(0);
 
@@ -656,7 +666,7 @@ impl WorkingTree {
         match self.find_raw_tree(tree, &path, &mut storage) {
             Err(_) => Ok(false),
             Ok(tree_id) => {
-                if let Some(node_id) = storage.get_tree_node_id(tree_id, *file) {
+                if let Some(node_id) = storage.tree_find_node(tree_id, *file) {
                     let node = storage.get_node(node_id)?;
                     Ok(node.node_kind() == NodeKind::Leaf)
                 } else {
@@ -676,7 +686,7 @@ impl WorkingTree {
         let mut storage = self.index.storage.borrow_mut();
 
         if let Ok(tree_id) = self.find_raw_tree(tree, path, &mut storage) {
-            storage.get_tree_node_id(tree_id, *file).is_some()
+            storage.tree_find_node(tree_id, *file).is_some()
         } else {
             false
         }
@@ -691,7 +701,7 @@ impl WorkingTree {
         // get file node from tree
         let node_id =
             storage
-                .get_tree_node_id(node, *file)
+                .tree_find_node(node, *file)
                 .ok_or_else(|| MerkleError::ValueNotFound {
                     key: self.key_to_string(key),
                 })?;
@@ -722,7 +732,7 @@ impl WorkingTree {
                 Ok(())
             }
             Entry::Tree(tree) => {
-                let tree = storage.get_tree(*tree)?.to_vec();
+                let tree = storage.tree_to_vec_unsorted(*tree)?;
 
                 tree.iter()
                     .map(|(key, child_node)| {
@@ -777,7 +787,7 @@ impl WorkingTree {
         let mut keyvalues: Vec<(ContextKeyOwned, ContextValue)> = Vec::new();
         let delimiter = if prefix.is_empty() { "" } else { "/" };
 
-        let prefixed_tree = storage.get_tree(prefixed_tree)?.to_vec();
+        let prefixed_tree = storage.tree_to_vec_unsorted(prefixed_tree)?;
 
         for (key, child_node) in prefixed_tree.iter() {
             let entry = self.node_entry(*child_node, storage)?;
@@ -942,8 +952,8 @@ impl WorkingTree {
         }
 
         let tree = match new_node {
-            None => storage.remove(tree, last)?,
-            Some(new_node) => storage.insert(tree, last, new_node)?,
+            None => storage.tree_remove(tree, last)?,
+            Some(new_node) => storage.tree_insert(tree, last, new_node)?,
         };
 
         if tree.is_empty() {
@@ -993,36 +1003,26 @@ impl WorkingTree {
 
         match entry {
             Entry::Blob(_blob_id) => Ok(()),
-            Entry::Tree(tree) => {
-                let tree = storage.get_tree(*tree)?;
+            Entry::Tree(tree) => storage.tree_iterate_unsorted(*tree, |&(_, node_id)| {
+                let child_node = storage.get_node(node_id)?;
 
-                tree.iter()
-                    .map(|(_, child_node)| {
-                        let child_node = storage.get_node(*child_node)?;
+                if child_node.is_commited() {
+                    data.add_older_entry(child_node, storage)?;
+                    return Ok(());
+                }
+                child_node.set_commited(true);
 
-                        if child_node.is_commited() {
-                            data.add_older_entry(child_node, storage)?;
-                            return Ok(());
-                        }
-                        child_node.set_commited(true);
-
-                        match child_node.get_entry().as_ref() {
-                            None => Ok(()),
-                            Some(entry) => self.get_entries_recursively(
-                                entry,
-                                child_node.entry_hash_id(data.store, storage)?,
-                                None,
-                                data,
-                                storage,
-                            ),
-                        }
-                    })
-                    .find_map(|res| match res {
-                        Ok(_) => None,
-                        Err(err) => Some(Err(err)),
-                    })
-                    .unwrap_or(Ok(()))
-            }
+                match child_node.get_entry().as_ref() {
+                    None => Ok(()),
+                    Some(entry) => self.get_entries_recursively(
+                        entry,
+                        child_node.entry_hash_id(data.store, storage)?,
+                        None,
+                        data,
+                        storage,
+                    ),
+                }
+            }),
             Entry::Commit(commit) => {
                 let entry = match root {
                     Some(root) => Entry::Tree(root),
@@ -1042,7 +1042,7 @@ impl WorkingTree {
             None => Err(MerkleError::EntryNotFound { hash_id }),
             Some(entry_bytes) => {
                 let mut storage = self.index.storage.borrow_mut();
-                deserialize(entry_bytes.as_ref(), &mut storage).map_err(Into::into)
+                deserialize(entry_bytes.as_ref(), &mut storage, store).map_err(Into::into)
             }
         }
     }

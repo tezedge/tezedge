@@ -344,19 +344,73 @@ pub mod tree {
     }
 }
 
+#[cfg(test)]
+macro_rules! key {
+    ($key:expr) => {{
+        $key.split('/').map(String::from).collect::<Vec<String>>()
+    }};
+    ($($arg:tt)*) => {{
+        key!(format!($($arg)*))
+    }};
+}
+
+#[cfg(test)]
+fn test_context_inodes(
+    cr: &mut OCamlRuntime,
+    tezedge_index: OCamlRef<TezosFfiContextIndex>,
+    tezedge_genesis_hash: &ContextHash,
+    irmin_index: OCamlRef<TezosFfiContextIndex>,
+    irmin_genesis_hash: &ContextHash,
+) {
+    use std::time::SystemTime;
+
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let mut tezedge_ctxt = context::checkout(cr, &tezedge_index, tezedge_genesis_hash).unwrap();
+    let mut irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
+
+    let tezedge_commit_hash_init = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let irmin_commit_hash_init = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+    for index in 0..2_000 {
+        let key = key!(format!("root/{}", index));
+
+        tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key, "".as_bytes());
+        irmin_ctxt = context::add(cr, &irmin_ctxt, &key, "".as_bytes());
+
+        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+        assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    }
+
+    for index in 0..2_000 {
+        let key = key!(format!("root/{}", index));
+
+        tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key);
+        irmin_ctxt = context::remove(cr, &irmin_ctxt, &key);
+
+        let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+        let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+
+        assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    }
+
+    let tezedge_commit_hash_end = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let irmin_commit_hash_end = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    assert_eq!(irmin_commit_hash_end, tezedge_commit_hash_end);
+
+    assert_eq!(irmin_commit_hash_init, irmin_commit_hash_end);
+    assert_eq!(tezedge_commit_hash_init, tezedge_commit_hash_end);
+}
+
 #[test]
 fn test_context_calls() {
     use std::time::SystemTime;
     use tempfile::tempdir;
-
-    macro_rules! key {
-        ($key:expr) => {{
-            $key.split('/').map(String::from).collect::<Vec<String>>()
-        }};
-        ($($arg:tt)*) => {{
-            key!(format!($($arg)*))
-        }};
-    }
 
     // Initialize the persistent OCaml runtime and initialize callbacks
     ocaml_interop::OCamlRuntime::init_persistent();
@@ -386,6 +440,14 @@ fn test_context_calls() {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
         .as_secs();
+
+    test_context_inodes(
+        cr,
+        &tezedge_index,
+        &tezedge_genesis_hash,
+        &irmin_index,
+        &irmin_genesis_hash,
+    );
 
     let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_genesis_hash).unwrap();
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("empty/value"), "".as_bytes());

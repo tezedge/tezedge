@@ -22,6 +22,7 @@ pub const INMEM: &str = "inmem";
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HashId(NonZeroU32); // NonZeroU32 so that `Option<HashId>` is 4 bytes
 
+#[derive(Debug)]
 pub struct HashIdError;
 
 impl TryInto<usize> for HashId {
