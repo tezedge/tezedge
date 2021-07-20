@@ -28,7 +28,7 @@ services:
       - SANDBOX=http://${HOSTNAME}:3030
       - DEBUGGER=http://${HOSTNAME}:17732
       # need a better way to provide such information
-      - API=[{"id":"rust","type":"tezedge","name":"rust.${HOSTNAME}","http":"http://${HOSTNAME}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}:4927"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"network"}]},{"id":"ocaml","type":"octez","name":"ocaml.${HOSTNAME}","http":"http://${HOSTNAME}:18733","p2p_port":9733,"features":[{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}:17832"},{"name":"resources/storage"},{"name":"mempool"},{"name":"network"}]}]
+      - API=[{"id":"rust","type":"tezedge","name":"rust.${HOSTNAME}","http":"http://${HOSTNAME}:18732","p2p_port":9732,"features":[{"name":"ws","url":"ws://${HOSTNAME}:4927"},{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}:38732/resources/tezedge"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}:17832"},{"name":"mempool"},{"name":"network"}]},{"id":"ocaml","type":"octez","name":"ocaml.${HOSTNAME}","http":"http://${HOSTNAME}:18733","p2p_port":9733,"features":[{"name":"monitoring"},{"name":"resources/system","monitoringUrl":"http://${HOSTNAME}:38732/resources/ocaml"},{"name":"resources/memory","memoryProfilerUrl":"http://${HOSTNAME}:17832"},{"name":"mempool"},{"name":"network"}]}]
     ports:
       - "80:80"
 # volumes:
