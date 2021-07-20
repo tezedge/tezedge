@@ -69,7 +69,7 @@ lazy_static::lazy_static! {
             (10, 10), // GetProtocols
             (10, 10), // Protocol
             (5000, 5000), // GetOperationsForBlocks
-            (10000, 10000), // OperationsForBlocks
+            (20000, 20000), // OperationsForBlocks
         ];
         for (i, s) in THROTTLING_QUOTA_STRS.iter().enumerate() {
             let var = "THROTTLING_QUOTA_".to_owned() + &s.to_uppercase();
