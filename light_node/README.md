@@ -7,6 +7,7 @@ This is an implementation of a lightweight Tezos node written in Rust.
 Detailed information on how to start the node can be found in the repository [README](../README.md) file
 
 ## Arguments
+
 All arguments and their default values can be found in the [tezedge.config](./etc/tezedge/tezedge.config) file.
 They can also be provided as command line arguments in the same format, in which case they have higher priority than the ones in config file
 
@@ -105,6 +106,40 @@ Specifies the Tezos environment for this node. Accepted values are:
 ```
 --network <NETWORK>
 ```
+
+There is an additional special value accepted for specifying a custom network setup: `custom`.
+
+When `--network custom` is used, an extra argument needs to be specified:
+
+```
+--custom-network-file <PATH>
+```
+
+The format of the file should match the format used by Octez to specify a custom network.
+
+Example:
+
+```json
+{
+  "network": {
+    "chain_name": "CUSTOM_NETWORK",
+    "genesis": {
+      "block": "BLockGenesisGenesis....snip",
+      "protocol": "PtYuensgYBb3G3x....snip",
+      "timestamp": "2018-06-30T16:07:32Z"
+    },
+    "sandboxed_chain_name": "SANDBOXED_TEZOS",
+    "default_bootstrap_peers": [],
+    "genesis_parameters": {
+      "values": {
+        "genesis_pubkey": "edpkuJQjux....snip"
+      }
+    }
+  }
+}
+```
+
+
 ### P2P Port
 Specifies port for peer to peer communication.
 
@@ -212,16 +247,47 @@ Number of seconds to remove unused protocol_runner from pool, default: 1800 (30 
 --ffi-twcap-pool-idle-timeout-in-secs <NUM>
 ```
 
-### Recording context actions
-Activate recording of context storage actions.
+### Context stats DB
+Path to the database where the context stats will be stored. If not specified, stats will not be produced.
 ```
---store-context-actions
+--context-stats-db-path <PATH>
 ```
 
 ### Sandbox context patching
 Path to the json file with key-values which will be added to the empty context on startup and commit genesis.
 ```
 --sandbox-patch-context-json-file <PATH>
+```
+
+## Subcommands
+
+The following subcommands are supported.
+
+### Replay
+
+`replay` is used to replay the application of a range of blocks. In addition to the command-line arguments
+described above, it also supports the following arguments:
+
+- `--from-block <BLOCK-HASH>`: Block from which we start the replay. *(optional)*
+- `--to-block <BLOCK-HASH>`: Replay until this block. After it is reached, the replayer stops.
+- `--target-path <PATH>`: A directory for the replay. The resulting database will be saved to this directory.
+- `--fail-above <MILLIS>`: Panic if the block application took longer than this number of milliseconds. *(optional)*
+
+**Example:**
+
+The following command will run the replayer on the database found in `/tmp/original-data`,
+re-applying all bocks until `BMf2TQSuyJrsE7JQjEBj1ztfspoVaFChEmVg6DsUYHxinsEVEeW`
+for the `edo2net` network, and produce a new database in `/tmp/replay-result`. If any of the blocks takes longer than 1000 milliseconds to be applied, the process will be aborted.
+
+```
+cargo run --bin \
+    light-node replay \
+        --config-file ./light_node/etc/tezedge/tezedge.config \
+        --tezos-data-dir=/tmp/original-data
+        --target-path=/tmp/replay \
+        --network=edo2net \
+        --to-block BMf2TQSuyJrsE7JQjEBj1ztfspoVaFChEmVg6DsUYHxinsEVEeW \
+        --fail-above 1000
 ```
 
 # Performance and optimization
