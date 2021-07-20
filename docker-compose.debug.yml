@@ -3,7 +3,7 @@ version: "3"
 services:
 
   tezedge-debugger:
-    image: tezedge/tezedge-debugger:v1.6.0
+    image: tezedge/tezedge-debugger:v1.6.7
     privileged: true
     environment:
       - RUST_BACKTRACE=1
