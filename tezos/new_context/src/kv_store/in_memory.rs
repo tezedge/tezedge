@@ -343,3 +343,13 @@ impl InMemory {
         vacant.write_with(|entry| *entry = entry_hash)
     }
 }
+
+impl Drop for InMemory {
+    fn drop(&mut self) {
+        if let Some(sender) = &self.sender {
+            if let Err(e) = sender.send(Command::Close) {
+                eprintln!("Fail to send Command::Close to GC worker: {:?}", e);
+            }
+        }
+    }
+}

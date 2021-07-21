@@ -29,6 +29,7 @@ pub(crate) enum Command {
     MarkReused {
         reused: Vec<HashId>,
     },
+    Close,
 }
 
 pub(crate) struct Cycles {
@@ -89,6 +90,10 @@ impl GCThread {
                     new_ids,
                 }) => self.start_new_cycle(values_in_cycle, new_ids),
                 Ok(Command::MarkReused { reused }) => self.mark_reused(reused),
+                Ok(Command::Close) => {
+                    println!("GC received Command::Close");
+                    break;
+                }
                 Err(e) => {
                     eprintln!("GC channel is closed {:?}", e);
                     break;
