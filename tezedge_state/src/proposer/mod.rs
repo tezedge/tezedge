@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crypto::hash::CryptoboxPublicKeyHash;
@@ -29,7 +30,7 @@ pub enum Notification {
     },
     MessageReceived {
         peer: PeerAddress,
-        message: PeerMessageResponse,
+        message: Arc<PeerMessageResponse>,
     },
     HandshakeSuccessful {
         peer_address: PeerAddress,
