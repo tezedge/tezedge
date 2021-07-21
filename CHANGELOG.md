@@ -30,6 +30,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.6.9] - 2021-07-22
+
+### Changed
+
+- RPC uses protocol runners without context for decoding block/operations metadata
+
+## [1.6.8] - 2021-07-20
+
+### Fixed
+
+- Add dns/resolv libs to distroless docker image
+
 ## [1.6.7] - 2021-07-20
 
 ### Added
@@ -473,9 +485,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.7...HEAD
-[1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.7
-[1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.6
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.9...HEAD
+[1.6.9]: https://github.com/tezedge/tezedge/releases/v1.6.9
+[1.6.8]: https://github.com/tezedge/tezedge/releases/v1.6.8
+[1.6.7]: https://github.com/tezedge/tezedge/releases/v1.6.7
+[1.6.6]: https://github.com/tezedge/tezedge/releases/v1.6.6
 [1.6.5]: https://github.com/tezedge/tezedge/releases/v1.6.5
 [1.6.4]: https://github.com/tezedge/tezedge/releases/v1.6.4
 [1.6.2]: https://github.com/tezedge/tezedge/releases/v1.6.2
