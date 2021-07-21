@@ -379,7 +379,7 @@ impl Actor for PeerBranchBootstrapper {
         self.receive(ctx, msg, sender);
 
         if timer.elapsed() > Duration::from_secs(1) {
-            slog::error!(
+            warn!(
                 ctx.system.log(),
                 "Peer branch bootstrapper too slow action processing: {} - {:?}",
                 msg_type,

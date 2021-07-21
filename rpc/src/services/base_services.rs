@@ -118,7 +118,7 @@ fn convert_block_metadata(
 ) -> Result<BlockMetadata, failure::Error> {
     // TODO: TE-521 - rewrite encoding part to rust
     let response = env
-        .tezos_readonly_api()
+        .tezos_without_context_api()
         .pool
         .get()?
         .api
@@ -381,7 +381,7 @@ fn convert_block_operations_metadata(
 ) -> Result<BlockOperations, failure::Error> {
     // TODO: TE-521 - rewrite encoding part to rust
     let response = env
-        .tezos_readonly_api()
+        .tezos_without_context_api()
         .pool
         .get()?
         .api
