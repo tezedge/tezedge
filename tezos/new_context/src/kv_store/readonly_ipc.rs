@@ -399,7 +399,7 @@ impl IpcContextListener {
                     );
                     let log_inner = log.clone();
                     if let Err(spawn_error) = std::thread::Builder::new()
-                        .name("ipc-context-server-thread".to_string())
+                        .name("ctx-ipc-server-thread".to_string())
                         .spawn(move || {
                             if let Err(err) = server.process_context_requests(&log_inner) {
                                 error!(
