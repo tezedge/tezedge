@@ -222,7 +222,7 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                                 info!(&log, "Listening to context IPC request at {}", socket_path);
                                 let log = log.clone();
                                 std::thread::Builder::new()
-                                    .name("ipc-context-listener-thread".to_string())
+                                    .name("ctx-ipc-lstnr-thread".to_string())
                                     .spawn(move || {
                                         listener.handle_incoming_connections(&log);
                                     })

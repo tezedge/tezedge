@@ -190,7 +190,7 @@ impl ChainFeeder {
                 tezos_writeable_api,
                 log,
             )
-            .spawn_feeder_thread(format!("{}-block-applier-thread", ChainFeeder::name()))
+            .spawn_feeder_thread(format!("chain-feedr-ctx"))
             .map_err(|_| CreateError::Panicked)?;
 
         sys.actor_of_props::<ChainFeeder>(

@@ -370,7 +370,7 @@ pub static TIMING_CHANNEL: Lazy<BufferedTimingChannel> = Lazy::new(|| {
     let (sender, receiver) = sync_channel(10_000);
 
     if let Err(e) = std::thread::Builder::new()
-        .name("context-timing".to_string())
+        .name("ctx-timings-thread".to_string())
         .spawn(|| {
             start_timing(receiver);
         })
