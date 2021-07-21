@@ -196,7 +196,7 @@ impl FileAppender {
                 let (tx, rx) = mpsc::channel();
                 fs::rename(&self.path, &plain_path)?;
                 thread::Builder::new()
-                    .name("slog-rotate-compress-thread".to_string())
+                    .name("slog-rtte-cmprs".to_string())
                     .spawn(move || {
                         let result = Self::compress(plain_path, temp_gz_path, rotated_path);
                         let _ = tx.send(result);

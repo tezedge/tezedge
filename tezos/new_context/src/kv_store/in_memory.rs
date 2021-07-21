@@ -189,7 +189,7 @@ impl InMemory {
             let (prod, cons) = tezos_spsc::bounded(2_000_000);
 
             std::thread::Builder::new()
-                .name("context-in-memory-gc-thread".to_string())
+                .name("ctx-inmem-gc-thread".to_string())
                 .spawn(move || {
                     GCThread {
                         cycles: Cycles::default(),

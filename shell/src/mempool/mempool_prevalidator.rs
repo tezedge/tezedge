@@ -97,7 +97,7 @@ impl MempoolPrevalidator {
             let validator_run = validator_run.clone();
             let chain_id = chain_id.clone();
 
-            thread::Builder::new().name(format!("{}-validator_thread", &MempoolPrevalidator::name(&chain_id))).spawn(move || {
+            thread::Builder::new().name(format!("mmpl-{}", chain_id.to_base58_check())).spawn(move || {
                 let block_storage = BlockStorage::new(&persistent_storage);
                 let chain_meta_storage = ChainMetaStorage::new(&persistent_storage);
                 let mempool_storage = MempoolStorage::new(&persistent_storage);

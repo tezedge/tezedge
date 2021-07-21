@@ -228,7 +228,7 @@ pub(crate) fn get_blocks(
     .map(|(block_header, block_json_data)| {
         if let Some(block_additional_data) = block_meta_storage.get_additional_data(&block_hash)? {
             let response = env
-                .tezos_readonly_api()
+                .tezos_without_context_api()
                 .pool
                 .get()?
                 .api
