@@ -392,7 +392,7 @@ fn run(
                         Publish {
                             msg: NetworkChannelMsg::PeerMessageReceived(PeerMessageReceived {
                                 peer_address: peer,
-                                message: Arc::new(message.into()),
+                                message,
                             }),
                             topic: NetworkChannelTopic::NetworkEvents.into(),
                         },

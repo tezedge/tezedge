@@ -1,5 +1,7 @@
-use crypto::hash::CryptoboxPublicKeyHash;
+use std::sync::Arc;
 use std::time::Instant;
+
+use crypto::hash::CryptoboxPublicKeyHash;
 
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 use tezos_messages::p2p::encoding::prelude::{MetadataMessage, NetworkVersion};
@@ -42,7 +44,7 @@ pub enum TezedgeRequest {
     PeerMessageReceived {
         req_id: usize,
         peer: PeerAddress,
-        message: PeerMessageResponse,
+        message: Arc<PeerMessageResponse>,
     },
     NotifyHandshakeSuccessful {
         req_id: usize,
@@ -70,7 +72,7 @@ pub enum PendingRequest {
     // -- TODO: temporary until everything is handled inside TezedgeState.
     PeerMessageReceived {
         peer: PeerAddress,
-        message: PeerMessageResponse,
+        message: Arc<PeerMessageResponse>,
     },
     NotifyHandshakeSuccessful {
         peer_address: PeerAddress,
@@ -121,7 +123,6 @@ impl<E> GetRequests for TezedgeState<E> {
                         TezedgeRequest::PeerMessageReceived {
                             req_id,
                             peer: peer.clone(),
-                            // TODO: find a way to get rid of cloning.
                             message: message.clone(),
                         }
                     }

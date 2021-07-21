@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use tezos_messages::p2p::encoding::prelude::PeerMessage;
 use tla_sm::Acceptor;
@@ -31,7 +32,7 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
                     self.requests.insert(PendingRequestState {
                         request: PendingRequest::PeerMessageReceived {
                             peer: proposal.peer,
-                            message: message.into(),
+                            message: Arc::new(message.into()),
                         },
                         status: RequestState::Idle { at: proposal.at },
                     });
