@@ -7,6 +7,7 @@ use std::{
     hash::Hasher,
     mem::size_of,
     sync::Arc,
+    thread::JoinHandle,
 };
 
 use crossbeam_channel::Sender;
@@ -141,6 +142,7 @@ pub struct InMemory {
     sender: Option<Sender<Command>>,
     pub context_hashes: Map<u64, HashId>,
     context_hashes_cycles: VecDeque<Vec<u64>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 impl GarbageCollector for InMemory {
@@ -217,13 +219,13 @@ impl InMemory {
             .parse::<bool>()
             .expect("Provided `DISABLE_INMEM_CONTEXT_GC` value cannot be converted to bool");
 
-        let (sender, cons) = if garbage_collector_disabled {
-            (None, None)
+        let (sender, cons, thread_handle) = if garbage_collector_disabled {
+            (None, None, None)
         } else {
             let (sender, recv) = crossbeam_channel::unbounded();
             let (prod, cons) = tezos_spsc::bounded(2_000_000);
 
-            std::thread::Builder::new()
+            let thread_handle = std::thread::Builder::new()
                 .name("ctx-inmem-gc-thread".to_string())
                 .spawn(move || {
                     GCThread {
@@ -235,7 +237,7 @@ impl InMemory {
                     .run()
                 })?;
 
-            (Some(sender), Some(cons))
+            (Some(sender), Some(cons), Some(thread_handle))
         };
 
         let current_cycle = Default::default();
@@ -253,6 +255,7 @@ impl InMemory {
             sender,
             context_hashes,
             context_hashes_cycles,
+            thread_handle,
         })
     }
 
@@ -346,10 +349,23 @@ impl InMemory {
 
 impl Drop for InMemory {
     fn drop(&mut self) {
-        if let Some(sender) = &self.sender {
-            if let Err(e) = sender.send(Command::Close) {
-                eprintln!("Fail to send Command::Close to GC worker: {:?}", e);
-            }
+        let sender = match self.sender.take() {
+            Some(sender) => sender,
+            None => return,
+        };
+
+        if let Err(e) = sender.send(Command::Close) {
+            eprintln!("Fail to send Command::Close to GC worker: {:?}", e);
+            return;
+        }
+
+        let thread_handle = match self.thread_handle.take() {
+            Some(thread_handle) => thread_handle,
+            None => return,
+        };
+
+        if let Err(e) = thread_handle.join() {
+            eprintln!("Fail to join  GC worker thread: {:?}", e);
         }
     }
 }
