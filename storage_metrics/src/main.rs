@@ -303,8 +303,12 @@ fn main() {
                                 chain_state.available_history = history;
                                 let cursor = chain_state.available_history.pop_back().unwrap().clone();
                                 chain_state.cursor = Some(cursor.clone());
-                                let block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
-                                chain_state.end = Some(block_hash);
+                                let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
+                                if cursor == genesis_block_hash {
+                                    let cursor = chain_state.available_history.pop_back().unwrap().clone();
+                                    chain_state.cursor = Some(cursor.clone());
+                                }
+                                chain_state.end = Some(genesis_block_hash);
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
