@@ -34,6 +34,7 @@ use storage::database::notus_backend::NotusDBBackend;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::binary_message::MessageHash;
 use std::thread::yield_now;
+use std::process::exit;
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
@@ -316,7 +317,7 @@ fn main() {
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
                             println!("GetBlockHeaders Branch {:#?}", message);
-                            yield_now()
+                            exit(0)
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
