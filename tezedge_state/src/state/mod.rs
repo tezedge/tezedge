@@ -90,7 +90,7 @@ impl P2pState {
 
 #[derive(Debug)]
 pub struct TezedgeState<E = DefaultEffects> {
-    pub(crate) log: Logger,
+    pub log: Logger,
     pub(crate) listening_for_connection_requests: bool,
     pub(crate) newest_time_seen: Instant,
     pub(crate) last_periodic_react: Instant,

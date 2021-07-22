@@ -26,7 +26,7 @@ tezedge-state = { path = "../tezedge_state" }
 tezos_encoding = { path = "../tezos/encoding" }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
-
+tezos_api = { path = "../tezos/api" }
 [dev-dependencies]
 criterion = { version = "0.3", features = ["html_reports"] }
 quickcheck = "1.0.3"

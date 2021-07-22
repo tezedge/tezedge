@@ -20,9 +20,16 @@ use tezos_identity::Identity;
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
+use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch};
+use std::convert::TryInto;
+use crypto::hash::{ContextHash, OperationListListHash, BlockHash, chain_id_from_block_hash, ChainId};
+use tezos_api::environment;
+use tezos_api::environment::{TezosEnvironment, get_empty_operation_list_list_hash};
+
+const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
 fn shell_compatibility_version() -> ShellCompatibilityVersion {
-    ShellCompatibilityVersion::new("TEZOS_MAINNET".to_owned(), vec![0], vec![0, 1])
+    ShellCompatibilityVersion::new(CHAIN_NAME.to_owned(), vec![0], vec![0, 1])
 }
 
 fn identity(pkh: &[u8], pk: &[u8], sk: &[u8], pow: &[u8]) -> Identity {
@@ -186,6 +193,14 @@ fn main() {
         MioManager::new(SERVER_PORT),
     );
 
+    let tezos_env = if let Some(tezos_network_config) = environment::default_networks().get(&TezosEnvironment::Mainnet) {
+        tezos_network_config.clone()
+    } else {
+        panic!(
+            "Missing default configuration for selected network",
+        )
+    };
+
     loop {
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
@@ -206,7 +221,17 @@ fn main() {
                         PeerMessage::SwapRequest(_) => {}
                         PeerMessage::SwapAck(_) => {}
                         PeerMessage::Bootstrap => {}
-                        PeerMessage::GetCurrentBranch(_) => {}
+                        PeerMessage::GetCurrentBranch(_) => {
+                            let genesis_block = tezos_env
+                                .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
+                            println!("Generated Genesis None {:?}", &genesis_block);
+                            let chain_id = tezos_env.main_chain_id().unwrap();
+                            let msg = CurrentBranchMessage::new(
+                                chain_id,
+                                CurrentBranch::new(genesis_block, vec![]),
+                            );
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))
+                        }
                         PeerMessage::CurrentBranch(_) => {}
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(_) => {}
@@ -220,10 +245,6 @@ fn main() {
                         PeerMessage::GetOperationsForBlocks(_) => {}
                         PeerMessage::OperationsForBlocks(_) => {}
                     }
-                    eprintln!(
-                        "received message from {}, contents: {:?}",
-                        peer, message.message
-                    );
                 }
                 _ => {}
             }
@@ -236,4 +257,3 @@ pub fn genesis_context_hash() -> Vec<u8> {
     context_hash.extend([14, 87, 81, 192, 38, 229, 67, 178, 232, 171, 46, 176, 96, 153, 218, 161, 209, 229, 223, 71, 119, 143, 119, 135, 250, 171, 69, 205, 241, 47, 227, 168].iter().copied());
     context_hash
 }
-
