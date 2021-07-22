@@ -81,11 +81,24 @@ impl PeerMessage {
 pub struct PeerMessageResponse {
     #[get = "pub"]
     pub message: PeerMessage,
+    /// Encrypted bytes read from stream including chunk sizes.
+    #[encoding(skip)]
+    #[get = "pub"]
+    size_hint: Option<usize>,
+}
+
+impl PeerMessageResponse {
+    pub fn set_size_hint(&mut self, size: usize) {
+        self.size_hint = Some(size);
+    }
 }
 
 impl From<PeerMessage> for PeerMessageResponse {
     fn from(message: PeerMessage) -> Self {
-        PeerMessageResponse { message }
+        PeerMessageResponse {
+            message,
+            size_hint: None,
+        }
     }
 }
 
