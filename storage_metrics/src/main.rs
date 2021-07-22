@@ -301,11 +301,11 @@ fn main() {
                                     .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                                 chain_state.highest_available_block = Some(received_block_header.clone());
                                 chain_state.available_history = history;
-                                let cursor = chain_state.available_history.pop_back().unwrap().clone();
+                                let cursor = chain_state.available_history.pop_front().unwrap().clone();
                                 chain_state.cursor = Some(cursor.clone());
                                 let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
                                 if cursor == genesis_block_hash {
-                                    let cursor = chain_state.available_history.pop_back().unwrap().clone();
+                                    let cursor = chain_state.available_history.pop_front().unwrap().clone();
                                     chain_state.cursor = Some(cursor.clone());
                                 }
                                 chain_state.end = Some(genesis_block_hash);
