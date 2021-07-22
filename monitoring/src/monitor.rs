@@ -98,7 +98,7 @@ impl Monitor {
             let size = if let Some(size_hint) = msg.message.size_hint() {
                 *size_hint
             } else {
-                trace!(log, "size_hint not available for received peer message"; "peer" => msg.peer.name());
+                debug!(log, "size_hint not available for received peer message"; "peer" => msg.peer_address.to_string());
                 size_of_val(&msg.message)
             };
             monitor.incoming_bytes(size);
