@@ -21,6 +21,9 @@ slog-json = "2.3"
 slog-term = "2.6"
 strum = "0.20"
 strum_macros = "0.20"
+tokio = { version = "1.8", features = ["time"] }
+reqwest = { version = "0.11", features = ["json"] }
+criterion = { version = "0.3", features = ["html_reports"] }
 # Local dependencies
 tla-sm = { path = "../tla_sm" }
 tezedge-state = { path = "../tezedge_state" }

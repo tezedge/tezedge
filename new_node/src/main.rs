@@ -1,11 +1,15 @@
+use futures::{StreamExt, TryFutureExt};
+use networking::p2p::network_channel::PeerMessageReceived;
 use slog::Drain;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite};
+use tokio::stream;
 
 use tezedge_state::ShellCompatibilityVersion;
-use tezos_messages::p2p::encoding::peer::PeerMessage;
+use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tla_sm::Acceptor;
 
 use crypto::{
@@ -174,38 +178,96 @@ fn build_tezedge_state() -> TezedgeState {
     tezedge_state
 }
 
-fn main() {
-    let mut proposer = TezedgeProposer::new(
-        TezedgeProposerConfig {
-            wait_for_events_timeout: Some(Duration::from_millis(250)),
-            events_limit: 1024,
-        },
-        build_tezedge_state(),
-        // capacity is changed by events_limit.
-        MioEvents::new(),
-        MioManager::new(SERVER_PORT),
-    );
+use serde_json::Value;
 
-    loop {
-        proposer.make_progress();
-        for n in proposer.take_notifications().collect::<Vec<_>>() {
-            match n {
-                Notification::HandshakeSuccessful { peer_address, .. } => {
-                    // Send Bootstrap message.
-                    proposer.send_message_to_peer_or_queue(
-                        Instant::now(),
-                        peer_address,
-                        PeerMessage::Bootstrap,
-                    );
-                }
-                Notification::MessageReceived { peer, message } => {
-                    eprintln!(
-                        "received message from {}, contents: {:?}",
-                        peer, message.message
-                    );
-                }
-                _ => {}
+fn process_peer_message(msg: PeerMessageReceived) {
+    use std::mem::size_of_val;
+
+    if let PeerMessage::CurrentBranch(msg) = msg.message.message() {
+        if msg.current_branch().current_head().level() > 0 {
+            criterion::black_box(msg.current_branch().current_head().level() as usize);
+        }
+    }
+
+    let size = if let Ok(msg) = msg.message.as_bytes() {
+        msg.len()
+    } else {
+        size_of_val(&msg.message)
+    };
+    criterion::black_box(size);
+}
+
+#[tokio::main]
+async fn main() {
+    let ids = reqwest::get("http://prod.tezedge.com:17732/v2/p2p?node_name=9732&limit=1000000&types=operations_for_blocks")
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .into_iter()
+        .filter(|x| {
+            if let Some(kind) = x.get("kind").and_then(|x| x.as_str()) {
+                true
+                // kind == "operations_for_block"
+            } else {
+                false
+                // panic!("{:?}", x);
             }
+        })
+        .map(|x| x["id"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+
+    eprintln!("fetched all message ids: {}", ids.len());
+
+    let messages_bytes = futures::stream::iter(ids.into_iter())
+        .map(|id| async move {
+            reqwest::get(&format!(
+                "http://0.0.0.0:17732/v2/p2p/{}?node_name=9732",
+                id
+            ))
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+            .get("decrypted_bytes")
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .into_iter()
+            .map(|x| u8::from_str_radix(x.as_str().unwrap(), 16).unwrap())
+            .collect::<Vec<_>>()
+        })
+        .buffer_unordered(64)
+        .enumerate()
+        .map(|(i, v)| {
+            eprintln!("{}", i);
+            v
+        })
+        .collect::<Vec<_>>()
+        .await;
+
+    eprintln!("fetched all message bytes: {}", messages_bytes.len());
+
+    let messages = messages_bytes
+        .iter()
+        .map(|x| PeerMessageResponse::from_bytes(x).unwrap())
+        .map(|msg| Arc::new(msg))
+        .collect::<Vec<_>>();
+
+    eprintln!("decoded all messages: {}", messages.len());
+
+    for i in 0u64.. {
+        eprintln!("cycle {}", i);
+
+        for message in messages.iter() {
+            process_peer_message(PeerMessageReceived {
+                peer_address: PeerAddress::ipv4_from_index(10),
+                message: message.clone(),
+            });
         }
     }
 }
