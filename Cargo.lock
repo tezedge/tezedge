@@ -3919,7 +3919,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "storage_metrics"
+name = "storage-metrics"
 version = "0.1.0"
 dependencies = [
  "bytes 1.0.1",
