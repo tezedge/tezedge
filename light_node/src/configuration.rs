@@ -678,6 +678,12 @@ fn pool_cfg(
     args: &clap::ArgMatches,
     pool_name_discriminator: &str,
 ) -> TezosApiConnectionPoolConfiguration {
+    // Adjust this so that it properly matches the command-line argument.
+    let pool_name_discriminator = if pool_name_discriminator.is_empty() {
+        "".to_owned()
+    } else {
+        format!("{}-", pool_name_discriminator)
+    };
     TezosApiConnectionPoolConfiguration {
         min_connections: 0,
         /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
