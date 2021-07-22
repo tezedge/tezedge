@@ -285,7 +285,8 @@ fn main() {
                                 chain_id,
                                 CurrentBranch::new(genesis_block, vec![]),
                             );
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg));
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
                         }
                         PeerMessage::CurrentBranch(message) => {
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
