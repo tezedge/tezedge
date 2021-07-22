@@ -23,7 +23,7 @@ use super::{
 pub struct TreeStorageId {
     /// Note: Must fit in NodeInner.entry_id (61 bits)
     #[skip]
-    __: B14,
+    __unused: B14,
     start: B30,
     length: B20,
 }

@@ -147,14 +147,12 @@ impl TreeWalkerLevel {
 
         let children_iter = if should_continue {
             if let WorkingTreeValue::Tree(tree) = &root.value {
-                // TODO: can this clone be avoided?
-
                 let storage = root.index.storage.borrow();
                 let tree = match storage.get_tree(*tree) {
                     Ok(tree) => tree,
-                    _ => {
+                    Err(e) => {
                         // TODO: Handle this error in a better way
-                        eprintln!("TreeWalkerLevel Error: TreeNotFound");
+                        eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
                         &[]
                     }
                 };
@@ -165,7 +163,7 @@ impl TreeWalkerLevel {
                         Ok(key) => key.to_string(),
                         Err(e) => {
                             // TODO: Handle this error in a better way
-                            eprintln!("TreeWalkerLevel Error: {:?}", e);
+                            eprintln!("TreeWalkerLevel error='{:?}' key='{:?}", e, key);
                             continue;
                         }
                     };
@@ -226,18 +224,25 @@ impl Iterator for TreeWalker {
                     let current_depth = current_level.current_depth + 1;
 
                     if let Some((k, node)) = iter.next() {
-                        // TODO: what to do with errors here?
-                        if let Ok(root) = current_level.root.node_tree(node) {
-                            // TODO: this is not very efficient, maybe we need to improve the key representation
-                            let mut key = current_level.key.clone();
-                            key.push(k.to_string());
+                        match current_level.root.node_tree(node) {
+                            Ok(root) => {
+                                // TODO: this is not very efficient, maybe we need to improve the key representation
+                                let mut key = current_level.key.clone();
+                                key.push(k.to_string());
 
-                            self.stack.push(TreeWalkerLevel::new(
-                                key,
-                                root,
-                                current_depth,
-                                &self.depth,
-                            ));
+                                self.stack.push(TreeWalkerLevel::new(
+                                    key,
+                                    root,
+                                    current_depth,
+                                    &self.depth,
+                                ));
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "TreeWalker Iterator error='{:?}' key='{:?}",
+                                    e, current_level.key
+                                );
+                            }
                         }
 
                         continue;
