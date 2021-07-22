@@ -1,5 +1,5 @@
 use slog::Drain;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,7 +20,7 @@ use tezos_identity::Identity;
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
-use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch};
+use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch, GetCurrentBranchMessage};
 use std::convert::TryInto;
 use crypto::hash::{ContextHash, OperationListListHash, BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::environment;
@@ -201,6 +201,8 @@ fn main() {
         )
     };
 
+    let mut peers = Vec::new();
+
     loop {
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
@@ -215,14 +217,17 @@ fn main() {
                 }
                 Notification::MessageReceived { peer, message } => {
 
-                    match message.message {
+                    match &message.message {
                         PeerMessage::Disconnect => {}
                         PeerMessage::Advertise(_) => {}
                         PeerMessage::SwapRequest(_) => {}
                         PeerMessage::SwapAck(_) => {}
-                        PeerMessage::Bootstrap => {}
+                        PeerMessage::Bootstrap => {
+
+                        }
                         PeerMessage::GetCurrentBranch(_) => {
-                            let genesis_block = tezos_env
+                            peers.push(peer.clone());
+                            /*let genesis_block = tezos_env
                                 .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                             println!("Generated Genesis None {:?}", &genesis_block);
                             let chain_id = tezos_env.main_chain_id().unwrap();
@@ -230,9 +235,11 @@ fn main() {
                                 chain_id,
                                 CurrentBranch::new(genesis_block, vec![]),
                             );
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))*/
                         }
-                        PeerMessage::CurrentBranch(_) => {}
+                        PeerMessage::CurrentBranch(message) => {
+                            println!("Current Branch {:#?}", message);
+                        }
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(_) => {}
                         PeerMessage::CurrentHead(_) => {}
@@ -249,6 +256,11 @@ fn main() {
                 _ => {}
             }
         }
+        if let Some(peer) = peers.last() {
+            println!("Sending get current branch");
+            proposer.send_message_to_peer_or_queue(Instant::now(), *peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
+        }
+
     }
 }
 
