@@ -2,7 +2,7 @@ use crypto::crypto_box::PublicKey;
 use getset::{CopyGetters, Getters};
 use slog::Logger;
 use std::collections::{HashMap, VecDeque};
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 
 use crate::chunking::{
@@ -61,9 +61,9 @@ impl ConnectedPeer {
     pub fn read_message_from<R: Read>(
         &mut self,
         reader: &mut R,
-    ) -> Result<PeerMessage, ReadMessageError> {
+    ) -> Result<PeerMessageResponse, ReadMessageError> {
         let msg = self.read_buf.read_from(reader, &mut self.crypto)?;
-        if self.quota.can_receive(&msg).is_ok() {
+        if self.quota.can_receive(msg.message()).is_ok() {
             Ok(msg)
         } else {
             Err(ReadMessageError::QuotaReached)
