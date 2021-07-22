@@ -1,5 +1,5 @@
 use slog::Drain;
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashSet, HashMap, VecDeque};
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,11 +20,19 @@ use tezos_identity::Identity;
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
-use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch, GetCurrentBranchMessage};
+use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch, GetCurrentBranchMessage, GetBlockHeadersMessage};
 use std::convert::TryInto;
 use crypto::hash::{ContextHash, OperationListListHash, BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, get_empty_operation_list_list_hash};
+use std::net::IpAddr;
+use storage::{BlockStorage, BlockMetaStorage, PersistentStorage};
+use storage::persistent::{open_cl, CommitLogSchema};
+use storage::persistent::sequence::Sequences;
+use storage::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
+use storage::database::notus_backend::NotusDBBackend;
+use tezos_messages::p2p::encoding::block_header::Level;
+use tezos_messages::p2p::binary_message::MessageHash;
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
@@ -181,7 +189,50 @@ fn build_tezedge_state() -> TezedgeState {
     tezedge_state
 }
 
+struct ChainSyncState {
+    highest_available_block: Option<BlockHeader>,
+    current_head : Option<BlockHeader>,
+    peers : HashMap<IpAddr, PeerAddress>,
+    block_storage : BlockStorage,
+    block_meta_storage : BlockMetaStorage,
+    available_history: VecDeque<BlockHash>,
+    highest_available_history: VecDeque<BlockHash>,
+    stored_block_header_level: Level,
+    block_headers_count: u32,
+    cursor : Option<BlockHash>,
+    end : Option<BlockHash>
+}
+
 fn main() {
+
+    let backend = NotusDBBackend::new("/tmp/tezedge/metrics/database").map(|db|{
+        TezedgeDatabaseBackendOptions::Notus(db)
+    }).unwrap();
+
+    let maindb = Arc::new(TezedgeDatabase::new(backend));
+    // commit log storage
+    let clog = open_cl("/tmp/tezedge/metrics/block-storage", vec![BlockStorage::descriptor()]).unwrap();
+
+    let persistent_storage = PersistentStorage::new(
+        maindb.clone(),
+        Arc::new(clog),
+        Arc::new(Sequences::new(maindb, 1000)),
+    );
+
+    let mut chain_state = ChainSyncState {
+        highest_available_block: None,
+        current_head: None,
+        peers: Default::default(),
+        block_storage: BlockStorage::new(&persistent_storage),
+        block_meta_storage: BlockMetaStorage::new(&persistent_storage),
+        available_history: Default::default(),
+        highest_available_history: Default::default(),
+        stored_block_header_level: 0,
+        block_headers_count: 0,
+        cursor: None,
+        end: None
+    };
+
     let mut proposer = TezedgeProposer::new(
         TezedgeProposerConfig {
             wait_for_events_timeout: Some(Duration::from_millis(250)),
@@ -200,8 +251,6 @@ fn main() {
             "Missing default configuration for selected network",
         )
     };
-
-    let mut peers = Vec::new();
 
     loop {
         proposer.make_progress();
@@ -226,8 +275,7 @@ fn main() {
 
                         }
                         PeerMessage::GetCurrentBranch(_) => {
-                            peers.push(peer.clone());
-                            /*let genesis_block = tezos_env
+                            let genesis_block = tezos_env
                                 .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                             println!("Generated Genesis None {:?}", &genesis_block);
                             let chain_id = tezos_env.main_chain_id().unwrap();
@@ -235,15 +283,38 @@ fn main() {
                                 chain_id,
                                 CurrentBranch::new(genesis_block, vec![]),
                             );
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))*/
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg))
                         }
                         PeerMessage::CurrentBranch(message) => {
-                            println!("Current Branch {:#?}", message);
+                            let received_block_header: BlockHeader = message.current_branch().current_head().clone();
+                            let mut history: VecDeque<BlockHash> = message.current_branch().history().clone().into_iter().collect();
+                            if let Some(highest_available_block) = &mut chain_state.highest_available_block {
+                                if highest_available_block.level < received_block_header.level {
+                                    chain_state.highest_available_block = Some(received_block_header);
+                                    chain_state.highest_available_history = history;
+                                }
+                            } else {
+                                let genesis_block = tezos_env
+                                    .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
+                                chain_state.highest_available_block = Some(received_block_header.clone());
+                                chain_state.available_history = history;
+                                let cursor = chain_state.available_history.pop_back().unwrap().clone();
+                                chain_state.cursor = Some(cursor.clone());
+                                let block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
+                                chain_state.end = Some(block_hash);
+                                chain_state.stored_block_header_level = genesis_block.level;
+                                println!("Cursor Request Block {:?}", &chain_state.cursor);
+                                //Send Get Block header
+                                let msg = GetBlockHeadersMessage::new([cursor].to_vec());
+                                proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg))
+                            }
                         }
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(_) => {}
                         PeerMessage::CurrentHead(_) => {}
-                        PeerMessage::GetBlockHeaders(_) => {}
+                        PeerMessage::GetBlockHeaders(message) => {
+                            println!("GetBlockHeaders Branch {:#?}", message);
+                        }
                         PeerMessage::BlockHeader(_) => {}
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
@@ -256,10 +327,10 @@ fn main() {
                 _ => {}
             }
         }
-        if let Some(peer) = peers.last() {
+        /*if let Some(peer) = peers.last() {
             println!("Sending get current branch");
             proposer.send_message_to_peer_or_queue(Instant::now(), *peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
-        }
+        }*/
 
     }
 }

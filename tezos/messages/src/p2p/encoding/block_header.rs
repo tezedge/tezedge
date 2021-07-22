@@ -71,11 +71,11 @@ impl GetBlockHeadersMessage {
 pub struct BlockHeader {
     #[get_copy = "pub"]
     #[encoding(builtin = "Int32")]
-    level: Level,
+    pub level: Level,
     #[get_copy = "pub"]
     proto: u8,
     #[get = "pub"]
-    predecessor: BlockHash,
+    pub predecessor: BlockHash,
     #[get_copy = "pub"]
     #[encoding(timestamp)]
     timestamp: i64,

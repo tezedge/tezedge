@@ -3939,6 +3939,7 @@ dependencies = [
  "slog",
  "slog-async",
  "slog-term",
+ "storage",
  "tezedge-state",
  "tezos_api",
  "tezos_encoding",
