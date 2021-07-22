@@ -312,10 +312,10 @@ fn main() {
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(_) => {}
                         PeerMessage::CurrentHead(_) => {}
-                        PeerMessage::GetBlockHeaders(message) => {
+                        PeerMessage::GetBlockHeaders(_) => {}
+                        PeerMessage::BlockHeader(message) => {
                             println!("GetBlockHeaders Branch {:#?}", message);
                         }
-                        PeerMessage::BlockHeader(_) => {}
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
                         PeerMessage::GetProtocols(_) => {}
