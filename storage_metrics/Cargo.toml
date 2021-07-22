@@ -1,9 +1,9 @@
 [package]
-name = "storage_metrics"
+name = "storage-metrics"
 version = "0.1.0"
 authors = ["Mambisi <mambisi.zempare@simplestaking.com> <lilbizi96@gmail.com>"]
 edition = "2018"
-default-run = "storage_metrics"
+default-run = "storage-metrics"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
 getset = "0.1"
