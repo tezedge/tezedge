@@ -424,7 +424,8 @@ impl FakePeerStream {
         Some(
             reader
                 .read_from(&mut VecDequeReadable::from(&mut self.write_buf), crypto)
-                .unwrap(),
+                .unwrap()
+                .message,
         )
     }
 }

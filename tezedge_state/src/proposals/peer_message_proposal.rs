@@ -1,14 +1,15 @@
 use std::time::Instant;
 
-use crate::PeerAddress;
-use tezos_messages::p2p::encoding::peer::PeerMessage;
+use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 use tla_sm::Proposal;
+
+use crate::PeerAddress;
 
 #[derive(Debug, Clone)]
 pub struct PeerMessageProposal {
     pub at: Instant,
     pub peer: PeerAddress,
-    pub message: PeerMessage,
+    pub message: PeerMessageResponse,
 }
 
 impl Proposal for PeerMessageProposal {

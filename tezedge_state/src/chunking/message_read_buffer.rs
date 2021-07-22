@@ -1,9 +1,8 @@
 use std::io::{self, Read};
 
-use bytes::Buf;
 use tezos_messages::p2p::{
-    binary_message::{BinaryChunk, BinaryRead, SizeFromChunk, CONTENT_LENGTH_FIELD_BYTES},
-    encoding::peer::{PeerMessage, PeerMessageResponse},
+    binary_message::{BinaryRead, SizeFromChunk},
+    encoding::peer::PeerMessageResponse,
 };
 
 use super::{ChunkReadBuffer, ReadMessageError};
@@ -19,6 +18,8 @@ use crate::PeerCrypto;
 pub struct MessageReadBuffer {
     message_buf: Vec<u8>,
     message_len: usize,
+    /// Bytes read for current message.
+    read_bytes: usize,
     chunk_reader: ChunkReadBuffer,
 }
 
@@ -27,6 +28,7 @@ impl MessageReadBuffer {
         Self {
             message_buf: vec![],
             message_len: 0,
+            read_bytes: 0,
             chunk_reader: ChunkReadBuffer::new(),
         }
     }
@@ -36,11 +38,11 @@ impl MessageReadBuffer {
     }
 
     /// Returns if more might be available to be read.
-    pub fn read_from<R: Read>(
+    fn _read_from<R: Read>(
         &mut self,
         reader: &mut R,
         crypto: &mut PeerCrypto,
-    ) -> Result<PeerMessage, ReadMessageError> {
+    ) -> Result<PeerMessageResponse, ReadMessageError> {
         loop {
             self.chunk_reader.read_from(reader)?;
             // TODO: stop reading if message_len < message_buf.len() + chunk_expected_len
@@ -60,16 +62,57 @@ impl MessageReadBuffer {
         }
     }
 
-    fn take_and_decode(&mut self) -> Result<PeerMessage, ReadMessageError> {
-        let result = PeerMessageResponse::from_bytes(&self.message_buf).map(|resp| resp.message);
+    pub fn read_from<R: Read>(
+        &mut self,
+        reader: &mut R,
+        crypto: &mut PeerCrypto,
+    ) -> Result<PeerMessageResponse, ReadMessageError> {
+        let mut counted_reader = ReadCounter::new(reader);
+        let result = self._read_from(&mut counted_reader, crypto);
+        self.read_bytes += counted_reader.result();
+        result
+    }
+
+    fn take_and_decode(&mut self) -> Result<PeerMessageResponse, ReadMessageError> {
+        let result = PeerMessageResponse::from_bytes(&self.message_buf);
+        let read_bytes = self.read_bytes;
 
         self.clear();
-        Ok(result?)
+        let mut resp = result?;
+        resp.set_size_hint(read_bytes);
+        Ok(resp)
     }
 
     pub fn clear(&mut self) {
         self.message_buf.clear();
         self.message_len = 0;
+        self.read_bytes = 0;
         self.chunk_reader.clear();
+    }
+}
+
+struct ReadCounter<'a, R> {
+    reader: &'a mut R,
+    read_bytes: usize,
+}
+
+impl<'a, R> ReadCounter<'a, R> {
+    pub fn new(reader: &'a mut R) -> Self {
+        Self {
+            reader,
+            read_bytes: 0,
+        }
+    }
+
+    pub fn result(self) -> usize {
+        self.read_bytes
+    }
+}
+
+impl<'a, R: Read> Read for ReadCounter<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let size = self.reader.read(buf)?;
+        self.read_bytes += size;
+        Ok(size)
     }
 }

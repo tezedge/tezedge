@@ -17,7 +17,7 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
 
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             // handle connected peer messages.
-            match proposal.message {
+            match proposal.message.message() {
                 PeerMessage::Advertise(message) => {
                     self.accept(ExtendPotentialPeersProposal {
                         at: proposal.at,
@@ -28,11 +28,11 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
                     });
                 }
                 // messages not handled in state machine for now.
-                message => {
+                _ => {
                     self.requests.insert(PendingRequestState {
                         request: PendingRequest::PeerMessageReceived {
                             peer: proposal.peer,
-                            message: Arc::new(message.into()),
+                            message: Arc::new(proposal.message),
                         },
                         status: RequestState::Idle { at: proposal.at },
                     });

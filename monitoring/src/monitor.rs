@@ -94,9 +94,10 @@ impl Monitor {
 
         if let Some(monitor) = self.peer_monitors.get_mut(&msg.peer_address) {
             // TODO: TE-190 - reimplement correctly, now not all messages are counted in (Ack, Metadata, ConnectionMessage is not involved)
-            let size = if let Ok(msg) = msg.message.as_bytes() {
-                msg.len()
+            let size = if let Some(size_hint) = msg.message.size_hint() {
+                *size_hint
             } else {
+                debug!(log, "size_hint not available for received peer message"; "peer" => msg.peer_address.to_string());
                 size_of_val(&msg.message)
             };
             monitor.incoming_bytes(size);
