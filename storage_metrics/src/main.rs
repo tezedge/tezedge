@@ -322,7 +322,7 @@ fn main() {
                             println!();
                             let block_header : &BlockHeader = message.block_header();
                             println!("Progress [{}] [{}]",chain_state.progress, block_header.level);
-                            chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap());
+                            chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap()).unwrap();
                             let msg = GetBlockHeadersMessage::new([block_header.predecessor.clone()].to_vec());
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
                         }
