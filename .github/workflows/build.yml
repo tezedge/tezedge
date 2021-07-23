@@ -44,6 +44,9 @@ jobs:
       - name: OSX dependencies
         if: runner.os == 'macOS'
         run: brew install hidapi
+      - name: set env
+        run: |
+          echo "OUT_DIR=." >> $GITHUB_ENV
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
