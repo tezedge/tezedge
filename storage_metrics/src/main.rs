@@ -327,12 +327,10 @@ fn main() {
                             //let block_hash: BlockHash = block_header.clone().message_hash().unwrap().try_into().unwrap();
                             //println!("List {:#?}", &chain_state.available_history);
                             println!("Block level {:#?}", block_header.level);
+                            println!("Highest Block {:#?}", chain_state.highest_available_block);
                             //println!("GetBlockHeaders Branch {:#?}", block_header);
 
-                            if counter <= 0 {
-                                exit(0)
-                            }
-                           counter -= 1;
+                            exit(0)
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
