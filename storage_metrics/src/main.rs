@@ -309,7 +309,9 @@ fn main() {
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
-                                let blocks : Vec<BlockHash> = message.current_branch().history().clone();
+                                let mut blocks : Vec<BlockHash> = message.current_branch().history().clone();
+                                let blocks = blocks[..3].to_vec();
+
                                 let msg = GetBlockHeadersMessage::new(blocks);
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg))
                             }
