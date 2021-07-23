@@ -302,6 +302,7 @@ fn main() {
                                 chain_state.highest_available_block = Some(received_block_header.clone());
                                 chain_state.available_history = history;
                                 let cursor = chain_state.available_history.pop_back().unwrap().clone();
+                                let cursor = chain_state.available_history.pop_back().unwrap().clone();
                                 chain_state.cursor = Some(cursor.clone());
                                 let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
                                 chain_state.end = Some(genesis_block_hash);
