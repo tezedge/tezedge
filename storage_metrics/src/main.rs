@@ -309,7 +309,8 @@ fn main() {
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
-                                let msg = GetBlockHeadersMessage::new([chain_state.cursor.clone().unwrap()].to_vec());
+                                let blocks : Vec<BlockHash> = message.current_branch().history().clone();
+                                let msg = GetBlockHeadersMessage::new(blocks);
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg))
                             }
                         }
@@ -321,8 +322,8 @@ fn main() {
                             println!();
                             let block_header : BlockHeader = message.block_header().clone();
                             //let block_hash: BlockHash = block_header.clone().message_hash().unwrap().try_into().unwrap();
-                            println!("List {:#?}", &chain_state.available_history);
-                            println!("Cursor {:#?} {:?}", &chain_state.cursor, block_header.level);
+                            //println!("List {:#?}", &chain_state.available_history);
+                            println!("Block level {:#?}", block_header.level);
                             //println!("GetBlockHeaders Branch {:#?}", block_header);
                             exit(0)
                         }
