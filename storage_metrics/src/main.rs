@@ -321,6 +321,7 @@ fn main() {
                         PeerMessage::CurrentHead(_) => {}
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
+                            println!("List {:?}", chain_state.available_history);
                             println!("GetBlockHeaders Branch {:#?}", message);
                             exit(0)
                         }
