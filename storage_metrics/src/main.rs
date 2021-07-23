@@ -203,7 +203,11 @@ struct ChainSyncState {
     progress : Level,
     cursor : Option<BlockHash>,
     end : Option<BlockHash>,
-    start : Option<BlockHash>
+    start : Option<BlockHash>,
+    active_peer : Option<PeerAddress>,
+
+    ///Change later
+    last_peer_message : Option<PeerMessage>
 }
 
 fn main() {
@@ -234,7 +238,9 @@ fn main() {
         progress: 0,
         cursor: None,
         end: None,
-        start: None
+        start: None,
+        active_peer: None,
+        last_peer_message: None
     };
 
     let mut proposer = TezedgeProposer::new(
@@ -292,6 +298,7 @@ fn main() {
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
                         }
                         PeerMessage::CurrentBranch(message) => {
+                            chain_state.peers.insert(peer.ip(), peer.clone());
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
                             if let Some(highest_available_block) = &mut chain_state.highest_available_block {
                                 if highest_available_block.level < received_block_header.level {
@@ -319,12 +326,14 @@ fn main() {
                         PeerMessage::CurrentHead(_) => {}
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
-                            println!();
                             let block_header : &BlockHeader = message.block_header();
                             println!("Progress [{}] [{}]",chain_state.progress, block_header.level);
                             chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap()).unwrap();
-                            let msg = GetBlockHeadersMessage::new([block_header.predecessor.clone()].to_vec());
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
+                            chain_state.cursor = Some(block_header.predecessor.clone());
+                            let msg = GetBlockHeadersMessage::new([chain_state.cursor.clone().unwrap()].to_vec());
+                            chain_state.active_peer = Some(peer);
+                            chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
+                            proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
@@ -332,6 +341,19 @@ fn main() {
                         PeerMessage::Protocol(_) => {}
                         PeerMessage::GetOperationsForBlocks(_) => {}
                         PeerMessage::OperationsForBlocks(_) => {}
+                    }
+                }
+                Notification::PeerDisconnected {peer} => {
+                    match chain_state.active_peer {
+                        None => {}
+                        Some(active_peer) => {
+                            if active_peer.to_string() == peer.to_string() {
+                                //resend last message to all peers
+                                for p in chain_state.peers.values().into_iter() {
+                                    proposer.send_message_to_peer_or_queue(Instant::now(), p.clone(),chain_state.last_peer_message.clone().unwrap());
+                                }
+                            }
+                        }
                     }
                 }
                 _ => {}
