@@ -333,7 +333,11 @@ fn main() {
                             let msg = GetBlockHeadersMessage::new([chain_state.cursor.clone().unwrap()].to_vec());
                             chain_state.active_peer = Some(peer);
                             chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
-                            proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
+
+                            for p in chain_state.peers.values().into_iter() {
+                                proposer.send_message_to_peer_or_queue(Instant::now(), p.clone(),chain_state.last_peer_message.clone().unwrap());
+                            }
+                            //proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
@@ -350,9 +354,7 @@ fn main() {
                         Some(active_peer) => {
                             if active_peer.to_string() == peer.to_string() {
                                 //resend last message to all peers
-                                for p in chain_state.peers.values().into_iter() {
-                                    proposer.send_message_to_peer_or_queue(Instant::now(), p.clone(),chain_state.last_peer_message.clone().unwrap());
-                                }
+
                             }
                         }
                     }
