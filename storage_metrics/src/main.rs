@@ -197,7 +197,6 @@ struct ChainSyncState {
     peers : HashMap<IpAddr, PeerAddress>,
     block_storage : BlockStorage,
     block_meta_storage : BlockMetaStorage,
-    available_history: VecDeque<BlockHash>,
     highest_available_history: VecDeque<BlockHash>,
     stored_block_header_level: Level,
     block_headers_count: u32,
@@ -227,7 +226,6 @@ fn main() {
         peers: Default::default(),
         block_storage: BlockStorage::new(&persistent_storage),
         block_meta_storage: BlockMetaStorage::new(&persistent_storage),
-        available_history: Default::default(),
         highest_available_history: Default::default(),
         stored_block_header_level: 0,
         block_headers_count: 0,
@@ -291,29 +289,21 @@ fn main() {
                         }
                         PeerMessage::CurrentBranch(message) => {
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
-                            let mut history: VecDeque<BlockHash> = message.current_branch().history().clone().into_iter().collect();
                             if let Some(highest_available_block) = &mut chain_state.highest_available_block {
                                 if highest_available_block.level < received_block_header.level {
                                     chain_state.highest_available_block = Some(received_block_header);
-                                    chain_state.highest_available_history = history;
                                 }
                             } else {
                                 let genesis_block = tezos_env
                                     .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                                 chain_state.highest_available_block = Some(received_block_header.clone());
-                                chain_state.available_history = history;
-                                let cursor = chain_state.available_history.pop_back().unwrap().clone();
-                                let cursor = chain_state.available_history.pop_back().unwrap().clone();
-                                chain_state.cursor = Some(cursor.clone());
+                                chain_state.cursor = Some(chain_state.highest_available_block.clone().unwrap().predecessor);
                                 let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
                                 chain_state.end = Some(genesis_block_hash);
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
-                                let mut blocks : Vec<BlockHash> = message.current_branch().history().clone();
-                                let blocks = blocks[..5].to_vec();
-
-                                let msg = GetBlockHeadersMessage::new(blocks);
+                                let msg = GetBlockHeadersMessage::new([chain_state.cursor.unwrap().clone()].to_vec());
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg))
                             }
                         }
@@ -327,10 +317,9 @@ fn main() {
                             //let block_hash: BlockHash = block_header.clone().message_hash().unwrap().try_into().unwrap();
                             //println!("List {:#?}", &chain_state.available_history);
                             println!("Block level {:#?}", block_header.level);
-                            println!("Highest Block {:#?}", chain_state.highest_available_block);
                             //println!("GetBlockHeaders Branch {:#?}", block_header);
-
-                            exit(0)
+                            let msg = GetBlockHeadersMessage::new([block_header.predecessor].to_vec());
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
