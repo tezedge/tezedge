@@ -246,6 +246,8 @@ fn main() {
         MioManager::new(SERVER_PORT),
     );
 
+    let mut counter = 3;
+
     let tezos_env = if let Some(tezos_network_config) = environment::default_networks().get(&TezosEnvironment::Mainnet) {
         tezos_network_config.clone()
     } else {
@@ -327,7 +329,11 @@ fn main() {
                             //println!("List {:#?}", &chain_state.available_history);
                             println!("Block level {:#?}", block_header.level);
                             //println!("GetBlockHeaders Branch {:#?}", block_header);
-                            exit(0)
+
+                            if counter <= 0 {
+                                exit(0)
+                            }
+                           counter -= 1;
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
