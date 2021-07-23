@@ -344,6 +344,7 @@ fn main() {
                     }
                 }
                 Notification::PeerDisconnected {peer} => {
+                    chain_state.peers.remove(&peer.ip());
                     match chain_state.active_peer {
                         None => {}
                         Some(active_peer) => {
