@@ -323,6 +323,7 @@ fn main() {
                         PeerMessage::BlockHeader(message) => {
                             println!();
                             println!("List {:#?}", chain_state.available_history);
+                            println!("Cursor {:#?}", chain_state.cursor);
                             println!("GetBlockHeaders Branch {:#?}", message);
                             exit(0)
                         }
