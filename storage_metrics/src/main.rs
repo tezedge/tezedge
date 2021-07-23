@@ -311,7 +311,7 @@ fn main() {
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
                                 let mut blocks : Vec<BlockHash> = message.current_branch().history().clone();
-                                let blocks = blocks[..3].to_vec();
+                                let blocks = blocks[..5].to_vec();
 
                                 let msg = GetBlockHeadersMessage::new(blocks);
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg))
