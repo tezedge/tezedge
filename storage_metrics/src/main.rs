@@ -281,7 +281,6 @@ fn main() {
                         PeerMessage::GetCurrentBranch(_) => {
                             let genesis_block = tezos_env
                                 .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
-                            println!("Generated Genesis None {:?}", &genesis_block);
                             let chain_id = tezos_env.main_chain_id().unwrap();
                             let msg = CurrentBranchMessage::new(
                                 chain_id,
