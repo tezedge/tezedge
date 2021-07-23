@@ -201,7 +201,8 @@ struct ChainSyncState {
     stored_block_header_level: Level,
     block_headers_count: u32,
     cursor : Option<BlockHash>,
-    end : Option<BlockHash>
+    end : Option<BlockHash>,
+    start : Option<BlockHash>
 }
 
 fn main() {
@@ -230,7 +231,8 @@ fn main() {
         stored_block_header_level: 0,
         block_headers_count: 0,
         cursor: None,
-        end: None
+        end: None,
+        start: None
     };
 
     let mut proposer = TezedgeProposer::new(
@@ -297,9 +299,11 @@ fn main() {
                                 let genesis_block = tezos_env
                                     .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                                 chain_state.highest_available_block = Some(received_block_header.clone());
-                                chain_state.cursor = Some(chain_state.highest_available_block.clone().unwrap().predecessor);
+                                chain_state.cursor = Some(received_block_header.clone().predecessor);
                                 let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
+                                let start_block_hash: BlockHash = received_block_header.clone().message_hash().unwrap().try_into().unwrap();
                                 chain_state.end = Some(genesis_block_hash);
+                                chain_state.start = Some(start_block_hash);
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
@@ -313,12 +317,9 @@ fn main() {
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
                             println!();
-                            let block_header : BlockHeader = message.block_header().clone();
-                            //let block_hash: BlockHash = block_header.clone().message_hash().unwrap().try_into().unwrap();
-                            //println!("List {:#?}", &chain_state.available_history);
+                            let block_header : &BlockHeader = message.block_header();
                             println!("Block level {:#?}", block_header.level);
-                            //println!("GetBlockHeaders Branch {:#?}", block_header);
-                            let msg = GetBlockHeadersMessage::new([block_header.predecessor].to_vec());
+                            let msg = GetBlockHeadersMessage::new([block_header.predecessor.clone()].to_vec());
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
                         }
                         PeerMessage::GetOperations(_) => {}
