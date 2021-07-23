@@ -26,7 +26,7 @@ use crypto::hash::{ContextHash, OperationListListHash, BlockHash, chain_id_from_
 use tezos_api::environment;
 use tezos_api::environment::{TezosEnvironment, get_empty_operation_list_list_hash};
 use std::net::IpAddr;
-use storage::{BlockStorage, BlockMetaStorage, PersistentStorage};
+use storage::{BlockStorage, BlockMetaStorage, PersistentStorage, BlockHeaderWithHash};
 use storage::persistent::{open_cl, CommitLogSchema};
 use storage::persistent::sequence::Sequences;
 use storage::database::tezedge_database::{TezedgeDatabase, TezedgeDatabaseBackendOptions};
@@ -200,6 +200,7 @@ struct ChainSyncState {
     highest_available_history: VecDeque<BlockHash>,
     stored_block_header_level: Level,
     block_headers_count: u32,
+    progress : Level,
     cursor : Option<BlockHash>,
     end : Option<BlockHash>,
     start : Option<BlockHash>
@@ -230,6 +231,7 @@ fn main() {
         highest_available_history: Default::default(),
         stored_block_header_level: 0,
         block_headers_count: 0,
+        progress: 0,
         cursor: None,
         end: None,
         start: None
@@ -304,6 +306,7 @@ fn main() {
                                 let start_block_hash: BlockHash = received_block_header.clone().message_hash().unwrap().try_into().unwrap();
                                 chain_state.end = Some(genesis_block_hash);
                                 chain_state.start = Some(start_block_hash);
+                                chain_state.progress = received_block_header.level;
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
@@ -318,7 +321,8 @@ fn main() {
                         PeerMessage::BlockHeader(message) => {
                             println!();
                             let block_header : &BlockHeader = message.block_header();
-                            println!("Block level {:#?}", block_header.level);
+                            println!("Progress [{}] [{}]",chain_state.progress, block_header.level);
+                            chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap());
                             let msg = GetBlockHeadersMessage::new([block_header.predecessor.clone()].to_vec());
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
                         }
