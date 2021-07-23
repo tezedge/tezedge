@@ -22,6 +22,97 @@ use serde::Serialize;
 pub const FILENAME_DB: &str = "context_stats.db";
 
 #[derive(Debug)]
+pub struct BlockMemoryUsage {
+    pub context: Box<ContextMemoryUsage>,
+    pub serialize: Box<SerializeStats>,
+}
+
+#[derive(Debug, Default)]
+pub struct SerializeStats {
+    pub blobs_length: usize,
+    pub hash_ids_length: usize,
+    pub keys_length: usize,
+    pub highest_hash_id: u32,
+    pub ntree: usize,
+    pub nblobs: usize,
+    pub nblobs_inlined: usize,
+    pub total_bytes: usize,
+}
+
+impl SerializeStats {
+    pub fn add_tree(
+        &mut self,
+        hash_ids_length: usize,
+        keys_length: usize,
+        highest_hash_id: u32,
+        nblobs_inlined: usize,
+        blobs_length: usize,
+    ) {
+        self.ntree += 1;
+        self.hash_ids_length += hash_ids_length;
+        self.keys_length += keys_length;
+        self.highest_hash_id = self.highest_hash_id.max(highest_hash_id);
+        self.nblobs_inlined += nblobs_inlined;
+        self.blobs_length += blobs_length;
+    }
+
+    pub fn add_blob(&mut self, blob_length: usize) {
+        self.nblobs += 1;
+        self.blobs_length += blob_length;
+    }
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct ContextMemoryUsage {
+    pub repo: RepositoryMemoryUsage,
+    pub storage: StorageMemoryUsage,
+}
+
+#[derive(Debug)]
+pub struct StorageMemoryUsage {
+    pub nodes_len: usize,
+    pub nodes_cap: usize,
+    pub trees_len: usize,
+    pub trees_cap: usize,
+    pub temp_tree_cap: usize,
+    pub blobs_len: usize,
+    pub blobs_cap: usize,
+    pub strings: StringsMemoryUsage,
+    pub total_bytes: usize,
+}
+
+#[derive(Debug)]
+pub struct StringsMemoryUsage {
+    pub all_strings_map_cap: usize,
+    pub all_strings_map_len: usize,
+    pub all_strings_cap: usize,
+    pub all_strings_len: usize,
+    pub big_strings_cap: usize,
+    pub big_strings_len: usize,
+    pub big_strings_map_cap: usize,
+    pub big_strings_map_len: usize,
+    pub total_bytes: usize,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct RepositoryMemoryUsage {
+    /// Number of bytes for all values Arc<[u8]>
+    pub values_bytes: usize,
+    /// Capacity of the Vec for the values
+    pub values_capacity: usize,
+    /// Length of the Vec for the values
+    pub values_length: usize,
+    /// Capacity of the Vec for the hashes
+    pub hashes_capacity: usize,
+    /// Capacity of the Vec for the hashes
+    pub hashes_length: usize,
+    /// Total bytes occupied in the repository
+    pub total_bytes: usize,
+}
+
+#[derive(Debug)]
 pub enum ActionKind {
     Mem,
     MemTree,
@@ -73,6 +164,9 @@ pub enum TimingMessage {
     Action(Action),
     InitTiming {
         db_path: Option<PathBuf>,
+    },
+    BlockMemoryUsage {
+        stats: BlockMemoryUsage,
     },
 }
 
@@ -468,8 +562,102 @@ impl Timing {
                 irmin_time,
                 tezedge_time,
             } => self.insert_commit(sql, irmin_time, tezedge_time),
+            TimingMessage::BlockMemoryUsage { stats } => self.insert_block_memory_usage(sql, stats),
             TimingMessage::InitTiming { .. } => Ok(()),
         }
+    }
+
+    fn insert_block_memory_usage<'a>(
+        &mut self,
+        sql: &'a Connection,
+        stats: BlockMemoryUsage,
+    ) -> Result<(), SQLError> {
+        let block_id = match self.current_block.as_ref().map(|b| b.0.as_str()) {
+            Some(block_id) => block_id,
+            None => return Ok(()),
+        };
+
+        let mut query = sql.prepare_cached(
+            "
+            UPDATE
+              blocks
+            SET
+              repo_values_bytes = :repo_values_bytes,
+              repo_values_capacity = :repo_values_capacity,
+              repo_values_length = :repo_values_length,
+              repo_hashes_capacity = :repo_hashes_capacity,
+              repo_hashes_length = :repo_hashes_length,
+              repo_total_bytes = :repo_total_bytes,
+              storage_nodes_capacity = :storage_nodes_capacity,
+              storage_nodes_length = :storage_nodes_length,
+              storage_trees_capacity = :storage_trees_capacity,
+              storage_trees_length = :storage_trees_length,
+              storage_temp_tree_capacity = :storage_temp_tree_capacity,
+              storage_blobs_capacity = :storage_blobs_capacity,
+              storage_blobs_length = :storage_blobs_length,
+              storage_strings_capacity = :storage_strings_capacity,
+              storage_strings_length = :storage_strings_length,
+              storage_strings_map_capacity = :storage_strings_map_capacity,
+              storage_strings_map_length = :storage_strings_map_length,
+              storage_big_strings_capacity = :storage_big_strings_capacity,
+              storage_big_strings_length = :storage_big_strings_length,
+              storage_big_strings_map_capacity = :storage_big_strings_map_capacity,
+              storage_big_strings_map_length = :storage_big_strings_map_length,
+              storage_total_bytes = :storage_total_bytes,
+              storage_strings_total_bytes = :storage_strings_total_bytes,
+              serialize_blobs_length = :serialize_blobs_length,
+              serialize_hashids_length = :serialize_hashids_length,
+              serialize_keys_length = :serialize_keys_length,
+              serialize_highest_hash_id_length = :serialize_highest_hash_id_length,
+              serialize_ntree = :serialize_ntree,
+              serialize_nblobs = :serialize_nblobs,
+              serialize_nblobs_inlined = :serialize_nblobs_inlined,
+              serialize_total_bytes = :serialize_total_bytes,
+              total_bytes = :total_bytes
+            WHERE
+              id = :block_id;
+                ",
+        )?;
+
+        query.execute(named_params! {
+            ":repo_values_bytes": stats.context.repo.values_bytes,
+            ":repo_values_capacity": stats.context.repo.values_capacity,
+            ":repo_values_length": stats.context.repo.values_length,
+            ":repo_hashes_capacity": stats.context.repo.hashes_capacity,
+            ":repo_hashes_length": stats.context.repo.hashes_length,
+            ":repo_total_bytes": stats.context.repo.total_bytes,
+            ":storage_nodes_length": stats.context.storage.nodes_len,
+            ":storage_nodes_capacity": stats.context.storage.nodes_cap,
+            ":storage_trees_length": stats.context.storage.trees_len,
+            ":storage_trees_capacity": stats.context.storage.trees_cap,
+            ":storage_temp_tree_capacity": stats.context.storage.temp_tree_cap,
+            ":storage_blobs_length": stats.context.storage.blobs_len,
+            ":storage_blobs_capacity": stats.context.storage.blobs_cap,
+            ":storage_strings_length": stats.context.storage.strings.all_strings_len,
+            ":storage_strings_capacity": stats.context.storage.strings.all_strings_cap,
+            ":storage_strings_map_length": stats.context.storage.strings.all_strings_map_len,
+            ":storage_strings_map_capacity": stats.context.storage.strings.all_strings_map_cap,
+            ":storage_big_strings_length": stats.context.storage.strings.big_strings_len,
+            ":storage_big_strings_capacity": stats.context.storage.strings.big_strings_cap,
+            ":storage_big_strings_map_length": stats.context.storage.strings.big_strings_map_len,
+            ":storage_big_strings_map_capacity": stats.context.storage.strings.big_strings_map_cap,
+            ":storage_total_bytes": stats.context.storage.total_bytes,
+            ":storage_strings_total_bytes": stats.context.storage.strings.total_bytes,
+            ":serialize_blobs_length": stats.serialize.blobs_length,
+            ":serialize_hashids_length": stats.serialize.hash_ids_length,
+            ":serialize_keys_length": stats.serialize.keys_length,
+            ":serialize_highest_hash_id_length": stats.serialize.highest_hash_id,
+            ":serialize_ntree": stats.serialize.ntree,
+            ":serialize_nblobs": stats.serialize.nblobs,
+            ":serialize_nblobs_inlined": stats.serialize.nblobs_inlined,
+            ":serialize_total_bytes": stats.serialize.total_bytes,
+            ":total_bytes": stats.context.repo.total_bytes
+                .saturating_add(stats.context.storage.total_bytes)
+                .saturating_add(stats.context.storage.strings.total_bytes),
+            ":block_id": block_id,
+        })?;
+
+        Ok(())
     }
 
     fn set_current_block<'a>(
