@@ -304,10 +304,6 @@ fn main() {
                                 let cursor = chain_state.available_history.pop_front().unwrap().clone();
                                 chain_state.cursor = Some(cursor.clone());
                                 let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
-                                if cursor == genesis_block_hash {
-                                    let cursor = chain_state.available_history.pop_front().unwrap().clone();
-                                    chain_state.cursor = Some(cursor.clone());
-                                }
                                 chain_state.end = Some(genesis_block_hash);
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 println!("Cursor Request Block {:?}", &chain_state.cursor);
