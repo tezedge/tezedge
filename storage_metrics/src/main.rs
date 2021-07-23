@@ -326,7 +326,6 @@ fn main() {
                             let block_hash: BlockHash = block_header.clone().message_hash().unwrap().try_into().unwrap();
                             println!("List {:#?}", &chain_state.available_history);
                             println!("Cursor {:#?}", &chain_state.cursor);
-                            println!("Block {:#?}", block_hash);
                             println!("GetBlockHeaders Branch {:#?}", block_header);
                             exit(0)
                         }
