@@ -303,7 +303,11 @@ fn main() {
                             println!("GetCurrentHead {:#?}", message)
                         }
                         PeerMessage::CurrentHead(message) => {
-                            println!("CurrentHead {:#?}", message.current_block_header().message_hash())
+                            println!("CurrentHead {:#?}", message.current_block_header().message_hash());
+                            //Loop GetCurrent head
+                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
