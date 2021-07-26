@@ -141,7 +141,7 @@ fn build_tezedge_state() -> TezedgeState {
 
     tezedge_state
 }
-type Timestamp = i64;
+type Timestamp = u32;
 #[derive(Debug)]
 struct P2PRequestLatency {
     sent : Timestamp,
@@ -151,12 +151,12 @@ struct P2PRequestLatency {
 impl P2PRequestLatency {
     fn new() -> Self {
         Self {
-            sent: chrono::Utc::now().timestamp_millis(),
+            sent: chrono::Utc::now().timestamp_subsec_nanos(),
             recv: 0
         }
     }
 
-    fn duration(&self) -> i64 {
+    fn duration(&self) -> Timestamp {
         self.recv - self.sent
     }
 }
@@ -300,7 +300,7 @@ fn main() {
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
                             if let Some(last_req) = chain_state.block_p2p_requests_latencies.last_mut() {
-                                last_req.recv = chrono::Utc::now().timestamp_millis()
+                                last_req.recv = chrono::Utc::now().timestamp_subsec_nanos()
                             }
                             let block_header : &BlockHeader = message.block_header();
                             chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap()).unwrap();
