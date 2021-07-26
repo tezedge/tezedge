@@ -261,7 +261,7 @@ fn main() {
 
                         }
                         PeerMessage::GetCurrentBranch(_) => {
-                            let genesis_block = tezos_env
+                            /*let genesis_block = tezos_env
                                 .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
                             let chain_id = tezos_env.main_chain_id().unwrap();
                             let msg = CurrentBranchMessage::new(
@@ -269,7 +269,7 @@ fn main() {
                                 CurrentBranch::new(genesis_block, vec![]),
                             );
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg));
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));*/
                         }
                         PeerMessage::CurrentBranch(message) => {
                             let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
