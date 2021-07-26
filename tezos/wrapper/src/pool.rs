@@ -91,6 +91,11 @@ impl<Runner: ProtocolRunner + 'static> ProtocolRunnerConnection<Runner> {
     pub fn set_release_on_return_to_pool(&mut self) {
         self.release_on_return_to_pool = true;
     }
+
+    /// Logs exit status of child process
+    pub fn log_exit_status(&mut self) {
+        Runner::log_exit_status(&mut self.subprocess, &self.log);
+    }
 }
 
 /// Connection manager, which creates new connections:
@@ -212,7 +217,13 @@ impl<Runner: ProtocolRunner + 'static> ManageConnection for ProtocolRunnerManage
     }
 
     fn has_broken(&self, conn: &mut ProtocolRunnerConnection<Runner>) -> bool {
-        conn.has_broken()
+        let has_broken = conn.has_broken();
+
+        if has_broken {
+            conn.log_exit_status();
+        }
+
+        has_broken
     }
 }
 
