@@ -303,7 +303,7 @@ fn main() {
                             println!("GetCurrentHead {:#?}", message)
                         }
                         PeerMessage::CurrentHead(message) => {
-                            println!("CurrentHead {:#?}", message.chain_id())
+                            println!("CurrentHead {:#?}", message.current_block_header().message_hash())
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
