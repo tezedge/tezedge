@@ -124,7 +124,7 @@ fn build_tezedge_state() -> TezedgeState {
         [
             // Potential peers which state machine will try to connect to.
             vec![
-                "159.65.98.117:9732",
+                "138.201.74.177:9732",/*
                 "34.245.171.88:9732",
                 "18.182.168.120:9732",
                 "13.115.2.66:9732",
@@ -165,7 +165,7 @@ fn build_tezedge_state() -> TezedgeState {
                 "[::ffff:18.195.59.36]:9732",
                 "[::ffff:18.185.162.144]:9732",
                 "[::ffff:18.185.78.112]:9732",
-                "[::ffff:116.202.172.21]:9732",
+                "[::ffff:116.202.172.21]:9732",*/
             ]
                 .into_iter()
                 .map(|x| x.parse().unwrap())
