@@ -20,7 +20,7 @@ use tezos_identity::Identity;
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
-use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch, GetCurrentBranchMessage, GetBlockHeadersMessage};
+use tezos_messages::p2p::encoding::prelude::{CurrentBranchMessage, BlockHeader, CurrentBranch, GetCurrentBranchMessage, GetBlockHeadersMessage, GetCurrentHeadMessage};
 use std::convert::TryInto;
 use crypto::hash::{ContextHash, OperationListListHash, BlockHash, chain_id_from_block_hash, ChainId};
 use tezos_api::environment;
@@ -35,6 +35,7 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::binary_message::MessageHash;
 use std::thread::yield_now;
 use std::process::exit;
+use tezos_messages::p2p::encoding::peer::PeerMessage::GetCurrentHead;
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
@@ -271,7 +272,10 @@ fn main() {
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));
                         }
                         PeerMessage::CurrentBranch(message) => {
-                            chain_state.peers.insert(peer.ip(), peer.clone());
+                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
+                            /*chain_state.peers.insert(peer.ip(), peer.clone());
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
                             if let Some(highest_available_block) = &mut chain_state.highest_available_block {
                                 if highest_available_block.level < received_block_header.level {
@@ -289,17 +293,21 @@ fn main() {
                                 chain_state.progress = received_block_header.level;
                                 chain_state.stored_block_header_level = genesis_block.level;
                                 //Send Get Block header
-                                let msg = GetBlockHeadersMessage::new([chain_state.cursor.unwrap().clone()].to_vec());
-                                proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
+                                let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                                proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
                                 chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
-                            }
+                            }*/
                         }
                         PeerMessage::Deactivate(_) => {}
-                        PeerMessage::GetCurrentHead(_) => {}
-                        PeerMessage::CurrentHead(_) => {}
+                        PeerMessage::GetCurrentHead(message) => {
+                            println!("GetCurrentHead {:#?}", message)
+                        }
+                        PeerMessage::CurrentHead(message) => {
+                            println!("CurrentHead {:#?}", message)
+                        }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
-                            if let Some(last_req) = chain_state.block_p2p_requests_latencies.last_mut() {
+                            /*if let Some(last_req) = chain_state.block_p2p_requests_latencies.last_mut() {
                                 last_req.recv = chrono::Utc::now().timestamp_subsec_nanos()
                             }
                             let block_header : &BlockHeader = message.block_header();
@@ -309,7 +317,8 @@ fn main() {
                             chain_state.active_peer = Some(peer);
                             chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
                             proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
-                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new());
+                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new());*/
+
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
