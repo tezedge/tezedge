@@ -334,10 +334,10 @@ fn main() {
                             chain_state.active_peer = Some(peer);
                             chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
 
-                            for p in chain_state.peers.values().into_iter() {
+                            /*for p in chain_state.peers.values().into_iter() {
                                 proposer.send_message_to_peer_or_queue(Instant::now(), p.clone(),chain_state.last_peer_message.clone().unwrap());
-                            }
-                            //proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
+                            }*/
+                            proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
