@@ -235,7 +235,9 @@ fn main() {
         )
     };
 
+
     loop {
+        println!("{:#?}", chain_state.block_p2p_requests_latencies);
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
@@ -286,7 +288,6 @@ fn main() {
                                 chain_state.start = Some(start_block_hash);
                                 chain_state.progress = received_block_header.level;
                                 chain_state.stored_block_header_level = genesis_block.level;
-                                println!("Cursor Request Block {:?}", &chain_state.cursor);
                                 //Send Get Block header
                                 let msg = GetBlockHeadersMessage::new([chain_state.cursor.unwrap().clone()].to_vec());
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetBlockHeaders(msg));
@@ -308,8 +309,7 @@ fn main() {
                             chain_state.active_peer = Some(peer);
                             chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
                             proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
-
-                            println!("{:#?}", chain_state.block_p2p_requests_latencies)
+                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new());
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
