@@ -141,7 +141,7 @@ fn build_tezedge_state() -> TezedgeState {
 
     tezedge_state
 }
-
+type Timestamp = i64;
 #[derive(Debug)]
 struct P2PRequestLatency {
     sent : Timestamp,
