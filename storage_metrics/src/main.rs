@@ -238,7 +238,7 @@ fn main() {
 
 
     loop {
-        println!("{:#?}", chain_state.block_p2p_requests_latencies);
+        //println!("{:#?}", chain_state.block_p2p_requests_latencies);
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
@@ -303,7 +303,7 @@ fn main() {
                             println!("GetCurrentHead {:#?}", message)
                         }
                         PeerMessage::CurrentHead(message) => {
-                            println!("CurrentHead {:#?}", message)
+                            println!("CurrentHead {:#?}", message.chain_id())
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
