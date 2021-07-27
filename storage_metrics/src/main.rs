@@ -259,8 +259,8 @@ fn main() {
             let r = reqs.load(Ordering::Relaxed);
             let min = min.load(Ordering::Relaxed);
             let max = max.load(Ordering::Relaxed);
-            println!();
             println!("-------------------------------------------------------------------------------------------------------------------");
+            println!("GetCurrentHead");
             println!("-------------------------------------------------------------------------------------------------------------------");
             if r > 0 {
                 println!("Average Request Latency {:#?} ms", a/r );
