@@ -75,6 +75,12 @@ enum ProtocolMessage {
     ShutdownCall,
 }
 
+impl ProtocolMessage {
+    pub fn short_description(&self) -> &'static str {
+        self.into()
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct ContextGetKeyFromHistoryRequest {
     context_hash: ContextHash,
@@ -153,7 +159,20 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
 ) -> Result<(), IpcError> {
     let ipc_client: IpcClient<ProtocolMessage, NodeMessage> = IpcClient::new(socket_path);
     let (mut rx, mut tx) = ipc_client.connect()?;
+    let mut count = 0_usize;
+    let mut meter = self_meter::Meter::new(Duration::from_millis(200)).unwrap();
     while let Ok(cmd) = rx.receive() {
+        count += 1;
+        let cmd_tag = cmd.short_description();
+        meter.scan().unwrap();
+        let (rss_before, virt_before) = if let Some(report) = meter.report() {
+            (
+                report.memory_rss / 1024 / 1024,
+                report.memory_virtual / 1024 / 1024,
+            )
+        } else {
+            (0, 0)
+        };
         match cmd {
             ProtocolMessage::ApplyBlockCall(request) => {
                 let res = Proto::apply_block(request);
@@ -354,6 +373,25 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
                 break;
             }
         }
+        meter.scan().unwrap();
+        let (rss_after, virt_after) = if let Some(report) = meter.report() {
+            (
+                report.memory_rss / 1024 / 1024,
+                report.memory_virtual / 1024 / 1024,
+            )
+        } else {
+            (0, 0)
+        };
+        info!(
+            log,
+            "@@@ Processed message {}: kind={} RSS={}MB->{}MB VIRT={}MB->{}MB",
+            count,
+            cmd_tag,
+            rss_before,
+            rss_after,
+            virt_before,
+            virt_after
+        );
     }
 
     Ok(())
