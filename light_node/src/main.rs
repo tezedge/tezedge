@@ -238,7 +238,7 @@ fn block_on_actors(
         let thread_count = env.riker_threads.min(num_cpus::get());
         actor_system_cfg
             .set("dispatcher.pool_size", thread_count as i64)
-            .unwrap();
+            .expect("Failed to set custom thread pool size for riker(actor system).");
     }
 
     // create riker's actor system
