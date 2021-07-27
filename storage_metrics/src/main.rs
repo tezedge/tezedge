@@ -280,11 +280,10 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-                    proposer.send_message_to_peer_or_queue(
-                        Instant::now(),
-                        peer_address,
-                        PeerMessage::Bootstrap,
-                    );
+
+                    let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                    proposer.send_message_to_peer_or_queue(Instant::now(), peer_address,PeerMessage::GetCurrentHead(msg));
+                    instance = Instant::now();
                 }
                 Notification::MessageReceived { peer, message } => {
 
@@ -308,9 +307,7 @@ fn main() {
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));*/
                         }
                         PeerMessage::CurrentBranch(message) => {
-                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            instance = Instant::now();
+
                             //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
                             /*chain_state.peers.insert(peer.ip(), peer.clone());
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
