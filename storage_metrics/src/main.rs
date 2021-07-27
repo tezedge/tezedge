@@ -347,6 +347,9 @@ fn main() {
                             });
 
                             minimum_latency.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev|{
+                                if req_latency == 0 {
+                                    return None;
+                                }
                                 if req_latency < prev || prev == 0 {
                                     return Some(req_latency);
                                 }
