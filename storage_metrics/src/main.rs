@@ -239,10 +239,17 @@ fn main() {
 
     //std::
     let mut instance : Instant = Instant::now();
+    let maximum_latency = Arc::new(AtomicUsize::new(0));
+    let minimum_latency = Arc::new(AtomicUsize::new(0));
     let accumulator = Arc::new(AtomicUsize::new(0));
     let requests = Arc::new(AtomicUsize::new(0));
+
     let acc = accumulator.clone();
     let reqs = requests.clone();
+
+    let min = minimum_latency.clone();
+    let max = maximum_latency.clone();
+
     std::thread::spawn( move || {
         let mut tick = 0_usize;
         loop {
@@ -250,10 +257,14 @@ fn main() {
             tick += 1;
             let a = acc.load(Ordering::Relaxed);
             let r = reqs.load(Ordering::Relaxed);
+            let min = min.load(Ordering::Relaxed);
+            let max = max.load(Ordering::Relaxed);
             if r > 0 {
                 println!("Average Request Latency {:#?} ms", a/r );
             }
             println!("Request Per Sec {:#?}", r/tick );
+            println!("Minimum Latency {:#?}", min );
+            println!("Maximum Latency {:#?}", max );
         }
     });
 
@@ -324,10 +335,27 @@ fn main() {
                         }
                         PeerMessage::CurrentHead(message) => {
                             //Loop GetCurrent head
+                            let req_latency = instance.elapsed().as_millis() as usize;
+                            accumulator.fetch_add(req_latency, Ordering::Relaxed);
+                            requests.fetch_add(1, Ordering::Relaxed);
+
+                            maximum_latency.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev|{
+                                if req_latency > prev {
+                                    return Some(req_latency);
+                                }
+                                None
+                            });
+
+                            minimum_latency.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev|{
+                                if req_latency < prev {
+                                    return Some(req_latency);
+                                }
+                                None
+                            });
+
+
                             let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            accumulator.fetch_add(instance.elapsed().as_millis() as usize, Ordering::Relaxed);
-                            requests.fetch_add(1, Ordering::Relaxed);
                             instance = Instant::now();
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
