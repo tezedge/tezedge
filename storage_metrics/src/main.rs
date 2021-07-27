@@ -263,8 +263,8 @@ fn main() {
                 println!("Average Request Latency {:#?} ms", a/r );
             }
             println!("Request Per Sec {:#?}", r/tick );
-            println!("Minimum Latency {:#?}", min );
-            println!("Maximum Latency {:#?}", max );
+            println!("Minimum Latency {:#?} ms", min );
+            println!("Maximum Latency {:#?} ms", max );
         }
     });
 
