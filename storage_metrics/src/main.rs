@@ -101,7 +101,7 @@ fn build_tezedge_state() -> TezedgeState {
 
     // println!("identity generated!");
     let mut tezedge_state = TezedgeState::new(
-        logger(slog::Level::Trace),
+        logger(slog::Level::Error),
         TezedgeConfig {
             port: SERVER_PORT,
             disable_mempool: true,
@@ -251,7 +251,7 @@ fn main() {
             let a = acc.load(Ordering::Relaxed);
             let r = reqs.load(Ordering::Relaxed);
             if r > 0 {
-                println!("Average Request Latency {:#?}", a/r );
+                println!("Average Request Latency {:#?} ms", a/r );
             }
             println!("Request Per Sec {:#?}", r/tick );
         }
