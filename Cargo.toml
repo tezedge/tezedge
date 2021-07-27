@@ -16,6 +16,7 @@ members = [
     "tezos/new_context",
     "tezos/spsc",
     "tezos/timing",
+    "tezos/lib_storage_ffi",
     "networking",
     "shell",
     "storage",
