@@ -242,7 +242,9 @@ fn main() {
     let mut reqs = 0_u128;
 
     loop {
-        println!("Average Requests {:#?}", reqs / cumulative.as_millis());
+        if cumulative > Duration::from_millis(0) {
+            println!("Average Requests {:#?}", reqs / cumulative.as_millis());
+        }
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
