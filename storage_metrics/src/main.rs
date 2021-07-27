@@ -36,6 +36,7 @@ use tezos_messages::p2p::binary_message::MessageHash;
 use std::thread::yield_now;
 use std::process::exit;
 use tezos_messages::p2p::encoding::peer::PeerMessage::GetCurrentHead;
+use std::ops::Add;
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
@@ -176,7 +177,6 @@ struct ChainSyncState {
     end : Option<BlockHash>,
     start : Option<BlockHash>,
     active_peer : Option<PeerAddress>,
-    block_p2p_requests_latencies : Vec<P2PRequestLatency>,
     ///Change later
     last_peer_message : Option<PeerMessage>
 }
@@ -212,7 +212,7 @@ fn main() {
         start: None,
         active_peer: None,
         last_peer_message: None,
-        block_p2p_requests_latencies: vec![]
+
     };
 
     let mut proposer = TezedgeProposer::new(
@@ -236,9 +236,13 @@ fn main() {
         )
     };
 
+    //std::
+    let mut instance : Instant = Instant::now();
+    let mut cumulative : Duration = Duration::from_millis(0);
+    let mut reqs = 0_u128;
 
     loop {
-        //println!("{:#?}", chain_state.block_p2p_requests_latencies);
+        println!("Average Requests {:#?}", reqs / cumulative.as_millis());
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
@@ -272,8 +276,9 @@ fn main() {
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));*/
                         }
                         PeerMessage::CurrentBranch(message) => {
-                            //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            //proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            instance = Instant::now();
                             //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
                             /*chain_state.peers.insert(peer.ip(), peer.clone());
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
@@ -305,9 +310,11 @@ fn main() {
                         PeerMessage::CurrentHead(message) => {
                             println!("CurrentHead {:#?}", message.current_block_header().message_hash());
                             //Loop GetCurrent head
-                            //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            //proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
+                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            cumulative.add(instance.elapsed());
+                            reqs.add(1);
+                            instance = Instant::now();
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
