@@ -1,7 +1,7 @@
 use slog::Drain;
 use std::collections::{HashSet, HashMap, VecDeque};
 use std::iter::FromIterator;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use tezedge_state::ShellCompatibilityVersion;
@@ -37,6 +37,7 @@ use std::thread::yield_now;
 use std::process::exit;
 use tezos_messages::p2p::encoding::peer::PeerMessage::GetCurrentHead;
 use std::ops::Add;
+use std::sync::atomic::{AtomicU64, Ordering, AtomicUsize};
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
 
@@ -238,13 +239,26 @@ fn main() {
 
     //std::
     let mut instance : Instant = Instant::now();
-    let mut cumulative : Duration = Duration::from_millis(0);
-    let mut reqs = 0_u128;
+    let accumulator = Arc::new(AtomicUsize::new(0));
+    let requests = Arc::new(AtomicUsize::new(0));
+    let acc = accumulator.clone();
+    let reqs = requests.clone();
+    std::thread::spawn( move || {
+        let mut tick = 0_usize;
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            tick += 1;
+            let a = acc.load(Ordering::Relaxed);
+            let r = reqs.load(Ordering::Relaxed);
+            if r > 0 {
+                println!("Average Request Latency {:#?}", a/r );
+            }
+            println!("Request Per Sec {:#?}", r/tick );
+        }
+    });
 
     loop {
-        if cumulative > Duration::from_millis(0) {
-            println!("Average Requests {:#?}", reqs / cumulative.as_millis());
-        }
+
         proposer.make_progress();
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
@@ -307,15 +321,13 @@ fn main() {
                         }
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(message) => {
-                            println!("GetCurrentHead {:#?}", message)
                         }
                         PeerMessage::CurrentHead(message) => {
-                            println!("CurrentHead {:#?}", message.current_block_header().message_hash());
                             //Loop GetCurrent head
                             let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            cumulative.add(instance.elapsed());
-                            reqs.add(1);
+                            accumulator.fetch_add(instance.elapsed().as_millis() as usize, Ordering::Relaxed);
+                            requests.fetch_add(1, Ordering::Relaxed);
                             instance = Instant::now();
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
