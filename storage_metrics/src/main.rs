@@ -272,9 +272,9 @@ fn main() {
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));*/
                         }
                         PeerMessage::CurrentBranch(message) => {
-                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
+                            //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            //proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
                             /*chain_state.peers.insert(peer.ip(), peer.clone());
                             let received_block_header: BlockHeader = message.current_branch().current_head().clone();
                             if let Some(highest_available_block) = &mut chain_state.highest_available_block {
@@ -305,9 +305,9 @@ fn main() {
                         PeerMessage::CurrentHead(message) => {
                             println!("CurrentHead {:#?}", message.current_block_header().message_hash());
                             //Loop GetCurrent head
-                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
+                            //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                            //proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+                            //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
