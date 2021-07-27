@@ -148,6 +148,7 @@ pub struct Environment {
 
     pub enable_testchain: bool,
     pub tokio_threads: usize,
+    pub riker_threads: usize,
 
     /// This flag is used, just for to stop node immediatelly after generate identity,
     /// to prevent and initialize actors and create data (except identity)
@@ -173,6 +174,7 @@ impl slog::Value for Environment {
             &format_args!("{:?}", self.enable_testchain),
         )?;
         serializer.emit_arguments("tokio_threads", &format_args!("{:?}", self.tokio_threads))?;
+        serializer.emit_arguments("riker_threads", &format_args!("{:?}", self.riker_threads))?;
         serializer.emit_arguments(
             "validate_cfg_identity_and_stop",
             &format_args!("{:?}", self.validate_cfg_identity_and_stop),
@@ -1298,6 +1300,11 @@ impl Environment {
             replay,
             tokio_threads: args
                 .value_of("tokio-threads")
+                .unwrap_or("0")
+                .parse::<usize>()
+                .expect("Provided value cannot be converted to number"),
+            riker_threads: args
+                .value_of("riker-threads")
                 .unwrap_or("0")
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),

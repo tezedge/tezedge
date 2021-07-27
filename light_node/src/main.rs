@@ -233,10 +233,19 @@ fn block_on_actors(
             .num_of_peers_for_bootstrap_threshold(),
     );
 
+    let mut actor_system_cfg = riker::load_config();
+    if env.riker_threads > 0 {
+        let thread_count = env.riker_threads.min(num_cpus::get());
+        actor_system_cfg
+            .set("dispatcher.pool_size", thread_count as i64)
+            .unwrap();
+    }
+
     // create riker's actor system
     let actor_system = SystemBuilder::new()
         .name("light-node")
         .log(log.clone())
+        .cfg(actor_system_cfg)
         .create()
         .expect("Failed to create actor system");
 
