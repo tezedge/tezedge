@@ -215,7 +215,11 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-                    println!("HandshakeSuccessful")
+                    if !receive_first {
+                        let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
+                        let msg = GetBlockHeadersMessage::new(vec![block]);
+                        proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
+                    }
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
@@ -275,11 +279,7 @@ fn main() {
                 _ => {}
             }
         }
-        if !receive_first {
-            let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
-            let msg = GetBlockHeadersMessage::new(vec![block]);
-            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
-        }
+
 
     }
 }
