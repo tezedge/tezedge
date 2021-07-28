@@ -61,9 +61,8 @@ where
                     return self.accept(PeerWritableProposal::from(proposal));
                 }
             } else {
-                // we received event for a non existant peer, probably
-                // mio's view about connected peers is out of sync.
-                slog::warn!(&self.log, "Disconnecting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received readable proposal for a non-existant peer. MIO out of sync!");
+                // we received event for a non existant peer. Can happen
+                // and its normal, unless mio is out of sync.
                 self.disconnect_peer(proposal.at, proposal.peer);
             }
         }
