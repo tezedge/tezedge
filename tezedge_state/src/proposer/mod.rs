@@ -167,13 +167,17 @@ pub struct TezedgeProposer<Es, Efs, M> {
     pub manager: M,
 }
 
-impl<Es, Efs, M> TezedgeProposer<Es, Efs, M>
+impl<S, NetE, Es, Efs, M> TezedgeProposer<Es, Efs, M>
 where
-    Es: Events,
+    S: Read + Write,
+    NetE: NetworkEvent + Debug,
+    Efs: Effects,
+    M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
 {
-    pub fn new<S>(config: TezedgeProposerConfig, state: S, mut events: Es, manager: M) -> Self
+    pub fn new<T>(config: TezedgeProposerConfig, state: T, mut events: Es, manager: M) -> Self
     where
-        S: Into<TezedgeStateWrapper<Efs>>,
+        T: Into<TezedgeStateWrapper<Efs>>,
+        Es: Events,
     {
         events.set_limit(config.events_limit);
         Self {
@@ -183,17 +187,24 @@ where
             state: state.into(),
             events,
             manager,
-        }
+        }.init()
     }
-}
 
-impl<S, NetE, Es, Efs, M> TezedgeProposer<Es, Efs, M>
-where
-    S: Read + Write,
-    NetE: NetworkEvent + Debug,
-    Efs: Effects,
-    M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
-{
+    fn init(mut self) -> Self {
+        // execute initial requests.
+        Self::execute_requests(
+            &mut self.requests,
+            &mut self.notifications,
+            &mut self.state,
+            &mut self.manager,
+        );
+        self
+    }
+
+    pub fn assert_state(&self) {
+        self.state.assert_state();
+    }
+
     fn handle_event(
         event: Event<NetE>,
         requests: &mut Vec<TezedgeRequest>,
