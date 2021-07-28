@@ -176,6 +176,18 @@ pub struct FakePeerId {
     id: usize,
 }
 
+impl FakePeerId {
+    /// Create new unchecked peer id. Caller must ensure that the peer
+    /// with such id exists.
+    pub fn new_unchecked(id: usize) -> Self {
+        Self { id }
+    }
+
+    pub fn index(&self) -> usize {
+        self.id
+    }
+}
+
 impl From<FakePeerId> for PeerAddress {
     fn from(id: FakePeerId) -> Self {
         PeerAddress::ipv4_from_index(id.id as u64)
@@ -257,6 +269,9 @@ enum IOCondition {
 pub struct FakePeerStream {
     conn_state: ConnectedState,
     identity: Identity,
+
+    sent_conn_msg: Option<ConnectionMessage>,
+    received_conn_msg: Option<ConnectionMessage>,
     crypto: Option<PeerCrypto>,
 
     read_buf: VecDeque<u8>,
@@ -271,6 +286,9 @@ impl FakePeerStream {
         Self {
             conn_state: ConnectedState::Disconnected,
             identity: Identity::generate(pow_target).unwrap(),
+
+            sent_conn_msg: None,
+            received_conn_msg: None,
             crypto: None,
 
             read_buf: VecDeque::new(),
@@ -279,6 +297,10 @@ impl FakePeerStream {
             read_cond: IOCondition::Limit(0),
             write_cond: IOCondition::Limit(0),
         }
+    }
+
+    pub fn identity(&self) -> &Identity {
+        &self.identity
     }
 
     pub fn read_buf(&self) -> &VecDeque<u8> {
@@ -319,6 +341,14 @@ impl FakePeerStream {
             }
             _ => {}
         }
+    }
+
+    pub fn set_sent_conn_message(&mut self, conn_msg: ConnectionMessage) {
+        self.sent_conn_msg = Some(conn_msg);
+    }
+
+    pub fn set_received_conn_msg(&mut self, conn_msg: ConnectionMessage) {
+        self.received_conn_msg = Some(conn_msg);
     }
 
     pub fn send_bytes(&mut self, bytes: &[u8]) {
@@ -687,6 +717,11 @@ impl OneRealNodeCluster {
         self
     }
 
+    pub fn advance_time_ms(&mut self, by: u64) -> &mut Self {
+        self.time += Duration::from_millis(by);
+        self
+    }
+
     /// Whether events queue is empty.
     pub fn is_done(&self) -> bool {
         self.proposer.manager.events.is_empty()
@@ -698,7 +733,7 @@ impl OneRealNodeCluster {
     }
 
     pub fn assert_state(&mut self) -> &mut Self {
-        self.proposer.state.assert_state();
+        self.proposer.assert_state();
         self
     }
 
@@ -832,6 +867,30 @@ impl OneRealNodeCluster {
             }));
 
         self
+    }
+
+    pub fn set_sent_conn_message(&mut self, peer_id: FakePeerId, conn_msg: ConnectionMessage) -> &mut Self {
+        self.get_peer(peer_id).set_sent_conn_message(conn_msg);
+        self
+    }
+
+    pub fn set_received_conn_msg(&mut self, peer_id: FakePeerId, conn_msg: ConnectionMessage) -> &mut Self {
+        self.get_peer(peer_id).set_received_conn_msg(conn_msg);
+        self
+    }
+
+    /// Automatically create and set peer crypto based on stored conn messages.
+    /// [Self::set_sent_conn_message] and [Self::set_received_conn_msg]
+    /// should be called before this function can be used.
+    pub fn auto_set_peer_crypto(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
+        let peer = self.get_peer(peer_id);
+        if peer.crypto.is_some() {
+            return Ok(self);
+        }
+        let sent = peer.sent_conn_msg.take().unwrap();
+        let received = peer.received_conn_msg.take().unwrap();
+
+        self.set_peer_crypto_with_conn_messages(peer_id, &sent, &received)
     }
 
     pub fn set_peer_crypto(
@@ -969,11 +1028,13 @@ impl OneRealNodeCluster {
         unimplemented!()
     }
 
-    pub fn add_tick_for_current_time(&mut self) {
+    pub fn add_tick_for_current_time(&mut self) -> &mut Self {
         self.proposer
             .manager
             .events
             .push_back(Event::Tick(self.time));
+
+        self
     }
 }
 
