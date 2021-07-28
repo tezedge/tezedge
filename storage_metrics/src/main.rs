@@ -40,6 +40,7 @@ use std::ops::Add;
 use std::sync::atomic::{AtomicU64, Ordering, AtomicUsize};
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
+const LOCAL_PEER : &'static str = "138.201.74.177:9732";
 
 fn shell_compatibility_version() -> ShellCompatibilityVersion {
     ShellCompatibilityVersion::new(CHAIN_NAME.to_owned(), vec![0], vec![0, 1])
@@ -127,7 +128,7 @@ fn build_tezedge_state() -> TezedgeState {
         [
             // Potential peers which state machine will try to connect to.
             vec![
-                "138.201.74.177:9732",
+                LOCAL_PEER,
             ]
                 .into_iter()
                 .map(|x| x.parse().unwrap())
@@ -164,57 +165,7 @@ impl P2PRequestLatency {
     }
 }
 
-struct ChainSyncState {
-    highest_available_block: Option<BlockHeader>,
-    current_head : Option<BlockHeader>,
-    peers : HashMap<IpAddr, PeerAddress>,
-    block_storage : BlockStorage,
-    block_meta_storage : BlockMetaStorage,
-    highest_available_history: VecDeque<BlockHash>,
-    stored_block_header_level: Level,
-    block_headers_count: u32,
-    progress : Level,
-    cursor : Option<BlockHash>,
-    end : Option<BlockHash>,
-    start : Option<BlockHash>,
-    active_peer : Option<PeerAddress>,
-    ///Change later
-    last_peer_message : Option<PeerMessage>
-}
-
 fn main() {
-
-    let backend = NotusDBBackend::new("/tmp/tezedge/metrics/database").map(|db|{
-        TezedgeDatabaseBackendOptions::Notus(db)
-    }).unwrap();
-
-    let maindb = Arc::new(TezedgeDatabase::new(backend));
-    // commit log storage
-    let clog = open_cl("/tmp/tezedge/metrics/block-storage", vec![BlockStorage::descriptor()]).unwrap();
-
-    let persistent_storage = PersistentStorage::new(
-        maindb.clone(),
-        Arc::new(clog),
-        Arc::new(Sequences::new(maindb, 1000)),
-    );
-
-    let mut chain_state = ChainSyncState {
-        highest_available_block: None,
-        current_head: None,
-        peers: Default::default(),
-        block_storage: BlockStorage::new(&persistent_storage),
-        block_meta_storage: BlockMetaStorage::new(&persistent_storage),
-        highest_available_history: Default::default(),
-        stored_block_header_level: 0,
-        block_headers_count: 0,
-        progress: 0,
-        cursor: None,
-        end: None,
-        start: None,
-        active_peer: None,
-        last_peer_message: None,
-
-    };
 
     let mut proposer = TezedgeProposer::new(
         TezedgeProposerConfig {
@@ -237,53 +188,25 @@ fn main() {
         )
     };
 
-    //std::
     let mut instance : Instant = Instant::now();
     let maximum_latency = Arc::new(AtomicUsize::new(0));
     let minimum_latency = Arc::new(AtomicUsize::new(0));
     let accumulator = Arc::new(AtomicUsize::new(0));
     let requests = Arc::new(AtomicUsize::new(0));
 
-    let acc = accumulator.clone();
-    let reqs = requests.clone();
-
-    let min = minimum_latency.clone();
-    let max = maximum_latency.clone();
-
-    /*std::thread::spawn( move || {
-        let mut tick = 0_usize;
-        loop {
-            std::thread::sleep(Duration::from_secs(1));
-            tick += 1;
-            let a = acc.load(Ordering::Relaxed);
-            let r = reqs.load(Ordering::Relaxed);
-            let min = min.load(Ordering::Relaxed);
-            let max = max.load(Ordering::Relaxed);
-            println!("-------------------------------------------------------------------------------------------------------------------");
-            println!("-------------------------------------------------------------------------------------------------------------------");
-            println!("GetCurrentHead");
-            println!("-------------------------------------------------------------------------------------------------------------------");
-            println!("-------------------------------------------------------------------------------------------------------------------");
-            if r > 0 {
-                println!("Average Request Latency {:#?} ms", a/r );
-            }
-            println!("Request Per Sec {:#?}", r/tick );
-            println!("Minimum Latency {:#?} ms", min );
-            println!("Maximum Latency {:#?} ms", max );
-        }
-    });*/
+    let peer : PeerAddress =  LOCAL_PEER.parse().unwrap();
 
     loop {
-
         proposer.make_progress();
+
+        let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+        proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+        //instance = Instant::now();
+
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-
-                    let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                    proposer.send_message_to_peer_or_queue(Instant::now(), peer_address,PeerMessage::GetCurrentHead(msg));
-                    instance = Instant::now();
                 }
                 Notification::MessageReceived { peer, message } => {
 
@@ -296,41 +219,9 @@ fn main() {
 
                         }
                         PeerMessage::GetCurrentBranch(_) => {
-                            /*let genesis_block = tezos_env
-                                .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
-                            let chain_id = tezos_env.main_chain_id().unwrap();
-                            let msg = CurrentBranchMessage::new(
-                                chain_id,
-                                CurrentBranch::new(genesis_block, vec![]),
-                            );
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::CurrentBranch(msg));
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentBranch(GetCurrentBranchMessage::new(tezos_env.main_chain_id().unwrap())));*/
                         }
                         PeerMessage::CurrentBranch(message) => {
 
-                            //chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
-                            /*chain_state.peers.insert(peer.ip(), peer.clone());
-                            let received_block_header: BlockHeader = message.current_branch().current_head().clone();
-                            if let Some(highest_available_block) = &mut chain_state.highest_available_block {
-                                if highest_available_block.level < received_block_header.level {
-                                    chain_state.highest_available_block = Some(received_block_header);
-                                }
-                            } else {
-                                let genesis_block = tezos_env
-                                    .genesis_header(genesis_context_hash().try_into().unwrap(), get_empty_operation_list_list_hash().unwrap()).unwrap();
-                                chain_state.highest_available_block = Some(received_block_header.clone());
-                                chain_state.cursor = Some(received_block_header.clone().predecessor);
-                                let genesis_block_hash: BlockHash = genesis_block.message_hash().unwrap().try_into().unwrap();
-                                let start_block_hash: BlockHash = received_block_header.clone().message_hash().unwrap().try_into().unwrap();
-                                chain_state.end = Some(genesis_block_hash);
-                                chain_state.start = Some(start_block_hash);
-                                chain_state.progress = received_block_header.level;
-                                chain_state.stored_block_header_level = genesis_block.level;
-                                //Send Get Block header
-                                let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                                proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                                chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new())
-                            }*/
                         }
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(message) => {
@@ -365,17 +256,6 @@ fn main() {
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
-                            /*if let Some(last_req) = chain_state.block_p2p_requests_latencies.last_mut() {
-                                last_req.recv = chrono::Utc::now().timestamp_subsec_nanos()
-                            }
-                            let block_header : &BlockHeader = message.block_header();
-                            chain_state.block_storage.put_block_header(&BlockHeaderWithHash::new(block_header.clone()).unwrap()).unwrap();
-                            chain_state.cursor = Some(block_header.predecessor.clone());
-                            let msg = GetBlockHeadersMessage::new([chain_state.cursor.clone().unwrap()].to_vec());
-                            chain_state.active_peer = Some(peer);
-                            chain_state.last_peer_message = Some(PeerMessage::GetBlockHeaders(msg));
-                            proposer.send_message_to_peer_or_queue(Instant::now(), chain_state.active_peer.clone().unwrap(),chain_state.last_peer_message.clone().unwrap());
-                            chain_state.block_p2p_requests_latencies.push(P2PRequestLatency::new());*/
 
                         }
                         PeerMessage::GetOperations(_) => {}
@@ -387,16 +267,6 @@ fn main() {
                     }
                 }
                 Notification::PeerDisconnected {peer} => {
-                    chain_state.peers.remove(&peer.ip());
-                    match chain_state.active_peer {
-                        None => {}
-                        Some(active_peer) => {
-                            if active_peer.to_string() == peer.to_string() {
-                                //resend last message to all peers
-
-                            }
-                        }
-                    }
                 }
                 _ => {}
             }
