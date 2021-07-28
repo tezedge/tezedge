@@ -187,32 +187,13 @@ impl<E> TezedgeState<E> {
     }
 
     pub(crate) fn check_blacklisted_peers(&mut self, at: Instant) {
-        let whitelist_peers = self
-            .blacklisted_peers
+        self.blacklisted_peers
             .take_expired_blacklisted_peers(at, self.config.peer_blacklist_duration);
-
-        self.extend_potential_peers(
-            whitelist_peers
-                .into_iter()
-                .filter_map(|(ip, port)| port.map(|port| PeerListenerAddress::new(ip, port))),
-        )
     }
 
     pub(crate) fn disconnect_peer(&mut self, at: Instant, address: PeerAddress) {
-        let pending_peer_addr = self
-            .pending_peers
-            .remove(&address)
-            .and_then(|peer| peer.listener_address());
-
-        let listener_addr = self
-            .connected_peers
-            .remove(&address)
-            .map(|peer| peer.listener_address())
-            .or(pending_peer_addr);
-
-        if let Some(addr) = listener_addr {
-            self.extend_potential_peers(std::iter::once(addr));
-        }
+        self.pending_peers.remove(&address);
+        self.connected_peers.remove(&address);
 
         self.requests.insert(PendingRequestState {
             request: PendingRequest::DisconnectPeer { peer: address },
