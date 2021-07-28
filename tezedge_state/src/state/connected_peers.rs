@@ -43,10 +43,17 @@ pub struct ConnectedPeer {
 
     read_buf: MessageReadBuffer,
 
+    cur_send_message_raw: Option<PeerMessage>,
     cur_send_message: Option<EncryptedMessageWriter>,
     send_message_queue: VecDeque<PeerMessage>,
 
+    timer : Instant,
+
     quota: ThrottleQuota,
+
+    total_latency_current_head_request : u128,
+
+    current_head_req_count : u128
 }
 
 impl ConnectedPeer {
@@ -90,7 +97,9 @@ impl ConnectedPeer {
                 }
                 PeerMessage::GetCurrentHead(_) => {}
                 PeerMessage::CurrentHead(_) => {
-                    println!("Message Received CurrentHead");
+                    let duration = self.timer.elapsed();
+                    self.total_latency_current_head_request += duration.as_millis();
+                    println!("Message Received CurrentHead Avg Request Latency {} ms", self.total_latency_current_head_request / self.current_head_req_count);
                 }
                 PeerMessage::GetBlockHeaders(_) => {}
                 PeerMessage::BlockHeader(_) => {
@@ -129,43 +138,53 @@ impl ConnectedPeer {
 
         if let Some(message_writer) = self.cur_send_message.as_mut() {
             message_writer.write_to(writer, &mut self.crypto)?;
+            match &self.cur_send_message_raw {
+                Some(message) => {
+                   match message {
+                       PeerMessage::Disconnect => {
+
+                       }
+                       PeerMessage::Advertise(_) => {}
+                       PeerMessage::SwapRequest(_) => {}
+                       PeerMessage::SwapAck(_) => {}
+                       PeerMessage::Bootstrap => {}
+                       PeerMessage::GetCurrentBranch(_) => {
+                           println!("Message Sent GetCurrentBranch");
+                       }
+                       PeerMessage::CurrentBranch(_) => {}
+                       PeerMessage::Deactivate(_) => {}
+                       PeerMessage::GetCurrentHead(_) => {
+                           self.timer = Instant::now();
+                           self.current_head_req_count += 1;
+                           println!("Message Sent GetCurrentHead {}", self.timer.elapsed().as_millis());
+                       }
+                       PeerMessage::CurrentHead(_) => {}
+                       PeerMessage::GetBlockHeaders(_) => {
+                           println!("Message Sent GetBlockHeaders");
+                       }
+                       PeerMessage::BlockHeader(_) => {}
+                       PeerMessage::GetOperations(_) => {
+                           println!("Message Sent GetOperations");
+                       }
+                       PeerMessage::Operation(_) => {}
+                       PeerMessage::GetProtocols(_) => {
+                           println!("Message Sent GetProtocols");
+                       }
+                       PeerMessage::Protocol(_) => {}
+                       PeerMessage::GetOperationsForBlocks(_) => {
+                           println!("Message Sent GetOperationsForBlocks");
+                       }
+                       PeerMessage::OperationsForBlocks(_) => {}
+                   }
+                }
+                None => {}
+            };
+
             self.cur_send_message = None;
+            self.cur_send_message_raw = None;
             Ok(())
         } else if let Some(message) = self.send_message_queue.pop_front() {
-            match &message {
-                PeerMessage::Disconnect => {
-
-                }
-                PeerMessage::Advertise(_) => {}
-                PeerMessage::SwapRequest(_) => {}
-                PeerMessage::SwapAck(_) => {}
-                PeerMessage::Bootstrap => {}
-                PeerMessage::GetCurrentBranch(_) => {
-                    println!("Message Sent GetCurrentBranch");
-                }
-                PeerMessage::CurrentBranch(_) => {}
-                PeerMessage::Deactivate(_) => {}
-                PeerMessage::GetCurrentHead(_) => {
-                    println!("Message Sent GetCurrentHead");
-                }
-                PeerMessage::CurrentHead(_) => {}
-                PeerMessage::GetBlockHeaders(_) => {
-                    println!("Message Sent GetBlockHeaders");
-                }
-                PeerMessage::BlockHeader(_) => {}
-                PeerMessage::GetOperations(_) => {
-                    println!("Message Sent GetOperations");
-                }
-                PeerMessage::Operation(_) => {}
-                PeerMessage::GetProtocols(_) => {
-                    println!("Message Sent GetProtocols");
-                }
-                PeerMessage::Protocol(_) => {}
-                PeerMessage::GetOperationsForBlocks(_) => {
-                    println!("Message Sent GetOperationsForBlocks");
-                }
-                PeerMessage::OperationsForBlocks(_) => {}
-            };
+            self.cur_send_message_raw = Some(message.clone());
 
             self.cur_send_message = Some(EncryptedMessageWriter::try_new(
                 &PeerMessageResponse::from(message),
@@ -285,10 +304,14 @@ impl ConnectedPeers {
                 private_node: result.private_node,
 
                 read_buf: MessageReadBuffer::new(),
+                cur_send_message_raw: None,
                 cur_send_message: None,
                 send_message_queue: VecDeque::new(),
 
+                timer: Instant::now(),
                 quota: ThrottleQuota::new(log.clone()),
+                total_latency_current_head_request: 0,
+                current_head_req_count: 0
             })
     }
 
