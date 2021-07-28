@@ -869,12 +869,20 @@ impl OneRealNodeCluster {
         self
     }
 
-    pub fn set_sent_conn_message(&mut self, peer_id: FakePeerId, conn_msg: ConnectionMessage) -> &mut Self {
+    pub fn set_sent_conn_message(
+        &mut self,
+        peer_id: FakePeerId,
+        conn_msg: ConnectionMessage,
+    ) -> &mut Self {
         self.get_peer(peer_id).set_sent_conn_message(conn_msg);
         self
     }
 
-    pub fn set_received_conn_msg(&mut self, peer_id: FakePeerId, conn_msg: ConnectionMessage) -> &mut Self {
+    pub fn set_received_conn_msg(
+        &mut self,
+        peer_id: FakePeerId,
+        conn_msg: ConnectionMessage,
+    ) -> &mut Self {
         self.get_peer(peer_id).set_received_conn_msg(conn_msg);
         self
     }
@@ -882,7 +890,10 @@ impl OneRealNodeCluster {
     /// Automatically create and set peer crypto based on stored conn messages.
     /// [Self::set_sent_conn_message] and [Self::set_received_conn_msg]
     /// should be called before this function can be used.
-    pub fn auto_set_peer_crypto(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
+    pub fn auto_set_peer_crypto(
+        &mut self,
+        peer_id: FakePeerId,
+    ) -> Result<&mut Self, HandshakeError> {
         let peer = self.get_peer(peer_id);
         if peer.crypto.is_some() {
             return Ok(self);
