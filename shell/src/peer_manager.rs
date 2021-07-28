@@ -276,6 +276,7 @@ impl Actor for PeerManager {
                 disable_mempool: self.config.disable_mempool,
                 private_node: self.config.private_node,
                 disable_quotas: false,
+                disable_blacklist: self.config.disable_blacklist,
                 min_connected_peers: self.config.peer_threshold.low,
                 max_connected_peers: self.config.peer_threshold.high,
                 max_pending_peers: self.config.peer_threshold.high,
