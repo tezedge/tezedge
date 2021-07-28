@@ -245,6 +245,7 @@ fn simulate_one_peer_all_message_sequences() {
             disable_mempool: false,
             private_node: false,
             disable_quotas: false,
+            disable_blacklist: false,
             min_connected_peers: 10,
             max_connected_peers: 20,
             max_potential_peers: 100,
