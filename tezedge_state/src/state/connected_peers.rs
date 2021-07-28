@@ -15,6 +15,13 @@ use crate::{PeerAddress, PeerCrypto, Port};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 
+#[derive(Clone,Debug)]
+pub struct Latency {
+    timer : Instant,
+    request_count : u128,
+    total_latencies : u128
+}
+
 #[derive(Getters, CopyGetters, Debug, Clone)]
 pub struct ConnectedPeer {
     // #[get = "pub"]
@@ -51,7 +58,7 @@ pub struct ConnectedPeer {
 
     quota: ThrottleQuota,
 
-    total_latency_current_head_request : u128,
+    latencies : HashMap<String, Latency>,
 
     current_head_req_count : u128
 }
@@ -98,15 +105,17 @@ impl ConnectedPeer {
                 PeerMessage::GetCurrentHead(_) => {}
                 PeerMessage::CurrentHead(_) => {
                     println!("Message Received CurrentHead");
-                    let duration = self.timer.elapsed();
-                    self.total_latency_current_head_request += duration.as_millis();
-                    if self.current_head_req_count > 0 {
+                    /*if self.current_head_req_count > 0 {
                         println!("Message Received CurrentHead Avg Request Latency {} ms", self.total_latency_current_head_request / self.current_head_req_count);
-                    }
+                    }*/
                 }
                 PeerMessage::GetBlockHeaders(_) => {}
                 PeerMessage::BlockHeader(_) => {
-                    println!("Message Received BlockHeader");
+                    if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
+                        let duration = block_header_latency.timer.elapsed();
+                        block_header_latency.total_latencies += duration.as_millis();
+                    }
+                    println!("Message Received BlockHeader {:#?}", self.latencies);
                 }
                 PeerMessage::GetOperations(_) => {}
                 PeerMessage::Operation(_) => {
@@ -157,12 +166,17 @@ impl ConnectedPeer {
                        PeerMessage::CurrentBranch(_) => {}
                        PeerMessage::Deactivate(_) => {}
                        PeerMessage::GetCurrentHead(_) => {
-                           self.timer = Instant::now();
-                           self.current_head_req_count += 1;
-                           println!("Message Sent GetCurrentHead {}", self.timer.elapsed().as_millis());
+                           println!("Message Sent GetCurrentHead");
                        }
                        PeerMessage::CurrentHead(_) => {}
                        PeerMessage::GetBlockHeaders(_) => {
+                           let latency = self.latencies.entry("BlockHeader".to_string()).or_insert(Latency{
+                               timer: Instant::now(),
+                               request_count: 0,
+                               total_latencies: 0
+                           });
+                           latency.timer = Instant::now();
+                           latency.request_count += 1;
                            println!("Message Sent GetBlockHeaders");
                        }
                        PeerMessage::BlockHeader(_) => {}

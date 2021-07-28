@@ -116,7 +116,7 @@ fn build_tezedge_state() -> TezedgeState {
             periodic_react_interval: Duration::from_millis(250),
             reset_quotas_interval: Duration::from_secs(5),
             peer_blacklist_duration: Duration::from_secs(30 * 60),
-            peer_timeout: Duration::from_secs(8),
+            peer_timeout: Duration::from_millis(200),
             pow_target: ProofOfWork::DEFAULT_TARGET,
         },
         node_identity.clone(),
@@ -182,6 +182,8 @@ fn main() {
 
     let mut counter = 3;
 
+    proposer.manager
+
     let tezos_env = if let Some(tezos_network_config) = environment::default_networks().get(&TezosEnvironment::Mainnet) {
         tezos_network_config.clone()
     } else {
@@ -200,7 +202,7 @@ fn main() {
 
     proposer.make_progress();
 
-    let mut receive_first = false;
+    let mut received_first_response = false;
 
 
     loop {
@@ -215,7 +217,7 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-                    if !receive_first {
+                    if !received_first_response {
                         let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
                         let msg = GetBlockHeadersMessage::new(vec![block]);
                         proposer.send_message_to_peer_or_queue(Instant::now(), peer_address, PeerMessage::GetBlockHeaders(msg));
@@ -262,7 +264,7 @@ fn main() {
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
-                            receive_first = true;
+                            received_first_response = true;
                             let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
                             let msg = GetBlockHeadersMessage::new(vec![block]);
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
