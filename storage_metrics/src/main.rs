@@ -250,7 +250,7 @@ fn main() {
     let min = minimum_latency.clone();
     let max = maximum_latency.clone();
 
-    std::thread::spawn( move || {
+    /*std::thread::spawn( move || {
         let mut tick = 0_usize;
         loop {
             std::thread::sleep(Duration::from_secs(1));
@@ -271,7 +271,7 @@ fn main() {
             println!("Minimum Latency {:#?} ms", min );
             println!("Maximum Latency {:#?} ms", max );
         }
-    });
+    });*/
 
     loop {
 

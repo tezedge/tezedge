@@ -64,6 +64,7 @@ impl ConnectedPeer {
     ) -> Result<PeerMessage, ReadMessageError> {
         let msg = self.read_buf.read_from(reader, &mut self.crypto)?;
         if self.quota.can_receive(&msg).is_ok() {
+            println!("Message Received");
             Ok(msg)
         } else {
             Err(ReadMessageError::QuotaReached)
@@ -79,6 +80,7 @@ impl ConnectedPeer {
 
     /// Write any enqueued messages to the given writer.
     pub fn write_to<W: Write>(&mut self, writer: &mut W) -> Result<(), WriteMessageError> {
+        println!("Message Sent");
         if let Some(message_writer) = self.cur_send_message.as_mut() {
             message_writer.write_to(writer, &mut self.crypto)?;
             self.cur_send_message = None;
