@@ -64,7 +64,53 @@ impl ConnectedPeer {
     ) -> Result<PeerMessage, ReadMessageError> {
         let msg = self.read_buf.read_from(reader, &mut self.crypto)?;
         if self.quota.can_receive(&msg).is_ok() {
-            println!("Message Received");
+
+            match &msg {
+                PeerMessage::Disconnect => {
+                    println!("Message Received Disconnect");
+                }
+                PeerMessage::Advertise(_) => {
+                    println!("Message Received Advertise");
+                }
+                PeerMessage::SwapRequest(_) => {
+                    println!("Message Received SwapRequest");
+                }
+                PeerMessage::SwapAck(_) => {
+                    println!("Message Received SwapAck");
+                }
+                PeerMessage::Bootstrap => {
+                    println!("Message Received Bootstrap");
+                }
+                PeerMessage::GetCurrentBranch(_) => {}
+                PeerMessage::CurrentBranch(_) => {
+                    println!("Message Received CurrentBranch");
+                }
+                PeerMessage::Deactivate(_) => {
+                    println!("Message Received Deactivate");
+                }
+                PeerMessage::GetCurrentHead(_) => {}
+                PeerMessage::CurrentHead(_) => {
+                    println!("Message Received CurrentHead");
+                }
+                PeerMessage::GetBlockHeaders(_) => {}
+                PeerMessage::BlockHeader(_) => {
+                    println!("Message Received BlockHeader");
+                }
+                PeerMessage::GetOperations(_) => {}
+                PeerMessage::Operation(_) => {
+                    println!("Message Received Operation");
+                }
+                PeerMessage::GetProtocols(_) => {}
+                PeerMessage::Protocol(_) => {
+                    println!("Message Received Protocol");
+                }
+                PeerMessage::GetOperationsForBlocks(_) => {}
+                PeerMessage::OperationsForBlocks(_) => {
+                    println!("Message Received OperationsForBlocks");
+                }
+            };
+
+
             Ok(msg)
         } else {
             Err(ReadMessageError::QuotaReached)
