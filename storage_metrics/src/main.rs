@@ -211,10 +211,6 @@ fn main() {
         */
         //instance = Instant::now();
 
-        /*let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
-        let msg = GetBlockHeadersMessage::new(vec![block]);
-        proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));*/
-
         for n in proposer.take_notifications().collect::<Vec<_>>() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
@@ -262,6 +258,7 @@ fn main() {
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
+                            receive_first = true;
                             let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
                             let msg = GetBlockHeadersMessage::new(vec![block]);
                             proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
@@ -278,6 +275,12 @@ fn main() {
                 _ => {}
             }
         }
+        if !receive_first {
+            let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
+            let msg = GetBlockHeadersMessage::new(vec![block]);
+            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
+        }
+
     }
 }
 
