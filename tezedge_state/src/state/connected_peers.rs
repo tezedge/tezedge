@@ -97,6 +97,7 @@ impl ConnectedPeer {
                 }
                 PeerMessage::GetCurrentHead(_) => {}
                 PeerMessage::CurrentHead(_) => {
+                    println!("Message Received CurrentHead");
                     let duration = self.timer.elapsed();
                     self.total_latency_current_head_request += duration.as_millis();
                     if self.current_head_req_count > 0 {
