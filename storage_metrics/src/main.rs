@@ -218,7 +218,7 @@ fn main() {
                     if !receive_first {
                         let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
                         let msg = GetBlockHeadersMessage::new(vec![block]);
-                        proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
+                        proposer.send_message_to_peer_or_queue(Instant::now(), peer_address, PeerMessage::GetBlockHeaders(msg));
                     }
                 }
                 Notification::MessageReceived { peer, message } => {
