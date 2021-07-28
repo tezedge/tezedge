@@ -15,7 +15,7 @@ impl<E: Effects> Acceptor<SendPeerMessageProposal> for TezedgeState<E> {
             // handle connected peer messages.
             peer.enqueue_send_message(proposal.message);
         } else {
-            slog::warn!(&self.log, "Disconnecting peer!"; "reason" => "Received request from Proposer to send a message for non-existant peer.");
+            slog::debug!(&self.log, "Disconnecting peer!"; "reason" => "Received request from Proposer to send a message for non-existant peer.");
             self.disconnect_peer(proposal.at, proposal.peer);
         }
 

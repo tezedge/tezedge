@@ -141,11 +141,8 @@ where
                     };
                 }
             } else {
-                // we received event for a non existant peer, probably
-                // mio's view about connected peers is out of sync.
-                // But the case could be that this event happened and
-                // was enqueued, before we made a decision to disconnect a peer.
-                slog::warn!(&self.log, "Disconnecting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received readable proposal for a non-existant peer. Maybe MIO out of sync.");
+                // we received event for a non existant peer. Can happen
+                // and its normal, unless mio is out of sync.
                 self.disconnect_peer(proposal.at, proposal.peer);
             }
         }
