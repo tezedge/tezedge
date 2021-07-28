@@ -80,12 +80,14 @@ impl ConnectedPeer {
 
     /// Write any enqueued messages to the given writer.
     pub fn write_to<W: Write>(&mut self, writer: &mut W) -> Result<(), WriteMessageError> {
-        println!("Message Sent");
+
         if let Some(message_writer) = self.cur_send_message.as_mut() {
+            println!("Message Sent");
             message_writer.write_to(writer, &mut self.crypto)?;
             self.cur_send_message = None;
             Ok(())
         } else if let Some(message) = self.send_message_queue.pop_front() {
+            println!("Message Sent");
             self.cur_send_message = Some(EncryptedMessageWriter::try_new(
                 &PeerMessageResponse::from(message),
             )?);
