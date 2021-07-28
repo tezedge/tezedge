@@ -199,8 +199,9 @@ fn main() {
     loop {
         proposer.make_progress();
 
-        let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+        /*let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
         proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
+        */
         //instance = Instant::now();
 
         for n in proposer.take_notifications().collect::<Vec<_>>() {
