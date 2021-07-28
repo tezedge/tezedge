@@ -197,9 +197,12 @@ fn main() {
     let requests = Arc::new(AtomicUsize::new(0));
 
     let peer: PeerAddress = LOCAL_PEER.parse().unwrap();
+
+    proposer.make_progress();
     let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
     let msg = GetBlockHeadersMessage::new(vec![block]);
     proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
+
     loop {
         proposer.make_progress();
 
