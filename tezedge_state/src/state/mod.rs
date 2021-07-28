@@ -50,6 +50,7 @@ pub struct TezedgeConfig {
     /// Not used at the moment!
     // TODO: use disable_quotas in ThrottleQuota.
     pub disable_quotas: bool,
+    pub disable_blacklist: bool,
     pub peer_blacklist_duration: Duration,
     pub peer_timeout: Duration,
     pub pow_target: f64,
@@ -220,6 +221,11 @@ impl<E> TezedgeState<E> {
     }
 
     pub(crate) fn blacklist_peer(&mut self, at: Instant, address: PeerAddress) {
+        if self.config.disable_blacklist {
+            slog::warn!(&self.log, "Ignored blacklist request! Disconnecting instead."; "reason" => "Blacklist disabled");
+            return self.disconnect_peer(at, address);
+        }
+
         let pending_peer_port = self
             .pending_peers
             .remove(&address)
@@ -289,6 +295,10 @@ impl<E: Effects> TezedgeState<E> {
         let max_connected_peers = config.max_connected_peers;
         let max_pending_peers = config.max_pending_peers;
         let reset_quotas_interval = config.reset_quotas_interval;
+
+        if config.disable_blacklist {
+            slog::warn!(&log, "Peer Blacklist is DISABLED!");
+        }
 
         let mut this = Self {
             log: log.clone(),
