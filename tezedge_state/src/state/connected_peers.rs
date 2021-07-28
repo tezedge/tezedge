@@ -19,7 +19,8 @@ use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 pub struct Latency {
     timer : Instant,
     request_count : u128,
-    total_latencies : u128
+    total_latencies : u128,
+    avg_latency : u128
 }
 
 #[derive(Getters, CopyGetters, Debug, Clone)]
@@ -54,13 +55,11 @@ pub struct ConnectedPeer {
     cur_send_message: Option<EncryptedMessageWriter>,
     send_message_queue: VecDeque<PeerMessage>,
 
-    timer : Instant,
 
     quota: ThrottleQuota,
 
     latencies : HashMap<String, Latency>,
 
-    current_head_req_count : u128
 }
 
 impl ConnectedPeer {
@@ -114,6 +113,9 @@ impl ConnectedPeer {
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
                         let duration = block_header_latency.timer.elapsed();
                         block_header_latency.total_latencies += duration.as_millis();
+                        if block_header_latency.request_count > 0 {
+                            block_header_latency.avg_latency = block_header_latency.total_latencies / block_header_latency.request_count;
+                        }
                     }
                     println!("Message Received BlockHeader {:#?}", self.latencies);
                 }
@@ -173,7 +175,8 @@ impl ConnectedPeer {
                            let latency = self.latencies.entry("BlockHeader".to_string()).or_insert(Latency{
                                timer: Instant::now(),
                                request_count: 0,
-                               total_latencies: 0
+                               total_latencies: 0,
+                               avg_latency: 0
                            });
                            latency.timer = Instant::now();
                            latency.request_count += 1;
@@ -325,10 +328,8 @@ impl ConnectedPeers {
                 cur_send_message: None,
                 send_message_queue: VecDeque::new(),
 
-                timer: Instant::now(),
                 quota: ThrottleQuota::new(log.clone()),
-                total_latency_current_head_request: 0,
-                current_head_req_count: 0
+                latencies: Default::default()
             })
     }
 

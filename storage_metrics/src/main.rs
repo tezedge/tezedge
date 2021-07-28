@@ -182,7 +182,6 @@ fn main() {
 
     let mut counter = 3;
 
-    proposer.manager
 
     let tezos_env = if let Some(tezos_network_config) = environment::default_networks().get(&TezosEnvironment::Mainnet) {
         tezos_network_config.clone()
