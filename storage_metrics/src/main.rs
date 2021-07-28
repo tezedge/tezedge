@@ -40,7 +40,7 @@ use std::ops::Add;
 use std::sync::atomic::{AtomicU64, Ordering, AtomicUsize};
 
 const CHAIN_NAME : &'static str = "TEZOS_MAINNET";
-const LOCAL_PEER : &'static str = "138.201.74.177:9732";
+const LOCAL_PEER : &'static str = "0.0.0.0:9732";
 
 fn shell_compatibility_version() -> ShellCompatibilityVersion {
     ShellCompatibilityVersion::new(CHAIN_NAME.to_owned(), vec![0], vec![0, 1])
