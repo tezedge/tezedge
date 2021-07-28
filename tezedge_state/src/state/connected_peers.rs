@@ -116,8 +116,12 @@ impl ConnectedPeer {
                         if block_header_latency.request_count > 0 {
                             block_header_latency.avg_latency = block_header_latency.total_latencies / block_header_latency.request_count;
                         }
+
+                        println!("Message Received BlockHeader avg_latency:{:#?}",block_header_latency.avg_latency);
+                    }else {
+                        println!("Message Received BlockHeader");
                     }
-                    println!("Message Received BlockHeader {:#?}", self.latencies);
+
                 }
                 PeerMessage::GetOperations(_) => {}
                 PeerMessage::Operation(_) => {
