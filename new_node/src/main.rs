@@ -87,6 +87,7 @@ fn build_tezedge_state() -> TezedgeState {
             disable_mempool: true,
             private_node: false,
             disable_quotas: false,
+            disable_blacklist: false,
             min_connected_peers: 500,
             max_connected_peers: 1000,
             max_pending_peers: 1000,

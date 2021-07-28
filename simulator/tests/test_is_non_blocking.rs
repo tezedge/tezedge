@@ -21,6 +21,7 @@ fn default_state(initial_time: Instant) -> TezedgeState {
             disable_mempool: false,
             private_node: false,
             disable_quotas: false,
+            disable_blacklist: false,
             min_connected_peers: 2,
             max_connected_peers: 3,
             max_pending_peers: 3,
