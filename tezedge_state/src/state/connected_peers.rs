@@ -63,7 +63,7 @@ impl ConnectedPeer {
         reader: &mut R,
     ) -> Result<PeerMessageResponse, ReadMessageError> {
         let msg = self.read_buf.read_from(reader, &mut self.crypto)?;
-        if self.quota.can_receive(msg.message()).is_ok() {
+        if self.quota.can_receive(msg.message()) {
             Ok(msg)
         } else {
             Err(ReadMessageError::QuotaReached)
@@ -72,7 +72,7 @@ impl ConnectedPeer {
 
     /// Enqueue message to be sent to the peer.
     pub fn enqueue_send_message(&mut self, message: PeerMessage) {
-        if let Ok(_) = self.quota.can_send(&message) {
+        if self.quota.can_send(&message) {
             self.send_message_queue.push_back(message);
         }
     }
