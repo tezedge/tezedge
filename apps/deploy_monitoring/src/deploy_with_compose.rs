@@ -117,10 +117,10 @@ pub async fn shutdown_and_update_sandbox(compose_file_path: &PathBuf, log: &Logg
 }
 
 pub fn cleanup_docker(cleanup_data: bool) {
-    cleanup_docker_system();
-    if cleanup_data {
-        cleanup_volumes();
-    }
+    //cleanup_docker_system();
+    //if cleanup_data {
+    //    cleanup_volumes();
+    //}
 }
 
 pub fn start_with_compose(
