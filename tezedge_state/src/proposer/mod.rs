@@ -187,7 +187,8 @@ where
             state: state.into(),
             events,
             manager,
-        }.init()
+        }
+        .init()
     }
 
     fn init(mut self) -> Self {
