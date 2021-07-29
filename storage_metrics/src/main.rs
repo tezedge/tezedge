@@ -217,7 +217,7 @@ fn main() {
                 //Print result after 60 secs
                 let connected_peers = proposer.state.connected_peers();
                 for connected_peer in connected_peers.iter() {
-                    println!("Get Blockheaders : Peer {}", connected_peer.address);
+                    println!("Get Blockheaders : Peer {}, Duration {} secs", connected_peer.address, timer.elapsed().as_secs() );
                     if let Some(latency) = connected_peer.latencies.get("BlockHeader") {
                         println!("Total Requests: {}", latency.request_count);
                         println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
