@@ -117,7 +117,7 @@ fn build_tezedge_state() -> TezedgeState {
             periodic_react_interval: Duration::from_millis(250),
             reset_quotas_interval: Duration::from_secs(5),
             peer_blacklist_duration: Duration::from_secs(30 * 60),
-            peer_timeout: Duration::from_millis(200),
+            peer_timeout: Duration::from_secs(8),
             pow_target: ProofOfWork::DEFAULT_TARGET,
         },
         node_identity.clone(),
