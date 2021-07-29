@@ -14,6 +14,11 @@ pub trait Effects {
         choice_len: usize,
     ) -> Vec<PeerListenerAddress>;
 
+    fn choose_potential_peers_for_advertise(
+        &mut self,
+        potential_peers: &HashSet<PeerListenerAddress>,
+    ) -> Vec<PeerListenerAddress>;
+
     fn choose_potential_peers_for_nack(
         &mut self,
         potential_peers: &HashSet<PeerListenerAddress>,
@@ -48,7 +53,7 @@ impl Effects for DefaultEffects {
         }
     }
 
-    fn choose_potential_peers_for_nack(
+    fn choose_potential_peers_for_advertise(
         &mut self,
         potential_peers: &HashSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
@@ -62,6 +67,13 @@ impl Effects for DefaultEffects {
                 .cloned()
                 .choose_multiple(&mut rng, len)
         }
+    }
+
+    fn choose_potential_peers_for_nack(
+        &mut self,
+        potential_peers: &HashSet<PeerListenerAddress>,
+    ) -> Vec<PeerListenerAddress> {
+        self.choose_potential_peers_for_advertise(potential_peers)
     }
 }
 
