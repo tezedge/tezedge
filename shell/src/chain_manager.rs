@@ -755,18 +755,6 @@ impl ChainManager {
                                     }
                                 }
                             }
-                            PeerMessage::Bootstrap => {
-                                // re-send command to network layer
-                                network_channel.tell(
-                                    Publish {
-                                        msg: NetworkChannelMsg::SendBootstrapPeers(
-                                            peer.peer_id.clone(),
-                                        ),
-                                        topic: NetworkChannelTopic::NetworkCommands.into(),
-                                    },
-                                    None,
-                                );
-                            }
                             ignored_message => {
                                 trace!(log, "Ignored message"; "message" => format!("{:?}", ignored_message))
                             }
