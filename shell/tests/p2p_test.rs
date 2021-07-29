@@ -25,7 +25,7 @@ pub mod common;
 
 pub const TRIVIAL_POW_TARGET: f64 = 0f64;
 pub const MINIMAL_POW_TARGET: f64 = 8f64;
-pub const DEFAULT_POW_TARGET: f64 = crypto::proof_of_work::ProofOfWork::DEFAULT_TARGET;
+pub const DEFAULT_POW_TARGET: f64 = 24.0;
 
 lazy_static! {
     pub static ref SHELL_COMPATIBILITY_VERSION: ShellCompatibilityVersion = ShellCompatibilityVersion::new("TEST_CHAIN".to_string(), vec![0], vec![0]);

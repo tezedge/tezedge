@@ -754,7 +754,7 @@ impl ChainManager {
                                                 }
                                                 poe => {
                                                     // other error just propagate
-                                                    return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), poe));
+                                                    return Err(format_err!("Operation from p2p ({}) was not added to mempool (prevalidation). Reason: {:?}", operation_hash.to_base58_check(), poe));
                                                 }
                                             }
                                         };
@@ -764,7 +764,7 @@ impl ChainManager {
                                             &operation_hash,
                                             &result,
                                         ) {
-                                            return Err(format_err!("Operation from p2p ({}) was not added to mempool. Reason: {:?}", operation_hash.to_base58_check(), result));
+                                            return Err(format_err!("Operation from p2p ({}) was not added to mempool (can_accept_operation_from_p2p). Reason: {:?}", operation_hash.to_base58_check(), result));
                                         }
 
                                         // store mempool operation
@@ -1636,13 +1636,19 @@ impl Receive<LogStats> for ChainManager {
             }
         };
 
+        let bootstrapped = match self.current_bootstrap_state.try_read() {
+            Ok(result) => result.is_bootstrapped().to_string(),
+            Err(_) => "-failed-to-collect-".to_string(),
+        };
+
         info!(log, "Head info";
             "local" => local,
             "local_level" => local_level,
             "local_fitness" => local_fitness,
             "remote" => remote,
             "remote_level" => remote_level,
-            "remote_fitness" => remote_fitness);
+            "remote_fitness" => remote_fitness,
+            "bootstrapped" => bootstrapped);
         info!(log, "Blocks, operations, messages info";
             "last_received_block_headers_count" => self.stats.get_and_clear_unseen_block_headers_count(),
             "last_received_block_operations_count" => self.stats.get_and_clear_unseen_block_operations_count(),

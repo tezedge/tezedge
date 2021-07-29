@@ -60,8 +60,6 @@ impl FromHex for ProofOfWork {
 }
 
 impl ProofOfWork {
-    pub const DEFAULT_TARGET: f64 = 24.0;
-
     pub fn generate(public_key: &PublicKey, target: f64) -> Self {
         let mut data = [0; CRYPTO_KEY_SIZE + POW_SIZE];
         data[..CRYPTO_KEY_SIZE].clone_from_slice(public_key.as_ref().as_ref());
@@ -185,7 +183,7 @@ mod tests {
         ",
         )
         .unwrap();
-        check_proof_of_work(data.as_ref(), ProofOfWork::DEFAULT_TARGET).unwrap();
+        check_proof_of_work(data.as_ref(), 24.0).unwrap();
     }
 
     #[test]

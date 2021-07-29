@@ -264,7 +264,7 @@ pub async fn inject_operation(
         .is_err()
     {
         return Err(format_err!(
-                    "Operation injection - error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
+                    "Operation injection error, operation_hash: {}, reason: mempool_prevalidator does not support message `MempoolOperationReceived`!",
                     &operation_hash_b58check_string,
                 ));
     }

@@ -162,8 +162,6 @@ pub fn spawn_server(
             let routes = routes.clone();
 
             async move {
-                let env = env.clone();
-                let routes = routes.clone();
                 Ok::<_, hyper::Error>(service_fn(move |req: Request<Body>| {
                     let env = env.clone();
                     let routes = routes.clone();
