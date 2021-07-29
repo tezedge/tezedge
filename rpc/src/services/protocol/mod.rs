@@ -450,6 +450,23 @@ pub(crate) fn get_context_constants_just_for_rpc(
     )?)
 }
 
+// We want error responses to be errors in `call_protocol_rpc_with_cache`
+// so that they don't get cached, we do so with this enum to separate
+// error responses from ok responses.
+pub enum RpcCallError {
+    Failure(failure::Error),
+    ErrorResponse(Arc<(u16, String)>),
+}
+
+impl<F> From<F> for RpcCallError
+where
+    F: Into<failure::Error>,
+{
+    fn from(error: F) -> Self {
+        Self::Failure(error.into())
+    }
+}
+
 // NB: handles multiple paths for RPC calls
 pub const TIMED_SIZED_CACHE_SIZE: usize = 500;
 pub const TIMED_SIZED_CACHE_TTL_IN_SECS: u64 = 60;
@@ -466,7 +483,7 @@ pub(crate) fn call_protocol_rpc_with_cache(
     block_hash: BlockHash,
     rpc_request: RpcRequest,
     env: &RpcServiceEnvironment,
-) -> Result<Arc<(u16, String)>, failure::Error> {
+) -> Result<Arc<(u16, String)>, RpcCallError> {
     let request =
         create_protocol_rpc_request(chain_param, chain_id, block_hash, rpc_request, &env)?;
 
@@ -478,10 +495,15 @@ pub(crate) fn call_protocol_rpc_with_cache(
         .api
         .call_protocol_rpc(request)?;
 
-    Ok(Arc::new((
-        response.status_code(),
-        response.body_json_string_or_empty(),
-    )))
+    let status_code = response.status_code();
+    let body = response.body_json_string_or_empty();
+
+    // We don't want to cache these
+    if status_code >= 400 {
+        Err(RpcCallError::ErrorResponse(Arc::new((status_code, body))))
+    } else {
+        Ok(Arc::new((status_code, body)))
+    }
 }
 
 pub(crate) fn call_protocol_rpc(
@@ -494,7 +516,12 @@ pub(crate) fn call_protocol_rpc(
     match rpc_request.meth {
         RpcMethod::GET => {
             //uses cache if the request is GET request
-            call_protocol_rpc_with_cache(chain_param, chain_id, block_hash, rpc_request, env)
+            match call_protocol_rpc_with_cache(chain_param, chain_id, block_hash, rpc_request, env)
+            {
+                Ok(response) => Ok(response),
+                Err(RpcCallError::ErrorResponse(response)) => Ok(response),
+                Err(RpcCallError::Failure(failure)) => Err(failure),
+            }
         }
         _ => {
             let request =

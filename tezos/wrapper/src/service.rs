@@ -153,7 +153,8 @@ pub fn process_protocol_commands<Proto: ProtocolApi, P: AsRef<Path>, SDC: Fn(&Lo
 ) -> Result<(), IpcError> {
     let ipc_client: IpcClient<ProtocolMessage, NodeMessage> = IpcClient::new(socket_path);
     let (mut rx, mut tx) = ipc_client.connect()?;
-    while let Ok(cmd) = rx.receive() {
+    loop {
+        let cmd = rx.receive()?;
         match cmd {
             ProtocolMessage::ApplyBlockCall(request) => {
                 let res = Proto::apply_block(request);

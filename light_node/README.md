@@ -56,8 +56,6 @@ it contains a valid database, the node will continue in the bootstrapping proces
 ```
 #Max number of threads used by database configuration. If not specified, then number of threads will be equal to number of CPU cores.
 --db-cfg-max-threads <NUM>
---db-context-cfg-max-threads <NUM>
---db-context-actions-cfg-max-threads <NUM>
 ```
 
 -----

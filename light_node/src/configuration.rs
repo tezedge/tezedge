@@ -289,20 +289,6 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("db-context-cfg-max-threads")
-            .long("db-context-cfg-max-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("db-context-actions-cfg-max-threads")
-            .long("db-context-actions-cfg-max-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("bootstrap-lookup-address")
             .long("bootstrap-lookup-address")
             .global(true)
@@ -1156,7 +1142,13 @@ impl Environment {
                     .value_of("maindb-backend")
                     .unwrap_or(Storage::DEFAULT_MAINDB)
                     .parse::<TezedgeDatabaseBackendConfiguration>()
-                    .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Expecting one value from {:?}, error: {:?}",
+                            TezedgeDatabaseBackendConfiguration::possible_values(),
+                            e
+                        )
+                    });
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
