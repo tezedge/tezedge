@@ -104,7 +104,7 @@ fn build_tezedge_state() -> TezedgeState {
 
     // println!("identity generated!");
     let mut tezedge_state = TezedgeState::new(
-        logger(slog::Level::Error),
+        logger(slog::Level::Trace),
         TezedgeConfig {
             port: SERVER_PORT,
             disable_mempool: true,
