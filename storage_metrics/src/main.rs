@@ -218,7 +218,7 @@ fn main() {
                 println!("Get Blockheaders : Peer {}", connected_peer.address);
                 if let Some(latency) = connected_peer.latencies.get("GetBlockHeaders") {
                     println!("Total Requests: {}", latency.request_count);
-                    println!("Total Requests Per Sec: {}", latency.request_count / 60);
+                    println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
                     println!("Avg Latency: {}", latency.avg_latency);
                     println!("Max Latency: {}", latency.max_latency);
                     println!("Min Latency: {}", latency.min_latency);
