@@ -302,7 +302,7 @@ fn main() {
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
                             received_first_response = true;
-
+                            println!("BlockHeader");
                             if let Some(block_header) = &block_header_with_hash {
                                 let msg = GetBlockHeadersMessage::new(vec![block_header.hash.clone()]);
                                 proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
