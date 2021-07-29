@@ -83,7 +83,7 @@ impl ConnectedPeer {
             match &msg {
                 PeerMessage::BlockHeader(_) => {
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
-                        let duration = block_header_latency.timer.elapsed().as_nanos();
+                        let duration = block_header_latency.timer.elapsed().as_micros();
                         block_header_latency.total_latencies += duration;
                         if block_header_latency.request_count > 0 {
                             block_header_latency.avg_latency = block_header_latency.total_latencies / block_header_latency.request_count;
