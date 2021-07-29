@@ -216,7 +216,7 @@ fn main() {
                 let connected_peers = proposer.state.connected_peers();
                 for connected_peer in connected_peers.iter() {
                     println!("Get Blockheaders : Peer {}", connected_peer.address);
-                    if let Some(latency) = connected_peer.latencies.get("GetBlockHeaders") {
+                    if let Some(latency) = connected_peer.latencies.get("BlockHeader") {
                         println!("Total Requests: {}", latency.request_count);
                         println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
                         println!("Avg Latency: {}", latency.avg_latency);
