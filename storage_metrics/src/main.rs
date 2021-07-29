@@ -205,28 +205,30 @@ fn main() {
     let mut received_first_response = false;
     let mut block_header_with_hash: Option<BlockHeaderWithHash> = None;
 
-    let mut timer = Instant::now();
+    let mut timer: Option<Instant> = None;
 
 
     loop {
+        if let Some(timer) = timer {
+            if timer.elapsed().as_secs() >= 60 {
 
-        if timer.elapsed().as_secs() >= 60 {
-
-            //Print result after 60 secs
-            let connected_peers  = proposer.state.connected_peers();
-            for connected_peer in connected_peers.iter() {
-                println!("Get Blockheaders : Peer {}", connected_peer.address);
-                if let Some(latency) = connected_peer.latencies.get("GetBlockHeaders") {
-                    println!("Total Requests: {}", latency.request_count);
-                    println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
-                    println!("Avg Latency: {}", latency.avg_latency);
-                    println!("Max Latency: {}", latency.max_latency);
-                    println!("Min Latency: {}", latency.min_latency);
+                //Print result after 60 secs
+                let connected_peers = proposer.state.connected_peers();
+                for connected_peer in connected_peers.iter() {
+                    println!("Get Blockheaders : Peer {}", connected_peer.address);
+                    if let Some(latency) = connected_peer.latencies.get("GetBlockHeaders") {
+                        println!("Total Requests: {}", latency.request_count);
+                        println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
+                        println!("Avg Latency: {}", latency.avg_latency);
+                        println!("Max Latency: {}", latency.max_latency);
+                        println!("Min Latency: {}", latency.min_latency);
+                    }
                 }
-            }
 
-            break;
+                break;
+            }
         }
+
 
         proposer.make_progress();
 
@@ -239,6 +241,9 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
+
+                    //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                    //proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
@@ -262,7 +267,7 @@ fn main() {
                                     let msg = GetBlockHeadersMessage::new(vec![block]);
                                     proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
                                     //Start timer after sending GetBlockHeaders
-                                    timer = Instant::now();
+                                    timer = Some(Instant::now());
                                 }
                             }
                             //Loop GetCurrent head
