@@ -37,8 +37,9 @@ use std::thread::yield_now;
 use std::process::exit;
 use tezos_messages::p2p::encoding::peer::PeerMessage::{GetCurrentHead, GetBlockHeaders};
 use std::ops::Add;
-use std::sync::atomic::{AtomicU64, Ordering, AtomicUsize};
+use std::sync::atomic::{AtomicU64, Ordering, AtomicUsize, AtomicBool};
 use std::str::FromStr;
+use std::option::Option::Some;
 
 const CHAIN_NAME: &'static str = "TEZOS_MAINNET";
 const LOCAL_PEER: &'static str = "0.0.0.0:9732";
@@ -202,9 +203,31 @@ fn main() {
     proposer.make_progress();
 
     let mut received_first_response = false;
+    let mut block_header_with_hash: Option<BlockHeaderWithHash> = None;
+
+    let mut timer = Instant::now();
 
 
     loop {
+
+        if timer.elapsed().as_secs() >= 60 {
+
+            //Print result after 60 secs
+            let connected_peers  = proposer.state.connected_peers();
+            for connected_peer in connected_peers.iter() {
+                println!("Get Blockheaders : Peer {}", connected_peer.address);
+                if let Some(latency) = connected_peer.latencies.get("GetBlockHeaders") {
+                    println!("Total Requests: {}", latency.request_count);
+                    println!("Total Requests Per Sec: {}", latency.request_count / 60);
+                    println!("Avg Latency: {}", latency.avg_latency);
+                    println!("Max Latency: {}", latency.max_latency);
+                    println!("Min Latency: {}", latency.min_latency);
+                }
+            }
+
+            break;
+        }
+
         proposer.make_progress();
 
         /*let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
@@ -216,11 +239,6 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-                    if !received_first_response {
-                        let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
-                        let msg = GetBlockHeadersMessage::new(vec![block]);
-                        proposer.send_message_to_peer_or_queue(Instant::now(), peer_address, PeerMessage::GetBlockHeaders(msg));
-                    }
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
@@ -234,6 +252,19 @@ fn main() {
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(message) => {}
                         PeerMessage::CurrentHead(message) => {
+                            if block_header_with_hash.is_none() {
+                                block_header_with_hash = Some(BlockHeaderWithHash::new(message.current_block_header().clone()).unwrap());
+                            }
+
+                            if !received_first_response {
+                                if let Some(block_header) = &block_header_with_hash {
+                                    let block: BlockHash = block_header.hash.clone();
+                                    let msg = GetBlockHeadersMessage::new(vec![block]);
+                                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
+                                    //Start timer after sending GetBlockHeaders
+                                    timer = Instant::now();
+                                }
+                            }
                             //Loop GetCurrent head
                             /*let req_latency = instance.elapsed().as_millis() as usize;
                             accumulator.fetch_add(req_latency, Ordering::Relaxed);
@@ -264,9 +295,11 @@ fn main() {
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
                             received_first_response = true;
-                            let block = BlockHash::from_str("BM9K1221LdFBoCxMCG7CVPn3RqqisWGnXipCape3iqV4jVhhbLw").unwrap();
-                            let msg = GetBlockHeadersMessage::new(vec![block]);
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
+
+                            if let Some(block_header) = &block_header_with_hash {
+                                let msg = GetBlockHeadersMessage::new(vec![block_header.hash.clone()]);
+                                proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
+                            }
                         }
                         PeerMessage::GetOperations(_) => {}
                         PeerMessage::Operation(_) => {}
@@ -280,8 +313,6 @@ fn main() {
                 _ => {}
             }
         }
-
-
     }
 }
 

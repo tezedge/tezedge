@@ -18,9 +18,11 @@ use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 #[derive(Clone,Debug)]
 pub struct Latency {
     timer : Instant,
-    request_count : u128,
-    total_latencies : u128,
-    avg_latency : u128
+    pub request_count : u128,
+    pub total_latencies : u128,
+    pub avg_latency : u128,
+    pub min_latency : u128,
+    pub max_latency : u128
 }
 
 #[derive(Getters, CopyGetters, Debug, Clone)]
@@ -58,7 +60,7 @@ pub struct ConnectedPeer {
 
     quota: ThrottleQuota,
 
-    latencies : HashMap<String, Latency>,
+    pub latencies : HashMap<String, Latency>,
 
 }
 
@@ -111,10 +113,17 @@ impl ConnectedPeer {
                 PeerMessage::GetBlockHeaders(_) => {}
                 PeerMessage::BlockHeader(_) => {
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
-                        let duration = block_header_latency.timer.elapsed();
-                        block_header_latency.total_latencies += duration.as_millis();
+                        let duration = block_header_latency.timer.elapsed().as_millis();
+                        block_header_latency.total_latencies += duration;
                         if block_header_latency.request_count > 0 {
                             block_header_latency.avg_latency = block_header_latency.total_latencies / block_header_latency.request_count;
+                        }
+                        if block_header_latency.max_latency == 0 || duration > block_header_latency.max_latency{
+                            block_header_latency.max_latency = duration;
+                        }
+
+                        if duration < block_header_latency.min_latency ||  block_header_latency.min_latency == 0{
+                            block_header_latency.min_latency = duration
                         }
 
                         println!("Message Received BlockHeader avg_latency:{:#?}",block_header_latency.avg_latency);
@@ -180,7 +189,9 @@ impl ConnectedPeer {
                                timer: Instant::now(),
                                request_count: 0,
                                total_latencies: 0,
-                               avg_latency: 0
+                               avg_latency: 0,
+                               min_latency: 0,
+                               max_latency: 0
                            });
                            latency.timer = Instant::now();
                            latency.request_count += 1;

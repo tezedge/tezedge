@@ -141,6 +141,10 @@ impl<E> TezedgeState<E> {
         &self.blacklisted_peers
     }
 
+    pub fn connected_peers(&self) -> &ConnectedPeers {
+        &self.connected_peers
+    }
+
     pub fn request_states(&self) -> &slab::Slab<PendingRequestState> {
         &self.requests
     }

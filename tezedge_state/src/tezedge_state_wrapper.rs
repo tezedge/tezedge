@@ -4,9 +4,7 @@ use std::time::Instant;
 use tla_sm::GetRequests;
 use tla_sm::{Acceptor, Proposal};
 
-use crate::{
-    DefaultEffects, PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats,
-};
+use crate::{DefaultEffects, PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats, ConnectedPeers};
 
 #[derive(Debug, Clone)]
 pub struct TezedgeStateWrapper<E = DefaultEffects>(TezedgeState<E>);
@@ -25,6 +23,11 @@ impl<E> TezedgeStateWrapper<E> {
     #[inline]
     pub fn assert_state(&self) {
         self.0.assert_state()
+    }
+
+    #[inline]
+    pub fn connected_peers(&self) -> &ConnectedPeers {
+        self.0.connected_peers()
     }
 
     #[inline]
