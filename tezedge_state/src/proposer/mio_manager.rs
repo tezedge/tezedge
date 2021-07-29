@@ -1,13 +1,13 @@
 use mio::net::{TcpListener, TcpStream};
 use slab::Slab;
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::{PeerAddress, PeerCrypto};
+use crate::PeerAddress;
 
 pub type MioEvent = mio::event::Event;
 pub type NetPeer = Peer<TcpStream>;
@@ -105,8 +105,10 @@ pub struct MioManager {
 
 impl MioManager {
     pub fn new(server_port: u16) -> Self {
-        let poll = mio::Poll::new().unwrap();
-        let waker = Arc::new(mio::Waker::new(poll.registry(), MIO_WAKE_TOKEN).unwrap());
+        let poll = mio::Poll::new().expect("failed to create mio::Poll");
+        let waker = Arc::new(
+            mio::Waker::new(poll.registry(), MIO_WAKE_TOKEN).expect("failed to create mio::Waker"),
+        );
         Self {
             server_port,
             poll,
@@ -136,7 +138,7 @@ impl Manager for MioManager {
             self.poll
                 .registry()
                 .register(&mut server, MIO_SERVER_TOKEN, mio::Interest::READABLE)
-                .unwrap();
+                .expect("failed to register listener event source to mio::Registry");
 
             self.server = Some(server);
         }
@@ -146,7 +148,7 @@ impl Manager for MioManager {
         drop(self.server.take());
     }
 
-    fn accept_connection(&mut self, event: &Self::NetworkEvent) -> Option<&mut Peer<Self::Stream>> {
+    fn accept_connection(&mut self, _: &Self::NetworkEvent) -> Option<&mut Peer<Self::Stream>> {
         let server = &mut self.server;
         let poll = &mut self.poll;
         let peers = &mut self.peers;

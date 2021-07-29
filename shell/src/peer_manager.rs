@@ -433,7 +433,7 @@ fn run(
         // TODO: preferably bootstrap message should be sent by state
         // machine itself, when we will lack potential peers.
         for peer in send_bootstrap_messages.drain(..) {
-            proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::Bootstrap);
+            proposer.enqueue_send_message_to_peer(Instant::now(), peer, PeerMessage::Bootstrap);
         }
 
         // Read and handle messages incoming from actor system or `PeerManager`.
@@ -447,7 +447,7 @@ fn run(
                         proposer.blacklist_peer(Instant::now(), peer_id.address);
                     }
                     NetworkChannelMsg::SendMessage(peer_id, message) => {
-                        proposer.send_message_to_peer_or_queue(
+                        proposer.enqueue_send_message_to_peer(
                             Instant::now(),
                             peer_id.address,
                             message.message.clone(),
