@@ -20,6 +20,7 @@ pub mod mio_manager;
 
 const NOTIFICATIONS_OPTIMAL_CAPACITY: usize = 16;
 
+/// Notification for state machine events.
 #[derive(Debug, Clone)]
 pub enum Notification {
     PeerDisconnected {
@@ -126,6 +127,9 @@ impl<S: Debug> Debug for Peer<S> {
     }
 }
 
+/// Manager is an abstraction for [mio] layer.
+///
+/// Right now it's simply responsible to manage p2p connections and
 pub trait Manager {
     type Stream: Read + Write;
     type NetworkEvent: NetworkEvent;
@@ -136,6 +140,12 @@ pub trait Manager {
 
     fn accept_connection(&mut self, event: &Self::NetworkEvent) -> Option<&mut Peer<Self::Stream>>;
 
+    /// Blocks until events are available or until timeout passes.
+    ///
+    /// New events fill the passed `events_container`, removing all
+    /// previous events from the container.
+    ///
+    /// If timeout passes, [Event::Tick] will be added to `events_container`.
     fn wait_for_events(&mut self, events_container: &mut Self::Events, timeout: Option<Duration>);
 
     fn get_peer(&mut self, address: &PeerAddress) -> Option<&mut Peer<Self::Stream>>;
@@ -157,6 +167,8 @@ pub struct TezedgeProposerConfig {
     pub events_limit: usize,
 }
 
+/// TezedgeProposer wraps around [TezedgeState] and it is what connects
+/// state machine to the outside world.
 #[derive(Clone)]
 pub struct TezedgeProposer<Es, Efs, M> {
     config: TezedgeProposerConfig,
@@ -273,6 +285,8 @@ where
             match manager.get_peer_for_event_mut(&event) {
                 Some(peer) => Self::handle_readiness_event(event, state, peer),
                 None => {
+                    // Should be impossible! If we receive an event for
+                    // the peer, that peer must exist in manager.
                     // TODO: write error log.
                     return;
                 }
@@ -310,6 +324,8 @@ where
         }
     }
 
+    /// Grabs the requests from state machine, puts them in temporary
+    /// container `requests`, then drains it and executes each request.
     fn execute_requests(
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
@@ -409,6 +425,12 @@ where
             .wait_for_events(&mut self.events, wait_for_events_timeout)
     }
 
+    /// Main driving function for [TezedgeProposer].
+    ///
+    /// It asks [Manager] to wait for events, handles them as they become
+    /// available and executes requests incoming from the [TezedgeState].
+    ///
+    /// Needs to be called continously in an infinite loop.
     pub fn make_progress(&mut self)
     where
         for<'a> &'a Es: IntoIterator<Item = EventRef<'a, NetE>>,
@@ -490,7 +512,8 @@ where
     // is handled in TezedgeState.
     // ---------------------------------------------------------------
 
-    pub fn send_message_to_peer_or_queue(
+    /// Enqueue message to be sent to the peer.
+    pub fn enqueue_send_message_to_peer(
         &mut self,
         at: Instant,
         addr: PeerAddress,
@@ -515,6 +538,7 @@ where
         }
     }
 
+    /// Send and flush message and block until entire message is sent.
     #[cfg(feature = "blocking")]
     pub fn blocking_send(
         &mut self,
@@ -556,6 +580,10 @@ where
         Ok(())
     }
 
+    /// Drain notifications.
+    ///
+    /// Must be called! Without draining this, notifications queue will
+    /// grow infinitely large.
     pub fn take_notifications<'a>(&'a mut self) -> std::vec::Drain<'a, Notification> {
         self.notifications.drain(..)
     }

@@ -193,7 +193,7 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-                    proposer.send_message_to_peer_or_queue(
+                    proposer.enqueue_send_message_to_peer(
                         Instant::now(),
                         peer_address,
                         PeerMessage::Bootstrap,
