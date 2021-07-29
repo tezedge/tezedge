@@ -140,7 +140,7 @@ fn build_tezedge_state() -> TezedgeState {
             .into_iter(),
     );
 
-    println!("Peers {}", peer_addresses);
+    println!("Peers {:#?}", peer_addresses);
 
     let _ = tezedge_state.accept(ExtendPotentialPeersProposal {
         at: Instant::now(),
