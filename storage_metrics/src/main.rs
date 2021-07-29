@@ -241,7 +241,7 @@ fn main() {
             match n {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
-
+                    println!("HandshakeSuccessful : {}", peer_address);
                     //let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
                     //proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));
                 }
@@ -314,7 +314,9 @@ fn main() {
                         PeerMessage::OperationsForBlocks(_) => {}
                     }
                 }
-                Notification::PeerDisconnected { peer } => {}
+                Notification::PeerDisconnected { peer } => {
+                    println!("PeerDisconnected : {}", peer);
+                }
                 _ => {}
             }
         }
