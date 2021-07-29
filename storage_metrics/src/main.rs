@@ -221,9 +221,9 @@ fn main() {
                     if let Some(latency) = connected_peer.latencies.get("BlockHeader") {
                         println!("Total Requests: {}", latency.request_count);
                         println!("Total Requests Per Sec: {}", latency.request_count / timer.elapsed().as_secs() as u128);
-                        println!("Avg Latency: {} μs ~ {} ms", latency.avg_latency, Duration::from_nanos(latency.avg_latency as u64).as_millis());
-                        println!("Max Latency: {} μs ~ {} ms", latency.max_latency, Duration::from_nanos(latency.max_latency as u64).as_millis());
-                        println!("Min Latency: {} μs ~ {} ms", latency.min_latency, Duration::from_nanos(latency.min_latency as u64).as_millis());
+                        println!("Avg Latency: {} μs ~ {} ms", latency.avg_latency, Duration::from_micros(latency.avg_latency as u64).as_millis());
+                        println!("Max Latency: {} μs ~ {} ms", latency.max_latency, Duration::from_micros(latency.max_latency as u64).as_millis());
+                        println!("Min Latency: {} μs ~ {} ms", latency.min_latency, Duration::from_micros(latency.min_latency as u64).as_millis());
                     }
                 }
 
