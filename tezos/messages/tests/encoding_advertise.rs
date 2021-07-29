@@ -32,7 +32,7 @@ fn can_format_ip_address() {
             375,
         ),
     ];
-    let message = AdvertiseMessage::new(&addresses);
+    let message = AdvertiseMessage::new(addresses);
     assert_eq!("123.123.124.21:9876", &message.id()[0]);
     assert_eq!("[fe80:e828:209d:20e:c0ae::]:375", &message.id()[1]);
 }
@@ -46,7 +46,7 @@ fn can_serialize_max_advertise() {
     let addresses = std::iter::repeat(addr)
         .take(ADVERTISE_ID_LIST_MAX_LENGTH)
         .collect::<Vec<_>>();
-    let message = AdvertiseMessage::new(&addresses);
+    let message = AdvertiseMessage::new(addresses);
     let res = message.as_bytes();
     assert!(res.is_ok());
     println!("{}", hex::encode(res.unwrap()));
@@ -61,7 +61,7 @@ fn can_t_serialize_max_plus_advertise() {
     let addresses = std::iter::repeat(addr)
         .take(ADVERTISE_ID_LIST_MAX_LENGTH + 1)
         .collect::<Vec<_>>();
-    let message = AdvertiseMessage::new(&addresses);
+    let message = AdvertiseMessage::new(addresses);
     let res = message.as_bytes();
     assert!(res.is_err());
 }

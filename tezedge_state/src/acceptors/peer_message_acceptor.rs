@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use tezos_messages::p2p::encoding::prelude::PeerMessage;
+use tezos_messages::p2p::encoding::prelude::{AdvertiseMessage, PeerMessage};
 use tla_sm::Acceptor;
 
 use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
@@ -18,6 +18,15 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             // handle connected peer messages.
             match proposal.message.message() {
+                PeerMessage::Bootstrap => {
+                    let msg = AdvertiseMessage::new(
+                        self.effects
+                            .choose_potential_peers_for_advertise(&self.potential_peers)
+                            .into_iter()
+                            .map(|x| x.into()),
+                    );
+                    peer.enqueue_send_message(msg.into());
+                }
                 PeerMessage::Advertise(message) => {
                     self.accept(ExtendPotentialPeersProposal {
                         at: proposal.at,
