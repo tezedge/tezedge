@@ -60,7 +60,7 @@ impl FromHex for ProofOfWork {
 }
 
 impl ProofOfWork {
-    pub const DEFAULT_TARGET: f64 = 24.0;
+    pub const DEFAULT_TARGET: f64 = 26.0;
 
     pub fn generate(public_key: &PublicKey, target: f64) -> Self {
         let mut data = [0; CRYPTO_KEY_SIZE + POW_SIZE];
