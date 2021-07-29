@@ -36,7 +36,6 @@ pub enum NetworkChannelMsg {
     /// Commands (dedicated to peer_manager)
     /// TODO: refactor/extract them directly to peer_manager outside of the network_channel
     BlacklistPeer(Arc<PeerId>, String),
-    SendBootstrapPeers(Arc<PeerId>),
     SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
 }
 
