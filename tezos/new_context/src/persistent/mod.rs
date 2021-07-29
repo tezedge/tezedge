@@ -9,8 +9,9 @@ use crypto::{
 };
 use failure::Fail;
 
-pub use codec::{BincodeEncoded, Codec, Decoder, Encoder, SchemaError};
+pub use codec::{Codec, Decoder, Encoder, SchemaError};
 pub use database::DBError;
+use tezos_timing::RepositoryMemoryUsage;
 
 use crate::{
     kv_store::{HashId, VacantEntryHash},
@@ -71,6 +72,8 @@ pub trait KeyValueStoreBackend {
     /// Manually clear the entries, this should be a no-operation if the implementation
     /// has its own garbage collection
     fn clear_entries(&mut self) -> Result<(), DBError>;
+    /// Memory usage
+    fn memory_usage(&self) -> RepositoryMemoryUsage;
 }
 
 /// Possible errors for storage

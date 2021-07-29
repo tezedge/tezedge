@@ -192,6 +192,23 @@ impl ProtocolRunner for ExecutableProtocolRunner {
     fn is_running(process: &mut Self::Subprocess) -> bool {
         matches!(process.try_wait(), Ok(None))
     }
+
+    fn log_exit_status(process: &mut Self::Subprocess, log: &Logger) {
+        match process.try_wait() {
+            Ok(None) => (),
+            Ok(Some(status)) => {
+                if status.success() {
+                    info!(log, "protocol-runner was closed normally");
+                } else {
+                    warn!(log, "protocol-runner exited with status code: {}", status);
+                }
+            }
+            Err(err) => warn!(
+                log,
+                "failed to obtain protocol-runner exit status code: {:?}", err
+            ),
+        }
+    }
 }
 
 pub trait ProtocolRunner: Clone + Send + Sync {
@@ -217,4 +234,7 @@ pub trait ProtocolRunner: Clone + Send + Sync {
 
     /// Checks if process is running
     fn is_running(process: &mut Self::Subprocess) -> bool;
+
+    /// Logs exit status
+    fn log_exit_status(process: &mut Self::Subprocess, log: &Logger);
 }

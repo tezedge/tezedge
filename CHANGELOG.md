@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Nothing.
 
+## [1.6.10] - 2021-07-30
+
+### Changed
+
+- New irmin context version
+
 ## [1.6.9] - 2021-07-22
 
 ### Changed
@@ -485,7 +491,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ability to connect and bootstrap data from Tezos Babylonnet.
 - Protocol FFI integration.
 
-[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.9...HEAD
+[Unreleased]: https://github.com/tezedge/tezedge/compare/v1.6.10...HEAD
+[1.6.10]: https://github.com/tezedge/tezedge/releases/v1.6.10
 [1.6.9]: https://github.com/tezedge/tezedge/releases/v1.6.9
 [1.6.8]: https://github.com/tezedge/tezedge/releases/v1.6.8
 [1.6.7]: https://github.com/tezedge/tezedge/releases/v1.6.7

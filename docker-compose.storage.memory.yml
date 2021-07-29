@@ -3,24 +3,33 @@ version: "3"
 services:
 
   tezedge-with-memory-storage:
-    image: tezedge/tezedge:v1.6.9
+    image: tezedge/tezedge:v1.6.10
+    pid: host
+    network_mode: host
     command: [ "--network=mainnet", "--p2p-port=5554", "--rpc-port=5555", "--websocket-address=0.0.0.0:5556", "--peer-thresh-low", "30", "--peer-thresh-high", "45", "--tezos-context-storage=tezedge", "--context-stats-db-path", "context-stats-db" ]
     hostname: tezedge-with-memory-storage
-    ports:
-      - "5554:5554"
-      - "5555:5555"
-      - "5556:5556"
-    networks:
-      - default
     tty: true
+    volumes:
+      - "tezedge-with-memory-storage-data:/tmp/tezedge"
 
   tezedge-explorer-with-memory-storage:
     image: tezedge/tezedge-explorer:v1.6.7
     hostname: tezedge-explorer-with-memory-storage
     environment:
-      - API=[{"id":"tezedge-with-memory-storage","name":"tezedge-with-memory-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5555","p2p_port":5554,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:5556"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"}]}]
+      - API=[{"id":"tezedge-with-memory-storage","name":"tezedge-with-memory-storage","http":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5555","p2p_port":5554,"features":[{"name":"ws","url":"ws://${NODE_HOSTNAME_OR_IP:-localhost}:5556"},{"name":"monitoring"},{"name":"resources/storage"},{"name":"mempool"},{"name":"storage"},{"name":"resources/system","monitoringUrl":"http://${NODE_HOSTNAME_OR_IP:-localhost}:5557/resources/tezedge"}]}]
     ports:
       - "8282:80"
-    networks:
-      - default
     tty: true
+
+  monitoring:
+    privileged: true
+    network_mode: host
+    image: tezedge/node-monitoring:latest
+    pid: "host"
+    command: ["--tezedge-nodes", "tezedge:5555:/tmp/tezedge", "--wait-for-nodes", "--rpc-port", "5557"]
+    volumes:
+      - "tezedge-with-memory-storage-data:/tmp/tezedge"
+
+volumes:
+  tezedge-with-memory-storage-data:
+    external: false

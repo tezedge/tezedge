@@ -5433,6 +5433,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
@@ -5455,6 +5456,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip1.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip2.txt | awk '{print $1 ","}')$(cat $${CACHE_DATA_PATH}/octez_ip3.txt)
     - echo "peers - $PEERS"
@@ -5637,6 +5639,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
   commands:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/protocol-runner $${CACHE_DATA_PATH}
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
@@ -5659,6 +5662,7 @@ steps:
       path: /data/cache
   environment:
     SODIUM_USE_PKG_CONFIG: 1
+    THROTTLING_QUOTA_DISABLE: true
   commands:
     - PEERS=$(cat $${CACHE_DATA_PATH}/octez_ip.txt)
     - echo "peers - $PEERS"
@@ -5835,6 +5839,8 @@ steps:
   - name: tezedge-new-node
     image: tezedge/tezedge-ci-builder
     user: root
+    environment:
+      THROTTLING_QUOTA_DISABLE: true
     volumes:
       - name: identities
         path: /identities
@@ -5883,6 +5889,8 @@ steps:
   - name: tezedge-old-node
     image: tezedge/tezedge-ci-builder
     user: root
+    environment:
+      THROTTLING_QUOTA_DISABLE: true
     volumes:
       - name: identities
         path: /identities
@@ -6018,6 +6026,19 @@ steps:
     password:
       from_secret: docker_hub_pswd
 
+- name: build-monitoring-image
+  image: plugins/docker
+  settings:
+    repo: tezedge/node-monitoring
+    tag: latest
+    dockerfile: apps/node_monitoring/Dockerfile
+    build_args:
+      - SOURCE_BRANCH=develop
+    username:
+      from_secret: docker_hub_username
+    password:
+      from_secret: docker_hub_pswd
+
 image_pull_secrets:
   - docker_pull_secret
 
@@ -6103,6 +6124,21 @@ steps:
       dockerfile: docker/distroless/Dockerfile
       build_args:
         - SOURCE_BRANCH=${DRONE_TAG}
+      username:
+        from_secret: docker_hub_username
+      password:
+        from_secret: docker_hub_pswd
+
+  - name: build-monitoring-image
+    image: plugins/docker
+    settings:
+      repo: tezedge/node-monitoring
+      tags:
+        - ${DRONE_TAG}
+        - latest-release
+      dockerfile: apps/node_monitoring/Dockerfile
+      build_args:
+        - SOURCE_BRANCH=develop
       username:
         from_secret: docker_hub_username
       password:

@@ -121,9 +121,11 @@ pub struct Ffi {
 }
 
 impl Ffi {
+    // These are used for parsing the command-line arguments, hence the
+    // "-" suffix for the non-empty versions.
     const TEZOS_READONLY_API_POOL_DISCRIMINATOR: &'static str = "";
-    const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap";
-    const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap";
+    const TEZOS_READONLY_PREVALIDATION_API_POOL_DISCRIMINATOR: &'static str = "trpap-";
+    const TEZOS_WITHOUT_CONTEXT_API_POOL_DISCRIMINATOR: &'static str = "twcap-";
 
     pub const DEFAULT_ZCASH_PARAM_SAPLING_SPEND_FILE_PATH: &'static str =
         "tezos/sys/lib_tezos/artifacts/sapling-spend.params";
@@ -146,6 +148,7 @@ pub struct Environment {
 
     pub enable_testchain: bool,
     pub tokio_threads: usize,
+    pub riker_threads: usize,
 
     /// This flag is used, just for to stop node immediatelly after generate identity,
     /// to prevent and initialize actors and create data (except identity)
@@ -171,6 +174,7 @@ impl slog::Value for Environment {
             &format_args!("{:?}", self.enable_testchain),
         )?;
         serializer.emit_arguments("tokio_threads", &format_args!("{:?}", self.tokio_threads))?;
+        serializer.emit_arguments("riker_threads", &format_args!("{:?}", self.riker_threads))?;
         serializer.emit_arguments(
             "validate_cfg_identity_and_stop",
             &format_args!("{:?}", self.validate_cfg_identity_and_stop),
@@ -280,20 +284,6 @@ pub fn tezos_app() -> App<'static, 'static> {
                        In case it starts with ./ or ../, it is relative path to the current dir, otherwise to the --tezos-data-dir"))
         .arg(Arg::with_name("db-cfg-max-threads")
             .long("db-cfg-max-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("db-context-cfg-max-threads")
-            .long("db-context-cfg-max-threads")
-            .global(true)
-            .takes_value(true)
-            .value_name("NUM")
-            .help("Max number of threads used by database configuration. If not specified, then number of threads equal to CPU cores.")
-            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
-        .arg(Arg::with_name("db-context-actions-cfg-max-threads")
-            .long("db-context-actions-cfg-max-threads")
             .global(true)
             .takes_value(true)
             .value_name("NUM")
@@ -583,6 +573,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("riker-threads")
+            .long("riker-threads")
+            .global(true)
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of threads spawned by a riker (actor system) thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("maindb-backend")
             .long("maindb-backend")
             .takes_value(true)
@@ -681,7 +678,7 @@ fn pool_cfg(
         /* 0 means that connections are created on-demand, because of AT_LEAST_ONE_WRITE_PROTOCOL_CONTEXT_WAS_SUCCESS_AT_FIRST_LOCK */
         max_connections: args
             .value_of(&format!(
-                "ffi-{}-pool-max-connections",
+                "ffi-{}pool-max-connections",
                 pool_name_discriminator
             ))
             .unwrap_or("10")
@@ -689,7 +686,7 @@ fn pool_cfg(
             .expect("Provided value cannot be converted to number"),
         connection_timeout: args
             .value_of(&format!(
-                "ffi-{}-pool-connection-timeout-in-secs",
+                "ffi-{}pool-connection-timeout-in-secs",
                 pool_name_discriminator
             ))
             .unwrap_or("60")
@@ -698,7 +695,7 @@ fn pool_cfg(
             .expect("Provided value cannot be converted to number"),
         max_lifetime: args
             .value_of(&format!(
-                "ffi-{}-pool-max-lifetime-in-secs",
+                "ffi-{}pool-max-lifetime-in-secs",
                 pool_name_discriminator
             ))
             .unwrap_or("21600")
@@ -707,7 +704,7 @@ fn pool_cfg(
             .expect("Provided value cannot be converted to number"),
         idle_timeout: args
             .value_of(&format!(
-                "ffi-{}-pool-idle-timeout-in-secs",
+                "ffi-{}pool-idle-timeout-in-secs",
                 pool_name_discriminator
             ))
             .unwrap_or("1800")
@@ -1145,7 +1142,13 @@ impl Environment {
                     .value_of("maindb-backend")
                     .unwrap_or(Storage::DEFAULT_MAINDB)
                     .parse::<TezedgeDatabaseBackendConfiguration>()
-                    .unwrap_or(TezedgeDatabaseBackendConfiguration::Sled);
+                    .unwrap_or_else(|e| {
+                        panic!(
+                            "Expecting one value from {:?}, error: {:?}",
+                            TezedgeDatabaseBackendConfiguration::possible_values(),
+                            e
+                        )
+                    });
                 let context_kv_store = args
                     .value_of("context-kv-store")
                     .unwrap_or(Storage::DEFAULT_CONTEXT_KV_STORE_BACKEND)
@@ -1296,6 +1299,11 @@ impl Environment {
             replay,
             tokio_threads: args
                 .value_of("tokio-threads")
+                .unwrap_or("0")
+                .parse::<usize>()
+                .expect("Provided value cannot be converted to number"),
+            riker_threads: args
+                .value_of("riker-threads")
                 .unwrap_or("0")
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),

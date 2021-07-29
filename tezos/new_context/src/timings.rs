@@ -6,7 +6,13 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crypto::hash::{BlockHash, ContextHash, OperationHash};
 use ocaml_interop::*;
 use tezos_api::ocaml_conv::{OCamlBlockHash, OCamlContextHash, OCamlOperationHash};
-use tezos_timing::{Action, ActionKind, TimingMessage, TIMING_CHANNEL};
+use tezos_timing::{Action, ActionKind, BlockMemoryUsage, TimingMessage, TIMING_CHANNEL};
+
+pub fn send_statistics(stats: BlockMemoryUsage) {
+    if let Err(e) = TIMING_CHANNEL.send(TimingMessage::BlockMemoryUsage { stats }) {
+        eprintln!("send_statistics error = {:?}", e);
+    }
+}
 
 pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>) {
     let instant = Instant::now();
@@ -15,7 +21,7 @@ pub fn set_block(rt: &OCamlRuntime, block_hash: OCamlRef<Option<OCamlBlockHash>>
     let timestamp = if block_hash.is_some() {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::new(0, 0));
+            .unwrap_or_else(|_| Duration::new(0, 0));
         Some(timestamp)
     } else {
         None
