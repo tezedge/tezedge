@@ -17,7 +17,7 @@ merge = "0.1"
 nix = "0.19"
 page_size = "0.4.1"
 rand = "0.7.3"
-regex = "1.4"
+regex = "1.5"
 riker = "0.4"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 serde = "1.0"

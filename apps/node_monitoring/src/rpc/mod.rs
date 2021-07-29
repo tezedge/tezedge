@@ -4,15 +4,17 @@
 use slog::Logger;
 use tokio::task::JoinHandle;
 
-use crate::monitors::resource::ResourceUtilizationStorageMap;
+use crate::monitors::resource::ResourceUtilizationStorage;
 
 pub mod filters;
 pub mod handlers;
 
+pub const MEASUREMENTS_MAX_CAPACITY: usize = 40320;
+
 pub fn spawn_rpc_server(
     rpc_port: u16,
     log: Logger,
-    resource_utilization: ResourceUtilizationStorageMap,
+    resource_utilization: Vec<ResourceUtilizationStorage>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let api = filters::filters(log.clone(), resource_utilization.clone());
