@@ -148,6 +148,7 @@ pub struct Environment {
 
     pub enable_testchain: bool,
     pub tokio_threads: usize,
+    pub riker_threads: usize,
 
     /// This flag is used, just for to stop node immediatelly after generate identity,
     /// to prevent and initialize actors and create data (except identity)
@@ -173,6 +174,7 @@ impl slog::Value for Environment {
             &format_args!("{:?}", self.enable_testchain),
         )?;
         serializer.emit_arguments("tokio_threads", &format_args!("{:?}", self.tokio_threads))?;
+        serializer.emit_arguments("riker_threads", &format_args!("{:?}", self.riker_threads))?;
         serializer.emit_arguments(
             "validate_cfg_identity_and_stop",
             &format_args!("{:?}", self.validate_cfg_identity_and_stop),
@@ -584,6 +586,13 @@ pub fn tezos_app() -> App<'static, 'static> {
             .takes_value(true)
             .value_name("NUM")
             .help("Number of threads spawned by a tokio thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
+            .validator(parse_validator_fn!(usize, "Value must be a valid number")))
+        .arg(Arg::with_name("riker-threads")
+            .long("riker-threads")
+            .global(true)
+            .takes_value(true)
+            .value_name("NUM")
+            .help("Number of threads spawned by a riker (actor system) thread pool. If value is zero, then number of threads equal to CPU cores is spawned.")
             .validator(parse_validator_fn!(usize, "Value must be a valid number")))
         .arg(Arg::with_name("maindb-backend")
             .long("maindb-backend")
@@ -1298,6 +1307,11 @@ impl Environment {
             replay,
             tokio_threads: args
                 .value_of("tokio-threads")
+                .unwrap_or("0")
+                .parse::<usize>()
+                .expect("Provided value cannot be converted to number"),
+            riker_threads: args
+                .value_of("riker-threads")
                 .unwrap_or("0")
                 .parse::<usize>()
                 .expect("Provided value cannot be converted to number"),
