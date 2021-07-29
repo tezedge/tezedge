@@ -2,7 +2,7 @@ version: "3"
 
 services:
   tezedge-memprof:
-    image: tezedge/tezedge-memprof:v1.6.7
+    image: tezedge/tezedge-memprof:v1.6.9
     privileged: true
     environment:
       - TEZEDGE_NODE_NAME=deploy-monitoring-tezedge-node
@@ -14,7 +14,7 @@ services:
       - "17832:17832"
 
   tezedge-debugger:
-    image: tezedge/tezedge-debugger:v1.6.7
+    image: tezedge/tezedge-debugger:v1.6.9
     privileged: true
     environment:
       - RUST_BACKTRACE=1
