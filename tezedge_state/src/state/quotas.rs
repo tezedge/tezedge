@@ -55,7 +55,7 @@ lazy_static::lazy_static! {
             (10, 10), // Deactivate
             (10, 10), // GetCurrentHead
             (500, 500), // CurrentHead
-            (5000, 5000), // GetBlockHeaders
+            (100000, 100000), // GetBlockHeaders
             (5000, 5000), // BlockHeader
             (500, 5000), // GetOperations
             (20000, 10000), // Operation
