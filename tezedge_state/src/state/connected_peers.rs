@@ -81,36 +81,6 @@ impl ConnectedPeer {
         if self.quota.can_receive(&msg).is_ok() {
 
             match &msg {
-                PeerMessage::Disconnect => {
-                    println!("Message Received Disconnect");
-                }
-                PeerMessage::Advertise(_) => {
-                    println!("Message Received Advertise");
-                }
-                PeerMessage::SwapRequest(_) => {
-                    println!("Message Received SwapRequest");
-                }
-                PeerMessage::SwapAck(_) => {
-                    println!("Message Received SwapAck");
-                }
-                PeerMessage::Bootstrap => {
-                    println!("Message Received Bootstrap");
-                }
-                PeerMessage::GetCurrentBranch(_) => {}
-                PeerMessage::CurrentBranch(_) => {
-                    println!("Message Received CurrentBranch");
-                }
-                PeerMessage::Deactivate(_) => {
-                    println!("Message Received Deactivate");
-                }
-                PeerMessage::GetCurrentHead(_) => {}
-                PeerMessage::CurrentHead(_) => {
-                    println!("Message Received CurrentHead");
-                    /*if self.current_head_req_count > 0 {
-                        println!("Message Received CurrentHead Avg Request Latency {} ms", self.total_latency_current_head_request / self.current_head_req_count);
-                    }*/
-                }
-                PeerMessage::GetBlockHeaders(_) => {}
                 PeerMessage::BlockHeader(_) => {
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
                         let duration = block_header_latency.timer.elapsed().as_millis();
@@ -125,25 +95,9 @@ impl ConnectedPeer {
                         if duration < block_header_latency.min_latency ||  block_header_latency.min_latency == 0{
                             block_header_latency.min_latency = duration
                         }
-
-                        println!("Message Received BlockHeader avg_latency:{:#?}",block_header_latency.avg_latency);
-                    }else {
-                        println!("Message Received BlockHeader");
                     }
-
                 }
-                PeerMessage::GetOperations(_) => {}
-                PeerMessage::Operation(_) => {
-                    println!("Message Received Operation");
-                }
-                PeerMessage::GetProtocols(_) => {}
-                PeerMessage::Protocol(_) => {
-                    println!("Message Received Protocol");
-                }
-                PeerMessage::GetOperationsForBlocks(_) => {}
-                PeerMessage::OperationsForBlocks(_) => {
-                    println!("Message Received OperationsForBlocks");
-                }
+                _ => {}
             };
 
 
@@ -168,22 +122,6 @@ impl ConnectedPeer {
             match &self.cur_send_message_raw {
                 Some(message) => {
                    match message {
-                       PeerMessage::Disconnect => {
-
-                       }
-                       PeerMessage::Advertise(_) => {}
-                       PeerMessage::SwapRequest(_) => {}
-                       PeerMessage::SwapAck(_) => {}
-                       PeerMessage::Bootstrap => {}
-                       PeerMessage::GetCurrentBranch(_) => {
-                           println!("Message Sent GetCurrentBranch");
-                       }
-                       PeerMessage::CurrentBranch(_) => {}
-                       PeerMessage::Deactivate(_) => {}
-                       PeerMessage::GetCurrentHead(_) => {
-                           println!("Message Sent GetCurrentHead");
-                       }
-                       PeerMessage::CurrentHead(_) => {}
                        PeerMessage::GetBlockHeaders(_) => {
                            let latency = self.latencies.entry("BlockHeader".to_string()).or_insert(Latency{
                                timer: Instant::now(),
@@ -195,21 +133,8 @@ impl ConnectedPeer {
                            });
                            latency.timer = Instant::now();
                            latency.request_count += 1;
-                           println!("Message Sent GetBlockHeaders");
                        }
-                       PeerMessage::BlockHeader(_) => {}
-                       PeerMessage::GetOperations(_) => {
-                           println!("Message Sent GetOperations");
-                       }
-                       PeerMessage::Operation(_) => {}
-                       PeerMessage::GetProtocols(_) => {
-                           println!("Message Sent GetProtocols");
-                       }
-                       PeerMessage::Protocol(_) => {}
-                       PeerMessage::GetOperationsForBlocks(_) => {
-                           println!("Message Sent GetOperationsForBlocks");
-                       }
-                       PeerMessage::OperationsForBlocks(_) => {}
+                       _ => {}
                    }
                 }
                 None => {}
