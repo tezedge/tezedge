@@ -39,15 +39,17 @@ impl BlacklistedPeers {
         self.ips.insert(ip, peer);
     }
 
+    /// Check if ip address is blacklisted.
     pub fn is_address_blacklisted(&self, addr: &PeerAddress) -> bool {
         self.ips.contains_key(&addr.ip())
     }
 
-    pub fn is_identity_blacklisted(&self, identity: CryptoboxPublicKeyHash) -> bool {
+    pub fn is_identity_blacklisted(&self, _identity: CryptoboxPublicKeyHash) -> bool {
         // TODO
         false
     }
 
+    /// Whitelist and return expired blacklisted peers.
     pub(crate) fn take_expired_blacklisted_peers(
         &mut self,
         at: Instant,

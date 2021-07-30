@@ -1,12 +1,6 @@
-use std::io::{self, Write};
+use std::io::Write;
 
-use tezos_encoding::binary_writer::BinaryWriterError;
-use tezos_messages::p2p::binary_message::{
-    BinaryChunk, BinaryWrite, CONTENT_LENGTH_FIELD_BYTES, CONTENT_LENGTH_MAX,
-};
-use tezos_messages::p2p::encoding::prelude::{
-    AckMessage, ConnectionMessage, MetadataMessage, PeerMessage,
-};
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite, CONTENT_LENGTH_MAX};
 
 use super::extendable_as_writable::ExtendableAsWritable;
 use super::{ChunkWriter, WriteMessageError};
@@ -40,6 +34,9 @@ impl EncryptedMessageWriter {
         })
     }
 
+    /// Current chunk that needs to be written.
+    ///
+    /// Returns None if there's nothing more to send.
     fn current_chunk(&self) -> Option<&[u8]> {
         self.bytes
             .chunks(MAX_ENCRYPTED_CHUNK_SIZE)

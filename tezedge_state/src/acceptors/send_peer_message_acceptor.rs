@@ -4,6 +4,7 @@ use crate::proposals::SendPeerMessageProposal;
 use crate::{Effects, TezedgeState};
 
 impl<E: Effects> Acceptor<SendPeerMessageProposal> for TezedgeState<E> {
+    /// Handle request by Proposer to send a message to the peer.
     fn accept(&mut self, proposal: SendPeerMessageProposal) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -12,7 +13,6 @@ impl<E: Effects> Acceptor<SendPeerMessageProposal> for TezedgeState<E> {
         }
 
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
-            // handle connected peer messages.
             peer.enqueue_send_message(proposal.message);
         } else {
             slog::debug!(&self.log, "Disconnecting peer!"; "reason" => "Received request from Proposer to send a message for non-existant peer.");

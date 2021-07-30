@@ -1,12 +1,11 @@
-use std::borrow::Cow;
-use std::convert::TryFrom;
-
 use crypto::blake2b::Blake2bError;
 use crypto::crypto_box::{PrecomputedKey, PublicKey, SecretKey};
 use crypto::nonce::{generate_nonces, Nonce, NoncePair};
 use crypto::CryptoError;
 use tezos_messages::p2p::binary_message::BinaryChunk;
 
+/// PeerCrypto is responsible for encrypting/decrypting messages and
+/// managing nonces.
 #[derive(Debug, Clone)]
 pub struct PeerCrypto {
     /// Precomputed key is created from merge of peer public key and our secret key.
@@ -51,12 +50,14 @@ impl PeerCrypto {
         std::mem::replace(&mut self.nonce_pair.remote, nonce)
     }
 
+    /// Increments local nonce and encrypts the message.
     #[inline]
     pub fn encrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
         let nonce = self.local_nonce_fetch_increment();
         self.precomputed_key.encrypt(data.as_ref(), &nonce)
     }
 
+    /// Increments remote nonce and encrypts the message.
     #[inline]
     pub fn decrypt<T: AsRef<[u8]>>(&mut self, data: &T) -> Result<Vec<u8>, CryptoError> {
         let nonce = self.remote_nonce_fetch_increment();
