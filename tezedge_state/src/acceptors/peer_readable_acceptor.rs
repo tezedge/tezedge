@@ -13,6 +13,7 @@ where
     E: Effects,
     S: Read + Write,
 {
+    /// Peer's stream might be ready for reading, try to read from passed stream.
     fn accept(&mut self, proposal: PeerReadableProposal<S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -40,6 +41,8 @@ where
             };
         } else {
             if let Some(peer) = self.pending_peers.get_mut(&proposal.peer) {
+                // we won't try to read message from the peer unless
+                // we are waiting for a message.
                 if !peer.should_read() {
                     return;
                 }

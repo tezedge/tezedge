@@ -3,6 +3,12 @@ use std::io::{self, Read};
 use bytes::Buf;
 use tezos_messages::p2p::binary_message::{BinaryChunk, CONTENT_LENGTH_FIELD_BYTES};
 
+/// Read buffer handshake messages.
+///
+/// Handshake messages(connection, metadata, ack) can only occupy one
+/// chunk, but PeerMessage can be sent using multiple chunks.
+///
+/// PeerMessage can be big in size, hence can be sent using multiple chunks.
 pub type HandshakeReadBuffer = ChunkReadBuffer;
 
 pub trait BinaryMessageContent {
@@ -37,12 +43,17 @@ impl BinaryMessageContent for BinaryChunk {
     }
 }
 
-/// Read buffer handshake messages.
+/// Chunk read buffer.
 ///
-/// Handshake messages(connection, metadata, ack) can only occupy one
-/// chunk, but PeerMessage can be sent using multiple chunks.
+/// Reads first 2 bytes corresponding to the size of the chunk and reads
+/// that amount of bytes until it's done.
 ///
-/// PeerMessage can be big in size, hence can be sent using multiple chunks.
+/// When it's [ChunkReadBuffer::is_finished], to get the result we need to call:
+/// - [ChunkReadBuffer::take_if_ready] to take owned [BinaryChunk].
+/// - [ChunkReadBuffer::take_ref_if_ready] to take [BinaryChunkRef].
+///   This way we can reuse `ChunkReadBuffer` for multiple chunks
+///   and avoid extra allocations, since buffer won't be moved/deallocated,
+///   when taking the result, unlike `take_if_ready` method.
 #[derive(Debug, Clone)]
 pub struct ChunkReadBuffer {
     buf: Vec<u8>,
@@ -50,7 +61,7 @@ pub struct ChunkReadBuffer {
     index: usize,
 }
 
-impl HandshakeReadBuffer {
+impl ChunkReadBuffer {
     pub fn new() -> Self {
         Self {
             buf: vec![],
@@ -59,10 +70,12 @@ impl HandshakeReadBuffer {
         }
     }
 
+    /// Check if reading chunk is finished.
     pub fn is_finished(&self) -> bool {
         self.index >= self.expected_len.max(CONTENT_LENGTH_FIELD_BYTES)
     }
 
+    /// Next slice of buffer that we can write to.
     fn next_slice(&mut self) -> &mut [u8] {
         let len = self.expected_len.max(CONTENT_LENGTH_FIELD_BYTES);
 
@@ -91,6 +104,8 @@ impl HandshakeReadBuffer {
         }
     }
 
+    /// Take a reference for buffer and allow it's reuse for reading
+    /// further chunks to avoid extra allocations.
     pub fn take_ref_if_ready<'a>(&'a mut self) -> Option<BinaryChunkRef<'a>> {
         if !self.is_finished() {
             return None;
@@ -102,6 +117,7 @@ impl HandshakeReadBuffer {
         Some(chunk)
     }
 
+    /// Consume buffer and replace it with new empty one.
     pub fn take_if_ready(&mut self) -> Option<BinaryChunk> {
         if !self.is_finished() {
             return None;

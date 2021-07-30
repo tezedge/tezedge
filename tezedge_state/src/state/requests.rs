@@ -20,7 +20,7 @@ pub enum RequestState {
     // },
 }
 
-/// Requests which may be made after accepting handshake proposal.
+/// Requests for [tezedge_state::TezedgeProposer].
 #[derive(Debug, Clone)]
 pub enum TezedgeRequest {
     StartListeningForNewPeers {
@@ -82,6 +82,7 @@ pub enum PendingRequest {
     },
 }
 
+/// State for the currently pending request.
 #[derive(Debug, Clone)]
 pub struct PendingRequestState {
     pub request: PendingRequest,
