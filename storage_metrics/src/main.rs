@@ -244,8 +244,9 @@ fn main() {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
                     println!("HandshakeSuccessful : {}", peer_address);
-                    let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));
+                    /*let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));*/
+                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::Bootstrap);
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
@@ -253,7 +254,10 @@ fn main() {
                         PeerMessage::Advertise(_) => {}
                         PeerMessage::SwapRequest(_) => {}
                         PeerMessage::SwapAck(_) => {}
-                        PeerMessage::Bootstrap => {}
+                        PeerMessage::Bootstrap => {
+
+                            println!("Received Bootstrap")
+                        }
                         PeerMessage::GetCurrentBranch(_) => {}
                         PeerMessage::CurrentBranch(message) => {}
                         PeerMessage::Deactivate(_) => {}
@@ -272,32 +276,6 @@ fn main() {
                                     timer = Some(Instant::now());
                                 }
                             }
-                            //Loop GetCurrent head
-                            /*let req_latency = instance.elapsed().as_millis() as usize;
-                            accumulator.fetch_add(req_latency, Ordering::Relaxed);
-                            requests.fetch_add(1, Ordering::Relaxed);
-
-                            maximum_latency.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev|{
-                                if req_latency > prev {
-                                    return Some(req_latency);
-                                }
-                                None
-                            });
-
-                            minimum_latency.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |prev|{
-                                if req_latency == 0 {
-                                    return None;
-                                }
-                                if req_latency < prev || prev == 0 {
-                                    return Some(req_latency);
-                                }
-                                None
-                            });
-
-
-                            let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                            proposer.send_message_to_peer_or_queue(Instant::now(), peer,PeerMessage::GetCurrentHead(msg));
-                            instance = Instant::now();*/
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
