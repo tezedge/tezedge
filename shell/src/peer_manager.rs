@@ -318,9 +318,12 @@ impl Actor for PeerManager {
         let log = ctx.system.log();
 
         // start to listen for incoming p2p connections
-        std::thread::spawn(move || {
-            run(proposer, proposer_rx, network_channel, &log);
-        });
+        std::thread::Builder::new()
+            .name("tezedge-proposer".to_owned())
+            .spawn(move || {
+                run(proposer, proposer_rx, network_channel, &log);
+            })
+            .expect("failed to spawn proposer-thread");
     }
 
     fn recv(&mut self, ctx: &Context<Self::Msg>, msg: Self::Msg, sender: Sender) {
