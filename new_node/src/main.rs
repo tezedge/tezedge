@@ -96,7 +96,7 @@ fn build_tezedge_state() -> TezedgeState {
             reset_quotas_interval: Duration::from_secs(5),
             peer_blacklist_duration: Duration::from_secs(30 * 60),
             peer_timeout: Duration::from_secs(8),
-            pow_target: ProofOfWork::DEFAULT_TARGET,
+            pow_target: 26.0,
         },
         node_identity.clone(),
         shell_compatibility_version(),
