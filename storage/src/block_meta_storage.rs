@@ -546,7 +546,8 @@ impl KeyValueSchema for BlockMetaStorage {
 impl RocksDbKeyValueSchema for BlockMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
-        cf_opts.set_merge_operator("block_meta_storage_merge_operator", merge_meta_value, None);
+        cf_opts
+            .set_merge_operator_associative("block_meta_storage_merge_operator", merge_meta_value);
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
 
