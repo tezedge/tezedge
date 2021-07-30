@@ -1,17 +1,19 @@
 use tezos_messages::p2p::encoding::ack::NackMotive;
-use tezos_messages::p2p::encoding::prelude::{AckMessage, ConnectionMessage, PeerMessage};
+use tezos_messages::p2p::encoding::prelude::AckMessage;
 use tla_sm::Acceptor;
 
 use crate::proposals::{PeerHandshakeMessage, PeerHandshakeMessageProposal};
-use crate::{
-    Effects, HandleReceivedMessageError, HandshakeStep, P2pState, RequestState, TezedgeState,
-};
+use crate::{Effects, HandleReceivedMessageError, HandshakeStep, TezedgeState};
 
 impl<E, M> Acceptor<PeerHandshakeMessageProposal<M>> for TezedgeState<E>
 where
     E: Effects,
     M: PeerHandshakeMessage,
 {
+    /// Handle handshake (connection, metadata, ack) message from peer.
+    ///
+    /// This method isn't invoked by proposer, it's more of an internal
+    /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerHandshakeMessageProposal<M>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -36,6 +38,9 @@ where
         };
 
         let result = match &mut pending_peer.step {
+            // we are expecting ConnectionMessage if we are in connection
+            // initiated phase or in exchange connection message phase
+            // and we haven't received connection message from the peer.
             Initiated { .. } | Connect { received: None, .. } => {
                 let result = pending_peer.handle_received_conn_message(
                     &self.config,
@@ -90,6 +95,8 @@ where
                                 .remove(&proposal.peer)
                                 .unwrap()
                                 .to_handshake_result();
+                            // result will be None if decision was to
+                            // nack peer (hence nack_motive is set).
                             if let Some(result) = result {
                                 self.set_peer_connected(proposal.at, proposal.peer, result);
                                 self.adjust_p2p_state(proposal.at);
@@ -111,11 +118,18 @@ where
                         Ok(())
                     }
                     Ok(AckMessage::Nack(info)) => {
+                        let our_nack_motive = pending_peer.nack_motive();
                         self.extend_potential_peers(
                             info.potential_peers_to_connect()
                                 .into_iter()
                                 .filter_map(|x| x.parse().ok()),
                         );
+                        match info.motive() {
+                            NackMotive::AlreadyConnected if our_nack_motive.is_none() => {
+                                slog::warn!(&self.log, "Peer sent us nack motive: AlreadyConnected, but we didn't come to same conclusion!");
+                            }
+                            _ => {}
+                        }
                         slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Received Nack", "motive" => info.motive().to_string());
                         self.blacklist_peer(proposal.at, proposal.peer);
                         Ok(())

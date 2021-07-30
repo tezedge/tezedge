@@ -91,6 +91,7 @@ impl MessageReadBuffer {
     }
 }
 
+/// Counts exactly how many bytes were read from the stream.
 struct ReadCounter<'a, R> {
     reader: &'a mut R,
     read_bytes: usize,
