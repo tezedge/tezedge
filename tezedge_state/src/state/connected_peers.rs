@@ -2,7 +2,7 @@ use crypto::crypto_box::PublicKey;
 use getset::{CopyGetters, Getters};
 use slog::Logger;
 use std::collections::{HashMap, VecDeque};
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
 use crate::chunking::{
@@ -15,6 +15,7 @@ use crate::{PeerAddress, PeerCrypto, Port};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
 
+/// Peer who have undergone handshake.
 #[derive(Getters, CopyGetters, Debug, Clone)]
 pub struct ConnectedPeer {
     // #[get = "pub"]
@@ -94,6 +95,7 @@ impl ConnectedPeer {
     }
 }
 
+/// Peers who have undergone handshake.
 #[derive(Debug, Clone)]
 pub struct ConnectedPeers {
     log: Logger,

@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use crate::chunking::WriteMessageError;
 use crate::proposals::{PeerReadableProposal, PeerWritableProposal};
 use crate::{Effects, HandshakeMessageType, P2pState, TezedgeState};
-use tezos_messages::p2p::encoding::ack::{AckMessage, NackMotive};
+use tezos_messages::p2p::encoding::ack::NackMotive;
 use tla_sm::Acceptor;
 
 impl<'a, E, S> Acceptor<PeerWritableProposal<'a, S>> for TezedgeState<E>
@@ -11,6 +11,8 @@ where
     E: Effects,
     S: Read + Write,
 {
+    /// Peer's stream might be ready for writing, try to write/flush
+    /// pending messages to the provided stream.
     fn accept(&mut self, proposal: PeerWritableProposal<S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -25,7 +27,7 @@ where
                     Ok(()) => {}
                     Err(WriteMessageError::Empty) | Err(WriteMessageError::Pending) => break,
                     Err(err) => {
-                        slog::error!(&self.log, "Write failed!"; "description" => "error while trying to write to connected peer stream.", "error" => format!("{:?}", err));
+                        slog::warn!(&self.log, "Write failed!"; "description" => "error while trying to write to connected peer stream.", "error" => format!("{:?}", err));
                         self.blacklist_peer(proposal.at, proposal.peer);
                         break;
                     }
@@ -135,6 +137,7 @@ where
                         }
                         Err(WriteMessageError::Pending) => break,
                         Err(err) => {
+                            slog::warn!(&self.log, "Write failed!"; "description" => "error while trying to write to connected peer stream.", "error" => format!("{:?}", err));
                             self.blacklist_peer(proposal.at, proposal.peer);
                             break;
                         }
