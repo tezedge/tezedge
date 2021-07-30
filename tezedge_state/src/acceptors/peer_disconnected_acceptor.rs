@@ -10,7 +10,7 @@ impl<E: Effects> Acceptor<PeerDisconnectedProposal> for TezedgeState<E> {
             return;
         }
 
-        slog::warn!(&self.log, "Peer Disconnected"; "peer_address" => proposal.peer.to_string(), "reason" => "Requested by the Proposer");
+        slog::warn!(&self.log, "Peer Disconnected"; "peer_address" => proposal.peer.to_string());
         self.disconnect_peer(proposal.at, proposal.peer);
 
         self.periodic_react(proposal.at);
