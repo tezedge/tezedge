@@ -61,8 +61,8 @@ where
                     }
                     PendingRequestMsg::ConnectPeerError => {
                         let peer = *peer;
-                        slog::warn!(&self.log, "Blacklisting peer!"; "reason" => "Initiating connection failed!");
-                        self.blacklist_peer(proposal.at, peer);
+                        slog::warn!(&self.log, "Disconnecting peer!"; "reason" => "Initiating connection failed!");
+                        self.disconnect_peer(proposal.at, peer);
                         self.requests.remove(proposal.req_id);
                     }
                     _ => eprintln!("unexpected request type"),
@@ -72,9 +72,6 @@ where
                         req.status = RequestState::Pending { at: proposal.at };
                     }
                     PendingRequestMsg::DisconnectPeerSuccess => {
-                        if let Some(peer) = self.connected_peers.remove(peer) {
-                            self.extend_potential_peers(std::iter::once(peer.listener_address()));
-                        }
                         self.requests.remove(proposal.req_id);
                     }
                     _ => eprintln!("unexpected request type"),
