@@ -1,3 +1,5 @@
+//! Abstractions for determenistic state machine.
+
 mod proposal;
 pub use proposal::*;
 

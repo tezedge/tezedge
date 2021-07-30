@@ -5,6 +5,7 @@ use crypto::nonce::Nonce;
 
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
 
+/// Effects are source of randomness.
 pub trait Effects {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce;
 
@@ -29,7 +30,7 @@ pub trait Effects {
 pub struct DefaultEffects;
 
 impl Effects for DefaultEffects {
-    fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
+    fn get_nonce(&mut self, _: &PeerAddress) -> Nonce {
         Nonce::random()
     }
 
@@ -91,6 +92,7 @@ mod tests {
             let mut effects = DefaultEffects::default();
             for choice_len in 0..100 {
                 effects.choose_peers_to_connect_to(&p, choice_len);
+                effects.choose_potential_peers_for_advertise(&p);
                 effects.choose_potential_peers_for_nack(&p);
             }
         }

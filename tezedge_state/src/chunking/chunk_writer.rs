@@ -4,6 +4,7 @@ use tezos_messages::p2p::binary_message::BinaryChunk;
 
 use super::extendable_as_writable::ExtendableAsWritable;
 
+/// BinaryChunk Writer.
 #[derive(Debug, Clone)]
 pub struct ChunkWriter {
     bytes: BinaryChunk,

@@ -1,9 +1,9 @@
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crypto::crypto_box::{CryptoKey, PrecomputedKey, PublicKey};
-use crypto::nonce::{generate_nonces, Nonce};
+use crypto::nonce::generate_nonces;
 use crypto::proof_of_work::{check_proof_of_work, PowError, PowResult};
 use tezos_identity::Identity;
 use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
@@ -18,7 +18,7 @@ use crate::chunking::{
 };
 use crate::peer_address::PeerListenerAddress;
 use crate::proposals::{PeerHandshakeMessage, PeerHandshakeMessageError};
-use crate::state::{NotMatchingAddress, RequestState};
+use crate::state::RequestState;
 use crate::{Effects, PeerAddress, PeerCrypto, Port, ShellCompatibilityVersion, TezedgeConfig};
 
 #[derive(Clone)]
@@ -85,14 +85,15 @@ pub struct HandshakeResult {
 
 #[derive(Clone)]
 pub enum HandshakeStep {
-    Initiated {
-        at: Instant,
-    },
+    /// Connection Initiated.
+    Initiated { at: Instant },
+    /// Exchange Connection message.
     Connect {
         sent: RequestState,
         received: Option<ReceivedConnectionMessageData>,
         sent_conn_msg: ConnectionMessage,
     },
+    /// Exchange Metadata message.
     Metadata {
         sent: RequestState,
         received: Option<MetadataMessage>,
@@ -102,6 +103,7 @@ pub enum HandshakeStep {
         public_key: PublicKey,
         crypto: PeerCrypto,
     },
+    /// Exchange Ack message.
     Ack {
         sent: RequestState,
         received: bool,
@@ -582,10 +584,9 @@ impl PendingPeer {
         use HandshakeStep::*;
         use RequestState::*;
 
-        if let Err(e) =
+        if let Err(_) =
             Self::check_proof_of_work(config.pow_target, message.binary_chunk().content())
         {
-            // TODO: check maybe this message is nack.
             return Err(HandleReceivedMessageError::BadPow);
         }
         let conn_msg = message.as_connection_msg()?;
@@ -660,7 +661,7 @@ impl PendingPeer {
 
     pub fn handle_received_ack_message<M>(
         &mut self,
-        at: Instant,
+        _at: Instant,
         mut message: M,
     ) -> Result<AckMessage, HandleReceivedMessageError>
     where

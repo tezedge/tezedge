@@ -8,6 +8,10 @@ use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
 use crate::{Effects, PendingRequest, PendingRequestState, RequestState, TezedgeState};
 
 impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
+    /// Handle decrypted and decoded PeerMessage from connected_peer.
+    ///
+    /// This method isn't invoked by proposer, it's more of an internal
+    /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
     fn accept(&mut self, proposal: PeerMessageProposal) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -37,6 +41,8 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
                     });
                 }
                 // messages not handled in state machine for now.
+                // create a request to notify proposer about the message,
+                // which in turn will notify actor system.
                 _ => {
                     self.requests.insert(PendingRequestState {
                         request: PendingRequest::PeerMessageReceived {
