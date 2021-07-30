@@ -42,7 +42,8 @@ use std::str::FromStr;
 use std::option::Option::Some;
 
 const CHAIN_NAME: &'static str = "TEZOS_MAINNET";
-const LOCAL_PEER: &'static str = "127.0.0.1:9732";
+//set tezos
+const LOCAL_PEER: &'static str = "127.0.0.1:8732";
 
 fn shell_compatibility_version() -> ShellCompatibilityVersion {
     ShellCompatibilityVersion::new(CHAIN_NAME.to_owned(), vec![0], vec![0, 1])
