@@ -60,6 +60,7 @@ fn decrease(q: &mut isize) {
     *q = q.checked_sub(1).unwrap_or(*q)
 }
 
+/// Throttle quotas for PeerMessage.
 #[derive(Debug, Clone)]
 pub struct ThrottleQuota {
     quotas: [(isize, isize); MESSAGE_TYPE_COUNT],
