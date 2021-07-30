@@ -8,6 +8,10 @@ use crate::{
     DefaultEffects, PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats,
 };
 
+/// Wrapper around [TezedgeState].
+///
+/// Wrapper can be used to intercept communication between
+/// [tezedge_state::TezedgeState] and [tezedge_state::TezedgeProposer].
 #[derive(Debug, Clone)]
 pub struct TezedgeStateWrapper<E = DefaultEffects>(TezedgeState<E>);
 

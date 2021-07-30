@@ -8,6 +8,7 @@ impl<E> Acceptor<PendingRequestProposal> for TezedgeState<E>
 where
     E: Effects,
 {
+    /// Handle status update for pending request.
     fn accept(&mut self, proposal: PendingRequestProposal) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
@@ -67,7 +68,7 @@ where
                     }
                     _ => eprintln!("unexpected request type"),
                 },
-                PendingRequest::DisconnectPeer { peer, .. } => match proposal.message {
+                PendingRequest::DisconnectPeer { .. } => match proposal.message {
                     PendingRequestMsg::DisconnectPeerPending => {
                         req.status = RequestState::Pending { at: proposal.at };
                     }
