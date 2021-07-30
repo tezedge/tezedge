@@ -246,7 +246,7 @@ fn main() {
                     println!("HandshakeSuccessful : {}", peer_address);
                     /*let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
                     proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));*/
-                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::Bootstrap);
+                    proposer.send_message_to_peer_or_queue(Instant::now(), peer_address, PeerMessage::Bootstrap);
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
