@@ -1,9 +1,8 @@
-use slog::{warn, Logger};
+use slog::Logger;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::time::{Duration, Instant};
 
-use crypto::crypto_box::{CryptoKey, PublicKey};
 use tezos_identity::Identity;
 use tezos_messages::p2p::encoding::prelude::MetadataMessage;
 pub use tla_sm::{GetRequests, Proposal};
@@ -89,6 +88,12 @@ impl P2pState {
     }
 }
 
+/// Tezedge deterministic state machine.
+///
+/// It's only input is [Proposal] and [Effects]. Since it's deterministic,
+/// Same set of proposals and effects will lead to exact same state.
+///
+/// It's only output/feedback mechanism is [tla_sm::GetRequests::get_requests].
 #[derive(Debug)]
 pub struct TezedgeState<E = DefaultEffects> {
     pub(crate) log: Logger,
@@ -105,6 +110,7 @@ pub struct TezedgeState<E = DefaultEffects> {
     pub(crate) blacklisted_peers: BlacklistedPeers,
     // TODO: blacklist identities as well.
     pub(crate) p2p_state: P2pState,
+    /// Currently pending requests. Completed requests is removed.
     pub(crate) requests: slab::Slab<PendingRequestState>,
 }
 
@@ -308,6 +314,7 @@ impl<E: Effects> TezedgeState<E> {
         this
     }
 
+    /// Take finished handshake result and create a new connected peer.
     pub(crate) fn set_peer_connected(
         &mut self,
         at: Instant,
@@ -320,7 +327,7 @@ impl<E: Effects> TezedgeState<E> {
         match &self.p2p_state {
             Pending | PendingFull | Ready | ReadyFull => {}
             ReadyMaxed => {
-                warn!(&self.log, "Blacklisting Peer"; "reason" => "Tried to connect to peer while we are maxed out on connected peers.");
+                slog::warn!(&self.log, "Blacklisting Peer"; "reason" => "Tried to connect to peer while we are maxed out on connected peers.");
                 return self.blacklist_peer(at, peer_address);
             }
         }
@@ -401,7 +408,7 @@ impl<E: Effects> TezedgeState<E> {
         let now = at;
         let peer_timeout = self.config.peer_timeout;
 
-        self.requests.retain(|req_id, req| match &req.request {
+        self.requests.retain(|_, req| match &req.request {
             PendingRequest::ConnectPeer { .. } => match &req.status {
                 RequestState::Idle { at } | RequestState::Pending { at } => {
                     if now.duration_since(*at) >= peer_timeout {
