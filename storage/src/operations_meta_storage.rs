@@ -114,10 +114,9 @@ impl KeyValueSchema for OperationsMetaStorage {
 impl RocksDbKeyValueSchema for OperationsMetaStorage {
     fn descriptor(cache: &Cache) -> ColumnFamilyDescriptor {
         let mut cf_opts = default_table_options(cache);
-        cf_opts.set_merge_operator(
+        cf_opts.set_merge_operator_associative(
             "operations_meta_storage_merge_operator",
             merge_meta_value,
-            None,
         );
         ColumnFamilyDescriptor::new(Self::name(), cf_opts)
     }
