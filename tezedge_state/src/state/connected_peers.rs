@@ -14,6 +14,8 @@ use crate::state::ThrottleQuota;
 use crate::{PeerAddress, PeerCrypto, Port};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
 use tezos_messages::p2p::encoding::prelude::NetworkVersion;
+use storage::{BlockStorage, BlockMetaStorage, PersistentStorage, BlockHeaderWithHash};
+use slog::info;
 
 #[derive(Clone,Debug)]
 pub struct Latency {
@@ -60,6 +62,8 @@ pub struct ConnectedPeer {
 
     quota: ThrottleQuota,
 
+    log : Logger,
+
     pub latencies : HashMap<String, Latency>,
 
 }
@@ -81,7 +85,9 @@ impl ConnectedPeer {
         if self.quota.can_receive(&msg).is_ok() {
 
             match &msg {
-                PeerMessage::BlockHeader(_) => {
+                PeerMessage::BlockHeader(message) => {
+                    let block_header = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
+                    info!(self.log, "Received GetBlockHeaders {:?}",  block_header.hash);
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
                         let duration = block_header_latency.timer.elapsed().as_micros();
                         block_header_latency.total_latencies += duration;
@@ -122,7 +128,9 @@ impl ConnectedPeer {
             match &self.cur_send_message_raw {
                 Some(message) => {
                    match message {
-                       PeerMessage::GetBlockHeaders(_) => {
+                       PeerMessage::GetBlockHeaders(message) => {
+                           let block_hashes = message.get_block_headers();
+                           info!(self.log, "Sent GetBlockHeaders {:?}",  block_hashes);
                            let latency = self.latencies.entry("BlockHeader".to_string()).or_insert(Latency{
                                timer: Instant::now(),
                                request_count: 0,
@@ -269,6 +277,7 @@ impl ConnectedPeers {
                 send_message_queue: VecDeque::new(),
 
                 quota: ThrottleQuota::new(log.clone()),
+                log: log.clone(),
                 latencies: Default::default()
             })
     }
