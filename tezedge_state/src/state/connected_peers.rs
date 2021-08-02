@@ -87,7 +87,7 @@ impl ConnectedPeer {
             match &msg {
                 PeerMessage::BlockHeader(message) => {
                     let block_header = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
-                    info!(self.log, "Received GetBlockHeaders {:?}",  block_header.hash);
+                    info!(self.log, "Received BlockHeader {:?}",  block_header.hash);
                     if let Some(block_header_latency) = self.latencies.get_mut("BlockHeader") {
                         let duration = block_header_latency.timer.elapsed().as_micros();
                         block_header_latency.total_latencies += duration;
