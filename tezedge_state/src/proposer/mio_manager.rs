@@ -33,7 +33,7 @@ impl NetworkEvent for MioEvent {
 
     #[inline(always)]
     fn is_read_closed(&self) -> bool {
-        self.is_read_closed()
+        self.is_error() || self.is_read_closed()
     }
 
     #[inline(always)]
