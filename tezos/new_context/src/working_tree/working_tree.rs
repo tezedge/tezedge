@@ -464,17 +464,22 @@ impl WorkingTree {
     }
 
     pub fn add_tree(&self, key: &ContextKey, tree: &Self) -> Result<Self, MerkleError> {
-        let mut storage = self.index.storage.borrow_mut();
+        // If the tree is empty, we must instead remove that path
+        if tree.is_empty() {
+            self.delete(key)
+        } else {
+            let mut storage = self.index.storage.borrow_mut();
 
-        let node = match tree.value.clone() {
-            WorkingTreeValue::Tree(tree) => Self::get_non_leaf(Entry::Tree(tree)),
-            WorkingTreeValue::Value(value) => Self::get_leaf(Entry::Blob(value)),
-        };
+            let node = match tree.value.clone() {
+                WorkingTreeValue::Tree(tree) => Self::get_non_leaf(Entry::Tree(tree)),
+                WorkingTreeValue::Value(value) => Self::get_leaf(Entry::Blob(value)),
+            };
 
-        let entry = &self._add(key, node, &mut storage)?;
-        let tree = self.entry_tree(entry)?;
+            let entry = &self._add(key, node, &mut storage)?;
+            let tree = self.entry_tree(entry)?;
 
-        Ok(self.with_new_root(tree))
+            Ok(self.with_new_root(tree))
+        }
     }
 
     pub fn equal(&self, other: &Self) -> Result<bool, MerkleError> {

@@ -391,6 +391,10 @@ fn test_context_calls() {
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path"), "value".as_bytes());
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path2"), "value".as_bytes());
     let tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key!("some/path2"));
+    let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path3"), "value".as_bytes());
+    let tezedge_empty_tree = tree::empty(cr, &tezedge_ctxt);
+    let tezedge_ctxt =
+        context::add_tree(cr, &tezedge_ctxt, &key!("some/path3"), &tezedge_empty_tree);
     let tezedge_ctxt_hash = context::hash(cr, time as i64, None, &tezedge_ctxt);
     let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
 
@@ -398,6 +402,9 @@ fn test_context_calls() {
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path"), "value".as_bytes());
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path2"), "value".as_bytes());
     let irmin_ctxt = context::remove(cr, &irmin_ctxt, &key!("some/path2"));
+    let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path3"), "value".as_bytes());
+    let irmin_empty_tree = tree::empty(cr, &irmin_ctxt);
+    let irmin_ctxt = context::add_tree(cr, &irmin_ctxt, &key!("some/path3"), &irmin_empty_tree);
     let irmin_ctxt_hash = context::hash(cr, time as i64, None, &irmin_ctxt);
     let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
 
