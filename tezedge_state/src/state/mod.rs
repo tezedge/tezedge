@@ -402,7 +402,6 @@ impl<E: Effects> TezedgeState<E> {
                 should_listen_for_connections = true;
                 should_initiate_connections = true;
                 self.p2p_state = Pending;
-                self.initiate_handshakes(at);
             }
         } else {
             if missing_pending == 0 {
@@ -411,7 +410,6 @@ impl<E: Effects> TezedgeState<E> {
                 self.p2p_state = Ready;
                 should_listen_for_connections = true;
                 should_initiate_connections = true;
-                self.initiate_handshakes(at);
             }
         }
 
