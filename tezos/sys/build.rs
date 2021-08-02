@@ -388,8 +388,7 @@ fn main() {
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
 
-    let tezos_base_dir = env::var("TEZOS_BASE_DIR")
-        .unwrap_or_else(|_| "/home/bruno/projects/tezedge/tezos".to_owned());
+    let tezos_base_dir = env::var("TEZOS_BASE_DIR").unwrap_or_else(|_| "".to_owned());
     let build_chain = if tezos_base_dir.is_empty() {
         BuildChain::Remote
     } else {
