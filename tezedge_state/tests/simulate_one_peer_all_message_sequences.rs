@@ -133,7 +133,12 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
     false
 }
 
-fn try_sequence(initial_time: Instant, state: &mut TezedgeState, sequence: &[Messages], incoming: bool) -> bool {
+fn try_sequence(
+    initial_time: Instant,
+    state: &mut TezedgeState,
+    sequence: &[Messages],
+    incoming: bool,
+) -> bool {
     let peer = PeerAddress::ipv4_from_index(1);
     let mut time = initial_time;
 
@@ -182,7 +187,11 @@ fn sequence_to_str(seq: &[Messages]) -> String {
     format!("[{}]", seq_str)
 }
 
-fn fork_state_and_init_incoming(initial_time: Instant, state: &TezedgeState, peer_addr: PeerAddress) -> TezedgeState {
+fn fork_state_and_init_incoming(
+    initial_time: Instant,
+    state: &TezedgeState,
+    peer_addr: PeerAddress,
+) -> TezedgeState {
     let mut state = state.clone();
     state.accept(NewPeerConnectProposal {
         at: initial_time,
@@ -268,7 +277,8 @@ fn simulate_one_peer_all_message_sequences() {
 
     let state_incoming = fork_state_and_init_incoming(initial_time, &tezedge_state, address);
     let state_outgoing = fork_state_and_init_outgoing(initial_time, &tezedge_state, address, true);
-    let state_outgoing_failed = fork_state_and_init_outgoing(initial_time, &tezedge_state, address, false);
+    let state_outgoing_failed =
+        fork_state_and_init_outgoing(initial_time, &tezedge_state, address, false);
 
     for seq_len in 1..=6 {
         println!("trying sequences with length: {}", seq_len);
@@ -276,7 +286,12 @@ fn simulate_one_peer_all_message_sequences() {
         for seq in msgs.clone().into_iter().permutations(seq_len) {
             count += 1;
 
-            if try_sequence(initial_time, &mut state_outgoing_failed.clone(), &seq, false) {
+            if try_sequence(
+                initial_time,
+                &mut state_outgoing_failed.clone(),
+                &seq,
+                false,
+            ) {
                 panic!("sequence with failed outgoing connection succeeded (shouldn't have!). sequence: {:?}", seq);
             }
 
