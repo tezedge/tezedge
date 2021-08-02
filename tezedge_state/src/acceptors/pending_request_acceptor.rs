@@ -63,7 +63,7 @@ where
                     PendingRequestMsg::ConnectPeerError => {
                         let peer = *peer;
                         slog::warn!(&self.log, "Disconnecting peer!"; "reason" => "Initiating connection failed!");
-                        self.disconnect_peer(proposal.at, peer);
+                        self.blacklist_peer(proposal.at, peer);
                         self.requests.remove(proposal.req_id);
                     }
                     _ => eprintln!("unexpected request type"),
