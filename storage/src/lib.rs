@@ -134,8 +134,6 @@ pub enum StorageError {
     TezosEnvironmentError { error: TezosEnvironmentError },
     #[fail(display = "Message hash error: {}", error)]
     MessageHashError { error: MessageHashError },
-    #[fail(display = "Predecessor lookup failed")]
-    PredecessorLookupError,
     #[fail(display = "Error constructing hash: {}", error)]
     HashError { error: FromBytesError },
     #[fail(display = "Error decoding hash: {}", error)]

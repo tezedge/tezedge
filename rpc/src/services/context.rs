@@ -1,12 +1,18 @@
-use chrono::{DateTime, NaiveDateTime, Utc};
-use crypto::hash::BlockHash;
-use rusqlite::{named_params, Connection, OptionalExtension};
-use serde::Serialize;
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use std::{collections::HashMap, convert::TryInto, path::PathBuf};
 
+use chrono::{DateTime, NaiveDateTime, Utc};
+use rusqlite::{named_params, Connection, OptionalExtension};
+use serde::Serialize;
+
+use crypto::hash::BlockHash;
 use tezos_timing::{
     hash_to_string, ActionData, ActionStats, ActionStatsWithRange, RangeStats, FILENAME_DB,
 };
+
+use crate::helpers::RpcServiceError;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,7 +38,7 @@ pub(crate) struct ContextStats {
 pub(crate) fn make_block_stats(
     db_path: Option<&PathBuf>,
     block_hash: BlockHash,
-) -> Result<Option<BlockStats>, failure::Error> {
+) -> Result<Option<BlockStats>, RpcServiceError> {
     let db_path = match db_path {
         Some(db_path) => {
             let mut db_path = db_path.to_path_buf();
@@ -42,14 +48,18 @@ pub(crate) fn make_block_stats(
         None => PathBuf::from(FILENAME_DB),
     };
 
-    let sql = Connection::open(db_path)?;
-    make_block_stats_impl(&sql, block_hash)
+    let sql = Connection::open(db_path).map_err(|e| RpcServiceError::UnexpectedError {
+        reason: format!("Failed to open context stats db, reason: {}", e),
+    })?;
+    make_block_stats_impl(&sql, block_hash).map_err(|e| RpcServiceError::UnexpectedError {
+        reason: format!("Failed to make block stats, reason: {}", e),
+    })
 }
 
 pub(crate) fn make_context_stats(
     db_path: Option<&PathBuf>,
     context_name: &str,
-) -> Result<ContextStats, failure::Error> {
+) -> Result<ContextStats, RpcServiceError> {
     let db_path = match db_path {
         Some(db_path) => {
             let mut db_path = db_path.to_path_buf();
@@ -59,8 +69,12 @@ pub(crate) fn make_context_stats(
         None => PathBuf::from(FILENAME_DB),
     };
 
-    let sql = Connection::open(db_path)?;
-    make_context_stats_impl(&sql, context_name)
+    let sql = Connection::open(db_path).map_err(|e| RpcServiceError::UnexpectedError {
+        reason: format!("Failed to open context stats db, reason: {}", e),
+    })?;
+    make_context_stats_impl(&sql, context_name).map_err(|e| RpcServiceError::UnexpectedError {
+        reason: format!("Failed to make context stats, reason: {}", e),
+    })
 }
 
 fn make_context_stats_impl(
@@ -375,8 +389,9 @@ fn make_block_stats_impl(
 
 #[cfg(test)]
 mod tests {
-    use crypto::hash::HashTrait;
     use rusqlite::Batch;
+
+    use crypto::hash::HashTrait;
 
     use super::*;
 
@@ -390,7 +405,7 @@ mod tests {
     fn test_read_db() {
         let sql = Connection::open_in_memory().unwrap();
 
-        let block_hash = BlockHash::try_from_bytes(&vec![1; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[1; 32]).unwrap();
         let block_hash_str = hash_to_string(block_hash.as_ref());
 
         let schema = include_str!("../../../tezos/timing/src/schema_stats.sql");
@@ -407,7 +422,7 @@ mod tests {
                (1, ?1, 4, 10.0, 11.0, 12.0, 13.0, 101);",
             [block_hash_str],
         )
-        .unwrap();
+            .unwrap();
 
         sql.execute(
             "
@@ -423,7 +438,7 @@ mod tests {
             ",
             [],
         )
-        .unwrap();
+            .unwrap();
 
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap().unwrap();
 
@@ -485,7 +500,7 @@ mod tests {
         assert_float_eq!(action.add.one_to_ten_us.mean_time, 20.3);
         assert_eq!(action.add.one_to_ten_us.count, 4);
 
-        let block_hash = BlockHash::try_from_bytes(&vec![32; 32]).unwrap();
+        let block_hash = BlockHash::try_from_bytes(&[32; 32]).unwrap();
         let block_stats = make_block_stats_impl(&sql, block_hash).unwrap();
         assert!(block_stats.is_none());
     }

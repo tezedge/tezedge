@@ -30,6 +30,13 @@ pub mod cache_warm_up {
                 env.persistent_storage(),
             )
         };
+        let get_raw_block_header_with_hash = async {
+            crate::services::base_services::get_raw_block_header_with_hash(
+                &chain_id,
+                &block.hash,
+                env.persistent_storage(),
+            )
+        };
         let get_block_with_json_data = async {
             crate::services::base_services::get_block_with_json_data(
                 &chain_id,
@@ -38,7 +45,11 @@ pub mod cache_warm_up {
             )
         };
 
-        let _ = tokio::join!(get_additional_data, get_block_with_json_data);
+        let _ = tokio::join!(
+            get_additional_data,
+            get_raw_block_header_with_hash,
+            get_block_with_json_data
+        );
 
         // Async calls
         let get_block_metadata =

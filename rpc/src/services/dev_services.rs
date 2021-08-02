@@ -26,7 +26,7 @@ use storage::{
 use tezos_messages::base::rpc_support::UniversalValue;
 use tezos_messages::base::ConversionError;
 
-use crate::helpers::{BlockMetadata, PagedResult};
+use crate::helpers::{BlockMetadata, PagedResult, RpcServiceError};
 use crate::server::RpcServiceEnvironment;
 use crate::services::protocol::get_context_protocol_params;
 
@@ -37,7 +37,7 @@ pub type ContractAddress = Vec<u8>;
 pub(crate) fn get_block_actions(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
-) -> Result<Vec<() /*ContextAction*/>, failure::Error> {
+) -> Result<Vec<() /*ContextAction*/>, RpcServiceError> {
     get_block_actions_by_hash(
         &ensure_context_action_storage(persistent_storage)?,
         &block_hash,
@@ -48,14 +48,14 @@ pub(crate) fn get_block_actions(
 pub(crate) fn get_block_actions_by_hash(
     _context_action_storage: &(), /*&ContextActionStorageReader,*/
     _block_hash: &BlockHash,
-) -> Result<Vec<() /*ContextAction*/>, failure::Error> {
+) -> Result<Vec<() /*ContextAction*/>, RpcServiceError> {
     //context_action_storage
     //    .get_by_block_hash(&block_hash)
     //    .map(|values| values.into_iter().map(|v| v.into_action()).collect())
     //    .map_err(|e| e.into())
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 pub(crate) fn get_block_actions_cursor(
@@ -64,7 +64,7 @@ pub(crate) fn get_block_actions_cursor(
     _limit: Option<usize>,
     _action_types: Option<&str>,
     _persistent_storage: &PersistentStorage,
-) -> Result<Vec<() /*ContextActionJson*/>, failure::Error> {
+) -> Result<Vec<() /*ContextActionJson*/>, RpcServiceError> {
     //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     //let mut filters = ContextActionFilters::with_block_hash(block_hash.into());
     //if let Some(action_types) = action_types {
@@ -76,15 +76,15 @@ pub(crate) fn get_block_actions_cursor(
     //    .map(ContextActionJson::from)
     //    .collect();
     //Ok(values)
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 pub(crate) fn get_block_action_details(
     _block_hash: BlockHash,
     _persistent_storage: &PersistentStorage,
-) -> Result<() /*ContextActionBlockDetails*/, failure::Error> {
+) -> Result<() /*ContextActionBlockDetails*/, RpcServiceError> {
     //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
 
     //let actions: Vec<ContextAction> = context_action_storage
@@ -96,9 +96,9 @@ pub(crate) fn get_block_action_details(
     //Ok(ContextActionBlockDetails::calculate_block_action_details(
     //    actions,
     //))
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 pub(crate) fn get_contract_actions_cursor(
@@ -107,7 +107,7 @@ pub(crate) fn get_contract_actions_cursor(
     _limit: Option<usize>,
     _action_types: Option<&str>,
     _persistent_storage: &PersistentStorage,
-) -> Result<Vec<() /*ContextActionJson*/>, failure::Error> {
+) -> Result<Vec<() /*ContextActionJson*/>, RpcServiceError> {
     //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     //let contract_address = contract_id_to_contract_address_for_index(contract_address)?;
     //let mut filters = ContextActionFilters::with_contract_id(contract_address);
@@ -120,9 +120,9 @@ pub(crate) fn get_contract_actions_cursor(
     //    .map(ContextActionJson::from)
     //    .collect();
     //Ok(values)
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 /// Get actions for a specific contract in ascending order.
@@ -132,7 +132,7 @@ pub(crate) fn get_contract_actions(
     _from_id: Option<u64>,
     _limit: usize,
     _persistent_storage: &PersistentStorage,
-) -> Result<PagedResult<Vec<() /*ContextActionRecordValue*/>>, failure::Error> {
+) -> Result<PagedResult<Vec<() /*ContextActionRecordValue*/>>, RpcServiceError> {
     //let context_action_storage = ensure_context_action_storage(persistent_storage)?;
     //let contract_address = contract_id_to_contract_address_for_index(contract_id)?;
     //let mut context_records =
@@ -144,9 +144,9 @@ pub(crate) fn get_contract_actions(
     //};
     //context_records.truncate(std::cmp::min(context_records.len(), limit));
     //Ok(PagedResult::new(context_records, next_id, limit))
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 pub(crate) fn get_stats_memory() -> MemoryStatsResult<MemoryData> {
@@ -163,12 +163,14 @@ pub(crate) fn get_cycle_length_for_block(
     block_hash: &BlockHash,
     env: &RpcServiceEnvironment,
     log: &Logger,
-) -> Result<i32, failure::Error> {
+) -> Result<i32, RpcServiceError> {
     if let Ok(context_proto_params) = get_context_protocol_params(block_hash, env) {
         Ok(tezos_messages::protocol::get_constants_for_rpc(
             &context_proto_params.constants_data,
             &context_proto_params.protocol_hash,
-        )?
+        ).map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("{}", e)
+        })?
             .map(|constants| constants.get("blocks_per_cycle")
                 .map(|value| if let UniversalValue::Number(value) = value { *value } else {
                     slog::warn!(log, "Cycle length missing"; "block" => block_hash.to_base58_check());
@@ -202,10 +204,10 @@ pub(crate) fn _get_action_types(_action_types: &str) -> Vec<() /*ContextActionTy
 #[inline]
 pub(crate) fn ensure_context_action_storage(
     _persistent_storage: &PersistentStorage,
-) -> Result<() /*ContextActionStorageReader*/, failure::Error> {
-    Err(failure::format_err!(
-        "Persistent context actions storage is not implemented!"
-    ))
+) -> Result<() /*ContextActionStorageReader*/, RpcServiceError> {
+    Err(RpcServiceError::UnexpectedError {
+        reason: "Persistent context actions storage is not implemented!".to_string(),
+    })
 }
 
 /// Retrieve blocks from database.
@@ -215,7 +217,7 @@ pub(crate) fn get_blocks(
     every_nth_level: Option<i32>,
     limit: usize,
     env: &RpcServiceEnvironment,
-) -> Result<Vec<SlimBlockData>, failure::Error> {
+) -> Result<Vec<SlimBlockData>, RpcServiceError> {
     let block_meta_storage = BlockMetaStorage::new(env.persistent_storage());
 
     let blocks = match every_nth_level {
