@@ -205,7 +205,7 @@ fn main() {
     proposer.make_progress();
 
     let mut received_first_response = false;
-    let mut block_header_with_hash: Option<BlockHeaderWithHash> = None;
+    let mut cursor: Option<BlockHash> = None;
 
     let mut timer: Option<Instant> = None;
 
@@ -244,9 +244,8 @@ fn main() {
                 Notification::HandshakeSuccessful { peer_address, .. } => {
                     // Send Bootstrap message.
                     println!("HandshakeSuccessful : {}", peer_address);
-                    /*let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
-                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));*/
-                    proposer.send_message_to_peer_or_queue(Instant::now(), peer_address, PeerMessage::Bootstrap);
+                    let msg = GetCurrentHeadMessage::new(tezos_env.main_chain_id().unwrap());
+                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetCurrentHead(msg));
                 }
                 Notification::MessageReceived { peer, message } => {
                     match &message.message {
@@ -256,21 +255,20 @@ fn main() {
                         PeerMessage::SwapAck(_) => {}
                         PeerMessage::Bootstrap => {
 
-                            println!("Received Bootstrap")
                         }
                         PeerMessage::GetCurrentBranch(_) => {}
                         PeerMessage::CurrentBranch(message) => {}
                         PeerMessage::Deactivate(_) => {}
                         PeerMessage::GetCurrentHead(message) => {}
                         PeerMessage::CurrentHead(message) => {
-                            if block_header_with_hash.is_none() {
-                                block_header_with_hash = Some(BlockHeaderWithHash::new(message.current_block_header().clone()).unwrap());
+                            if cursor.is_none() {
+                                let block_header = BlockHeaderWithHash::new(message.current_block_header().clone()).unwrap();
+                                cursor = Some(block_header.hash);
                             }
 
                             if !received_first_response {
-                                if let Some(block_header) = &block_header_with_hash {
-                                    let block: BlockHash = block_header.hash.clone();
-                                    let msg = GetBlockHeadersMessage::new(vec![block]);
+                                if let Some(block_hash) = &cursor {
+                                    let msg = GetBlockHeadersMessage::new(vec![block_hash.clone()]);
                                     proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg));
                                     //Start timer after sending GetBlockHeaders
                                     timer = Some(Instant::now());
@@ -279,10 +277,16 @@ fn main() {
                         }
                         PeerMessage::GetBlockHeaders(_) => {}
                         PeerMessage::BlockHeader(message) => {
+                            let block_header = BlockHeaderWithHash::new(message.block_header().clone()).unwrap();
                             received_first_response = true;
-                            if let Some(block_header) = &block_header_with_hash {
-                                let msg = GetBlockHeadersMessage::new(vec![block_header.hash.clone()]);
-                                proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
+                            if let Some(cursor) = &mut cursor {
+
+                                if block_header.hash == cursor.clone() {
+                                    *cursor = message.block_header().predecessor.clone();
+                                    let msg = GetBlockHeadersMessage::new(vec![cursor.clone()]);
+                                    proposer.send_message_to_peer_or_queue(Instant::now(), peer, PeerMessage::GetBlockHeaders(msg))
+                                }
+
                             }
                         }
                         PeerMessage::GetOperations(_) => {}
