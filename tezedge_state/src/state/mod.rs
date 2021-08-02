@@ -1,6 +1,6 @@
 use slog::Logger;
 use std::collections::HashSet;
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::time::{Duration, Instant};
 
 use tezos_identity::Identity;
@@ -85,6 +85,34 @@ impl P2pState {
             self,
             Self::PendingFull { .. } | Self::ReadyFull { .. } | Self::ReadyMaxed
         )
+    }
+}
+
+enum TimeoutInfo {
+    OutgoingConnect,
+
+    SendConnectionMessage,
+    SendMetadataMessage,
+    SendAckMessage,
+
+    ReceiveConnectionMessage,
+    ReceiveMetadataMessage,
+    ReceiveAckMessage,
+}
+
+impl fmt::Display for TimeoutInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Timeout - {}", match self {
+            Self::OutgoingConnect => "outgoing connection",
+
+            Self::SendConnectionMessage => "send ConnectionMessage",
+            Self::SendMetadataMessage => "send MetadataMessage",
+            Self::SendAckMessage => "send AckMessage",
+
+            Self::ReceiveConnectionMessage => "receive ConnectionMessage",
+            Self::ReceiveMetadataMessage => "receive MetadataMessage",
+            Self::ReceiveAckMessage => "receive AckMessage",
+        })
     }
 }
 
@@ -429,30 +457,34 @@ impl<E: Effects> TezedgeState<E> {
             .pending_peers
             .iter_mut()
             .filter_map(|(_, peer)| {
-                match &mut peer.step {
-                    // send or receive timed out based on `peer.incoming`
-                    Initiated { at }
-
-                    // send timed out
-                    | Connect { sent: Idle { at, .. }, .. }
-                    | Connect { sent: Pending { at, .. }, .. }
-                    | Metadata { sent: Idle { at, .. }, .. }
-                    | Metadata { sent: Pending { at, .. }, .. }
-                    | Ack { sent: Idle { at, .. }, .. }
-                    | Ack { sent: Pending { at, .. }, .. }
+                let (at, timeout_info) = match &peer.step {
+                    Initiated { at } => (at, if peer.incoming {
+                        TimeoutInfo::ReceiveConnectionMessage
+                    } else {
+                        TimeoutInfo::OutgoingConnect
+                    }),
 
                     // receive timed out
-                    | Connect { sent: Success { at, .. }, .. }
-                    | Metadata { sent: Success { at, .. }, .. }
-                    | Ack { sent: Success { at, .. }, .. }
-                    => {
-                        if now.duration_since(*at) >= peer_timeout {
-                            Some(peer.address.clone())
-                        } else {
-                            None
-                        }
-                    }
+                    Connect { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveConnectionMessage),
+                    Metadata { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveMetadataMessage),
+                    Ack { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveAckMessage),
+
+                    // send timed out
+
+                    Connect { sent: Idle { at, .. }, .. }
+                    | Connect { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendConnectionMessage),
+
+                    Metadata { sent: Idle { at, .. }, .. }
+                    | Metadata { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendMetadataMessage),
+
+                    Ack { sent: Idle { at, .. }, .. }
+                    | Ack { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendAckMessage)
+                };
+
+                if now.duration_since(*at) < peer_timeout {
+                    return None;
                 }
+                Some((peer.address.clone(), timeout_info))
             })
             .collect::<Vec<_>>();
 
@@ -460,7 +492,8 @@ impl<E: Effects> TezedgeState<E> {
             return;
         }
 
-        for peer in end_handshakes.into_iter() {
+        for (peer, timeout_info) in end_handshakes.into_iter() {
+            slog::warn!(&self.log, "Blacklisting peer"; "reason" => timeout_info.to_string(), "peer_address" => peer.to_string());
             self.blacklist_peer(now, peer);
         }
         self.initiate_handshakes(now);
