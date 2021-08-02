@@ -3,7 +3,20 @@ version: "3"
 services:
   tezedge-node:
     image: tezedge/tezedge:v1.6.10
-    command: ["--network", "${TEZOS_NETWORK}", "--p2p-port=9732", "--rpc-port=18732", "--websocket-address=0.0.0.0:4927", "--log", "terminal", "file", "--log-file", "/tmp/tezedge/tezedge.log", "--tezos-context-storage", "irmin", "--peer-thresh-low", "60", "--peer-thresh-high", "80", "--ffi-pool-max-connections", "2", "--ffi-trpap-pool-max-connections", "1", "--ffi-twcap-pool-max-connections", "1"]
+    command: [
+        "--network", "${TEZOS_NETWORK}",
+        "--p2p-port=9732",
+        "--rpc-port=18732",
+        "--websocket-address=0.0.0.0:4927",
+        "--log", "terminal", "file",
+        "--log-file", "/tmp/tezedge/tezedge.log",
+        "--tezos-context-storage", "irmin",
+        "--peer-thresh-low", "60",
+        "--peer-thresh-high", "80",
+        "--ffi-pool-max-connections", "2",
+        "--ffi-trpap-pool-max-connections", "1",
+        "--ffi-twcap-pool-max-connections", "1"
+    ]
     logging:
       # Produce syslogs instead of terminal logs
       driver: "syslog"
@@ -20,7 +33,6 @@ services:
       - "4927:4927"       # node WS port (required only for tezedge)
       - "9732:9732"       # node P2P port
       - "18732:18732"     # node RPC port
-      - "3030:3030"       # sandbox launcher port
 
   explorer:
     image: tezedge/tezedge-explorer:v1.6.7
@@ -30,24 +42,24 @@ services:
       # need a better way to provide such information
       API: >
         [
-          {
-              "id": "rust",
-              "type": "tezedge",
-              "name": "rust.${HOSTNAME}",
-              "http": "http://${HOSTNAME}:18732",
-              "p2p_port": 9732,
-              "features": [
-                  { "name": "ws", "url": "ws://${HOSTNAME}:4927" },
-                  { "name": "monitoring" },
-                  { "name": "resources/system", "monitoringUrl": "http://${HOSTNAME}:38732/resources/tezedge" },
-                  { "name": "resources/memory", "memoryProfilerUrl": "http://${HOSTNAME}:17832" },
-                  { "name": "mempool" },
-                  { "name": "network" }
-              ]
-          }
+            {
+                "id": "rust",
+                "type": "tezedge",
+                "name": "rust.${HOSTNAME}",
+                "http": "http://${HOSTNAME}:18732",
+                "p2p_port": 9732,
+                "features": [
+                    { "name": "ws", "url": "ws://${HOSTNAME}:4927" },
+                    { "name": "monitoring" },
+                    { "name": "resources/system", "monitoringUrl": "http://${HOSTNAME}:38732/resources/tezedge" },
+                    { "name": "resources/memory", "memoryProfilerUrl": "http://${HOSTNAME}:17832" },
+                    { "name": "mempool" },
+                    { "name": "network" }
+                ]
+            }
         ]
     ports:
-      - "80:80"
+      - "8080:80"
 # volumes:
 #   ${TEZEDGE_VOLUME_PATH}:
 #     name: tezedge-shared-data
