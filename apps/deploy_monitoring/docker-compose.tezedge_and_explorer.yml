@@ -37,9 +37,6 @@ services:
   explorer:
     image: tezedge/tezedge-explorer:v1.6.7
     environment:
-      SANDBOX: "http://${HOSTNAME}:3030"
-      DEBUGGER: "http://${HOSTNAME}:17732"
-      # need a better way to provide such information
       API: >
         [
             {
@@ -60,7 +57,3 @@ services:
         ]
     ports:
       - "8080:80"
-# volumes:
-#   ${TEZEDGE_VOLUME_PATH}:
-#     name: tezedge-shared-data
-#     # external: false
