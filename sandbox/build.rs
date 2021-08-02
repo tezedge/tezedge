@@ -223,7 +223,8 @@ fn run_builder(build_chain: &str) {
                 }
 
                 // Uncompress the artifact
-                gunzip_file(&lib_path);
+                let uncompressed_name = lib_path.with_extension("");
+                gunzip_file(&uncompressed_name);
             }
         }
         _ => {
