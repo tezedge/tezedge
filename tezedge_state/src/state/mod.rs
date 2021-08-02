@@ -102,17 +102,21 @@ enum TimeoutInfo {
 
 impl fmt::Display for TimeoutInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Timeout - {}", match self {
-            Self::OutgoingConnect => "outgoing connection",
+        write!(
+            f,
+            "Timeout - {}",
+            match self {
+                Self::OutgoingConnect => "outgoing connection",
 
-            Self::SendConnectionMessage => "send ConnectionMessage",
-            Self::SendMetadataMessage => "send MetadataMessage",
-            Self::SendAckMessage => "send AckMessage",
+                Self::SendConnectionMessage => "send ConnectionMessage",
+                Self::SendMetadataMessage => "send MetadataMessage",
+                Self::SendAckMessage => "send AckMessage",
 
-            Self::ReceiveConnectionMessage => "receive ConnectionMessage",
-            Self::ReceiveMetadataMessage => "receive MetadataMessage",
-            Self::ReceiveAckMessage => "receive AckMessage",
-        })
+                Self::ReceiveConnectionMessage => "receive ConnectionMessage",
+                Self::ReceiveMetadataMessage => "receive MetadataMessage",
+                Self::ReceiveAckMessage => "receive AckMessage",
+            }
+        )
     }
 }
 
@@ -458,27 +462,56 @@ impl<E: Effects> TezedgeState<E> {
             .iter_mut()
             .filter_map(|(_, peer)| {
                 let (at, timeout_info) = match &peer.step {
-                    Initiated { at } => (at, if peer.incoming {
-                        TimeoutInfo::ReceiveConnectionMessage
-                    } else {
-                        TimeoutInfo::OutgoingConnect
-                    }),
+                    Initiated { at } => (
+                        at,
+                        if peer.incoming {
+                            TimeoutInfo::ReceiveConnectionMessage
+                        } else {
+                            TimeoutInfo::OutgoingConnect
+                        },
+                    ),
 
                     // receive timed out
-                    Connect { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveConnectionMessage),
-                    Metadata { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveMetadataMessage),
-                    Ack { sent: Success { at, .. }, .. } => (at, TimeoutInfo::ReceiveAckMessage),
+                    Connect {
+                        sent: Success { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::ReceiveConnectionMessage),
+                    Metadata {
+                        sent: Success { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::ReceiveMetadataMessage),
+                    Ack {
+                        sent: Success { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::ReceiveAckMessage),
 
                     // send timed out
+                    Connect {
+                        sent: Idle { at, .. },
+                        ..
+                    }
+                    | Connect {
+                        sent: Pending { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::SendConnectionMessage),
 
-                    Connect { sent: Idle { at, .. }, .. }
-                    | Connect { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendConnectionMessage),
+                    Metadata {
+                        sent: Idle { at, .. },
+                        ..
+                    }
+                    | Metadata {
+                        sent: Pending { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::SendMetadataMessage),
 
-                    Metadata { sent: Idle { at, .. }, .. }
-                    | Metadata { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendMetadataMessage),
-
-                    Ack { sent: Idle { at, .. }, .. }
-                    | Ack { sent: Pending { at, .. }, .. } => (at, TimeoutInfo::SendAckMessage)
+                    Ack {
+                        sent: Idle { at, .. },
+                        ..
+                    }
+                    | Ack {
+                        sent: Pending { at, .. },
+                        ..
+                    } => (at, TimeoutInfo::SendAckMessage),
                 };
 
                 if now.duration_since(*at) < peer_timeout {
