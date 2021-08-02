@@ -240,6 +240,7 @@ NODE_PARAMS = ['--sandbox-patch-context-json-file', paths.TEZOS_HOME + 'sandbox-
                '--ocaml-log-enabled', 'false',
                '--protocol-runner', paths.TEZOS_HOME + 'protocol-runner',
                '--peer-thresh-low', '0', '--peer-thresh-high', '500',
+               '--disable-peer-blacklist',
                '--ffi-pool-max-connections=10',
                '--ffi-pool-connection-timeout-in-secs=60',
                '--ffi-pool-max-lifetime-in-secs=21600',
