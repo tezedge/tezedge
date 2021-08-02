@@ -24,6 +24,7 @@ tezos_api = { path = "../tezos/api" }
 
 [build-dependencies]
 colored = "2.0"
+flate2 = "1.0"
 hex = "0.4"
 os_type = "2.2"
 serde = { version = "1.0", features = ["derive"] }

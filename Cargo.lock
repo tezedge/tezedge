@@ -3284,6 +3284,7 @@ dependencies = [
  "clap",
  "colored",
  "failure",
+ "flate2",
  "hex 0.4.2",
  "itertools 0.10.0",
  "nix 0.19.1",
@@ -3869,6 +3870,7 @@ name = "tezos-sys"
 version = "1.7.0"
 dependencies = [
  "colored",
+ "flate2",
  "fs_extra",
  "hex 0.4.2",
  "librustzcash",

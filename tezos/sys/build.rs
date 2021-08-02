@@ -4,10 +4,15 @@
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use colored::*;
+use flate2::bufread::GzDecoder;
 use os_type::{current_platform, OSType};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -177,16 +182,38 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
     }
 }
 
+fn gunzip_file(uncompressed_name: &PathBuf) {
+    let compressed_name = format!("{}.gz", uncompressed_name.to_str().unwrap());
+    let file = File::open(&compressed_name)
+        .unwrap_or_else(|_| panic!("Couldn't open file: {}", compressed_name));
+    let mut gz = GzDecoder::new(BufReader::new(file));
+    let mut buf = vec![];
+
+    gz.read_to_end(&mut buf)
+        .unwrap_or_else(|err| panic!("Decompression failure '{}': {}", compressed_name, err));
+
+    let outfile = File::create(uncompressed_name).expect(&format!(
+        "Could not open {} for decompression",
+        uncompressed_name.to_string_lossy()
+    ));
+    let mut writer = BufWriter::new(outfile);
+
+    writer.write_all(&buf).unwrap_or_else(|err| {
+        panic!(
+            "Failed when writting to '{}': {}",
+            uncompressed_name.to_string_lossy(),
+            err
+        )
+    });
+}
+
 fn download_remote_file_and_check_sha256_and_uncompress(
     remote_file: RemoteFile,
     dest_path: &PathBuf,
 ) {
     let compressed_name = format!("{}.gz", dest_path.to_str().unwrap());
     download_remote_file_and_check_sha256(remote_file, &PathBuf::from(compressed_name.clone()));
-    Command::new("gunzip")
-        .args(&[&compressed_name])
-        .status()
-        .unwrap_or_else(|_| panic!("Couldn't gunzip '{}'", compressed_name));
+    gunzip_file(dest_path);
 }
 
 fn libtezos_filename() -> &'static str {
@@ -361,7 +388,8 @@ fn main() {
     }
     fs::create_dir_all(ARTIFACTS_DIR).expect("Failed to create artifacts directory!");
 
-    let tezos_base_dir = env::var("TEZOS_BASE_DIR").unwrap_or_else(|_| "/home/bruno/projects/tezedge/tezos".to_owned());
+    let tezos_base_dir = env::var("TEZOS_BASE_DIR")
+        .unwrap_or_else(|_| "/home/bruno/projects/tezedge/tezos".to_owned());
     let build_chain = if tezos_base_dir.is_empty() {
         BuildChain::Remote
     } else {
