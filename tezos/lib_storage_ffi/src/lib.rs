@@ -391,21 +391,24 @@ fn test_context_calls() {
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path"), "value".as_bytes());
     let tezedge_ctxt = context::add(cr, &tezedge_ctxt, &key!("some/path2"), "value".as_bytes());
     let tezedge_ctxt = context::remove(cr, &tezedge_ctxt, &key!("some/path2"));
-    let tezedge_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
+    let tezedge_ctxt_hash = context::hash(cr, time as i64, None, &tezedge_ctxt);
+    let tezedge_commit_hash = context::commit(cr, time as i64, &"commit", &tezedge_ctxt);
 
     let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_genesis_hash).unwrap();
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path"), "value".as_bytes());
     let irmin_ctxt = context::add(cr, &irmin_ctxt, &key!("some/path2"), "value".as_bytes());
     let irmin_ctxt = context::remove(cr, &irmin_ctxt, &key!("some/path2"));
-    let irmin_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
+    let irmin_ctxt_hash = context::hash(cr, time as i64, None, &irmin_ctxt);
+    let irmin_commit_hash = context::commit(cr, time as i64, &"commit", &irmin_ctxt);
 
-    assert_eq!(irmin_hash, tezedge_hash);
+    assert_eq!(irmin_commit_hash, tezedge_commit_hash);
+    assert_eq!(tezedge_ctxt_hash, irmin_ctxt_hash);
 
-    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_hash);
+    let tezedge_ctxt = context::checkout(cr, &tezedge_index, &tezedge_commit_hash);
 
     assert!(tezedge_ctxt.is_some());
 
-    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_hash);
+    let irmin_ctxt = context::checkout(cr, &irmin_index, &irmin_commit_hash);
 
     assert!(irmin_ctxt.is_some());
 
