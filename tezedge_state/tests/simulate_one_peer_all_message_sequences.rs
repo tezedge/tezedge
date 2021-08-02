@@ -133,30 +133,32 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
     false
 }
 
-fn try_sequence(state: &mut TezedgeState, sequence: &[Messages], incoming: bool) -> bool {
+fn try_sequence(initial_time: Instant, state: &mut TezedgeState, sequence: &[Messages], incoming: bool) -> bool {
     let peer = PeerAddress::ipv4_from_index(1);
+    let mut time = initial_time;
 
     for msg in sequence {
+        time += Duration::from_millis(1);
         match msg {
             Messages::Handshake(msg) => state.accept(PeerHandshakeMessageProposal {
-                at: Instant::now(),
+                at: time,
                 peer: peer.clone(),
                 message: msg.clone(),
             }),
             Messages::Writable(writable) => state.accept(PeerWritableProposal {
-                at: Instant::now(),
+                at: time,
                 peer: peer.clone(),
                 stream: &mut writable.clone(),
             }),
         };
     }
     state.accept(TickProposal {
-        at: Instant::now() + state.config().peer_timeout,
+        at: time + state.config().peer_timeout,
     });
     state.assert_state();
 
     let is_connected = state.is_peer_connected(&peer);
-    assert_ne!(is_connected, state.is_address_blacklisted(&peer), "at the end of trying sequence, peer should either be blacklisted or connected, it wasn't! sequence: {}", sequence_to_str(sequence));
+    assert_ne!(is_connected, state.is_address_blacklisted(&peer), "at the end of trying sequence, peer should either be blacklisted or connected, it wasn't! sequence: {}, state: {:?}", sequence_to_str(sequence), state);
 
     is_connected
 }
@@ -180,10 +182,10 @@ fn sequence_to_str(seq: &[Messages]) -> String {
     format!("[{}]", seq_str)
 }
 
-fn fork_state_and_init_incoming(state: &TezedgeState, peer_addr: PeerAddress) -> TezedgeState {
+fn fork_state_and_init_incoming(initial_time: Instant, state: &TezedgeState, peer_addr: PeerAddress) -> TezedgeState {
     let mut state = state.clone();
     state.accept(NewPeerConnectProposal {
-        at: Instant::now(),
+        at: initial_time,
         peer: peer_addr,
     });
 
@@ -191,13 +193,14 @@ fn fork_state_and_init_incoming(state: &TezedgeState, peer_addr: PeerAddress) ->
 }
 
 fn fork_state_and_init_outgoing(
+    initial_time: Instant,
     state: &TezedgeState,
     peer_addr: PeerAddress,
     success: bool,
 ) -> TezedgeState {
     let mut state = state.clone();
     state.accept(ExtendPotentialPeersProposal {
-        at: Instant::now(),
+        at: initial_time,
         peers: std::iter::once(peer_addr.into()),
     });
     let mut requests = vec![];
@@ -209,7 +212,7 @@ fn fork_state_and_init_outgoing(
             TezedgeRequest::ConnectPeer { req_id, peer } if peer == peer_addr => {
                 req_found = true;
                 state.accept(PendingRequestProposal {
-                    at: Instant::now(),
+                    at: initial_time,
                     req_id,
                     message: match success {
                         true => PendingRequestMsg::ConnectPeerSuccess,
@@ -238,6 +241,7 @@ fn simulate_one_peer_all_message_sequences() {
 
     let msgs = build_messages(&mut g, &identity);
 
+    let initial_time = Instant::now();
     let tezedge_state = TezedgeState::new(
         slog::Logger::root(slog::Discard, slog::o!()),
         TezedgeConfig {
@@ -259,12 +263,12 @@ fn simulate_one_peer_all_message_sequences() {
         node_identity.clone(),
         sample_tezedge_state::default_shell_compatibility_version(),
         Default::default(),
-        Instant::now(),
+        initial_time,
     );
 
-    let state_incoming = fork_state_and_init_incoming(&tezedge_state, address);
-    let state_outgoing = fork_state_and_init_outgoing(&tezedge_state, address, true);
-    let state_outgoing_failed = fork_state_and_init_outgoing(&tezedge_state, address, false);
+    let state_incoming = fork_state_and_init_incoming(initial_time, &tezedge_state, address);
+    let state_outgoing = fork_state_and_init_outgoing(initial_time, &tezedge_state, address, true);
+    let state_outgoing_failed = fork_state_and_init_outgoing(initial_time, &tezedge_state, address, false);
 
     for seq_len in 1..=6 {
         println!("trying sequences with length: {}", seq_len);
@@ -272,12 +276,12 @@ fn simulate_one_peer_all_message_sequences() {
         for seq in msgs.clone().into_iter().permutations(seq_len) {
             count += 1;
 
-            if try_sequence(&mut state_outgoing_failed.clone(), &seq, false) {
+            if try_sequence(initial_time, &mut state_outgoing_failed.clone(), &seq, false) {
                 panic!("sequence with failed outgoing connection succeeded (shouldn't have!). sequence: {:?}", seq);
             }
 
             let should_fail = should_sequence_fail(&seq, false);
-            let result = try_sequence(&mut state_outgoing.clone(), &seq, false);
+            let result = try_sequence(initial_time, &mut state_outgoing.clone(), &seq, false);
             assert_eq!(
                 result,
                 !should_fail,
@@ -291,7 +295,7 @@ fn simulate_one_peer_all_message_sequences() {
             }
 
             let should_fail = should_sequence_fail(&seq, true);
-            let result = try_sequence(&mut state_incoming.clone(), &seq, true);
+            let result = try_sequence(initial_time, &mut state_incoming.clone(), &seq, true);
             assert_eq!(
                 result,
                 !should_fail,
