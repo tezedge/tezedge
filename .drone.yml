@@ -3005,6 +3005,7 @@ steps:
 
   - name: run-tezos-client-200-transactions
     image: tezos/tezos:v9-release
+    user: root
     environment:
       TEZOS_AMOUNT: 10
       LEVEL_THRESHOLD: 1
@@ -3022,7 +3023,21 @@ steps:
         export TEZOS_ACCOUNTS
       - echo $TEZOS_ACCOUNTS
 #      - export TEZOS_ACCOUNTS=$(for i in $(seq 1 20); do echo acc-$i; done)
-      - $${SANDBOX_DATA_PATH}/transactions.sh
+      - TEZOS_ENDPOINT=http://tezedge-node-sandbox-florence-run:18732 $${SANDBOX_DATA_PATH}/transactions run
+
+  - name: join-tezos-client-200-transactions
+    image: tezos/tezos:v9-release
+    user: root
+    detach: true
+    environment:
+      TEZOS_AMOUNT: 10
+      LEVEL_THRESHOLD: 1
+      TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - $${SANDBOX_DATA_PATH}/transactions join
 
   - name: run-tezos-endorser-009-PsFLoren-level-2
     user: root

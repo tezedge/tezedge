@@ -15,7 +15,7 @@ fi
 LEVEL_THRESHOLD=${LEVEL_THRESHOLD:-1}
 TEZOS_AMOUNT=${TEZOS_AMOUNT:-1}
 
-dir=$(mktemp -d tztx.XXXXXX)
+dir=${TRANSAZTION_DIR:-.}
 
 cleanup() {
     set +e
@@ -108,7 +108,7 @@ transfer () {
     fi
 }
 
-transfer_many() {
+run_transactions() {
     amount=$1
     from=$2
     shift 2
@@ -157,11 +157,11 @@ verify_transactions() {
     echo "Summary (Ok/Fails/Errors): $ok/$fails/$errors"
 }
 
-transfer_and_verify() {
+
+
+join_transactions() {
     level=$(level)
     target_level=$((level + LEVEL_THRESHOLD))
-    transfer_many $*
-    echo ">>> Started periodic transfer on level $level, validation threshold is level $target_level"
     shift
     prev_level=$level
     while true; do
@@ -187,9 +187,18 @@ transfer_and_verify() {
             break
         fi
     done
-    verify_transactions
     echo ">>> Done"
-
 }
 
-transfer_and_verify "$TEZOS_AMOUNT" $TEZOS_ADDRESSES
+case $1 in
+    run)
+        run_transactions "$TEZOS_AMOUNT" $TEZOS_ADDRESSES
+        ;;
+    join)
+        join_transactions
+        verify_transactions
+        ;;
+    *)
+        exit 1
+        ;;
+esac
