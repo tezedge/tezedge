@@ -451,16 +451,38 @@ impl WorkingTree {
     }
 
     pub fn find_tree(&self, key: &ContextKey) -> Result<Option<Self>, MerkleError> {
+        let (file, path) = if let Some((file, path)) = key.split_last() {
+            (file, path)
+        } else {
+            // If the key is empty, we are checking self, which exists
+            return Ok(Some(self.clone()));
+        };
+
         let root = self.get_working_tree_root_ref();
         let mut storage = self.index.storage.borrow_mut();
 
-        let tree = self.find_raw_tree(root, key, &mut storage)?;
-
-        if tree.is_empty() {
-            return Ok(None);
+        if let Ok(tree_id) = self.find_raw_tree(root, path, &mut storage) {
+            if let Some(node_id) = storage.get_tree_node_id(tree_id, *file) {
+                match self.index.node_entry(node_id, &mut storage) {
+                    Err(MerkleError::EntryNotFound { .. }) => Ok(None),
+                    Err(err) => Err(err)?,
+                    Ok(Entry::Tree(tree)) => {
+                        Ok(Some(Self::new_with_tree(self.index.clone(), tree)))
+                    }
+                    Ok(Entry::Blob(blob)) => {
+                        Ok(Some(Self::new_with_value(self.index.clone(), blob)))
+                    }
+                    Ok(Entry::Commit(_)) => Err(MerkleError::FoundUnexpectedStructure {
+                        sought: "tree".to_string(),
+                        found: "commit".to_string(),
+                    }),
+                }
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
         }
-
-        Ok(Some(Self::new_with_tree(self.index.clone(), tree)))
     }
 
     pub fn add_tree(&self, key: &ContextKey, tree: &Self) -> Result<Self, MerkleError> {
@@ -511,7 +533,7 @@ impl WorkingTree {
     pub fn is_empty(&self) -> bool {
         match &self.value {
             WorkingTreeValue::Tree(tree) => tree.is_empty(),
-            WorkingTreeValue::Value(_) => true,
+            WorkingTreeValue::Value(_) => false,
         }
     }
 
@@ -609,6 +631,7 @@ impl WorkingTree {
                 Ok(Some(blob.to_vec()))
             }
             Err(MerkleError::ValueNotFound { .. }) => Ok(None),
+            Err(MerkleError::ValueIsNotABlob { .. }) => Ok(None),
             Err(err) => Err(err),
         }
     }
