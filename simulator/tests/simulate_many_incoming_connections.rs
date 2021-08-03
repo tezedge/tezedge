@@ -47,10 +47,7 @@ fn simulate_many_incoming_connections() {
         if let Ok(_) = cluster.connect_to_node(peer_id) {
             cluster.add_writable_event(peer_id, None);
         }
-        cluster
-            .advance_time_ms(5)
-            .make_progress()
-            .assert_state();
+        cluster.advance_time_ms(5).make_progress().assert_state();
     }
 
     cluster.add_tick_for_current_time();
