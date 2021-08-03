@@ -224,7 +224,12 @@ fn run_builder(build_chain: &str) {
 
                 // Uncompress the artifact
                 let uncompressed_name = lib_path.with_extension("");
+
                 gunzip_file(&uncompressed_name);
+
+                let mut perms = fs::metadata(&uncompressed_name).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&uncompressed_name, perms).unwrap();
             }
         }
         _ => {
