@@ -3,3 +3,7 @@
 #![forbid(unsafe_code)]
 
 pub mod client;
+
+pub fn force_libtezos_linking() {
+    tezos_interop::force_libtezos_linking();
+}

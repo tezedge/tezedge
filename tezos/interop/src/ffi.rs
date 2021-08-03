@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::convert::TryFrom;
-use std::sync::Once;
 
 use crypto::hash::ChainId;
 use crypto::hash::{ContextHash, ProtocolHash};
@@ -99,14 +98,7 @@ mod tezos_ffi {
 
 /// Initializes the ocaml runtime and the tezos-ffi callback mechanism.
 pub fn setup() -> OCamlRuntime {
-    static INIT: Once = Once::new();
-    let ocaml_runtime = OCamlRuntime::init();
-
-    INIT.call_once(|| {
-        tezos_new_context::ffi::initialize_callbacks();
-    });
-
-    ocaml_runtime
+    OCamlRuntime::init()
 }
 
 pub fn shutdown() {
