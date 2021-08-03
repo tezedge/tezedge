@@ -933,6 +933,12 @@ impl WorkingTree {
         let root = self.get_working_tree_root_ref();
         let tree = self.find_raw_tree(root, path, storage)?;
 
+        // If this was a deletion, and the path doesn't contain anything
+        // there is nothing to do. We don't want to recurse in this case.
+        if tree.is_empty() && new_node.is_none() {
+            return Ok(Entry::Tree(self.get_working_tree_root_ref()));
+        }
+
         let tree = match new_node {
             None => storage.remove(tree, last)?,
             Some(new_node) => storage.insert(tree, last, new_node)?,
