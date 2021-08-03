@@ -420,6 +420,8 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=gmp");
     println!("cargo:rustc-link-lib=dylib=ffi");
     println!("cargo:rustc-link-lib=dylib=ev");
-    println!("cargo:rustc-link-lib=dylib=rt");
+    if current_platform().os_type != OSType::OSX {
+        println!("cargo:rustc-link-lib=dylib=rt");
+    }
     println!("cargo:rerun-if-env-changed=TEZOS_BASE_DIR");
 }
