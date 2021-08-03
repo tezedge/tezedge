@@ -2748,6 +2748,8 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/tezedge_drone_sandbox.config $${SANDBOX_DATA_PATH}
       - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${SANDBOX_DATA_PATH}
       - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-parameters.json $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-secret-keys.txt $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/transactions.sh $${SANDBOX_DATA_PATH}
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-florence-run
