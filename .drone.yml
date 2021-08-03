@@ -6512,7 +6512,7 @@ steps:
       - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
       - cd latency && cargo build --bin storage-metrics --release
       - >
-        KEEP_DATA=1 /build/build_files/light-node
+        /build/build_files/light-node
         --config-file=/build/build_files/tezedge/tezedge_drone.config
         --identity-file=/build/build_files/identities/identity_2.json
         --protocol-runner=/build/build_files/protocol-runner
@@ -6520,7 +6520,7 @@ steps:
         --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
         --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
         --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
-        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="localhost:13632" &
         echo $! > /var/run/tezedge.pid
       - ./latency/target/release/storage-metrics
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
