@@ -622,7 +622,7 @@ impl WorkingTree {
     /// Check if directory exists in current staged root
     pub fn mem_tree(&self, key: &ContextKey) -> bool {
         let root = self.get_working_tree_root_ref();
-        self.directory_exists(root, key)
+        self.node_exists(root, key)
     }
 
     fn value_exists(&self, tree: Tree, key: &ContextKey) -> Result<bool, MerkleError> {
@@ -630,17 +630,33 @@ impl WorkingTree {
         let mut storage = self.index.storage.borrow_mut();
 
         // find tree by path
-        self.find_raw_tree(tree, &path, &mut storage)
-            .map(|node| storage.get_tree_node_id(node, *file).is_some())
-            .or(Ok(false))
+        match self.find_raw_tree(tree, &path, &mut storage) {
+            Err(_) => Ok(false),
+            Ok(tree_id) => {
+                if let Some(node_id) = storage.get_tree_node_id(tree_id, *file) {
+                    let node = storage.get_node(node_id)?;
+                    Ok(node.node_kind() == NodeKind::Leaf)
+                } else {
+                    Ok(false)
+                }
+            }
+        }
     }
 
-    fn directory_exists(&self, root: Tree, key: &ContextKey) -> bool {
+    fn node_exists(&self, tree: Tree, key: &ContextKey) -> bool {
+        let (file, path) = if let Some((file, path)) = key.split_last() {
+            (file, path)
+        } else {
+            // If the key is empty, we are checking self, which exists
+            return true;
+        };
         let mut storage = self.index.storage.borrow_mut();
-        // find tree by path
-        self.find_raw_tree(root, &key, &mut storage)
-            .map(|node| !node.is_empty())
-            .unwrap_or(false)
+
+        if let Ok(tree_id) = self.find_raw_tree(tree, path, &mut storage) {
+            storage.get_tree_node_id(tree_id, *file).is_some()
+        } else {
+            false
+        }
     }
 
     fn get_from_tree(&self, root: Tree, key: &ContextKey) -> Result<BlobStorageId, MerkleError> {
