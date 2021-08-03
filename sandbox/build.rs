@@ -230,6 +230,8 @@ fn run_builder(build_chain: &str) {
                 let mut perms = fs::metadata(&uncompressed_name).unwrap().permissions();
                 perms.set_mode(0o755);
                 fs::set_permissions(&uncompressed_name, perms).unwrap();
+
+                fs::remove_file(&lib_path).ok();
             }
         }
         _ => {

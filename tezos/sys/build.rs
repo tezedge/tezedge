@@ -214,6 +214,7 @@ fn download_remote_file_and_check_sha256_and_uncompress(
     let compressed_name = format!("{}.gz", dest_path.to_str().unwrap());
     download_remote_file_and_check_sha256(remote_file, &PathBuf::from(compressed_name.clone()));
     gunzip_file(dest_path);
+    fs::remove_file(&compressed_name).ok();
 }
 
 fn libtezos_filename() -> &'static str {
