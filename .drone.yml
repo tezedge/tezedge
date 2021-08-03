@@ -100,7 +100,7 @@ steps:
     - cp ./tezos/sys/lib_tezos/artifacts/sapling-output.params $${BUILD_ARTIFACTS_PATH}/build_files/ffi
     # copy sandbox resources
     - cp ./light_node/etc/tezedge_sandbox/sandbox-patch-context.json $${SANDBOX_ARTIFACTS_PATH}
-    - cp ./light_node/etc/tezedge_sandbox/transactions.sh $${SANDBOX_ARTIFACTS_PATH}
+    - cp ./light_node/etc/tezedge_sandbox/transactions $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/006-carthage-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/008-edo-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
     - cp ./light_node/etc/tezedge_sandbox/009-florence-protocol-parameters.json $${SANDBOX_ARTIFACTS_PATH}
@@ -2749,7 +2749,7 @@ steps:
       - cp $${SANDBOX_ARTIFACTS_PATH}/sandbox-patch-context.json $${SANDBOX_DATA_PATH}
       - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-parameters.json $${SANDBOX_DATA_PATH}
       - cp $${SANDBOX_ARTIFACTS_PATH}/009-florence-protocol-secret-keys.txt $${SANDBOX_DATA_PATH}
-      - cp $${SANDBOX_ARTIFACTS_PATH}/transactions.sh $${SANDBOX_DATA_PATH}
+      - cp $${SANDBOX_ARTIFACTS_PATH}/transactions $${SANDBOX_DATA_PATH}
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-florence-run
