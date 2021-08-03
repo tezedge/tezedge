@@ -441,9 +441,15 @@ fn test_context_calls() {
     let irmin_ctxt = irmin_ctxt.unwrap();
 
     assert!(context::mem(cr, &tezedge_ctxt, &key!("some/path")));
+    assert!(context::mem_tree(cr, &tezedge_ctxt, &key!("some/path")));
     assert!(!context::mem(cr, &tezedge_ctxt, &key!("some/path2")));
+    assert!(!context::mem(cr, &tezedge_ctxt, &key!("some")));
+    assert!(context::mem_tree(cr, &tezedge_ctxt, &key!("some")));
     assert!(context::mem(cr, &irmin_ctxt, &key!("some/path")));
+    assert!(context::mem_tree(cr, &irmin_ctxt, &key!("some/path")));
     assert!(!context::mem(cr, &irmin_ctxt, &key!("some/path2")));
+    assert!(!context::mem(cr, &irmin_ctxt, &key!("some")));
+    assert!(context::mem_tree(cr, &irmin_ctxt, &key!("some")));
 
     let tezedge_tree = tree::empty(cr, &tezedge_ctxt);
 
