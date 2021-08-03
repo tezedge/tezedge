@@ -6505,28 +6505,10 @@ steps:
           echo "===> Block level $block"
         done
         '
-      - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
-      # terminate the node gracefully and wait to allow `valgrind` dump data
-      - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
-      # restart node for client to connect
-      # ----------------------------------
       - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
-      - cd latency && cargo build --bin storage-metrics --release
-      - cd ../
-      - >
-        /build/build_files/light-node
-        --config-file=/build/build_files/tezedge/tezedge_drone.config
-        --identity-file=/build/build_files/identities/identity_2.json
-        --protocol-runner=/build/build_files/protocol-runner
-        --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
-        --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
-        --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
-        --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
-        --tezos-context-storage=irmin --disable-bootstrap-lookup --private-node=true --disable-peer-blacklist --peers="127.0.0.1:13632" &
-        echo $! > /var/run/tezedge.pid
       - cd latency && cargo run --bin storage-metrics --release
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
-        # terminate the node gracefully and wait to allow `valgrind` dump data
+      # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 depends_on:
