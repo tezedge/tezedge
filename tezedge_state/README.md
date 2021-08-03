@@ -141,3 +141,70 @@ That can work, but needlessly complicates design and implementation.
 Instead a better approach will be to include `Effects` in the `TezedgeProposer`
 and pass that inside proposal. That way design, implementation, simulation
 and testing will be simpler. Goal is to switch to that approach eventually.
+
+# Simulation and Testing
+
+One of the main goals of this design is to give us ability to test the
+state machine thoroughly. With actor system testing is really hard,
+especially because of threading. In our state machine though, we only
+use 1 thread and it is fully deterministic, so testing and catching
+bugs becomes much easier.
+
+Apart from unit tests, testing can be done on multiple layers:
+- **State machine layer**, by sending proposals to `TezedgeState`. In this
+  case, we don't simulate proposer/mio layer. We basically just test
+  the state machine.
+
+  It looks something like this:
+  ```
+  <Testing> --proposal---> Acceptor
+      |                       |
+      '--------get requests-->|
+      |                       |
+      '<-------requests-------'
+  ```
+- **Mio layer**. On this layer we can have end to end tests. Basically
+  we simulate mio and the rest of the system stays the same, so what we
+  will be testing is very close to actual environment.
+
+  It looks something like this:
+  ```
+      (EVENTS)-----------------> Proposer ---proposal---> Acceptor
+         ^                           |                       |
+         |                           '--------get requests-->|
+         |                           |                       |
+    <Simulator>                      '<-------requests-------'
+         |                           |
+         ^                           |
+         '----network requests-----<-'
+         ^                           |
+         |                           |
+         '----storage requests-----<-'
+  ```
+
+On both layers we could simulate cluster with as many peers as we like.
+
+Simulated peers can be of two types:
+- **Real Peers**, which are running it's own state machines. We can control
+  when each of those peers receive/send event/message, but state machine
+  makes it's internal decisions that we can't fully control. We still
+  control communication part between peers, so we can override state
+  machine's decision about what to send, or we could filter/simulate what
+  that peer receives.
+
+- **Fake Peers**, which behave arbitrarily as we command them to. They don't
+  have their own state machine. They might or might not have it's own
+  state (up to us depending on our needs).
+
+We could simulate cluster of just **real peers**, just **fake peers** or we can
+have a mix of them.
+
+This could be used to create something like what Tezedge sandbox does,
+except we will have much better control of each node (when they see
+certain events/messages, simulate error cases, etc...).
+
+One thing to note also is that we can run whole cluster(all of those peers)
+in just one thread. We could run them in different threads, but that will
+give us less control. Also when testing, we could parralelize testing
+of different scenarios. We could run each scenario in separate thread,
+that way we can test much more cases in shorter amount of time.
