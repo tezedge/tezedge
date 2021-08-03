@@ -64,7 +64,8 @@ pub fn build(initial_time: Instant, config: TezedgeConfig) -> TezedgeState {
     let node_identity = identity_1();
 
     let tezedge_state = TezedgeState::new(
-        logger(slog::Level::Info),
+        // slog::Logger::root(slog::Discard, slog::o!()),
+        logger(slog::Level::Trace),
         config,
         node_identity.clone(),
         default_shell_compatibility_version(),
