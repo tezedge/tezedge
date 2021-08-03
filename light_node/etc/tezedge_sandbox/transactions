@@ -49,78 +49,68 @@ fail() {
     echo "====================="
 }
 
-client() {
-    tezos-client -E "$TEZOS_ENDPOINT" $*
-}
-
 level () {
     # TODO use jq
-    client rpc get /chains/main/blocks/head/header | grep '"level":' | sed -e 's/.*"level": \([[:digit:]]*\),.*/\1/'
-}
-
-bootstrapped() {
-    while true; do
-        if client bootstrapped >& /dev/null; then
-            break
-        fi
-        echo ">>> The node is not bootstrapped"
-        sleep 10
-    done
-    echo ">>> The node is bootstrapped"
+    endpoint=$1
+    tezos-client -E "$endpoint" rpc get /chains/main/blocks/head/header | grep '"level":' | sed -e 's/.*"level": \([[:digit:]]*\),.*/\1/'
 }
 
 wait_for_next_level() {
-    level=$(level)
-    while [ "$level" -eq "$(level)" ] ; do
+    level=$(level "$1")
+    while true; do
         sleep 5
+        new_level=$(level "$1")
+        [ "$level" -ne "$new_level" ] && break
     done
 }
 
 transfer () {
-    amount=$1
-    from=$2
-    to=$3
+    endpoint=$1
+    amount=$2
+    from=$3
+    to=$4
 
-    id=$from-$to
+    id="$from-$to"
 
     out="$dir/$id.out"
     err="$dir/$id.err"
-    rm -f $dir/$id.res
+    rm -f "$dir/$id.res"
     #echo ">>> Starting transaction of $amount from $from to $to"
-    if client transfer "$amount" from "$from" to "$to" >$out 2>$err; then
+    if tezos-client -E "$endpoint" transfer "$amount" from "$from" to "$to" >"$out" 2>"$err"; then
         #echo ">>> ok $id"
-        echo ok > $dir/$id.res
+        echo ok > "$dir/$id.res"
     else
-        burn_cap=$(tail -n 1 $err | grep "Use \`--burn-cap" | sed -e "s/.*\`\(--burn-cap [0-9.]*\)\`.*/\1/")
+        burn_cap=$(tail -n 1 $err | grep "Use \`--burn-cap" | sed -e "s/.*\`--burn-cap \([0-9.]*\)\`.*/\1/")
         if [ -n "$burn_cap" ]; then
             #echo ">>> Restarting transaction of $amount from $from to $to with $burn_cap"
-            if client transfer "$amount" from "$from" to "$to" $burn_cap >$out 2>$err; then
+            if tezos-client -E "$endpoint" transfer "$amount" from "$from" to "$to" --burn-cap "$burn_cap" >"$out" 2>"$err"; then
                 #echo ">>> ok $id with $burn_cap"
-                echo ok > $dir/$id.res
+                echo ok > "$dir/$id.res"
             else
                 #echo ">>> err $id with $burn_cap"
-                echo err > $dir/$id.res
+                echo err > "$dir/$id.res"
             fi
         else
             #echo ">>> err $id"
-            echo err > $dir/$id.res
+            echo err > "$dir/$id.res"
         fi
     fi
 }
 
 run_transactions() {
-    amount=$1
-    from=$2
-    shift 2
+    endpoint=$1
+    amount=$2
+    from=$3
+    shift 3
     num=0
-    rm -f $dir/tx.list
-    for to in $* $from; do
-        transfer $amount $from $to &
+    rm -f "$dir/tx.list"
+    for to in "$@" $from; do
+        transfer "$endpoint" "$amount" "$from" "$to" &
         id=$from-$to
-        echo $! > $dir/$id.pid
-        echo $id >> $dir/tx.list
+        echo $! > "$dir/$id.pid"
+        echo "$id" >> "$dir/tx.list"
         num=$((num+1))
-        from=$to
+        from="$to"
     done
 
     echo "Started $num transaction(s)"
@@ -160,19 +150,20 @@ verify_transactions() {
 
 
 join_transactions() {
-    level=$(level)
-    target_level=$((level + LEVEL_THRESHOLD))
-    shift
+    endpoint=$1
+    level_threshold=$2
+    level=$(level "$endpoint")
+    target_level=$((level + level_threshold))
     prev_level=$level
     while true; do
         sleep 5
         new_level=$(level)
-        if [ $new_level -gt $prev_level ]; then
+        if [ "$new_level" -gt "$prev_level" ]; then
             echo ">>> Checking on level $new_level"
-            prev_level=$new_level
+            prev_level="$new_level"
             incomplete=""
-            for id in $(cat $dir/tx.list); do
-                if [ ! -f $dir/$id.res ]; then
+            for id in $(cat "$dir/tx.list"); do
+                if [ ! -f "$dir/$id.res" ]; then
                     incomplete=$id
                     break
                 fi
@@ -181,7 +172,7 @@ join_transactions() {
                 echo ">>> All transactions completed on level $new_level, checking them"
                 break
             fi
-        elif [ $new_level -ge $target_level ]; then
+        elif [ "$new_level" -ge "$target_level" ]; then
             echo ">>> Block level reached $level, checking transactions"
             sleep 5
             break
@@ -192,10 +183,12 @@ join_transactions() {
 
 case $1 in
     run)
-        run_transactions "$TEZOS_AMOUNT" $TEZOS_ADDRESSES
+        shift
+        run_transactions "$@"
         ;;
     join)
-        join_transactions
+        shift
+        join_transactions "$@"
         verify_transactions
         ;;
     *)

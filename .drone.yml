@@ -3008,7 +3008,6 @@ steps:
     user: root
     environment:
       TEZOS_AMOUNT: 10
-      LEVEL_THRESHOLD: 1
       TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
     volumes:
       - name: sandbox-data
@@ -3017,27 +3016,25 @@ steps:
       - |
         for sk in $(cat $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
           i=$((i + 1))
-          tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 8732 import secret key acc-$i $sk
-          TEZOS_ACCOUNTS="$TEZOS_ACCOUNTS acc-$i"
+          tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
+          TEZOS_ADDRESSES="$TEZOS_ADDRESSES acc-$i"
         done
-        export TEZOS_ACCOUNTS
-      - echo $TEZOS_ACCOUNTS
-#      - export TEZOS_ACCOUNTS=$(for i in $(seq 1 20); do echo acc-$i; done)
-      - TEZOS_ENDPOINT=http://tezedge-node-sandbox-florence-run:18732 $${SANDBOX_DATA_PATH}/transactions run
+        export TEZOS_ADDRESSES
+      - echo $TEZOS_ADDRESSES
+      - $${SANDBOX_DATA_PATH}/transactions run $TEZOS_ENDPOINT $TEZOS_AMOUNT $TEZOS_ADDRESSES
 
   - name: join-tezos-client-200-transactions
     image: tezos/tezos:v9-release
     user: root
     detach: true
     environment:
-      TEZOS_AMOUNT: 10
-      LEVEL_THRESHOLD: 1
       TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
+      LEVEL_THRESHOLD: 1
     volumes:
       - name: sandbox-data
         path: /data/sandbox
     commands:
-      - $${SANDBOX_DATA_PATH}/transactions join
+      - $${SANDBOX_DATA_PATH}/transactions join $TEZOS_ENDPOINT $LEVEL_THRESHOLD
 
   - name: run-tezos-endorser-009-PsFLoren-level-2
     user: root
