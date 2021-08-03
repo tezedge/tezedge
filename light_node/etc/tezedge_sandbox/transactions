@@ -2,19 +2,6 @@
 
 set -e
 
-if [ -z "$TEZOS_ENDPOINT" ]; then
-    echo "Tezos endpoint \$TEZOS_ENDPOINT is not specified" >&2
-    exit 1
-fi
-
-if [ -z "$TEZOS_ADDRESSES" ]; then
-    echo "Tezos addresses \$TEZOS_ADDRESSES is not specified" >&2
-    exit 1
-fi
-
-LEVEL_THRESHOLD=${LEVEL_THRESHOLD:-1}
-TEZOS_AMOUNT=${TEZOS_AMOUNT:-1}
-
 dir=${TRANSAZTION_DIR:-.}
 
 cleanup() {
