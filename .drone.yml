@@ -6509,6 +6509,8 @@ steps:
       # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
       # restart node for client to connect
+      - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
+      - cd latency && cargo build --bin storage-metrics --release
       - >
         KEEP_DATA=1 /build/build_files/light-node
         --config-file=/build/build_files/tezedge/tezedge_drone.config
@@ -6520,8 +6522,7 @@ steps:
         --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
         --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="$${OCTEZ_IP}:9732" &
         echo $! > /var/run/tezedge.pid
-      - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
-      - cd latency && cargo run --bin storage-metrics --release
+      - ./latency/target/release/storage-metrics
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
         # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
