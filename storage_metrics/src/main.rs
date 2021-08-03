@@ -194,11 +194,6 @@ fn main() {
         )
     };
 
-    let mut instance: Instant = Instant::now();
-    let maximum_latency = Arc::new(AtomicUsize::new(0));
-    let minimum_latency = Arc::new(AtomicUsize::new(0));
-    let accumulator = Arc::new(AtomicUsize::new(0));
-    let requests = Arc::new(AtomicUsize::new(0));
 
     let peer: PeerAddress = LOCAL_PEER.parse().unwrap();
 
@@ -208,11 +203,14 @@ fn main() {
     let mut cursor: Option<BlockHash> = None;
 
     let mut timer: Option<Instant> = None;
-
+    let timeout = Instant::now();
 
     loop {
+        if timeout.elapsed().as_secs() > 60 && timer.is_none(){
+            break
+        }
         if let Some(timer) = timer {
-            if timer.elapsed().as_secs() >= 60 {
+            if timer.elapsed().as_secs() >= 20 {
 
                 //Print result after 60 secs
                 let connected_peers = proposer.state.connected_peers();
