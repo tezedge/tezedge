@@ -2853,7 +2853,7 @@ steps:
       - $${BUILD_ARTIFACTS_PATH}/build_files/assert_equals.sh 0 $applied_count
 
 
-  - name: run-tezos-client-200-transactions
+  - name: run-tezos-client-20-transactions
     image: tezos/tezos:v9-release
     detach: true
     user: root
@@ -2866,7 +2866,7 @@ steps:
         path: /data/sandbox
     commands:
       - |
-        for sk in $(cat $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
+        for sk in $(head -n 20 $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
           i=$((i + 1))
           tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
           TEZOS_ADDRESSES="$TEZOS_ADDRESSES acc-$i"
@@ -2876,7 +2876,7 @@ steps:
       - $${SANDBOX_DATA_PATH}/transactions run $TEZOS_ENDPOINT $TEZOS_AMOUNT $TEZOS_ADDRESSES
       - cp /dev/null run-done
 
-  - name: done-tezos-client-200-transactions
+  - name: done-tezos-client-20-transactions
     image: alpine
     volumes:
       - name: build
@@ -2952,7 +2952,7 @@ steps:
     commands:
       - tezos-node-bootstrap bootstrap --level=2 --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT} $${TEZEDGE_NODE_RPC_CONTEXT_ROOT}
 
-  - name: join-tezos-client-200-transactions
+  - name: join-tezos-client-20-transactions
     image: tezos/tezos:v9-release
     user: root
     environment:
