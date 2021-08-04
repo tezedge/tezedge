@@ -6509,7 +6509,7 @@ steps:
       # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
       # restart node for client to connect
-      # --------------------------------------
+      # -----------------------------------------
       - git clone https://github.com/mambisi/tezedge.git --branch storage-latency-temp latency
       - cd latency && cargo build --bin storage-metrics --release
       - cd ../
