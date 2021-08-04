@@ -136,7 +136,71 @@ steps:
     - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
     - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
 
-- name: build-old-artifacts
+- name: synch-artifacts
+  image: tezedge/tezedge-ci-builder:latest
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # Modify permissions for ssh key
+    - chown appuser /home/appuser/.ssh/id_rsa
+    - chown appuser /home/appuser/.ssh
+    - chmod 600 /home/appuser/.ssh/id_rsa
+    - ls -la /home/appuser/.ssh
+    # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: tests
+    host:
+      path: /usr/local/etc/tezedge-ci/tests/
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+
+---
+##############################################################################################################
+# This pipeline:
+# - only one which checkouts git
+# - runs just run tests, and build artifacts to 'build' volume,
+# - aslo copies files needed from git for other pipelines
+##############################################################################################################
+kind: pipeline
+name: build-old-tezedge-binaries
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: build-artifacts
   image: tezedge/tezedge-ci-builder:latest
   user: root
   volumes:
@@ -162,9 +226,6 @@ steps:
     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files/old
     - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/old
     - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
-  when:
-    ref:
-    - refs/pull/*/head
 
 - name: synch-artifacts
   image: tezedge/tezedge-ci-builder:latest
@@ -190,9 +251,7 @@ steps:
     - ls -la /home/appuser/.ssh
     # copy build files to all other runner machines
     - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files /home/appuser/.ssh
-    - chmod 755 ./synchronize_ci.sh && ./synchronize_ci.sh $${TEST_ARTIFACTS_PATH} /usr/local/etc/tezedge-ci/tests/build_${DRONE_BUILD_NUMBER} /home/appuser/.ssh
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/old /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/old /home/appuser/.ssh
 
 image_pull_secrets:
   - docker_pull_secret
@@ -201,9 +260,6 @@ volumes:
   - name: build
     host:
       path: /usr/local/etc/tezedge-ci/build/
-  - name: tests
-    host:
-      path: /usr/local/etc/tezedge-ci/tests/
   - name: ids
     host:
       path: /usr/local/etc/tezedge-ci/id
@@ -212,6 +268,8 @@ trigger:
   branch:
     - master
     - develop
+  ref:
+    - refs/pull/*/head
 
 ##############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
@@ -5595,6 +5653,8 @@ trigger:
     - develop
 
 depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
 
 ---
@@ -5818,6 +5878,8 @@ trigger:
     - develop
 
 depends_on:
+  - build-tezedge-binaries
+  - build-old-tezedge-binaries
   - corr/real-time-environment-cyclictest-latencies
 
 
@@ -6015,6 +6077,8 @@ name: perf/bootstrap-time-009-florence
 
 depends_on:
   - build-tezedge-binaries
+  - build-old-tezedge-binaries
+  - corr/real-time-environment-cyclictest-latencies
 
 node:
   tag: real-time-linux-runner
