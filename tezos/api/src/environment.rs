@@ -901,7 +901,7 @@ mod tests {
     #[test]
     fn encoded_decoded_timestamp() -> Result<(), failure::Error> {
         let dt = parse_from_rfc3339("2019-11-28T13:02:13Z")?;
-        let decoded = ts_to_rfc3339(dt);
+        let decoded = ts_to_rfc3339(dt).unwrap();
         let expected = "2019-11-28T13:02:13Z".to_string();
 
         assert_eq!(expected, decoded);

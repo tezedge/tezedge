@@ -21,7 +21,7 @@ use tezos_api::ffi::{
 use tezos_messages::p2p::binary_message::MessageHash;
 use tezos_messages::p2p::encoding::block_header::Fitness;
 use tezos_messages::p2p::encoding::prelude::{BlockHeader, Operation};
-use tezos_messages::Head;
+use tezos_messages::{Head, TimestampOutOfRangeError};
 use tezos_wrapper::service::{ProtocolController, ProtocolServiceError};
 
 use crate::mempool::CurrentMempoolStateStorageRef;
@@ -67,10 +67,10 @@ pub fn is_same_head(head: &Head, incoming_header: &BlockHeader) -> Result<bool, 
 pub fn is_future_block(block_header: &BlockHeader) -> Result<bool, failure::Error> {
     let future_margin =
         chrono::offset::Utc::now() + chrono::Duration::from_std(Duration::from_secs(15))?;
-    let block_timestamp = chrono::Utc.from_utc_datetime(&chrono::NaiveDateTime::from_timestamp(
-        block_header.timestamp(),
-        0,
-    ));
+    let block_timestamp = chrono::Utc.from_utc_datetime(
+        &chrono::NaiveDateTime::from_timestamp_opt(block_header.timestamp(), 0)
+            .ok_or(TimestampOutOfRangeError)?,
+    );
     Ok(block_timestamp > future_margin)
 }
 
@@ -514,6 +514,35 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn is_future_block_panics_on_bad_timeout() {
+        let block_header = BlockHeaderBuilder::default()
+            .level(34)
+            .proto(1)
+            .predecessor(
+                "BKyQ9EofHrgaZKENioHyP4FZNsTmiSEcVmcghgzCC9cGhE7oCET"
+                    .try_into()
+                    .unwrap(),
+            )
+            .timestamp(-3551937681785568940)
+            .validation_pass(4)
+            .operations_hash(
+                "LLoaGLRPRx3Zf8kB4ACtgku8F4feeBiskeb41J1ciwfcXB3KzHKXc"
+                    .try_into()
+                    .unwrap(),
+            )
+            .fitness(fitness!([0], [0, 0, 1]))
+            .context(
+                "CoVmAcMV64uAQo8XvfLr9VDuz7HVZLT4cgK1w1qYmTjQNbGwQwDd"
+                    .try_into()
+                    .unwrap(),
+            )
+            .protocol_data(vec![0, 1, 2, 3, 4, 5, 6, 7, 8])
+            .build()
+            .unwrap();
+        assert!(is_future_block(&block_header).is_err());
     }
 
     fn new_head(fitness: Fitness) -> Result<BlockHeaderWithHash, failure::Error> {
