@@ -953,7 +953,7 @@ steps:
     THROTTLING_QUOTA_DISABLE: true
   commands:
     - OCTEZ_IP=$(cat /cache/octez_ip.txt)
-g    - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
+    - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
     - >
       /build/build_files/light-node
       --config-file=/build/build_files/tezedge/tezedge_drone.config
