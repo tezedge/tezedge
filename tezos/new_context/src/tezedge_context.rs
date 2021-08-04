@@ -634,18 +634,6 @@ impl ProtocolContextApi for TezedgeContext {
         Ok(self.with_tree(tree))
     }
 
-    fn copy(
-        &self,
-        from_key: &ContextKey,
-        to_key: &ContextKey,
-    ) -> Result<Option<Self>, ContextError> {
-        if let Some(tree) = self.tree.copy(from_key, to_key)? {
-            Ok(Some(self.with_tree(tree)))
-        } else {
-            Ok(None)
-        }
-    }
-
     fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError> {
         Ok(self.tree.find(key)?)
     }
