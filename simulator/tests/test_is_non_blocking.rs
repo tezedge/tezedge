@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use simulator::one_real_node_cluster::*;
 use tezedge_state::proposer::TezedgeProposerConfig;
-use tezedge_state::{sample_tezedge_state, TezedgeConfig, TezedgeState};
+use tezedge_state::{sample_tezedge_state, DefaultEffects, TezedgeConfig, TezedgeState};
 
 pub fn black_box<T>(dummy: T) -> T {
     unsafe {
@@ -32,6 +32,7 @@ fn default_state(initial_time: Instant) -> TezedgeState {
             peer_timeout: Duration::from_secs(8),
             pow_target: 1.0,
         },
+        &mut DefaultEffects::default(),
     )
 }
 

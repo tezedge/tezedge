@@ -3,13 +3,13 @@ use tla_sm::Proposal;
 
 use crate::PeerAddress;
 
-#[derive(Debug, Clone)]
-pub struct NewPeerConnectProposal {
+pub struct NewPeerConnectProposal<'a, Efs> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub peer: PeerAddress,
 }
 
-impl Proposal for NewPeerConnectProposal {
+impl<'a, Efs> Proposal for NewPeerConnectProposal<'a, Efs> {
     fn time(&self) -> Instant {
         self.at
     }

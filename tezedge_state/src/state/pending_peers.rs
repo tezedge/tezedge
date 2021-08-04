@@ -568,17 +568,17 @@ impl PendingPeer {
         }
     }
 
-    pub fn handle_received_conn_message<E, M>(
+    pub fn handle_received_conn_message<Efs, M>(
         &mut self,
         config: &TezedgeConfig,
         node_identity: &Identity,
         shell_compatibility_version: &ShellCompatibilityVersion,
-        effects: &mut E,
+        effects: &mut Efs,
         at: Instant,
         mut message: M,
     ) -> Result<PublicKey, HandleReceivedMessageError>
     where
-        E: Effects,
+        Efs: Effects,
         M: PeerHandshakeMessage,
     {
         use HandshakeStep::*;

@@ -7,12 +7,15 @@ use tla_sm::Acceptor;
 use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
 use crate::{Effects, PendingRequest, PendingRequestState, RequestState, TezedgeState};
 
-impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
+impl<'a, Efs> Acceptor<PeerMessageProposal<'a, Efs>> for TezedgeState
+where
+    Efs: Effects,
+{
     /// Handle decrypted and decoded PeerMessage from connected_peer.
     ///
     /// This method isn't invoked by proposer, it's more of an internal
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
-    fn accept(&mut self, proposal: PeerMessageProposal) {
+    fn accept(&mut self, proposal: PeerMessageProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -24,7 +27,8 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
             match proposal.message.message() {
                 PeerMessage::Bootstrap => {
                     let msg = AdvertiseMessage::new(
-                        self.effects
+                        proposal
+                            .effects
                             .choose_potential_peers_for_advertise(&self.potential_peers)
                             .into_iter()
                             .map(|x| x.into()),
@@ -33,6 +37,7 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
                 }
                 PeerMessage::Advertise(message) => {
                     self.accept(ExtendPotentialPeersProposal {
+                        effects: proposal.effects,
                         at: proposal.at,
                         peers: message
                             .id()
@@ -58,7 +63,7 @@ impl<E: Effects> Acceptor<PeerMessageProposal> for TezedgeState<E> {
             self.blacklist_peer(proposal.at, proposal.peer);
         }
 
-        self.adjust_p2p_state(proposal.at);
-        self.periodic_react(proposal.at);
+        self.adjust_p2p_state(proposal.at, proposal.effects);
+        self.periodic_react(proposal.at, proposal.effects);
     }
 }
