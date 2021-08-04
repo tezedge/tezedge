@@ -82,6 +82,7 @@ run_transactions() {
     shift 3
     num=0
     rm -f "$dir/tx.list"
+    level "$endpoint" > "$dir/level"
     for to in "$@" $from; do
         transfer "$endpoint" "$amount" "$from" "$to" &
         id=$from-$to
@@ -125,7 +126,7 @@ verify_transactions() {
 join_transactions() {
     endpoint=$1
     level_threshold=$2
-    level=$(level "$endpoint")
+    level=$(cat "$dir/level")
     target_level=$((level + level_threshold))
     prev_level=$level
     while true; do

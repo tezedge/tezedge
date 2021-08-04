@@ -3008,6 +3008,7 @@ steps:
     detach: true
     user: root
     environment:
+      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER: yes
       TEZOS_AMOUNT: 10
       TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
     volumes:
@@ -3062,6 +3063,7 @@ steps:
     image: tezos/tezos:v9-release
     user: root
     environment:
+      TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER: yes
       TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
       LEVEL_THRESHOLD: 1
     volumes:
