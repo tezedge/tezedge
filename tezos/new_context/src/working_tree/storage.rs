@@ -354,12 +354,15 @@ impl Storage {
             .ok_or(StorageIdError::StringNotFound)
     }
 
-    pub fn add_blob_by_ref(&mut self, value: &[u8]) -> Result<BlobStorageId, StorageIdError> {
-        if value.len() < 8 {
-            BlobStorageId::try_new_inline(value)
+    pub fn add_blob_by_ref(&mut self, blob: &[u8]) -> Result<BlobStorageId, StorageIdError> {
+        // Do not consider blobs of length zero as inlined, this never
+        // happens when the node is running and fix a serialization issue
+        // during testing/fuzzing
+        if (1..8).contains(&blob.len()) {
+            BlobStorageId::try_new_inline(blob)
         } else {
             let start = self.blobs.len();
-            self.blobs.extend_from_slice(value);
+            self.blobs.extend_from_slice(blob);
             let end = self.blobs.len();
 
             BlobStorageId::try_new(start, end)
@@ -595,13 +598,21 @@ mod tests {
         let slice1 = &[0xFF, 0xFF, 0xFF];
         let slice2 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
         let slice3 = &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF];
+        let slice4 = &[];
 
         let blob1 = storage.add_blob_by_ref(slice1).unwrap();
         let blob2 = storage.add_blob_by_ref(slice2).unwrap();
         let blob3 = storage.add_blob_by_ref(slice3).unwrap();
+        let blob4 = storage.add_blob_by_ref(slice4).unwrap();
+
+        assert!(blob1.is_inline());
+        assert!(!blob2.is_inline());
+        assert!(blob3.is_inline());
+        assert!(!blob4.is_inline());
 
         assert_eq!(storage.get_blob(blob1).unwrap().as_ref(), slice1);
         assert_eq!(storage.get_blob(blob2).unwrap().as_ref(), slice2);
         assert_eq!(storage.get_blob(blob3).unwrap().as_ref(), slice3);
+        assert_eq!(storage.get_blob(blob4).unwrap().as_ref(), slice4);
     }
 }
