@@ -1,6 +1,6 @@
 #!/bin/sh
 
-set -e
+set -ex
 
 dir=${TRANSAZTION_DIR:-.}
 
@@ -40,15 +40,6 @@ level () {
     # TODO use jq
     endpoint=$1
     tezos-client -E "$endpoint" rpc get /chains/main/blocks/head/header | grep '"level":' | sed -e 's/.*"level": \([[:digit:]]*\),.*/\1/'
-}
-
-wait_for_next_level() {
-    level=$(level "$1")
-    while true; do
-        sleep 5
-        new_level=$(level "$1")
-        [ "$level" -ne "$new_level" ] && break
-    done
 }
 
 transfer () {
@@ -94,7 +85,6 @@ run_transactions() {
     for to in "$@" $from; do
         transfer "$endpoint" "$amount" "$from" "$to" &
         id=$from-$to
-        echo $! > "$dir/$id.pid"
         echo "$id" >> "$dir/tx.list"
         num=$((num+1))
         from="$to"
@@ -122,10 +112,6 @@ verify_transactions() {
                     error $id "Unexpected result for transaction"
                     ;;
             esac
-        elif [ -d "/proc/$(cat $dir/$id.pid)" ]; then
-            fails=$((fails + 1))
-            fail $id "Transaction is not completed within threshold of $LEVEL_THRESHOLD"
-            kill $(cat $dir/$id.pid)
         else
             errors=$((errors + 1))
             error $id "Transaction is completed but not properly reported"
@@ -144,7 +130,7 @@ join_transactions() {
     prev_level=$level
     while true; do
         sleep 5
-        new_level=$(level)
+        new_level=$(level "$endpoint")
         if [ "$new_level" -gt "$prev_level" ]; then
             echo ">>> Checking on level $new_level"
             prev_level="$new_level"

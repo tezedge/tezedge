@@ -3005,6 +3005,7 @@ steps:
 
   - name: run-tezos-client-200-transactions
     image: tezos/tezos:v9-release
+    detach: true
     user: root
     environment:
       TEZOS_AMOUNT: 10
@@ -3022,19 +3023,14 @@ steps:
         export TEZOS_ADDRESSES
       - echo $TEZOS_ADDRESSES
       - $${SANDBOX_DATA_PATH}/transactions run $TEZOS_ENDPOINT $TEZOS_AMOUNT $TEZOS_ADDRESSES
+      - cp /dev/null run-done
 
-  - name: join-tezos-client-200-transactions
-    image: tezos/tezos:v9-release
-    user: root
-    detach: true
-    environment:
-      TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
-      LEVEL_THRESHOLD: 1
+  - name: done-tezos-client-200-transactions
+    image: alpine
     volumes:
-      - name: sandbox-data
-        path: /data/sandbox
-    commands:
-      - $${SANDBOX_DATA_PATH}/transactions join $TEZOS_ENDPOINT $LEVEL_THRESHOLD
+      - name: build
+        path: /artifacts
+    command: $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
 
   - name: run-tezos-endorser-009-PsFLoren-level-2
     user: root
@@ -3060,6 +3056,18 @@ steps:
       - tezos-baker-009-PsFLoren -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
       - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/octez_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
       - sleep 1
+
+  - name: join-tezos-client-200-transactions
+    image: tezos/tezos:v9-release
+    user: root
+    environment:
+      TEZOS_ENDPOINT: http://tezedge-node-sandbox-florence-run:18732
+      LEVEL_THRESHOLD: 1
+    volumes:
+      - name: sandbox-data
+        path: /data/sandbox
+    commands:
+      - $${SANDBOX_DATA_PATH}/transactions join $TEZOS_ENDPOINT $LEVEL_THRESHOLD
 
 image_pull_secrets:
   - docker_pull_secret
