@@ -4,13 +4,13 @@ use tla_sm::Proposal;
 use crate::PeerAddress;
 
 /// Peer has disconnected.
-#[derive(Debug, Clone)]
-pub struct PeerDisconnectedProposal {
+pub struct PeerDisconnectedProposal<'a, Efs> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub peer: PeerAddress,
 }
 
-impl Proposal for PeerDisconnectedProposal {
+impl<'a, Efs> Proposal for PeerDisconnectedProposal<'a, Efs> {
     fn time(&self) -> Instant {
         self.at
     }

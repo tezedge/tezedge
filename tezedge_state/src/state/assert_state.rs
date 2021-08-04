@@ -27,14 +27,14 @@ impl fmt::Display for PeerContainer {
 }
 
 #[inline]
-fn assert_peer_counts<E>(state: &TezedgeState<E>) {
+fn assert_peer_counts(state: &TezedgeState) {
     assert!(state.potential_peers.len() <= state.config.max_potential_peers);
     assert!(state.pending_peers.len() <= state.config.max_pending_peers);
     assert!(state.connected_peers.len() <= state.config.max_connected_peers);
 }
 
 #[inline]
-fn assert_no_overlapping_peers<E>(state: &TezedgeState<E>) {
+fn assert_no_overlapping_peers(state: &TezedgeState) {
     fn panic_overlap<A: Display>(addr: A, first: PeerContainer, second: PeerContainer) {
         panic!(
             "Found an overlap between peer containers! Address: {}, Containers: ({}, {})",
@@ -72,7 +72,7 @@ fn assert_no_overlapping_peers<E>(state: &TezedgeState<E>) {
     }
 }
 
-impl<E> TezedgeState<E> {
+impl TezedgeState {
     pub fn assert_state(&self) {
         assert_peer_counts(self);
         assert_no_overlapping_peers(self);
