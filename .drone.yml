@@ -3025,6 +3025,7 @@ steps:
       - echo $TEZOS_ADDRESSES
       - $${SANDBOX_DATA_PATH}/transactions run $TEZOS_ENDPOINT $TEZOS_AMOUNT $TEZOS_ADDRESSES
       - cp /dev/null run-done
+      - pwd && ls -l
 
   - name: done-tezos-client-200-transactions
     image: alpine
@@ -3070,6 +3071,7 @@ steps:
       - name: sandbox-data
         path: /data/sandbox
     commands:
+      - pwd && ls -l
       - $${SANDBOX_DATA_PATH}/transactions join $TEZOS_ENDPOINT $LEVEL_THRESHOLD
 
 image_pull_secrets:
