@@ -377,6 +377,12 @@ pub fn tezos_app() -> App<'static, 'static> {
             .requires("peers")
             .conflicts_with("bootstrap-lookup-address")
             .help("Enable or disable private node. Use peers to set IP addresses of the peers you want to connect to"))
+        .arg(Arg::with_name("effects-seed")
+            .long("effects-seed")
+            .takes_value(true)
+            .value_name("SEED")
+            .help("The seed")
+        )
         .arg(Arg::with_name("network")
             .long("network")
             .global(true)
@@ -1077,6 +1083,9 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
+                effects_seed: args
+                    .value_of("effects-seed")
+                    .map(|s| s.parse::<u64>().expect("Provided value cannot be converted to u64")),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args

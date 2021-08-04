@@ -10,7 +10,7 @@ use std::sync::{mpsc, Arc, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant};
 
 use dns_lookup::LookupError;
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, rngs::StdRng, SeedableRng as _, Rng};
 use riker::actors::*;
 use slog::{crit, debug, error, info, trace, warn, Logger};
 use thiserror::Error;
@@ -35,7 +35,7 @@ use crate::PeerConnectionThreshold;
 use tla_sm::Acceptor;
 
 use tezedge_state::proposals::ExtendPotentialPeersProposal;
-use tezedge_state::{DefaultEffects, TezedgeConfig, TezedgeState};
+use tezedge_state::{Effects, TezedgeConfig, TezedgeState};
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
 use tezedge_state::proposer::{Notification, TezedgeProposer, TezedgeProposerConfig};
@@ -60,6 +60,9 @@ pub struct P2p {
 
     /// Peers (IP:port) which we try to connect all the time
     pub bootstrap_peers: Vec<SocketAddr>,
+
+    /// Effects seed
+    pub effects_seed: Option<u64>,
 }
 
 impl P2p {
@@ -269,7 +272,13 @@ impl Actor for PeerManager {
         let mio_manager = MioManager::new(self.config.listener_port);
         self.proposer = Some(ProposerHandle::new(mio_manager.waker(), proposer_tx));
 
-        let mut effects = DefaultEffects::default();
+        let seed = self.config.effects_seed.unwrap_or_else(|| {
+            let seed = rand::thread_rng().gen();
+            info!(ctx.system.log(), "choose seed"; "seed" => seed);
+            seed
+        });
+        let mut effects = StdRng::seed_from_u64(seed);
+
         let mut tezedge_state = TezedgeState::new(
             ctx.system.log().to_erased(),
             TezedgeConfig {
@@ -362,9 +371,8 @@ impl Receive<NetworkChannelMsg> for PeerManager {
     }
 }
 
-/// Run state machine thread.
-fn run(
-    mut proposer: TezedgeProposer<MioEvents, DefaultEffects, MioManager>,
+fn run<Efs: Effects>(
+    mut proposer: TezedgeProposer<MioEvents, Efs, MioManager>,
     rx: mpsc::Receiver<ProposerMsg>,
     network_channel: NetworkChannelRef,
     log: &Logger,
