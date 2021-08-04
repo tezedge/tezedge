@@ -3030,7 +3030,8 @@ steps:
     volumes:
       - name: build
         path: /artifacts
-    command: $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
+    commands:
+      - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
 
   - name: run-tezos-endorser-009-PsFLoren-level-2
     user: root
