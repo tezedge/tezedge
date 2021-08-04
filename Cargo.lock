@@ -2560,7 +2560,7 @@ checksum = "a9a7ab5d64814df0fe4a4b5ead45ed6c5f181ee3ff04ba344313a6c80446c5d4"
 [[package]]
 name = "ocaml-boxroot-sys"
 version = "0.2.0"
-source = "git+https://gitlab.com/bruno.deferrari/ocaml-boxroot.git?branch=ocaml-410-headers#8dbeb8259fe55e0de12473353237b7bc2877acf2"
+source = "git+https://gitlab.com/bruno.deferrari/ocaml-boxroot.git?branch=without-ocamlopt-no-c-compile#9d7f3f65c6f29e6f572d0cbf875be9f725400f5d"
 dependencies = [
  "cc",
 ]
