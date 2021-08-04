@@ -896,43 +896,6 @@ impl WorkingTree {
         self.compute_new_root_with_change(&key, None, &mut storage)
     }
 
-    /// Copy subtree under a new path.
-    ///
-    /// Returns a new tree if the source path exists, or None otherwise.
-    pub fn copy(
-        &self,
-        from_key: &ContextKey,
-        to_key: &ContextKey,
-    ) -> Result<Option<Self>, MerkleError> {
-        if let Some(new_root_entry) = &self._copy(from_key, to_key)? {
-            let tree = self.entry_tree(new_root_entry)?;
-            Ok(Some(self.with_new_root(tree)))
-        } else {
-            Ok(None)
-        }
-    }
-
-    fn _copy(
-        &self,
-        from_key: &ContextKey,
-        to_key: &ContextKey,
-    ) -> Result<Option<Entry>, MerkleError> {
-        let mut storage = self.index.storage.borrow_mut();
-        let root = self.get_working_tree_root_ref();
-
-        let source_tree = match self.find_raw_tree(root, &from_key, &mut storage) {
-            Ok(tree) => tree,
-            Err(MerkleError::EntryNotFound { .. }) => return Ok(None),
-            Err(err) => return Err(err),
-        };
-
-        Ok(Some(self.compute_new_root_with_change(
-            &to_key,
-            Some(Self::get_non_leaf(Entry::Tree(source_tree))),
-            &mut storage,
-        )?))
-    }
-
     /// Get a new tree with `new_node` put under given `key`.
     /// Walk down the tree to find key, set new value and walk back up recalculating hashes -
     /// return new top hash of tree. Note: no writes to DB yet

@@ -80,18 +80,11 @@ where
     fn add(&self, key: &ContextKey, value: &[u8]) -> Result<Self, ContextError>;
     // delete key-value
     fn delete(&self, key_prefix_to_delete: &ContextKey) -> Result<Self, ContextError>;
-    // TODO: remove `copy`, not part of the API anymore (replaced by `find_tree` + `add_tree`)
-    // copies subtree under 'from_key' to new subtree under 'to_key', returns None if from_key doesn't exist
-    fn copy(
-        &self,
-        from_key: &ContextKey,
-        to_key: &ContextKey,
-    ) -> Result<Option<Self>, ContextError>;
     // find value for key
     fn find(&self, key: &ContextKey) -> Result<Option<ContextValue>, ContextError>;
     // mem - check if value exists
     fn mem(&self, key: &ContextKey) -> Result<bool, ContextError>;
-    // mem_tree - check if directory exists
+    // mem_tree - check if tree exists
     fn mem_tree(&self, key: &ContextKey) -> bool;
     fn find_tree(&self, key: &ContextKey) -> Result<Option<WorkingTree>, ContextError>;
     fn add_tree(&self, key: &ContextKey, tree: &WorkingTree) -> Result<Self, ContextError>;
