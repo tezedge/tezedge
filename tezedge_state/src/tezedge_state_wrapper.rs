@@ -13,9 +13,9 @@ use crate::{
 /// Wrapper can be used to intercept communication between
 /// [tezedge_state::TezedgeState] and [tezedge_state::TezedgeProposer].
 #[derive(Debug, Clone)]
-pub struct TezedgeStateWrapper<E = DefaultEffects>(TezedgeState<E>);
+pub struct TezedgeStateWrapper(TezedgeState);
 
-impl<E> TezedgeStateWrapper<E> {
+impl TezedgeStateWrapper {
     #[inline]
     pub fn newest_time_seen(&self) -> Instant {
         self.0.newest_time_seen()
@@ -42,10 +42,10 @@ impl<E> TezedgeStateWrapper<E> {
     }
 }
 
-impl<E, P> Acceptor<P> for TezedgeStateWrapper<E>
+impl<P> Acceptor<P> for TezedgeStateWrapper
 where
-    P: Proposal + Debug,
-    TezedgeState<E>: Acceptor<P>,
+    P: Proposal,
+    TezedgeState: Acceptor<P>,
 {
     #[inline]
     fn accept(&mut self, proposal: P) {
@@ -54,7 +54,7 @@ where
     }
 }
 
-impl<E> GetRequests for TezedgeStateWrapper<E> {
+impl GetRequests for TezedgeStateWrapper {
     type Request = TezedgeRequest;
 
     #[inline]
@@ -63,9 +63,9 @@ impl<E> GetRequests for TezedgeStateWrapper<E> {
     }
 }
 
-impl<E> From<TezedgeState<E>> for TezedgeStateWrapper<E> {
+impl From<TezedgeState> for TezedgeStateWrapper {
     #[inline]
-    fn from(state: TezedgeState<E>) -> Self {
+    fn from(state: TezedgeState) -> Self {
         TezedgeStateWrapper(state)
     }
 }

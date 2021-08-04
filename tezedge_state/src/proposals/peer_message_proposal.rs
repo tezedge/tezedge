@@ -5,14 +5,14 @@ use tla_sm::Proposal;
 
 use crate::PeerAddress;
 
-#[derive(Debug, Clone)]
-pub struct PeerMessageProposal {
+pub struct PeerMessageProposal<'a, Efs> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub peer: PeerAddress,
     pub message: PeerMessageResponse,
 }
 
-impl Proposal for PeerMessageProposal {
+impl<'a, Efs> Proposal for PeerMessageProposal<'a, Efs> {
     fn time(&self) -> Instant {
         self.at
     }
