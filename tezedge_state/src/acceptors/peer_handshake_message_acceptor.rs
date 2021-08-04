@@ -5,16 +5,16 @@ use tla_sm::Acceptor;
 use crate::proposals::{PeerHandshakeMessage, PeerHandshakeMessageProposal};
 use crate::{Effects, HandleReceivedMessageError, HandshakeStep, TezedgeState};
 
-impl<E, M> Acceptor<PeerHandshakeMessageProposal<M>> for TezedgeState<E>
+impl<'a, Efs, M> Acceptor<PeerHandshakeMessageProposal<'a, Efs, M>> for TezedgeState
 where
-    E: Effects,
+    Efs: Effects,
     M: PeerHandshakeMessage,
 {
     /// Handle handshake (connection, metadata, ack) message from peer.
     ///
     /// This method isn't invoked by proposer, it's more of an internal
     /// method called, by another acceptor: Acceptor<PeerReadableProposal>.
-    fn accept(&mut self, proposal: PeerHandshakeMessageProposal<M>) {
+    fn accept(&mut self, proposal: PeerHandshakeMessageProposal<'a, Efs, M>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -33,7 +33,7 @@ where
                 // can only happen if outside world is out of sync with TezedgeState.
                 slog::warn!(&self.log, "Received decrypted/decoded handshake message proposal from an unknown peer. Should be impossible!");
                 self.disconnect_peer(proposal.at, proposal.peer);
-                return self.periodic_react(proposal.at);
+                return self.periodic_react(proposal.at, proposal.effects);
             }
         };
 
@@ -46,7 +46,7 @@ where
                     &self.config,
                     &self.identity,
                     &self.shell_compatibility_version,
-                    &mut self.effects,
+                    proposal.effects,
                     proposal.at,
                     proposal.message,
                 );
@@ -98,8 +98,13 @@ where
                             // result will be None if decision was to
                             // nack peer (hence nack_motive is set).
                             if let Some(result) = result {
-                                self.set_peer_connected(proposal.at, proposal.peer, result);
-                                self.adjust_p2p_state(proposal.at);
+                                self.set_peer_connected(
+                                    proposal.at,
+                                    proposal.effects,
+                                    proposal.peer,
+                                    result,
+                                );
+                                self.adjust_p2p_state(proposal.at, proposal.effects);
                             } else {
                                 slog::warn!(&self.log, "Blacklisting peer";
                                 "peer_address" => proposal.peer.to_string(),
@@ -165,7 +170,7 @@ where
             Ok(()) => {}
         }
 
-        self.adjust_p2p_state(proposal.at);
-        self.periodic_react(proposal.at);
+        self.adjust_p2p_state(proposal.at, proposal.effects);
+        self.periodic_react(proposal.at, proposal.effects);
     }
 }

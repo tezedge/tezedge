@@ -269,6 +269,7 @@ impl Actor for PeerManager {
         let mio_manager = MioManager::new(self.config.listener_port);
         self.proposer = Some(ProposerHandle::new(mio_manager.waker(), proposer_tx));
 
+        let mut effects = DefaultEffects::default();
         let mut tezedge_state = TezedgeState::new(
             ctx.system.log().to_erased(),
             TezedgeConfig {
@@ -289,12 +290,13 @@ impl Actor for PeerManager {
             },
             (*self.local_node_info.identity()).clone(),
             (*self.local_node_info.version()).clone(),
-            Default::default(),
+            &mut effects,
             Instant::now(),
         );
 
         info!(ctx.system.log(), "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
         tezedge_state.accept(ExtendPotentialPeersProposal {
+            effects: &mut effects,
             at: Instant::now(),
             peers: dbg!(dns_lookup_peers(
                 &self.bootstrap_addresses,
@@ -309,6 +311,7 @@ impl Actor for PeerManager {
                 wait_for_events_timeout: Some(Duration::from_millis(250)),
                 events_limit: 1024,
             },
+            effects,
             tezedge_state,
             MioEvents::new(),
             mio_manager,

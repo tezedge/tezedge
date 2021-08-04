@@ -60,7 +60,14 @@ pub fn default_shell_compatibility_version() -> ShellCompatibilityVersion {
     ShellCompatibilityVersion::new("TEZOS_MAINNET".to_owned(), vec![0], vec![0, 1])
 }
 
-pub fn build(initial_time: Instant, config: TezedgeConfig) -> TezedgeState {
+pub fn build<'a, Efs>(
+    initial_time: Instant,
+    config: TezedgeConfig,
+    initial_effects: &'a mut Efs,
+) -> TezedgeState
+where
+    Efs: Effects,
+{
     let node_identity = identity_1();
 
     let tezedge_state = TezedgeState::new(
@@ -69,7 +76,7 @@ pub fn build(initial_time: Instant, config: TezedgeConfig) -> TezedgeState {
         config,
         node_identity.clone(),
         default_shell_compatibility_version(),
-        Default::default(),
+        initial_effects,
         initial_time,
     );
 
