@@ -2883,6 +2883,7 @@ steps:
         path: /artifacts
     commands:
       - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
+      - sleep 10
 
   - name: check-mempool-after-transfer
     user: root
