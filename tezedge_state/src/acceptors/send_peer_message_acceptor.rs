@@ -3,9 +3,12 @@ use tla_sm::Acceptor;
 use crate::proposals::SendPeerMessageProposal;
 use crate::{Effects, TezedgeState};
 
-impl<E: Effects> Acceptor<SendPeerMessageProposal> for TezedgeState<E> {
+impl<'a, Efs> Acceptor<SendPeerMessageProposal<'a, Efs>> for TezedgeState
+where
+    Efs: Effects,
+{
     /// Handle request by Proposer to send a message to the peer.
-    fn accept(&mut self, proposal: SendPeerMessageProposal) {
+    fn accept(&mut self, proposal: SendPeerMessageProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -19,7 +22,7 @@ impl<E: Effects> Acceptor<SendPeerMessageProposal> for TezedgeState<E> {
             self.disconnect_peer(proposal.at, proposal.peer);
         }
 
-        self.adjust_p2p_state(proposal.at);
-        self.periodic_react(proposal.at);
+        self.adjust_p2p_state(proposal.at, proposal.effects);
+        self.periodic_react(proposal.at, proposal.effects);
     }
 }

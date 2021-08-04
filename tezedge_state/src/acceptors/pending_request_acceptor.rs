@@ -4,12 +4,12 @@ use tla_sm::Acceptor;
 use crate::proposals::{PendingRequestMsg, PendingRequestProposal};
 use crate::{Effects, HandshakeStep, PendingRequest, RequestState, TezedgeState};
 
-impl<E> Acceptor<PendingRequestProposal> for TezedgeState<E>
+impl<'a, Efs> Acceptor<PendingRequestProposal<'a, Efs>> for TezedgeState
 where
-    E: Effects,
+    Efs: Effects,
 {
     /// Handle status update for pending request.
-    fn accept(&mut self, proposal: PendingRequestProposal) {
+    fn accept(&mut self, proposal: PendingRequestProposal<'a, Efs>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -46,7 +46,7 @@ where
                             self.config.port,
                             &self.identity.public_key,
                             &self.identity.proof_of_work_stamp,
-                            self.effects.get_nonce(&peer_address),
+                            proposal.effects.get_nonce(&peer_address),
                             self.shell_compatibility_version.to_network_version(),
                         )
                         .unwrap();
@@ -103,7 +103,7 @@ where
             eprintln!("req not found");
         }
 
-        self.adjust_p2p_state(proposal.at);
-        self.periodic_react(proposal.at);
+        self.adjust_p2p_state(proposal.at, proposal.effects);
+        self.periodic_react(proposal.at, proposal.effects);
     }
 }

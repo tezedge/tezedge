@@ -10,9 +10,9 @@ use tezedge_state::proposals::peer_handshake_message::*;
 use tezedge_state::proposals::*;
 use tezedge_state::*;
 use tezos_identity::Identity;
-use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::{AckMessage, NackInfo};
-use tezos_messages::p2p::encoding::prelude::{ConnectionMessage, MetadataMessage, NetworkVersion};
+use tezos_messages::p2p::encoding::prelude::{ConnectionMessage, MetadataMessage};
 
 #[derive(Debug, Clone)]
 enum FakeWritable {
@@ -56,6 +56,20 @@ impl From<PeerDecodedHanshakeMessage> for Messages {
 impl From<FakeWritable> for Messages {
     fn from(writable: FakeWritable) -> Self {
         Messages::Writable(writable)
+    }
+}
+
+struct StateWithEffects<Efs> {
+    effects: Efs,
+    state: TezedgeState,
+}
+
+impl<Efs: Clone> Clone for StateWithEffects<Efs> {
+    fn clone(&self) -> Self {
+        Self {
+            effects: self.effects.clone(),
+            state: self.state.clone(),
+        }
     }
 }
 
@@ -133,12 +147,15 @@ fn should_sequence_fail(seq: &Vec<Messages>, incoming: bool) -> bool {
     false
 }
 
-fn try_sequence(
+fn try_sequence<Efs: Effects + Clone>(
     initial_time: Instant,
-    state: &mut TezedgeState,
+    state_with_effects: &mut StateWithEffects<Efs>,
     sequence: &[Messages],
     incoming: bool,
 ) -> bool {
+    let state = &mut state_with_effects.state;
+    let effects = &mut state_with_effects.effects;
+
     let peer = PeerAddress::ipv4_from_index(1);
     let mut time = initial_time;
 
@@ -146,11 +163,13 @@ fn try_sequence(
         time += Duration::from_millis(1);
         match msg {
             Messages::Handshake(msg) => state.accept(PeerHandshakeMessageProposal {
+                effects,
                 at: time,
                 peer: peer.clone(),
                 message: msg.clone(),
             }),
             Messages::Writable(writable) => state.accept(PeerWritableProposal {
+                effects,
                 at: time,
                 peer: peer.clone(),
                 stream: &mut writable.clone(),
@@ -158,6 +177,7 @@ fn try_sequence(
         };
     }
     state.accept(TickProposal {
+        effects,
         at: time + state.config().peer_timeout,
     });
     state.assert_state();
@@ -187,28 +207,34 @@ fn sequence_to_str(seq: &[Messages]) -> String {
     format!("[{}]", seq_str)
 }
 
-fn fork_state_and_init_incoming(
+fn fork_state_and_init_incoming<Efs: Effects + Clone>(
     initial_time: Instant,
+    effects: &Efs,
     state: &TezedgeState,
     peer_addr: PeerAddress,
-) -> TezedgeState {
+) -> StateWithEffects<Efs> {
+    let mut effects = effects.clone();
     let mut state = state.clone();
     state.accept(NewPeerConnectProposal {
+        effects: &mut effects,
         at: initial_time,
         peer: peer_addr,
     });
 
-    state
+    StateWithEffects { effects, state }
 }
 
-fn fork_state_and_init_outgoing(
+fn fork_state_and_init_outgoing<Efs: Effects + Clone>(
     initial_time: Instant,
+    effects: &Efs,
     state: &TezedgeState,
     peer_addr: PeerAddress,
     success: bool,
-) -> TezedgeState {
+) -> StateWithEffects<Efs> {
+    let mut effects = effects.clone();
     let mut state = state.clone();
     state.accept(ExtendPotentialPeersProposal {
+        effects: &mut effects,
         at: initial_time,
         peers: std::iter::once(peer_addr.into()),
     });
@@ -221,6 +247,7 @@ fn fork_state_and_init_outgoing(
             TezedgeRequest::ConnectPeer { req_id, peer } if peer == peer_addr => {
                 req_found = true;
                 state.accept(PendingRequestProposal {
+                    effects: &mut effects,
                     at: initial_time,
                     req_id,
                     message: match success {
@@ -234,7 +261,7 @@ fn fork_state_and_init_outgoing(
     }
     assert!(req_found);
 
-    state
+    StateWithEffects { effects, state }
 }
 
 #[test]
@@ -251,6 +278,7 @@ fn simulate_one_peer_all_message_sequences() {
     let msgs = build_messages(&mut g, &identity);
 
     let initial_time = Instant::now();
+    let mut effects = DefaultEffects::default();
     let tezedge_state = TezedgeState::new(
         slog::Logger::root(slog::Discard, slog::o!()),
         TezedgeConfig {
@@ -271,14 +299,16 @@ fn simulate_one_peer_all_message_sequences() {
         },
         node_identity.clone(),
         sample_tezedge_state::default_shell_compatibility_version(),
-        Default::default(),
+        &mut effects,
         initial_time,
     );
 
-    let state_incoming = fork_state_and_init_incoming(initial_time, &tezedge_state, address);
-    let state_outgoing = fork_state_and_init_outgoing(initial_time, &tezedge_state, address, true);
+    let state_incoming =
+        fork_state_and_init_incoming(initial_time, &effects, &tezedge_state, address);
+    let state_outgoing =
+        fork_state_and_init_outgoing(initial_time, &effects, &tezedge_state, address, true);
     let state_outgoing_failed =
-        fork_state_and_init_outgoing(initial_time, &tezedge_state, address, false);
+        fork_state_and_init_outgoing(initial_time, &effects, &tezedge_state, address, false);
 
     for seq_len in 1..=6 {
         println!("trying sequences with length: {}", seq_len);

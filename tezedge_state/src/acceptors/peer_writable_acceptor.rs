@@ -6,14 +6,14 @@ use crate::{Effects, HandshakeMessageType, P2pState, TezedgeState};
 use tezos_messages::p2p::encoding::ack::NackMotive;
 use tla_sm::Acceptor;
 
-impl<'a, E, S> Acceptor<PeerWritableProposal<'a, S>> for TezedgeState<E>
+impl<'a, Efs, S> Acceptor<PeerWritableProposal<'a, Efs, S>> for TezedgeState
 where
-    E: Effects,
+    Efs: Effects,
     S: Read + Write,
 {
     /// Peer's stream might be ready for writing, try to write/flush
     /// pending messages to the provided stream.
-    fn accept(&mut self, proposal: PeerWritableProposal<S>) {
+    fn accept(&mut self, proposal: PeerWritableProposal<'a, Efs, S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -55,13 +55,15 @@ where
                                         if let Some(result) = peer.to_handshake_result() {
                                             self.set_peer_connected(
                                                 proposal.at,
+                                                proposal.effects,
                                                 proposal.peer,
                                                 result,
                                             );
-                                            self.adjust_p2p_state(time);
+                                            self.adjust_p2p_state(time, proposal.effects);
                                             // try to write and read from peer
                                             // after successful handshake.
                                             self.accept(PeerReadableProposal {
+                                                effects: proposal.effects,
                                                 at: proposal.at,
                                                 peer: proposal.peer,
                                                 stream: proposal.stream,
@@ -76,8 +78,8 @@ where
                                             }));
                                             slog::warn!(&self.log, "Blacklisting peer"; "peer_address" => proposal.peer.to_string(), "reason" => "Sent Nack");
                                             self.blacklist_peer(proposal.at, proposal.peer);
-                                            self.adjust_p2p_state(time);
-                                            return self.periodic_react(time);
+                                            self.adjust_p2p_state(time, proposal.effects);
+                                            return self.periodic_react(time, proposal.effects);
                                         }
                                     }
                                 }
@@ -87,7 +89,6 @@ where
                         }
                         Err(WriteMessageError::Empty) => {
                             let p2p_state = self.p2p_state;
-                            let effects = &mut self.effects;
                             let potential_peers = &self.potential_peers;
 
                             let result = peer
@@ -112,7 +113,8 @@ where
                                         }
 
                                         peer.enqueue_send_ack_msg(proposal.at, || {
-                                            effects
+                                            proposal
+                                                .effects
                                                 .choose_potential_peers_for_nack(potential_peers)
                                                 .into_iter()
                                                 .map(|x| x.to_string())
@@ -150,7 +152,7 @@ where
             }
         }
 
-        self.adjust_p2p_state(time);
-        self.periodic_react(time);
+        self.adjust_p2p_state(time, proposal.effects);
+        self.periodic_react(time, proposal.effects);
     }
 }

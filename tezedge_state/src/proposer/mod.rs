@@ -1,5 +1,6 @@
 use std::fmt::{self, Debug};
 use std::io::{self, Read, Write};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,9 +9,9 @@ use tla_sm::{Acceptor, GetRequests};
 
 use crate::chunking::extendable_as_writable::ExtendableAsWritable;
 use crate::proposals::{
-    NewPeerConnectProposal, PeerBlacklistProposal, PeerDisconnectProposal,
-    PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal, PendingRequestMsg,
-    PendingRequestProposal, SendPeerMessageProposal, TickProposal,
+    ExtendPotentialPeersProposal, NewPeerConnectProposal, PeerBlacklistProposal,
+    PeerDisconnectProposal, PeerDisconnectedProposal, PeerReadableProposal, PeerWritableProposal,
+    PendingRequestMsg, PendingRequestProposal, SendPeerMessageProposal, TickProposal,
 };
 use crate::{Effects, PeerAddress, TezedgeRequest, TezedgeStateWrapper};
 use tezos_messages::p2p::encoding::peer::{PeerMessage, PeerMessageResponse};
@@ -174,7 +175,8 @@ pub struct TezedgeProposer<Es, Efs, M> {
     config: TezedgeProposerConfig,
     requests: Vec<TezedgeRequest>,
     notifications: Vec<Notification>,
-    pub state: TezedgeStateWrapper<Efs>,
+    effects: Efs,
+    pub state: TezedgeStateWrapper,
     pub events: Es,
     pub manager: M,
 }
@@ -183,12 +185,18 @@ impl<S, NetE, Es, Efs, M> TezedgeProposer<Es, Efs, M>
 where
     S: Read + Write,
     NetE: NetworkEvent + Debug,
-    Efs: Effects,
+    Efs: Effects + Debug,
     M: Manager<Stream = S, NetworkEvent = NetE, Events = Es>,
 {
-    pub fn new<T>(config: TezedgeProposerConfig, state: T, mut events: Es, manager: M) -> Self
+    pub fn new<T>(
+        config: TezedgeProposerConfig,
+        effects: Efs,
+        state: T,
+        mut events: Es,
+        manager: M,
+    ) -> Self
     where
-        T: Into<TezedgeStateWrapper<Efs>>,
+        T: Into<TezedgeStateWrapper>,
         Es: Events,
     {
         events.set_limit(config.events_limit);
@@ -196,6 +204,7 @@ where
             config,
             requests: vec![],
             notifications: Vec::with_capacity(NOTIFICATIONS_OPTIMAL_CAPACITY),
+            effects,
             state: state.into(),
             events,
             manager,
@@ -206,6 +215,7 @@ where
     fn init(mut self) -> Self {
         // execute initial requests.
         Self::execute_requests(
+            &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
@@ -220,43 +230,53 @@ where
 
     fn handle_event(
         event: Event<NetE>,
+        effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
-        state: &mut TezedgeStateWrapper<Efs>,
+        state: &mut TezedgeStateWrapper,
         manager: &mut M,
     ) {
         match event {
             Event::Tick(at) => {
-                state.accept(TickProposal { at });
+                state.accept(TickProposal { at, effects });
             }
             Event::Network(event) => {
-                Self::handle_network_event(&event, requests, notifications, state, manager);
+                Self::handle_network_event(
+                    &event,
+                    effects,
+                    requests,
+                    notifications,
+                    state,
+                    manager,
+                );
             }
         }
     }
 
     fn handle_event_ref<'a>(
         event: EventRef<'a, NetE>,
+        effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
-        state: &mut TezedgeStateWrapper<Efs>,
+        state: &mut TezedgeStateWrapper,
         manager: &mut M,
     ) {
         match event {
             Event::Tick(at) => {
-                state.accept(TickProposal { at });
+                state.accept(TickProposal { at, effects });
             }
             Event::Network(event) => {
-                Self::handle_network_event(event, requests, notifications, state, manager);
+                Self::handle_network_event(event, effects, requests, notifications, state, manager);
             }
         }
     }
 
     fn handle_network_event(
         event: &NetE,
+        effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
-        state: &mut TezedgeStateWrapper<Efs>,
+        state: &mut TezedgeStateWrapper,
         manager: &mut M,
     ) {
         if event.is_server_event() {
@@ -271,19 +291,20 @@ where
                     match manager.accept_connection(&event) {
                         Some(peer) => {
                             state.accept(NewPeerConnectProposal {
+                                effects,
                                 at: event.time(),
                                 peer: peer.address().clone(),
                             });
-                            Self::handle_readiness_event(event, state, peer);
+                            Self::handle_readiness_event(event, effects, state, peer);
                         }
                         None => return,
                     }
                 }
-                Self::execute_requests(requests, notifications, state, manager);
+                Self::execute_requests(effects, requests, notifications, state, manager);
             }
         } else {
             match manager.get_peer_for_event_mut(&event) {
-                Some(peer) => Self::handle_readiness_event(event, state, peer),
+                Some(peer) => Self::handle_readiness_event(event, effects, state, peer),
                 None => {
                     // Should be impossible! If we receive an event for
                     // the peer, that peer must exist in manager.
@@ -296,11 +317,13 @@ where
 
     fn handle_readiness_event(
         event: &NetE,
-        state: &mut TezedgeStateWrapper<Efs>,
+        effects: &mut Efs,
+        state: &mut TezedgeStateWrapper,
         peer: &mut Peer<S>,
     ) {
         if event.is_read_closed() || event.is_write_closed() {
             state.accept(PeerDisconnectedProposal {
+                effects,
                 at: event.time(),
                 peer: peer.address().clone(),
             });
@@ -309,6 +332,7 @@ where
 
         if event.is_readable() {
             state.accept(PeerReadableProposal {
+                effects,
                 at: event.time(),
                 peer: peer.address().clone(),
                 stream: &mut peer.stream,
@@ -317,6 +341,7 @@ where
 
         if event.is_writable() {
             state.accept(PeerWritableProposal {
+                effects,
                 at: event.time(),
                 peer: peer.address().clone(),
                 stream: &mut peer.stream,
@@ -327,9 +352,10 @@ where
     /// Grabs the requests from state machine, puts them in temporary
     /// container `requests`, then drains it and executes each request.
     fn execute_requests(
+        effects: &mut Efs,
         requests: &mut Vec<TezedgeRequest>,
         notifications: &mut Vec<Notification>,
-        state: &mut TezedgeStateWrapper<Efs>,
+        state: &mut TezedgeStateWrapper,
         manager: &mut M,
     ) {
         state.get_requests(requests);
@@ -339,6 +365,7 @@ where
                 TezedgeRequest::StartListeningForNewPeers { req_id } => {
                     manager.start_listening_to_server_events();
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::StartListeningForNewPeersSuccess,
@@ -347,6 +374,7 @@ where
                 TezedgeRequest::StopListeningForNewPeers { req_id } => {
                     manager.stop_listening_to_server_events();
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::StopListeningForNewPeersSuccess,
@@ -355,11 +383,13 @@ where
                 TezedgeRequest::ConnectPeer { req_id, peer } => {
                     match manager.get_peer_or_connect_mut(&peer) {
                         Ok(_) => state.accept(PendingRequestProposal {
+                            effects,
                             req_id,
                             at: state.newest_time_seen(),
                             message: PendingRequestMsg::ConnectPeerSuccess,
                         }),
                         Err(_) => state.accept(PendingRequestProposal {
+                            effects,
                             req_id,
                             at: state.newest_time_seen(),
                             message: PendingRequestMsg::ConnectPeerError,
@@ -369,6 +399,7 @@ where
                 TezedgeRequest::DisconnectPeer { req_id, peer } => {
                     manager.disconnect_peer(&peer);
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::DisconnectPeerSuccess,
@@ -378,6 +409,7 @@ where
                 TezedgeRequest::BlacklistPeer { req_id, peer } => {
                     manager.disconnect_peer(&peer);
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::BlacklistPeerSuccess,
@@ -390,6 +422,7 @@ where
                     message,
                 } => {
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::PeerMessageReceivedNotified,
@@ -410,6 +443,7 @@ where
                         network_version,
                     });
                     state.accept(PendingRequestProposal {
+                        effects,
                         req_id,
                         at: state.newest_time_seen(),
                         message: PendingRequestMsg::HandshakeSuccessfulNotified,
@@ -449,6 +483,7 @@ where
         for event in self.events.into_iter() {
             Self::handle_event_ref(
                 event,
+                &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
                 &mut self.state,
@@ -457,6 +492,7 @@ where
         }
 
         Self::execute_requests(
+            &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
@@ -478,6 +514,7 @@ where
             count += 1;
             Self::handle_event(
                 event,
+                &mut self.effects,
                 &mut self.requests,
                 &mut self.notifications,
                 &mut self.state,
@@ -492,6 +529,7 @@ where
 
         let time = Instant::now();
         Self::execute_requests(
+            &mut self.effects,
             &mut self.requests,
             &mut self.notifications,
             &mut self.state,
@@ -500,12 +538,27 @@ where
         eprintln!("executed requests in: {}ms", time.elapsed().as_millis());
     }
 
+    pub fn extend_potential_peers<P>(&mut self, at: Instant, peers: P)
+    where
+        P: IntoIterator<Item = SocketAddr>,
+    {
+        self.state.accept(ExtendPotentialPeersProposal {
+            effects: &mut self.effects,
+            at,
+            peers,
+        })
+    }
+
     pub fn disconnect_peer(&mut self, at: Instant, peer: PeerAddress) {
-        self.state.accept(PeerDisconnectProposal { at, peer })
+        let effects = &mut self.effects;
+        self.state
+            .accept(PeerDisconnectProposal { effects, at, peer })
     }
 
     pub fn blacklist_peer(&mut self, at: Instant, peer: PeerAddress) {
-        self.state.accept(PeerBlacklistProposal { at, peer })
+        let effects = &mut self.effects;
+        self.state
+            .accept(PeerBlacklistProposal { effects, at, peer })
     }
 
     // TODO: Everything bellow this line is temporary until everything
@@ -521,6 +574,7 @@ where
     ) {
         if let Some(peer) = self.manager.get_peer(&addr) {
             self.state.accept(SendPeerMessageProposal {
+                effects: &mut self.effects,
                 at,
                 peer: addr,
                 message,
@@ -529,6 +583,7 @@ where
             // otherwise we would have to wait till we receive
             // writable event from mio.
             self.state.accept(PeerWritableProposal {
+                effects: &mut self.effects,
                 at,
                 peer: addr,
                 stream: &mut peer.stream,
@@ -552,12 +607,14 @@ where
         };
 
         self.state.accept(SendPeerMessageProposal {
+            effects: &mut self.effects,
             at,
             peer: addr,
             message,
         });
         let mut send_buf = vec![];
         self.state.accept(PeerWritableProposal {
+            effects: &mut self.effects,
             at,
             peer: addr,
             stream: &mut ExtendableAsWritable::from(&mut send_buf),
