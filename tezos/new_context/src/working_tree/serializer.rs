@@ -473,7 +473,9 @@ impl<'a> Iterator for HashIdIterator<'a> {
 mod tests {
     use tezos_timing::SerializeStats;
 
-    use crate::working_tree::storage::TreeStorageId;
+    use crate::{
+        hash::hash_entry, kv_store::in_memory::InMemory, working_tree::storage::TreeStorageId,
+    };
 
     use super::*;
 
@@ -563,5 +565,41 @@ mod tests {
 
         let iter = iter_hash_ids(&data);
         assert_eq!(iter.map(|h| h.as_u32()).collect::<Vec<_>>(), &[12345]);
+    }
+
+    #[test]
+    fn test_serialize_empty_blob() {
+        let mut repo = InMemory::try_new().expect("failed to create context");
+        let mut storage = Storage::new();
+        let mut stats = SerializeStats::default();
+
+        let blob_id = storage.add_blob_by_ref(&[]).unwrap();
+        let blob = Entry::Blob(blob_id);
+        let blob_hash_id = hash_entry(&blob, &mut repo, &storage).unwrap();
+
+        assert!(blob_hash_id.is_some());
+
+        let tree_id = TreeStorageId::empty();
+        let tree_id = storage
+            .insert(
+                tree_id,
+                "a",
+                Node::new_commited(NodeKind::Leaf, blob_hash_id, None),
+            )
+            .unwrap();
+
+        let mut data = Vec::with_capacity(1024);
+        serialize_entry(&Entry::Tree(tree_id), &mut data, &storage, &mut stats).unwrap();
+
+        let entry = deserialize(&data, &mut storage).unwrap();
+
+        if let Entry::Tree(entry) = entry {
+            assert_eq!(
+                storage.get_owned_tree(tree_id).unwrap(),
+                storage.get_owned_tree(entry).unwrap()
+            )
+        } else {
+            panic!();
+        }
     }
 }
