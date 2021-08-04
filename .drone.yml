@@ -952,7 +952,7 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     THROTTLING_QUOTA_DISABLE: true
   commands:
-    - /build/wait_file.sh /cache/octez_ip.txt 10
+    - /build/build_files/wait_file.sh /cache/octez_ip.txt 10
     - OCTEZ_IP=$(cat /cache/octez_ip.txt)
     - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
     - >
