@@ -1,13 +1,13 @@
 use std::time::Instant;
 use tla_sm::Proposal;
 
-#[derive(Debug, Clone)]
-pub struct ExtendPotentialPeersProposal<P> {
+pub struct ExtendPotentialPeersProposal<'a, Efs, P> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub peers: P,
 }
 
-impl<I> Proposal for ExtendPotentialPeersProposal<I> {
+impl<'a, Efs, P> Proposal for ExtendPotentialPeersProposal<'a, Efs, P> {
     fn time(&self) -> Instant {
         self.at
     }

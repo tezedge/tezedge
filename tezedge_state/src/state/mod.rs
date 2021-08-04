@@ -8,9 +8,7 @@ use tezos_messages::p2p::encoding::prelude::MetadataMessage;
 pub use tla_sm::{GetRequests, Proposal};
 
 use crate::peer_address::PeerListenerAddress;
-use crate::{
-    DefaultEffects, Effects, InvalidProposalError, PeerAddress, Port, ShellCompatibilityVersion,
-};
+use crate::{Effects, InvalidProposalError, PeerAddress, Port, ShellCompatibilityVersion};
 
 // mod peer_token;
 // pub use peer_token::*;
@@ -126,8 +124,8 @@ impl fmt::Display for TimeoutInfo {
 /// Same set of proposals and effects will lead to exact same state.
 ///
 /// It's only output/feedback mechanism is [tla_sm::GetRequests::get_requests].
-#[derive(Debug)]
-pub struct TezedgeState<E = DefaultEffects> {
+#[derive(Debug, Clone)]
+pub struct TezedgeState {
     pub(crate) log: Logger,
     pub(crate) listening_for_connection_requests: bool,
     pub(crate) newest_time_seen: Instant,
@@ -135,7 +133,6 @@ pub struct TezedgeState<E = DefaultEffects> {
     pub(crate) config: TezedgeConfig,
     pub(crate) identity: Identity,
     pub(crate) shell_compatibility_version: ShellCompatibilityVersion,
-    pub(crate) effects: E,
     pub(crate) potential_peers: HashSet<PeerListenerAddress>,
     pub(crate) pending_peers: PendingPeers,
     pub(crate) connected_peers: ConnectedPeers,
@@ -146,7 +143,7 @@ pub struct TezedgeState<E = DefaultEffects> {
     pub(crate) requests: slab::Slab<PendingRequestState>,
 }
 
-impl<E> TezedgeState<E> {
+impl TezedgeState {
     pub fn config(&self) -> &TezedgeConfig {
         &self.config
     }
@@ -301,15 +298,18 @@ impl<E> TezedgeState<E> {
     }
 }
 
-impl<E: Effects> TezedgeState<E> {
-    pub fn new(
+impl TezedgeState {
+    pub fn new<'a, Efs>(
         log: Logger,
         config: TezedgeConfig,
         identity: Identity,
         shell_compatibility_version: ShellCompatibilityVersion,
-        effects: E,
+        effects: &'a mut Efs,
         initial_time: Instant,
-    ) -> Self {
+    ) -> Self
+    where
+        Efs: Effects,
+    {
         let periodic_react_interval = config.periodic_react_interval;
         let max_connected_peers = config.max_connected_peers;
         let max_pending_peers = config.max_pending_peers;
@@ -324,7 +324,6 @@ impl<E: Effects> TezedgeState<E> {
             config,
             identity,
             shell_compatibility_version,
-            effects,
             listening_for_connection_requests: false,
             potential_peers: HashSet::new(),
             pending_peers: PendingPeers::with_capacity(max_pending_peers),
@@ -341,21 +340,22 @@ impl<E: Effects> TezedgeState<E> {
         };
 
         // Adjust p2p state to start listening for new connections.
-        this.adjust_p2p_state(initial_time);
+        this.adjust_p2p_state(initial_time, effects);
 
         this
     }
 
     /// Take finished handshake result and create a new connected peer.
-    pub(crate) fn set_peer_connected(
+    pub(crate) fn set_peer_connected<'a, Efs: Effects>(
         &mut self,
         at: Instant,
+        effects: &'a mut Efs,
         peer_address: PeerAddress,
         result: HandshakeResult,
     ) {
         // double check to make sure we don't go over the limit.
         use P2pState::*;
-        self.adjust_p2p_state(at);
+        self.adjust_p2p_state(at, effects);
         match &self.p2p_state {
             Pending | PendingFull | Ready | ReadyFull => {}
             ReadyMaxed => {
@@ -384,7 +384,10 @@ impl<E: Effects> TezedgeState<E> {
         });
     }
 
-    pub(crate) fn adjust_p2p_state(&mut self, at: Instant) {
+    pub(crate) fn adjust_p2p_state<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)
+    where
+        Efs: Effects,
+    {
         use P2pState::*;
         let min_connected = self.config.min_connected_peers as usize;
         let missing_connected = self.missing_connected_peers();
@@ -430,11 +433,14 @@ impl<E: Effects> TezedgeState<E> {
         }
 
         if should_initiate_connections {
-            return self.initiate_handshakes(at);
+            return self.initiate_handshakes(at, effects);
         }
     }
 
-    pub(crate) fn check_timeouts(&mut self, at: Instant) {
+    pub(crate) fn check_timeouts<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)
+    where
+        Efs: Effects,
+    {
         let now = at;
         let peer_timeout = self.config.peer_timeout;
 
@@ -527,10 +533,13 @@ impl<E: Effects> TezedgeState<E> {
             slog::warn!(&self.log, "Blacklisting peer"; "reason" => timeout_info.to_string(), "peer_address" => peer.to_string());
             self.blacklist_peer(now, peer);
         }
-        self.initiate_handshakes(now);
+        self.initiate_handshakes(now, effects);
     }
 
-    pub(crate) fn initiate_handshakes(&mut self, at: Instant) {
+    pub(crate) fn initiate_handshakes<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)
+    where
+        Efs: Effects,
+    {
         use P2pState::*;
 
         match self.p2p_state {
@@ -548,9 +557,7 @@ impl<E: Effects> TezedgeState<E> {
                      "potential_peers" => self.potential_peers.len(),
                      "initiated_handshakes" => len);
 
-        let peers = self
-            .effects
-            .choose_peers_to_connect_to(&self.potential_peers, len);
+        let peers = effects.choose_peers_to_connect_to(&self.potential_peers, len);
 
         for peer in peers {
             self.potential_peers.remove(&peer);
@@ -565,41 +572,22 @@ impl<E: Effects> TezedgeState<E> {
             });
         }
 
-        self.adjust_p2p_state(at);
+        self.adjust_p2p_state(at, effects);
     }
 
-    pub(crate) fn periodic_react(&mut self, at: Instant) {
+    pub(crate) fn periodic_react<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)
+    where
+        Efs: Effects,
+    {
         let dur_since_last_periodic_react = at.duration_since(self.last_periodic_react);
         if dur_since_last_periodic_react > self.config.periodic_react_interval {
             self.last_periodic_react = at;
-            self.check_timeouts(at);
+            self.check_timeouts(at, effects);
             self.check_blacklisted_peers(at);
-            self.initiate_handshakes(at);
+            self.initiate_handshakes(at, effects);
         }
 
         self.connected_peers.periodic_react(at);
-    }
-}
-
-impl<E: Clone> Clone for TezedgeState<E> {
-    fn clone(&self) -> Self {
-        Self {
-            log: self.log.clone(),
-            config: self.config.clone(),
-            identity: self.identity.clone(),
-            shell_compatibility_version: self.shell_compatibility_version.clone(),
-            effects: self.effects.clone(),
-            listening_for_connection_requests: self.listening_for_connection_requests,
-            newest_time_seen: self.newest_time_seen,
-            last_periodic_react: self.last_periodic_react,
-
-            p2p_state: self.p2p_state.clone(),
-            potential_peers: self.potential_peers.clone(),
-            pending_peers: self.pending_peers.clone(),
-            connected_peers: self.connected_peers.clone(),
-            blacklisted_peers: self.blacklisted_peers.clone(),
-            requests: self.requests.clone(),
-        }
     }
 }
 

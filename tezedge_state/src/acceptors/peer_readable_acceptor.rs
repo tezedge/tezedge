@@ -8,13 +8,13 @@ use crate::proposals::{
 use crate::{Effects, TezedgeState};
 use tla_sm::Acceptor;
 
-impl<'a, E, S> Acceptor<PeerReadableProposal<'a, S>> for TezedgeState<E>
+impl<'a, Efs, S> Acceptor<PeerReadableProposal<'a, Efs, S>> for TezedgeState
 where
-    E: Effects,
+    Efs: Effects,
     S: Read + Write,
 {
     /// Peer's stream might be ready for reading, try to read from passed stream.
-    fn accept(&mut self, proposal: PeerReadableProposal<S>) {
+    fn accept(&mut self, proposal: PeerReadableProposal<'a, Efs, S>) {
         if let Err(_err) = self.validate_proposal(&proposal) {
             #[cfg(test)]
             assert_ne!(_err, crate::InvalidProposalError::ProposalOutdated);
@@ -25,12 +25,15 @@ where
         if let Some(peer) = self.connected_peers.get_mut(&proposal.peer) {
             match peer.read_message_from(proposal.stream) {
                 Ok(message) => {
+                    self.periodic_react(time, proposal.effects);
                     self.accept(PeerMessageProposal {
+                        effects: proposal.effects,
                         at: proposal.at,
                         peer: proposal.peer,
                         message,
                     });
                     self.accept(proposal);
+                    return;
                 }
                 Err(ReadMessageError::Pending) => {}
                 Err(ReadMessageError::QuotaReached) => {}
@@ -56,6 +59,7 @@ where
                     }
                 } else if let Some(message) = peer.read_buf.take_if_ready() {
                     self.accept(PeerHandshakeMessageProposal {
+                        effects: proposal.effects,
                         at: proposal.at,
                         peer: proposal.peer,
                         message: PeerBinaryHandshakeMessage::new(message),
@@ -70,7 +74,7 @@ where
             }
         }
 
-        self.adjust_p2p_state(time);
-        self.periodic_react(time);
+        self.adjust_p2p_state(time, proposal.effects);
+        self.periodic_react(time, proposal.effects);
     }
 }

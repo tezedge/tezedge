@@ -28,14 +28,14 @@ pub enum PendingRequestMsg {
     HandshakeSuccessfulNotified,
 }
 
-#[derive(Debug, Clone)]
-pub struct PendingRequestProposal {
+pub struct PendingRequestProposal<'a, Efs> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub req_id: usize,
     pub message: PendingRequestMsg,
 }
 
-impl Proposal for PendingRequestProposal {
+impl<'a, Efs> Proposal for PendingRequestProposal<'a, Efs> {
     fn time(&self) -> Instant {
         self.at
     }

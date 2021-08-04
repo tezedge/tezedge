@@ -14,13 +14,14 @@ use super::PeerReadableProposal;
 // and are consumed on read, hence hard to debug. So these types of proposals
 // should simply invoke another proposal like in this case that the chunk
 // is ready so that proposal can be recorded and replayed.
-pub struct PeerWritableProposal<'a, S> {
+pub struct PeerWritableProposal<'a, Efs, S> {
+    pub effects: &'a mut Efs,
     pub at: Instant,
     pub peer: PeerAddress,
     pub stream: &'a mut S,
 }
 
-impl<'a, S> Debug for PeerWritableProposal<'a, S> {
+impl<'a, Efs, S> Debug for PeerWritableProposal<'a, Efs, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PeerWritableProposal")
             .field("at", &self.at)
@@ -29,15 +30,16 @@ impl<'a, S> Debug for PeerWritableProposal<'a, S> {
     }
 }
 
-impl<'a, S> Proposal for PeerWritableProposal<'a, S> {
+impl<'a, Efs, S> Proposal for PeerWritableProposal<'a, Efs, S> {
     fn time(&self) -> Instant {
         self.at
     }
 }
 
-impl<'a, S> From<PeerReadableProposal<'a, S>> for PeerWritableProposal<'a, S> {
-    fn from(proposal: PeerReadableProposal<'a, S>) -> Self {
+impl<'a, Efs, S> From<PeerReadableProposal<'a, Efs, S>> for PeerWritableProposal<'a, Efs, S> {
+    fn from(proposal: PeerReadableProposal<'a, Efs, S>) -> Self {
         Self {
+            effects: proposal.effects,
             at: proposal.at,
             peer: proposal.peer,
             stream: proposal.stream,
