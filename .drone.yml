@@ -6519,9 +6519,9 @@ steps:
         --protocol-runner=/build/build_files/protocol-runner
         --init-sapling-spend-params-file=/build/build_files/ffi/sapling-spend.params
         --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
-        --peer-thresh-low=1 --peer-thresh-high=1 --network "$${NETWORK}"
+        --peer-thresh-low=1 --peer-thresh-high=10 --network "$${NETWORK}"
         --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
-        --tezos-context-storage=irmin --disable-bootstrap-lookup --peers="localhost:13632" &
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --private-node=true --peers="localhost:13632" &
         echo $! > /var/run/tezedge.pid
       - cd latency && cargo run --bin storage-metrics --release
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
