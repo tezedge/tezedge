@@ -4,8 +4,10 @@ use std::time::Instant;
 use tla_sm::GetRequests;
 use tla_sm::{Acceptor, Proposal};
 
+use rand::rngs::ThreadRng;
+
 use crate::{
-    DefaultEffects, PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats,
+    PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats,
 };
 
 /// Wrapper around [TezedgeState].

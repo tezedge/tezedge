@@ -1,4 +1,4 @@
-use rand::{prelude::IteratorRandom, Rng};
+use rand::{prelude::IteratorRandom, Rng, rngs::ThreadRng};
 use std::collections::HashSet;
 
 use crypto::nonce::Nonce;
@@ -26,12 +26,17 @@ pub trait Effects {
     ) -> Vec<PeerListenerAddress>;
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct DefaultEffects;
+pub type DefaultEffects = ThreadRng;
 
-impl Effects for DefaultEffects {
-    fn get_nonce(&mut self, _: &PeerAddress) -> Nonce {
-        Nonce::random()
+impl<R> Effects for R
+where
+    R: Rng,
+{
+    fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
+        let _ = peer;
+        let mut b = [0; 24];
+        self.fill(&mut b);
+        Nonce::new(&b)
     }
 
     fn choose_peers_to_connect_to(
@@ -46,11 +51,10 @@ impl Effects for DefaultEffects {
         if choice_len >= potential_peers.len() {
             potential_peers.iter().cloned().collect()
         } else {
-            let mut rng = rand::thread_rng();
             potential_peers
                 .iter()
                 .cloned()
-                .choose_multiple(&mut rng, choice_len)
+                .choose_multiple(self, choice_len)
         }
     }
 
@@ -58,15 +62,14 @@ impl Effects for DefaultEffects {
         &mut self,
         potential_peers: &HashSet<PeerListenerAddress>,
     ) -> Vec<PeerListenerAddress> {
-        let mut rng = rand::thread_rng();
-        let len = rng.gen_range(1, 80.min(potential_peers.len()).max(2));
+        let len = self.gen_range(1, 80.min(potential_peers.len()).max(2));
         if len >= potential_peers.len() {
             potential_peers.iter().cloned().collect()
         } else {
             potential_peers
                 .iter()
                 .cloned()
-                .choose_multiple(&mut rng, len)
+                .choose_multiple(self, len)
         }
     }
 
@@ -89,7 +92,7 @@ mod tests {
             for i in 0..n {
                 p.insert(PeerAddress::ipv4_from_index(i).as_listener_address());
             }
-            let mut effects = DefaultEffects::default();
+            let mut effects = rand::thread_rng();
             for choice_len in 0..100 {
                 effects.choose_peers_to_connect_to(&p, choice_len);
                 effects.choose_potential_peers_for_advertise(&p);
