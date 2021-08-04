@@ -6017,6 +6017,7 @@ steps:
 
   - name: octez-node
     image: tezos/tezos:v9-release
+    user: root
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6220,6 +6221,7 @@ steps:
 
   - name: octez-bootstrap-node
     image: tezos/tezos:v9-release
+    user: root
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
