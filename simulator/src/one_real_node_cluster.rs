@@ -4,36 +4,20 @@ use std::io::{self, Read, Write};
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-use crypto::crypto_box::CryptoKey;
-use crypto::crypto_box::PrecomputedKey;
-use crypto::crypto_box::PublicKey;
-use crypto::nonce::generate_nonces;
+use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
-use tezedge_state::chunking::ChunkReadBuffer;
-use tezedge_state::chunking::EncryptedMessageWriter;
-use tezedge_state::chunking::MessageReadBuffer;
-use tezedge_state::proposals::ExtendPotentialPeersProposal;
-use tezedge_state::proposer::NetworkEvent;
-use tezedge_state::proposer::TezedgeProposer;
-use tezedge_state::proposer::TezedgeProposerConfig;
-use tezedge_state::proposer::{Event, EventRef};
-use tezedge_state::proposer::{Events, Manager, Peer};
-use tezedge_state::DefaultEffects;
-use tezedge_state::PeerAddress;
-use tezedge_state::PeerCrypto;
-use tezedge_state::TezedgeState;
+use tezedge_state::chunking::{ChunkReadBuffer, EncryptedMessageWriter, MessageReadBuffer};
+use tezedge_state::proposer::{
+    Event, EventRef, Events, Manager, NetworkEvent, Peer, TezedgeProposer, TezedgeProposerConfig,
+};
+use tezedge_state::{DefaultEffects, PeerAddress, PeerCrypto, TezedgeState};
 use tezos_identity::Identity;
-use tezos_messages::p2p::binary_message::BinaryChunk;
-use tezos_messages::p2p::binary_message::BinaryRead;
-use tezos_messages::p2p::binary_message::BinaryWrite;
-use tezos_messages::p2p::encoding::ack::AckMessage;
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::NackInfo;
-use tezos_messages::p2p::encoding::connection::ConnectionMessage;
-use tezos_messages::p2p::encoding::peer::PeerMessage;
-use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
-use tezos_messages::p2p::encoding::prelude::MetadataMessage;
-use tezos_messages::p2p::encoding::prelude::NetworkVersion;
-use tla_sm::Acceptor;
+use tezos_messages::p2p::encoding::prelude::{
+    AckMessage, ConnectionMessage, MetadataMessage, NetworkVersion, PeerMessage,
+    PeerMessageResponse,
+};
 
 /// Events with time difference of less than given duration will be
 /// grouped together.
@@ -695,6 +679,7 @@ impl OneRealNodeCluster {
         let pow_target = state.config().pow_target;
         let mut proposer = TezedgeProposer::new(
             proposer_config,
+            DefaultEffects::default(),
             state,
             FakeEvents::new(),
             OneRealNodeManager::new(pow_target, wait_for_events_timeout),
@@ -737,22 +722,13 @@ impl OneRealNodeCluster {
         self
     }
 
-    fn _extend_node_potential_peers<I>(&mut self, peers: I)
-    where
-        I: Debug + IntoIterator<Item = SocketAddr>,
-    {
-        self.proposer.state.accept(ExtendPotentialPeersProposal {
-            at: self.time,
-            peers,
-        })
-    }
-
     fn extend_node_potential_peers<I>(&mut self, peers: I)
     where
         I: IntoIterator<Item = FakePeerId>,
         I::IntoIter: Debug,
     {
-        self._extend_node_potential_peers(peers.into_iter().map(|x| x.into()))
+        self.proposer
+            .extend_potential_peers(self.time, peers.into_iter().map(|x| x.into()))
     }
 
     pub fn init_new_fake_peer(&mut self) -> FakePeerId {
@@ -1083,6 +1059,7 @@ mod tests {
                     // use high number to speed up identity generation.
                     pow_target: 1.0,
                 },
+                &mut DefaultEffects::default(),
             ),
         );
 
@@ -1125,6 +1102,7 @@ mod tests {
                     // use high number to speed up identity generation.
                     pow_target: 1.0,
                 },
+                &mut DefaultEffects::default(),
             ),
         );
 
