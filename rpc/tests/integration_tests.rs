@@ -10,6 +10,7 @@
 //! ```
 
 use std::collections::HashSet;
+use std::convert::TryInto;
 use std::env;
 use std::iter::FromIterator;
 use std::time::{Duration, Instant};
@@ -531,44 +532,159 @@ async fn integration_tests_rpc(from_block: i64, to_block: i64) {
     }
 
     // get to_block data
-    let block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block))
+    let to_block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", to_block))
         .await
         .expect("Failed to get block metadata");
-    let to_block_hash = block_json.as_str().unwrap();
+    let from_block_json = try_get_data_as_json(&format!("chains/main/blocks/{}/hash", from_block))
+        .await
+        .expect("Failed to get block metadata");
+    let genesis_block_json = try_get_data_as_json("chains/main/blocks/genesis/hash")
+        .await
+        .expect("Failed to get block metadata");
+    let to_block_hash = to_block_json.as_str().unwrap();
+    let from_block_hash = from_block_json.as_str().unwrap();
+    let genesis_block_hash = genesis_block_json.as_str().unwrap();
 
     // test get header by block_hash string
-    test_rpc_compare_json(&format!(
-        "{}/{}/{}",
-        "chains/main/blocks", to_block_hash, "header"
-    ))
-    .await
-    .expect("test failed");
+    test_rpc_compare_json(&format!("chains/main/blocks/{}/header", to_block_hash))
+        .await
+        .expect("test failed");
 
     // simple test for walking on headers (-, ~)
     let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
     for i in 0..max_offset {
         // ~
         test_rpc_compare_json(&format!(
-            "{}/{}~{}/{}",
-            "chains/main/blocks", to_block_hash, i, "header"
+            "chains/main/blocks/{}~{}/header",
+            to_block_hash, i
         ))
         .await
         .expect("test failed");
         // -
         test_rpc_compare_json(&format!(
-            "{}/{}-{}/{}",
-            "chains/main/blocks", to_block_hash, i, "header"
+            "chains/main/blocks/{}-{}/header",
+            to_block_hash, i
         ))
         .await
         .expect("test failed");
     }
 
-    // TODO: TE-238 - simple test for walking on headers (+)
-    // TODO: TE-238 - Not yet implemented block header parsing for '+'
-    // let max_offset = std::cmp::max(1, std::cmp::min(5, to_block));
-    // for i in 0..max_offset {
-    //     test_rpc_compare_json(&format!("{}/{}+{}/{}", "chains/main/blocks", from_block, i, "header")).await;
-    // }
+    // walking genesis+<offset>
+    test_rpc_compare_json(&format!("chains/main/blocks/genesis+{}/header", from_block))
+        .await
+        .expect("test failed");
+
+    // walking block_hash+0
+    test_rpc_compare_json(&format!("chains/main/blocks/{}+0/header", from_block_hash))
+        .await
+        .expect("test failed");
+    // walking block_hash-0
+    test_rpc_compare_json(&format!("chains/main/blocks/{}-0/header", to_block_hash))
+        .await
+        .expect("test failed");
+
+    // simple test for walking on headers (+)
+    let max_offset = std::cmp::max(1, std::cmp::min(5, to_block - from_block));
+    for i in 0..max_offset {
+        // +
+        test_rpc_compare_json(&format!(
+            "chains/main/blocks/{}+{}/header",
+            from_block_hash, i
+        ))
+        .await
+        .expect("test failed");
+        // + from genesis
+        test_rpc_compare_json(&format!(
+            "chains/main/blocks/{}+{}/header",
+            genesis_block_hash, i
+        ))
+        .await
+        .expect("test failed");
+    }
+
+    // genesis_hash-0  / genesis_hash+0
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}+0/header",
+        genesis_block_hash
+    ))
+    .await
+    .expect("test failed");
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}-0/header",
+        genesis_block_hash
+    ))
+    .await
+    .expect("test failed");
+
+    // uknown generated hash - test failure
+    let random_block_hash: crypto::hash::BlockHash = [3; crypto::hash::HashType::BlockHash.size()]
+        .to_vec()
+        .try_into()
+        .expect("Failed to create BlockHash");
+
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}/header",
+        random_block_hash.to_base58_check(),
+    ))
+    .await
+    .expect("test failed");
+
+    // future block - test failure
+    let current_head_block_level = find_highest_level().await;
+
+    // future block for shell rpc
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}/header",
+        current_head_block_level + 5555,
+    ))
+    .await
+    .expect("test failed");
+
+    // future block for protocol rpc
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}/context/constants",
+        current_head_block_level + 5555,
+    ))
+    .await
+    .expect("test failed");
+
+    // future block for protocol rpc
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}/helpers/endorsing_rights",
+        current_head_block_level + 5555,
+    ))
+    .await
+    .expect("test failed");
+
+    // future block for protocol rpc
+    test_rpc_compare_json(&format!(
+        "chains/main/blocks/{}/helpers/baking_rights",
+        current_head_block_level + 5555,
+    ))
+    .await
+    .expect("test failed");
+}
+
+async fn find_highest_level() -> i64 {
+    let rpc_path = "chains/main/blocks/head/header";
+    let nodes: Vec<NodeType> = NodeType::iter().collect_vec();
+
+    let mut levels = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        match get_rpc_as_json(node, rpc_path).await {
+            Ok((_, data, _)) => levels.push(data["level"].as_i64().expect("Failed to parse level")),
+            Err(e) => {
+                println!(
+                    "WARN: failed for (node: {:?}) to get data for rpc '{}'. Reason: {}",
+                    node.clone(),
+                    node_rpc_url(node, rpc_path),
+                    e
+                );
+            }
+        }
+    }
+
+    levels.into_iter().max().unwrap_or(0)
 }
 
 async fn test_rpc_compare_json(rpc_path: &str) -> Result<(), failure::Error> {
@@ -701,17 +817,39 @@ async fn get_rpc_as_json(
         Err(e) => return Err(format_err!("Request url: {:?} for getting data failed: {} - please, check node's log, in the case of network or connection error, please, check rpc/README.md for CONTEXT_ROOT configurations", url_as_string, e)),
     };
 
+    // process response body
     let mut buf = body.reader();
     let mut dst = vec![];
     std::io::copy(&mut buf, &mut dst).unwrap();
 
-    match serde_json::from_slice(&dst) {
-        Ok(result) => Ok((status_code, result, response_time)),
-        Err(err) => Err(format_err!(
-            "Error {:?} when parsing value as JSON: {:?}",
-            err,
-            String::from_utf8_lossy(&dst)
-        )),
+    // process status code
+    if status_code.is_success() {
+        let response_value = match serde_json::from_slice(&dst) {
+            Ok(result) => result,
+            Err(err) => {
+                return Err(format_err!(
+                    "Error {:?} when parsing value as JSON: {:?}",
+                    err,
+                    String::from_utf8_lossy(&dst)
+                ))
+            }
+        };
+
+        Ok((status_code, response_value, response_time))
+    } else {
+        let response_value = match serde_json::from_slice(&dst) {
+            Ok(result) => result,
+            Err(err) => {
+                println!(
+                    "Error {:?} when parsing value as JSON: {:?}",
+                    err,
+                    String::from_utf8_lossy(&dst)
+                );
+                serde_json::Value::Null
+            }
+        };
+
+        Ok((status_code, response_value, response_time))
     }
 }
 

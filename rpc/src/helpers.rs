@@ -1,27 +1,31 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+use std::sync::PoisonError;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
 use chrono::SecondsFormat;
-use failure::{bail, format_err};
+use failure::{bail, Fail};
+use hex::FromHexError;
 use hyper::{Body, Request};
 use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crypto::hash::{BlockHash, ChainId, ContextHash, ProtocolHash};
+use crypto::hash::{BlockHash, ChainId, ProtocolHash};
 use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
-    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage,
+    BlockMetaStorageReader, BlockStorage, BlockStorageReader, ChainMetaStorage, StorageError,
 };
 use tezos_api::ffi::{RpcMethod, RpcRequest};
+use tezos_messages::p2p::binary_message::MessageHashError;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
+use tezos_wrapper::InternalPoolError;
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
@@ -45,6 +49,86 @@ macro_rules! required_param {
             None => Err(failure::format_err!("Missing parameter '{}'", $param_name)),
         }
     }};
+}
+
+#[macro_export]
+macro_rules! parse_block_hash_or_fail {
+    ($chain_id:expr, $block_id_param:expr, $env:expr) => {{
+        match parse_block_hash($chain_id, $block_id_param, $env) {
+            Ok(block_hash) => block_hash,
+            Err(crate::helpers::RpcServiceError::NoDataFoundError { .. }) => {
+                return crate::not_found();
+            }
+            Err(e) => return crate::error(failure::format_err!("{}", e)),
+        }
+    }};
+}
+
+/// Possible errors for state processing
+#[derive(Debug, Fail)]
+pub enum RpcServiceError {
+    #[fail(display = "Storage read error, reason: {:?}", error)]
+    StorageError { error: storage::StorageError },
+    #[fail(display = "No data found error, reason: {:?}", reason)]
+    NoDataFoundError { reason: String },
+    #[fail(display = "Invalid parameters, reason: {:?}", reason)]
+    InvalidParameters { reason: String },
+    #[fail(display = "Unexpected/unhandled error occurred, reason: {:?}", reason)]
+    UnexpectedError { reason: String },
+}
+
+impl From<storage::StorageError> for RpcServiceError {
+    fn from(error: StorageError) -> Self {
+        Self::StorageError { error }
+    }
+}
+
+impl From<FromHexError> for RpcServiceError {
+    fn from(error: FromHexError) -> Self {
+        Self::UnexpectedError {
+            reason: format!("{}", error),
+        }
+    }
+}
+
+impl From<MessageHashError> for RpcServiceError {
+    fn from(error: MessageHashError) -> Self {
+        Self::UnexpectedError {
+            reason: format!("{}", error),
+        }
+    }
+}
+
+impl From<serde_json::Error> for RpcServiceError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::UnexpectedError {
+            reason: format!("{}", error),
+        }
+    }
+}
+
+impl From<InternalPoolError> for RpcServiceError {
+    fn from(error: InternalPoolError) -> Self {
+        Self::UnexpectedError {
+            reason: format!("{}", error),
+        }
+    }
+}
+
+impl<T> From<PoisonError<T>> for RpcServiceError {
+    fn from(pe: PoisonError<T>) -> Self {
+        RpcServiceError::UnexpectedError {
+            reason: format!("{}", pe),
+        }
+    }
+}
+
+impl From<TimestampOutOfRangeError> for RpcServiceError {
+    fn from(error: TimestampOutOfRangeError) -> Self {
+        RpcServiceError::UnexpectedError {
+            reason: format!("{}", error),
+        }
+    }
 }
 
 pub type BlockHeaderJson = HashMap<String, Value>;
@@ -268,26 +352,6 @@ where
     }
 }
 
-// TODO: refactor errors
-/// Struct is defining Error message response, there are different keys is these messages so only needed one are defined for each message
-#[derive(Serialize, Debug, Clone)]
-pub struct RpcErrorMsg {
-    kind: String,
-    // "permanent"
-    id: String,
-    // "proto.005-PsBabyM1.seed.unknown_seed"
-    #[serde(skip_serializing_if = "Option::is_none")]
-    missing_key: Option<Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    function: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    oldest: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    requested: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    latest: Option<String>,
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct Protocols {
     protocol: String,
@@ -397,24 +461,35 @@ fn split_block_id_param(
     block_id_param: &str,
     split_char: char,
     negate: bool,
-) -> Result<(&str, Option<i32>), failure::Error> {
+) -> Result<(&str, Option<i32>), RpcServiceError> {
     let splits: Vec<&str> = block_id_param.split(split_char).collect();
-    Ok(match splits.len() {
-        1 => (splits[0], None),
+    match splits.len() {
+        1 => Ok((splits[0], None)),
         2 => {
             // handles cases like /chains/main/blocks/head~, where '~' is included without a value
             if splits[1].is_empty() {
-                (splits[0], Some(0))
+                Ok((splits[0], Some(0)))
             } else {
+                let offset =
+                    splits[1]
+                        .parse::<i32>()
+                        .map_err(|e| RpcServiceError::InvalidParameters {
+                            reason: format!(
+                                "Invalid offset part of block_id_param: {}, reason: {}",
+                                block_id_param, e
+                            ),
+                        })?;
                 if negate {
-                    (splits[0], Some(splits[1].parse::<i32>()?.neg()))
+                    Ok((splits[0], Some(offset.neg())))
                 } else {
-                    (splits[0], Some(splits[1].parse::<i32>()?))
+                    Ok((splits[0], Some(offset)))
                 }
             }
         }
-        _ => bail!("Invalid block_id parameter: {}", block_id_param),
-    })
+        _ => Err(RpcServiceError::InvalidParameters {
+            reason: format!("Invalid block_id parameter: {}", block_id_param),
+        }),
+    }
 }
 
 /// Parses [BlockHash] from block_id url param
@@ -436,7 +511,7 @@ pub(crate) fn parse_block_hash(
     chain_id: &ChainId,
     block_id_param: &str,
     env: &RpcServiceEnvironment,
-) -> Result<BlockHash, failure::Error> {
+) -> Result<BlockHash, RpcServiceError> {
     // split header and optional offset (+, -, ~)
     let (block_param, offset_param) = {
         match block_id_param {
@@ -448,41 +523,81 @@ pub(crate) fn parse_block_hash(
     };
 
     // closure for current head
-    let current_head = || {
-        let state_read = env.state().read().unwrap();
+    let current_head = || -> Result<(BlockHash, Level), RpcServiceError> {
+        let state_read = env
+            .state()
+            .read()
+            .map_err(|e| RpcServiceError::UnexpectedError {
+                reason: format!("Lock state error: {}", e),
+            })?;
         match state_read.current_head().as_ref() {
             Some(current_head) => Ok((current_head.hash.clone(), current_head.header.level())),
-            None => bail!("Head not initialized"),
+            None => Err(RpcServiceError::UnexpectedError {
+                reason: "Head not initialized".to_string(),
+            }),
         }
     };
+
+    let genesis_block_hash = || -> Result<BlockHash, RpcServiceError> {
+        if let Some(genesis) =
+            ChainMetaStorage::new(env.persistent_storage()).get_genesis(chain_id)?
+        {
+            Ok(genesis.into())
+        } else {
+            return Err(RpcServiceError::InvalidParameters {
+                reason: format!(
+                    "No genesis found for chain_id: {}",
+                    chain_id.to_base58_check()
+                ),
+            });
+        }
+    };
+
+    let offset_from_current_head =
+        |requested_level: Level| -> Result<(BlockHash, Option<u32>), RpcServiceError> {
+            // we resolve offset as relative to current_head - requested_level
+            let (current_head, current_head_level) = current_head()?;
+            let offset_from_head = current_head_level - requested_level;
+            let offset_from_head = if offset_from_head > current_head_level || offset_from_head < 0
+            {
+                return Err(RpcServiceError::NoDataFoundError { reason: format!("Offset({}) is too far from `head`, current_head_level: {}, requested_level: {}, block_id_param: {}", offset_from_head, current_head_level, requested_level, block_id_param) });
+            } else {
+                offset_from_head as u32
+            };
+            Ok((current_head, Some(offset_from_head)))
+        };
 
     let (block_hash, offset) = match block_param {
         "head" => {
             let (current_head, _) = current_head()?;
-            if let Some(offset) = offset_param {
+            let offset_param = if let Some(offset) = offset_param {
                 if offset < 0 {
-                    bail!(
-                        "Offset for `head` parameter cannot be used with '+', block_id_param: {}",
-                        block_id_param
-                    );
+                    return Err(RpcServiceError::InvalidParameters {
+                        reason: format!("Offset for `head` parameter cannot be used with '+', block_id_param: {}",
+                                        block_id_param)
+                    });
+                } else {
+                    // ../head~<offset>/..
+                    // ../head-<offset>/..
+                    Some(offset as u32)
                 }
-            }
+            } else {
+                // ../head/..
+                None
+            };
             (current_head, offset_param)
         }
         "genesis" => {
-            match ChainMetaStorage::new(env.persistent_storage()).get_genesis(chain_id)? {
-                Some(genesis) => {
-                    if let Some(offset) = offset_param {
-                        if offset > 0 {
-                            bail!("Offset for `genesis` parameter cannot be used with '~/-', block_id_param: {}", block_id_param);
-                        }
-                    }
-                    (genesis.into(), offset_param)
+            if let Some(offset) = offset_param {
+                if offset > 0 {
+                    return Err(RpcServiceError::InvalidParameters { reason: format!("Offset for `genesis` parameter cannot be used with '~/-', block_id_param: {}", block_id_param) });
+                } else {
+                    // ../genesis+<offset>/.. - offset means level here
+
+                    offset_from_current_head(offset.neg())?
                 }
-                None => bail!(
-                    "No genesis found for chain_id: {}",
-                    chain_id.to_base58_check()
-                ),
+            } else {
+                (genesis_block_hash()?, None)
             }
         }
         level_or_hash => {
@@ -490,24 +605,80 @@ pub(crate) fn parse_block_hash(
             match level_or_hash.parse::<Level>() {
                 // block level was passed as parameter to block_id_param
                 Ok(requested_level) => {
-                    // we resolve level as relative to current_head - offset_to_level
-                    let (current_head, current_head_level) = current_head()?;
-                    let mut offset_from_head = current_head_level - requested_level;
-
-                    // if we have also offset_param, we need to apply it
-                    if let Some(offset) = offset_param {
-                        offset_from_head -= offset;
+                    // ../<level>/..
+                    if offset_param.is_some() {
+                        return Err(RpcServiceError::InvalidParameters {
+                            reason: format!(
+                                "Offset cannot be used with `level` parameter, block_id_param: {}",
+                                block_id_param
+                            ),
+                        });
+                    } else {
+                        offset_from_current_head(requested_level)?
                     }
-
-                    // represet level as current_head with offset
-                    (current_head, Some(offset_from_head))
                 }
                 Err(_) => {
                     // block hash as base58 string was passed as parameter to block_id
                     match BlockHash::from_base58_check(level_or_hash) {
-                        Ok(block_hash) => (block_hash, offset_param),
+                        Ok(block_hash) => {
+                            match offset_param {
+                                Some(offset_value) => {
+                                    if offset_value > 0 {
+                                        // just find predecessor from block
+                                        // ../<block_hash>~<offset>/..
+                                        // ../<block_hash>-<offset>/..
+                                        (block_hash, Some(offset_value as u32))
+                                    } else if offset_value < 0 {
+                                        // ../<block_hash>+<offset>/..
+
+                                        // we can go from block_hash to head, but we need to calculate it from head.level backwards by predecessor
+                                        let block_level = match BlockMetaStorage::new(env.persistent_storage()).get(&block_hash)? {
+                                            Some(meta) => meta.level(),
+                                            None => return Err(RpcServiceError::NoDataFoundError {
+                                                reason: format!("BlockHeader was not found, block_id_param: {}, block_hash: {}",
+                                                                block_id_param, block_hash.to_base58_check())
+                                            })
+                                        };
+                                        let target_level = block_level - offset_value;
+                                        offset_from_current_head(target_level)?
+                                    } else {
+                                        // ../<block_hash>~0/..
+                                        // ../<block_hash>-0/..
+                                        // very very ugly hack1 for genesis
+                                        let genesis_block_hash = genesis_block_hash()?;
+                                        if genesis_block_hash.eq(&block_hash) {
+                                            (genesis_block_hash, None)
+                                        } else {
+                                            // very very ugly hack2 for genesis (genesis_hash is not the same as calculated from BlockHeader data)
+                                            let real_genesis_block_hash = match BlockStorage::new(env.persistent_storage()).get(&genesis_block_hash)? {
+                                                Some(block_header) => block_header.hash,
+                                                None => return Err(RpcServiceError::UnexpectedError {
+                                                    reason: format!("Genesis header was not found, genesis_block_hash: {}, block_id_param: {}",
+                                                                    genesis_block_hash.to_base58_check(), block_id_param)
+                                                })
+                                            };
+                                            if real_genesis_block_hash.eq(&block_hash) {
+                                                (genesis_block_hash, None)
+                                            } else {
+                                                (block_hash, None)
+                                            }
+                                        }
+                                    }
+                                }
+                                None => {
+                                    // ../<block_hash>/..
+                                    (block_hash, None)
+                                }
+                            }
+                        }
                         Err(e) => {
-                            bail!("Invalid block_id_param: {}, reason: {}", block_id_param, e)
+                            // TODO: we should handle here other aliases: caboose, checkpoint, save_point...
+                            return Err(RpcServiceError::InvalidParameters {
+                                reason: format!(
+                                    "Invalid/unhandled block_id_param: {}, reason: {}",
+                                    block_id_param, e
+                                ),
+                            });
                         }
                     }
                 }
@@ -521,29 +692,17 @@ pub(crate) fn parse_block_hash(
             .find_block_at_distance(block_hash, offset)?
         {
             Some(block_hash) => block_hash,
-            None => bail!("Unknown block for block_id_param: {}", block_id_param),
+            None => {
+                return Err(RpcServiceError::NoDataFoundError {
+                    reason: format!("Unknown block for block_id_param: {}", block_id_param),
+                });
+            }
         }
     } else {
         block_hash
     };
 
     Ok(block_hash)
-}
-
-/// TODO: TE-238 - optimize context_hash/level index, not do deserialize whole header
-/// TODO: returns context_hash and level, but level is here just for one use-case, so maybe it could be splitted
-pub(crate) fn get_context_hash(
-    block_hash: &BlockHash,
-    env: &RpcServiceEnvironment,
-) -> Result<ContextHash, failure::Error> {
-    let block_storage = BlockStorage::new(env.persistent_storage());
-    match block_storage.get(block_hash)? {
-        Some(header) => Ok(header.header.context().clone()),
-        None => bail!(
-            "Block not found for block_hash: {}",
-            block_hash.to_base58_check()
-        ),
-    }
 }
 
 pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest, failure::Error> {
@@ -595,7 +754,7 @@ pub enum WorkerStatusPhase {
 /// Returns all prevalidator actors
 pub(crate) fn get_prevalidators(
     env: &RpcServiceEnvironment,
-) -> Result<Vec<Prevalidator>, failure::Error> {
+) -> Result<Vec<Prevalidator>, RpcServiceError> {
     // find potential actors
     let prevalidator_actors = env
         .sys()
@@ -611,10 +770,7 @@ pub(crate) fn get_prevalidators(
         let mut result = Vec::with_capacity(prevalidator_actors.len());
         for prevalidator_actor in prevalidator_actors {
             // get mempool state
-            let mempool_state = env
-                .current_mempool_state_storage()
-                .read()
-                .map_err(|e| format_err!("Failed to obtain read lock, reson: {}", e))?;
+            let mempool_state = env.current_mempool_state_storage().read()?;
             if let Some(mempool_prevalidator) = mempool_state.prevalidator() {
                 let prevalidator_actor_chain_id =
                     MempoolPrevalidator::resolve_chain_id_from_mempool_prevalidator_actor_name(

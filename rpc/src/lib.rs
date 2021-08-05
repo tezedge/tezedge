@@ -7,6 +7,8 @@ use slog::{error, Logger};
 
 pub use services::mempool_services::MempoolOperations;
 
+use crate::helpers::RpcServiceError;
+
 pub mod encoding;
 mod helpers;
 pub mod rpc_actor;
@@ -95,21 +97,21 @@ pub(crate) fn make_json_stream_response<
 
 /// Returns result as a JSON response.
 pub(crate) fn result_to_json_response<T: serde::Serialize>(
-    res: Result<T, failure::Error>,
+    res: Result<T, RpcServiceError>,
     log: &Logger,
 ) -> ServiceResult {
     match res {
         Ok(t) => make_json_response(&t),
         Err(err) => {
             error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
-            error(err)
+            handle_rpc_service_error(err)
         }
     }
 }
 
 /// Returns optional result as a JSON response.
 pub(crate) fn result_option_to_json_response<T: serde::Serialize>(
-    res: Result<Option<T>, failure::Error>,
+    res: Result<Option<T>, RpcServiceError>,
     log: &Logger,
 ) -> ServiceResult {
     match res {
@@ -119,14 +121,14 @@ pub(crate) fn result_option_to_json_response<T: serde::Serialize>(
         },
         Err(err) => {
             error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
-            error(err)
+            handle_rpc_service_error(err)
         }
     }
 }
 
 /// Returns result as a empty JSON response: `{}`.
 pub(crate) fn result_to_empty_json_response(
-    res: Result<(), failure::Error>,
+    res: Result<(), RpcServiceError>,
     log: &Logger,
 ) -> ServiceResult {
     match res {
@@ -136,7 +138,7 @@ pub(crate) fn result_to_empty_json_response(
         }
         Err(err) => {
             error!(log, "Failed to execute RPC function"; "reason" => format!("{:?}", &err));
-            error(err)
+            handle_rpc_service_error(err)
         }
     }
 }
@@ -165,6 +167,15 @@ pub(crate) fn not_found() -> ServiceResult {
 /// Generate 500 error
 pub(crate) fn error(error: failure::Error) -> ServiceResult {
     error_with_message(format!("{:?}", error))
+}
+
+pub(crate) fn handle_rpc_service_error(error: RpcServiceError) -> ServiceResult {
+    match error {
+        RpcServiceError::StorageError { error } => error_with_message(format!("{:?}", error)),
+        RpcServiceError::InvalidParameters { reason } => error_with_message(reason),
+        RpcServiceError::UnexpectedError { reason } => error_with_message(reason),
+        RpcServiceError::NoDataFoundError { .. } => not_found(),
+    }
 }
 
 /// Generate 500 error with message as body

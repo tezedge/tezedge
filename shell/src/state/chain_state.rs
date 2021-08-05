@@ -656,6 +656,25 @@ impl BlockchainState {
         // init steping
         let mut step = Step::init(seed, &head);
 
+        // inner function, which ensures, that history is closed with caboose
+        let close_history_with_caboose =
+            |current_block_hash: &BlockHash,
+             caboose: Option<Head>,
+             history: &mut Vec<BlockHash>| {
+                if let Some(caboose) = caboose {
+                    if let Some(last) = history.last() {
+                        if !last.eq(caboose.block_hash()) {
+                            history.push(caboose.into());
+                        }
+                    } else {
+                        // this covers genesis case, when we dont want to add genesis to history for genesis block
+                        if !current_block_hash.eq(caboose.block_hash()) {
+                            history.push(caboose.into());
+                        }
+                    }
+                }
+            };
+
         // iterate and get history records
         let mut counter = max_size;
         let mut current_block_hash = head.clone();
@@ -664,6 +683,14 @@ impl BlockchainState {
         while counter > 0 {
             // evaluate next step, means we want predecessor at this distance
             let distance = step.next();
+
+            // close history with caboose, if next step distance is negative (because of find_block_at_distance)
+            let distance = if distance < 0 {
+                close_history_with_caboose(&current_block_hash, caboose, &mut history);
+                break;
+            } else {
+                distance as u32
+            };
 
             // need to find predecesor at requested distance
             match block_meta_storage.find_block_at_distance(current_block_hash.clone(), distance)? {
@@ -677,18 +704,7 @@ impl BlockchainState {
                 }
                 None => {
                     // close history with caboose, if predecessor was not found in this run
-                    if let Some(caboose) = caboose {
-                        if let Some(last) = history.last() {
-                            if !last.eq(caboose.block_hash()) {
-                                history.push(caboose.into());
-                            }
-                        } else {
-                            // this covers genesis case, when we dont want to add genesis to history for genesis block
-                            if !current_block_hash.eq(caboose.block_hash()) {
-                                history.push(caboose.into());
-                            }
-                        }
-                    }
+                    close_history_with_caboose(&current_block_hash, caboose, &mut history);
                     break;
                 }
             }
