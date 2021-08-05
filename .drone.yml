@@ -6525,13 +6525,13 @@ steps:
         --tezos-context-storage=irmin --disable-bootstrap-lookup --disable-peer-blacklist &> log &
         echo $! > /var/run/tezedge.pid
       - echo "Run 1"
-      - cd latency && sleep 10 && cargo run --bin storage-metrics --release
+      - ./target/release/storage-metrics
       - echo "--------------------------------------------------------------------------------------------------"
       - echo "Run 2"
-      - cargo run --bin storage-metrics --release
+      - ./target/release/storage-metrics
       - echo "--------------------------------------------------------------------------------------------------"
       - echo "Run 3"
-      - cargo run --bin storage-metrics --release
+      - ./target/release/storage-metrics
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
         # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
