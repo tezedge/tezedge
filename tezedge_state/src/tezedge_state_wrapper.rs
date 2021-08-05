@@ -6,9 +6,7 @@ use tla_sm::{Acceptor, Proposal};
 
 use rand::rngs::ThreadRng;
 
-use crate::{
-    PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats,
-};
+use crate::{PeerAddress, TezedgeConfig, TezedgeRequest, TezedgeState, TezedgeStats};
 
 /// Wrapper around [TezedgeState].
 ///
