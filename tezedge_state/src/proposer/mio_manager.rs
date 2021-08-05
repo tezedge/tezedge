@@ -193,7 +193,12 @@ impl Manager for MioManager {
     }
 
     fn wait_for_events(&mut self, events: &mut Self::Events, timeout: Option<Duration>) {
-        self.poll.poll(&mut events.mio_events, timeout).unwrap();
+        match self.poll.poll(&mut events.mio_events, timeout) {
+            Ok(_) => {}
+            Err(err) => {
+                eprintln!("Mio Poll::poll failed! Error: {:?}", err);
+            }
+        };
 
         if events.mio_events.is_empty() {
             events.tick_event_time = Some(Instant::now());
