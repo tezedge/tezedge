@@ -1,6 +1,6 @@
 use slog::Drain;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crate::*;
@@ -58,6 +58,30 @@ pub fn logger(level: slog::Level) -> slog::Logger {
 
 pub fn default_shell_compatibility_version() -> ShellCompatibilityVersion {
     ShellCompatibilityVersion::new("TEZOS_MAINNET".to_owned(), vec![0], vec![0, 1])
+}
+
+pub fn default_effects() -> DefaultEffects {
+    DefaultEffects::default()
+}
+
+pub fn default_config() -> TezedgeConfig {
+    TezedgeConfig {
+        port: 9732,
+        disable_mempool: true,
+        private_node: true,
+        disable_quotas: true,
+        disable_blacklist: true,
+        min_connected_peers: 1,
+        max_connected_peers: 100,
+        max_pending_peers: 100,
+        max_potential_peers: 1000,
+        periodic_react_interval: Duration::from_millis(250),
+        reset_quotas_interval: Duration::from_secs(5),
+        peer_blacklist_duration: Duration::from_secs(15 * 60),
+        peer_timeout: Duration::from_secs(8),
+        // use high number to speed up identity generation.
+        pow_target: 0.0,
+    }
 }
 
 pub fn build<'a, Efs>(

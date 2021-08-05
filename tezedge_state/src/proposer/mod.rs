@@ -136,7 +136,7 @@ pub trait Manager {
     type NetworkEvent: NetworkEvent;
     type Events;
 
-    fn start_listening_to_server_events(&mut self);
+    fn start_listening_to_server_events(&mut self) -> io::Result<()>;
     fn stop_listening_to_server_events(&mut self);
 
     fn accept_connection(&mut self, event: &Self::NetworkEvent) -> Option<&mut Peer<Self::Stream>>;

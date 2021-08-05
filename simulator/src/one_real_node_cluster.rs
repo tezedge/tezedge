@@ -562,8 +562,9 @@ impl Manager for OneRealNodeManager {
     type NetworkEvent = FakeNetworkEvent;
     type Events = FakeEvents;
 
-    fn start_listening_to_server_events(&mut self) {
+    fn start_listening_to_server_events(&mut self) -> io::Result<()> {
         self.listening = true;
+        Ok(())
     }
     fn stop_listening_to_server_events(&mut self) {
         self.listening = false;

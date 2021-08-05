@@ -232,7 +232,7 @@ impl TezedgeState {
 
         self.requests.insert(PendingRequestState {
             request: PendingRequest::DisconnectPeer { peer: address },
-            status: RequestState::Idle { at },
+            status: RetriableRequestState::Idle { at },
         });
     }
 
@@ -264,7 +264,7 @@ impl TezedgeState {
 
         self.requests.insert(PendingRequestState {
             request: PendingRequest::BlacklistPeer { peer: address },
-            status: RequestState::Idle { at },
+            status: RetriableRequestState::Idle { at },
         });
     }
 
@@ -380,7 +380,7 @@ impl TezedgeState {
                 ),
                 network_version: connected_peer.version.clone(),
             },
-            status: RequestState::Idle { at },
+            status: RetriableRequestState::Idle { at },
         });
     }
 
@@ -422,12 +422,12 @@ impl TezedgeState {
             if !should_listen_for_connections {
                 self.requests.insert(PendingRequestState {
                     request: PendingRequest::StopListeningForNewPeers,
-                    status: RequestState::Idle { at },
+                    status: RetriableRequestState::Idle { at },
                 });
             } else {
                 self.requests.insert(PendingRequestState {
                     request: PendingRequest::StartListeningForNewPeers,
-                    status: RequestState::Idle { at },
+                    status: RetriableRequestState::Idle { at },
                 });
             }
         }
@@ -446,7 +446,7 @@ impl TezedgeState {
 
         self.requests.retain(|_, req| match &req.request {
             PendingRequest::ConnectPeer { .. } => match &req.status {
-                RequestState::Idle { at } | RequestState::Pending { at } => {
+                RetriableRequestState::Idle { at } | RetriableRequestState::Pending { at } => {
                     if now.duration_since(*at) >= peer_timeout {
                         false
                     } else {
@@ -567,7 +567,7 @@ impl TezedgeState {
                 HandshakeStep::Initiated { at },
             ));
             self.requests.insert(PendingRequestState {
-                status: RequestState::Idle { at },
+                status: RetriableRequestState::Idle { at },
                 request: PendingRequest::ConnectPeer { peer: peer.into() },
             });
         }
