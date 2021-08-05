@@ -67,10 +67,10 @@ pub fn default_effects() -> DefaultEffects {
 pub fn default_config() -> TezedgeConfig {
     TezedgeConfig {
         port: 9732,
-        disable_mempool: true,
-        private_node: true,
-        disable_quotas: true,
-        disable_blacklist: true,
+        disable_mempool: false,
+        private_node: false,
+        disable_quotas: false,
+        disable_blacklist: false,
         min_connected_peers: 1,
         max_connected_peers: 100,
         max_pending_peers: 100,

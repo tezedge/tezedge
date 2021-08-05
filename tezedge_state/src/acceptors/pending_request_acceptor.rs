@@ -25,6 +25,7 @@ where
                 PendingRequest::StartListeningForNewPeers => match proposal.message {
                     PendingRequestMsg::StartListeningForNewPeersSuccess => {
                         self.requests.remove(proposal.req_id);
+                        slog::info!(&self.log, "Started listening for new p2p connections"; "port" => self.config.port.to_string());
                     }
                     PendingRequestMsg::StartListeningForNewPeersError { error } => {
                         slog::warn!(&self.log, "Failed to start listening for incoming connections"; "error" => format!("{:?}", error));
