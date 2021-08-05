@@ -1,4 +1,4 @@
-use mio::net::{TcpListener, TcpStream};
+use mio::net::{TcpListener, TcpSocket, TcpStream};
 use slab::Slab;
 use std::collections::HashMap;
 use std::io;
@@ -94,7 +94,9 @@ impl Events for MioEvents {
 }
 
 pub struct MioManager {
-    server_port: u16,
+    listen_addr: SocketAddr,
+    backlog_size: u32,
+
     poll: mio::Poll,
     waker: Arc<mio::Waker>,
     server: Option<TcpListener>,
@@ -104,13 +106,16 @@ pub struct MioManager {
 }
 
 impl MioManager {
-    pub fn new(server_port: u16) -> Self {
+    const DEFAULT_BACKLOG_SIZE: u32 = 255;
+
+    pub fn new(listen_addr: SocketAddr) -> Self {
         let poll = mio::Poll::new().expect("failed to create mio::Poll");
         let waker = Arc::new(
             mio::Waker::new(poll.registry(), MIO_WAKE_TOKEN).expect("failed to create mio::Waker"),
         );
         Self {
-            server_port,
+            listen_addr,
+            backlog_size: Self::DEFAULT_BACKLOG_SIZE,
             poll,
             waker,
             server: None,
@@ -130,18 +135,31 @@ impl Manager for MioManager {
     type NetworkEvent = MioEvent;
     type Events = MioEvents;
 
-    fn start_listening_to_server_events(&mut self) {
+    fn start_listening_to_server_events(&mut self) -> io::Result<()> {
         if self.server.is_none() {
-            let listen_addr =
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), self.server_port);
-            let mut server = TcpListener::bind(listen_addr).unwrap();
-            self.poll
-                .registry()
-                .register(&mut server, MIO_SERVER_TOKEN, mio::Interest::READABLE)
-                .expect("failed to register listener event source to mio::Registry");
+            let socket = match self.listen_addr.ip() {
+                IpAddr::V4(_) => TcpSocket::new_v4()?,
+                IpAddr::V6(_) => TcpSocket::new_v6()?,
+            };
+
+            // read more details about why not on windows in mio docs
+            // for [mio::TcpListener::bind].
+            #[cfg(not(windows))]
+            socket.set_reuseaddr(true)?;
+
+            socket.bind(self.listen_addr)?;
+
+            let mut server = socket.listen(self.backlog_size)?;
+
+            self.poll.registry().register(
+                &mut server,
+                MIO_SERVER_TOKEN,
+                mio::Interest::READABLE,
+            )?;
 
             self.server = Some(server);
         }
+        Ok(())
     }
 
     fn stop_listening_to_server_events(&mut self) {
