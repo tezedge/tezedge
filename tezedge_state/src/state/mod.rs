@@ -1,10 +1,16 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use slog::Logger;
 use std::collections::HashSet;
 use std::fmt::{self, Debug};
 use std::time::{Duration, Instant};
 
+use crypto::hash::ChainId;
 use tezos_identity::Identity;
-use tezos_messages::p2p::encoding::prelude::MetadataMessage;
+use tezos_messages::p2p::encoding::prelude::{
+    GetCurrentBranchMessage, MetadataMessage, PeerMessage,
+};
 pub use tla_sm::{GetRequests, Proposal};
 
 use crate::peer_address::PeerListenerAddress;
@@ -140,6 +146,9 @@ pub struct TezedgeState {
     pub(crate) p2p_state: P2pState,
     /// Currently pending requests. Completed requests is removed.
     pub(crate) requests: slab::Slab<PendingRequestState>,
+
+    /// Main chain_id
+    pub(crate) main_chain_id: ChainId,
 }
 
 impl TezedgeState {
@@ -305,6 +314,7 @@ impl TezedgeState {
         shell_compatibility_version: ShellCompatibilityVersion,
         effects: &'a mut Efs,
         initial_time: Instant,
+        main_chain_id: ChainId,
     ) -> Self
     where
         Efs: Effects,
@@ -335,6 +345,7 @@ impl TezedgeState {
             requests: slab::Slab::new(),
             newest_time_seen: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
+            main_chain_id,
         }
         .init(effects)
     }
@@ -378,7 +389,7 @@ impl TezedgeState {
 
         self.requests.insert(PendingRequestState {
             request: PendingRequest::NotifyHandshakeSuccessful {
-                peer_address: peer_address.clone(),
+                peer_address: peer_address,
                 peer_public_key_hash: public_key_hash,
                 metadata: MetadataMessage::new(
                     connected_peer.disable_mempool,
@@ -388,6 +399,12 @@ impl TezedgeState {
             },
             status: RetriableRequestState::Idle { at },
         });
+
+        // ask for more peers
+        connected_peer.enqueue_send_message(PeerMessage::Bootstrap);
+        // ask for current branch
+        connected_peer
+            .enqueue_send_message(GetCurrentBranchMessage::new(self.main_chain_id.clone()).into());
     }
 
     pub(crate) fn adjust_p2p_state<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)
