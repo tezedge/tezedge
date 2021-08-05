@@ -6524,14 +6524,8 @@ steps:
         --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
         --tezos-context-storage=irmin --disable-bootstrap-lookup --disable-peer-blacklist &> log &
         echo $! > /var/run/tezedge.pid
-      - echo "Run 1"
       - ./target/release/storage-metrics
-      - echo "--------------------------------------------------------------------------------------------------"
-      - echo "Run 2"
-      - ./target/release/storage-metrics
-      - echo "--------------------------------------------------------------------------------------------------"
-      - echo "Run 3"
-      - ./target/release/storage-metrics
+      - cd latency && cargo run --bin storage-metrics --release
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
         # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
