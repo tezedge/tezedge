@@ -44,7 +44,7 @@ pub async fn bootstrapped(
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
             let current_head: &BlockHeaderWithHash = &current_head;
-            let timestamp = ts_to_rfc3339(current_head.header.timestamp());
+            let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
             Ok(BootstrapInfo::new(
                 &current_head.hash,
                 TimeStamp::Rfc(timestamp),

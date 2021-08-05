@@ -21,7 +21,7 @@ use storage::{
 use tezos_api::ffi::{RpcMethod, RpcRequest};
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::prelude::*;
-use tezos_messages::ts_to_rfc3339;
+use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
 use crate::encoding::base_types::UniString;
 use crate::server::{HasSingleValue, Query, RpcServiceEnvironment};
@@ -149,12 +149,12 @@ pub struct BlockHeaderShellInfo {
 }
 
 impl BlockHeaderShellInfo {
-    pub fn new(block: &BlockHeaderWithHash) -> Self {
-        BlockHeaderShellInfo {
+    pub fn try_new(block: &BlockHeaderWithHash) -> Result<Self, TimestampOutOfRangeError> {
+        Ok(BlockHeaderShellInfo {
             level: block.header.level(),
             proto: block.header.proto(),
             predecessor: block.header.predecessor().to_base58_check(),
-            timestamp: ts_to_rfc3339(block.header.timestamp()),
+            timestamp: ts_to_rfc3339(block.header.timestamp())?,
             validation_pass: block.header.validation_pass(),
             operations_hash: block.header.operations_hash().to_base58_check(),
             fitness: block
@@ -164,20 +164,20 @@ impl BlockHeaderShellInfo {
                 .map(|x| hex::encode(&x))
                 .collect(),
             context: block.header.context().to_base58_check(),
-        }
+        })
     }
 }
 
 impl BlockHeaderInfo {
-    pub fn new(
+    pub fn try_new(
         block: &BlockHeaderWithHash,
         block_json_data: &BlockJsonData,
         block_additional_data: &BlockAdditionalData,
         chain_id: &ChainId,
-    ) -> Self {
+    ) -> Result<Self, TimestampOutOfRangeError> {
         let header: &BlockHeader = &block.header;
         let predecessor = header.predecessor().to_base58_check();
-        let timestamp = ts_to_rfc3339(header.timestamp());
+        let timestamp = ts_to_rfc3339(header.timestamp())?;
         let operations_hash = header.operations_hash().to_base58_check();
         let fitness = header.fitness().iter().map(|x| hex::encode(&x)).collect();
         let context = header.context().to_base58_check();
@@ -204,7 +204,7 @@ impl BlockHeaderInfo {
             content = serde_json::from_value(header_content.clone()).unwrap();
         }
 
-        Self {
+        Ok(Self {
             hash,
             chain_id: chain_id.to_base58_check(),
             level: header.level(),
@@ -222,7 +222,7 @@ impl BlockHeaderInfo {
             proof_of_work_nonce,
             liquidity_baking_escape_vote,
             content,
-        }
+        })
     }
 }
 

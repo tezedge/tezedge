@@ -21,7 +21,7 @@ use crate::helpers::{
 use crate::server::RpcServiceEnvironment;
 use tezos_api::ffi::ApplyBlockRequest;
 use tezos_messages::p2p::encoding::prelude::OperationsForBlocksMessage;
-use tezos_messages::ts_to_rfc3339;
+use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
 pub type BlockOperationsHashes = Vec<String>;
 
@@ -39,6 +39,14 @@ pub enum RpcServiceError {
     StorageError { error: StorageError },
     #[fail(display = "No data found error, reason: {:?}", reason)]
     NoDataFoundError { reason: String },
+    #[fail(display = "Parsing error, reason: {:?}", error)]
+    TimestampOutOfRangeError { error: TimestampOutOfRangeError },
+}
+
+impl From<TimestampOutOfRangeError> for RpcServiceError {
+    fn from(error: TimestampOutOfRangeError) -> Self {
+        Self::TimestampOutOfRangeError { error }
+    }
 }
 
 /// Retrieve blocks from database.
@@ -166,12 +174,12 @@ pub(crate) async fn get_block_header(
     let block_header = &block_header_with_json_data.0;
     let block_json_data = &block_header_with_json_data.1;
 
-    Ok(Arc::new(BlockHeaderInfo::new(
+    Ok(Arc::new(BlockHeaderInfo::try_new(
         &block_header,
         &block_json_data,
         &block_additional_data,
         &chain_id,
-    )))
+    )?))
 }
 
 /// Get information about block shell header
@@ -187,11 +195,8 @@ pub(crate) fn get_block_shell_header_or_fail(
     block_hash: BlockHash,
     persistent_storage: &PersistentStorage,
 ) -> Result<Arc<BlockHeaderShellInfo>, RpcServiceError> {
-    match BlockStorage::new(persistent_storage)
-        .get(&block_hash)
-        .map(|result| result.map(|header| BlockHeaderShellInfo::new(&header)))
-    {
-        Ok(Some(data)) => Ok(Arc::new(data)),
+    match BlockStorage::new(persistent_storage).get(&block_hash) {
+        Ok(Some(header)) => Ok(Arc::new(BlockHeaderShellInfo::try_new(&header)?)),
         Ok(None) => Err(RpcServiceError::NoDataFoundError {
             reason: format!(
                 "No block shell header found for block_hash: {}",
@@ -524,7 +529,7 @@ pub(crate) async fn get_block(
         level: block_header.header.level(),
         proto: block_header.header.proto(),
         predecessor: block_header.header.predecessor().to_base58_check(),
-        timestamp: ts_to_rfc3339(block_header.header.timestamp()),
+        timestamp: ts_to_rfc3339(block_header.header.timestamp())?,
         validation_pass: block_header.header.validation_pass(),
         operations_hash: block_header.header.operations_hash().to_base58_check(),
         fitness: block_header
