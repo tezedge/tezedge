@@ -135,6 +135,9 @@ steps:
     - cp -r ./tezos/python-tests/daemons/node.py $${BUILD_ARTIFACTS_PATH}/python-tests/daemons/node.py
     - cp -r ./tezos/python-tests/launchers/sandbox.py $${BUILD_ARTIFACTS_PATH}/python-tests/launchers/sandbox.py
     - cp -r ./tezos/python-tests/tools/constants.py $${BUILD_ARTIFACTS_PATH}/python-tests/tools/constants.py
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
+    - chown -R 1000:1000 $${TEST_ARTIFACTS_PATH}
+    - chown -R 1000:1000 $${SANDBOX_ARTIFACTS_PATH}
 
 - name: synch-artifacts
   image: tezedge/tezedge-ci-builder:latest
@@ -226,6 +229,7 @@ steps:
     - cp ./target/release/sandbox $${BUILD_ARTIFACTS_PATH}/build_files/old
     - cp ./target/release/protocol-runner $${BUILD_ARTIFACTS_PATH}/build_files/old
     - cp ./tezos/sys/lib_tezos/artifacts/libtezos.so $${BUILD_ARTIFACTS_PATH}/build_files/old/ffi
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
 - name: synch-artifacts
   image: tezedge/tezedge-ci-builder:latest
@@ -299,9 +303,9 @@ steps:
       path: /home/appuser/.ssh
   commands:
     - cd apps/node_monitoring && cargo clean && cargo build --release
-    # copy old binaries
     - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
     - cp ./target/release/node-monitoring $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+    - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
 - name: synch-artifacts
   image: tezedge/tezedge-ci-builder:latest
