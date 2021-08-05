@@ -2883,7 +2883,7 @@ steps:
         path: /artifacts
     commands:
       - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
-      - sleep 10
+      - sleep 60
 
   - name: check-mempool-after-transfer
     user: root
@@ -2944,7 +2944,7 @@ steps:
       - client_data_dir="$${SANDBOX_DATA_PATH}/tezos-client"
       - tezos-baker-009-PsFLoren -A `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt` -P 18732 --log-requests --base-dir $client_data_dir run with local node $context_path bootstrap2 &
       - tezos-admin-client -A `cat $${SANDBOX_DATA_PATH}/octez_ip.txt` -P 8732 connect address `cat $${SANDBOX_DATA_PATH}/tezedge_ip.txt`:9732
-      - sleep 1
+      - sleep 10
 
   # test checks if this block is synchronized to tezedge node through p2p
   - name: wait-for-sync-on-level-2
