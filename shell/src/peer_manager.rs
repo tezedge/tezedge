@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use dns_lookup::LookupError;
 use failure::Fail;
-use rand::{seq::SliceRandom, rngs::StdRng, SeedableRng as _, Rng};
+use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng as _};
 use riker::actors::*;
 use slog::{crit, debug, error, info, trace, warn, Logger};
 use tezos_messages::p2p::binary_message::{BinaryRead, BinaryWrite};
