@@ -6527,7 +6527,7 @@ steps:
       - cd latency && sleep 15 && cargo run --bin storage-metrics --release --quiet > statslog
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
         # terminate the node gracefully and wait to allow `valgrind` dump data
-      - kill -INT $(cat ../var/run/tezedge-1.pid)
+      - kill -INT $(cat /var/run/tezedge-1.pid)
         # print results after gracefully stopped
       - tail statslog
 
