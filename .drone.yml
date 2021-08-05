@@ -6529,7 +6529,7 @@ steps:
         # terminate the node gracefully and wait to allow `valgrind` dump data
       - kill -INT $(cat ../var/run/tezedge-1.pid)
         # print results after gracefully stopped
-      - cd latency && tail statslog
+      - tail statslog
 
 depends_on:
   - build-tezedge-binaries
