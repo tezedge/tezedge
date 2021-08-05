@@ -268,8 +268,8 @@ volumes:
 
 trigger:
   branch:
-    - master
-    - develop
+    - xmaster
+    - xdevelop
   ref:
     - refs/pull/*/head
 
