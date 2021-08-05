@@ -6522,12 +6522,14 @@ steps:
         --init-sapling-output-params-file=/build/build_files/ffi/sapling-output.params
         --network "$${NETWORK}"
         --tezos-data-dir=/cache/tezedge-data --bootstrap-db-path=bootstrap_db
-        --tezos-context-storage=irmin --disable-bootstrap-lookup --disable-peer-blacklist &> log &
-        echo $! > /var/run/tezedge.pid
-      - cd latency && sleep 15 && cargo run --bin storage-metrics --release --quiet
+        --tezos-context-storage=irmin --disable-bootstrap-lookup --disable-peer-blacklist &
+        echo $! > /var/run/tezedge-1.pid
+      - cd latency && sleep 15 && cargo run --bin storage-metrics --release --quiet > statslog
       - echo "Bootstrapped. Killind the node and waiting for 10 seconds."
         # terminate the node gracefully and wait to allow `valgrind` dump data
-      - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
+      - cd ../ && kill -INT $(cat /var/run/tezedge-1.pid)
+        # print results after gracefully stopped
+      - cd latency && tail statslog
 
 depends_on:
   - build-tezedge-binaries
