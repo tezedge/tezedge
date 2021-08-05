@@ -344,8 +344,6 @@ trigger:
   branch:
     - master
     - develop
-  ref:
-    - refs/pull/*/head
 
 ##############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
