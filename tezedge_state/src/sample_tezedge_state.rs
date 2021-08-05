@@ -1,4 +1,8 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use slog::Drain;
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -6,7 +10,7 @@ use crate::shell_compatibility_version::ShellCompatibilityVersion;
 use crate::*;
 use crypto::{
     crypto_box::{CryptoKey, PublicKey, SecretKey},
-    hash::{CryptoboxPublicKeyHash, HashTrait},
+    hash::{ChainId, CryptoboxPublicKeyHash, HashTrait},
     proof_of_work::ProofOfWork,
 };
 use hex::FromHex;
@@ -84,6 +88,10 @@ pub fn default_config() -> TezedgeConfig {
     }
 }
 
+pub fn main_chain_id() -> ChainId {
+    ChainId::try_from("NetXgtSLGNJvNye").unwrap()
+}
+
 pub fn build<'a, Efs>(
     initial_time: Instant,
     config: TezedgeConfig,
@@ -98,10 +106,11 @@ where
         // slog::Logger::root(slog::Discard, slog::o!()),
         logger(slog::Level::Trace),
         config,
-        node_identity.clone(),
+        node_identity,
         default_shell_compatibility_version(),
         initial_effects,
         initial_time,
+        main_chain_id(),
     );
 
     tezedge_state
