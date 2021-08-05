@@ -2865,10 +2865,18 @@ steps:
       - name: sandbox-data
         path: /data/sandbox
     commands:
-      - tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-1 unencrypted:edsk3eandfyLsKt6EBGPCdLDaEqbAe6uxbAjDV9B6VPizMfwHehd7S
-      - tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-2 unencrypted:edsk3i7ZkUdV2R9aYnxz4j9enbUEoZfqvdnvDUmQu35Jiu32iwwAf4
-      - tezos-client -E $${TEZOS_ENDPOINT} transfer 10 from acc-1 to acc-2 &
-      - sleep 10
+      - |
+        for sk in $(head -n 5 $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
+          i=$((i + 1))
+          tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
+          TEZOS_ADDRESSES="$TEZOS_ADDRESSES acc-$i"
+          ADDRESS=$acc-$i
+        done
+        for i in $(seq 1 5); do
+          tezos-client -E $${TEZOS_ENDPOINT} transfer 10 from $ADDRESS to acc-$i
+          ADDRESS=acc-$i
+        done
+        sleep 10
       - cp /dev/null run-done
 
   - name: done-tezos-client-20-transactions
@@ -2878,7 +2886,7 @@ steps:
         path: /artifacts
     commands:
       - $${BUILD_ARTIFACTS_PATH}/build_files/wait_file.sh run-done 90
-      - sleep 60
+      - sleep 20
 
   - name: check-mempool-after-transfer
     user: root
