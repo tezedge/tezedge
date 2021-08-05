@@ -7,6 +7,7 @@ use std::collections::VecDeque;
 use std::convert::TryInto;
 use std::hash::Hash;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 
 use chrono::Utc;
 use failure::Fail;
@@ -86,7 +87,7 @@ pub struct ResourceMonitor {
     slack: Option<SlackServer>,
     system: System,
     netinfo: Netinfo,
-    monitoring_interval: u64,
+    last_refresh_time: Instant,
 }
 
 #[derive(Clone, Debug, Serialize, Getters, Default, Eq, PartialEq)]
@@ -354,7 +355,6 @@ impl ResourceMonitor {
         alerts: Alerts,
         log: Logger,
         slack: Option<SlackServer>,
-        monitoring_interval: u64,
         netinfo: Netinfo,
     ) -> Self {
         Self {
@@ -364,8 +364,8 @@ impl ResourceMonitor {
             log,
             slack,
             system: System::new_all(),
-            monitoring_interval,
             netinfo,
+            last_refresh_time: Instant::now()
         }
     }
 
@@ -377,64 +377,70 @@ impl ResourceMonitor {
             last_checked_head_level,
             alerts,
             slack,
-            monitoring_interval,
             netinfo,
+            last_refresh_time,
             ..
         } = self;
 
         let network_statistics = netinfo.get_net_statistics();
+        if netinfo.clear().is_err() {
+            error!(log, "Cannot clear network statistics");
+        }
         system.refresh_all();
+        let current_refresh_time = Instant::now();
+
+        let measurement_time_delta = last_refresh_time.elapsed().as_millis() as u64;
 
         for resource_storage in resource_utilization {
             let ResourceUtilizationStorage { node, storage } = resource_storage;
 
             let (node_reachable, proxy_reachable) = node.is_reachable().await;
 
-            // gets the total space on the filesystem of the specified path
-            let free_disk_space = match fs2::free_space(node.volume_path()) {
-                Ok(free_space) => free_space,
-                Err(_) => {
-                    return Err(ResourceMonitorError::DiskInfoError {
-                        reason: format!(
-                            "Cannot get free space on path {}",
-                            node.volume_path().display()
-                        ),
-                    })
-                }
-            };
-
-            let total_disk_space = match fs2::total_space(node.volume_path()) {
-                Ok(total_space) => total_space,
-                Err(_) => {
-                    return Err(ResourceMonitorError::DiskInfoError {
-                        reason: format!(
-                            "Cannot get total space on path {}",
-                            node.volume_path().display()
-                        ),
-                    })
-                }
-            };
-
-            let current_head_info = node.get_head_data().await?;
-            let node_memory = node.get_memory_stats(system)?;
-            let node_disk = node.get_disk_data();
-            let node_cpu = node.get_cpu_data(system)?;
-            let node_io = node.get_io_data(system, *monitoring_interval)?;
-
-            let network_stats = if let Ok(ref network_statistics) = network_statistics {
-                node.get_network_data(&network_statistics, *monitoring_interval)?
-            } else {
-                NetworkStats::default()
-            };
-
             let node_resource_measurement = if node_reachable {
+                // gets the total space on the filesystem of the specified path
+                let free_disk_space = match fs2::free_space(node.volume_path()) {
+                    Ok(free_space) => free_space,
+                    Err(_) => {
+                        return Err(ResourceMonitorError::DiskInfoError {
+                            reason: format!(
+                                "Cannot get free space on path {}",
+                                node.volume_path().display()
+                            ),
+                        })
+                    }
+                };
+
+                let total_disk_space = match fs2::total_space(node.volume_path()) {
+                    Ok(total_space) => total_space,
+                    Err(_) => {
+                        return Err(ResourceMonitorError::DiskInfoError {
+                            reason: format!(
+                                "Cannot get total space on path {}",
+                                node.volume_path().display()
+                            ),
+                        })
+                    }
+                };
+                
+                let current_head_info = node.get_head_data().await?;
+                let node_memory = node.get_memory_stats(system)?;
+                let node_disk = node.get_disk_data();
+                let node_cpu = node.get_cpu_data(system)?;
+                let node_io = node.get_io_data(system, measurement_time_delta)?;
+
+                let network_stats = if let Ok(ref network_statistics) = network_statistics {
+                    node.get_network_data(&network_statistics, measurement_time_delta)?
+                } else {
+                    NetworkStats::default()
+                };
+
                 if node.node_type() == &NodeType::Tezedge {
                     let validators_memory =
                         node.get_memory_stats_children(system, "protocol-runner")?;
                     let validators_cpu = node.get_cpu_data_children(system, "protocol-runner")?;
 
                     let validators_io =
-                        node.get_io_data_children(system, "protocol-runner", *monitoring_interval)?;
+                        node.get_io_data_children(system, "protocol-runner", measurement_time_delta)?;
 
                     ResourceUtilization {
                         timestamp: chrono::Local::now().timestamp(),
@@ -462,7 +468,7 @@ impl ResourceMonitor {
                     let validators_cpu = node.get_cpu_data_children(system, "tezos-node")?;
 
                     let validators_io =
-                        node.get_io_data_children(system, "tezos-node", *monitoring_interval)?;
+                        node.get_io_data_children(system, "tezos-node", measurement_time_delta)?;
 
                     ResourceUtilization {
                         timestamp: chrono::Local::now().timestamp(),
@@ -523,34 +529,33 @@ impl ResourceMonitor {
                         }
                     }
                 }
-
                 ResourceUtilization::default()
             };
 
-            handle_alerts(
-                node.node_type(),
-                node.tag(),
-                node_resource_measurement.clone(),
-                last_checked_head_level,
-                slack.clone(),
-                alerts,
-                log,
-            )
-            .await;
-
-            match &mut storage.write() {
-                Ok(resources_locked) => {
-                    if resources_locked.len() == MEASUREMENTS_MAX_CAPACITY {
-                        resources_locked.pop_back();
+            if node_reachable {
+                handle_alerts(
+                    node.node_type(),
+                    node.tag(),
+                    node_resource_measurement.clone(),
+                    last_checked_head_level,
+                    slack.clone(),
+                    alerts,
+                    log,
+                )
+                .await;
+    
+                match &mut storage.write() {
+                    Ok(resources_locked) => {
+                        if resources_locked.len() == MEASUREMENTS_MAX_CAPACITY {
+                            resources_locked.pop_back();
+                        }
+                        resources_locked.push_front(node_resource_measurement.clone());
                     }
-                    resources_locked.push_front(node_resource_measurement.clone());
+                    Err(e) => error!(log, "Resource lock poisoned, reason => {}", e),
                 }
-                Err(e) => error!(log, "Resource lock poisoned, reason => {}", e),
             }
         }
-        if netinfo.clear().is_err() {
-            error!(log, "Cannot clear network statistics");
-        }
+        *last_refresh_time = current_refresh_time;
         Ok(())
     }
 }

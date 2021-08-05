@@ -109,12 +109,12 @@ async fn main() {
         panic!("Cannot set min_refresh_interval for netinfo, reason: {}", e)
     }
 
-    if let Err(e) = netinfo.start() {
-        panic!("Cannot start netinfo, reson: {}", e)
-    }
-
     if !storages.is_empty() {
         let alerts = Alerts::new(tezedge_alert_thresholds, ocaml_alert_thresholds);
+
+        if let Err(e) = netinfo.start() {
+            panic!("Cannot start netinfo, reason: {}", e)
+        }
 
         let mut resource_monitor = ResourceMonitor::new(
             storages.clone(),
@@ -122,7 +122,6 @@ async fn main() {
             alerts,
             log.clone(),
             slack_server.clone(),
-            resource_monitor_interval,
             netinfo,
         );
 

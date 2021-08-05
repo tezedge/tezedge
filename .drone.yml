@@ -271,6 +271,82 @@ trigger:
   ref:
     - refs/pull/*/head
 
+---
+##############################################################################################################
+# This pipeline:
+# Builds and sychronizes the monitoring binary
+##############################################################################################################
+kind: pipeline
+name: build-monitoring-artifacts
+
+workspace:
+  path: /drone/src
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: build-artifacts
+  image: tezedge/tezedge-ci-builder:latest
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  commands:
+    - cd apps/node_monitoring && cargo clean && cargo build --release
+    # copy old binaries
+    - mkdir -p $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+    - cp ./target/release/node-monitoring $${BUILD_ARTIFACTS_PATH}/build_files/monitoring
+
+- name: synch-artifacts
+  image: tezedge/tezedge-ci-builder:latest
+  user: root
+  volumes:
+    - name: build
+      path: /artifacts
+    - name: tests
+      path: /tests
+    - name: ids
+      path: /home/appuser/.ssh
+  environment:
+    RUST_BACKTRACE: 1
+    SODIUM_USE_PKG_CONFIG: 1
+    OCAML_BUILD_CHAIN: remote
+    LOG_LEVEL: info
+    OCAML_LOG_ENABLED: false
+  commands:
+    # Modify permissions for ssh key
+    - chown appuser /home/appuser/.ssh/id_rsa
+    - chown appuser /home/appuser/.ssh
+    - chmod 600 /home/appuser/.ssh/id_rsa
+    - ls -la /home/appuser/.ssh
+    # copy build files to all other runner machines
+    - echo "runner = $${DRONE_RUNNER_IP_ADDRESS}"
+    - ./synchronize_ci.sh $${BUILD_ARTIFACTS_PATH}/build_files/monitoring /usr/local/etc/tezedge-ci/build/build_${DRONE_BUILD_NUMBER}/build_files/monitoring /home/appuser/.ssh
+
+image_pull_secrets:
+  - docker_pull_secret
+
+volumes:
+  - name: build
+    host:
+      path: /usr/local/etc/tezedge-ci/build/
+  - name: ids
+    host:
+      path: /usr/local/etc/tezedge-ci/id
+
+trigger:
+  branch:
+    - master
+    - develop
+  ref:
+    - refs/pull/*/head
+
 ##############################################################################################################
 # This pipeline runs cyclictest routed to the real time node to verify that the environment is indeed
 # real time. It also generated artificial load to make the test more accurate.
@@ -535,6 +611,17 @@ steps:
   commands:
     - cd storage
     - cargo test --release --lib commit_log -- --nocapture
+
+- name: run-unit-tests-monitoring
+  image: tezedge/tezedge-ci-builder:latest
+  pull: if-not-exists
+  user: root
+  environment:
+    SODIUM_USE_PKG_CONFIG: 1
+    RUST_BACKTRACE: 1
+  commands:
+    - cd apps/node_monitoring
+    - cargo test --release --workspace
 
 image_pull_secrets:
   - docker_pull_secret
@@ -6300,6 +6387,268 @@ steps:
       ref:
         exclude:
           - refs/pull/*/head
+
+
+---
+kind: pipeline
+name: corr/monitoring-cpu-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--cpu-load"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:latest
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:latest
+  commands: 
+    - sleep 10
+
+- name: test-cpu-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-cpu", "100.0"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on: 
+  - build-monitoring-artifacts
+
+---
+kind: pipeline
+name: corr/monitoring-memory-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+# TODO: build and send with other artifacts
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--memory-load", "3221225472"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:latest
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:latest
+  commands: 
+    - sleep 10
+
+- name: test-memory-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-memory", "3221225472"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on: 
+  - build-monitoring-artifacts
+
+---
+kind: pipeline
+name: corr/monitoring-io-and-network-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  detach: true
+  command: ["--network-and-io-load", "512000"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:latest
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
+
+- name: wait-for-measurements
+  image: tezedge/tezedge-ci-builder:latest
+  commands: 
+    - sleep 10
+
+- name: test-io-and-network-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-networking-and-io", "512000"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on: 
+  - build-monitoring-artifacts
+---
+kind: pipeline
+name: corr/monitoring-disk-size-measurement-test
+
+environment:
+  BUILD_ARTIFACTS_PATH: /artifacts/build_${DRONE_BUILD_NUMBER}
+
+steps:
+- name: node-simulator
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  environment:
+    VOLUME_PATH: /tmp/tezedge/data
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+  detach: true
+  command: ["--disk-load", "1073741824"]
+
+- name: run-monitoring
+  user: root
+  privilaged: true
+  pid: host
+  network_mode: host
+  image: tezedge/tezedge-ci-builder:latest
+  detach: true
+  volumes:
+    - name: tezedge-dummy-data
+      path: /tmp/tezedge
+    - name: proc
+      path: /proc
+    - name: build
+      path: /artifacts
+  commands:
+    - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge/data --wait-for-nodes
+
+- name: test-disk-size-measurements
+  # TODO: move to tezedge repo
+  image: tezedge/monitoring-test:latest
+  pid: host
+  network_mode: host
+  user: root
+  command: ["--test-disk", "1073741824"]
+
+volumes:
+- name: tezedge-dummy-data
+  temp: {}
+- name: build
+  host:
+    path: /usr/local/etc/tezedge-ci/build/
+- name: proc
+  host:
+      path: /proc
+
+trigger:
+  branch:
+    - master
+    - develop
+
+depends_on: 
+  - build-monitoring-artifacts
 
 ##############################################################################################################
 # This pipeline builds a docker image and pushes it to docker HUB - (latest) from develop branch
