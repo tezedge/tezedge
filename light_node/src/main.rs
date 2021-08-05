@@ -405,6 +405,7 @@ fn block_on_actors(
             shell_compatibility_version,
             env.p2p,
             env.identity.expected_pow,
+            init_storage_data.chain_id,
         )
         .expect("Failed to create peer manager");
     }

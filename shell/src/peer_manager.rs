@@ -19,6 +19,7 @@ use tokio::runtime::Handle;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::timeout;
 
+use crypto::hash::ChainId;
 use networking::p2p::network_channel::{
     NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
 };
@@ -159,6 +160,8 @@ pub struct PeerManager {
     local_node_info: Arc<LocalPeerInfo>,
     /// Last time we did DNS peer discovery
     discovery_last: Option<Instant>,
+
+    chain_id: ChainId,
 }
 
 /// Reference to [peer manager](PeerManager) actor.
@@ -174,6 +177,7 @@ impl PeerManager {
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
         p2p_config: P2p,
         pow_target: f64,
+        chain_id: ChainId,
     ) -> Result<PeerManagerRef, CreateError> {
         sys.actor_of_props::<PeerManager>(
             PeerManager::name(),
@@ -185,6 +189,7 @@ impl PeerManager {
                 shell_compatibility_version,
                 p2p_config,
                 pow_target,
+                chain_id,
             )),
         )
     }
@@ -205,6 +210,7 @@ impl
         Arc<ShellCompatibilityVersion>,
         P2p,
         f64,
+        ChainId,
     )> for PeerManager
 {
     fn create_args(
@@ -216,6 +222,7 @@ impl
             shell_compatibility_version,
             p2p_config,
             pow_target,
+            chain_id,
         ): (
             NetworkChannelRef,
             ShellChannelRef,
@@ -224,6 +231,7 @@ impl
             Arc<ShellCompatibilityVersion>,
             P2p,
             f64,
+            ChainId,
         ),
     ) -> Self {
         // resolve all bootstrap addresses
@@ -255,6 +263,7 @@ impl
                 pow_target,
             )),
             discovery_last: None,
+            chain_id,
         }
     }
 }
@@ -305,6 +314,7 @@ impl Actor for PeerManager {
             (*self.local_node_info.version()).clone(),
             &mut effects,
             Instant::now(),
+            self.chain_id.clone(),
         );
 
         info!(ctx.system.log(), "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &self.bootstrap_addresses));
@@ -381,7 +391,6 @@ fn run<Efs: Effects>(
     network_channel: NetworkChannelRef,
     log: &Logger,
 ) {
-    let mut send_bootstrap_messages = vec![];
     loop {
         proposer.make_progress();
 
@@ -409,8 +418,6 @@ fn run<Efs: Effects>(
                         },
                         None,
                     );
-
-                    send_bootstrap_messages.push(peer_address);
                 }
                 Notification::MessageReceived { peer, message } => {
                     network_channel.tell(
@@ -444,14 +451,6 @@ fn run<Efs: Effects>(
                     );
                 }
             }
-        }
-
-        // Send bootstrap messages to newly connected(HandshakeSuccessful)
-        // peers, to get advertise messages from them. This is not ideal.
-        // TODO: preferably bootstrap message should be sent by state
-        // machine itself, when we will lack potential peers.
-        for peer in send_bootstrap_messages.drain(..) {
-            proposer.enqueue_send_message_to_peer(Instant::now(), peer, PeerMessage::Bootstrap);
         }
 
         // Read and handle messages incoming from actor system or `PeerManager`.
