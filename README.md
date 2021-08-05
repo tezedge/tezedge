@@ -149,8 +149,8 @@ If you want to build from source code, you need to install this before:
     ```
 3. Install **Rust toolchain** _(Rust nightly is required to build this project.)_
     ```
-    rustup toolchain install nightly-2020-12-31
-    rustup default nightly-2020-12-31
+    rustup toolchain install nightly-2021-08-04
+    rustup default nightly-2021-08-04
     ```
 4. Install **required OS libs**
     - OpenSSL

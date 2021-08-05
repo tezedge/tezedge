@@ -2,7 +2,7 @@
 
 **Note: for the time being this readme applies to the deploy_monitoring/optional-debugger branch, please checkout the branch accordingly. Once merged into develop and into master, this notice should be removed**
 
-Runs and monitors the whole or parts of the tezedge stack (node, debugger, explorer) inside docker contianers with optional alerts sent to a slack channel. The benefits of running the node with the deploy monitoring module is that it gathers resource consumption data, which are then displayed on the resource page and is capable of monitoring and changing the deployed docker imag. This means in case of a new image available, the deploy monitoring stops the containers and pulls the newer images. 
+Runs and monitors the whole or parts of the tezedge stack (node, debugger, explorer) inside docker contianers with optional alerts sent to a slack channel. The benefits of running the node with the deploy monitoring module is that it gathers resource consumption data, which are then displayed on the resource page and is capable of monitoring and changing the deployed docker imag. This means in case of a new image available, the deploy monitoring stops the containers and pulls the newer images.
 
 ### Prerequisites
 
@@ -14,13 +14,13 @@ Runs and monitors the whole or parts of the tezedge stack (node, debugger, explo
     # Run the following in your terminal, then follow the onscreen instructions.
     curl https://sh.rustup.rs -sSf | sh
 
-    rustup toolchain install nightly-2020-12-31
-    rustup default nightly-2020-12-31
+    rustup toolchain install nightly-2021-08-04
+    rustup default nightly-2021-08-04
 
     sudo apt install pkg-config libsodium-dev clang libclang-dev llvm llvm-dev linux-kernel-headers libev-dev libhidapi-dev libssl-dev
     ```
 
-- (Optional) Set up slack channel with an app that has webhooks and file:write privilages. 
+- (Optional) Set up slack channel with an app that has webhooks and file:write privilages.
 
 ### Build
 
@@ -43,7 +43,7 @@ Nohup and sudo do not work well together, so before you use nohup with sudo, use
 sudo ls
 ```
 
-Then you can run: 
+Then you can run:
 
 ```
 nohup sudo TEZOS_NETWORK=mainnet \
@@ -86,13 +86,13 @@ The configuration used for this run:
 
 Other options:
 
-- `image-monitor-interval`: (Optional) Sets the interval in seconds  in which the module checks for new images on docker hub. If this flag is not included, the check is not perfomed at all. 
-- `resource-monitor-interval`: (Optional) Sets the interval in seconds in which the module performes resource monitoring. Defaults to 5 seconds 
+- `image-monitor-interval`: (Optional) Sets the interval in seconds  in which the module checks for new images on docker hub. If this flag is not included, the check is not perfomed at all.
+- `resource-monitor-interval`: (Optional) Sets the interval in seconds in which the module performes resource monitoring. Defaults to 5 seconds
 - `rpc-port`: (Optional) Custom port for the resources endpoints. Defaults to 38732.
 - `cleanup-volumes`: (Optional) With this option enabled, the module will clean up all the data used in the run (data from both nodes and debugger).
 - `tezedge-alert-threshold-cpu`: (Optional) The usage threshold in %. After passing this threshold the high cpu usage is reported as an alert. Disabled by default
 - `tezedge-alert-threshold-disk`: (Optional) The threshold in(0-100)%. This measurement calculates the the used space on the filesystem and reports when it has passed the set threshold. Defaults to 95.
-- `ocaml-alert-threshold-disk`: (Optional) The threshold in(0-100)%. This measurement calculates the the used space on the filesystem and reports when it has passed the set threshold. 
+- `ocaml-alert-threshold-disk`: (Optional) The threshold in(0-100)%. This measurement calculates the the used space on the filesystem and reports when it has passed the set threshold.
 - `ocaml-alert-threshold-memory`: (Optional) Sets an alert threshold in MB for memory consumption. Defaults to 6144
 - `ocaml-alert-threshold-cpu`: (Optional) The usage threshold in %. After passing this threshold the high cpu usage is reported as an alert. Disabled by default.
 - `ocaml-alert-threshold-synchronization`: (Optional) Sets a threshold in seconds to report a stuck node. If the node fails to update it's current head in this threshold, the node is pronounced stuck. Defaults to 300s.
