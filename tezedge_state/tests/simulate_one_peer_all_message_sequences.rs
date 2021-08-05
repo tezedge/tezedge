@@ -1,6 +1,10 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use itertools::Itertools;
 use quickcheck::{Arbitrary, Gen};
 use std::io;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crypto::nonce::Nonce;
@@ -301,6 +305,7 @@ fn simulate_one_peer_all_message_sequences() {
         sample_tezedge_state::default_shell_compatibility_version(),
         &mut effects,
         initial_time,
+        Arc::new(sample_tezedge_state::main_chain_id()),
     );
 
     let state_incoming =

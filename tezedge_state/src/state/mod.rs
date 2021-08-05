@@ -1,10 +1,17 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
 use slog::Logger;
 use std::collections::HashSet;
 use std::fmt::{self, Debug};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crypto::hash::ChainId;
 use tezos_identity::Identity;
-use tezos_messages::p2p::encoding::prelude::MetadataMessage;
+use tezos_messages::p2p::encoding::prelude::{
+    GetCurrentBranchMessage, MetadataMessage, PeerMessage,
+};
 pub use tla_sm::{GetRequests, Proposal};
 
 use crate::peer_address::PeerListenerAddress;
@@ -141,6 +148,9 @@ pub struct TezedgeState {
     pub(crate) p2p_state: P2pState,
     /// Currently pending requests. Completed requests is removed.
     pub(crate) requests: slab::Slab<PendingRequestState>,
+
+    /// Main chain_id
+    pub(crate) main_chain_id: Arc<ChainId>,
 }
 
 impl TezedgeState {
@@ -306,6 +316,7 @@ impl TezedgeState {
         shell_compatibility_version: ShellCompatibilityVersion,
         effects: &'a mut Efs,
         initial_time: Instant,
+        main_chain_id: Arc<ChainId>,
     ) -> Self
     where
         Efs: Effects,
@@ -337,6 +348,7 @@ impl TezedgeState {
             requests: slab::Slab::new(),
             newest_time_seen: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
+            main_chain_id,
         };
 
         // Adjust p2p state to start listening for new connections.
@@ -382,6 +394,13 @@ impl TezedgeState {
             },
             status: RequestState::Idle { at },
         });
+
+        // ask for more peers
+        connected_peer.enqueue_send_message(PeerMessage::Bootstrap);
+        // ask for current branch
+        connected_peer.enqueue_send_message(
+            GetCurrentBranchMessage::new(self.main_chain_id.as_ref().clone()).into(),
+        );
     }
 
     pub(crate) fn adjust_p2p_state<'a, Efs>(&mut self, at: Instant, effects: &'a mut Efs)

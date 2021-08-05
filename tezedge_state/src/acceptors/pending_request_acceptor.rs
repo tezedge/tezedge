@@ -1,3 +1,8 @@
+// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
+// SPDX-License-Identifier: MIT
+
+use slog::info;
+
 use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tla_sm::Acceptor;
 
@@ -23,6 +28,7 @@ where
                         req.status = RequestState::Pending { at: proposal.at };
                     }
                     PendingRequestMsg::StartListeningForNewPeersSuccess => {
+                        info!(self.log, "Listener for p2p communication started");
                         self.requests.remove(proposal.req_id);
                     }
                     _ => eprintln!("unexpected request type"),

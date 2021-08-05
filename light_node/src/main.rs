@@ -364,6 +364,7 @@ fn block_on_actors(
             shell_compatibility_version,
             env.p2p,
             env.identity.expected_pow,
+            Arc::new(init_storage_data.chain_id.clone()),
         )
         .expect("Failed to create peer manager");
     }
