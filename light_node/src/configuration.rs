@@ -1072,9 +1072,10 @@ impl Environment {
                     .parse::<bool>()
                     .expect("Provided value cannot be converted to bool"),
                 disable_mempool: args.is_present("disable-mempool"),
-                effects_seed: args
-                    .value_of("effects-seed")
-                    .map(|s| s.parse::<u64>().expect("Provided value cannot be converted to u64")),
+                effects_seed: args.value_of("effects-seed").map(|s| {
+                    s.parse::<u64>()
+                        .expect("Provided value cannot be converted to u64")
+                }),
             },
             rpc: crate::configuration::Rpc {
                 listener_port: args
