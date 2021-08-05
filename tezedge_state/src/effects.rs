@@ -1,12 +1,13 @@
-use rand::{prelude::IteratorRandom, Rng, rngs::ThreadRng};
+use rand::{prelude::IteratorRandom, rngs::ThreadRng, Rng};
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 use crypto::nonce::Nonce;
 
 use crate::peer_address::{PeerAddress, PeerListenerAddress};
 
 /// Effects are source of randomness.
-pub trait Effects {
+pub trait Effects: Debug {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce;
 
     fn choose_peers_to_connect_to(
@@ -30,7 +31,7 @@ pub type DefaultEffects = ThreadRng;
 
 impl<R> Effects for R
 where
-    R: Rng,
+    R: Rng + Debug,
 {
     fn get_nonce(&mut self, peer: &PeerAddress) -> Nonce {
         let _ = peer;
@@ -66,10 +67,7 @@ where
         if len >= potential_peers.len() {
             potential_peers.iter().cloned().collect()
         } else {
-            potential_peers
-                .iter()
-                .cloned()
-                .choose_multiple(self, len)
+            potential_peers.iter().cloned().choose_multiple(self, len)
         }
     }
 
