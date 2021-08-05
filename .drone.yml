@@ -60,7 +60,7 @@ steps:
 
 - name: build-artifacts
   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
-  pull: always
+  pull: if-not-exists
   user: root
   volumes:
     - name: build
