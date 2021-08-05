@@ -127,7 +127,6 @@ impl fmt::Display for TimeoutInfo {
 #[derive(Debug, Clone)]
 pub struct TezedgeState {
     pub(crate) log: Logger,
-    pub(crate) listening_for_connection_requests: bool,
     pub(crate) newest_time_seen: Instant,
     pub(crate) last_periodic_react: Instant,
     pub(crate) config: TezedgeConfig,
@@ -319,12 +318,11 @@ impl TezedgeState {
             slog::warn!(&log, "Peer Blacklist is DISABLED!");
         }
 
-        let mut this = Self {
+        Self {
             log: log.clone(),
             config,
             identity,
             shell_compatibility_version,
-            listening_for_connection_requests: false,
             potential_peers: HashSet::new(),
             pending_peers: PendingPeers::with_capacity(max_pending_peers),
             connected_peers: ConnectedPeers::new(
@@ -337,12 +335,23 @@ impl TezedgeState {
             requests: slab::Slab::new(),
             newest_time_seen: initial_time,
             last_periodic_react: initial_time - periodic_react_interval,
-        };
+        }
+        .init(effects)
+    }
 
-        // Adjust p2p state to start listening for new connections.
-        this.adjust_p2p_state(initial_time, effects);
+    fn init<Efs: Effects>(mut self, effects: &mut Efs) -> Self {
+        // don't listen for connections if we are a private node.
+        if !self.config.private_node {
+            self.requests.insert(PendingRequestState {
+                request: PendingRequest::StartListeningForNewPeers,
+                status: RetriableRequestState::Idle {
+                    at: self.newest_time_seen,
+                },
+            });
+        }
+        self.adjust_p2p_state(self.newest_time_seen, effects);
 
-        this
+        self
     }
 
     /// Take finished handshake result and create a new connected peer.
@@ -393,7 +402,6 @@ impl TezedgeState {
         let missing_connected = self.missing_connected_peers();
         let missing_pending = self.missing_pending_peers();
 
-        let mut should_listen_for_connections = false;
         let mut should_initiate_connections = false;
 
         if missing_connected == 0 {
@@ -402,7 +410,6 @@ impl TezedgeState {
             if missing_pending == 0 {
                 self.p2p_state = PendingFull;
             } else {
-                should_listen_for_connections = true;
                 should_initiate_connections = true;
                 self.p2p_state = Pending;
             }
@@ -411,24 +418,7 @@ impl TezedgeState {
                 self.p2p_state = ReadyFull;
             } else {
                 self.p2p_state = Ready;
-                should_listen_for_connections = true;
                 should_initiate_connections = true;
-            }
-        }
-
-        if should_listen_for_connections != self.listening_for_connection_requests {
-            self.listening_for_connection_requests = should_listen_for_connections;
-
-            if !should_listen_for_connections {
-                self.requests.insert(PendingRequestState {
-                    request: PendingRequest::StopListeningForNewPeers,
-                    status: RetriableRequestState::Idle { at },
-                });
-            } else {
-                self.requests.insert(PendingRequestState {
-                    request: PendingRequest::StartListeningForNewPeers,
-                    status: RetriableRequestState::Idle { at },
-                });
             }
         }
 
