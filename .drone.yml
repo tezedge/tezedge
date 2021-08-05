@@ -2866,9 +2866,9 @@ steps:
         path: /data/sandbox
     commands:
       - |
-        for sk in $(head -n 20 $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
+        for sk in $(head -n 5 $${SANDBOX_DATA_PATH}/009-florence-protocol-secret-keys.txt); do
           i=$((i + 1))
-          tezos-client --base-dir $${SANDBOX_DATA_PATH}/tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
+          tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
           TEZOS_ADDRESSES="$TEZOS_ADDRESSES acc-$i"
         done
         export TEZOS_ADDRESSES
