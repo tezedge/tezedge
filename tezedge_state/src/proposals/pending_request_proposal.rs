@@ -3,10 +3,11 @@ use tla_sm::Proposal;
 
 #[derive(Debug, Clone)]
 pub enum PendingRequestMsg {
-    StartListeningForNewPeersPending,
+    StartListeningForNewPeersError {
+        error: std::io::ErrorKind,
+    },
     StartListeningForNewPeersSuccess,
 
-    StopListeningForNewPeersPending,
     StopListeningForNewPeersSuccess,
 
     SendPeerAckPending,
