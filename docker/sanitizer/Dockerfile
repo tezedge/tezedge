@@ -4,7 +4,7 @@ FROM tezedge/tezos-opam-builder:debian10 as build-env
 USER root
 
 ARG tezedge_git="https://github.com/tezedge/tezedge.git"
-ARG rust_toolchain="nightly-2020-12-31"
+ARG rust_toolchain="nightly-2021-08-04"
 ENV RUSTUP_HOME=/opt/rustup
 ENV CARGO_HOME=/opt/cargo
 RUN mkdir $RUSTUP_HOME
