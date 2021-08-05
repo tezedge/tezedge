@@ -979,6 +979,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
+name = "env_logger"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
+dependencies = [
+ "log",
+ "regex",
+]
+
+[[package]]
 name = "erased-serde"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2092,13 +2102,20 @@ dependencies = [
  "crypto",
  "failure",
  "futures",
+ "getset",
  "hex",
+ "itertools 0.10.0",
  "lazy_static",
+ "quickcheck",
+ "quickcheck_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3",
  "riker",
+ "slab",
  "slog",
  "slog-async",
  "slog-envlogger",
  "slog-term",
+ "tezedge-state",
  "tezos_encoding",
  "tezos_identity",
  "tezos_messages",
@@ -2538,6 +2555,38 @@ name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
+name = "quickcheck"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "588f6378e4dd99458b60ec275b4477add41ce4fa9f64dcba6f15adccb19b50d6"
+dependencies = [
+ "env_logger",
+ "log",
+ "rand 0.8.3",
+]
+
+[[package]]
+name = "quickcheck_derive"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "695566b1208e5a3e5a613d3326fcdb78203e1493c81514bfb4f4460ce0694deb"
+dependencies = [
+ "proc-macro2 1.0.27",
+ "syn 1.0.74",
+ "synstructure",
+]
+
+[[package]]
+name = "quickcheck_derive"
+version = "0.3.0"
+source = "git+https://github.com/tezedge/quickcheck_derive#ad01cec7d62ffbed5490e155e57856672c102645"
+dependencies = [
+ "proc-macro2 1.0.27",
+ "syn 1.0.74",
+ "synstructure",
+]
 
 [[package]]
 name = "quote"
@@ -3140,6 +3189,7 @@ dependencies = [
  "itertools 0.10.0",
  "lazy_static",
  "merge",
+ "mio",
  "networking",
  "nix 0.19.1",
  "nom 6.1.2",
@@ -3155,6 +3205,7 @@ dependencies = [
  "slog-async",
  "slog-term",
  "storage",
+ "tezedge-state",
  "tezos-sys",
  "tezos_api",
  "tezos_encoding",
@@ -3162,6 +3213,7 @@ dependencies = [
  "tezos_messages",
  "tezos_new_context",
  "tezos_wrapper",
+ "tla-sm",
  "tokio",
  "zip",
 ]
@@ -3189,6 +3241,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51e73328dc4ac0c7ccbda3a494dfa03df1de2f46018127f60c693f2648455b0"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "simulator"
+version = "0.1.0"
+dependencies = [
+ "bytes 1.0.1",
+ "criterion",
+ "crypto",
+ "failure",
+ "futures",
+ "getset",
+ "hex",
+ "itertools 0.10.0",
+ "mio",
+ "quickcheck",
+ "quickcheck_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3",
+ "riker",
+ "slab",
+ "slog",
+ "slog-async",
+ "slog-term",
+ "tezedge-state",
+ "tezos_encoding",
+ "tezos_identity",
+ "tezos_messages",
+ "tla-sm",
+ "tokio",
 ]
 
 [[package]]
@@ -3491,6 +3572,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "tezedge-state"
+version = "0.1.0"
+dependencies = [
+ "bytes 1.0.1",
+ "criterion",
+ "crypto",
+ "failure",
+ "getset",
+ "hex",
+ "itertools 0.10.0",
+ "lazy_static",
+ "mio",
+ "quickcheck",
+ "quickcheck_derive 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.7.3",
+ "slab",
+ "slog",
+ "slog-async",
+ "slog-term",
+ "tezos_encoding",
+ "tezos_identity",
+ "tezos_messages",
+ "tla-sm",
+]
+
+[[package]]
 name = "tezos-sys"
 version = "1.7.0"
 dependencies = [
@@ -3631,6 +3738,9 @@ dependencies = [
  "nom 6.1.2",
  "num-bigint",
  "num-traits 0.2.14",
+ "quickcheck",
+ "quickcheck_derive 0.3.0 (git+https://github.com/tezedge/quickcheck_derive)",
+ "rand 0.7.3",
  "serde 1.0.123",
  "serde_json",
  "strum",
@@ -3782,6 +3892,10 @@ name = "tinyvec_macros"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda74da7e1a664f795bb1f8a87ec406fb89a02522cf6e50620d016add6dbbf5c"
+
+[[package]]
+name = "tla-sm"
+version = "0.1.0"
 
 [[package]]
 name = "tokio"
