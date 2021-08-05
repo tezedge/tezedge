@@ -2870,7 +2870,7 @@ steps:
           i=$((i + 1))
           tezos-client -E $${TEZOS_ENDPOINT} import secret key acc-$i $sk
           TEZOS_ADDRESSES="$TEZOS_ADDRESSES acc-$i"
-          ADDRESS=$acc-$i
+          ADDRESS=acc-$i
         done
         for i in $(seq 1 5); do
           tezos-client -E $${TEZOS_ENDPOINT} transfer 10 from $ADDRESS to acc-$i
