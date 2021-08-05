@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{mpsc, Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant};
 
@@ -70,7 +71,7 @@ impl P2p {
     pub const DEFAULT_P2P_PORT_FOR_LOOKUP: u16 = 9732;
 }
 
-enum ProposerMsg {
+pub enum ProposerMsg {
     NetworkChannel(NetworkChannelMsg),
 }
 
@@ -81,7 +82,7 @@ impl From<NetworkChannelMsg> for ProposerMsg {
 }
 
 #[derive(Debug, Fail)]
-enum NotifyProposerError {
+pub enum NotifyProposerError {
     #[fail(display = "notify proposer failed, reason: {:?}", _0)]
     IO(std::io::Error),
 }
@@ -96,7 +97,8 @@ impl From<std::io::Error> for NotifyProposerError {
 ///
 /// Using this, messages can be sent to state machine thread using mpsc
 /// channel and a waker for state machine thread.
-struct ProposerHandle {
+#[derive(Clone)]
+pub struct ProposerHandle {
     waker: Arc<mio::Waker>,
     sender: mpsc::Sender<ProposerMsg>,
 }
@@ -528,4 +530,178 @@ fn resolve_dns_name_to_peer_address(
             })
             .collect();
     Ok(addrs)
+}
+
+enum ProposerThreadHandle {
+    Running(std::thread::JoinHandle<()>),
+    NotRunning(
+        TezedgeState,
+        MioManager,
+        StdRng,
+        Receiver<ProposerMsg>,
+        NetworkChannelRef,
+    ),
+}
+
+pub struct TezedgeStateManager {
+    proposer_handle: ProposerHandle,
+    proposer_thread_handle: Option<ProposerThreadHandle>,
+    log: Logger,
+}
+
+impl TezedgeStateManager {
+    pub fn new(
+        network_channel: NetworkChannelRef,
+        shell_channel: ShellChannelRef,
+        log: Logger,
+        identity: Arc<Identity>,
+        shell_compatibility_version: Arc<ShellCompatibilityVersion>,
+        p2p_config: P2p,
+        pow_target: f64,
+        chain_id: ChainId,
+    ) -> Self {
+        // resolve all bootstrap addresses - init from bootstrap_peers
+        let mut bootstrap_addresses = HashSet::from_iter(
+            p2p_config
+                .bootstrap_peers
+                .iter()
+                .map(|addr| (addr.ip().to_string(), addr.port())),
+        );
+
+        // if lookup enabled, add also configuted lookup addresses
+        if !p2p_config.disable_bootstrap_lookup {
+            bootstrap_addresses.extend(p2p_config.bootstrap_lookup_addresses.iter().cloned());
+        };
+        let listener_port = p2p_config.listener_port;
+
+        let local_node_info = Arc::new(LocalPeerInfo::new(
+            listener_port,
+            identity,
+            shell_compatibility_version,
+            pow_target,
+        ));
+
+        let (proposer_tx, proposer_rx) = mpsc::channel();
+
+        // override port passed listener address
+        let mut listener_addr = p2p_config.listener_address;
+        listener_addr.set_port(listener_port);
+
+        let mio_manager = MioManager::new(listener_addr);
+        let proposer_handle = ProposerHandle::new(mio_manager.waker(), proposer_tx);
+
+        let seed = p2p_config.effects_seed.unwrap_or_else(|| {
+            let seed = rand::thread_rng().gen();
+            info!(log, "Proposer's effects seed selected"; "seed" => seed);
+            seed
+        });
+        let mut effects = StdRng::seed_from_u64(seed);
+
+        let mut tezedge_state = TezedgeState::new(
+            log.clone(),
+            TezedgeConfig {
+                port: p2p_config.listener_port,
+                disable_mempool: p2p_config.disable_mempool,
+                private_node: p2p_config.private_node,
+                // TODO: TE-652 - disable_quotas from cfg or env
+                disable_quotas: false,
+                disable_blacklist: p2p_config.disable_blacklist,
+                min_connected_peers: p2p_config.peer_threshold.low,
+                max_connected_peers: p2p_config.peer_threshold.high,
+                max_pending_peers: p2p_config.peer_threshold.high,
+                max_potential_peers: p2p_config.peer_threshold.high * 20,
+                periodic_react_interval: Duration::from_millis(250),
+                reset_quotas_interval: Duration::from_secs(5),
+                peer_blacklist_duration: Duration::from_secs(8 * 60),
+                peer_timeout: Duration::from_secs(8),
+                pow_target: local_node_info.pow_target(),
+            },
+            (*local_node_info.identity()).clone(),
+            (*local_node_info.version()).clone(),
+            &mut effects,
+            Instant::now(),
+            chain_id,
+        );
+
+        info!(log, "Doing peer DNS lookup"; "bootstrap_addresses" => format!("{:?}", &bootstrap_addresses));
+        tezedge_state.accept(ExtendPotentialPeersProposal {
+            effects: &mut effects,
+            at: Instant::now(),
+            peers: dbg!(dns_lookup_peers(&bootstrap_addresses, &log))
+                .into_iter()
+                .map(|x| x.into()),
+        });
+
+        Self {
+            proposer_handle,
+            log,
+            proposer_thread_handle: Some(ProposerThreadHandle::NotRunning(
+                tezedge_state,
+                mio_manager,
+                effects,
+                proposer_rx,
+                network_channel,
+            )),
+        }
+    }
+
+    pub fn start(&mut self) {
+        if let Some(ProposerThreadHandle::NotRunning(
+            tezedge_state,
+            mio_manager,
+            effects,
+            proposer_rx,
+            network_channel,
+        )) = self.proposer_thread_handle.take()
+        {
+            let proposer = TezedgeProposer::new(
+                TezedgeProposerConfig {
+                    wait_for_events_timeout: Some(Duration::from_millis(250)),
+                    events_limit: 1024,
+                },
+                effects,
+                tezedge_state,
+                MioEvents::new(),
+                mio_manager,
+            );
+
+            let log = self.log.clone();
+
+            // start to listen for incoming p2p connections and state machine processing
+            let proposer_thread_handle = std::thread::Builder::new()
+                .name("tezedge-proposer".to_owned())
+                .spawn(move || {
+                    run(proposer, proposer_rx, network_channel, &log);
+                })
+                .expect("failed to spawn proposer-thread");
+
+            self.proposer_thread_handle =
+                Some(ProposerThreadHandle::Running(proposer_thread_handle));
+        }
+    }
+
+    pub fn proposer_handle(&self) -> ProposerHandle {
+        self.proposer_handle.clone()
+    }
+}
+
+impl Drop for TezedgeStateManager {
+    fn drop(&mut self) {
+        info!(self.log, "Closing Tezedge state manager");
+
+        let TezedgeStateManager {
+            proposer_handle,
+            log,
+            ..
+        } = self;
+        let ProposerHandle { waker, sender } = proposer_handle;
+
+        // dropping mpsc sender will cause state machine thread
+        // to exit once it tries to read from this mpsc channel.
+        drop(sender);
+
+        if let Err(e) = waker.wake() {
+            warn!(log, "Failed to shutdown proposer waker"; "reason" => e);
+        }
+    }
 }
