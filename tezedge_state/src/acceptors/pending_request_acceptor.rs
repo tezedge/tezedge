@@ -2,7 +2,9 @@ use tezos_messages::p2p::encoding::connection::ConnectionMessage;
 use tla_sm::Acceptor;
 
 use crate::proposals::{PendingRequestMsg, PendingRequestProposal};
-use crate::{Effects, HandshakeStep, PendingRequest, RequestState, TezedgeState};
+use crate::{
+    Effects, HandshakeStep, PendingRequest, RequestState, RetriableRequestState, TezedgeState,
+};
 
 impl<'a, Efs> Acceptor<PendingRequestProposal<'a, Efs>> for TezedgeState
 where
@@ -17,28 +19,35 @@ where
         }
 
         if let Some(req) = self.requests.get_mut(proposal.req_id) {
+            // Unexpected requests can happen in fuzzer or simulator
+            // environment, but it shouldn't happen in real world.
             match &req.request {
                 PendingRequest::StartListeningForNewPeers => match proposal.message {
-                    PendingRequestMsg::StartListeningForNewPeersPending => {
-                        req.status = RequestState::Pending { at: proposal.at };
-                    }
                     PendingRequestMsg::StartListeningForNewPeersSuccess => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    PendingRequestMsg::StartListeningForNewPeersError { error } => {
+                        slog::warn!(&self.log, "Failed to start listening for incoming connections"; "error" => format!("{:?}", error));
+                        req.status = RetriableRequestState::Retry {
+                            at: proposal.at + self.config.periodic_react_interval,
+                        };
+                        // self.requests.remove(proposal.req_id);
+                    }
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "StartListeningForNewPeers", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::StopListeningForNewPeers => match proposal.message {
-                    PendingRequestMsg::StopListeningForNewPeersPending => {
-                        req.status = RequestState::Pending { at: proposal.at };
-                    }
                     PendingRequestMsg::StopListeningForNewPeersSuccess => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "StopListeningForNewPeers", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::ConnectPeer { peer, .. } => match proposal.message {
                     PendingRequestMsg::ConnectPeerPending => {
-                        req.status = RequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: proposal.at };
                     }
                     PendingRequestMsg::ConnectPeerSuccess => {
                         let peer_address = *peer;
@@ -66,41 +75,51 @@ where
                         self.blacklist_peer(proposal.at, peer);
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "ConnectPeer", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::DisconnectPeer { .. } => match proposal.message {
                     PendingRequestMsg::DisconnectPeerPending => {
-                        req.status = RequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: proposal.at };
                     }
                     PendingRequestMsg::DisconnectPeerSuccess => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "DisconnectPeer", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::BlacklistPeer { .. } => match proposal.message {
                     PendingRequestMsg::BlacklistPeerPending => {
-                        req.status = RequestState::Pending { at: proposal.at };
+                        req.status = RetriableRequestState::Pending { at: proposal.at };
                     }
                     PendingRequestMsg::BlacklistPeerSuccess => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "BlacklistPeer", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::PeerMessageReceived { .. } => match proposal.message {
                     PendingRequestMsg::PeerMessageReceivedNotified => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "PeerMessageReceived", "update" => format!("{:?}", msg))
+                    }
                 },
                 PendingRequest::NotifyHandshakeSuccessful { .. } => match proposal.message {
                     PendingRequestMsg::HandshakeSuccessfulNotified => {
                         self.requests.remove(proposal.req_id);
                     }
-                    _ => eprintln!("unexpected request type"),
+                    msg => {
+                        slog::trace!(&self.log, "Unexpected request update"; "request" => "NotifyHandshakeSuccessful", "update" => format!("{:?}", msg))
+                    }
                 },
             }
         } else {
-            eprintln!("req not found");
+            slog::warn!(&self.log, "Request update received for non-existant request"; "req_id" => proposal.req_id, "message" => format!("{:?}", proposal.message));
         }
 
         self.adjust_p2p_state(proposal.at, proposal.effects);

@@ -5,7 +5,7 @@ use tezos_messages::p2p::encoding::prelude::{AdvertiseMessage, PeerMessage};
 use tla_sm::Acceptor;
 
 use crate::proposals::{ExtendPotentialPeersProposal, PeerMessageProposal};
-use crate::{Effects, PendingRequest, PendingRequestState, RequestState, TezedgeState};
+use crate::{Effects, PendingRequest, PendingRequestState, RetriableRequestState, TezedgeState};
 
 impl<'a, Efs> Acceptor<PeerMessageProposal<'a, Efs>> for TezedgeState
 where
@@ -54,7 +54,7 @@ where
                             peer: proposal.peer,
                             message: Arc::new(proposal.message),
                         },
-                        status: RequestState::Idle { at: proposal.at },
+                        status: RetriableRequestState::Idle { at: proposal.at },
                     });
                 }
             }

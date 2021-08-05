@@ -269,7 +269,11 @@ impl Actor for PeerManager {
 
         let (proposer_tx, proposer_rx) = mpsc::channel();
 
-        let mio_manager = MioManager::new(self.config.listener_port);
+        // override port passed listener address
+        let mut listener_addr = self.config.listener_address;
+        listener_addr.set_port(self.config.listener_port);
+
+        let mio_manager = MioManager::new(listener_addr);
         self.proposer = Some(ProposerHandle::new(mio_manager.waker(), proposer_tx));
 
         let seed = self.config.effects_seed.unwrap_or_else(|| {
