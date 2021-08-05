@@ -14,7 +14,7 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain ${rust_toolcha
 ENV PATH=/root/.cargo/bin:$PATH
 ENV SODIUM_USE_PKG_CONFIG=1
 RUN apt-get install -y clang libclang-dev
-RUN git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && cd apps/node_monitoring && cargo build --release #7
+RUN git clone ${tezedge_git} --branch ${SOURCE_BRANCH} && cd tezedge && cd apps/node_monitoring && cargo build --release #9
 
 # WORKDIR /home/appuser/tezedge
 

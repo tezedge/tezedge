@@ -15,7 +15,7 @@ use getset::Getters;
 use merge::Merge;
 use netinfo::Netinfo;
 use serde::Serialize;
-use slog::{error, Logger};
+use slog::{error, warn, Logger};
 use sysinfo::{System, SystemExt};
 
 use crate::display_info::{NodeInfo, OcamlDiskData, TezedgeDiskData};
@@ -365,7 +365,7 @@ impl ResourceMonitor {
             slack,
             system: System::new_all(),
             netinfo,
-            last_refresh_time: Instant::now()
+            last_refresh_time: Instant::now(),
         }
     }
 
@@ -421,26 +421,42 @@ impl ResourceMonitor {
                         })
                     }
                 };
-                
+
                 let current_head_info = node.get_head_data().await?;
                 let node_memory = node.get_memory_stats(system)?;
                 let node_disk = node.get_disk_data();
                 let node_cpu = node.get_cpu_data(system)?;
                 let node_io = node.get_io_data(system, measurement_time_delta)?;
 
-                let network_stats = if let Ok(ref network_statistics) = network_statistics {
-                    node.get_network_data(&network_statistics, measurement_time_delta)?
-                } else {
-                    NetworkStats::default()
-                };
-
                 if node.node_type() == &NodeType::Tezedge {
                     let validators_memory =
                         node.get_memory_stats_children(system, "protocol-runner")?;
                     let validators_cpu = node.get_cpu_data_children(system, "protocol-runner")?;
 
-                    let validators_io =
-                        node.get_io_data_children(system, "protocol-runner", measurement_time_delta)?;
+                    let validators_io = node.get_io_data_children(
+                        system,
+                        "protocol-runner",
+                        measurement_time_delta,
+                    )?;
+
+                    let network_stats = if let Ok(ref network_statistics) = network_statistics {
+                        let node_network =
+                            node.get_network_data(&network_statistics, measurement_time_delta)?;
+                        let children_network = node.get_network_data_children(
+                            &network_statistics,
+                            system,
+                            "protocol-runner",
+                            measurement_time_delta,
+                        )?;
+                        NetworkStats {
+                            sent_bytes_per_sec: node_network.sent_bytes_per_sec
+                                + children_network.sent_bytes_per_sec,
+                            received_bytes_per_sec: node_network.received_bytes_per_sec
+                                + children_network.received_bytes_per_sec,
+                        }
+                    } else {
+                        NetworkStats::default()
+                    };
 
                     ResourceUtilization {
                         timestamp: chrono::Local::now().timestamp(),
@@ -469,6 +485,29 @@ impl ResourceMonitor {
 
                     let validators_io =
                         node.get_io_data_children(system, "tezos-node", measurement_time_delta)?;
+
+                    let network_stats = match network_statistics {
+                        Ok(ref network_statistics) => {
+                            let node_network =
+                                node.get_network_data(&network_statistics, measurement_time_delta)?;
+                            let children_network = node.get_network_data_children(
+                                &network_statistics,
+                                system,
+                                "tezos-node",
+                                measurement_time_delta,
+                            )?;
+                            NetworkStats {
+                                sent_bytes_per_sec: node_network.sent_bytes_per_sec
+                                    + children_network.sent_bytes_per_sec,
+                                received_bytes_per_sec: node_network.received_bytes_per_sec
+                                    + children_network.received_bytes_per_sec,
+                            }
+                        }
+                        Err(ref e) => {
+                            warn!(log, "Error getting network stats: {}", e);
+                            NetworkStats::default()
+                        }
+                    };
 
                     ResourceUtilization {
                         timestamp: chrono::Local::now().timestamp(),
@@ -543,7 +582,7 @@ impl ResourceMonitor {
                     log,
                 )
                 .await;
-    
+
                 match &mut storage.write() {
                     Ok(resources_locked) => {
                         if resources_locked.len() == MEASUREMENTS_MAX_CAPACITY {

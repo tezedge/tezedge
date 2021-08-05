@@ -876,7 +876,7 @@ dependencies = [
 [[package]]
 name = "netinfo"
 version = "0.5.1"
-source = "git+https://github.com/adonagy/netinfo.git?branch=fix/brokend-dependecies#615e483fcbfccd0c5750ddd447a60c0b361f0bb9"
+source = "git+https://github.com/adonagy/netinfo.git?branch=fix/brokend-dependecies#99bedb9353478f0251227f247226ba2e2881991b"
 dependencies = [
  "byteorder",
  "error-chain",

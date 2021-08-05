@@ -386,11 +386,58 @@ impl Node {
     ) -> Result<NetworkStats, ResourceMonitorError> {
         if let Some(pid) = self.pid {
             Ok(NetworkStats::new(
-                to_bytes_per_sec(statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Outgoing), None)
-                    / delta),
-                to_bytes_per_sec(statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Incoming), None)
-                    / delta),
+                to_bytes_per_sec(
+                    statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Outgoing), None)
+                        / delta,
+                ),
+                to_bytes_per_sec(
+                    statistics.get_bytes_by_attr(Some(pid as u64), Some(InoutType::Incoming), None)
+                        / delta,
+                ),
             ))
+        } else {
+            Err(ResourceMonitorError::NetworkInfoError {
+                reason: format!("Node was not registered with PID {:?}", self.pid),
+            })
+        }
+    }
+
+    pub fn get_network_data_children(
+        &self,
+        statistics: &NetStatistics,
+        system: &mut System,
+        children_name: &str,
+        delta: u64,
+    ) -> Result<NetworkStats, ResourceMonitorError> {
+        if let Some(pid) = self.pid {
+            let system_processes = system.processes();
+
+            let (sent, received) = system_processes
+                .iter()
+                .filter(|(_, process)| {
+                    process.parent() == Some(pid) && process.name().eq(children_name)
+                })
+                .map(|(child_pid, _)| {
+                    (
+                        to_bytes_per_sec(
+                            statistics.get_bytes_by_attr(
+                                Some(*child_pid as u64),
+                                Some(InoutType::Outgoing),
+                                None,
+                            ) / delta,
+                        ),
+                        to_bytes_per_sec(
+                            statistics.get_bytes_by_attr(
+                                Some(*child_pid as u64),
+                                Some(InoutType::Incoming),
+                                None,
+                            ) / delta,
+                        ),
+                    )
+                })
+                .fold1(|acc, x| (acc.0 + x.0, acc.1 + x.1))
+                .unwrap_or_default();
+            Ok(NetworkStats::new(sent, received))
         } else {
             Err(ResourceMonitorError::NetworkInfoError {
                 reason: format!("Node was not registered with PID {:?}", self.pid),
