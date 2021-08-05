@@ -59,7 +59,7 @@ environment:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: always
   user: root
   volumes:
@@ -140,7 +140,7 @@ steps:
     - chown -R 1000:1000 $${SANDBOX_ARTIFACTS_PATH}
 
 - name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
     - name: build
@@ -204,7 +204,7 @@ environment:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
     - name: build
@@ -232,7 +232,7 @@ steps:
     - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
 - name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
     - name: build
@@ -292,7 +292,7 @@ environment:
 steps:
 
 - name: build-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
     - name: build
@@ -308,7 +308,7 @@ steps:
     - chown -R 1000:1000 $${BUILD_ARTIFACTS_PATH}
 
 - name: synch-artifacts
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   volumes:
     - name: build
@@ -369,7 +369,7 @@ environment:
 steps:
 
 - name: generate-artificial-load
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
   detach: true
   user: root
@@ -390,7 +390,7 @@ steps:
     - sleep 65
 
 - name: run-cyclic-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   privileged: true
   user: root
   volumes:
@@ -457,7 +457,7 @@ steps:
       - mkdir -p $${CACHE_DATA_PATH}
 
   - name: tezedge-updated-node-run-mainnet
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -572,7 +572,7 @@ workspace:
 steps:
 
 - name: run-unit-tests
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -582,7 +582,7 @@ steps:
     - cargo test --release --workspace
 
 - name: run-unit-tests-multibackend-rockdb
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -593,7 +593,7 @@ steps:
     - cargo test --release --features maindb-backend-rocksdb
 
 - name: run-unit-tests-multibackend-sled
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -604,7 +604,7 @@ steps:
     - cargo test --release --features maindb-backend-sled
 
 - name: run-unit-tests-commit-log
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -615,7 +615,7 @@ steps:
     - cargo test --release --lib commit_log -- --nocapture
 
 - name: run-unit-tests-monitoring
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   environment:
@@ -655,7 +655,7 @@ steps:
 # GIVEN we need multiple protocol runners WHEN we launch multiple ones THEN the first should be writable, others readonly and
 # all of then should initialize the context
 - name: protocol-runner-writable-and-readonly-context
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -676,7 +676,7 @@ steps:
 # GIVEN a set pool of protocol runners WHEN we try to acquire one or more protocol-runners from the pool THEN the pool handles each
 # scenario accordingly
 - name: protocol-runner-acquisition-from-pool
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -697,7 +697,7 @@ steps:
 # GIVEN we have two nodes connected on level genesis WHEN we send one node a current head message THEN both nodes sets they current head to
 # the new head
 - name: shell-current-head
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -719,7 +719,7 @@ steps:
 # GIVEN we have one node with genesis and one node with level 3 WHEN we connect them a current branch is sent to the node with genesis
 # and THEN it bootstraps to level 3 then a new current_head is sent and applied by both nodes
 - name: shell-current-branch-then-current-head
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -740,7 +740,7 @@ steps:
 
 # GIVEN we run two nodes(1,2) with different branches WHEN we connect the two nodes THEN both branches are present in node 1
 - name: shell-simple-reorg
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -762,7 +762,7 @@ steps:
 # GIVEN we run two connected tezedge nodes WHEN one node sends CurrentHead with hacked protocol data THEN the node should blacklist
 # the node sending the hacked data
 - name: shell-multipass-blacklisting
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -784,7 +784,7 @@ steps:
 # GIVEN a mocke node on level 3 (level 7 is the current chain head) WHEN the node receives all CurrentHeadMessages THEN
 # the node is considered bootstrapped and mempool is activated
 - name: shell-bootstrapping-current-branch/heads
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -806,7 +806,7 @@ steps:
 # GIVEN we run two nodes, one with only genesis, one with level 1324 WHEN those two nodes are connected THEN the one node with the genesis
 # bootstraps to level 1324 and has its memool functional
 - name: shell-bootstrap-and-mempool
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -828,7 +828,7 @@ steps:
 # GIVEN we are running tezedge node WHEN accept connections from the network THEN we are not passing a the defined threshold with the
 # number of connected peers
 - name: p2p-comply-with-max-threshold
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -850,7 +850,7 @@ steps:
 # GIVEN We have two nodes with identities that comply to the minimal pow level WHEN we connect them THEN
 # the connection should succeed
 - name: p2p-pow-success
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -872,7 +872,7 @@ steps:
 # GIVEN We have one node with lower pow identity WHEN we connect to a node with identity that complies to the minimal pow level THEN
 # the connection should fail
 - name: p2p-pow-fail
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -935,7 +935,7 @@ steps:
     - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
 - name: tezedge-node-bootstrap
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -978,7 +978,7 @@ steps:
     - kill -INT $(cat /var/run/tezedge.pid) && sleep 10
 
 - name: replay-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   pull: if-not-exists
   volumes:
@@ -1004,7 +1004,7 @@ steps:
 
 # TODO - TE-261: we don't have an equivalent of this right now
 # - name: record/replay-context-action-file-test
-#   image: tezedge/tezedge-ci-builder:latest
+#   image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
 #   pull: if-not-exists
 #   user: root
 #   volumes:
@@ -1888,7 +1888,7 @@ steps:
 
 # run empty tezedge node and wait for it
 - name: tezedge-node-sandbox-carthage-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -2042,7 +2042,7 @@ steps:
 
 # compare all rpc's from blocks 0 to 2 between defined nodes
 - name: rpc-test-for-levels-0-2
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -2104,7 +2104,7 @@ environment:
 
 steps:
 - name: tezedge-sandbox-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -2294,7 +2294,7 @@ environment:
 
 steps:
   - name: tezedge-sandbox-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -2513,7 +2513,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-edo2-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -2701,7 +2701,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2719,7 +2719,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2742,7 +2742,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -2838,7 +2838,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-florence-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3026,7 +3026,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3044,7 +3044,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3067,7 +3067,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3163,7 +3163,7 @@ steps:
 
   # run empty tezedge node and wait for it
   - name: tezedge-node-sandbox-granada-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3351,7 +3351,7 @@ steps:
 
   # compare all rpc's from blocks 0 to 2 between defined nodes
   - name: rpc-test-for-levels-0-2
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3369,7 +3369,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-1_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3392,7 +3392,7 @@ steps:
 
   # compare all rpc's from blocks 0 to <current_head_of_tezedge> between defined nodes, because baker still generates new blocks
   - name: rpc-test-for-levels-0-current_head_of_tezedge-2_run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -3555,7 +3555,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -3622,7 +3622,7 @@ steps:
 
 # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
 - name: rpc-test
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -3783,7 +3783,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-edo2net-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -3849,7 +3849,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4009,7 +4009,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-florencenet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4076,7 +4076,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4236,7 +4236,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-granadanet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4302,7 +4302,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4466,7 +4466,7 @@ steps:
       - tezos-node-bootstrap bootstrap --level=$${TO_BLOCK_HEADER} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
   - name: tezedge-updated-node-mainnet-run
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4532,7 +4532,7 @@ steps:
 
   # compare all rpc's from FROM_BLOCK_HEADER to TO_BLOCK_HEADER between defined nodes
   - name: rpc-test
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -4709,7 +4709,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -4922,7 +4922,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -5149,7 +5149,7 @@ steps:
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -5240,7 +5240,7 @@ environment:
 steps:
 
   - name: run-benchmarks
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     environment:
@@ -5257,7 +5257,7 @@ steps:
 
   # this is not triggered on pull request, because there is complex bench comparison on PR
   - name: criterion-benchmarks
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     environment:
@@ -5286,7 +5286,7 @@ steps:
 
   # prepare and compiles (async) bench for target branch (only for PR)
   - name: compile-benchmarks-for-target-branch
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     detach: true
@@ -5325,7 +5325,7 @@ steps:
         - refs/pull/*/head
 
   - name: compare-benchmarks-to-target-branch
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -5413,7 +5413,7 @@ steps:
     detach: true
 
   - name: wait-for-benchmark-completion
-    image: tezedge/tezedge-ci-builder:latest
+    image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
     pull: if-not-exists
     user: root
     volumes:
@@ -5475,7 +5475,7 @@ environment:
 steps:
 
 - name: run-dhat
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   user: root
   commands:
     - git remote add -f upstream https://github.com/tezedge/tezedge.git
@@ -5615,7 +5615,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_2} $${OCTEZ_NODE_RPC_CONTEXT_ROOT_3}
 
 - name: tezedge-updated-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5637,7 +5637,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-node-delphinet-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5816,7 +5816,7 @@ steps:
     - tezos-node-bootstrap bootstrap --level=$${BLOCK_HEAD} --nodes $${OCTEZ_NODE_RPC_CONTEXT_ROOT_1}
 
 - name: tezedge-updated-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -5838,7 +5838,7 @@ steps:
 
 # if we are doing pull request, run also "old node" build (async) for wrk total compare at the end
 - name: tezedge-old-run
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   detach: true
@@ -6414,7 +6414,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -6427,8 +6427,8 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:latest
-  commands: 
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
     - sleep 10
 
 - name: test-cpu-measurements
@@ -6454,7 +6454,7 @@ trigger:
     - master
     - develop
 
-depends_on: 
+depends_on:
   - build-monitoring-artifacts
 
 ---
@@ -6480,7 +6480,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -6493,8 +6493,8 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:latest
-  commands: 
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
     - sleep 10
 
 - name: test-memory-measurements
@@ -6520,7 +6520,7 @@ trigger:
     - master
     - develop
 
-depends_on: 
+depends_on:
   - build-monitoring-artifacts
 
 ---
@@ -6545,7 +6545,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -6558,8 +6558,8 @@ steps:
     - $${BUILD_ARTIFACTS_PATH}/build_files/monitoring/node-monitoring --resource-monitor-interval 1 --tezedge-nodes tezedge:18732:/tmp/tezedge --wait-for-nodes
 
 - name: wait-for-measurements
-  image: tezedge/tezedge-ci-builder:latest
-  commands: 
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
+  commands:
     - sleep 10
 
 - name: test-io-and-network-measurements
@@ -6585,7 +6585,7 @@ trigger:
     - master
     - develop
 
-depends_on: 
+depends_on:
   - build-monitoring-artifacts
 ---
 kind: pipeline
@@ -6614,7 +6614,7 @@ steps:
   privilaged: true
   pid: host
   network_mode: host
-  image: tezedge/tezedge-ci-builder:latest
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   detach: true
   volumes:
     - name: tezedge-dummy-data
@@ -6649,7 +6649,7 @@ trigger:
     - master
     - develop
 
-depends_on: 
+depends_on:
   - build-monitoring-artifacts
 
 ##############################################################################################################
