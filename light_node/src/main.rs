@@ -11,14 +11,14 @@ use slog::{debug, error, info, warn, Logger};
 
 use crypto::hash::BlockHash;
 use monitoring::{Monitor, WebsocketHandler};
-use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
-use rpc::rpc_actor::RpcServer;
+use rpc::RpcServer;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::subscription::*;
 use shell::tezedge_state_manager::TezedgeStateManager;
 use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
 use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
@@ -249,13 +249,14 @@ fn block_on_actors(
         .create()
         .expect("Failed to create actor system");
 
-    let network_channel =
-        NetworkChannel::actor(&actor_system).expect("Failed to create network channel");
     let shell_channel = ShellChannel::actor(&actor_system).expect("Failed to create shell channel");
+    let mut new_current_head_notifier = Notifier::<NewCurrentHeadNotificationRef>::new(log.clone());
+    let mut network_event_notifier = Notifier::<NetworkEventNotificationRef>::new(log.clone());
+    let mut shell_event_notifier = Notifier::<ShellEventNotificationRef>::new(log.clone());
+    let mut shell_command_notifier = Notifier::<ShellCommandNotificationRef>::new(log.clone());
 
     // initialize tezedge state
     let mut tezedge_state_manager = TezedgeStateManager::new(
-        network_channel.clone(),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),
@@ -264,18 +265,66 @@ fn block_on_actors(
         init_storage_data.chain_id.clone(),
     );
 
-    // initialize actors
+    // initialize mempool/prevalidators factory
     let mempool_prevalidator_factory = Arc::new(MempoolPrevalidatorFactory::new(
+        actor_system.clone(),
         shell_channel.clone(),
+        tezedge_state_manager.proposer_handle(),
         persistent_storage.clone(),
         current_mempool_state_storage.clone(),
         tezos_readonly_api_pool.clone(),
         env.p2p.disable_mempool,
     ));
 
+    // initialize rpc server
+    let mut rpc_server = RpcServer::new(
+        mempool_prevalidator_factory.clone(),
+        log.clone(),
+        tezedge_state_manager.proposer_handle(),
+        ([0, 0, 0, 0], env.rpc.listener_port).into(),
+        tokio_runtime.handle().clone(),
+        &persistent_storage,
+        current_mempool_state_storage.clone(),
+        tezos_readonly_api_pool.clone(),
+        tezos_readonly_prevalidation_api_pool.clone(),
+        tezos_without_context_api_pool.clone(),
+        env.tezos_network_config.clone(),
+        Arc::new(shell_compatibility_version.to_network_version()),
+        &init_storage_data,
+        env.storage
+            .context_storage_configuration
+            .tezedge_is_enabled(),
+    );
+    rpc_server.subscribe(&mut new_current_head_notifier);
+
+    // Only start Monitoring when websocket is set
+    if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
+        let websocket_handler = WebsocketHandler::actor(
+            &actor_system,
+            tokio_runtime.handle().clone(),
+            websocket_address,
+            max_number_of_websocket_connections,
+            log.clone(),
+        )
+        .expect("Failed to start websocket actor");
+
+        let monitor_wrapper = Monitor::actor(
+            &actor_system,
+            websocket_handler,
+            persistent_storage.clone(),
+            log.clone(),
+            init_storage_data.chain_id.clone(),
+        )
+        .expect("Failed to create monitor actor");
+        monitor_wrapper.subscribe(&mut new_current_head_notifier);
+        monitor_wrapper.subscribe(&mut network_event_notifier);
+        monitor_wrapper.subscribe(&mut shell_event_notifier);
+    }
+
     let chain_current_head_manager = ChainCurrentHeadManager::actor(
         &actor_system,
-        shell_channel.clone(),
+        tezedge_state_manager.proposer_handle(),
+        new_current_head_notifier,
         persistent_storage.clone(),
         init_storage_data.clone(),
         local_current_head_state.clone(),
@@ -292,69 +341,31 @@ fn block_on_actors(
         persistent_storage.clone(),
         tezos_writeable_api_pool.clone(),
         init_storage_data.clone(),
-        env.tezos_network_config.clone(),
+        env.tezos_network_config,
         log.clone(),
     )
     .expect("Failed to create chain feeder");
-    let _ = ChainManager::actor(
+    let chain_manager_wrapper = ChainManager::actor(
         &actor_system,
         block_applier.clone(),
-        network_channel.clone(),
         tezedge_state_manager.proposer_handle(),
         shell_channel.clone(),
+        shell_event_notifier,
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),
+        log.clone(),
         init_storage_data.clone(),
         is_sandbox,
         local_current_head_state,
         remote_current_head_state,
-        current_mempool_state_storage.clone(),
+        current_mempool_state_storage,
         bootstrap_state,
         mempool_prevalidator_factory,
-        identity.clone(),
+        identity,
     )
     .expect("Failed to create chain manager");
-
-    // Only start Monitoring when websocket is set
-    if let Some((websocket_address, max_number_of_websocket_connections)) = env.rpc.websocket_cfg {
-        let websocket_handler = WebsocketHandler::actor(
-            &actor_system,
-            tokio_runtime.handle().clone(),
-            websocket_address,
-            max_number_of_websocket_connections,
-            log.clone(),
-        )
-        .expect("Failed to start websocket actor");
-
-        let _ = Monitor::actor(
-            &actor_system,
-            network_channel,
-            websocket_handler,
-            shell_channel.clone(),
-            persistent_storage.clone(),
-            init_storage_data.chain_id.clone(),
-        )
-        .expect("Failed to create monitor actor");
-    }
-
-    let _ = RpcServer::actor(
-        &actor_system,
-        shell_channel.clone(),
-        ([0, 0, 0, 0], env.rpc.listener_port).into(),
-        tokio_runtime.handle().clone(),
-        &persistent_storage,
-        current_mempool_state_storage,
-        tezos_readonly_api_pool.clone(),
-        tezos_readonly_prevalidation_api_pool.clone(),
-        tezos_without_context_api_pool.clone(),
-        env.tezos_network_config.clone(),
-        Arc::new(shell_compatibility_version.to_network_version()),
-        &init_storage_data,
-        env.storage
-            .context_storage_configuration
-            .tezedge_is_enabled(),
-    )
-    .expect("Failed to create RPC server");
+    chain_manager_wrapper.subscribe(&mut network_event_notifier);
+    chain_manager_wrapper.subscribe(&mut shell_command_notifier);
 
     if let Some(blocks) = blocks_replay.take() {
         return schedule_replay_blocks(
@@ -369,8 +380,19 @@ fn block_on_actors(
         std::thread::sleep(std::time::Duration::from_secs(2));
     }
 
+    let mut is_setup_ok = true;
+
     // start tezedge_state machine with p2p
-    tezedge_state_manager.start();
+    if let Err(e) = tezedge_state_manager.start(network_event_notifier, shell_command_notifier) {
+        error!(log, "Failed to start tezedge state/proposer"; "reason" => format!("{:?}", e));
+        is_setup_ok = false;
+    }
+
+    // start rpc
+    if let Err(e) = rpc_server.start() {
+        error!(log, "Failed to start RPC server"; "reason" => format!("{:?}", e));
+        is_setup_ok = false;
+    };
 
     info!(log, "Actors initialized");
 
@@ -378,12 +400,18 @@ fn block_on_actors(
         use tokio::signal;
         use tokio::time::timeout;
 
-        signal::ctrl_c()
-            .await
-            .expect("Failed to listen for ctrl-c event");
-        info!(log, "Ctrl-c or SIGINT received!");
+        // if everything is ok, we can run and hold this "forever"
+        if is_setup_ok {
+            signal::ctrl_c()
+                .await
+                .expect("Failed to listen for ctrl-c event");
+            info!(log, "Ctrl-c or SIGINT received!");
+        }
 
-        info!(log, "Sending shutdown notification to actors (1/6)");
+        info!(log, "Shutting down rpc server (1/7)");
+        drop(rpc_server);
+
+        info!(log, "Sending shutdown notification to actors (1/7)");
         shell_channel.tell(
             Publish {
                 msg: ShuttingDown.into(),
@@ -395,27 +423,27 @@ fn block_on_actors(
         // give actors some time to shut down
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        info!(log, "Shutting down actors (2/6)");
+        info!(log, "Shutting down actors (3/7)");
         match timeout(Duration::from_secs(10), actor_system.shutdown()).await {
             Ok(_) => info!(log, "Shutdown actors complete"),
             Err(_) => info!(log, "Shutdown actors did not finish to timeout (10s)"),
         };
 
-        info!(log, "Shutting down protocol runner pools (3/6)");
+        info!(log, "Shutting down protocol runner pools (4/7)");
         drop(tezos_readonly_api_pool);
         drop(tezos_readonly_prevalidation_api_pool);
         drop(tezos_without_context_api_pool);
         drop(tezos_writeable_api_pool);
         debug!(log, "Protocol runners completed");
 
-        info!(log, "Shutting down tezedge state (4/6)");
+        info!(log, "Shutting down tezedge state (5/7)");
         drop(tezedge_state_manager);
 
-        info!(log, "Flushing databases (5/6)");
+        info!(log, "Flushing databases (6/7)");
         drop(persistent_storage);
         info!(log, "Databases flushed");
 
-        info!(log, "Shutdown complete (6/6)");
+        info!(log, "Shutdown complete (7/7)");
     });
 }
 
@@ -459,7 +487,7 @@ fn schedule_replay_blocks(
         let hash = block.to_base58_check();
         let percent = (index as f64 / nblocks as f64) * 100.0;
 
-        if let Err(_) = result.as_ref() {
+        if result.as_ref().is_err() {
             replay_shutdown(shell_channel);
             panic!(
                 "{:08} {:.5}% Block {} failed in {:?}. Result={:?}",
@@ -512,7 +540,7 @@ fn collect_replayed_blocks(
     replay: &Replay,
     log: &Logger,
 ) -> Vec<Arc<BlockHash>> {
-    let block_meta_storage = BlockMetaStorage::new(&persistent_storage);
+    let block_meta_storage = BlockMetaStorage::new(persistent_storage);
     let from_block = replay.from_block.as_ref();
     let mut block_hash = replay.to_block.clone();
     let mut blocks = Vec::new();

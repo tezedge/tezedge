@@ -1,6 +1,0 @@
-// Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
-// SPDX-License-Identifier: MIT
-
-//! This module handles low level p2p communication.
-
-pub mod network_channel;

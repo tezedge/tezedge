@@ -16,8 +16,6 @@ pub struct PeerId {
     pub public_key_hash: CryptoboxPublicKeyHash,
 }
 
-pub mod p2p;
-
 /// Local peer info
 pub struct LocalPeerInfo {
     /// port where remote node can establish new connection

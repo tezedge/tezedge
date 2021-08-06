@@ -6,17 +6,14 @@ use std::convert::TryInto;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use slog::{info, warn};
 
 use crypto::hash::{ChainId, OperationHash, ProtocolHash};
 use shell::mempool::mempool_prevalidator::{MempoolOperationReceived, MempoolPrevalidatorMsg};
-use shell::mempool::{find_mempool_prevalidator, CurrentMempoolStateStorageRef};
-use shell::shell_channel::{
-    InjectBlock, RequestCurrentHead, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
-};
+use shell::mempool::CurrentMempoolStateStorageRef;
+use shell::tezedge_state_manager::proposer_messages::{InjectBlock, ProposerMsg};
 use shell::validation;
 use storage::mempool_storage::MempoolOperationType;
 use storage::{
@@ -66,16 +63,16 @@ pub fn get_pending_operations(
             let operations = current_mempool_state.operations();
             (
                 MempoolOperations {
-                    applied: convert_applied(&result.applied, &operations)?,
-                    refused: convert_errored(&result.refused, &operations, &prevalidator.protocol)?,
+                    applied: convert_applied(&result.applied, operations)?,
+                    refused: convert_errored(&result.refused, operations, &prevalidator.protocol)?,
                     branch_refused: convert_errored(
                         &result.branch_refused,
-                        &operations,
+                        operations,
                         &prevalidator.protocol,
                     )?,
                     branch_delayed: convert_errored(
                         &result.branch_delayed,
-                        &operations,
+                        operations,
                         &prevalidator.protocol,
                     )?,
                     unprocessed: vec![],
@@ -193,17 +190,13 @@ pub async fn inject_operation(
 
     let start_request = Instant::now();
 
-    let persistent_storage = env.persistent_storage();
-    let block_storage: Box<dyn BlockStorageReader> =
-        Box::new(BlockStorage::new(persistent_storage));
-    let block_meta_storage: Box<dyn BlockMetaStorageReader> =
-        Box::new(BlockMetaStorage::new(persistent_storage));
-
     // find prevalidator for chain_id, if not found, then stop
-    let mempool_prevalidator = if let Some(mempool_prevalidator) =
-        find_mempool_prevalidator(env.sys(), &chain_id)
+
+    let mempool_prevalidator_caller = if let Some(mempool_prevalidator_caller) = env
+        .mempool_prevalidator_factory()
+        .find_mempool_prevalidator_caller(&chain_id)
     {
-        mempool_prevalidator
+        mempool_prevalidator_caller
     } else {
         warn!(env.log(), "No mempool prevalidator was found"; "chain_id" => chain_id.to_base58_check(), "caller" => "mempool_services");
         return Err(RpcServiceError::UnexpectedError {
@@ -219,6 +212,13 @@ pub async fn inject_operation(
             }
         })?;
     let operation_hash = operation.message_typed_hash()?;
+
+    // prepare database accessors
+    let persistent_storage = env.persistent_storage();
+    let block_storage: Box<dyn BlockStorageReader> =
+        Box::new(BlockStorage::new(persistent_storage));
+    let block_meta_storage: Box<dyn BlockMetaStorageReader> =
+        Box::new(BlockMetaStorage::new(persistent_storage));
 
     // do prevalidation before add the operation to mempool
     let result = validation::prevalidate_operation(
@@ -266,15 +266,14 @@ pub async fn inject_operation(
     let start_async = Instant::now();
 
     // ping mempool with new operation for mempool validation
-    if mempool_prevalidator
-        .try_tell(
-            MempoolPrevalidatorMsg::MempoolOperationReceived(MempoolOperationReceived {
+    if mempool_prevalidator_caller
+        .try_tell(MempoolPrevalidatorMsg::MempoolOperationReceived(
+            MempoolOperationReceived {
                 operation_hash,
                 operation_type: MempoolOperationType::Pending,
                 result_callback: result_callback_sender,
-            }),
-            None,
-        )
+            },
+        ))
         .is_err()
     {
         return Err(RpcServiceError::UnexpectedError {
@@ -324,7 +323,6 @@ pub async fn inject_block(
     chain_id: ChainId,
     injection_data: &str,
     env: &RpcServiceEnvironment,
-    shell_channel: &ShellChannelRef,
 ) -> Result<String, RpcServiceError> {
     let block_with_op: InjectedBlockWithOperations = serde_json::from_str(injection_data)?;
     let chain_id = Arc::new(chain_id);
@@ -409,21 +407,19 @@ pub async fn inject_block(
     let start_async = Instant::now();
 
     // notify other actors, that a block was injected
-    shell_channel.tell(
-        Publish {
-            msg: ShellChannelMsg::InjectBlock(
-                InjectBlock {
-                    chain_id: chain_id.clone(),
-                    block_header: Arc::new(header),
-                    operations: validation_passes,
-                    operation_paths: paths,
-                },
-                result_callback_sender,
-            ),
-            topic: ShellChannelTopic::ShellCommands.into(),
-        },
-        None,
-    );
+    env.proposer()
+        .notify(ProposerMsg::InjectBlock(
+            InjectBlock {
+                chain_id: chain_id.clone(),
+                block_header: Arc::new(header),
+                operations: validation_passes,
+                operation_paths: paths,
+            },
+            result_callback_sender,
+        ))
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("Failed to inject operation, reason: {}", e),
+        })?;
 
     // wait for result
     if let Some(receiver) = result_callback_receiver {
@@ -464,15 +460,13 @@ pub async fn inject_block(
     Ok(block_hash_b58check_string)
 }
 
-pub fn request_operations(shell_channel: ShellChannelRef) {
+pub fn request_operations(env: &RpcServiceEnvironment) -> Result<(), RpcServiceError> {
     // request current head from the peers
-    shell_channel.tell(
-        Publish {
-            msg: RequestCurrentHead.into(),
-            topic: ShellChannelTopic::ShellCommands.into(),
-        },
-        None,
-    );
+    env.proposer()
+        .notify(ProposerMsg::RequestCurrentHead)
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("{}", e),
+        })
 }
 
 #[cfg(test)]

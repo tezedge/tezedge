@@ -69,20 +69,20 @@ Right now handshake and handling of some messages is implemented inside
 state machine, so we need some way to connect that to the rest of the
 actor system.
 
-That is what `PeerManager` actor is used for. It used to handle handshake
+That is what `TezedgeStateManager` actor is used for. It used to handle handshake
 and other parts, but now it's simply used as a shell. All it's contents
 are deleted and it is simply used to connect state machine to the actor
 system.
 
 At the start it simply spawns thread for state machine. Then it communicates
 with that thread using [mpsc channel](https://doc.rust-lang.org/std/sync/mpsc/index.html).
-That mpsc channel is used for one way messaging from `PeerManager` to
-state machine. It is used to propagate `NetworkChannelMsg` to state machine.
+That mpsc channel is used for one way messaging from `TezedgeStateManager` to
+state machine. It is used to propagate different messages from shell to state machine.
 
-Other actors use `NetworkChannel` to send messages to the state machine.
-`PeerManager` receives it and passes it to state machine's thread. When
+Other actors use `ProposerHandle` to send/delegate messages to the state machine.
+`TezedgeStateManager` receives it and passes it to state machine's thread. When
 state machine receives the message from peer (which it doesn't handle yet),
-it publishes that message over the network channel.
+it publishes that message over the `shell::subscription::Notifier` "framework" based on `mpsc` queues.
 
 # Tezedge proposer
 

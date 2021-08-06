@@ -5,16 +5,14 @@ use std::sync::PoisonError;
 use std::{collections::HashMap, convert::TryFrom};
 use std::{convert::TryInto, ops::Neg};
 
-use chrono::SecondsFormat;
 use failure::{bail, Fail};
 use hex::FromHexError;
 use hyper::{Body, Request};
-use riker::actors::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crypto::hash::{BlockHash, ChainId, ProtocolHash};
-use shell::mempool::mempool_prevalidator::MempoolPrevalidator;
+use shell::mempool::Prevalidator;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::{
     BlockAdditionalData, BlockHeaderWithHash, BlockJsonData, BlockMetaStorage,
@@ -728,87 +726,15 @@ pub(crate) async fn create_rpc_request(req: Request<Body>) -> Result<RpcRequest,
     })
 }
 
-#[derive(Serialize, Debug)]
-pub(crate) struct Prevalidator {
-    chain_id: String,
-    status: WorkerStatus,
-    // TODO: implement the json structure form ocaml's RPC
-    // TODO: missing Tezos fields
-    // information
-    // pipelines
-}
-
-#[derive(Serialize, Debug)]
-pub struct WorkerStatus {
-    phase: WorkerStatusPhase,
-    since: String,
-}
-
-#[derive(Serialize, Debug)]
-#[serde(untagged)]
-pub enum WorkerStatusPhase {
-    #[serde(rename = "running")]
-    Running,
-}
-
 /// Returns all prevalidator actors
 pub(crate) fn get_prevalidators(
     env: &RpcServiceEnvironment,
 ) -> Result<Vec<Prevalidator>, RpcServiceError> {
-    // find potential actors
-    let prevalidator_actors = env
-        .sys()
-        .user_root()
-        .children()
-        .filter(|actor_ref| {
-            MempoolPrevalidator::is_mempool_prevalidator_actor_name(actor_ref.name())
+    env.mempool_prevalidator_factory()
+        .find_mempool_prevalidators()
+        .map_err(|e| RpcServiceError::UnexpectedError {
+            reason: format!("{}", e),
         })
-        .collect::<Vec<_>>();
-
-    if !prevalidator_actors.is_empty() {
-        // resolve active prevalidators
-        let mut result = Vec::with_capacity(prevalidator_actors.len());
-        for prevalidator_actor in prevalidator_actors {
-            // get mempool state
-            let mempool_state = env.current_mempool_state_storage().read()?;
-            if let Some(mempool_prevalidator) = mempool_state.prevalidator() {
-                let prevalidator_actor_chain_id =
-                    MempoolPrevalidator::resolve_chain_id_from_mempool_prevalidator_actor_name(
-                        prevalidator_actor.name(),
-                    );
-                let accept_mempool_prevalidator =
-                    if let Some(chain_id) = prevalidator_actor_chain_id {
-                        mempool_prevalidator.chain_id.to_base58_check() == *chain_id
-                    } else {
-                        false
-                    };
-
-                if accept_mempool_prevalidator {
-                    result.push(Prevalidator {
-                        chain_id: mempool_prevalidator.chain_id.to_base58_check(),
-                        status: WorkerStatus {
-                            phase: WorkerStatusPhase::Running,
-                            since: {
-                                match mempool_state.prevalidator_started() {
-                                    Some(since) => {
-                                        since.to_rfc3339_opts(SecondsFormat::Millis, true)
-                                    }
-                                    // TODO: here should be exact date of _mempool_prevalidator_actor, not system at all
-                                    None => env
-                                        .sys()
-                                        .start_date()
-                                        .to_rfc3339_opts(SecondsFormat::Millis, true),
-                                }
-                            },
-                        },
-                    })
-                }
-            }
-        }
-        Ok(result)
-    } else {
-        Ok(vec![])
-    }
 }
 
 #[cfg(test)]

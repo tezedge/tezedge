@@ -18,7 +18,7 @@ use shell::mempool::CurrentMempoolStateStorageRef;
 use storage::{BlockHeaderWithHash, BlockMetaStorage, BlockMetaStorageReader, PersistentStorage};
 use tezos_messages::{ts_to_rfc3339, TimestampOutOfRangeError};
 
-use crate::rpc_actor::RpcCollectedStateRef;
+use crate::server::RpcCollectedStateRef;
 use crate::services::mempool_services::get_pending_operations;
 
 pub const MONITOR_TIMER_MILIS: u64 = 100;
@@ -136,7 +136,7 @@ impl OperationMonitorStream {
         } = self;
 
         let (mempool_operations, protocol_hash) = if let Ok((ops, protocol_hash)) =
-            get_pending_operations(&chain_id, current_mempool_state_storage.clone())
+            get_pending_operations(chain_id, current_mempool_state_storage.clone())
         {
             (ops, protocol_hash)
         } else {

@@ -38,10 +38,11 @@ use crate::chain_current_head_manager::{ChainCurrentHeadManagerRef, ProcessValid
 use crate::peer_branch_bootstrapper::{
     ApplyBlockBatchDone, ApplyBlockBatchFailed, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{InjectBlockOneshotResultCallback, ShellChannelMsg, ShellChannelRef};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::state::{ApplyBlockBatch, StateError};
 use crate::stats::apply_block_stats::{ApplyBlockStats, BlockValidationTimer};
 use crate::subscription::subscribe_to_shell_shutdown;
+use crate::tezedge_state_manager::proposer_messages::InjectBlockOneshotResultCallback;
 use crate::utils::dispatch_oneshot_result;
 use std::collections::VecDeque;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};

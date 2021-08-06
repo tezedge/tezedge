@@ -13,21 +13,15 @@ use std::time::{Duration, Instant, SystemTime};
 use dns_lookup::LookupError;
 use failure::Fail;
 use rand::{rngs::StdRng, Rng, SeedableRng as _};
-use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::network_channel::{
-    NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic, PeerMessageReceived,
-};
 use networking::{LocalPeerInfo, PeerId, ShellCompatibilityVersion};
 use tezos_identity::Identity;
 
+use crate::subscription::*;
 use crate::PeerConnectionThreshold;
 
-use tla_sm::Acceptor;
-
-use tezedge_state::proposals::ExtendPotentialPeersProposal;
 use tezedge_state::{Effects, TezedgeConfig, TezedgeState};
 
 use tezedge_state::proposer::mio_manager::{MioEvents, MioManager};
@@ -69,22 +63,12 @@ impl P2p {
     pub const DEFAULT_P2P_PORT_FOR_LOOKUP: u16 = 9732;
 }
 
-pub enum ProposerMsg {
-    NetworkChannel(NetworkChannelMsg),
-}
-
-impl From<NetworkChannelMsg> for ProposerMsg {
-    fn from(msg: NetworkChannelMsg) -> Self {
-        Self::NetworkChannel(msg)
-    }
-}
-
 #[derive(Debug, Fail)]
 pub enum NotifyProposerError {
     #[fail(display = "Notify proposer failed, reason: {:?}", _0)]
     IO(std::io::Error),
     #[fail(display = "Notify proposer failed (queue), reason: {:?}", _0)]
-    SendError(std::sync::mpsc::SendError<ProposerMsg>),
+    SendError(std::sync::mpsc::SendError<proposer_messages::ProposerMsg>),
 }
 
 impl From<std::io::Error> for NotifyProposerError {
@@ -93,8 +77,8 @@ impl From<std::io::Error> for NotifyProposerError {
     }
 }
 
-impl From<std::sync::mpsc::SendError<ProposerMsg>> for NotifyProposerError {
-    fn from(err: std::sync::mpsc::SendError<ProposerMsg>) -> Self {
+impl From<std::sync::mpsc::SendError<proposer_messages::ProposerMsg>> for NotifyProposerError {
+    fn from(err: std::sync::mpsc::SendError<proposer_messages::ProposerMsg>) -> Self {
         Self::SendError(err)
     }
 }
@@ -106,11 +90,14 @@ impl From<std::sync::mpsc::SendError<ProposerMsg>> for NotifyProposerError {
 #[derive(Clone)]
 pub struct ProposerHandle {
     waker: Arc<mio::Waker>,
-    sender: mpsc::SyncSender<ProposerMsg>,
+    sender: mpsc::SyncSender<proposer_messages::ProposerMsg>,
 }
 
 impl ProposerHandle {
-    pub fn new(waker: Arc<mio::Waker>, sender: mpsc::SyncSender<ProposerMsg>) -> Self {
+    pub fn new(
+        waker: Arc<mio::Waker>,
+        sender: mpsc::SyncSender<proposer_messages::ProposerMsg>,
+    ) -> Self {
         Self { waker, sender }
     }
 
@@ -119,7 +106,7 @@ impl ProposerHandle {
     /// Sends the message and wakes up state machine thread.
     pub fn notify<T>(&self, msg: T) -> Result<(), NotifyProposerError>
     where
-        T: Into<ProposerMsg>,
+        T: Into<proposer_messages::ProposerMsg>,
     {
         self.sender.send(msg.into())?;
         // wake will cause [TezedgeProposer::wait_for_events] ->
@@ -137,9 +124,9 @@ fn run<Efs: Effects>(
         FileProposalPersisterHandle,
         FileProposalLoader,
     >,
-    rx: mpsc::Receiver<ProposerMsg>,
-    network_channel: NetworkChannelRef,
-    _log: &Logger,
+    rx: mpsc::Receiver<proposer_messages::ProposerMsg>,
+    network_event_notifier: Notifier<NetworkEventNotificationRef>,
+    shell_command_notifier: Notifier<ShellCommandNotificationRef>,
 ) {
     loop {
         proposer.make_progress();
@@ -154,51 +141,34 @@ fn run<Efs: Effects>(
                     metadata,
                     network_version,
                 } => {
-                    network_channel.tell(
-                        Publish {
-                            msg: NetworkChannelMsg::PeerBootstrapped(
-                                Arc::new(PeerId {
-                                    address: peer_address,
-                                    public_key_hash: peer_public_key_hash,
-                                }),
-                                metadata,
-                                Arc::new(network_version),
-                            ),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        },
-                        None,
-                    );
+                    network_event_notifier.notify(Arc::new(
+                        NetworkEventNotification::PeerBootstrapped(
+                            Arc::new(PeerId {
+                                address: peer_address,
+                                public_key_hash: peer_public_key_hash,
+                            }),
+                            metadata,
+                            Arc::new(network_version),
+                        ),
+                    ));
                 }
                 Notification::MessageReceived { peer, message } => {
-                    network_channel.tell(
-                        Publish {
-                            msg: NetworkChannelMsg::PeerMessageReceived(PeerMessageReceived {
-                                peer_address: peer,
-                                message,
-                            }),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        },
-                        None,
+                    network_event_notifier.notify(
+                        proposer_messages::PeerMessageReceived {
+                            peer_address: peer,
+                            message,
+                        }
+                        .into(),
                     );
                 }
                 Notification::PeerDisconnected { peer } => {
-                    network_channel.tell(
-                        Publish {
-                            // TODO: probably this should be separate Disconnect msg.
-                            msg: NetworkChannelMsg::PeerDisconnected(peer),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        },
-                        None,
-                    );
+                    // TODO: probably this should be separate Disconnect msg.
+                    network_event_notifier
+                        .notify(Arc::new(NetworkEventNotification::PeerDisconnected(peer)));
                 }
                 Notification::PeerBlacklisted { peer } => {
-                    network_channel.tell(
-                        Publish {
-                            msg: NetworkChannelMsg::PeerBlacklisted(peer),
-                            topic: NetworkChannelTopic::NetworkEvents.into(),
-                        },
-                        None,
-                    );
+                    network_event_notifier
+                        .notify(Arc::new(NetworkEventNotification::PeerBlacklisted(peer)));
                 }
             }
         }
@@ -206,22 +176,77 @@ fn run<Efs: Effects>(
         // Read and handle messages incoming from actor system or `PeerManager`.
         loop {
             match rx.try_recv() {
-                Ok(ProposerMsg::NetworkChannel(msg)) => match msg {
-                    NetworkChannelMsg::PeerStalled(peer_id) => {
+                Ok(proposer_messages::ProposerMsg::NetworkChannel(msg)) => match msg {
+                    proposer_messages::NetworkChannelMsg::PeerStalled(peer_id) => {
                         proposer.disconnect_peer(Instant::now(), peer_id.address);
                     }
-                    NetworkChannelMsg::BlacklistPeer(peer_id, reason) => {
+                    proposer_messages::NetworkChannelMsg::BlacklistPeer(peer_id, reason) => {
                         proposer.blacklist_peer(Instant::now(), peer_id.address);
                     }
-                    NetworkChannelMsg::SendMessage(peer_id, message) => {
+                    proposer_messages::NetworkChannelMsg::SendMessage(peer_id, message) => {
                         proposer.enqueue_send_message_to_peer(
                             Instant::now(),
                             peer_id.address,
                             message.message.clone(),
                         );
                     }
-                    _ => (),
                 },
+                Ok(proposer_messages::ProposerMsg::PeerBranchSynchronizationDone(msg)) => {
+                    // TODO: temporary redirect to chain_manager
+                    shell_command_notifier
+                        .notify(ShellCommandNotification::PeerBranchSynchronizationDone(msg));
+                }
+                Ok(proposer_messages::ProposerMsg::AdvertiseToP2pNewCurrentBranch(
+                    chain_id,
+                    block_hash,
+                )) => {
+                    // TODO: TE-677 - replace with proposer
+                    // TODO: temporary redirect to chain_manager
+                    shell_command_notifier.notify(
+                        ShellCommandNotification::AdvertiseToP2pNewCurrentBranch(
+                            chain_id, block_hash,
+                        ),
+                    );
+                }
+                Ok(proposer_messages::ProposerMsg::AdvertiseToP2pNewCurrentHead(
+                    chain_id,
+                    block_hash,
+                )) => {
+                    // TODO: TE-677 - replace with proposer
+                    // TODO: temporary redirect to chain_manager
+                    shell_command_notifier.notify(
+                        ShellCommandNotification::AdvertiseToP2pNewCurrentHead(
+                            chain_id, block_hash,
+                        ),
+                    );
+                }
+                Ok(proposer_messages::ProposerMsg::AdvertiseToP2pNewMempool(
+                    chain_id,
+                    block_hash,
+                    mempool,
+                )) => {
+                    // TODO: TE-677 - replace with proposer
+                    // TODO: temporary redirect to chain_manager
+                    shell_command_notifier.notify(
+                        ShellCommandNotification::AdvertiseToP2pNewMempool(
+                            chain_id, block_hash, mempool,
+                        ),
+                    );
+                }
+                Ok(proposer_messages::ProposerMsg::RequestCurrentHead) => {
+                    // TODO: TE-676 - replace with proposer
+                    // TODO: temporary redirect to chain_manager
+                    shell_command_notifier.notify(ShellCommandNotification::RequestCurrentHead);
+                }
+                Ok(proposer_messages::ProposerMsg::InjectBlock(
+                    inject_block_request,
+                    inject_block_callback,
+                )) => {
+                    shell_command_notifier.notify(ShellCommandNotification::InjectBlock(
+                        inject_block_request,
+                        inject_block_callback,
+                    ));
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => return,
             }
@@ -287,10 +312,14 @@ enum ProposerThreadHandle {
         TezedgeState,
         MioManager,
         StdRng,
-        Receiver<ProposerMsg>,
-        NetworkChannelRef,
+        Receiver<proposer_messages::ProposerMsg>,
         HashSet<SocketAddr>,
     ),
+}
+
+#[derive(Debug)]
+pub enum TezedgeStateManagerSpawnError {
+    IoError(std::io::Error),
 }
 
 pub struct TezedgeStateManager {
@@ -303,7 +332,6 @@ impl TezedgeStateManager {
     const PROPOSER_QUEUE_MAX_CAPACITY: usize = 100_000;
 
     pub fn new(
-        network_channel: NetworkChannelRef,
         log: Logger,
         identity: Arc<Identity>,
         shell_compatibility_version: Arc<ShellCompatibilityVersion>,
@@ -391,20 +419,22 @@ impl TezedgeStateManager {
                 mio_manager,
                 effects,
                 proposer_rx,
-                network_channel,
                 initial_potential_peers,
             )),
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(
+        &mut self,
+        network_event_notifier: Notifier<NetworkEventNotificationRef>,
+        shell_command_notifier: Notifier<ShellCommandNotificationRef>,
+    ) -> Result<(), TezedgeStateManagerSpawnError> {
         if let Some(ProposerThreadHandle::NotRunning(
             config,
             tezedge_state,
             mio_manager,
             effects,
             proposer_rx,
-            network_channel,
             initial_potential_peers,
         )) = self.proposer_thread_handle.take()
         {
@@ -434,13 +464,20 @@ impl TezedgeStateManager {
                 .name("tezedge-proposer".to_owned())
                 .spawn(move || {
                     proposer.extend_potential_peers(Instant::now(), initial_potential_peers);
-                    run(proposer, proposer_rx, network_channel, &log);
+                    run(
+                        proposer,
+                        proposer_rx,
+                        network_event_notifier,
+                        shell_command_notifier,
+                    );
                 })
-                .expect("failed to spawn proposer-thread");
+                .map_err(TezedgeStateManagerSpawnError::IoError)?;
 
             self.proposer_thread_handle =
                 Some(ProposerThreadHandle::Running(proposer_thread_handle));
         }
+
+        Ok(())
     }
 
     pub fn proposer_handle(&self) -> ProposerHandle {
@@ -466,5 +503,72 @@ impl Drop for TezedgeStateManager {
         if let Err(e) = waker.wake() {
             warn!(log, "Failed to shutdown proposer waker"; "reason" => e);
         }
+    }
+}
+
+pub mod proposer_messages {
+
+    use std::sync::Arc;
+
+    use crypto::hash::{BlockHash, ChainId};
+    use networking::{PeerAddress, PeerId};
+    use storage::BlockHeaderWithHash;
+    use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
+    use tezos_messages::p2p::encoding::prelude::{Mempool, Operation, Path};
+
+    use crate::state::synchronization_state::PeerBranchSynchronizationDone;
+    use crate::state::StateError;
+    use crate::utils::OneshotResultCallback;
+
+    pub enum ProposerMsg {
+        NetworkChannel(NetworkChannelMsg),
+        /// Messages should trigger logic to ask all connected peers for their CurrentHead
+        RequestCurrentHead,
+        /// Inject new block to chain from RPC
+        InjectBlock(InjectBlock, Option<InjectBlockOneshotResultCallback>),
+        /// We downloaded and applied the whole branch from peer
+        PeerBranchSynchronizationDone(PeerBranchSynchronizationDone),
+
+        /// Advertise messages
+        AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
+        AdvertiseToP2pNewCurrentHead(Arc<ChainId>, Arc<BlockHash>),
+        AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
+    }
+
+    impl From<NetworkChannelMsg> for ProposerMsg {
+        fn from(msg: NetworkChannelMsg) -> Self {
+            Self::NetworkChannel(msg)
+        }
+    }
+
+    impl From<PeerBranchSynchronizationDone> for ProposerMsg {
+        fn from(msg: PeerBranchSynchronizationDone) -> Self {
+            Self::PeerBranchSynchronizationDone(msg)
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct InjectBlock {
+        pub chain_id: Arc<ChainId>,
+        pub block_header: Arc<BlockHeaderWithHash>,
+        pub operations: Option<Vec<Vec<Operation>>>,
+        pub operation_paths: Option<Vec<Path>>,
+    }
+
+    pub type InjectBlockOneshotResultCallback = OneshotResultCallback<Result<(), StateError>>;
+
+    /// We have received message from another peer
+    #[derive(Clone, Debug)]
+    pub struct PeerMessageReceived {
+        pub peer_address: PeerAddress,
+        pub message: Arc<PeerMessageResponse>,
+    }
+
+    /// Network related commands (dedicated to proposer)
+    #[derive(Clone, Debug)]
+    pub enum NetworkChannelMsg {
+        PeerStalled(Arc<PeerId>),
+        BlacklistPeer(Arc<PeerId>, String),
+        SendMessage(Arc<PeerId>, Arc<PeerMessageResponse>),
     }
 }

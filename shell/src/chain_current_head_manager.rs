@@ -22,10 +22,12 @@ use crate::mempool::mempool_prevalidator::{
     MempoolPrevalidatorBasicRef, MempoolPrevalidatorMsg, ResetMempool,
 };
 use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::head_state::{CurrentHeadRef, HeadResult, HeadState};
 use crate::state::synchronization_state::SynchronizationBootstrapStateRef;
 use crate::state::StateError;
+use crate::subscription::*;
+use crate::tezedge_state_manager::proposer_messages::ProposerMsg;
+use crate::tezedge_state_manager::ProposerHandle;
 
 /// Message commands [`ChainCurrentHeadManager`] to process applied block.
 /// Chain_feeder propagates if block successfully validated and applied
@@ -45,8 +47,8 @@ impl ProcessValidatedBlock {
 /// Purpose of this actor is to perform chain synchronization.
 #[actor(ProcessValidatedBlock)]
 pub struct ChainCurrentHeadManager {
-    /// All events from shell will be published to this channel
-    shell_channel: ShellChannelRef,
+    proposer: ProposerHandle,
+    new_current_head_notifier: Arc<Notifier<NewCurrentHeadNotificationRef>>,
 
     /// Helps to manage current head
     head_state: HeadState,
@@ -68,7 +70,8 @@ impl ChainCurrentHeadManager {
     /// Create new actor instance.
     pub fn actor(
         sys: &ActorSystem,
-        shell_channel: ShellChannelRef,
+        proposer: ProposerHandle,
+        new_current_head_notifier: Notifier<NewCurrentHeadNotificationRef>,
         persistent_storage: PersistentStorage,
         init_storage_data: StorageInitInfo,
         local_current_head_state: CurrentHeadRef,
@@ -80,7 +83,8 @@ impl ChainCurrentHeadManager {
         sys.actor_of_props::<ChainCurrentHeadManager>(
             ChainCurrentHeadManager::name(),
             Props::new_args((
-                shell_channel,
+                proposer,
+                Arc::new(new_current_head_notifier),
                 persistent_storage,
                 init_storage_data,
                 local_current_head_state,
@@ -126,18 +130,13 @@ impl ChainCurrentHeadManager {
 
             let mut is_bootstrapped = self.current_bootstrap_state.read()?.is_bootstrapped();
 
-            // notify other actors that new current head was changed
-            self.shell_channel.tell(
-                Publish {
-                    msg: ShellChannelMsg::NewCurrentHead(
-                        new_head.clone(),
-                        block.clone(),
-                        is_bootstrapped,
-                    ),
-                    topic: ShellChannelTopic::ShellNewCurrentHead.into(),
-                },
-                None,
-            );
+            // notify registered subscribers that new current head was changed
+            self.new_current_head_notifier
+                .notify(Arc::new(NewCurrentHeadNotification::new(
+                    chain_id.clone(),
+                    block.clone(),
+                    is_bootstrapped,
+                )));
 
             if !is_bootstrapped {
                 let chain_manager_current_level = new_head.level();
@@ -204,28 +203,26 @@ impl ChainCurrentHeadManager {
                 // advertise new branch or new head
                 match new_head_result {
                     HeadResult::BranchSwitch => {
-                        self.shell_channel.tell(
-                            Publish {
-                                msg: ShellChannelMsg::AdvertiseToP2pNewCurrentBranch(
+                        if let Err(err) =
+                            self.proposer
+                                .notify(ProposerMsg::AdvertiseToP2pNewCurrentBranch(
                                     chain_id,
                                     Arc::new(new_head.block_hash().clone()),
-                                ),
-                                topic: ShellChannelTopic::ShellCommands.into(),
-                            },
-                            None,
-                        );
+                                ))
+                        {
+                            warn!(ctx.system.log(), "Failed to notify proposer (AdvertiseToP2pNewCurrentBranch)"; "reason" => format!("{:?}", err));
+                        }
                     }
                     HeadResult::HeadIncrement => {
-                        self.shell_channel.tell(
-                            Publish {
-                                msg: ShellChannelMsg::AdvertiseToP2pNewCurrentHead(
+                        if let Err(err) =
+                            self.proposer
+                                .notify(ProposerMsg::AdvertiseToP2pNewCurrentHead(
                                     chain_id,
                                     Arc::new(new_head.block_hash().clone()),
-                                ),
-                                topic: ShellChannelTopic::ShellCommands.into(),
-                            },
-                            None,
-                        );
+                                ))
+                        {
+                            warn!(ctx.system.log(), "Failed to notify proposer (AdvertiseToP2pNewCurrentHead)"; "reason" => format!("{:?}", err));
+                        }
                     }
                     HeadResult::GenesisInitialized => {
                         (/* doing nothing, we dont advertise genesis */)
@@ -284,7 +281,8 @@ impl ChainCurrentHeadManager {
 
 impl
     ActorFactoryArgs<(
-        ShellChannelRef,
+        ProposerHandle,
+        Arc<Notifier<NewCurrentHeadNotificationRef>>,
         PersistentStorage,
         StorageInitInfo,
         CurrentHeadRef,
@@ -296,7 +294,8 @@ impl
 {
     fn create_args(
         (
-            shell_channel,
+            proposer,
+            new_current_head_notifier,
             persistent_storage,
             init_storage_data,
             local_current_head_state,
@@ -305,7 +304,8 @@ impl
             current_bootstrap_state,
             mempool_prevalidator_factory,
         ): (
-            ShellChannelRef,
+            ProposerHandle,
+            Arc<Notifier<NewCurrentHeadNotificationRef>>,
             PersistentStorage,
             StorageInitInfo,
             CurrentHeadRef,
@@ -316,7 +316,8 @@ impl
         ),
     ) -> Self {
         ChainCurrentHeadManager {
-            shell_channel,
+            proposer,
+            new_current_head_notifier,
             head_state: HeadState::new(
                 &persistent_storage,
                 local_current_head_state,
