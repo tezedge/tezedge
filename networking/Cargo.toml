@@ -12,7 +12,6 @@ rand = "0.7.3"
 failure = "0.1"
 futures = "0.3"
 hex = "0.4"
-riker = "0.4"
 slog = { version = "2.7", features = ["max_level_trace", "release_max_level_debug"] }
 tokio = { version = "1.8", features = ["time", "net", "io-util", "rt-multi-thread", "macros"] }
 lazy_static = "1.4"

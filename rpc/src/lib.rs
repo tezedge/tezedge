@@ -5,15 +5,14 @@
 use hyper::{Body, Response, StatusCode};
 use slog::{error, Logger};
 
-pub use services::mempool_services::MempoolOperations;
-
 use crate::helpers::RpcServiceError;
 
 pub mod encoding;
 mod helpers;
-pub mod rpc_actor;
-mod server;
 mod services;
+
+mod server;
+pub use server::rpc_server::RpcServer;
 
 /// Crate level custom result
 pub type ServiceResult = Result<Response<Body>, Box<dyn std::error::Error + Sync + Send>>;

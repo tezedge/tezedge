@@ -11,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Instant;
 
-use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
@@ -22,7 +21,6 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
 };
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::DataQueues;
 use crate::state::synchronization_state::PeerBranchSynchronizationDone;
@@ -47,18 +45,14 @@ pub struct BootstrapState {
 
     /// Data requester
     data_requester: DataRequesterRef,
-
-    /// Shell channel
-    shell_channel: ShellChannelRef,
 }
 
 impl BootstrapState {
-    pub fn new(data_requester: DataRequesterRef, shell_channel: ShellChannelRef) -> Self {
+    pub fn new(data_requester: DataRequesterRef) -> Self {
         Self {
             peers: Default::default(),
             block_state_db: BlockStateDb::new(512),
             data_requester,
-            shell_channel,
         }
     }
 
@@ -142,7 +136,7 @@ impl BootstrapState {
             .for_each(|PeerBootstrapState { branches, peer_id, empty_bootstrap_state, .. }| {
                 branches
                     .retain(|branch| {
-                        if branch.contains_block(&failed_block) {
+                        if branch.contains_block(failed_block) {
                             warn!(log, "Peer's branch bootstrap contains failed block, so this branch bootstrap is removed";
                                "block_hash" => failed_block.to_base58_check(),
                                "to_level" => &branch.to_level,
@@ -286,7 +280,7 @@ impl BootstrapState {
                     if peer_state
                         .branches
                         .iter()
-                        .any(|branch| branch.contains_block(&last_block_from_missing_history))
+                        .any(|branch| branch.contains_block(last_block_from_missing_history))
                     {
                         return AddBranchState::Ignored;
                     }
@@ -472,7 +466,7 @@ impl BootstrapState {
             if let Err(e) = self.data_requester.fetch_block_operations(
                 missing_blocks,
                 peer_id,
-                &peer_queues,
+                peer_queues,
                 log,
                 |already_downloaded_block| {
                     let _ = already_downloaded.insert(already_downloaded_block);
@@ -558,7 +552,7 @@ impl BootstrapState {
             peer_state
                 .branches
                 .iter_mut()
-                .for_each(|branch| branch.block_operations_downloaded(&block_hash))
+                .for_each(|branch| branch.block_operations_downloaded(block_hash))
         });
     }
 
@@ -586,7 +580,7 @@ impl BootstrapState {
     pub fn check_bootstrapped_branches(&mut self, filter_peer: &Option<Arc<PeerId>>, log: &Logger) {
         let BootstrapState {
             peers,
-            shell_channel,
+            data_requester,
             ..
         } = self;
 
@@ -614,18 +608,13 @@ impl BootstrapState {
                     // send for peer just once
                     if !(*is_bootstrapped) {
                         *is_bootstrapped = true;
-                        shell_channel.tell(
-                            Publish {
-                                msg: ShellChannelMsg::PeerBranchSynchronizationDone(
-                                    PeerBranchSynchronizationDone::new(
-                                        peer_id.clone(),
-                                        branch.to_level,
-                                    ),
-                                ),
-                                topic: ShellChannelTopic::ShellCommands.into(),
-                            },
-                            None,
-                        );
+                        // notify state machine that peer has bootstrapped branch
+                        if let Err(err) = data_requester.proposer.notify(PeerBranchSynchronizationDone::new(
+                            peer_id.clone(),
+                            branch.to_level,
+                        )) {
+                            warn!(log, "Failed to notify proposer with PeerBranchSynchronizationDone"; "reason" => format!("{:?}", err));
+                        }
                     }
 
                     false
@@ -852,9 +841,8 @@ impl BranchState {
             match interval.state {
                 BranchIntervalState::Open => break,
                 BranchIntervalState::Downloaded => {
-                    self.blocks_to_apply.extend(
-                        interval.collect_blocks_for_apply(&block_state_db, data_requester)?,
-                    );
+                    self.blocks_to_apply
+                        .extend(interval.collect_blocks_for_apply(block_state_db, data_requester)?);
                     interval.state = BranchIntervalState::ScheduledForApply;
                     continue;
                 }
@@ -878,7 +866,7 @@ impl BranchState {
                 }
                 None => {
                     // get actual state from db
-                    match data_requester.block_meta_storage.get(&b)? {
+                    match data_requester.block_meta_storage.get(b)? {
                         Some(block_metadata) => {
                             // check if already applied
                             if block_metadata.is_applied() {
@@ -899,7 +887,7 @@ impl BranchState {
 
                             // check missing operations
                             if !matches!(
-                                data_requester.operations_meta_storage.is_complete(&b),
+                                data_requester.operations_meta_storage.is_complete(b),
                                 Ok(true)
                             ) {
                                 // if operations not found, stop scheduling and trigger operations download, we need to wait
@@ -1339,12 +1327,12 @@ fn find_last_known_predecessor(
         return (Some((block_from.clone(), true)), None);
     }
 
-    if block_to.as_ref().eq(&block_from) {
+    if block_to.as_ref().eq(block_from) {
         return (Some((block_to.clone(), true)), None);
     }
 
     // find actual block data in database
-    let predecessor_selector = match data_requester.block_meta_storage.get(&block_from) {
+    let predecessor_selector = match data_requester.block_meta_storage.get(block_from) {
         Ok(Some(block_metadata)) => {
             if block_metadata.is_applied() {
                 // if block is already applied, we finish, there is no need to continue
@@ -1358,7 +1346,7 @@ fn find_last_known_predecessor(
                 if !matches!(
                     data_requester
                         .operations_meta_storage
-                        .is_complete(&block_from),
+                        .is_complete(block_from),
                     Ok(true)
                 ) {
                     missing_operations.insert(block_from.clone());
@@ -1367,7 +1355,7 @@ fn find_last_known_predecessor(
                 // check predecessor
                 match block_metadata.take_predecessor() {
                     Some(predecessor) => {
-                        if predecessor.eq(&block_from) {
+                        if predecessor.eq(block_from) {
                             // stop on genesis
                             return (
                                 Some((block_state_db.get_block_ref(predecessor), true)),

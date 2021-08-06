@@ -2,23 +2,20 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::HashMap;
+use std::sync::mpsc;
 use std::time::Duration;
 
 use networking::PeerAddress;
-use riker::{actor::*, actors::SystemMsg, system::SystemEvent, system::Timer};
+use riker::{actor::*, system::Timer};
 use slog::{debug, info, warn, Logger};
 
 use crypto::hash::ChainId;
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, PeerMessageReceived};
-use shell::shell_channel::{ShellChannelMsg, ShellChannelRef};
-use shell::subscription::{
-    subscribe_to_actor_terminated, subscribe_to_network_events, subscribe_to_shell_events,
-    subscribe_to_shell_new_current_head,
-};
+use shell::subscription::*;
+use shell::tezedge_state_manager::proposer_messages::PeerMessageReceived;
 use storage::chain_meta_storage::ChainMetaStorageReader;
 use storage::PersistentStorage;
 use storage::{BlockStorage, BlockStorageReader, ChainMetaStorage, OperationsMetaStorage};
-use tezos_messages::p2p::binary_message::BinaryWrite;
+use tezos_messages::Head;
 
 use crate::websocket::ws_messages::{WebsocketMessage, WebsocketMessageWrapper};
 use crate::{
@@ -40,10 +37,14 @@ pub struct LogStats;
 
 pub type MonitorRef = ActorRef<MonitorMsg>;
 
-#[actor(BroadcastSignal, NetworkChannelMsg, ShellChannelMsg, LogStats)]
+#[actor(
+    BroadcastSignal,
+    NewCurrentHeadNotificationRef,
+    NetworkEventNotificationRef,
+    ShellEventNotificationRef,
+    LogStats
+)]
 pub struct Monitor {
-    network_channel: NetworkChannelRef,
-    shell_channel: ShellChannelRef,
     websocket_ref: ActorRef<WebsocketHandlerMsg>,
     /// Monitors
     peer_monitors: HashMap<PeerAddress, PeerMonitor>,
@@ -57,31 +58,42 @@ pub struct Monitor {
 }
 
 impl Monitor {
+    const NOTIFY_QUEUE_MAX_CAPACITY: usize = 50_000;
+
     fn name() -> &'static str {
         "monitor-manager"
     }
 
     pub fn actor(
         sys: &impl ActorRefFactory,
-        event_channel: NetworkChannelRef,
         websocket_ref: ActorRef<WebsocketHandlerMsg>,
-        shell_channel: ShellChannelRef,
         persistent_storage: PersistentStorage,
+        log: Logger,
         main_chain_id: ChainId,
-    ) -> Result<MonitorRef, CreateError> {
-        sys.actor_of_props::<Monitor>(
+    ) -> Result<MonitorWrapper, CreateError> {
+        let monitor_ref = sys.actor_of_props::<Monitor>(
             Self::name(),
-            Props::new_args((
-                event_channel,
-                websocket_ref,
-                shell_channel,
-                persistent_storage,
-                main_chain_id,
-            )),
-        )
+            Props::new_args((websocket_ref, persistent_storage, main_chain_id)),
+        )?;
+
+        // start temporariry new network event listener thread
+        let (notify_monitor_tx, notify_monitor_rx) =
+            mpsc::sync_channel(Self::NOTIFY_QUEUE_MAX_CAPACITY);
+
+        // spawn mpsc queue receiver for notifications
+        {
+            std::thread::Builder::new()
+                .name("monitor-notifier".to_owned())
+                .spawn(move || {
+                    run_notify_monitor_listener(notify_monitor_rx, monitor_ref, log);
+                })
+                .map_err(|_e| CreateError::Panicked)?;
+        };
+
+        Ok(MonitorWrapper { notify_monitor_tx })
     }
 
-    fn process_peer_message(&mut self, msg: PeerMessageReceived, log: &Logger) {
+    fn process_peer_message(&mut self, msg: &PeerMessageReceived, log: &Logger) {
         use std::mem::size_of_val;
         use tezos_messages::p2p::encoding::peer::PeerMessage;
 
@@ -111,20 +123,10 @@ impl Monitor {
     }
 }
 
-impl
-    ActorFactoryArgs<(
-        NetworkChannelRef,
-        ActorRef<WebsocketHandlerMsg>,
-        ShellChannelRef,
-        PersistentStorage,
-        ChainId,
-    )> for Monitor
-{
+impl ActorFactoryArgs<(ActorRef<WebsocketHandlerMsg>, PersistentStorage, ChainId)> for Monitor {
     fn create_args(
-        (event_channel, websocket_ref, shell_channel, persistent_storage, main_chain_id): (
-            NetworkChannelRef,
+        (websocket_ref, persistent_storage, main_chain_id): (
             ActorRef<WebsocketHandlerMsg>,
-            ShellChannelRef,
             PersistentStorage,
             ChainId,
         ),
@@ -133,8 +135,6 @@ impl
             initialize_monitors(&persistent_storage, &main_chain_id);
 
         Self {
-            network_channel: event_channel,
-            shell_channel,
             websocket_ref,
             peer_monitors: HashMap::new(),
             bootstrap_monitor,
@@ -150,10 +150,6 @@ impl Actor for Monitor {
     type Msg = MonitorMsg;
 
     fn pre_start(&mut self, ctx: &Context<Self::Msg>) {
-        subscribe_to_shell_events(&self.shell_channel, ctx.myself());
-        subscribe_to_shell_new_current_head(&self.shell_channel, ctx.myself());
-        subscribe_to_network_events(&self.network_channel, ctx.myself());
-
         ctx.schedule::<Self::Msg, _>(
             LOG_INTERVAL / 2,
             LOG_INTERVAL,
@@ -231,14 +227,14 @@ impl Receive<BroadcastSignal> for Monitor {
     }
 }
 
-impl Receive<NetworkChannelMsg> for Monitor {
+impl Receive<NetworkEventNotificationRef> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkChannelMsg, _: Sender) {
-        match msg {
-            NetworkChannelMsg::PeerBootstrapped(peer_id, _, _) => {
+    fn receive(&mut self, ctx: &Context<Self::Msg>, msg: NetworkEventNotificationRef, _: Sender) {
+        match msg.as_ref() {
+            NetworkEventNotification::PeerBootstrapped(peer_id, _, _) => {
                 let previous = self.peer_monitors.insert(
-                    peer_id.address.clone(),
+                    peer_id.address,
                     PeerMonitor::new(peer_id.address.into(), peer_id.public_key_hash.clone()),
                 );
                 if let Some(previous) = previous {
@@ -252,12 +248,12 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     );
                 }
             }
-            NetworkChannelMsg::PeerMessageReceived(msg) => {
+            NetworkEventNotification::PeerMessageReceived(msg) => {
                 self.process_peer_message(msg, &ctx.system.log())
             }
-            NetworkChannelMsg::PeerDisconnected(peer)
-            | NetworkChannelMsg::PeerBlacklisted(peer) => {
-                if let Some(_) = self.peer_monitors.remove(&peer) {
+            NetworkEventNotification::PeerDisconnected(peer)
+            | NetworkEventNotification::PeerBlacklisted(peer) => {
+                if self.peer_monitors.remove(peer).is_some() {
                     ctx.myself.tell(
                         BroadcastSignal::PeerUpdate(PeerConnectionStatus::disconnected(
                             peer.to_string(),
@@ -266,17 +262,21 @@ impl Receive<NetworkChannelMsg> for Monitor {
                     );
                 }
             }
-            _ => (),
         }
     }
 }
 
-impl Receive<ShellChannelMsg> for Monitor {
+impl Receive<ShellEventNotificationRef> for Monitor {
     type Msg = MonitorMsg;
 
-    fn receive(&mut self, _ctx: &Context<Self::Msg>, msg: ShellChannelMsg, _sender: Sender) {
-        match msg {
-            ShellChannelMsg::BlockReceived(msg) => {
+    fn receive(
+        &mut self,
+        _ctx: &Context<Self::Msg>,
+        msg: ShellEventNotificationRef,
+        _sender: Sender,
+    ) {
+        match msg.as_ref() {
+            ShellEventNotification::BlockReceived(msg) => {
                 // Update current max block count
                 self.bootstrap_monitor.set_level(msg.level as usize);
 
@@ -287,22 +287,36 @@ impl Receive<ShellChannelMsg> for Monitor {
                 // update stats for block header
                 self.chain_monitor.process_block_header(msg.level);
             }
-            ShellChannelMsg::NewCurrentHead(head, ..) => {
-                // update stats for block applications
-                self.chain_monitor.process_block_application(*head.level());
-
-                self.blocks_monitor.block_was_applied_by_protocol();
-                self.block_application_monitor.block_was_applied(head);
-            }
-            ShellChannelMsg::AllBlockOperationsReceived(msg) => {
+            ShellEventNotification::AllBlockOperationsReceived(msg) => {
                 self.bootstrap_monitor.increase_block_count();
                 self.blocks_monitor.block_finished_downloading_operations();
 
                 // update stats for block operations
                 self.chain_monitor.process_block_operations(msg.level);
             }
-            _ => (),
         }
+    }
+}
+
+impl Receive<NewCurrentHeadNotificationRef> for Monitor {
+    type Msg = MonitorMsg;
+
+    fn receive(
+        &mut self,
+        _ctx: &Context<Self::Msg>,
+        msg: NewCurrentHeadNotificationRef,
+        _sender: Sender,
+    ) {
+        // update stats for block applications
+        self.chain_monitor
+            .process_block_application(msg.block.header.level());
+
+        self.blocks_monitor.block_was_applied_by_protocol();
+        self.block_application_monitor.block_was_applied(Head::new(
+            msg.block.hash.clone(),
+            msg.block.header.level(),
+            msg.block.header.fitness().to_vec(),
+        ));
     }
 }
 
@@ -312,8 +326,8 @@ fn initialize_monitors(
 ) -> (ChainMonitor, BlocksMonitor, BootstrapMonitor) {
     let mut chain_monitor = ChainMonitor::new();
 
-    let block_storage = BlockStorage::new(&persistent_storage);
-    let operations_meta_storage = OperationsMetaStorage::new(&persistent_storage);
+    let block_storage = BlockStorage::new(persistent_storage);
+    let operations_meta_storage = OperationsMetaStorage::new(persistent_storage);
 
     let mut downloaded_headers = 0;
     let mut downloaded_blocks = 0;
@@ -338,7 +352,7 @@ fn initialize_monitors(
     }
 
     let current_head_level = if let Ok(Some(head)) =
-        ChainMetaStorage::new(&persistent_storage).get_current_head(&main_chain_id)
+        ChainMetaStorage::new(persistent_storage).get_current_head(main_chain_id)
     {
         *head.level()
     } else {
@@ -363,5 +377,140 @@ impl Receive<LogStats> for Monitor {
                    "actor_received_messages_count" => self.get_and_clear_actor_received_messages_count(),
                    "peers_count" => self.peer_monitors.len(),
         );
+    }
+}
+
+pub enum NotifyMonitorMsg {
+    NewCurrentHead(NewCurrentHeadNotificationRef),
+    NetworkEvent(NetworkEventNotificationRef),
+    ShellEvent(ShellEventNotificationRef),
+    Shutdown,
+}
+
+fn run_notify_monitor_listener(
+    rx: mpsc::Receiver<NotifyMonitorMsg>,
+    monitor_ref: MonitorRef,
+    log: Logger,
+) {
+    // Read and handle messages incoming from actor system or `PeerManager`.
+    loop {
+        match rx.recv() {
+            Ok(NotifyMonitorMsg::NewCurrentHead(notification)) => {
+                // TODO: here, we just temporary send to monitor actor
+                monitor_ref.tell(notification, None);
+            }
+            Ok(NotifyMonitorMsg::NetworkEvent(notification)) => {
+                // TODO: here, we just temporary send to monitor actor
+                monitor_ref.tell(notification, None);
+            }
+            Ok(NotifyMonitorMsg::ShellEvent(notification)) => {
+                // TODO: here, we just temporary send to monitor actor
+                monitor_ref.tell(notification, None);
+            }
+            Ok(NotifyMonitorMsg::Shutdown) => {
+                info!(log, "Monitor notification listener finished");
+                return;
+            }
+            Err(mpsc::RecvError) => {
+                info!(
+                    log,
+                    "Monitor notification listener finished (by disconnect)"
+                );
+                return;
+            }
+        }
+    }
+}
+
+pub struct MonitorWrapper {
+    notify_monitor_tx: mpsc::SyncSender<NotifyMonitorMsg>,
+}
+
+impl NotifyCallbackRegistrar<NetworkEventNotificationRef> for MonitorWrapper {
+    fn subscribe(&self, notifier: &mut Notifier<NetworkEventNotificationRef>) {
+        notifier.register(
+            Box::new(MonitorNotifyCallback(self.notify_monitor_tx.clone())),
+            "monitor-network-event-listener".to_string(),
+        );
+    }
+}
+
+struct MonitorNotifyCallback(mpsc::SyncSender<NotifyMonitorMsg>);
+
+impl NotifyCallback<NetworkEventNotificationRef> for MonitorNotifyCallback {
+    fn notify(
+        &self,
+        notification: NetworkEventNotificationRef,
+    ) -> Result<(), SendNotificationError> {
+        self.0
+            .send(NotifyMonitorMsg::NetworkEvent(notification))
+            .map_err(|e| SendNotificationError {
+                reason: format!("{}", e),
+            })
+    }
+
+    fn shutdown(&self) -> Result<(), ShutdownCallbackError> {
+        self.0
+            .try_send(NotifyMonitorMsg::Shutdown)
+            .map_err(|e| ShutdownCallbackError {
+                reason: format!("{}", e),
+            })
+    }
+}
+
+impl NotifyCallbackRegistrar<NewCurrentHeadNotificationRef> for MonitorWrapper {
+    fn subscribe(&self, notifier: &mut Notifier<NewCurrentHeadNotificationRef>) {
+        notifier.register(
+            Box::new(MonitorNotifyCallback(self.notify_monitor_tx.clone())),
+            "monitor-new-current-head-listener".to_string(),
+        );
+    }
+}
+
+impl NotifyCallback<NewCurrentHeadNotificationRef> for MonitorNotifyCallback {
+    fn notify(
+        &self,
+        notification: NewCurrentHeadNotificationRef,
+    ) -> Result<(), SendNotificationError> {
+        self.0
+            .send(NotifyMonitorMsg::NewCurrentHead(notification))
+            .map_err(|e| SendNotificationError {
+                reason: format!("{}", e),
+            })
+    }
+
+    fn shutdown(&self) -> Result<(), ShutdownCallbackError> {
+        self.0
+            .try_send(NotifyMonitorMsg::Shutdown)
+            .map_err(|e| ShutdownCallbackError {
+                reason: format!("{}", e),
+            })
+    }
+}
+
+impl NotifyCallbackRegistrar<ShellEventNotificationRef> for MonitorWrapper {
+    fn subscribe(&self, notifier: &mut Notifier<ShellEventNotificationRef>) {
+        notifier.register(
+            Box::new(MonitorNotifyCallback(self.notify_monitor_tx.clone())),
+            "monitor-shell-event-listener".to_string(),
+        );
+    }
+}
+
+impl NotifyCallback<ShellEventNotificationRef> for MonitorNotifyCallback {
+    fn notify(&self, notification: ShellEventNotificationRef) -> Result<(), SendNotificationError> {
+        self.0
+            .send(NotifyMonitorMsg::ShellEvent(notification))
+            .map_err(|e| SendNotificationError {
+                reason: format!("{}", e),
+            })
+    }
+
+    fn shutdown(&self) -> Result<(), ShutdownCallbackError> {
+        self.0
+            .try_send(NotifyMonitorMsg::Shutdown)
+            .map_err(|e| ShutdownCallbackError {
+                reason: format!("{}", e),
+            })
     }
 }

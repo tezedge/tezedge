@@ -4,43 +4,53 @@
 use std::future::Future;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
 };
 
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 use hyper::service::{make_service_fn, service_fn};
 use hyper::{Body, Method, Request, Response};
-use riker::actors::ActorSystem;
 use slog::{error, Logger};
 use tokio::runtime::Handle;
 
 use crypto::hash::{BlockHash, ChainId};
-use shell::mempool::CurrentMempoolStateStorageRef;
-use shell::shell_channel::ShellChannelRef;
-use storage::PersistentStorage;
+use shell::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
+use shell::tezedge_state_manager::ProposerHandle;
+use storage::{BlockHeaderWithHash, PersistentStorage};
 use tezos_api::environment::TezosEnvironmentConfiguration;
 use tezos_messages::p2p::encoding::version::NetworkVersion;
 use tezos_wrapper::TezedgeContextClient;
 use tezos_wrapper::TezosApiConnectionPool;
 use url::Url;
 
-use crate::rpc_actor::RpcCollectedStateRef;
 use crate::{error_with_message, not_found, options};
 
 mod dev_handler;
 mod openapi_handler;
 mod protocol_handler;
 mod router;
+pub(crate) mod rpc_server;
 mod shell_handler;
+
+/// Thread safe reference to a shared RPC state
+pub type RpcCollectedStateRef = Arc<RwLock<RpcCollectedState>>;
+
+/// Represents various collected information about
+/// internal state of the node.
+#[derive(CopyGetters, Getters)]
+pub struct RpcCollectedState {
+    #[get = "pub(crate)"]
+    current_head: Option<Arc<BlockHeaderWithHash>>,
+}
 
 /// Server environment parameters
 #[derive(Getters, Clone)]
 pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
-    sys: ActorSystem,
+    mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
     #[get = "pub(crate)"]
     persistent_storage: PersistentStorage,
     #[get = "pub(crate)"]
@@ -48,7 +58,7 @@ pub struct RpcServiceEnvironment {
     #[get = "pub(crate)"]
     state: RpcCollectedStateRef,
     #[get = "pub(crate)"]
-    shell_channel: ShellChannelRef,
+    proposer: ProposerHandle,
     #[get = "pub(crate)"]
     tezos_environment: TezosEnvironmentConfiguration,
     #[get = "pub(crate)"]
@@ -78,9 +88,9 @@ pub struct RpcServiceEnvironment {
 
 impl RpcServiceEnvironment {
     pub fn new(
-        sys: ActorSystem,
+        mempool_prevalidator_factory: Arc<MempoolPrevalidatorFactory>,
         tokio_executor: Arc<Handle>,
-        shell_channel: ShellChannelRef,
+        proposer: ProposerHandle,
         tezos_environment: TezosEnvironmentConfiguration,
         network_version: Arc<NetworkVersion>,
         persistent_storage: &PersistentStorage,
@@ -93,13 +103,13 @@ impl RpcServiceEnvironment {
         state: RpcCollectedStateRef,
         context_stats_db_path: Option<PathBuf>,
         tezedge_is_enabled: bool,
-        log: &Logger,
+        log: Logger,
     ) -> Self {
         let tezedge_context = TezedgeContextClient::new(Arc::clone(&tezos_readonly_api));
         Self {
-            sys,
+            mempool_prevalidator_factory,
             tokio_executor,
-            shell_channel,
+            proposer,
             tezos_environment,
             network_version,
             persistent_storage: persistent_storage.clone(),
@@ -107,7 +117,7 @@ impl RpcServiceEnvironment {
             main_chain_id,
             main_chain_genesis_hash,
             state,
-            log: log.clone(),
+            log,
             tezedge_context,
             tezos_readonly_api,
             tezos_readonly_prevalidation_api,

@@ -5,6 +5,7 @@
 //! This crate contains all shell actors plus few types used to handle the complexity of chain synchronisation process.
 
 use failure::Fail;
+use serde::Serialize;
 
 pub mod chain_current_head_manager;
 pub mod chain_feeder;
@@ -85,107 +86,196 @@ impl PeerConnectionThreshold {
     }
 }
 
+#[derive(Serialize, Debug)]
+pub struct WorkerStatus {
+    phase: WorkerStatusPhase,
+    since: String,
+}
+
+#[derive(Serialize, Debug)]
+#[serde(untagged)]
+pub enum WorkerStatusPhase {
+    #[serde(rename = "running")]
+    Running,
+}
+
 pub mod subscription {
+
+    use std::sync::Arc;
+
     use riker::actors::*;
+    use slog::{warn, Logger};
 
-    use networking::p2p::network_channel::NetworkChannelTopic;
+    use crypto::hash::{BlockHash, ChainId};
+    use networking::{PeerAddress, PeerId};
+    use storage::BlockHeaderWithHash;
+    use tezos_messages::p2p::encoding::metadata::MetadataMessage;
+    use tezos_messages::p2p::encoding::prelude::Mempool;
+    use tezos_messages::p2p::encoding::version::NetworkVersion;
 
-    use crate::shell_channel::ShellChannelTopic;
+    use crate::state::synchronization_state::PeerBranchSynchronizationDone;
+    use crate::tezedge_state_manager::proposer_messages::*;
 
-    #[inline]
-    pub fn subscribe_to_actor_terminated<M, E>(sys_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        sys_channel.tell(
-            Subscribe {
-                topic: SysTopic::ActorTerminated.into(),
-                actor: Box::new(myself),
-            },
-            None,
-        );
+    pub trait Notification: std::fmt::Debug + Clone {}
+
+    #[derive(Debug)]
+    pub struct SendNotificationError {
+        pub reason: String,
     }
 
-    #[inline]
-    pub fn subscribe_to_network_events<M, E>(network_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        network_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: NetworkChannelTopic::NetworkEvents.into(),
-            },
-            None,
-        );
+    #[derive(Debug)]
+    pub struct ShutdownCallbackError {
+        pub reason: String,
     }
 
-    #[inline]
-    pub(crate) fn subscribe_to_network_commands<M, E>(
-        network_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        network_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: NetworkChannelTopic::NetworkCommands.into(),
-            },
-            None,
-        );
+    pub trait NotifyCallback<N: Notification>: Sync + Send {
+        fn notify(&self, notification: N) -> Result<(), SendNotificationError>;
+
+        fn shutdown(&self) -> Result<(), ShutdownCallbackError>;
     }
 
-    #[inline]
-    pub fn subscribe_to_shell_events<M, E>(shell_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellEvents.into(),
-            },
-            None,
-        );
+    pub trait NotifyCallbackRegistrar<N: Notification> {
+        fn subscribe(&self, notifier: &mut Notifier<N>);
     }
 
-    #[inline]
-    pub fn subscribe_to_shell_new_current_head<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellNewCurrentHead.into(),
-            },
-            None,
-        );
+    pub struct Notifier<N: Notification> {
+        subscribers: Vec<(Box<dyn NotifyCallback<N>>, String)>,
+        log: Logger,
     }
 
-    #[inline]
-    pub(crate) fn subscribe_to_shell_commands<M, E>(
-        shell_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        shell_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellCommands.into(),
-            },
-            None,
-        );
+    impl<N: Notification> Notifier<N> {
+        pub fn new(log: Logger) -> Self {
+            Self {
+                subscribers: Vec::new(),
+                log,
+            }
+        }
+
+        pub fn register(
+            &mut self,
+            subscriber: Box<dyn NotifyCallback<N>>,
+            subscriber_name: String,
+        ) {
+            self.subscribers.push((subscriber, subscriber_name))
+        }
+
+        pub fn notify(&self, notification: N) {
+            for (subscriber, subscriber_name) in self.subscribers.iter() {
+                if let Err(e) = subscriber.notify(notification.clone()) {
+                    warn!(self.log, "Failed to notify subscriber with notification";
+                        "subscriber" => subscriber_name,
+                        "notification" => format!("{:?}", notification),
+                        "reason" => format!("{:?}", e),
+                    );
+                }
+            }
+        }
+    }
+
+    impl<N: Notification> Drop for Notifier<N> {
+        fn drop(&mut self) {
+            for (subscriber, subscriber_name) in self.subscribers.iter() {
+                if let Err(e) = subscriber.shutdown() {
+                    warn!(self.log, "Failed to shutdown subscriber";
+                        "subscriber" => subscriber_name,
+                        "reason" => format!("{:?}", e));
+                }
+            }
+        }
+    }
+
+    pub type NewCurrentHeadNotificationRef = Arc<NewCurrentHeadNotification>;
+
+    impl Notification for NewCurrentHeadNotificationRef {}
+
+    #[derive(Debug)]
+    pub struct NewCurrentHeadNotification {
+        pub chain_id: Arc<ChainId>,
+        pub block: Arc<BlockHeaderWithHash>,
+        pub is_bootstrapped: bool,
+    }
+
+    impl NewCurrentHeadNotification {
+        pub fn new(
+            chain_id: Arc<ChainId>,
+            block: Arc<BlockHeaderWithHash>,
+            is_bootstrapped: bool,
+        ) -> Self {
+            Self {
+                chain_id,
+                block,
+                is_bootstrapped,
+            }
+        }
+    }
+
+    pub type NetworkEventNotificationRef = Arc<NetworkEventNotification>;
+
+    impl Notification for NetworkEventNotificationRef {}
+
+    #[derive(Clone, Debug)]
+    pub enum NetworkEventNotification {
+        PeerBootstrapped(Arc<PeerId>, MetadataMessage, Arc<NetworkVersion>),
+        PeerDisconnected(PeerAddress),
+        PeerBlacklisted(PeerAddress),
+        PeerMessageReceived(PeerMessageReceived),
+    }
+
+    impl From<PeerMessageReceived> for NetworkEventNotificationRef {
+        fn from(msg: PeerMessageReceived) -> Self {
+            Arc::new(NetworkEventNotification::PeerMessageReceived(msg))
+        }
+    }
+
+    pub type ShellEventNotificationRef = Arc<ShellEventNotification>;
+
+    impl Notification for ShellEventNotificationRef {}
+
+    #[derive(Clone, Debug)]
+    pub enum ShellEventNotification {
+        BlockReceived(BlockReceived),
+        AllBlockOperationsReceived(AllBlockOperationsReceived),
+    }
+
+    /// Message informing actors about receiving block header
+    #[derive(Clone, Debug)]
+    pub struct BlockReceived {
+        pub hash: BlockHash,
+        pub level: i32,
+    }
+
+    /// Message informing actors about receiving all operations for a specific block
+    #[derive(Clone, Debug)]
+    pub struct AllBlockOperationsReceived {
+        pub level: i32,
+    }
+
+    impl From<AllBlockOperationsReceived> for ShellEventNotificationRef {
+        fn from(msg: AllBlockOperationsReceived) -> Self {
+            Arc::new(ShellEventNotification::AllBlockOperationsReceived(msg))
+        }
+    }
+
+    impl From<BlockReceived> for ShellEventNotificationRef {
+        fn from(msg: BlockReceived) -> Self {
+            Arc::new(ShellEventNotification::BlockReceived(msg))
+        }
+    }
+
+    // TODO: this is temporary replacement for shell_channel, once everything is refactored to state machine, this can go out
+    // and everything will be handled inside state machine and proposer will not need to trigger this notification outside
+    pub type ShellCommandNotificationRef = ShellCommandNotification;
+
+    impl Notification for ShellCommandNotificationRef {}
+
+    #[derive(Clone, Debug)]
+    pub enum ShellCommandNotification {
+        InjectBlock(InjectBlock, Option<InjectBlockOneshotResultCallback>),
+        RequestCurrentHead,
+        PeerBranchSynchronizationDone(PeerBranchSynchronizationDone),
+        AdvertiseToP2pNewCurrentBranch(Arc<ChainId>, Arc<BlockHash>),
+        AdvertiseToP2pNewCurrentHead(Arc<ChainId>, Arc<BlockHash>),
+        AdvertiseToP2pNewMempool(Arc<ChainId>, Arc<BlockHash>, Arc<Mempool>),
     }
 
     #[inline]
@@ -197,7 +287,7 @@ pub mod subscription {
         shell_channel.tell(
             Subscribe {
                 actor: Box::new(myself),
-                topic: ShellChannelTopic::ShellShutdown.into(),
+                topic: crate::shell_channel::ShellChannelTopic::ShellShutdown.into(),
             },
             None,
         );

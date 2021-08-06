@@ -14,7 +14,6 @@ use riker::actors::*;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
 use tezos_messages::p2p::encoding::limits;
@@ -24,11 +23,12 @@ use tezos_messages::p2p::encoding::prelude::{
 
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
-use crate::shell_channel::InjectBlockOneshotResultCallback;
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
 use crate::state::{ApplyBlockBatch, StateError};
+use crate::tezedge_state_manager::proposer_messages::InjectBlockOneshotResultCallback;
+use crate::tezedge_state_manager::proposer_messages::NetworkChannelMsg;
 use crate::tezedge_state_manager::ProposerHandle;
 use crate::validation;
 use crate::validation::CanApplyStatus;
@@ -509,7 +509,7 @@ pub fn tell_peer(
         Arc::new(peer_id.clone()),
         msg,
     )) {
-        warn!(log, "Failed to notify proposer (data_requester)"; "reason" => format!("{:?}", err));
+        warn!(log, "Failed to notify proposer (SendMessage)"; "reason" => format!("{:?}", err));
     }
 }
 

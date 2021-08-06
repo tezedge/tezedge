@@ -23,7 +23,6 @@ use crate::{
     parse_block_hash_or_fail, required_param, result_to_empty_json_response,
     result_to_json_response, services, ServiceResult,
 };
-use storage::BlockHeaderWithHash;
 
 pub async fn bootstrapped(
     _: Request<Body>,
@@ -38,7 +37,6 @@ pub async fn bootstrapped(
 
     let bootstrap_info = match state_read.current_head().as_ref() {
         Some(current_head) => {
-            let current_head: &BlockHeaderWithHash = &current_head;
             let timestamp = ts_to_rfc3339(current_head.header.timestamp())?;
             Ok(BootstrapInfo::new(
                 &current_head.hash,
@@ -330,15 +328,12 @@ pub async fn inject_block(
     let body = hyper::body::to_bytes(req.into_body()).await?;
     let body = String::from_utf8(body.to_vec())?;
 
-    let shell_channel = env.shell_channel();
-
     let chain_id_query = query.get_str("chain_id").unwrap_or(MAIN_CHAIN_ID);
     let chain_id = parse_chain_id(chain_id_query, &env)?;
     let is_async = parse_async(&query, false);
 
     result_to_json_response(
-        services::mempool_services::inject_block(is_async, chain_id, &body, &env, shell_channel)
-            .await,
+        services::mempool_services::inject_block(is_async, chain_id, &body, &env).await,
         env.log(),
     )
 }
@@ -350,10 +345,7 @@ pub async fn mempool_request_operations(
     env: Arc<RpcServiceEnvironment>,
 ) -> ServiceResult {
     result_to_empty_json_response(
-        {
-            services::mempool_services::request_operations(env.shell_channel.clone());
-            Ok(())
-        },
+        services::mempool_services::request_operations(&env),
         env.log(),
     )
 }

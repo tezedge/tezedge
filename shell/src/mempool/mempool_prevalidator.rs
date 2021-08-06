@@ -37,9 +37,11 @@ use tezos_wrapper::TezosApiConnectionPool;
 
 use crate::mempool::mempool_state::collect_mempool;
 use crate::mempool::CurrentMempoolStateStorageRef;
-use crate::shell_channel::{ShellChannelMsg, ShellChannelRef, ShellChannelTopic};
+use crate::shell_channel::{ShellChannelMsg, ShellChannelRef};
 use crate::state::StateError;
 use crate::subscription::subscribe_to_shell_shutdown;
+use crate::tezedge_state_manager::proposer_messages::ProposerMsg;
+use crate::tezedge_state_manager::ProposerHandle;
 use crate::utils::{dispatch_oneshot_result, OneshotResultCallback};
 
 type SharedJoinHandle = Arc<Mutex<Option<JoinHandle<Result<(), Error>>>>>;
@@ -83,6 +85,7 @@ impl MempoolPrevalidator {
     pub fn actor(
         sys: &impl ActorRefFactory,
         shell_channel: ShellChannelRef,
+        proposer: ProposerHandle,
         persistent_storage: PersistentStorage,
         current_mempool_state_storage: CurrentMempoolStateStorageRef,
         chain_id: ChainId,
@@ -93,7 +96,6 @@ impl MempoolPrevalidator {
         let (validator_event_sender, mut validator_event_receiver) = channel();
         let validator_run = Arc::new(AtomicBool::new(true));
         let validator_thread = {
-            let shell_channel = shell_channel.clone();
             let validator_run = validator_run.clone();
             let chain_id = chain_id.clone();
 
@@ -111,7 +113,7 @@ impl MempoolPrevalidator {
                             current_mempool_state_storage.clone(),
                             &chain_id,
                             &validator_run,
-                            &shell_channel,
+                            &proposer,
                             &protocol_controller.api,
                             &mut validator_event_receiver,
                             &log,
@@ -355,7 +357,7 @@ fn process_prevalidation(
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     chain_id: &ChainId,
     validator_run: &AtomicBool,
-    shell_channel: &ShellChannelRef,
+    proposer: &ProposerHandle,
     api: &ProtocolController,
     validator_event_receiver: &mut QueueReceiver<Event>,
     log: &Logger,
@@ -364,7 +366,7 @@ fn process_prevalidation(
 
     // hydrate state
     hydrate_state(
-        shell_channel,
+        proposer,
         block_storage,
         chain_meta_storage,
         mempool_storage,
@@ -453,19 +455,14 @@ fn process_prevalidation(
         }
 
         // 2. lets handle pending operations (if any)
-        handle_pending_operations(
-            shell_channel,
-            api,
-            current_mempool_state_storage.clone(),
-            log,
-        )?;
+        handle_pending_operations(proposer, api, current_mempool_state_storage.clone(), log)?;
     }
 
     Ok(())
 }
 
 fn hydrate_state(
-    shell_channel: &ShellChannelRef,
+    proposer: &ProposerHandle,
     block_storage: &BlockStorage,
     chain_meta_storage: &ChainMetaStorage,
     mempool_storage: &MempoolStorage,
@@ -508,7 +505,7 @@ fn hydrate_state(
     drop(state);
 
     // and process it immediatly on startup, before any event received to clean old stored unprocessed operations
-    handle_pending_operations(shell_channel, api, current_mempool_state_storage, log)?;
+    handle_pending_operations(proposer, api, current_mempool_state_storage, log)?;
 
     Ok(())
 }
@@ -539,7 +536,7 @@ fn begin_construction(
 }
 
 fn handle_pending_operations(
-    shell_channel: &ShellChannelRef,
+    proposer: &ProposerHandle,
     api: &ProtocolController,
     current_mempool_state_storage: CurrentMempoolStateStorageRef,
     log: &Logger,
@@ -601,10 +598,11 @@ fn handle_pending_operations(
     }
 
     advertise_new_mempool(
-        shell_channel,
+        proposer,
         prevalidator,
         head,
         (&validation_result.applied, pendings),
+        log,
     );
 
     Ok(())
@@ -612,25 +610,21 @@ fn handle_pending_operations(
 
 /// Notify other actors that mempool state changed
 fn advertise_new_mempool(
-    shell_channel: &ShellChannelRef,
+    proposer: &ProposerHandle,
     prevalidator: &PrevalidatorWrapper,
     head: &BlockHash,
     (applied, pending): (&Vec<Applied>, &HashSet<OperationHash>),
+    log: &Logger,
 ) {
     // we advertise new mempool, only if we have new applied operations
     if applied.is_empty() {
         return;
     }
-
-    shell_channel.tell(
-        Publish {
-            msg: ShellChannelMsg::AdvertiseToP2pNewMempool(
-                Arc::new(prevalidator.chain_id.clone()),
-                Arc::new(head.clone()),
-                Arc::new(collect_mempool(applied, pending)),
-            ),
-            topic: ShellChannelTopic::ShellCommands.into(),
-        },
-        None,
-    );
+    if let Err(err) = proposer.notify(ProposerMsg::AdvertiseToP2pNewMempool(
+        Arc::new(prevalidator.chain_id.clone()),
+        Arc::new(head.clone()),
+        Arc::new(collect_mempool(applied, pending)),
+    )) {
+        warn!(log, "Failed to notify proposer (AdvertiseToP2pNewMempool)"; "reason" => format!("{:?}", err));
+    }
 }
