@@ -14,7 +14,7 @@ use riker::actors::*;
 use slog::{warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
+use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use shell_integration::InjectBlockOneshotResultCallback;
 use storage::{BlockMetaStorage, BlockMetaStorageReader, OperationsMetaStorage};
@@ -26,6 +26,7 @@ use tezos_messages::p2p::encoding::prelude::{
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
+use crate::peer_manager::ProposerHandle;
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
@@ -42,7 +43,8 @@ pub struct DataRequester {
     pub(crate) block_meta_storage: BlockMetaStorage,
     pub(crate) operations_meta_storage: OperationsMetaStorage,
 
-    network_channel: NetworkChannelRef,
+    pub(crate) proposer: ProposerHandle,
+
     /// Chain feeder - actor, which is responsible to apply_block to context
     block_applier: ChainFeederRef,
 }
@@ -51,13 +53,13 @@ impl DataRequester {
     pub fn new(
         block_meta_storage: BlockMetaStorage,
         operations_meta_storage: OperationsMetaStorage,
-        network_channel: NetworkChannelRef,
+        proposer: ProposerHandle,
         block_applier: ChainFeederRef,
     ) -> Self {
         Self {
             block_meta_storage,
             operations_meta_storage,
-            network_channel,
+            proposer,
             block_applier,
         }
     }
@@ -70,6 +72,7 @@ impl DataRequester {
         mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
+        log: &Logger,
     ) -> Result<bool, StateError> {
         // check if empty
         if blocks_to_download.is_empty() {
@@ -127,7 +130,7 @@ impl DataRequester {
                 .chunks(limits::GET_BLOCK_HEADERS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        &self.network_channel,
+                        &self.proposer,
                         peer,
                         GetBlockHeadersMessage::new(
                             blocks_to_download
@@ -136,11 +139,12 @@ impl DataRequester {
                                 .collect::<Vec<BlockHash>>(),
                         )
                         .into(),
+                        log,
                     );
                 });
         } else {
             tell_peer(
-                &self.network_channel,
+                &self.proposer,
                 peer,
                 GetBlockHeadersMessage::new(
                     blocks_to_download
@@ -149,6 +153,7 @@ impl DataRequester {
                         .collect::<Vec<BlockHash>>(),
                 )
                 .into(),
+                log,
             );
         }
 
@@ -163,6 +168,7 @@ impl DataRequester {
         mut blocks_to_download: Vec<Arc<BlockHash>>,
         peer: &PeerId,
         peer_queues: &DataQueues,
+        log: &Logger,
         mut on_operations_already_downloaded: SC,
     ) -> Result<bool, StateError> {
         // check if empty
@@ -249,14 +255,15 @@ impl DataRequester {
                 .chunks(limits::GET_OPERATIONS_FOR_BLOCKS_MAX_LENGTH)
                 .for_each(|blocks_to_download| {
                     tell_peer(
-                        &self.network_channel,
+                        &self.proposer,
                         peer,
                         GetOperationsForBlocksMessage::new(blocks_to_download.into()).into(),
+                        log,
                     );
                 });
         } else {
             tell_peer(
-                &self.network_channel,
+                &self.proposer,
                 peer,
                 GetOperationsForBlocksMessage::new(
                     blocks_to_download
@@ -269,6 +276,7 @@ impl DataRequester {
                         .collect(),
                 )
                 .into(),
+                log,
             );
         }
 
@@ -503,17 +511,17 @@ impl Drop for RequestedOperationDataLock {
 }
 
 pub fn tell_peer(
-    network_channel: &NetworkChannelRef,
+    proposer: &ProposerHandle,
     peer_id: &PeerId,
     msg: Arc<PeerMessageResponse>,
+    log: &Logger,
 ) {
-    network_channel.tell(
-        Publish {
-            msg: NetworkChannelMsg::SendMessage(Arc::new(peer_id.clone()), msg),
-            topic: NetworkChannelTopic::NetworkCommands.into(),
-        },
-        None,
-    );
+    if let Err(err) = proposer.notify(NetworkChannelMsg::SendMessage(
+        Arc::new(peer_id.clone()),
+        msg,
+    )) {
+        warn!(log, "Failed to notify proposer (data_requester)"; "reason" => format!("{:?}", err));
+    }
 }
 
 // #[cfg(test)]

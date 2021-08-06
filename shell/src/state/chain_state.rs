@@ -4,7 +4,6 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use networking::p2p::network_channel::NetworkChannelRef;
 use riker::actors::*;
 use slog::Logger;
 
@@ -30,6 +29,7 @@ use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
     StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
+use crate::peer_manager::ProposerHandle;
 use crate::state::bootstrap_state::InnerBlockState;
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
@@ -91,15 +91,13 @@ pub struct BlockchainState {
     /// Actor resposible for bootstrapping branches of peers per one chain_id
     peer_branch_bootstrapper: Option<PeerBranchBootstrapperRef>,
 
-    network_channel: NetworkChannelRef,
-
     chain_id: Arc<ChainId>,
     chain_genesis_block_hash: Arc<BlockHash>,
 }
 
 impl BlockchainState {
     pub fn new(
-        network_channel: NetworkChannelRef,
+        proposer: ProposerHandle,
         block_applier: ChainFeederRef,
         persistent_storage: &PersistentStorage,
         chain_id: Arc<ChainId>,
@@ -109,7 +107,7 @@ impl BlockchainState {
             requester: DataRequesterRef::new(DataRequester::new(
                 BlockMetaStorage::new(&persistent_storage),
                 OperationsMetaStorage::new(&persistent_storage),
-                network_channel.clone(),
+                proposer,
                 block_applier,
             )),
             peer_branch_bootstrapper: None,
@@ -118,7 +116,6 @@ impl BlockchainState {
             chain_meta_storage: ChainMetaStorage::new(persistent_storage),
             operations_storage: OperationsStorage::new(persistent_storage),
             operations_meta_storage: OperationsMetaStorage::new(persistent_storage),
-            network_channel,
             chain_id,
             chain_genesis_block_hash,
         }
@@ -425,8 +422,6 @@ impl BlockchainState {
                         sys,
                         self.chain_id.clone(),
                         self.requester.clone(),
-                        chain_manager_ref.clone(),
-                        self.network_channel.clone(),
                         PeerBranchBootstrapperConfiguration::new(
                             bootstrap_constants::BLOCK_HEADER_TIMEOUT,
                             bootstrap_constants::BLOCK_OPERATIONS_TIMEOUT,

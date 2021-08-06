@@ -77,7 +77,7 @@ impl BootstrapState {
         }
     }
 
-    pub fn check_stalled_peers<DP: Fn(&PeerId)>(
+    pub fn check_stalled_peers<DP: Fn(&PeerId, &DataRequester)>(
         &mut self,
         cfg: &PeerBranchBootstrapperConfiguration,
         log: &Logger,
@@ -137,7 +137,7 @@ impl BootstrapState {
                        "peer_ip" => peer_id.address.to_string());
 
             self.clean_peer_data(&peer_id.address);
-            disconnect_peer(&peer_id);
+            disconnect_peer(&peer_id, &self.data_requester);
         }
     }
 
@@ -419,7 +419,8 @@ impl BootstrapState {
             }
 
             // schedule blocks to download
-            if let Err(e) = data_requester.fetch_block_headers(missing_blocks, peer_id, peer_queues)
+            if let Err(e) =
+                data_requester.fetch_block_headers(missing_blocks, peer_id, peer_queues, log)
             {
                 warn!(log, "Failed to schedule block headers for download from peer"; "reason" => e,
                         "peer_ip" => peer_id.address.to_string());
@@ -470,6 +471,7 @@ impl BootstrapState {
                 missing_blocks,
                 peer_id,
                 peer_queues,
+                log,
                 |already_downloaded_block| {
                     let _ = already_downloaded.insert(already_downloaded_block);
                 },

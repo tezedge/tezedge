@@ -333,6 +333,7 @@ fn block_on_actors(
         actor_system.as_ref(),
         block_applier.clone(),
         network_channel.clone(),
+        tezedge_state_manager.proposer_handle(),
         shell_channel.clone(),
         persistent_storage.clone(),
         tezos_readonly_prevalidation_api_pool.clone(),

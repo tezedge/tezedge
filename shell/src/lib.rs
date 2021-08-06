@@ -200,38 +200,6 @@ pub mod subscription {
             None,
         );
     }
-
-    #[inline]
-    pub(crate) fn subscribe_to_dead_letters<M, E>(dl_channel: &ChannelRef<E>, myself: ActorRef<M>)
-    where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Subscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
-            },
-            None,
-        );
-    }
-
-    #[inline]
-    pub(crate) fn unsubscribe_from_dead_letters<M, E>(
-        dl_channel: &ChannelRef<E>,
-        myself: ActorRef<M>,
-    ) where
-        M: Message,
-        E: Message + Into<M>,
-    {
-        dl_channel.tell(
-            Unsubscribe {
-                actor: Box::new(myself),
-                topic: All.into(),
-            },
-            None,
-        );
-    }
 }
 
 /// Module implements shell integration based on actual shell constalation.
