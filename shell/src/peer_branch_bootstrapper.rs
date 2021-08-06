@@ -9,15 +9,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use networking::p2p::network_channel::NetworkChannelMsg;
-use networking::p2p::network_channel::NetworkChannelRef;
-use networking::p2p::network_channel::NetworkChannelTopic;
 use networking::PeerAddress;
 use rand::Rng;
 use riker::actors::*;
 use slog::{info, warn, Logger};
 
 use crypto::hash::{BlockHash, ChainId};
+use networking::p2p::network_channel::NetworkChannelMsg;
 use networking::PeerId;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
@@ -187,7 +185,6 @@ pub type PeerBranchBootstrapperRef = ActorRef<PeerBranchBootstrapperMsg>;
     LogStats
 )]
 pub struct PeerBranchBootstrapper {
-    network_channel: NetworkChannelRef,
     chain_id: Arc<ChainId>,
     bootstrap_state: BootstrapState,
     /// Count of received messages from the last log
@@ -210,12 +207,11 @@ impl PeerBranchBootstrapper {
         chain_id: Arc<ChainId>,
         requester: DataRequesterRef,
         shell_channel: ShellChannelRef,
-        network_channel: NetworkChannelRef,
         cfg: PeerBranchBootstrapperConfiguration,
     ) -> Result<PeerBranchBootstrapperRef, CreateError> {
         sys.actor_of_props::<PeerBranchBootstrapper>(
             &format!("peer-branch-bootstrapper-{}", &chain_id.to_base58_check()),
-            Props::new_args((chain_id, requester, shell_channel, network_channel, cfg)),
+            Props::new_args((chain_id, requester, shell_channel, cfg)),
         )
     }
 
@@ -310,21 +306,18 @@ impl
         Arc<ChainId>,
         DataRequesterRef,
         ShellChannelRef,
-        NetworkChannelRef,
         PeerBranchBootstrapperConfiguration,
     )> for PeerBranchBootstrapper
 {
     fn create_args(
-        (chain_id, requester, shell_channel, network_channel, cfg): (
+        (chain_id, requester, shell_channel, cfg): (
             Arc<ChainId>,
             DataRequesterRef,
             ShellChannelRef,
-            NetworkChannelRef,
             PeerBranchBootstrapperConfiguration,
         ),
     ) -> Self {
         PeerBranchBootstrapper {
-            network_channel,
             chain_id,
             bootstrap_state: BootstrapState::new(requester, shell_channel),
             actor_received_messages_count: 0,
@@ -654,21 +647,17 @@ impl Receive<DisconnectStalledBootstraps> for PeerBranchBootstrapper {
         let log = ctx.system.log();
 
         let PeerBranchBootstrapper {
-            network_channel,
             bootstrap_state,
             cfg,
             ..
         } = self;
 
         bootstrap_state.check_bootstrapped_branches(&None, &log);
-        bootstrap_state.check_stalled_peers(&cfg, &log, |peer| {
-            network_channel.tell(
-                Publish {
-                    msg: NetworkChannelMsg::PeerStalled(Arc::new(peer.clone())),
-                    topic: NetworkChannelTopic::NetworkEvents.into(),
-                },
-                None,
-            );
+        bootstrap_state.check_stalled_peers(&cfg, &log, |peer, data_requester| {
+            // notify state machine about a message from network channel.
+            if let Err(err) = data_requester.proposer.notify(NetworkChannelMsg::PeerStalled(Arc::new(peer.clone()))) {
+                warn!(ctx.system.log(), "Failed to notify proposer"; "reason" => format!("{:?}", err));
+            }
         });
 
         self.schedule_process_all_bootstrap_pipelines(ctx);
