@@ -64,7 +64,7 @@ extern "C" {
 
 /// This function does nothing. It exists to force cargo to link libtezos to crates
 /// that depend on tezos-sys.
-////
+///
 /// To do so, define a `pub` function in the crate that requires libtezos linking that
 /// calls this function.
 ///
