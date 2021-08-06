@@ -11,6 +11,7 @@ use std::{
     path::PathBuf,
 };
 
+pub use rocksdb;
 use rocksdb::Cache;
 use serde::{Deserialize, Serialize};
 use slog::{info, Logger};
