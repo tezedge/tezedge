@@ -43,7 +43,7 @@ jobs:
             sudo add-apt-repository ppa:ubuntu-toolchain-r/test
             sudo add-apt-repository "deb https://apt.llvm.org/trusty/ llvm-toolchain-trusty main"
             sudo apt-get update -y
-            sudo apt-get install libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
+            sudo apt-get install libev4 libev-dev libhidapi-dev libsodium-dev libev4 clang libclang-dev llvm-dev g++
       - name: OSX dependencies
         if: runner.os == 'macOS'
         run: brew install hidapi

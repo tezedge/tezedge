@@ -4,11 +4,16 @@
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use colored::*;
+use flate2::bufread::GzDecoder;
 use os_type::{current_platform, OSType};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -136,6 +141,31 @@ fn current_release_distributions_artifacts() -> Vec<Artifact> {
     artifacts
 }
 
+fn gunzip_file(uncompressed_name: &PathBuf) {
+    let compressed_name = format!("{}.gz", uncompressed_name.to_str().unwrap());
+    let file = File::open(&compressed_name)
+        .unwrap_or_else(|_| panic!("Couldn't open file: {}", compressed_name));
+    let mut gz = GzDecoder::new(BufReader::new(file));
+    let mut buf = vec![];
+
+    gz.read_to_end(&mut buf)
+        .unwrap_or_else(|err| panic!("Decompression failure '{}': {}", compressed_name, err));
+
+    let outfile = File::create(uncompressed_name).expect(&format!(
+        "Could not open {} for decompression",
+        uncompressed_name.to_string_lossy()
+    ));
+    let mut writer = BufWriter::new(outfile);
+
+    writer.write_all(&buf).unwrap_or_else(|err| {
+        panic!(
+            "Failed when writting to '{}': {}",
+            uncompressed_name.to_string_lossy(),
+            err
+        )
+    });
+}
+
 fn run_builder(build_chain: &str) {
     match build_chain {
         "local" => {
@@ -193,10 +223,15 @@ fn run_builder(build_chain: &str) {
                 }
 
                 // Uncompress the artifact
-                Command::new("gunzip")
-                    .args(&[&lib_path])
-                    .status()
-                    .unwrap_or_else(|_| panic!("Couldn't gunzip '{}'", lib_path.to_str().unwrap()));
+                let uncompressed_name = lib_path.with_extension("");
+
+                gunzip_file(&uncompressed_name);
+
+                let mut perms = fs::metadata(&uncompressed_name).unwrap().permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&uncompressed_name, perms).unwrap();
+
+                fs::remove_file(&lib_path).ok();
             }
         }
         _ => {

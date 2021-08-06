@@ -349,6 +349,8 @@ fn test_context_calls() {
     use std::time::SystemTime;
     use tempfile::tempdir;
 
+    force_libtezos_linking();
+
     macro_rules! key {
         ($key:expr) => {{
             $key.split('/').map(String::from).collect::<Vec<String>>()
@@ -360,7 +362,6 @@ fn test_context_calls() {
 
     // Initialize the persistent OCaml runtime and initialize callbacks
     ocaml_interop::OCamlRuntime::init_persistent();
-    tezos_new_context::ffi::initialize_callbacks();
 
     // OCaml runtime handle for FFI calls
     let cr = unsafe { ocaml_interop::OCamlRuntime::recover_handle() };
@@ -530,4 +531,9 @@ fn test_context_calls() {
         context::hash(cr, 1, None, &tezedge_ctxt),
         context::hash(cr, 1, None, &irmin_ctxt)
     );
+}
+
+// To force linking of required symbols not referenced directly
+pub fn force_libtezos_linking() {
+    tezos_new_context::force_libtezos_linking();
 }

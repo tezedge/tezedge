@@ -37,7 +37,6 @@ COPY --from=build-env /home/appuser/tezedge/sandbox/artifacts/tezos-client /
 COPY --from=build-env /home/appuser/tezedge/docker/distroless/tezedge.config /
 
 # Copy shared libraries
-COPY --from=build-env /home/appuser/tezedge/tezos/sys/lib_tezos/artifacts/libtezos.so /usr/lib/x86_64-linux-gnu/libtezos.so
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libev.so.4 /usr/lib/x86_64-linux-gnu/libev.so.4
 COPY --from=build-env /usr/lib/x86_64-linux-gnu/libffi.so.6 /usr/lib/x86_64-linux-gnu/libffi.so.6
 COPY --from=build-env /lib/x86_64-linux-gnu/libnss_dns.so.2 /lib/x86_64-linux-gnu/libnss_dns.so.2

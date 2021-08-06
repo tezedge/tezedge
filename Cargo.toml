@@ -18,6 +18,8 @@ members = [
     "tezos/spsc",
     "tezos/timing",
     "tezos/lib_storage_ffi",
+    "tezos/tezos-rust-libs/librustzcash",
+    "tezos/tezos-rust-libs/rustc-bls12-381",
     "networking",
     "shell",
     "storage",
@@ -40,7 +42,7 @@ members = [
 ]
 
 [patch.crates-io]
-ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }
+ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "without-ocamlopt-no-c-compile" }
 librocksdb-sys = { git = "https://github.com/tezedge/rust-rocksdb.git", tag = "tezedge-v0.17.0-1" }
 
 

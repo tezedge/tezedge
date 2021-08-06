@@ -4,16 +4,21 @@
 use std::env;
 use std::fs;
 use std::fs::File;
+use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use colored::*;
+use flate2::bufread::GzDecoder;
 use os_type::{current_platform, OSType};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
 const GIT_RELEASE_DISTRIBUTIONS_FILE: &str = "lib_tezos/libtezos-ffi-distribution-summary.json";
-const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.so";
+const LIBTEZOS_BUILD_NAME: &str = "libtezos-ffi.a";
 const ARTIFACTS_DIR: &str = "lib_tezos/artifacts";
 
 // zcash params files for sapling - these files are fixed and never ever changes
@@ -42,26 +47,26 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
     let platform = current_platform();
 
     let artifact_for_platform = match platform.os_type {
-        OSType::OSX => Some("libtezos-ffi-macos.dylib.gz"),
+        OSType::OSX => Some("libtezos-ffi-macos.a.gz"),
         OSType::Ubuntu => match platform.version.as_str() {
-            "16.04" => Some("libtezos-ffi-ubuntu16.so.gz"),
-            "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.so.gz"),
-            "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.so.gz"),
-            "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.so.gz"),
-            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.so.gz"),
+            "16.04" => Some("libtezos-ffi-ubuntu16.a.gz"),
+            "18.04" | "18.10" => Some("libtezos-ffi-ubuntu18.a.gz"),
+            "19.04" | "19.10" => Some("libtezos-ffi-ubuntu19.a.gz"),
+            "20.04" | "20.10" => Some("libtezos-ffi-ubuntu20.a.gz"),
+            "21.04" | "21.10" => Some("libtezos-ffi-ubuntu21.a.gz"),
             _ => None,
         },
         OSType::Debian => match platform.version.as_str() {
-            "9" => Some("libtezos-ffi-debian9.so.gz"),
-            v if v.starts_with("9.") => Some("libtezos-ffi-debian9.so.gz"),
-            "10" => Some("libtezos-ffi-debian10.so.gz"),
-            v if v.starts_with("10.") => Some("libtezos-ffi-debian10.so.gz"),
+            "9" => Some("libtezos-ffi-debian9.a.gz"),
+            v if v.starts_with("9.") => Some("libtezos-ffi-debian9.a.gz"),
+            "10" => Some("libtezos-ffi-debian10.a.gz"),
+            v if v.starts_with("10.") => Some("libtezos-ffi-debian10.a.gz"),
             _ => None,
         },
         OSType::OpenSUSE => match platform.version.as_str() {
-            "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.so.gz"),
+            "15.1" | "15.2" => Some("libtezos-ffi-opensuse15.1.a.gz"),
             v if v.len() == 8 && v.chars().all(char::is_numeric) => {
-                Some("libtezos-ffi-opensuse_tumbleweed.so.gz")
+                Some("libtezos-ffi-opensuse_tumbleweed.a.gz")
             }
             _ => None,
         },
@@ -70,8 +75,8 @@ fn get_remote_lib(artifacts: &[Artifact]) -> RemoteFile {
                 println!("cargo:warning=CentOS 6.x is not supported by the OCaml Package Manager");
                 None
             }
-            '7' => Some("libtezos-ffi-centos7.so.gz"),
-            '8' => Some("libtezos-ffi-centos8.so.gz"),
+            '7' => Some("libtezos-ffi-centos7.a.gz"),
+            '8' => Some("libtezos-ffi-centos8.a.gz"),
             _ => None,
         },
         _ => None,
@@ -177,23 +182,46 @@ fn download_remote_file_and_check_sha256(remote_file: RemoteFile, dest_path: &Pa
     }
 }
 
+fn gunzip_file(uncompressed_name: &PathBuf) {
+    let compressed_name = format!("{}.gz", uncompressed_name.to_str().unwrap());
+    let file = File::open(&compressed_name)
+        .unwrap_or_else(|_| panic!("Couldn't open file: {}", compressed_name));
+    let mut gz = GzDecoder::new(BufReader::new(file));
+    let mut buf = vec![];
+
+    gz.read_to_end(&mut buf)
+        .unwrap_or_else(|err| panic!("Decompression failure '{}': {}", compressed_name, err));
+
+    let outfile = File::create(uncompressed_name).expect(&format!(
+        "Could not open {} for decompression",
+        uncompressed_name.to_string_lossy()
+    ));
+    let mut writer = BufWriter::new(outfile);
+
+    writer.write_all(&buf).unwrap_or_else(|err| {
+        panic!(
+            "Failed when writting to '{}': {}",
+            uncompressed_name.to_string_lossy(),
+            err
+        )
+    });
+}
+
 fn download_remote_file_and_check_sha256_and_uncompress(
     remote_file: RemoteFile,
     dest_path: &PathBuf,
 ) {
     let compressed_name = format!("{}.gz", dest_path.to_str().unwrap());
     download_remote_file_and_check_sha256(remote_file, &PathBuf::from(compressed_name.clone()));
-    Command::new("gunzip")
-        .args(&[&compressed_name])
-        .status()
-        .unwrap_or_else(|_| panic!("Couldn't gunzip '{}'", compressed_name));
+    gunzip_file(dest_path);
+    fs::remove_file(&compressed_name).ok();
 }
 
 fn libtezos_filename() -> &'static str {
     let platform = current_platform();
     match platform.os_type {
-        OSType::OSX => "libtezos.dylib",
-        _ => "libtezos.so",
+        OSType::OSX => "libtezos.a",
+        _ => "libtezos.a",
     }
 }
 
@@ -389,6 +417,12 @@ fn main() {
     }
 
     println!("cargo:rustc-link-search={}", &out_dir);
-    println!("cargo:rustc-link-lib=dylib=tezos");
+    println!("cargo:rustc-link-lib=static=tezos");
+    println!("cargo:rustc-link-lib=dylib=gmp");
+    println!("cargo:rustc-link-lib=dylib=ffi");
+    println!("cargo:rustc-link-lib=dylib=ev");
+    if current_platform().os_type != OSType::OSX {
+        println!("cargo:rustc-link-lib=dylib=rt");
+    }
     println!("cargo:rerun-if-env-changed=TEZOS_BASE_DIR");
 }

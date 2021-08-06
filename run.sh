@@ -153,8 +153,7 @@ run_node() {
     mkdir -p $TEZOS_DIR $BOOTSTRAP_DIR
   fi
 
-  # protocol_runner needs 'libtezos.so' to run
-  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/sys/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/target/$PROFILE"
   # start node
   if [ -z "$CARGO_BUILD_TARGET" ]; then
     PROTOCOL_RUNNER_BINARY=./target/$PROFILE/protocol-runner
@@ -189,8 +188,7 @@ run_sandbox() {
   # -n | --network
   NETWORK=sandbox
 
-  # protocol_runner needs 'libtezos.so' to run
-  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/tezos/sys/lib_tezos/artifacts:${BASH_SOURCE%/*}/target/$PROFILE"
+  export LD_LIBRARY_PATH="${BASH_SOURCE%/*}/target/$PROFILE"
 
   export TEZOS_CLIENT_UNSAFE_DISABLE_DISCLAIMER="Y"
 

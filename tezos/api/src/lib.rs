@@ -6,7 +6,3 @@ pub mod environment;
 pub mod ffi;
 pub mod ocaml_conv;
 mod octez_config;
-
-pub fn force_libtezos_linking() {
-    tezos_sys::force_libtezos_linking();
-}
