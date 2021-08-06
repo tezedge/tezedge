@@ -557,7 +557,31 @@ fn collect_replayed_blocks(
     blocks
 }
 
+#[cfg(dyncov)]
+fn set_gcov_handler() {
+    use signal_hook::{consts::SIGUSR2, iterator::Signals};
+    let mut signals = Signals::new(&[SIGUSR2]).unwrap();
+
+    extern "C" {
+        fn __gcov_dump();
+        fn __gcov_reset();
+    }
+
+    std::thread::spawn(move || {
+        for sig in signals.forever() {
+            eprintln!("!!! SIGUSR2: saving coverage info...");
+            unsafe {
+                __gcov_dump();
+                __gcov_reset();
+            }
+        }
+    });
+}
+
 fn main() {
+    #[cfg(dyncov)]
+    set_gcov_handler();
+
     // Parses config + cli args
     let env = crate::configuration::Environment::from_args();
 
