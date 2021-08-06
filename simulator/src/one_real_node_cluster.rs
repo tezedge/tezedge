@@ -1046,7 +1046,7 @@ mod tests {
                 TezedgeConfig {
                     port: 9732,
                     disable_mempool: true,
-                    private_node: true,
+                    private_node: false,
                     disable_quotas: true,
                     disable_blacklist: true,
                     min_connected_peers: 1,
@@ -1089,7 +1089,7 @@ mod tests {
                 TezedgeConfig {
                     port: 9732,
                     disable_mempool: true,
-                    private_node: true,
+                    private_node: false,
                     disable_quotas: true,
                     disable_blacklist: true,
                     min_connected_peers: 1,
