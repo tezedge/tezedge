@@ -1,23 +1,24 @@
 use std::collections::VecDeque;
 use std::fmt::Debug;
-use std::io::{self, Read, Write};
-use std::net::SocketAddr;
+use std::io;
 use std::time::{Duration, Instant};
 
 use crypto::crypto_box::{CryptoKey, PublicKey};
 use crypto::nonce::Nonce;
-use tezedge_state::chunking::{ChunkReadBuffer, EncryptedMessageWriter, MessageReadBuffer};
 use tezedge_state::proposer::{
-    Event, EventRef, Events, Manager, NetworkEvent, Peer, TezedgeProposer, TezedgeProposerConfig,
+    Event, Manager, Peer, TezedgeProposer, TezedgeProposerConfig,
 };
 use tezedge_state::{DefaultEffects, PeerAddress, PeerCrypto, TezedgeState};
-use tezos_identity::Identity;
-use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryRead, BinaryWrite};
+use tezos_messages::p2p::binary_message::{BinaryChunk, BinaryWrite};
 use tezos_messages::p2p::encoding::ack::NackInfo;
 use tezos_messages::p2p::encoding::prelude::{
     AckMessage, ConnectionMessage, MetadataMessage, NetworkVersion, PeerMessage,
-    PeerMessageResponse,
 };
+
+use crate::fake_event::{FakeEvent, FakeNetworkEvent, FakeNetworkEventType};
+use crate::fake_events::FakeEvents;
+use crate::fake_peer::{ConnectedState, FakePeer, FakePeerStream, IOCondition};
+use crate::fake_peer_id::FakePeerId;
 
 /// Events with time difference of less than given duration will be
 /// grouped together.
@@ -33,484 +34,6 @@ pub enum HandshakeError {
     NotConnected,
     NackV0,
     Nack(NackInfo),
-}
-
-pub type FakeEvent = Event<FakeNetworkEvent>;
-pub type FakeEventRef<'a> = EventRef<'a, FakeNetworkEvent>;
-
-#[derive(Debug, Clone)]
-pub enum FakeNetworkEventType {
-    IncomingConnection,
-    Disconnected,
-
-    BytesWritable(Option<usize>),
-    BytesReadable(Option<usize>),
-    BytesWritableError(io::ErrorKind),
-    BytesReadableError(io::ErrorKind),
-}
-
-#[derive(Debug, Clone)]
-pub struct FakeNetworkEvent {
-    time: Instant,
-    from: FakePeerId,
-    event_type: FakeNetworkEventType,
-}
-
-impl NetworkEvent for FakeNetworkEvent {
-    fn is_server_event(&self) -> bool {
-        matches!(&self.event_type, FakeNetworkEventType::IncomingConnection)
-    }
-
-    fn is_readable(&self) -> bool {
-        use FakeNetworkEventType::*;
-        matches!(&self.event_type, BytesReadable(_) | BytesReadableError(_))
-    }
-
-    fn is_writable(&self) -> bool {
-        use FakeNetworkEventType::*;
-        matches!(&self.event_type, BytesWritable(_) | BytesWritableError(_))
-    }
-
-    fn is_read_closed(&self) -> bool {
-        matches!(&self.event_type, FakeNetworkEventType::Disconnected)
-    }
-
-    fn is_write_closed(&self) -> bool {
-        false
-    }
-
-    fn time(&self) -> Instant {
-        self.time
-    }
-}
-
-/// Fake Events.
-///
-/// Events with time difference of less than a [EVENT_GROUP_BOUNDARY]
-/// will be grouped together.
-///
-/// # Panics
-///
-/// Time in the events must be ascending or it will panic.
-#[derive(Debug, Clone)]
-pub struct FakeEvents {
-    events: Vec<FakeEvent>,
-    limit: usize,
-}
-
-impl FakeEvents {
-    pub fn new() -> Self {
-        Self {
-            events: vec![],
-            // will be later set from proposer using [Events::set_limit].
-            limit: 0,
-        }
-    }
-
-    /// Try to push the event if we didn't accumulate more events than
-    /// the set `limit`. If we did, passed event will be return back
-    /// as a `Result::Err(FakeEvent)`.
-    pub fn try_push(&mut self, event: FakeEvent) -> Result<&mut Self, FakeEvent> {
-        if self.events.len() >= self.limit {
-            Err(event)
-        } else {
-            self.events.push(event);
-            Ok(self)
-        }
-    }
-}
-
-impl Events for FakeEvents {
-    fn set_limit(&mut self, limit: usize) {
-        self.limit = limit;
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FakeEventsIter<'a> {
-    events: &'a [FakeEvent],
-}
-
-impl<'a> Iterator for FakeEventsIter<'a> {
-    type Item = FakeEventRef<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.events.len() == 0 {
-            return None;
-        }
-        let event = &self.events[0];
-        self.events = &self.events[1..];
-        Some(event.as_event_ref())
-    }
-}
-
-impl<'a> IntoIterator for &'a FakeEvents {
-    type Item = FakeEventRef<'a>;
-    type IntoIter = FakeEventsIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        FakeEventsIter {
-            events: &self.events,
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
-pub struct FakePeerId {
-    id: usize,
-}
-
-impl FakePeerId {
-    /// Create new unchecked peer id. Caller must ensure that the peer
-    /// with such id exists.
-    pub fn new_unchecked(id: usize) -> Self {
-        Self { id }
-    }
-
-    pub fn index(&self) -> usize {
-        self.id
-    }
-}
-
-impl From<FakePeerId> for PeerAddress {
-    fn from(id: FakePeerId) -> Self {
-        PeerAddress::ipv4_from_index(id.id as u64)
-    }
-}
-
-impl From<FakePeerId> for SocketAddr {
-    fn from(id: FakePeerId) -> Self {
-        PeerAddress::from(id).into()
-    }
-}
-
-impl From<PeerAddress> for FakePeerId {
-    fn from(addr: PeerAddress) -> Self {
-        Self {
-            id: addr.to_index() as usize,
-        }
-    }
-}
-
-impl From<&PeerAddress> for FakePeerId {
-    fn from(addr: &PeerAddress) -> Self {
-        Self {
-            id: addr.to_index() as usize,
-        }
-    }
-}
-
-pub type FakePeer = Peer<FakePeerStream>;
-
-#[derive(Debug, Clone)]
-pub enum ConnectedState {
-    /// Disconnected.
-    Disconnected,
-    /// Incoming connection to the fake peer from real node.
-    Incoming(bool),
-    /// Outgoing connection from the fake peer to real node.
-    Outgoing(bool),
-}
-
-impl ConnectedState {
-    pub fn is_connected(&self) -> bool {
-        match self {
-            Self::Disconnected => false,
-            Self::Incoming(is_connected) => *is_connected,
-            Self::Outgoing(is_connected) => *is_connected,
-        }
-    }
-
-    fn disconnect(&mut self) {
-        *self = Self::Disconnected;
-    }
-
-    fn to_incoming(&mut self) {
-        match self {
-            Self::Incoming(_) => {}
-            Self::Disconnected => *self = Self::Incoming(false),
-            Self::Outgoing(_) => {}
-        }
-    }
-
-    fn to_outgoing(&mut self) {
-        match self {
-            Self::Outgoing(_) => {}
-            Self::Disconnected => *self = Self::Outgoing(false),
-            Self::Incoming(_) => {}
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-enum IOCondition {
-    NoLimit,
-    Limit(usize),
-    Error(io::ErrorKind),
-}
-
-#[derive(Debug, Clone)]
-pub struct FakePeerStream {
-    conn_state: ConnectedState,
-    identity: Identity,
-
-    sent_conn_msg: Option<ConnectionMessage>,
-    received_conn_msg: Option<ConnectionMessage>,
-    crypto: Option<PeerCrypto>,
-
-    read_buf: VecDeque<u8>,
-    write_buf: VecDeque<u8>,
-
-    read_cond: IOCondition,
-    write_cond: IOCondition,
-}
-
-impl FakePeerStream {
-    pub fn new(pow_target: f64) -> Self {
-        Self {
-            conn_state: ConnectedState::Disconnected,
-            identity: Identity::generate(pow_target).unwrap(),
-
-            sent_conn_msg: None,
-            received_conn_msg: None,
-            crypto: None,
-
-            read_buf: VecDeque::new(),
-            write_buf: VecDeque::new(),
-
-            read_cond: IOCondition::Limit(0),
-            write_cond: IOCondition::Limit(0),
-        }
-    }
-
-    pub fn identity(&self) -> &Identity {
-        &self.identity
-    }
-
-    pub fn read_buf(&self) -> &VecDeque<u8> {
-        &self.read_buf
-    }
-
-    pub fn write_buf(&self) -> &VecDeque<u8> {
-        &self.write_buf
-    }
-
-    pub fn is_connected(&self) -> bool {
-        self.conn_state.is_connected()
-    }
-
-    fn disconnect(&mut self) {
-        self.conn_state.disconnect()
-    }
-
-    fn set_io_cond_from_event(&mut self, event: &FakeNetworkEvent) {
-        match &event.event_type {
-            FakeNetworkEventType::BytesReadable(limit) => {
-                self.read_cond = match limit {
-                    Some(limit) => IOCondition::Limit(*limit),
-                    None => IOCondition::NoLimit,
-                };
-            }
-            FakeNetworkEventType::BytesWritable(limit) => {
-                self.write_cond = match limit {
-                    Some(limit) => IOCondition::Limit(*limit),
-                    None => IOCondition::NoLimit,
-                };
-            }
-            FakeNetworkEventType::BytesReadableError(err_kind) => {
-                self.read_cond = IOCondition::Error(*err_kind);
-            }
-            FakeNetworkEventType::BytesWritableError(err_kind) => {
-                self.write_cond = IOCondition::Error(*err_kind);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn set_sent_conn_message(&mut self, conn_msg: ConnectionMessage) {
-        self.sent_conn_msg = Some(conn_msg);
-    }
-
-    pub fn set_received_conn_msg(&mut self, conn_msg: ConnectionMessage) {
-        self.received_conn_msg = Some(conn_msg);
-    }
-
-    pub fn send_bytes(&mut self, bytes: &[u8]) {
-        self.read_buf.extend(bytes);
-    }
-
-    /// Send connection message to real node.
-    pub fn send_conn_msg(&mut self, conn_msg: &ConnectionMessage) {
-        self.send_bytes(
-            BinaryChunk::from_content(&conn_msg.as_bytes().unwrap())
-                .unwrap()
-                .raw(),
-        );
-    }
-
-    pub fn read_conn_msg(&mut self) -> ConnectionMessage {
-        let mut reader = ChunkReadBuffer::new();
-        while !reader.is_finished() {
-            reader
-                .read_from(&mut VecDequeReadable::from(&mut self.write_buf))
-                .unwrap();
-        }
-        ConnectionMessage::from_bytes(reader.take_if_ready().unwrap().content()).unwrap()
-    }
-
-    pub fn send_meta_msg(&mut self, meta_msg: &MetadataMessage) {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        let mut encrypted_msg_writer = EncryptedMessageWriter::try_new(meta_msg).unwrap();
-        encrypted_msg_writer
-            .write_to_extendable(&mut self.read_buf, crypto)
-            .unwrap();
-    }
-
-    pub fn read_meta_msg(&mut self) -> MetadataMessage {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        let mut reader = ChunkReadBuffer::new();
-        while !reader.is_finished() {
-            reader
-                .read_from(&mut VecDequeReadable::from(&mut self.write_buf))
-                .unwrap();
-        }
-        let bytes = crypto
-            .decrypt(&reader.take_if_ready().unwrap().content())
-            .unwrap();
-        MetadataMessage::from_bytes(bytes).unwrap()
-    }
-
-    pub fn send_ack_msg(&mut self, ack_msg: &AckMessage) {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        let mut encrypted_msg_writer = EncryptedMessageWriter::try_new(ack_msg).unwrap();
-        encrypted_msg_writer
-            .write_to_extendable(&mut self.read_buf, crypto)
-            .unwrap();
-    }
-
-    pub fn read_ack_message(&mut self) -> AckMessage {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        let mut reader = ChunkReadBuffer::new();
-        while !reader.is_finished() {
-            reader
-                .read_from(&mut VecDequeReadable::from(&mut self.write_buf))
-                .unwrap();
-        }
-        let bytes = crypto
-            .decrypt(&reader.take_if_ready().unwrap().content())
-            .unwrap();
-        AckMessage::from_bytes(bytes).unwrap()
-    }
-
-    pub fn send_peer_message(&mut self, peer_message: PeerMessage) {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        let resp = PeerMessageResponse::from(peer_message);
-        let mut encrypted_msg_writer = EncryptedMessageWriter::try_new(&resp).unwrap();
-        encrypted_msg_writer
-            .write_to_extendable(&mut self.read_buf, crypto)
-            .unwrap();
-    }
-
-    pub fn read_peer_message(&mut self) -> Option<PeerMessage> {
-        let crypto = self
-            .crypto
-            .as_mut()
-            .expect("missing PeerCrypto for encryption");
-        if self.write_buf.len() == 0 {
-            return None;
-        }
-        let mut reader = MessageReadBuffer::new();
-        Some(
-            reader
-                .read_from(&mut VecDequeReadable::from(&mut self.write_buf), crypto)
-                .unwrap()
-                .message,
-        )
-    }
-}
-
-impl Read for FakePeerStream {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        assert_ne!(
-            buf.len(),
-            0,
-            "empty(len = 0) buffer shouldn't be passed to read method"
-        );
-        let len = match &mut self.read_cond {
-            IOCondition::NoLimit => buf.len(),
-            IOCondition::Limit(limit) => {
-                let min = buf.len().min(*limit);
-                *limit -= min;
-                min
-            }
-            IOCondition::Error(err_kind) => {
-                return Err(io::Error::new(*err_kind, "manual error"));
-            }
-        };
-        // eprintln!("read {}. limit: {:?}", len, &self.read_limit);
-
-        VecDequeReadable::from(&mut self.read_buf).read(&mut buf[..len])
-    }
-}
-
-impl Write for FakePeerStream {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let len = match &mut self.write_cond {
-            IOCondition::NoLimit => buf.len(),
-            IOCondition::Limit(limit) => {
-                let min = buf.len().min(*limit);
-                *limit -= min;
-                min
-            }
-            IOCondition::Error(err_kind) => {
-                return Err(io::Error::new(*err_kind, "manual error"));
-            }
-        };
-        // eprintln!("write {}. limit: {:?}", len, &self.write_limit);
-
-        self.write_buf.extend(&buf[..len]);
-
-        Ok(len)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-struct VecDequeReadable<'a> {
-    v: &'a mut VecDeque<u8>,
-}
-
-impl<'a> Read for VecDequeReadable<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        let len = self.v.len().min(buf.len());
-        for (i, v) in self.v.drain(..len).enumerate() {
-            buf[i] = v;
-        }
-        Ok(len)
-    }
-}
-
-impl<'a> From<&'a mut VecDeque<u8>> for VecDequeReadable<'a> {
-    fn from(v: &'a mut VecDeque<u8>) -> Self {
-        Self { v }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -538,13 +61,11 @@ impl OneRealNodeManager {
 
     /// Panics if peer with such id is not found.
     fn get_mut(&mut self, id: FakePeerId) -> &mut FakePeer {
-        &mut self.fake_peers[id.id]
+        &mut self.fake_peers[id.index()]
     }
 
     fn init_new_fake_peer(&mut self) -> FakePeerId {
-        let peer_id = FakePeerId {
-            id: self.fake_peers.len(),
-        };
+        let peer_id = FakePeerId::new_unchecked(self.fake_peers.len());
         self.fake_peers.push(Peer::new(
             peer_id.into(),
             FakePeerStream::new(self.pow_target),
@@ -572,7 +93,7 @@ impl Manager for OneRealNodeManager {
 
     fn accept_connection(&mut self, event: &Self::NetworkEvent) -> Option<&mut Peer<Self::Stream>> {
         let peer = self.get_mut(event.from);
-        match &mut peer.stream.conn_state {
+        match peer.stream.conn_state_mut() {
             conn_state @ ConnectedState::Disconnected
             | conn_state @ ConnectedState::Outgoing(false) => {
                 *conn_state = ConnectedState::Outgoing(true);
@@ -635,7 +156,7 @@ impl Manager for OneRealNodeManager {
         address: &PeerAddress,
     ) -> io::Result<&mut Peer<Self::Stream>> {
         let peer = self.get_mut(address.into());
-        match &mut peer.stream.conn_state {
+        match peer.stream.conn_state_mut() {
             conn_state @ ConnectedState::Disconnected
             | conn_state @ ConnectedState::Incoming(false) => {
                 *conn_state = ConnectedState::Incoming(true);
@@ -754,7 +275,7 @@ impl OneRealNodeCluster {
             .manager
             .get_mut(from)
             .stream
-            .conn_state
+            .conn_state_mut()
             .to_outgoing();
         self.proposer.manager.push_event(
             FakeNetworkEvent {
@@ -776,7 +297,7 @@ impl OneRealNodeCluster {
             .manager
             .get_mut(to)
             .stream
-            .conn_state
+            .conn_state_mut()
             .to_incoming();
 
         self
@@ -872,7 +393,7 @@ impl OneRealNodeCluster {
         peer_id: FakePeerId,
     ) -> Result<&mut Self, HandshakeError> {
         let peer = self.get_peer(peer_id);
-        if peer.crypto.is_some() {
+        if peer.crypto().is_some() {
             return Ok(self);
         }
         let sent = peer.sent_conn_msg.take().unwrap();
@@ -890,15 +411,15 @@ impl OneRealNodeCluster {
     ) -> Result<&mut Self, HandshakeError> {
         let peer = self.get_peer(peer_id);
 
-        let incoming = match &peer.conn_state {
+        let incoming = match &peer.conn_state() {
             ConnectedState::Incoming(_) => true,
             ConnectedState::Outgoing(_) => false,
             ConnectedState::Disconnected => return Err(HandshakeError::NotConnected),
         };
 
-        peer.crypto = Some(
+        *peer.crypto_mut() = Some(
             PeerCrypto::build(
-                &peer.identity.secret_key,
+                &peer.identity().secret_key,
                 peer_public_key,
                 sent_conn_msg,
                 received_conn_msg,
@@ -948,13 +469,13 @@ impl OneRealNodeCluster {
         peer_id: FakePeerId,
     ) -> Result<&mut Self, HandshakeError> {
         let peer = &mut self.get_peer(peer_id);
-        peer.write_cond = IOCondition::NoLimit;
-        peer.read_cond = IOCondition::NoLimit;
+        peer.set_read_cond(IOCondition::NoLimit)
+            .set_write_cond(IOCondition::NoLimit);
 
         let sent_conn_msg = ConnectionMessage::try_new(
             12345,
-            &peer.identity.public_key,
-            &peer.identity.proof_of_work_stamp,
+            &peer.identity().public_key,
+            &peer.identity().proof_of_work_stamp,
             Nonce::random(),
             NetworkVersion::new("TEZOS_MAINNET".to_owned(), 0, 1),
         )
@@ -977,7 +498,7 @@ impl OneRealNodeCluster {
     /// 2. Exchange encrypted [MetadataMessage].
     /// 3. Exchange encrypted [AckMessage].
     pub fn do_handshake(&mut self, peer_id: FakePeerId) -> Result<&mut Self, HandshakeError> {
-        if self.get_peer(peer_id).crypto.is_none() {
+        if self.get_peer(peer_id).crypto().is_none() {
             self.init_crypto_for_peer(peer_id)?;
         }
         self.get_peer(peer_id)
