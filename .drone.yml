@@ -1122,7 +1122,7 @@ steps:
     - cp $${BUILD_ARTIFACTS_PATH}/build_files/ffi/sapling-output.params $${TEZOS_SRC_PATH}/tezos/
 
 - name: baker-endorser-test
-  image: tezedge/tezedge-ci-builder::nightly-2021-08-04-v9.5-tezos
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1140,7 +1140,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_baker_endorser.py
 
 - name: test-many-nodes
-  image: tezedge/tezedge-ci-builder::nightly-2021-08-04-v9.5-tezos
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1156,7 +1156,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_many_nodes.py
 
 - name: test-multinode
-  image: tezedge/tezedge-ci-builder::nightly-2021-08-04-v9.5-tezos
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
@@ -1172,7 +1172,7 @@ steps:
     - poetry run pytest -s --log-dir=$log_dir tests$${TEST_PROTO_DIR_SUFFIX}/test_multinode.py
 
 - name: mempool-test
-  image: tezedge/tezedge-ci-builder::nightly-2021-08-04-v9.5-tezos
+  image: tezedge/tezedge-ci-builder:nightly-2021-08-04-v9.5-tezos
   pull: if-not-exists
   user: root
   volumes:
