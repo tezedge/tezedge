@@ -18,7 +18,6 @@ nom = "6.1"
 url = "2.2"
 # local dependencies
 crypto = { path = "../../crypto" }
-tezos-sys = { path = "../sys" }
 tezos_encoding = { path = "../encoding" }
 tezos_messages = { path = "../messages" }
 

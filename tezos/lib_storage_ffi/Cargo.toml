@@ -8,9 +8,7 @@ edition = "2018"
 
 [dependencies]
 ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state"] }
-# local dependencies
-tezos_interop = { path = "../interop" }
-tezos_new_context = { path = "../new_context" }
 
 [dev-dependencies]
 tempfile = "3"
+tezos_new_context = { path = "../new_context" }

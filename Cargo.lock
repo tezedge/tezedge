@@ -2257,28 +2257,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "merge"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "10bbef93abb1da61525bbc45eeaff6473a41907d19f8f9aa5168d214e10693e9"
-dependencies = [
- "merge_derive",
- "num-traits 0.2.14",
-]
-
-[[package]]
-name = "merge_derive"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "209d075476da2e63b4b29e72a2ef627b840589588e71400a25e3565c4f849d07"
-dependencies = [
- "proc-macro-error",
- "proc-macro2 1.0.27",
- "quote 1.0.9",
- "syn 1.0.74",
-]
-
-[[package]]
 name = "mime"
 version = "0.3.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3524,7 +3502,6 @@ dependencies = [
  "ipc",
  "itertools 0.10.0",
  "lazy_static",
- "merge",
  "networking",
  "nix 0.19.1",
  "nom 6.1.2",
@@ -3722,7 +3699,6 @@ version = "1.7.0"
 dependencies = [
  "bincode",
  "bytes 1.0.1",
- "clap",
  "commitlog",
  "criterion",
  "crypto",
@@ -3731,7 +3707,6 @@ dependencies = [
  "fs_extra",
  "getset",
  "hex 0.4.2",
- "itertools 0.10.0",
  "lazy_static",
  "num_cpus",
  "rand 0.7.3",
@@ -3898,7 +3873,6 @@ dependencies = [
  "slog",
  "strum",
  "strum_macros",
- "tezos-sys",
  "tezos_encoding",
  "tezos_messages",
  "url",
@@ -3987,7 +3961,6 @@ version = "1.7.0"
 dependencies = [
  "ocaml-interop",
  "tempfile",
- "tezos_interop",
  "tezos_new_context",
 ]
 
