@@ -14,12 +14,9 @@ where
             return;
         }
 
-        if self.config.private_node {
-            // we don't start listening if we are private node so this
-            // shouldn't happen!
-            slog::warn!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "we are private node, so don't accept incoming connections");
-            self.disconnect_peer(proposal.at, proposal.peer);
-        } else if self.is_address_blacklisted(&proposal.peer) {
+        // TODO: if private node, check if peer trying to connect to us
+        // is trusted.
+        if self.is_address_blacklisted(&proposal.peer) {
             slog::debug!(&self.log, "Rejecting incoming peer connection!"; "peer_address" => proposal.peer.to_string(), "reason" => "Peer's IP is blacklisted!");
             self.disconnect_peer(proposal.at, proposal.peer);
         } else {

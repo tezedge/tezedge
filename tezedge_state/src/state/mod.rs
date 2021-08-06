@@ -340,15 +340,12 @@ impl TezedgeState {
     }
 
     fn init<Efs: Effects>(mut self, effects: &mut Efs) -> Self {
-        // don't listen for connections if we are a private node.
-        if !self.config.private_node {
-            self.requests.insert(PendingRequestState {
-                request: PendingRequest::StartListeningForNewPeers,
-                status: RetriableRequestState::Idle {
-                    at: self.newest_time_seen,
-                },
-            });
-        }
+        self.requests.insert(PendingRequestState {
+            request: PendingRequest::StartListeningForNewPeers,
+            status: RetriableRequestState::Idle {
+                at: self.newest_time_seen,
+            },
+        });
         self.adjust_p2p_state(self.newest_time_seen, effects);
 
         self
