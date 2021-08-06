@@ -1,3 +1,5 @@
+cargo-features = ["named-profiles"]
+
 [workspace]
 members = [
     "ipc",
@@ -40,3 +42,18 @@ members = [
 [patch.crates-io]
 ocaml-boxroot-sys = { git = "https://gitlab.com/bruno.deferrari/ocaml-boxroot.git", branch = "ocaml-410-headers" }
 librocksdb-sys = { git = "https://github.com/tezedge/rust-rocksdb.git", tag = "tezedge-v0.17.0-1" }
+
+
+[profile.fuzz]
+inherits = "release"
+opt-level = 3
+debug = 2
+debug-assertions = true  # TODO: test and disable if too slow
+overflow-checks = true
+lto = true
+panic = "abort"
+incremental = false
+codegen-units = 1
+
+
+
