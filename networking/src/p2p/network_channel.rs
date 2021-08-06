@@ -3,13 +3,10 @@
 
 //! This channel is used to transmit p2p networking messages between actors.
 
-use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crypto::hash::CryptoboxPublicKeyHash;
 use riker::actors::*;
 
-use tezos_messages::p2p::encoding::advertise::AdvertiseMessage;
 use tezos_messages::p2p::encoding::metadata::MetadataMessage;
 use tezos_messages::p2p::encoding::peer::PeerMessageResponse;
 

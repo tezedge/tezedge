@@ -6,8 +6,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use networking::p2p::network_channel::{NetworkChannelMsg, NetworkChannelRef, NetworkChannelTopic};
-use riker::actors::*;
+use slog::Logger;
 
 use crypto::hash::{BlockHash, OperationHash};
 use networking::{PeerAddress, PeerId};
@@ -15,10 +14,10 @@ use storage::mempool_storage::MempoolOperationType;
 use storage::BlockHeaderWithHash;
 use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
-use tezos_messages::p2p::encoding::prelude::{
-    GetOperationsMessage, MetadataMessage, PeerMessageResponse,
-};
+use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, MetadataMessage};
 
+use crate::peer_manager::ProposerHandle;
+use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
 
@@ -157,8 +156,9 @@ impl PeerState {
     }
 
     pub fn schedule_missing_operations_for_mempool(
-        network_channel: &NetworkChannelRef,
+        proposer: &ProposerHandle,
         peers: &mut HashMap<PeerAddress, PeerState>,
+        log: &Logger,
     ) {
         peers
             .values_mut()
@@ -193,16 +193,18 @@ impl PeerState {
                         .chunks(limits::GET_OPERATIONS_MAX_LENGTH)
                         .for_each(|ops_to_get| {
                             tell_peer(
-                                &network_channel,
-                                peer,
+                                &proposer,
+                                &peer.peer_id,
                                 GetOperationsMessage::new(ops_to_get.into()).into(),
+                                log,
                             )
                         });
                 } else {
                     tell_peer(
-                        &network_channel,
-                        peer,
+                        &proposer,
+                        &peer.peer_id,
                         GetOperationsMessage::new(ops_to_get).into(),
+                        log,
                     );
                 }
             });
@@ -341,18 +343,4 @@ impl UpdateIsBootstrapped for PeerState {
     fn is_bootstrapped(&self) -> bool {
         self.is_bootstrapped
     }
-}
-
-pub fn tell_peer(
-    network_channel: &NetworkChannelRef,
-    peer: &PeerState,
-    msg: Arc<PeerMessageResponse>,
-) {
-    network_channel.tell(
-        Publish {
-            msg: NetworkChannelMsg::SendMessage(peer.peer_id.clone(), msg),
-            topic: NetworkChannelTopic::NetworkCommands.into(),
-        },
-        None,
-    );
 }
