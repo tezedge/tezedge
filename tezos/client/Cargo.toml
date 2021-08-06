@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 crypto = { path = "../../crypto" }
-tezos_api = { path = "../api" }
+tezos_api = { path = "../api", features = ["tezos-sys"] }
 tezos_interop = { path = "../interop" }
 tezos_messages = { path = "../messages" }
 

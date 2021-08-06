@@ -20,7 +20,7 @@ tokio = { version = "1.8", features = ["full"] }
 warp = "0.3"
 wait-timeout = "0.2"
 # local dependencies
-tezos_api = { path = "../tezos/api" }
+tezos_api = { path = "../tezos/api", features = ["tezos-sys"] }
 
 [build-dependencies]
 colored = "2.0"

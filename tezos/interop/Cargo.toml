@@ -13,7 +13,7 @@ ocaml-interop = { version = "0.8.4", features = ["without-ocamlopt", "caml-state
 serde_json = "1.0"
 # local dependencies
 tezos-sys = { path = "../sys" }
-tezos_api = { path = "../api" }
+tezos_api = { path = "../api", features = ["tezos-sys"] }
 tezos_messages = { path = "../messages" }
 tezos_new_context = { path = "../new_context" }
 crypto = { path = "../../crypto" }

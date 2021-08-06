@@ -15,7 +15,7 @@ slog-async = "2.6"
 slog-term = "2.8"
 # local dependencies
 crypto = { path = "../crypto" }
-tezos_api = { path = "../tezos/api" }
+tezos_api = { path = "../tezos/api", features = ["tezos-sys"] }
 tezos_client = { path = "../tezos/client" }
 tezos_interop = { path = "../tezos/interop" }
 tezos_wrapper = { path = "../tezos/wrapper" }

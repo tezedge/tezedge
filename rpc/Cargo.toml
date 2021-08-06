@@ -27,7 +27,7 @@ bincode = "1.3"
 crypto = { path = "../crypto" }
 shell = { path = "../shell" }
 storage = { path = "../storage" }
-tezos_api = { path = "../tezos/api" }
+tezos_api = { path = "../tezos/api", features = ["tezos-sys"] }
 tezos_messages = { path = "../tezos/messages" }
 tezos_timing = { path = "../tezos/timing" }
 tezos_wrapper = { path = "../tezos/wrapper" }

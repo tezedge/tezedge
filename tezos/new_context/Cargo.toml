@@ -22,7 +22,7 @@ strum_macros = "0.20"
 # Internal dependencies
 ipc = { path = "../../ipc" }
 tezos-sys = { path = "../sys" }
-tezos_api = { path = "../api" }
+tezos_api = { path = "../api", features = ["tezos-sys"] }
 tezos_spsc = { path = "../spsc" }
 crypto = { path = "../../crypto" }
 tezos_timing = { path = "../timing" }

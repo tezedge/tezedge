@@ -21,7 +21,7 @@ num_cpus = "1.13"
 # Local dependencies
 crypto = { path = "../crypto" }
 logging = { path = "../logging" }
-tezos_api = { path = "../tezos/api" }
+tezos_api = { path = "../tezos/api", features = ["tezos-sys"] }
 tezos_identity = { path = "../tezos/identity" }
 tezos_messages = { path = "../tezos/messages" }
 tezos_new_context = { path = "../tezos/new_context" }

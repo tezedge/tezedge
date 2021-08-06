@@ -19,6 +19,6 @@ tokio = { version = "1.8", features = ["full"] }
 # local dependencies
 ipc = { path = "../../ipc" }
 crypto = { path = "../../crypto" }
-tezos_api = { path = "../api" }
+tezos_api = { path = "../api", features = ["tezos-sys"] }
 tezos_messages = { path = "../messages" }
 tezos_new_context = { path = "../new_context" }
