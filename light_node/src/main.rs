@@ -15,11 +15,11 @@ use networking::p2p::network_channel::NetworkChannel;
 use networking::ShellCompatibilityVersion;
 use rpc::rpc_actor::RpcServer;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
-use shell::peer_manager::TezedgeStateManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
 use shell::state::head_state::init_current_head_state;
 use shell::state::synchronization_state::init_synchronization_bootstrap_state_storage;
+use shell::tezedge_state_manager::TezedgeStateManager;
 use shell::{chain_current_head_manager::ChainCurrentHeadManager, chain_feeder::ChainFeederRef};
 use shell::{chain_feeder::ApplyBlock, chain_manager::ChainManager};
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
@@ -256,7 +256,6 @@ fn block_on_actors(
     // initialize tezedge state
     let mut tezedge_state_manager = TezedgeStateManager::new(
         network_channel.clone(),
-        shell_channel.clone(),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),

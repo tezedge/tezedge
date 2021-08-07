@@ -16,7 +16,7 @@ use slog::Logger;
 
 use crypto::hash::BlockHash;
 use logging::config::{FileLoggerConfig, LogFormat, LoggerType, NoDrainError, SlogConfig};
-use shell::peer_manager::P2p;
+use shell::tezedge_state_manager::P2p;
 use shell::PeerConnectionThreshold;
 use storage::database::tezedge_database::TezedgeDatabaseBackendConfiguration;
 use storage::initializer::{DbsRocksDbTableInitializer, RocksDbConfig};

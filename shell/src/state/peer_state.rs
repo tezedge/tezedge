@@ -16,10 +16,10 @@ use tezos_messages::p2p::encoding::block_header::Level;
 use tezos_messages::p2p::encoding::limits;
 use tezos_messages::p2p::encoding::prelude::{GetOperationsMessage, MetadataMessage};
 
-use crate::peer_manager::ProposerHandle;
 use crate::state::data_requester::tell_peer;
 use crate::state::synchronization_state::UpdateIsBootstrapped;
 use crate::state::StateError;
+use crate::tezedge_state_manager::ProposerHandle;
 
 /// Limit to how many mempool operations to request in a batch
 const MEMPOOL_OPERATIONS_BATCH_SIZE: usize = limits::MEMPOOL_MAX_OPERATIONS;
