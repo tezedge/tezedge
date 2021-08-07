@@ -931,7 +931,10 @@ steps:
   volumes:
     - name: octez-data
       path: /data
+    - name: cache
+      path: /cache
   commands:
+    - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
     - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
 - name: tezedge-node-bootstrap
@@ -949,7 +952,8 @@ steps:
     SODIUM_USE_PKG_CONFIG: 1
     THROTTLING_QUOTA_DISABLE: true
   commands:
-    - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+    - /build/build_files/wait_file.sh /cache/octez_ip.txt 10
+    - OCTEZ_IP=$(cat /cache/octez_ip.txt)
     - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
     - >
       /build/build_files/light-node
@@ -4705,7 +4709,10 @@ steps:
     volumes:
       - name: octez-data
         path: /data
+      - name: cache
+        path: /cache
     commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
@@ -4717,13 +4724,13 @@ steps:
       - name: build
         path: /build
       - name: cache
-        path: /cache
       - name: tezos-data
+        path: /cache
         path: /data
     environment:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
       - >
         /build/build_files/light-node
@@ -4918,7 +4925,10 @@ steps:
     volumes:
       - name: octez-data
         path: /data
+      - name: cache
+        path: /cache
     commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
@@ -4936,7 +4946,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
       - >
         /build/build_files/light-node
@@ -5145,7 +5155,10 @@ steps:
     volumes:
       - name: octez-data
         path: /data
+      - name: cache
+        path: /cache
     commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
       - tezos-node run --data-dir /data --history-mode archive --network $${NETWORK} --no-bootstrap-peers
 
   - name: tezedge-node
@@ -5163,7 +5176,7 @@ steps:
     environment:
       SODIUM_USE_PKG_CONFIG: 1
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - export LD_LIBRARY_PATH="/build/build_files/ffi:$$(rustc --print sysroot)"
       - >
         /build/build_files/light-node
@@ -6005,6 +6018,7 @@ steps:
 
   - name: octez-node
     image: tezos/tezos:v9-release
+    user: root
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6013,7 +6027,10 @@ steps:
         path: /identities
       - name: snapshots
         path: /snapshots
+      - name: cache
+        path: /cache
     commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
       - tezos-node config init --network florencenet
       - cp /identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node snapshot import /snapshots/octez-009-florence-1000.snapshot --block BKqNZHy5CFYLD6v6BjDLrEavrkK4qH39hhrsD7QtbWcdnnwoYub
@@ -6029,8 +6046,10 @@ steps:
         path: /identities
       - name: tools
         path: /tools
+      - name: cache
+        path: /cache
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - echo $${OCTEZ_IP}
       # use alloc instead of jemalloc by commenting out lines between these two
       - >
@@ -6079,8 +6098,10 @@ steps:
         path: /identities
       - name: tools
         path: /tools
+      - name: cache
+        path: /cache
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - git reset --hard origin/${DRONE_TARGET_BRANCH}
       - rm -rf ./tezos-node-data ./light-node-data
       # use alloc instead of jemalloc
@@ -6201,6 +6222,7 @@ steps:
 
   - name: octez-bootstrap-node
     image: tezos/tezos:v9-release
+    user: root
     detach: true
     environment:
       TEZOS_NODE_DIR: /home/tezos/data
@@ -6209,7 +6231,10 @@ steps:
         path: /identities
       - name: snapshots
         path: /snapshots
+      - name: cache
+        path: /cache
     commands:
+      - ip -o -4 addr show | awk -F '[ /]+' '/global/ {print $4}' > /cache/octez_ip.txt
       - tezos-node config init --network florencenet
       - cp /identities/identity_1.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node snapshot import /snapshots/octez-009-florence-$${BLOCK_LEVEL}.snapshot
@@ -6231,9 +6256,11 @@ steps:
     volumes:
       - name: identities
         path: /identities
+      - name: cache
+        path: /cache
     commands:
       - apk add curl jq perl
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - tezos-node config init --network florencenet
       - cp /identities/identity_2.json $${TEZOS_NODE_DIR}/identity.json
       - tezos-node run --no-bootstrap-peers --peer $${OCTEZ_IP}:9732 --rpc-addr 0.0.0.0:8732 &
@@ -6267,11 +6294,13 @@ steps:
         path: /build
       - name: tools
         path: /tools
+      - name: cache
+        path: /cache
     environment:
       TROTTLING_QUOTA_DISABLE: false
     commands:
       # let octez node to be up and running
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - export LD_LIBRARY_PATH=/build/ffi
       - >
         /build/light-node --protocol-runner /build/protocol-runner
@@ -6311,10 +6340,12 @@ steps:
         path: /build
       - name: tools
         path: /tools
+      - name: cache
+        path: /cache
     environment:
       TROTTLING_QUOTA_DISABLE: false
     commands:
-      - OCTEZ_IP=$(perl -e 'use Socket; my $a = gethostbyname("octez-bootstrap-node"); print inet_ntoa($a)')
+      - OCTEZ_IP=$(cat /cache/octez_ip.txt)
       - rm -rf ./tezos-node-data ./light-node-data
       - export LD_LIBRARY_PATH=/build/old/ffi
       - >
