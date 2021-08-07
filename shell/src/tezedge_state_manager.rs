@@ -1,6 +1,8 @@
 // Copyright (c) SimpleStaking, Viable Systems and Tezedge Contributors
 // SPDX-License-Identifier: MIT
 
+//! Module takes care about (initialization, thread starting, ...) one singletons [TezedgeState] and [TezedgeProposer]
+
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::net::{IpAddr, SocketAddr};

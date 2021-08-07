@@ -11,10 +11,10 @@ pub mod chain_feeder;
 pub mod chain_manager;
 pub mod mempool;
 pub mod peer_branch_bootstrapper;
-pub mod peer_manager;
 pub mod shell_channel;
 pub mod state;
 pub mod stats;
+pub mod tezedge_state_manager;
 pub mod utils;
 pub mod validation;
 
