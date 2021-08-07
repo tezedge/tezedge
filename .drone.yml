@@ -6340,6 +6340,8 @@ steps:
         path: /build
       - name: tools
         path: /tools
+      - name: cache
+        path: /cache
     environment:
       TROTTLING_QUOTA_DISABLE: false
     commands:
