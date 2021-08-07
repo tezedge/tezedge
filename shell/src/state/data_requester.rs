@@ -26,11 +26,11 @@ use tezos_messages::p2p::encoding::prelude::{
 use crate::chain_feeder::{ApplyBlock, ChainFeederRef, ScheduleApplyBlock};
 use crate::chain_manager::ChainManagerRef;
 use crate::peer_branch_bootstrapper::PeerBranchBootstrapperRef;
-use crate::peer_manager::ProposerHandle;
 use crate::state::peer_state::{
     BlockHeaderQueueRef, BlockOperationsQueueRef, DataQueues, MissingOperations, PeerState,
 };
 use crate::state::{ApplyBlockBatch, StateError};
+use crate::tezedge_state_manager::ProposerHandle;
 use crate::validation;
 use crate::validation::CanApplyStatus;
 

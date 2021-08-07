@@ -46,7 +46,6 @@ use crate::mempool::mempool_prevalidator::{MempoolPrevalidatorBasicRef, MempoolP
 use crate::mempool::mempool_state::MempoolState;
 use crate::mempool::{CurrentMempoolStateStorageRef, MempoolPrevalidatorFactory};
 use crate::peer_branch_bootstrapper::{CleanPeerData, UpdateBranchBootstraping};
-use crate::peer_manager::ProposerHandle;
 use crate::shell_channel::{
     AllBlockOperationsReceived, BlockReceived, ShellChannelMsg, ShellChannelRef, ShellChannelTopic,
 };
@@ -60,6 +59,8 @@ use crate::state::synchronization_state::{
 };
 use crate::state::StateError;
 use crate::subscription::*;
+use crate::tezedge_state_manager::ProposerHandle;
+use crate::utils::dispatch_oneshot_result;
 use crate::validation;
 
 /// How often to ask all connected peers for current head

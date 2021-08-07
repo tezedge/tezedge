@@ -29,11 +29,11 @@ use crate::peer_branch_bootstrapper::{
     PeerBranchBootstrapper, PeerBranchBootstrapperConfiguration, PeerBranchBootstrapperRef,
     StartBranchBootstraping, UpdateBlockState, UpdateOperationsState,
 };
-use crate::peer_manager::ProposerHandle;
 use crate::state::bootstrap_state::InnerBlockState;
 use crate::state::data_requester::{DataRequester, DataRequesterRef};
 use crate::state::peer_state::{DataQueuesLimits, PeerState};
 use crate::state::StateError;
+use crate::tezedge_state_manager::ProposerHandle;
 use crate::validation;
 
 /// Constants for controlling bootstrap speed

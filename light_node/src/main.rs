@@ -19,9 +19,9 @@ use shell::chain_feeder::ChainFeederRef;
 use shell::chain_manager::{ChainManager, ChainManagerRef};
 use shell::connector::ShellConnectorSupport;
 use shell::mempool::{init_mempool_state_storage, MempoolPrevalidatorFactory};
-use shell::peer_manager::TezedgeStateManager;
 use shell::shell_channel::ShellChannelRef;
 use shell::shell_channel::{ShellChannel, ShellChannelTopic, ShuttingDown};
+use shell::tezedge_state_manager::TezedgeStateManager;
 use shell::{chain_feeder::ChainFeeder, state::ApplyBlockBatch};
 use storage::persistent::sequence::Sequences;
 use storage::persistent::{open_cl, CommitLogSchema};
@@ -255,7 +255,6 @@ fn block_on_actors(
     // initialize tezedge state
     let mut tezedge_state_manager = TezedgeStateManager::new(
         network_channel.clone(),
-        shell_channel.clone(),
         log.clone(),
         identity.clone(),
         shell_compatibility_version.clone(),
